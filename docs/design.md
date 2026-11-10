@@ -1454,13 +1454,16 @@ works the same way everywhere.
   nothing, a lowercase run and never the sentence that stays inside it,
   else how many it holds ("78 keys"); a place that only groups others
   (Machine, Network, Desktop) says nothing there. Now's right names the
-  first thing that needs Joel now, its minutes and how many more do
-  ("Answer the ask · 2 min · 2 more"), else what To Look At and To Try
-  hold ("44 to look at · 2 to try"); short of room its title gives way
-  by whole words behind an ellipsis, its minutes and counts never, and
-  with nothing waiting it says nothing (VKCF3Z, bd5cb965, a31a0e1b).
-  Now's drawer is its moment plate, which leaves out For You while the
-  row says it. A place's
+  first thing waiting on Joel, its minutes and how many more he can do
+  now ("Answer the ask · 2 min · 2 more"); short of room its title gives
+  way by whole words behind an ellipsis, its minutes and counts never
+  (VKCF3Z, bd5cb965). Calm, it says what waits by its band ("44 to look
+  at · 2 to try"), and nothing only when all are empty; For You's own
+  row inside Now counts every band, needed most first ("1 to do · 44 to
+  look at · 2 to try"), To Try giving way first, and as a place's row
+  says nothing after its name, its drawer naming the heaviest it holds
+  (VKCF3Z, a31a0e1b, 3a92c450, 16efb1dc). Now's drawer is its moment
+  plate, which leaves out For You while the row says it. A place's
   row is the same row at home and inside its parent, made by one
   function (Joel, 2026-11-08: "i don't like how the title and values on
   the home screen differ from every other sub-menu"; VKCF3Z, 2a429f67),
@@ -1862,9 +1865,9 @@ works the same way everywhere.
   whole line of the pitch, so what follows stays on the card's. Home's Now
   has a plate of the moment instead (look 3): the date as its eyebrow;
   the time at Display, in the mono as the lock's clock is, its capitals
-  centred on Now's row, and its seconds counting after it at Note; what
-  needs Joel, or that nothing does, in the voice on Agents' line; and
-  the facts behind the moment in two groups that follow the card's,
+  centred on Now's row, and its seconds counting after it at Note,
+  never what waits, which home's row says (VKCF3Z, 25c253d3); and the
+  facts behind the moment in two groups that follow the card's,
   the weather, the next meeting and where Joel is from Programs' line,
   the clock's keeping and the week from Desktop's, each figure's
   qualifier muted after a dot, and each fact in its place's words, as

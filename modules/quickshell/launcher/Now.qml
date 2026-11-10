@@ -344,10 +344,10 @@ Provider {
 
     // Home's Now as a plate beside the card (Launcher.qml's whole): the
     // date as its eyebrow, the time large with its seconds (Drawer.qml
-    // keeps them, counting), what needs Joel or that nothing does, and the
-    // facts behind the moment in two groups, as the card's rows fall in
-    // groups: the day's weather, the next meeting and where here is, then
-    // how the clock is kept and the week. Each fact's figure leads, and
+    // keeps them, counting), and the facts behind the moment in two
+    // groups, as the card's rows fall in groups: the day's weather, the
+    // next meeting and where here is, then how the clock is kept and the
+    // week. Each fact's figure leads, and
     // what qualifies it follows, quieter (VKCF3Z's look 3, for Joel's
     // "for time i want to be able to dig into ntp server details", 29
     // October). A fact nothing can say yet is left out rather than guessed.
@@ -1145,9 +1145,9 @@ Provider {
         })))
     // How many each band holds, as they stand now (ForYou.js's banded):
     // what needs Joel now, lifted looks and things to try among them, then
-    // what To Look At and To Try hold, for Now's side to say as a run, "1 to
-    // do \u00b7 44 to look at \u00b7 2 to try" (VKCF3Z, 2026-11-09). Nothing
-    // reads them yet: they're for PI3KKD's side of Now, which comes next.
+    // what To Look At and To Try hold, which For You's row says as a run,
+    // "1 to do \u00b7 44 to look at \u00b7 2 to try", and home's Now row says
+    // the last two of while nothing needs Joel now (VKCF3Z, 3a92c450).
     // Being bound, they're banded at the moment the items last changed, so
     // For You's rows are banded again as it's stepped into, at that time,
     // since a deadline coming within the day lifts a row with no change.
@@ -1155,6 +1155,9 @@ Provider {
     readonly property int toDoCount: forYouBands.now.length
     readonly property int toLookAtCount: forYouBands.look.length
     readonly property int toTryCount: forYouBands.try.length
+    // For You's row's side, the bands as a run (ForYou.js's bandsRun).
+    readonly property var bandsSaid: ForYou.bandsRun({ now: toDoCount, look: toLookAtCount,
+        try: toTryCount }, Words.of("on:waiting").said ?? {})
 
     // The rows of a band, made now, as they're stepped into.
     function bandRows(band, now) {
@@ -1277,18 +1280,11 @@ Provider {
         return { holding, bands: Lately.bands(holding, weigh) };
     }
 
-    // Each source's name as its row says it: its piece's title, or its
-    // notices' own.
-    function latelyName(source) {
-        const fact = latelyPieces.find(one => one.piece.lately === source);
-        return fact === undefined ? Words.name(`for-you:source:${source}`) : fact.piece.title;
+    // What For You's drawer names as its heaviest (ForYou.js's heaviest).
+    function heaviestSaid() {
+        return ForYou.heaviest(toDoCount > 0 ? homeItems() : [],
+            forYouBands.look[0]?.make(Date.now())?.name);
     }
-
-    // The sources Lately holds unread, in its order, as For You's own row
-    // names them after its name, so mail waiting alone is still on Now's
-    // top (VKCF3Z, 2026-11-08).
-    readonly property string latelyNames: latelyBands(Date.now()).bands
-        .map(band => latelyName(band.source)).join(", ")
 
     // Each is a place's row, stepped into for rows of its own (VKCF3Z,
     // 2026-11-09, fef0c4d5): nothing after its name, as no place says
@@ -1417,20 +1413,27 @@ Provider {
         name: Words.name("on:waiting"),
         glyph: Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)],
         hue: provider.waitsNow > 0 ? "strong" : "muted",
-        side: provider.waitsNow > 0 ? String(provider.waitsNow)
+        // How many each band holds, "1 to do \u00b7 44 to look at \u00b7 2 to
+        // try", or with none, whether anything comes later (VKCF3Z, 3a92c450).
+        sideItems: provider.bandsSaid,
+        side: provider.bandsSaid.length > 0
+            ? provider.bandsSaid.map(item => item.said).join(" \u00b7 ")
             : WaitingOnYou.later.length > 0
                 ? waitingSaid("later", { count: WaitingOnYou.later.length })
                 : waitingSaid("none", {}),
-        // The first thing waiting, in its words after its name, since
-        // it's what the row holds; the head no longer says it (VKCF3Z,
-        // 2026-11-06, one calm head). With nothing waiting, the sources
-        // Lately holds unread stand there instead, "For You  Mail", and
-        // beside what waits they're its note, so what came is never lost
-        // from Now's top while the side counts only what waits on Joel
-        // (VKCF3Z, 2026-11-08).
-        count: first !== "" ? first : latelyNames,
-        note: first !== "" ? latelyNames : "",
+        // A place's row, so nothing stands after its name; its drawer
+        // names the heaviest it holds, as To Look At's does, and the
+        // bands keep the row's room (VKCF3Z, 16efb1dc). Holding only
+        // things to try, it names none, so it has no drawer.
         nested: true,
+        thing: true,
+        drawer: () => {
+            const heaviest = heaviestSaid();
+            return heaviest === "" ? null : {
+                title: Words.name("on:waiting"),
+                facts: [provider.fact("heaviest", heaviest)]
+            };
+        },
         verbs: () => provider.waitingRows(),
         targets: () => provider.waitingRows(),
         commands: () => provider.filterCommands(null),
@@ -1656,9 +1659,11 @@ Provider {
 
     // Now's row says at its right how Now stands, what waits on Joel first:
     // the thing For You's own row leads with and its minutes, then how many
-    // more wait, "Answer the ask \u00b7 2 min \u00b7 2 more"; with nothing
-    // waiting, nothing, since a calm home says nothing (VKCF3Z, bd5cb965).
-    // For You is his one place for attention, so home leads with it.
+    // more need him now, "Answer the ask \u00b7 2 min \u00b7 2 more"; with
+    // nothing needing him now, what To Look At and To Try hold, "44 to look
+    // at \u00b7 2 to try"; and with none of those, nothing, since a calm home
+    // says nothing (VKCF3Z, bd5cb965, a31a0e1b, 3a92c450). For You is his
+    // one place for attention, so home leads with it.
     function homeSays() {
         return homeItems().map(item => item.said).join(" \u00b7 ");
     }
@@ -1672,19 +1677,26 @@ Provider {
     // The same, as items: short of room its title gives way from its end
     // by whole words, behind an ellipsis, and its minutes and how many more
     // never give way (Reading.js's keptItems).
-    // It leads with what's counted as waiting now, never a later item as
-    // `first` falls back to, so "N more" counts the rest of waitsNow.
+    // It leads with what needs him now, never a later item as `first`
+    // falls back to, so "N more" counts the rest of what needs him now,
+    // never what To Look At and To Try hold.
     function homeItems() {
+        if (toDoCount === 0) {
+            return ForYou.bandsRun({ look: toLookAtCount, try: toTryCount },
+                Words.of("on:waiting").said ?? {});
+        }
         const lead = sessions.length === 0 ? WaitingOnYou.now[0] ?? null : null;
+        // A look or a landing lifted into what needs him now, where no
+        // session or to-do leads, says its own row's name.
+        const lifted = sessions.length > 0 || lead ? null : forYouBands.now[0] ?? null;
         const title = sessions.length > 0 ? first : lead ? lead.title
-            : looks.waiting.length > 0 ? looks.waiting[0].title
-            : given.waiting.length > 0 ? given.waiting[0].row.name : "";
-        if (waitsNow === 0 || title === "") {
+            : lifted?.make(Date.now())?.name ?? "";
+        if (title === "") {
             return [];
         }
         const minutes = typeof lead?.minutes === "number"
             ? waitingSaid("minutes", { minutes: lead.minutes }) : "";
-        const more = waitsNow - 1;
+        const more = toDoCount - 1;
         return [{ said: title, keep: 1, words: true, stays: true },
             { said: minutes, keep: 2, stays: true },
             { said: more > 0 ? waitingSaid("more", { count: more }) : "", keep: 3, stays: true }]

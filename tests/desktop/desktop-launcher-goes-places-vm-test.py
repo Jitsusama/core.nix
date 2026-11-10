@@ -1203,13 +1203,13 @@ def into_the_todo(desktop: Desktop) -> None:
     """Open Now, step into For You and rest on the to-do for what the last check found."""
     desktop.as_account("qs ipc call launcher collection on")
     desktop.launcher_ready()
-    # For You names it first, nothing else waiting on Joel here, once the shell has asked the
-    # daemon started again.
+    # For You counts it, nothing else waiting on Joel here, once the shell has asked the
+    # daemon started again; a place, it names it in its drawer, not after its name.
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "For You"
-            and shown["selected"]["count"] == TODO
-            and shown["selected"]["side"] == "1"
+            and not shown["selected"]["count"]
+            and shown["selected"]["side"] == "1 to do"
         )
     )
     desktop.step_in("ret")

@@ -394,13 +394,12 @@ Floating {
                 const row = factRows.itemAt(at);
                 return row ? contentTop + flow.y + factsShown.y + row.y + row.base : null;
             }) : [],
-            // The moment's: the time's and its seconds', what needs Joel's,
-            // and each group's facts'.
+            // The moment's: the time's and its seconds', and each group's
+            // facts'.
             time: drawer.moment ? shown(timeText) : null,
             timeMiddle: drawer.moment ? shown(timeText)
                 - timeFace.tightBoundingRect("H").height / 2 : null,
             seconds: drawer.moment ? shown(secondsText) : null,
-            say: drawer.moment ? shown(sayText) : null,
             groups: drawer.moment ? Array.from({ length: groupsShown.count }, (_, at) => {
                 const group = groupsShown.itemAt(at);
                 return group ? group.bases.map(base => contentTop + group.y + base) : [];
@@ -542,7 +541,7 @@ Floating {
 
     // Every PageText it has, shown or not.
     function texts() {
-        return [eyebrowText, timeText, secondsText, sayText, titleText]
+        return [eyebrowText, timeText, secondsText, titleText]
             .concat(groupsShown.texts(), previewRows.texts(), factRows.texts(), [bodyText])
             .filter(text => text);
     }
@@ -1635,8 +1634,8 @@ Floating {
                 width: parent.width
                 visible: drawer.moment
                 // Where its last line's box ends, for the view to hold.
-                readonly property real ends: groupsShown.count === 0 ? sayText.y + drawer.pitch
-                    : groupsShown.lastBottom
+                readonly property real ends: groupsShown.count === 0
+                    ? timeText.y + timeText.height : groupsShown.lastBottom
 
                 // The time, the one large thing, at Display in the mono, as
                 // the lock's clock is, since figures are the mono's: all one
@@ -1701,25 +1700,6 @@ Floating {
                     text: secondsText.plain
                 }
 
-                // What needs Joel, or that nothing does, in the voice, a
-                // Voice pitch under the time, the last of the head.
-                PageText {
-                    id: sayText
-                    sought: drawer.washing
-                    readonly property real base: timeText.base + Theme.level.voice.pitch
-                    width: parent.width
-                    y: base - Theme.border - baselineOffset
-                    visible: plain !== ""
-                    plain: drawer.shown?.say ?? ""
-                    leading: 0
-                    elides: true
-                    ink: Theme.text
-                    font.family: Theme.level.voice.family
-                    font.italic: Theme.level.voice.italic
-                    font.pointSize: Theme.level.voice.pointSize
-                    font.variableAxes: Theme.level.voice.variableAxes
-                }
-
                 // Each group of facts as a body under the head, the first
                 // on the first of the card's beats two Title pitches under
                 // it, as every plate's body is, and each after the
@@ -1744,8 +1724,7 @@ Floating {
                         id: group
                         required property var modelData
                         required property int index
-                        readonly property real headBase: sayText.visible ? sayText.base
-                            : timeText.base
+                        readonly property real headBase: timeText.base
                         readonly property real base: index === 0
                             ? drawer.onBeat(headBase + 2 * Theme.level.title.pitch)
                             : (groupsShown.itemAt(index - 1)?.lastBase ?? headBase)

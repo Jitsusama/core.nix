@@ -350,6 +350,30 @@ QtObject {
                 now).weight }
         ]).map(one => one.name), ["session", "passwords", "look"]);
 
+        // How many each band holds, as a row's side says it.
+        const bandWords = { toDo: "{count} to do", toLookAt: "{count} to look at",
+            toTry: "{count} to try" };
+        expect("every band, needed most first", ForYou.bandsRun({ now: 1, look: 44, try: 2 },
+            bandWords).map(item => [item.said, item.keep]),
+            [["1 to do", 3], ["44 to look at", 2], ["2 to try", 1]]);
+        expect("a band holding none left out", ForYou.bandsRun({ now: 0, look: 44, try: 2 },
+            bandWords).map(item => item.said), ["44 to look at", "2 to try"]);
+        expect("a band not given counts none", ForYou.bandsRun({ try: 2 }, bandWords)
+            .map(item => item.said), ["2 to try"]);
+        expect("all empty, nothing", ForYou.bandsRun({ now: 0, look: 0, try: 0 }, bandWords),
+            []);
+
+        // What For You's drawer names as its heaviest.
+        const lead = [{ said: "Answer the ask", keep: 1 }, { said: "2 min", keep: 2 },
+            { said: "2 more", keep: 3 }];
+        expect("what needs Joel by its title and minutes, never how many more",
+            ForYou.heaviest(lead, "Read the plan"), "Answer the ask \u00b7 2 min");
+        expect("one with no minutes by its title", ForYou.heaviest(lead.slice(0, 1), ""),
+            "Answer the ask");
+        expect("nothing to do, the heaviest look", ForYou.heaviest([], "Read the plan"),
+            "Read the plan");
+        expect("only things to try, none", ForYou.heaviest([], undefined), "");
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

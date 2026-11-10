@@ -492,9 +492,9 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # Shot with its card put away, which only the gallery does.
     if desktop.values["shots"]:
         shoots_now_at_joels_scales(desktop, "Now \u00b7 Answer the ask \u00b7 2 min")
-    # It counts only what Joel can do now: the session's two aren't ready.
+    # It counts only what Joel can do now, by its band: the session's two aren't ready.
     desktop.type_in("for you", selecting="For You")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1 to do")
     # Inside, what's for now, then Later, holding what can't be done yet,
     # the quickest first. Return on one steps into it, and its first act goes where
     # it's done.
@@ -666,7 +666,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     # they weigh the same and keep the order they came in, then Later.
     everything = ["Restart Once", "Prove the Keys", "Answer the old", "Later"]
     retry(
-        lambda _: waiting_inside(desktop) == ("3", everything),
+        lambda _: waiting_inside(desktop) == ("3 to do", everything),
         timeout=dt.timedelta(seconds=30),
     )
     # One with nowhere to go steps in to Mark It Done and Put It Off.
@@ -692,7 +692,8 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     # What Joel said was done is in History, last, while its file tells of it.
     retry(
         lambda _: (
-            waiting_inside(desktop) == ("2", ["Restart Once", "Prove the Keys", "Later", "History"])
+            waiting_inside(desktop)
+            == ("2 to do", ["Restart Once", "Prove the Keys", "Later", "History"])
         ),
         timeout=dt.timedelta(seconds=30),
     )
@@ -705,7 +706,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     desktop.line_answered("snooze")
     desktop.close_launcher()
     retry(
-        lambda _: waiting_inside(desktop) == ("1", ["Prove the Keys", "Later", "History"]),
+        lambda _: waiting_inside(desktop) == ("1 to do", ["Prove the Keys", "Later", "History"]),
         timeout=dt.timedelta(seconds=30),
     )
     # Joel's word stays across a restart of the shell.
@@ -714,7 +715,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         desktop.in_session("qs ipc call launcher showing"), timeout=dt.timedelta(seconds=60)
     )
     retry(
-        lambda _: waiting_inside(desktop) == ("1", ["Prove the Keys", "Later", "History"]),
+        lambda _: waiting_inside(desktop) == ("1 to do", ["Prove the Keys", "Later", "History"]),
         timeout=dt.timedelta(seconds=60),
     )
     # A quest that ends takes its things with it, as it leaves the index;
@@ -828,7 +829,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     owned = ["Set For", "Waiting Since", "Clears When", "Machine", "Address", "Check"]
     try:
         retry(
-            lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
+            lambda _: waiting_inside(desktop) == ("1 to do", ["Sign the Form"]),
             timeout=dt.timedelta(seconds=30),
         )
         # Return on For You steps in, as l does in normal mode.
@@ -960,7 +961,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
             lambda shown: (
                 shown["held"] == ["now"]
                 and (shown["selected"] or {}).get("name") == "For You"
-                and shown["selected"]["side"] == "1"
+                and shown["selected"]["side"] == "1 to do"
             )
         )
         assert "pi" not in desktop.showing()["rows"], desktop.showing()
@@ -1032,7 +1033,7 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 (shown["selected"] or {}).get("name") == "For You"
-                and shown["selected"]["side"] == "1"
+                and shown["selected"]["side"] == "1 to do"
             )
         )
         desktop.machine.send_key("ret")
@@ -1218,8 +1219,9 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
         # over the launcher in the shots, so it's left to rest first, ten seconds on.
         with desktop.told("rests Answer the ask", timeout=dt.timedelta(seconds=60)):
             kept(desktop, f"{MISSION}/waiting/QUEST2.json", asked)
+        for_you_counts_its_bands(desktop)
         for scale in (*JOELS_SCALES, "1"):
-            desktop.as_account(f"niri msg output winit scale {scale}")
+            named = at_scale_shooting_now(desktop, scale)
             waiting_opened(desktop)
             desktop.machine.send_key("ret")
             # The look blocks nothing and isn't due, so it's in To Look At, after the to-do,
@@ -1239,9 +1241,9 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
                     and not (shown["selected"] or {}).get("note")
                     and shown["drawer"]["title"] == "To Look At"
                     and shown["drawer"]["facts"] == ["Heaviest"]
+                    and shown["drawer"]["values"] == ["Read the plan"]
                 )
             )
-            named = scale.replace(".", "-")
             if scale != "1":
                 desktop.shoot(f"launcher-for-you-at-{named}")
             desktop.step_in()
@@ -1291,11 +1293,68 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
             desktop.machine.send_chars("-")
             desktop.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
             desktop.close_launcher()
+        home_counts_what_is_calm(desktop)
     finally:
         desktop.as_account("niri msg output winit scale 1")
         desktop.as_account(
             f"rm -f {MISSION}/waiting/QUEST2.json {HARNESS}/looks/filtered.json {INDEX}"
         )
+
+
+def for_you_counts_its_bands(desktop: Desktop) -> None:
+    """Hold that For You's own row, holding an ask and a look, counts each band it holds.
+
+    It's a place's row, so nothing stands after its name, and its drawer names the heaviest.
+    """
+    # VKCF3Z, 3a92c450 and 16efb1dc: its row says the bands as a run, needed most first.
+    waiting_opened(desktop)
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("side") == "1 to do \u00b7 1 to look at"
+            and not shown["selected"].get("count")
+            and not shown["selected"].get("note")
+            and shown["drawer"]["title"] == "For You"
+            and shown["drawer"]["facts"] == ["Heaviest"]
+            and shown["drawer"]["values"] == ["Answer the ask \u00b7 2 min"]
+        )
+    )
+    desktop.close_launcher()
+
+
+def at_scale_shooting_now(desktop: Desktop, scale: str) -> str:
+    """Put niri at a scale and, at Joel's, shoot Now's rows, For You's counting its bands.
+
+    Gives the scale as a shot's name says it, for VKCF3Z to judge (3a92c450).
+    """
+    desktop.as_account(f"niri msg output winit scale {scale}")
+    named = scale.replace(".", "-")
+    if scale == "1":
+        return named
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("now", selecting="Now")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["path"][-1:] == ["Now"])
+    desktop.normal()
+    desktop.down_to("For You")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("side") == "1 to do \u00b7 1 to look at"
+    )
+    desktop.shoot(f"launcher-now-bands-at-{named}")
+    desktop.close_launcher()
+    return named
+
+
+def home_counts_what_is_calm(desktop: Desktop) -> None:
+    """Hold that home's Now, once the ask is gone, says what To Look At holds by its band."""
+    # VKCF3Z, a31a0e1b: with nothing needing Joel now, a count stands in for a first thing.
+    desktop.as_account(f"rm -f {MISSION}/waiting/QUEST2.json")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: any(thing["reads"] == "Now \u00b7 1 to look at" for thing in shown["things"])
+    )
+    desktop.close_launcher()
 
 
 def looks_drawer(shown: dict[str, Any]) -> tuple[str, str | None, bool] | None:
