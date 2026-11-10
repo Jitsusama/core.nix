@@ -384,3 +384,130 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
             timing.load(on=True)
         desktop.close_launcher()
     timing.said_and_held()
+
+
+# Diagnostic only, never merged: each step into Desktop and Machine profiled by qmlprofiler.
+PROFILE = "/tmp/steps.qtd"
+GUI = ("Binding", "Javascript", "Creating", "HandlingSignal", "Compiling")
+JOURNAL = "journalctl -o cat _SYSTEMD_USER_UNIT=quickshell.service"
+
+
+def drawn_steps(desktop: Desktop) -> int:
+    """Count the steps the shell said reached their frames."""
+    said = desktop.machine.succeed(f"{JOURNAL} | grep -c 'diag.step-drawn' || true")
+    return int(said.strip() or "0")
+
+
+def profiled(text: str, names: list[str]) -> None:
+    """Say where each profiled step's time went, from qmlprofiler's trace."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(text)
+    events = {}
+    for event in root.iter("event"):
+        index = int(event.get("index"))
+        kind = event.findtext("type") or ""
+        where = f"{(event.findtext('filename') or '').split('/')[-1]}:{event.findtext('line')}"
+        details = (event.findtext("details") or "").replace("\n", " ")[:60]
+        events[index] = (kind, where, details, event.findtext("sgEventType"))
+    ranges = []
+    for one in root.iter("range"):
+        start = int(one.get("startTime"))
+        ranges.append((start, int(one.get("duration") or 0), int(one.get("eventIndex")), one.attrib))
+    ranges.sort(key=lambda r: r[0])
+    # Each profile() .. profileEnd() is a segment, seconds from the next.
+    segments: list[list] = []
+    last = None
+    for r in ranges:
+        if last is None or r[0] - last > 3_000_000_000:
+            segments.append([])
+        segments[-1].append(r)
+        last = max(last or 0, r[0] + r[1])
+    print(f"diag: {len(segments)} segments for {len(names)} steps")
+    for number, segment in enumerate(segments):
+        name = names[number] if number < len(names) else "?"
+        begin = min(r[0] for r in segment)
+        end = max(r[0] + r[1] for r in segment)
+        kinds: dict[str, float] = {}
+        totals: dict[tuple, list] = {}
+        stack: list[dict] = []
+
+        def popped(done: dict) -> None:
+            totals[done["k"]][0] += done["self"]
+
+        for r in (r for r in segment if events[r[2]][0] in GUI and r[1] > 0):
+            while stack and stack[-1]["s"] + stack[-1]["d"] <= r[0]:
+                popped(stack.pop())
+            entry = {"s": r[0], "d": r[1], "k": events[r[2]], "self": r[1]}
+            if stack:
+                stack[-1]["self"] -= r[1]
+            else:
+                kinds[entry["k"][0]] = kinds.get(entry["k"][0], 0.0) + r[1]
+            stack.append(entry)
+            totals.setdefault(entry["k"], [0.0, 0.0, 0])
+            totals[entry["k"]][1] += r[1]
+            totals[entry["k"]][2] += 1
+        while stack:
+            popped(stack.pop())
+        creating = sum(t[2] for k, t in totals.items() if k[0] == "Creating")
+        shown = ", ".join(f"{k} {v / 1e6:.0f}" for k, v in sorted(kinds.items()))
+        print(
+            f"diag step {number} {name}: span {(end - begin) / 1e6:.0f} ms, top-level GUI "
+            f"{sum(kinds.values()) / 1e6:.0f} ms ({shown}), {creating} creations"
+        )
+        for key, (own, whole, count) in sorted(totals.items(), key=lambda kv: -kv[1][0])[:25]:
+            print(
+                f"diag   self {own / 1e6:6.1f} whole {whole / 1e6:6.1f} x{count:4d} "
+                f"{key[0]} {key[1]} {key[2]}"
+            )
+        for r in segment:
+            kind, _, _, sg = events[r[2]]
+            if kind == "SceneGraph":
+                timings = {
+                    k: round(int(v) / 1e6, 1) for k, v in r[3].items() if k.startswith("timing")
+                }
+                print(f"diag   +{(r[0] - begin) / 1e6:.0f} sg{sg} {timings}")
+
+
+@pytest.mark.usefixtures("loaded")
+def test_diag_steps_into_desktop_and_machine_profiled(desktop: Desktop) -> None:
+    """Profile each step into Desktop and Machine, under load and frozen."""
+    machine = desktop.machine
+    desktop.as_account(
+        f"systemd-run --user --collect --quiet --unit=qmlprof --setenv=QT_QPA_PLATFORM=offscreen {desktop.values['qmlprofiler']} "
+        f"--attach 127.0.0.1 -p 9999 --record off -o {PROFILE}"
+    )
+    names: list[str] = []
+    timing = Timing(desktop)
+    try:
+        for loaded in (True, False, True, False):
+            if loaded != timing.loading:
+                timing.load(on=loaded)
+            desktop.as_account("qs ipc call launcher toggle")
+            desktop.launcher_ready()
+            for place in ("Desktop", "Machine", "Desktop", "Machine"):
+                desktop.down_to(place)
+                before = drawn_steps(desktop)
+                machine.send_key("ret")
+                machine.wait_until_succeeds(
+                    f"[ $({JOURNAL} | grep -c 'diag.step-drawn' || true) -gt {before} ]",
+                    timeout=timedelta(seconds=60),
+                )
+                names.append(f"{place} {'loaded' if loaded else 'frozen'}")
+                desktop.launcher_until(lambda shown, p=place: shown["path"][-1:] == [p])
+                desktop.step_out()
+            desktop.close_launcher()
+    finally:
+        if not timing.loading:
+            timing.load(on=True)
+        desktop.launcher_left_closed()
+    print(machine.succeed(f"{JOURNAL} | grep 'diag.step\\|took' || true"))
+    desktop.as_account("systemctl --user stop quickshell")
+    desktop.machine.wait_until_fails(
+        desktop.in_session("systemctl --user is-active --quiet qmlprof"),
+        timeout=timedelta(seconds=120),
+    )
+    text = machine.succeed(f"cat {PROFILE}")
+    print(f"diag: trace of {len(text)} bytes")
+    desktop.as_account("systemctl --user start quickshell")
+    profiled(text, names)

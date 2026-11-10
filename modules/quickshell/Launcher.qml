@@ -4292,6 +4292,11 @@ Scope {
         const began = Date.now();
         const heard = KeyTimes.now();
         const pressed = KeyTimes.pressed();
+        if (row.name === "Desktop" || row.name === "Machine") {
+            console.profile();
+            diagProfiling = true;
+            console.info(`diag[step-began ${row.name} ${heard} made ${rowsMade} drawn ${rowsDrawn}]`);
+        }
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -5372,10 +5377,17 @@ Scope {
         keysDone.push(KeyTimes.now());
     }
 
+    property bool diagProfiling: false
     function keyDrawn() {
         keyWaits = false;
         const drawn = Date.now();
         const shown = KeyTimes.now();
+        if (diagProfiling) {
+            diagProfiling = false;
+            console.info(`diag[step-drawn ${shown} took ${drawn - keyBegan} searched ${keySearched}`
+                + ` made ${rowsMade} drawn ${rowsDrawn}]`);
+            console.profileEnd();
+        }
         trials.timed(keySearched, drawn - keyBegan, searchParts, keyText);
         // Every key since the last frame shows in this one, so each keeps
         // it as its own, and the list holds one time a key.

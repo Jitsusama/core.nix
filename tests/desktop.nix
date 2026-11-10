@@ -1068,6 +1068,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # mute reaches it only as a note that its parameters changed, which
         # it answers by reading them again, at debug level, so a mute it
         # never heard of can be told from one it read and dropped.
+        systemd.user.services.quickshell.Service.ExecStart = lib.mkForce "${lib.getExe' pkgs.quickshell "quickshell"} --no-detailed-logs --debug 9999";
         systemd.user.services.quickshell.Service.Environment = [
           "QT_LOGGING_RULES=${
             lib.concatStringsSep ";" (
@@ -1230,6 +1231,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             ffmpeg_headless = pkgs.ffmpeg-headless;
             fontconfig_bin = pkgs.fontconfig.bin;
             stress_ng = pkgs.stress-ng;
+            qmlprofiler = "${pkgs.qt6.qtdeclarative}/bin/qmlprofiler";
             inherit (colours) accent action sunken;
             mono_family = font.mono.family;
             # What a floating frame leaves of the screen across: the screen
