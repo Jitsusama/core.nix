@@ -1545,6 +1545,21 @@ With the lid shut and nothing on the glass, the panel still sent about 39
 empty heat maps a second, each an interrupt, once it had begun sending
 them; before that it sent none.
 
+What the panel sends untouched changes from start to start. On one start
+with the lid open it sent nothing until touched, then about 100 heat maps a
+second while touched, and stopped about 0.1 s after each lift. On another
+it streamed about 95 a second with nothing touching it. Why it does one or
+the other isn't known yet. The driver read its SPI controller's FIFO a byte
+at a time, so each 4,302-byte heat map cost 7.6 ms of a core, about 70% of
+one while streaming. Two patches in [`touch/package.nix`][39] answer this:
+one reads the FIFO four bytes at a time, which brings a heat map to 4.4 ms,
+and the other rests the panel. After 100 heat maps with no contact, the
+driver stops the heat maps, then looks for three frames every 100 ms and
+starts them again at the first contact. When the panel began streaming
+untouched, the rest brought it from about 100 heat maps a second to about
+22, and every touch still landed. `touch_stats` in the panel's sysfs folder
+counts heat maps, contacts, touches and rests, readable without root.
+
 ### The Ports and Bluetooth
 
 The firmware describes no USB-C connector to the OS: its ACPI has no
@@ -1596,8 +1611,8 @@ sealed to.
 | Mics       | a voice at the 12 dB cap isn't heard back yet                                  |
 | Camera     | both cameras list their formats; neither's picture is checked yet              |
 | Firmware   | the TPM's capsule waits on whether its upgrade keeps the TPM's owner state     |
-| Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
-| Touch      | what its heat maps under a shut lid cost on battery isn't read yet             |
+| Touch, pen | gestures and the pen aren't checked on screen yet, nor touch across hibernate  |
+| Touch      | why the panel streams untouched on some starts and not others isn't found      |
 | Power      | the profiles are read on the charger only, not yet on battery                  |
 | Wi-Fi      | what dozing saves on battery, and roaming between access points, aren't read   |
 | Devices    | each watched device is named once its path goes; no driver is unbound yet      |
@@ -1640,3 +1655,4 @@ sealed to.
 [36]: ../hardware/apple-macbook-pro-m4-pro-a3401/nixos.nix
 [37]: ../hardware/apple-macbook-pro-m4-pro-a3401/kernel/README.md
 [38]: https://github.com/aurora-silicon
+[39]: ../hardware/microsoft-surface-laptop-4-1958/touch/package.nix
