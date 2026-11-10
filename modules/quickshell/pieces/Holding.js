@@ -42,6 +42,19 @@ function held(sources) {
     };
 }
 
+// The looks the to-do daemon streams (modules/to-do's stream.rs), each a
+// `look:<id>` record holding its file whole under `look`, as the looks
+// folder's files, { file, text }, so ForYou.js's looks weighs one heard
+// from the stream as it weighs one read from the folder. Its other
+// records, and one holding no look, are none.
+function lookFiles(records) {
+    const all = records !== null && typeof records === "object" ? records : {};
+    return Object.keys(all).filter(key => key.startsWith("look:"))
+        .map(key => all[key]?.look)
+        .filter(look => look !== null && typeof look === "object")
+        .map(look => ({ file: `${look.id}.json`, text: JSON.stringify(look) }));
+}
+
 // How many things For You holds, of every kind.
 function count(holds) {
     return holds.wanting.length + holds.toDo.length + holds.looks.length
