@@ -649,16 +649,21 @@ def openings(desktop: Desktop) -> list[Json]:
     return cast("list[Json]", json.loads(desktop.as_account("qs ipc call launcher openings")))
 
 
+def latest(timed: list[Json]) -> int:
+    """Give the number of the last opening timed, as only the last 20 are kept."""
+    return cast("int", timed[-1]["nth"]) if timed else 0
+
+
 def opened_timed(desktop: Desktop) -> Json:
     """Open the launcher as its chord does, and give that opening's time to its first frame."""
-    timed = len(openings(desktop))
+    timed = latest(openings(desktop))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     each: list[Json] = []
 
     def drawn(_: bool) -> bool:
         each[:] = openings(desktop)
-        return len(each) > timed
+        return latest(each) > timed
 
     retry(drawn, timeout=REACHING)
     desktop.close_launcher()

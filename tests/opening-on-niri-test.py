@@ -50,16 +50,21 @@ def openings(shell: Shell) -> list[Json]:
     return cast("list[Json]", json.loads(shell.as_account(shell.ipc("openings"))))
 
 
+def latest(timed: list[Json]) -> int:
+    """Give the number of the last opening timed, as only the last 20 are kept."""
+    return cast("int", timed[-1]["nth"]) if timed else 0
+
+
 def opened_from_kept(shell: Shell) -> Json:
     """Open the launcher as its chord does, and give that opening as it was timed and filled."""
-    timed = len(openings(shell))
+    timed = latest(openings(shell))
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     each: list[Json] = []
 
     def filled(_: Json) -> bool:
         each[:] = openings(shell)
-        return len(each) > timed and "filled" in each[-1]
+        return latest(each) > timed and "filled" in each[-1]
 
     shell.launcher_until(filled)
     opening = each[-1]
@@ -100,7 +105,11 @@ def test_keys_typed_as_it_opens_land_and_are_found(shell: Shell) -> None:
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_until(lambda shown: shown["keys"])
-    shell.send_chars("comp")
-    # What's found lands a frame after the word it was found for, so each is waited on.
-    shell.launcher_until(lambda shown: shown["open"] and shown["typed"] == "comp")
-    shell.launcher_until(lambda shown: shown["typed"] == "comp" and bool(shown["rows"]))
+    shell.send_chars("agents")
+    # What's found lands a frame after the word it was found for, and the sources woken by the
+    # opening may find again as they answer, so the row is waited on as it settles.
+    shell.launcher_until(
+        lambda shown: (
+            shown["typed"] == "agents" and (shown["selected"] or {}).get("name") == "Agents"
+        )
+    )

@@ -7884,8 +7884,10 @@ Scope {
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
         const kept = opening;
-        const timed = { took, worked, parts: openParts, after, rows, made: most,
-            verbs: kept ? 0 : openVerbsWeighed, first, kept };
+        // Numbered, since only the last 20 are kept, so a check opening more
+        // than that still sees each new one come.
+        const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows,
+            made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept };
         if (kept)
             timed.shown = rowsSaid();
         openingsTimed = openingsTimed.concat([timed]).slice(-20);
