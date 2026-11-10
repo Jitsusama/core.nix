@@ -120,8 +120,9 @@ Provider {
     // the keys unheard; so niri's own word holds until then, or a quick
     // Print then Return shot the window left under its old title. Only
     // where the keys are is read of niri, so its other events remake no
-    // row here.
-    readonly property var here: daemon.answeredThisWatch ? focused
+    // row here. With the launcher shut nothing is watched and nothing
+    // read of niri either, so the keys moving remake no row then.
+    readonly property var here: daemon.answeredThisWatch || !daemon.live ? focused
         : Niri.current === null ? null : Niri.windows[Niri.current] ?? null
 
     // Takes what the daemon said: the window the keys are in, when that

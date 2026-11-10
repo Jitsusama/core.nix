@@ -162,11 +162,12 @@ Provider {
     readonly property var windowsHeld: HeldWindows.kept()
     readonly property var windowsDaemon: daemon
 
-    // Until this watch's first answer the counts and Go To are the last
-    // opening's, so a terminal's show asks again (Provider.stillReading);
-    // and with the daemon down its row says so, since the counts it keeps
-    // through the gap may no longer be true.
-    stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
+    // With the daemon down its row says so, since the counts it keeps
+    // through the gap may no longer be true. It never says it's still
+    // reading (Provider.stillReading), though its counts are the last
+    // opening's until this watch's first answer: Programs is a home row,
+    // so every terminal's show from home would ask twice, for counts the
+    // daemon answers within a frame.
     function noted() {
         return daemon.state === "not answering" ? Words.of("windows").said.silent : "";
     }
