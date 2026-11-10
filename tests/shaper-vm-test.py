@@ -609,6 +609,7 @@ def test_status(on_eth2: Connection) -> None:
     status = on_eth2.client.succeed("shaper status")
     assert "eth2" in status, status
     assert "held under load" in status, status
+    assert "cpu: the shaper" in status, status
 
 
 def test_ifbs_left_alone(on_eth2: Connection) -> None:
