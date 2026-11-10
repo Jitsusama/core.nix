@@ -362,12 +362,13 @@ class Shell:
         """Give every window niri lists."""
         return cast("list[Json]", json.loads(self.as_account("niri msg --json windows")))
 
-    def opened(self, title: str) -> Json:
-        """Open a window with this title, and give it once niri lists it.
+    def opened(self, title: str, app: str = "") -> Json:
+        """Open a window with this title, as this app's if one's named, and give it once listed.
 
         It's foot's, which draws without a GPU, where the desktop's machine opens a kitty.
         """
-        self.as_account(f"niri msg action spawn -- foot --title '{title}' sleep 3600")
+        carrying = f"--app-id '{app}' " if app else ""
+        self.as_account(f"niri msg action spawn -- foot {carrying}--title '{title}' sleep 3600")
         deadline = time.monotonic() + STARTING.total_seconds()
         while time.monotonic() < deadline:
             titled = [window for window in self.windows() if window["title"] == title]
