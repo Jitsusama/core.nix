@@ -306,9 +306,9 @@ def test_a_build_the_daemon_is_restarted_under_finishes_for_its_client(builds: B
         for what in ["Result", "ExecMainStatus"]
     ]
     assert ended == ["success", "0"], f"the build's client ended {ended}"
-    said = machine.succeed("journalctl -u waiter-build -o cat").split()
-    (built,) = [line for line in said if line.startswith("/nix/store/")]
-    assert built.endswith("-waiter-build"), said
+    # Its journal names nix-build's own path too, as systemd started it.
+    said = machine.succeed("journalctl -u waiter-build -o cat")
+    (built,) = [word for word in said.split() if re.fullmatch(r"/nix/store/\S+-waiter-build", word)]
     machine.succeed(f"nix-store --check-validity {built}")
 
 
