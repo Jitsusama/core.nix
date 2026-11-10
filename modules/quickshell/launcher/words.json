@@ -2454,7 +2454,10 @@
         "full": "charges fully",
         "stop": "stops at {stop}%",
         "both": "stops at {stop}%, starts below {start}%",
-        "firmware": "set in the firmware's settings"
+        "firmware": "set in the firmware's settings",
+        "refused": "the battery said no",
+        "refused:refused": "the kernel wouldn't write it",
+        "refused:bad-act": "not a limit this battery takes"
       }
     },
     {
