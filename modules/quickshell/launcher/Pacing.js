@@ -112,7 +112,7 @@ function weighing(kept, key, words, face) {
     if (kept !== null && kept.key === key && kept.words === words && kept.face === face) {
         return kept;
     }
-    return { key, words, face, rows: new WeakMap(), weighed: 0 };
+    return { key, words, face, rows: new Map(), weighed: 0 };
 }
 
 // A row's keys and widths, as `kept` holds them or as `weigh` weighs them

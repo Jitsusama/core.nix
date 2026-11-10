@@ -6790,7 +6790,7 @@ Scope {
                 ink: String(line.color) })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
             drawn: root.rowsDrawn, built: root.rowsBuilt, factsMade: drawerCard.factsMade,
-            factsHeld: drawerCard.facts.length, weighed: root.rowsWeighed,
+            factsHeld: drawerCard.facts.length,
             ahead: list.cacheBuffer, listed: list.count, firstAt,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
@@ -7090,6 +7090,8 @@ Scope {
         return JSON.stringify({
             open: root.open,
             keys: root.open && prompt.Window.active,
+            // How many rows' keys the foot has weighed afresh (noteKeys).
+            weighed: root.rowsWeighed,
             typed: root.typed,
             // The line's mode, find, insert or normal, and where its caret
             // is, between letters on a line and on one in normal.
