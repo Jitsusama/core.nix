@@ -970,6 +970,12 @@ Floating {
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize
     }
+    // The title's face, as it's drawn, script and all, to tell which of its
+    // words are too wide for a line alone (Identifier.titleBreaks).
+    FontMetrics {
+        id: titleFace
+        font: titleText.font
+    }
     // A value's face, measured and drawn: a key list's at Note, a script's
     // in its cut beside the mono, and the rest at Figure.
     FontMetrics {
@@ -1831,10 +1837,16 @@ Floating {
                         marked: "# "
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                        // A name with no space, as a server's or a path,
-                        // may break after a dot or a slash rather than
-                        // mid-word, where it's as wide as the Title allows.
-                        plain: drawer.title.replace(/([./_])(?=\S)/g, "$1\u200b")
+                        // A word too wide for a line, as a server's name or
+                        // a path, may break after a dot or a slash rather
+                        // than mid-word; the rest break at their spaces. A
+                        // binding doesn't see what a call reads, so it reads
+                        // the face, to choose again as the face loads.
+                        plain: {
+                            void titleFace.font;
+                            return Identifier.titleBreaks(drawer.title, width,
+                                words => titleFace.advanceWidth(words));
+                        }
                         leading: drawer.titleLeading
                         // A right-to-left title starts under its eyebrow
                         // too, rather than at the plate's far edge.
