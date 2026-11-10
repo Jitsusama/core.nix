@@ -12,7 +12,8 @@
 // plate) says where it is and its kind, how much is still to play, what
 // mpv kept for it, its size and its path. mpv-stopped (stopped.sh) lists
 // them as mpv is stepped into, once each time the launcher opens, never
-// on a timer.
+// on a timer, run by the programs daemon (Listed.qml), so the shell
+// starts no process for them.
 //
 // Its act Play the Copied Link is there only while what was copied last
 // is one address mpv plays (Copied.qml's `link`, narrowed by Mpv.js's
@@ -20,7 +21,6 @@
 // take), its site beside it, and gone otherwise rather than dimmed; it's
 // found from the top by its name too, as Meet's acts are.
 import qs
-import Quickshell.Io
 import QtQuick
 import "Mpv.js" as Mpv
 
@@ -54,10 +54,8 @@ Provider {
     property bool lookedSince: false
 
     onSteppedInChanged: {
-        if (!steppedIn || lookedSince || (settings.stopped ?? []).length === 0)
-            return;
-        lookedSince = true;
-        listing.running = true;
+        if (steppedIn)
+            lookedSince = true;
     }
 
     // The next opening reads them again, as they may have changed since.
@@ -70,19 +68,17 @@ Provider {
         }
     }
 
-    Process {
+    // What mpv-stopped printed, as the programs daemon holds it under the
+    // key its settings name, from the first step in an opening.
+    Listed {
         id: listing
 
-        command: provider.settings.stopped ?? []
-        running: false
-        stdout: StdioCollector {
-            id: listed
+        key: provider.settings.stopped ?? ""
+        wanted: provider.lookedSince
 
-            onStreamFinished: {
-                provider.stopped = Mpv.stopped(listed.text.split("\n")
-                    .filter(line => line !== ""));
-                provider.changed();
-            }
+        onHeard: {
+            provider.stopped = Mpv.stopped(listing.lines);
+            provider.changed();
         }
     }
 

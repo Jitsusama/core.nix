@@ -54,6 +54,7 @@ onLinux {
         "Program.js"
         "Media.js"
         "Recents.qml"
+        "Listed.qml"
         "Recents.js"
         "Recent.js"
         "Captured.js"
@@ -147,11 +148,13 @@ onLinux {
           "$HOME/Videos/song.mkv" 2469.7 2470.2 $((NOW - 172800)) 940000 audio volume=50.000000
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' "Videos/half.mkv" 1 2 3 4 video
       ''}
-      # The programs daemon runs the shared list and what mpv plays, given
-      # the sources shell.qml's Applications is, as recents.nix gives both.
+      # The programs daemon runs the shared list, what mpv plays and the
+      # files it left, given the sources shell.qml's Applications is and
+      # the list mpv's page asks for, as recents.nix gives them.
       cat > sources.json <<EOF
       [{"watch": "$HOME/shared", "list": ["$SHARED_LIST"]},
-       {"app": "mpv", "kind": "file", "opened": ["$PLAYING_LIST"]}]
+       {"app": "mpv", "kind": "file", "opened": ["$PLAYING_LIST"]},
+       {"app": "mpv", "name": "stopped", "asked": true, "list": ["$STOPPED_LIST"]}]
       EOF
       ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
       ${shellFolderLint}
@@ -301,8 +304,8 @@ onLinux {
         touch $out
       '';
 
-  # The launcher's lister of where mpv stopped (stopped.sh), run as its
-  # provider runs it, reads what the account's mpv kept of clips it quit
+  # The launcher's lister of where mpv stopped (stopped.sh), run as the
+  # programs daemon runs it for its provider, reads what the account's mpv kept of clips it quit
   # part way through or at their end, as ZZ quits (stopped-test.sh): each
   # file it played on and the one held on its last frame, newest first, by
   # its whole path, where it stopped, its length, when it was left, its
@@ -317,7 +320,8 @@ onLinux {
     let
       home = account graphical;
       mpv = lib.findFirst (package: lib.hasPrefix "mpv" (lib.getName package)) null home.home.packages;
-      listing = home.jitsusama.quickshell.launcher.providers.mpv.stopped;
+      inherit (home.jitsusama.quickshell.launcher) recents;
+      listing = (lib.findFirst (each: each.name or "" == "stopped") null recents).list;
     in
     assert lib.last listing == home.programs.mpv.config.watch-later-dir;
     pkgs.runCommandLocal "mpv-says-where-it-stopped"

@@ -103,6 +103,7 @@ onLinux {
         "Program.js"
         "Media.js"
         "Recents.qml"
+        "Listed.qml"
         "Recents.js"
         "Recent.js"
         "Captured.js"
@@ -186,12 +187,13 @@ onLinux {
       ''}
       # What reader --places prints, as tests/places-list.sh says.
       export PLACES_LIST=${pkgs.writeShellScript "places-list" (builtins.readFile ./tests/places-list.sh)}
-      # The programs daemon runs the shared list and what each reader shows,
-      # given the sources shell.qml's Applications is, as recents.nix gives
-      # both.
+      # The programs daemon runs the shared list, what each reader shows and
+      # its places, given the sources shell.qml's Applications is and the
+      # list the reader's page asks for, as recents.nix gives them.
       cat > sources.json <<EOF
       [{"watch": "$HOME/shared", "list": ["$SHARED_LIST"]},
-       {"app": "reader", "kind": "file", "opened": ["$SHOWING_LIST"]}]
+       {"app": "reader", "kind": "file", "opened": ["$SHOWING_LIST"]},
+       {"app": "reader", "name": "places", "asked": true, "list": ["$PLACES_LIST"]}]
       EOF
       ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
       ${shellFolderLint}

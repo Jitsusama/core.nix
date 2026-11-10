@@ -17,7 +17,6 @@
 // A copied web address is left out: zathura opens one only through GVfs,
 // which the machine doesn't have.
 import qs
-import Quickshell.Io
 import QtQuick
 import "../Copied.js" as Copying
 import "Zathura.js" as Zathura
@@ -52,12 +51,8 @@ Provider {
     property bool lookedSince: false
 
     onLookedInChanged: {
-        if (!lookedIn || lookedSince || (settings.opened ?? []).length === 0)
-            return;
-        lookedSince = true;
-        // Read once the step is drawn (Launcher.qml's afterFrame), so its
-        // frame never waits on starting a process.
-        launcher.afterFrame(() => listing.running = true);
+        if (lookedIn)
+            lookedSince = true;
     }
 
     // The next opening reads them again, as the pages may have turned since.
@@ -70,19 +65,19 @@ Provider {
         }
     }
 
-    Process {
+    // What open-now printed of each zathura, as the programs daemon holds
+    // it under the key its settings name, from the first look in an
+    // opening, so the shell starts no process for it (Listed.qml).
+    Listed {
         id: listing
 
-        command: provider.settings.opened ?? []
-        running: false
-        stdout: StdioCollector {
-            id: listed
+        key: provider.settings.opened ?? ""
+        wanted: provider.lookedSince
 
-            onStreamFinished: {
-                provider.open = Zathura.opened(listed.text.split("\n"));
-                Files.saying(provider.program, Zathura.through(provider.open, provider.said));
-                provider.changed();
-            }
+        onHeard: {
+            provider.open = Zathura.opened(listing.lines);
+            Files.saying(provider.program, Zathura.through(provider.open, provider.said));
+            provider.changed();
         }
     }
 

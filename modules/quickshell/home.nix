@@ -245,6 +245,7 @@ let
     "launcher/Provider.qml"
     "launcher/Playing.qml"
     "launcher/Recents.qml"
+    "launcher/Listed.qml"
     "launcher/Repositories.qml"
     "launcher/Repositories.js"
     "launcher/Machine.js"

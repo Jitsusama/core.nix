@@ -437,6 +437,16 @@ in
         kind = "file";
         opened = import ../quickshell/kept-in.nix { inherit lib pkgs; } showing;
       }
+      # Its places, which the programs daemon reads as its page asks.
+      {
+        app = "reader";
+        name = "places";
+        asked = true;
+        list = [
+          "${reader.unwrapped}/bin/reader"
+          "--places"
+        ];
+      }
     ];
 
     # The launcher lists these over the reader's window, by the same words,
@@ -455,10 +465,8 @@ in
       order = 52;
       source = ./ReaderProgram.qml;
       reader = "${reader}/bin/reader";
-      places = [
-        "${reader.unwrapped}/bin/reader"
-        "--places"
-      ];
+      # The programs daemon's key for its places, the list above.
+      places = "listed:reader:places";
     };
   };
 }
