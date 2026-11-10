@@ -85,10 +85,25 @@ Provider {
         kind: "listing"
         answersWhole: true
         onStateChanged: {
-            if (state === "not answering")
+            if (state === "not answering") {
                 console.warn("People: the people daemon isn't answering, "
                     + "so those listed are as it last said");
+                quiet.restart();
+            } else {
+                quiet.stop();
+                provider.unanswered = false;
+            }
         }
+    }
+    // Whether the people daemon has been silent a second, so home says so:
+    // a restart or a reconnect answers within it, and saying so at once
+    // would blink the count away and back (VKCF3Z, 2026-11-10).
+    property bool unanswered: false
+    Timer {
+        id: quiet
+
+        interval: 1000
+        onTriggered: provider.unanswered = lister.state === "not answering"
     }
     // The record the listing says its order in.
     readonly property string orderKey: "people:order"
@@ -669,7 +684,7 @@ Provider {
     // Home says the people daemon isn't answering rather than a count of
     // whom it last listed, so a down daemon is never silent.
     function homeSays() {
-        if (lister.state === "not answering")
+        if (unanswered)
             return Words.of("people").said.silent;
         const count = listedPersons().length;
         return count === 0 && (collection.none ?? "") !== "" ? null : countedAs(count);
