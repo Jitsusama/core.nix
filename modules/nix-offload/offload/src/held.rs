@@ -107,29 +107,36 @@ pub fn derivations(shown: &Value) -> BTreeMap<String, Derivation> {
         .collect()
 }
 
-/// The paths `nix path-info --json` printed as valid, each with the size
-/// of its archive. It once printed a list of objects that name their
-/// paths, and now prints an object of them by path, an invalid one null,
-/// under `info` and named without the store's folder in its second format.
-pub fn held(info: &Value) -> BTreeMap<String, u64> {
+/// The paths `nix path-info --json` printed as valid that a builder whose
+/// Nix doesn't trust this account takes, each with the size of its
+/// archive: those signed, or content-addressed, which a store checks by
+/// their content. It refuses the rest, `--no-check-sigs` or not, and
+/// with them the whole copy they're in.
+pub fn signed(info: &Value) -> BTreeMap<String, u64> {
     described(info)
         .into_iter()
+        .filter(|(_, stored)| stored.signed)
         .map(|(path, stored)| (path, stored.size))
         .collect()
 }
 
 /// A path in this store as far as sending it goes: the size of its
 /// archive, whether it's fixed, its content's hash known before it was
-/// built, as a download's is, and the derivation it was built from.
+/// built, as a download's is, the derivation it was built from, and
+/// whether a builder that trusts no account takes it, signed or
+/// content-addressed.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Stored {
     pub size: u64,
     pub fixed: bool,
     pub deriver: Option<String>,
+    pub signed: bool,
 }
 
-/// The valid paths `nix path-info --json` printed, in any format [`held`]
-/// reads. A fixed path's `ca` once read `fixed:` and a hash, and is now an
+/// The valid paths `nix path-info --json` printed. It once printed a list
+/// of objects that name their paths, and now prints an object of them by
+/// path, an invalid one null, under `info` and named without the store's
+/// folder in its second format. A fixed path's `ca` once read `fixed:` and a hash, and is now an
 /// object naming its method, which a derivation's own text, the one kind
 /// that isn't fixed, names `text`.
 pub fn described(info: &Value) -> BTreeMap<String, Stored> {
@@ -141,6 +148,11 @@ pub fn described(info: &Value) -> BTreeMap<String, Stored> {
             _ => false,
         },
         deriver: info.get("deriver").and_then(Value::as_str).map(stored),
+        signed: info.get("ca").is_some_and(|ca| !ca.is_null())
+            || info
+                .get("signatures")
+                .and_then(Value::as_array)
+                .is_some_and(|signatures| !signatures.is_empty()),
     };
     if let Some(listed) = info.as_array() {
         return listed
@@ -547,14 +559,35 @@ mod tests {
     fn what_this_store_holds_is_read_in_each_format_nix_has_given_it() {
         let wanted = BTreeMap::from([("/nix/store/a".to_owned(), 24)]);
         let formats = [
-            json!({"version": 2, "info": {"a": {"narSize": 24}, "b": null}}),
-            json!({"/nix/store/a": {"narSize": 24}, "/nix/store/b": null}),
-            json!([{"path": "/nix/store/a", "narSize": 24},
+            json!({"version": 2, "info": {"a": {"narSize": 24, "signatures": ["k:A"]},
+                                          "b": null}}),
+            json!({"/nix/store/a": {"narSize": 24, "signatures": ["k:A"]},
+                   "/nix/store/b": null}),
+            json!([{"path": "/nix/store/a", "narSize": 24, "signatures": ["k:A"]},
                    {"path": "/nix/store/b", "valid": false}]),
         ];
         for info in formats {
-            assert_eq!(held(&info), wanted, "{info}");
+            assert_eq!(signed(&info), wanted, "{info}");
         }
+    }
+
+    #[test]
+    fn only_what_is_signed_or_content_addressed_goes_to_a_builder_that_trusts_no_account() {
+        // Built here before this machine signed what it built, a path
+        // has no signature, and a builder trusting no account refuses it.
+        let info = json!({
+            "/nix/store/built-before": {"narSize": 1, "ca": null, "signatures": []},
+            "/nix/store/built-since": {"narSize": 2, "ca": null,
+                                       "signatures": ["here-1:AAAA"]},
+            "/nix/store/download": {"narSize": 3, "ca": "fixed:sha256:00"},
+            "/nix/store/gone": null});
+        assert_eq!(
+            signed(&info),
+            BTreeMap::from([
+                ("/nix/store/built-since".to_owned(), 2),
+                ("/nix/store/download".to_owned(), 3),
+            ])
+        );
     }
 
     #[test]

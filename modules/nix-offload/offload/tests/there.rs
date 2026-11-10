@@ -557,7 +557,8 @@ fn a_send_that_falls_behind_stops_and_the_builder_builds_the_rest() {
     .unwrap();
     fs::write(
         folder.path().join("held"),
-        r#"{"/nix/store/aaaa-system": null, "/nix/store/bbbb-kernel": {"narSize": 24000000}}"#,
+        r#"{"/nix/store/aaaa-system": null,
+            "/nix/store/bbbb-kernel": {"narSize": 24000000, "signatures": ["here-1:A"]}}"#,
     )
     .unwrap();
     fs::write(folder.path().join("copy-takes"), "30").unwrap();
@@ -643,13 +644,15 @@ fn what_the_builder_would_build_and_this_machine_holds_goes_up_instead() {
                 "inputs": {"drvs": {}}}}}"#,
     )
     .unwrap();
-    // This machine holds the kernel, though not its headers, and no more.
+    // This machine holds the kernel, though not its headers, and the
+    // tool, built before this machine signed what it built, which the
+    // builder's Nix, trusting no account, would refuse.
     fs::write(
         folder.path().join("held"),
         r#"{"/nix/store/aaaa-system": null,
-            "/nix/store/bbbb-kernel": {"narSize": 24000000},
+            "/nix/store/bbbb-kernel": {"narSize": 24000000, "signatures": ["here-1:A"]},
             "/nix/store/bbbb-kernel-dev": null,
-            "/nix/store/cccc-tool": null}"#,
+            "/nix/store/cccc-tool": {"narSize": 1000, "signatures": []}}"#,
     )
     .unwrap();
     let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-system.drv"]);
@@ -662,7 +665,7 @@ fn what_the_builder_would_build_and_this_machine_holds_goes_up_instead() {
     assert_eq!(
         sent,
         [format!(
-            "copy --to {} --no-check-sigs --substitute-on-destination /nix/store/bbbb-kernel",
+            "copy --to {} --substitute-on-destination /nix/store/bbbb-kernel",
             STORE.trim()
         )],
         "{calls}"
@@ -739,7 +742,7 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
     .unwrap();
     fs::write(
         folder.path().join("held"),
-        r#"{"/nix/store/aaaa-system": {"narSize": 1000000}}"#,
+        r#"{"/nix/store/aaaa-system": {"narSize": 1000000, "signatures": ["here-1:A"]}}"#,
     )
     .unwrap();
     fs::write(
@@ -830,14 +833,14 @@ fn a_go_zone(folder: &Path, modules: Option<u64>) {
     )
     .unwrap();
     let modules = modules.map_or("null".to_owned(), |size| {
-        format!(r#"{{"narSize": {size}}}"#)
+        format!(r#"{{"narSize": {size}, "signatures": ["here-1:A"]}}"#)
     });
     fs::write(
         folder.join("held"),
         format!(
             r#"{{"/nix/store/aaaa-test": null, "/nix/store/bbbb-modules": {modules},
-                "/nix/store/cccc-grpc.tgz": {{"narSize": 9000000}},
-                "/nix/store/dddd-uuid.tgz": {{"narSize": 3000000}}}}"#
+                "/nix/store/cccc-grpc.tgz": {{"narSize": 9000000, "ca": "fixed:sha256:00"}},
+                "/nix/store/dddd-uuid.tgz": {{"narSize": 3000000, "ca": "fixed:sha256:00"}}}}"#
         ),
     )
     .unwrap();
@@ -873,7 +876,7 @@ fn a_download_this_machine_holds_that_the_builder_cant_fetch_goes_up() {
     };
     let send = |paths: &str| {
         format!(
-            "copy --to {} --no-check-sigs --substitute-on-destination {paths}",
+            "copy --to {} --substitute-on-destination {paths}",
             STORE.trim()
         )
     };
@@ -997,7 +1000,7 @@ fn what_a_stopped_send_leaves_the_builder_to_build_goes_up_from_what_its_built_f
         .collect();
     let send = |paths: &str| {
         format!(
-            "copy --to {} --no-check-sigs --substitute-on-destination {paths}",
+            "copy --to {} --substitute-on-destination {paths}",
             STORE.trim()
         )
     };

@@ -179,8 +179,13 @@ in
       description = ''
         The program that makes a builder (`up NAME SECONDS`, printing its Nix
         machines line once ready and running while it's there), gives one back
-        (`down NAME`), and names those there (`alive PREFIX`). Without one,
-        none is lent, and only the standing builders are named.
+        (`down NAME`), and names those there (`alive PREFIX`). Before the line
+        it may print `price DOLLARS`, `store URI`, and where the builder is,
+        `instance NAME ZONE` and `cloud-token TOKEN`, a token it prints again
+        while it holds the builder; each lender writes the last two in
+        its folder for the service that checks the line's host key against
+        the cloud's. Without one, none is lent, and only the standing builders
+        are named.
       '';
     };
     whenNoneAnswers = lib.mkOption {

@@ -23,6 +23,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::cloud::{Cloud, Place};
 use crate::freeing::{self, Freeing};
 use crate::proof::{self, Health, Keeper, State};
 use crate::there;
@@ -488,6 +489,11 @@ pub struct Machines {
     freeing_from: Option<PathBuf>,
     /// What frees each builder beside that names one, by its address.
     freeing: Vec<(String, Freeing)>,
+    /// Where the one lent is said to be in the cloud, for the service
+    /// that writes root's lines, once `in_cloud` gives the files.
+    cloud: Option<Cloud>,
+    /// Where the one lent is, as `placing` last said.
+    place: Option<Place>,
 }
 
 impl Machines {
@@ -520,7 +526,25 @@ impl Machines {
             nix: "nix".to_owned(),
             freeing_from: None,
             freeing: Vec::new(),
+            cloud: None,
+            place: None,
         }
+    }
+
+    /// With `cloud`, where the one lent is said to be, written before
+    /// any machines file names it and emptied once none is lent, as
+    /// [`crate::cloud`] says.
+    #[must_use]
+    pub fn in_cloud(self, cloud: Cloud) -> Self {
+        Self {
+            cloud: Some(cloud),
+            ..self
+        }
+    }
+
+    /// Say where the one lent is, for the next [`Machines::show`].
+    pub fn placing(&mut self, place: Option<Place>) {
+        self.place = place;
     }
 
     /// With the file naming what frees each builder beside, read again
@@ -673,6 +697,10 @@ impl Machines {
     /// own, or nothing.
     pub fn show(&mut self, lending: Option<Lending>) {
         self.reread();
+        // First, so the service never meets a line before its instance.
+        if let Some(cloud) = &mut self.cloud {
+            cloud.say(lending.and(self.place.as_ref()));
+        }
         self.store.say(
             lending
                 .and_then(|lending| lending.store)
