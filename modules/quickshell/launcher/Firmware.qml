@@ -420,13 +420,9 @@ Provider {
     function changeEnded(code) {
         changeWait.stop();
         const how = changing.slice(0, changing.indexOf(":"));
-        const stopped = String(Words.of(`verb:firmware:${how}`).said?.stopped ?? "")
-            .replace("{count}", changeStopped);
         const ended = Object.assign({}, changes);
-        ended[changing] = code === 0 && changeStopped === 0
-            ? { outcome: "changed", reason: "" }
-            : { outcome: "failed",
-                reason: changeStopped > 0 ? stopped : Fwupd.reason(changerErr.text) };
+        ended[changing] = Fwupd.ended({ code: code, stopped: changeStopped, err: changerErr.text },
+            Words.of(`verb:firmware:${how}`).said, "changed");
         changes = ended;
         changing = "";
         answered();
@@ -538,13 +534,10 @@ Provider {
     // waited for, and the device says what fwupd went on to do.
     function installEnded(code) {
         installWait.stop();
-        const stopped = String(Words.of("verb:firmware:install").said?.stopped ?? "")
-            .replace("{count}", installStopped);
         const ended = Object.assign({}, installs);
-        ended[installing] = code === 0 && installStopped === 0
-            ? { outcome: "installed", reason: "" }
-            : { outcome: "failed",
-                reason: installStopped > 0 ? stopped : Fwupd.reason(installerErr.text) };
+        ended[installing] = Fwupd.ended(
+            { code: code, stopped: installStopped, err: installerErr.text },
+            Words.of("verb:firmware:install").said, "installed");
         installs = ended;
         installing = "";
         answered();
