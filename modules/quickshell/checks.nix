@@ -375,6 +375,16 @@ onLinux {
     given = [ "WLRCTL=${lib.getExe pkgs.wlrctl}" ];
   };
 
+  # Super+V's paste lands in the terminal under within 50 ms of Return
+  # though the shell is held stopped once it has asked, a stand-in for its
+  # thread busy after an opening: the clipboard's history serves the copy
+  # and presses the paste keys (tests/pastes-on-niri-test.py).
+  a-paste-lands-while-the-shell-is-busy-on-niri = launcherOnNiri {
+    name = "a-paste-lands-while-the-shell-is-busy-on-niri";
+    tests = ../../tests/pastes-on-niri-test.py;
+    given = [ "CLIPBOARD=${lib.getExe (pkgs.callPackage ./clipboard/package.nix { })}" ];
+  };
+
   # Turn Every Screen Off and :set noscreens ask niri to power its monitors
   # off, which keeps each output connected, read on their way to niri; and
   # a scale niri refuses, turned into its ReturnError on the way, says
