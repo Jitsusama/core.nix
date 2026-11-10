@@ -268,6 +268,25 @@ pub struct Holding {
 }
 
 impl Holding {
+    /// The scopes a sorter before this one held, as their floor of
+    /// exactly [`FLOOR`] says, so the first look gives back those not
+    /// wanted. A hold is the user manager's, set at runtime, and outlives
+    /// the sorter that set it: otherwise each restart would leave up to
+    /// [`MOST`] stale floors sharing agents.slice's own until their windows
+    /// ended. An orchestrator's floor is smaller, and `src/keep.rs`'s.
+    pub fn left(
+        scopes: impl IntoIterator<Item = PathBuf>,
+        floor: impl Fn(&Path) -> Option<u64>,
+    ) -> Self {
+        Self {
+            held: scopes
+                .into_iter()
+                .filter(|scope| floor(scope) == Some(FLOOR))
+                .collect(),
+            failed: false,
+        }
+    }
+
     /// The scopes to change, each with whether to hold it, from those to
     /// hold now.
     pub fn changes(&self, wanted: &[PathBuf]) -> Vec<(PathBuf, bool)> {
@@ -622,6 +641,25 @@ mod tests {
             [],
             "a scope gone is nobody's to give back"
         );
+    }
+
+    #[test]
+    fn a_sorter_before_this_ones_holds_are_taken_up_so_they_are_given_back() {
+        let held = PathBuf::from("kitty-1-1.scope");
+        let kept = PathBuf::from("kitty-1-2.scope");
+        let bare = PathBuf::from("kitty-1-3.scope");
+        let floors = |scope: &Path| match scope.to_str() {
+            Some("kitty-1-1.scope") => Some(FLOOR),
+            Some("kitty-1-2.scope") => Some(1 << 30),
+            _ => Some(0),
+        };
+        let holding = Holding::left([held.clone(), kept, bare], floors);
+        assert!(holding.holds("kitty-1-1.scope"), "a held window's floor");
+        assert!(
+            !holding.holds("kitty-1-2.scope"),
+            "an orchestrator's floor is keep.rs's"
+        );
+        assert_eq!(holding.changes(&[]), [(held, false)]);
     }
 
     #[test]
