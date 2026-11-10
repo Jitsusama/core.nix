@@ -1958,7 +1958,8 @@
     and :q :help :{n}, each in Vim's help notation with its title and key; typing narrows it by the
     command's start, then the act's words; Tab and the arrows choose and write a line in, round to
     what was typed; Return runs exactly what's typed, a short form or more, saying E492, E477 or
-    E488 otherwise, each key's work under 2 ms over 400 commands
+    E488 otherwise, each key's work over 400 commands within three times a bare copy of them or a
+    pass over them, timed in turn
   '';
   the-console-greets-the-account = ''
     a console greets the account by its description's first word, or its name, with the keys back to
