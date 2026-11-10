@@ -19,7 +19,9 @@
 //! `merge-net needs`, on a branch, says whether its change runs VM tests
 //! before it merges, rather than after on the net, and which: a change to
 //! what can leave a machine unable to boot, unlock or sign in, which a
-//! revert after the fact comes too late for (`must-run.txt`).
+//! revert after the fact comes too late for (`must-run.txt`). It names
+//! too each VM test that owns a file the change touches, whose subtests
+//! that reach it run first with `run-subtests --there` (`owners.rs`).
 //!
 //! `merge-net ready COMMIT`, asked before a branch's head merges, exits 0
 //! only when the head sits on origin's main as it is now and changed-checks
@@ -43,6 +45,7 @@ mod apart;
 mod holds;
 mod lists;
 mod movers;
+mod owners;
 mod ready;
 mod rules;
 mod running;
@@ -226,35 +229,52 @@ fn needs(base: &str) -> Result<ExitCode, String> {
     files.dedup();
     let areas = rules::areas();
     let known = known_vm_tests();
-    if rules::needs(&areas, &files, known.as_deref())
-        .touched
-        .is_empty()
+    let root = git(&["rev-parse", "--show-toplevel"])?;
+    let owning = owners::in_tree(Path::new(&root), &files).unwrap_or_else(|| {
+        println!("(checks.nix or flake.nix didn't read, so no VM test is named for its files)");
+        Vec::new()
+    });
+    if owning.is_empty()
+        && rules::needs(&areas, &files, known.as_deref())
+            .touched
+            .is_empty()
     {
         println!("no: nothing here needs its VM tests before merging; the net runs them after");
         return Ok(ExitCode::SUCCESS);
     }
     // Only a test whose derivation moved from main can give a result main
     // hasn't, so changed-checks is asked which moved; it costs an
-    // evaluation, which only a change touching an area pays.
+    // evaluation, which only a change touching an area or a VM test's
+    // files pays.
     let said = moved_from(base);
     if said.is_none() {
         println!("(changed-checks couldn't say which VM tests moved, so every one named runs)");
     }
     let found = rules::first(&areas, &files, said.as_deref(), known.as_deref());
-    let touched = found
-        .touched
-        .iter()
-        .map(|(area, _)| area.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    if found.tests.is_empty() && found.there.is_empty() {
+    let moved = said.as_deref().map(rules::moved);
+    let owning: Vec<String> = owning
+        .into_iter()
+        .filter(|test| moved.as_ref().is_none_or(|moved| moved.contains(test)))
+        .collect();
+    // The list is read from the base, main, so a branch can't quarantine
+    // its own failure.
+    let list = git(&["show", &format!("{base}:{}", world::QUARANTINE)])
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    if found.tests.is_empty() && found.there.is_empty() && owning.is_empty() {
         println!(
-            "no: the change touches {touched}, but none of the VM tests it runs moved from \
-             {base}, so each would give main's result; the net runs the rest after"
+            "no: none of the VM tests the change touches moved from {base}, so each would \
+             give main's result; the net runs the rest after"
         );
         return Ok(ExitCode::SUCCESS);
     }
-    println!("yes: the change touches");
+    println!("yes:");
+    said_owners(&owning, base, &list);
+    if found.touched.is_empty() {
+        return Ok(ExitCode::SUCCESS);
+    }
+    println!("the change touches");
     for (area, hits) in &found.touched {
         println!("  {area}: {}", hits.join(" "));
     }
@@ -269,12 +289,6 @@ fn needs(base: &str) -> Result<ExitCode, String> {
         return Ok(ExitCode::SUCCESS);
     }
     println!("run these VM tests whole before merging, since they moved from {base}:");
-    // The list is read from the base, main, so a branch can't quarantine
-    // its own failure.
-    let list = git(&["show", &format!("{base}:{}", world::QUARANTINE)])
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
     for test in &found.tests {
         println!("{}", rules::named(test, &list));
     }
@@ -282,6 +296,39 @@ fn needs(base: &str) -> Result<ExitCode, String> {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The recent passed runs that could be `commit`'s change: those carrying
+/// one of its own subjects and touching one of its `files`, the first read
+/// being cheap and the second not. Should git fail to say either, every
+/// record goes on, as slow as before but no less right.
+fn candidates(commit: &str, main: &str, files: &[String]) -> Result<Vec<String>, String> {
+    let records = ready::recent_records();
+    let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
+    let records = logged(&records, &["--format=%H%x01%s"]).map_or(records.clone(), |said| {
+        ready::titled(&records, &said, &subjects)
+    });
+    Ok(
+        logged(&records, &["--format=%x01%H", "--name-only"]).map_or(records.clone(), |touched| {
+            ready::likely(&records, &touched, files)
+        }),
+    )
+}
+
+/// Name the VM tests that own a file the change touches, each of which is
+/// the one written to catch it, so it runs before the merge rather than
+/// on main.
+fn said_owners(owning: &[String], base: &str, list: &serde_json::Value) {
+    if owning.is_empty() {
+        return;
+    }
+    println!(
+        "run the subtests that reach what it touched with run-subtests --there, in each VM \
+         test that owns one of its files and moved from {base}:"
+    );
+    for test in owning {
+        println!("  {}", rules::named(test, list));
+    }
 }
 
 /// Say whether `commit` may merge: on origin's main as it is now, with what
@@ -369,12 +416,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         };
         Some(ready::names_gone(&branch, &main_side))
     };
-    let records = ready::recent_records();
-    // Should git fail to say what they touched, every record is read, as
-    // slow as before but no less right.
-    let candidates = touched_by(&records).map_or(records.clone(), |touched| {
-        ready::likely(&records, &touched, &files)
-    });
+    let candidates = candidates(commit, main, &files)?;
     let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
@@ -580,19 +622,13 @@ fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// What each of `commits` changed in its own commit, as `git log
-/// --name-only` prints it for `ready::likely`, from one git for them all.
-/// A commit this clone lacks is left out.
-fn touched_by(commits: &[String]) -> Option<String> {
+/// What `git log` says of each of `commits`, in `format`, from one git for
+/// them all: its subject for `ready::titled`, or what it changed in its own
+/// commit for `ready::likely`. A commit this clone lacks is left out.
+fn logged(commits: &[String], format: &[&str]) -> Option<String> {
     let mut log = Command::new("git")
-        .args([
-            "log",
-            "--no-walk=unsorted",
-            "--ignore-missing",
-            "--stdin",
-            "--format=%x01%H",
-            "--name-only",
-        ])
+        .args(["log", "--no-walk=unsorted", "--ignore-missing", "--stdin"])
+        .args(format)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
