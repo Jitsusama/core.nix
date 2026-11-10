@@ -29,6 +29,9 @@ const AFTER = 300_000;
 const DAYS = Repeats.DAYS;
 const MONTHS = Repeats.MONTHS;
 
+// Between the items of one run, as every side and fact joins them.
+const BETWEEN = " \u00b7 ";
+
 // The meetings that could be next: not over, not all day, and not ones
 // Joel said no to.
 function coming(meetings, now) {
@@ -186,10 +189,13 @@ function span(meeting) {
 }
 
 // A meeting's day and times in full, as its details say them: "Monday 26
-// October, 14:00 to 14:30", or "Wednesday 28 October, all day".
+// October \u00b7 14:00 to 14:30", or "Wednesday 28 October \u00b7 all day",
+// the day and its times two items of one run, joined by a dot as every run
+// is (docs/design.md's Set, Not Styled).
 function dated(meeting) {
     const day = new Date(meeting.start);
-    return `${DAYS[day.getDay()]} ${day.getDate()} ${MONTHS[day.getMonth()]}, ${span(meeting)}`;
+    return [`${DAYS[day.getDay()]} ${day.getDate()} ${MONTHS[day.getMonth()]}`, span(meeting)]
+        .join(BETWEEN);
 }
 
 // How Joel answered an invitation, as his calendar would say it to him,
@@ -200,14 +206,14 @@ function answered(meeting) {
     return ANSWERED[meeting?.answer] ?? "";
 }
 
-// A meeting's times and, for an invitation, his answer: "14:00 to 14:30,
-// maybe".
+// A meeting's times and, for an invitation, his answer: "14:00 to 14:30
+// \u00b7 maybe", the answer a word following its figures after a dot.
 function about(meeting) {
-    return [span(meeting), answered(meeting)].filter(part => part !== "").join(", ");
+    return [span(meeting), answered(meeting)].filter(part => part !== "").join(BETWEEN);
 }
 
 // What a meeting's row notes after its name: its times and his answer
-// while it's to come or on, "14:00 to 14:30, maybe", and nothing once
+// while it's to come or on, "14:00 to 14:30 \u00b7 maybe", and nothing once
 // it's over, where its right alone says when it was and its drawer keeps
 // When and Your Answer (VKCF3Z, c7d9e2bd).
 function noted(meeting, now) {
@@ -220,11 +226,12 @@ function invited(meeting) {
 }
 
 // Someone asked, by name, with how they answered when they did: "Grace
-// Hopper, not going". One with no name is said by their address.
+// Hopper \u00b7 not going", the answer after a dot, so a comma is left to
+// join names alone. One with no name is said by their address.
 function asked(person) {
     const name = person.name || person.email || "";
     const said = ANSWERED[person.answer] ?? "";
-    return said === "" ? name : `${name}, ${said}`;
+    return said === "" ? name : `${name}${BETWEEN}${said}`;
 }
 
 // How those asked answered, counted, as a calendar heads its list of
