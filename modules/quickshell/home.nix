@@ -208,6 +208,7 @@ let
     "Copied.qml"
     "Copied.js"
     "Pasting.qml"
+    "Pasting.js"
     "Notices.qml"
     "Forward.js"
     "Daemon.qml"

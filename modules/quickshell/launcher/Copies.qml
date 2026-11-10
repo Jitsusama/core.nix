@@ -15,6 +15,10 @@
 // always does. Forget the Clipboard, the clipboard's last row while
 // there's something to forget and found by its words from anywhere, has
 // the helper forget every copy, and what the clipboard holds with them.
+// Once the history has been silent a second, its row says "not answering"
+// where it counts the copies, and its head says so while it's entered, as
+// People's does; a paste that never landed is said there the same way
+// (Pasting.qml's pressing). Each copy's row keeps its own note.
 // Its rows are made here as each copy is heard, for now: they move into
 // clipboard-history next, which is to serve them worded and ranked by
 // 2026-11-12.
@@ -41,6 +45,13 @@ Provider {
     property bool linked: false
 
     Component.onCompleted: Pasting.helper = provider
+
+    // What its row and its head say of the history, ahead of the count.
+    readonly property string pressing: Pasting.pressing
+    onPressingChanged: changed()
+    function homeSays() {
+        return pressing !== "" ? pressing : null;
+    }
 
     readonly property var forget: thing({
         key: "copies:forget",
@@ -191,14 +202,12 @@ Provider {
         return pastes(row, `${copy.picture}`, () => provider.tell(`copy ${copy.picture}`));
     }
 
-    // Each row's age, as of now, after what it is, and whether it pastes
-    // without the history (Pasting.qml).
+    // Each row's age, as of now, after what it is.
     function aged(rows) {
         const now = Date.now();
         for (const row of rows) {
             row.side = [row.about, Ago.ago(row.at, now)].filter(part => part !== "")
                 .join(" \u00b7 ");
-            Pasting.saysUnhelped(row);
         }
         return rows;
     }
@@ -208,6 +217,11 @@ Provider {
         try {
             said = JSON.parse(line);
         } catch (e) {
+            return;
+        }
+        if (said.unpasted) {
+            Pasting.missed();
+            Report.say("never pasted");
             return;
         }
         if (said.clear) {

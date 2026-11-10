@@ -11,8 +11,12 @@ pragma Singleton
 // from the history rather than from the shell. With no history kept, the
 // copy goes on the clipboard through Qt and the keys are pressed through
 // wtype. With no window there, as on an empty workspace, it only copies.
+// Once the history has been silent a second, or a paste it was asked for
+// never landed, `pressing` says so, for the places that paste through it
+// to say on their own rows and heads (Pasting.js).
 import Quickshell
 import QtQuick
+import "Pasting.js" as Said
 
 Singleton {
     id: pasting
@@ -26,6 +30,57 @@ Singleton {
     // pastes while it's connected: its tell sends it a line, and linked
     // says whether it's there to hear it. Null while no history is kept.
     property var helper: null
+
+    // Whether the history answers, from the helper, watched so silence is
+    // timed from when it began: from the start, until it first links.
+    readonly property bool linked: helper !== null && helper.linked
+    onLinkedChanged: heed()
+    onHelperChanged: heed()
+
+    // When the history went silent, and when a paste it was asked for last
+    // never landed; null while it answers, and while none has missed.
+    property var lostAt: null
+    property var missedAt: null
+
+    // What the places pasting through the history say of it, or nothing.
+    property string pressing: ""
+
+    function heed() {
+        if (linked) {
+            lostAt = null;
+            quiet.stop();
+        } else if (lostAt === null && helper !== null) {
+            lostAt = Date.now();
+            quiet.restart();
+        }
+        say();
+    }
+
+    // Told by the history that a paste never landed.
+    function missed() {
+        missedAt = Date.now();
+        forgotten.restart();
+        say();
+    }
+
+    function say() {
+        pressing = Said.says({
+            kept: helper !== null,
+            lostAt: lostAt,
+            missedAt: missedAt
+        }, Date.now(), Words.of("clipboard").said ?? {});
+    }
+
+    Timer {
+        id: quiet
+        interval: Said.QUIET
+        onTriggered: pasting.say()
+    }
+    Timer {
+        id: forgotten
+        interval: Said.MISSED
+        onTriggered: pasting.say()
+    }
 
     // The window the launcher opened over, which niri gives the keys back
     // to as it closes; null on an empty workspace, with nowhere to paste.
@@ -42,23 +97,6 @@ Singleton {
     // Whether the history is there to copy and paste.
     function helped() {
         return pasting.helper !== null && pasting.helper.linked;
-    }
-
-    // Whether a history is kept but isn't answering, so a paste falls back
-    // on Qt and wtype, which wait on the shell's thread.
-    function unhelped() {
-        return pasting.helper !== null && !pasting.helper.linked;
-    }
-
-    // Notes on a row that pastes, as it's handed out, that the history
-    // isn't answering, so a slower paste is never a silent one; a shell
-    // keeping no history says nothing, its fallback being how it always
-    // pastes. Written as the row's own note rather than made a getter of
-    // it: one remade as a getter left picture rows' prepared undefined in
-    // the shell, so a search in the clipboard threw (2026-11-10).
-    function saysUnhelped(row) {
-        row.note = unhelped() ? "the clipboard's history isn't answering" : "";
-        return row;
     }
 
     // Copies, through the history, which names the copy by what: its
@@ -81,6 +119,10 @@ Singleton {
         const app = window.app_id ?? "";
         const terminal = pasting.terminals.includes(app);
         if (helped()) {
+            // A fresh paste puts down what the last one missed.
+            missedAt = null;
+            forgotten.stop();
+            say();
             pasting.helper.tell(`paste ${what} ${terminal ? "terminal" : "plain"}`);
             Report.say(`pastes into ${app}`);
             return;

@@ -1532,6 +1532,25 @@ onLinux {
       touch $out
     '';
 
+  # Copies and Emoji say the clipboard's history isn't answering only once
+  # it's been silent a second, so a restart never blinks their counts, and
+  # a paste that never landed for a minute, as tests/pasting.qml holds
+  # Pasting.js to it in Qt's own engine.
+  the-clipboard-says-once-its-history-is-silent =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-clipboard-says-once-its-history-is-silent" { } ''
+      cp ${../../tests/pasting.qml} pasting.qml
+      cp ${./Pasting.js} Pasting.js
+      cp ${../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml pasting.qml
+      touch $out
+    '';
+
   # The machine queue is the harness's file as the node's record holds it,
   # and a write of only when it was written says nothing new, as
   # tests/jobs.qml holds Jobs.js to it in Qt's own engine.
