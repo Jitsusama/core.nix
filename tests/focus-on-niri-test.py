@@ -8,7 +8,10 @@ have contention when say a notification window is up and you launch the launcher
 launcher is up and you load a notification window. you can't change focus and shit. similar
 issues when in the launcher and you try to click off and interact with a window."). The rule
 itself is niri's, which its own tests hold (modules/niri/on-demand-when-asked.patch); these
-cases are the shell asking for it.
+cases are the shell asking for it. A window a program puts up for Joel because he asked it
+from the open launcher, as 1Password's unlock, closes the launcher and takes the focus, where
+it came up under the launcher holding the keys (Joel, 2026-11-10: "the unlock screen shows
+below the launcher. very poor UX"); any other window opening meanwhile leaves it be.
 Every test starts with the launcher closed and no notice held, and leaves them so.
 """
 
@@ -32,6 +35,11 @@ if TYPE_CHECKING:
 TO_THE_CORNER = -10000
 # How far inside a window's bottom left corner it's clicked, clear of the launcher's card.
 INSIDE = 24
+# The program handed to, by the app id its windows carry, as 1Password's say 1Password.
+HANDED_TO = "stand-in-manager"
+# How long the program handed to has to put its window up, in ms: long enough for foot
+# to start on a loaded builder.
+PATIENCE = 60000
 
 
 @pytest.fixture(scope="module")
@@ -72,6 +80,18 @@ def opened(shell: Shell) -> None:
     """Open the launcher, by what Super+Space runs, and wait until it holds the keys."""
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
+
+
+def window_of(shell: Shell, app: str, title: str) -> Json:
+    """Open a foot window carrying this app id and title, and give it once niri lists it."""
+    shell.as_account(f"niri msg action spawn -- foot --app-id '{app}' --title '{title}' sleep 3600")
+    deadline = time.monotonic() + launcher_on_niri.STARTING.total_seconds()
+    while True:
+        window = next((one for one in shell.windows() if one["title"] == title), None)
+        if window is not None:
+            return window
+        assert time.monotonic() < deadline, f"no window titled {title!r} opened"
+        time.sleep(launcher_on_niri.POLL)
 
 
 def focused_window(shell: Shell) -> Json | None:
@@ -150,6 +170,31 @@ def test_a_click_on_a_window_takes_the_keys_and_closes_the_launcher(shell: Shell
         time.sleep(launcher_on_niri.POLL)
     assert not shell.showing()["open"], "the launcher opened again"
     shell.close(window)
+
+
+def test_a_window_of_the_program_handed_to_closes_the_launcher_and_takes_the_focus(
+    shell: Shell,
+) -> None:
+    """Handed to a program, the launcher stays open over another's window and goes for its own."""
+    opened(shell)
+    shell.as_account(shell.ipc("handsOver", HANDED_TO, str(PATIENCE)))
+    # A window of anything else, as a session opening, leaves the launcher open with the keys.
+    other = window_of(shell, "stand-in-other", "Other")
+    shell.send_chars("k")
+    shell.launcher_until(lambda shown: shown["keys"] and shown["typed"] == "k")
+    with shell.told(f"handed to {HANDED_TO}"):
+        handed = window_of(shell, HANDED_TO, "Unlock")
+    shell.launcher_closed()
+    focused = focused_window(shell)
+    assert focused is not None, "niri focuses no window once the launcher went"
+    assert focused["id"] == handed["id"], f"the window handed to isn't focused: {focused}"
+    # Handed over once, the next opening is the launcher's own again.
+    opened(shell)
+    again = window_of(shell, HANDED_TO, "Again")
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: shown["keys"] and shown["typed"] == "j")
+    for window in (other, handed, again):
+        shell.close(window)
 
 
 def test_the_launcher_says_whether_it_is_open_in_its_mark(shell: Shell) -> None:

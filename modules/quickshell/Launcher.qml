@@ -6364,6 +6364,13 @@ Scope {
             root.open = !root.open;
         }
 
+        // Says a program outside the shell, asked from the launcher, may put
+        // a window up for Joel: its app ids, space apart, and how many ms
+        // it may take (handing).
+        function handsOver(apps: string, patience: int): void {
+            root.handsOver(apps.split(" ").filter(app => app !== ""), patience);
+        }
+
         // Opens the launcher into a collection by its provider's name.
         function collection(name: string): void {
             root.askedToOpen();
@@ -7419,6 +7426,53 @@ Scope {
         }
     }
 
+    // Joel handed to another program's window: what asks a program that
+    // may put a window up for him while the launcher stays open, as
+    // stepping into Passwords asks 1Password, which shows its unlock,
+    // says so first (`provider.launcher?.handsOver(apps, patience)`), naming the program by
+    // the app ids its windows carry. The launcher holds the keys above
+    // every window, so a window that came up under it waited there
+    // unseen (Joel, 2026-11-10: "the unlock screen shows
+    // below the launcher. very poor UX"). So a window of one of them
+    // opening or coming forward within the patience given closes the
+    // launcher and takes the focus, his own Return having asked for it.
+    // Only a program named counts, so a window anything else opens, as
+    // a session's, never takes it. Null while nothing is handed over;
+    // `until` on KeyTimes' monotonic clock.
+    property var handing: null
+
+    function handsOver(apps, patience): void {
+        if (!open || apps.length === 0)
+            return;
+        handing = { apps: apps, until: KeyTimes.now() + patience };
+    }
+
+    function handedTo(window): void {
+        const handed = handing;
+        if (handed === null)
+            return;
+        if (!open || KeyTimes.now() > handed.until) {
+            handing = null;
+            return;
+        }
+        if (!handed.apps.includes(window.app_id))
+            return;
+        handing = null;
+        console.info(`launcher: closed for ${window.app_id}'s window, which Joel asked for`);
+        Report.say(`handed to ${window.app_id}`);
+        open = false;
+        Niri.act({ FocusWindow: { id: window.id } });
+    }
+
+    Connections {
+        target: Niri
+        enabled: root.handing !== null
+
+        function onWindowOpenedOrChanged(window) {
+            root.handedTo(window);
+        }
+    }
+
     onOpenChanged: {
         // Each part of an opening's own work, timed as it's done, so the
         // line its frame says names what an opening slow to draw spent its
@@ -7432,6 +7486,7 @@ Scope {
         };
         openMark.setText(open ? "open\n" : "closed\n");
         keysHeld = false;
+        handing = null;
         // A viewer's line is over once the launcher closes (viewerCommandLine),
         // and gv has nothing to bring back in the rows it opens on; nor is a
         // line Return wrote and Joel left, which would hold the next
