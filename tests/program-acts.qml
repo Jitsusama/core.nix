@@ -30,8 +30,9 @@
 // Neovim holds, as a stand-in open-now says it: each file open once,
 // the Neovim looked at last first, said modified and by its tab before its
 // folder, Return going to its buffer through open-now and to its window
-// through niri; and the program's drawer counting them. It exits 0 once every case holds, and otherwise 1, saying which
-// didn't.
+// through niri; and the program's drawer counting them, while the acts
+// found from the top ask open-now nothing and make no file's row. It
+// exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -220,6 +221,23 @@ ShellRoot {
                 + ` file:${src}/alpha/.env, file:${src}/beta/README.md`, given);
         expect("and nothing for another program", held.programOpen("vim").length === 0,
             held.programOpen("vim").join(", "));
+
+        // Programs asks the acts found from the top inside a binding
+        // (Applications.qml's optedActs), so asking them asks open-now
+        // nothing and makes no open file's row: Neovim doing both there
+        // looped that binding on Joel's shell at each opening and closing
+        // (2026-11-09), and made every act found from the top again as a
+        // window was focused.
+        held.looked = false;
+        const made = held.tally.rows;
+        const found = keys(held.foundActsOf("nvim"));
+        expect("found from the top, it gives only the acts it lists there",
+            JSON.stringify(found) === JSON.stringify(held.foundActs.map(one => one.key)),
+            JSON.stringify(found));
+        expect("asking open-now nothing and making no file's row",
+            !held.looked && held.tally.rows - made === found.length,
+            JSON.stringify([held.looked, held.tally.rows - made]));
+        expect("and nothing for another program", held.foundActsOf("vim").length === 0, "");
     }
 
     Component.onCompleted: {

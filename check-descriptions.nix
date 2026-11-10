@@ -2056,7 +2056,8 @@
     Open the Latest Download listed and found from the top
     only while there's one, opening it as the desktop opens a file; and Neovim lists every file
     each Neovim has open once, the one looked at last first, said modified and by its tab, going
-    to its buffer through open-now, and counts them in its drawer
+    to its buffer through open-now, and counts them in its drawer, while its acts found from the
+    top ask open-now nothing and make no open file's row
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"

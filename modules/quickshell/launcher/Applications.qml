@@ -1393,7 +1393,9 @@ Provider {
                 .map(act => provider.foundAct(entry, act))), []);
     }
     // Each provider's acts for a program are asked once, however many of
-    // them it opts in, as swayimg opts in a gallery a folder.
+    // them it opts in, as swayimg opts in a gallery a folder, and only
+    // those it finds from the top (Provider.foundActsOf), which write
+    // nothing this reads.
     readonly property var optedActs: {
         const asked = new Map();
         return provider.optedIn.map(one => {
@@ -1403,7 +1405,7 @@ Provider {
             const by = asked.get(one.from) ?? new Map();
             asked.set(one.from, by);
             if (!by.has(one.program))
-                by.set(one.program, one.from.programActs(one.program));
+                by.set(one.program, one.from.foundActsOf(one.program));
             const act = by.get(one.program).find(row => row.key === one.key);
             return act ? provider.foundAct(entry, act) : null;
         }).filter(row => row !== null);

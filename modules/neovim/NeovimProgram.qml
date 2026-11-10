@@ -161,8 +161,18 @@ Provider {
         if (asked !== program)
             return [];
         provider.look();
-        return (repositories ? [finding()] : []).concat(place !== null ? [copied()] : [],
-            provider.openNow().map(one => provider.openRow(one)));
+        return foundActsOf(asked).concat(provider.openNow().map(one => provider.openRow(one)));
+    }
+
+    // Only the acts found from the top, which Programs asks inside a
+    // binding: asking open-now there wrote what the binding read, a loop on
+    // Joel's shell at each opening and closing, and the open files' rows
+    // read every window's focus, so each focus made every act found from
+    // the top again (2026-11-09).
+    function foundActsOf(asked) {
+        if (asked !== program)
+            return [];
+        return (repositories ? [finding()] : []).concat(place !== null ? [copied()] : []);
     }
 
     // What it lists as open now, by the keys Programs gives a file's row

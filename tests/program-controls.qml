@@ -112,11 +112,24 @@ ShellRoot {
         // Join by Code is, none until a case gives one.
         property var foundActs: []
 
+        // How many times its acts were asked, so a case sees that the acts
+        // found from the top never ask them.
+        property int askedActs: 0
+
         function programActs(program) {
+            askedActs += 1;
             return program === "tester" ? [
                 { key: "tester:link", name: "Copy a New Log's Link", verb: "copy" }
             ] : program !== "pair" ? [] : [
                 { key: "pair:link", name: "Copy the Room's Link", verb: "copy" },
+                { key: "pair:room", name: "Open the Room", verb: "open" }
+            ];
+        }
+
+        // The acts found from the top alone, as Neovim's are (Provider.qml),
+        // never asking every act it gives.
+        function foundActsOf(program) {
+            return program !== "pair" ? [] : [
                 { key: "pair:room", name: "Open the Room", verb: "open" }
             ];
         }
@@ -865,9 +878,14 @@ ShellRoot {
             // An act another provider gives that's found from the top is
             // made as it comes, alone: no program's own act is made again.
             const madeBefore = applications.tally.rows;
+            const askedBefore = giver.askedActs;
             giver.foundActs = [{ program: "pair", key: "pair:room" }];
             same("an act given to be found from the top makes its own row and no other",
                 applications.tally.rows - madeBefore, 1);
+            // It's asked of the acts found from the top alone: asking every
+            // act there let Neovim ask open-now inside the binding, a loop
+            // on Joel's shell at each opening and closing (2026-11-09).
+            same("and it asks none of the giver's other acts", giver.askedActs - askedBefore, 0);
             same("and it's found there", applications.things.filter(row => row.key
                 === "program-act:pair:pair:room").length, 1);
             giver.foundActs = [];
