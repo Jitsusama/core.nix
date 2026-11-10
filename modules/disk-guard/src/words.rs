@@ -89,13 +89,16 @@ pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
     )
 }
 
-/// What one thing the guard cleared was, where it was and how big.
+/// What one thing the guard cleared was, where it was and how big its
+/// files were as read, which on a compressed disk can be several times
+/// what clearing them freed, so it's said as theirs: a pass's total says
+/// what the disk got back.
 pub fn cleared(kind: &str, path: &Path, bytes: u64, home: Option<&Path>) -> String {
     let place = tilde(path, home);
     let size = shown(bytes);
     match label(kind) {
-        Some(what) => format!("Cleared {what}, {place} ({size})."),
-        None => format!("Cleared {place} ({size})."),
+        Some(what) => format!("Cleared {what}, {place} ({size} of files)."),
+        None => format!("Cleared {place} ({size} of files)."),
     }
 }
 
