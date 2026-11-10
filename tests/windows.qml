@@ -128,13 +128,14 @@ ShellRoot {
 
             // Move to Workspace offers the others on the window's screen as
             // the daemon says them, niri's empty last one as new, and
-            // heard of them, no window's row is made again.
+            // heard of them, no window's row is made again. Capture
+            // doesn't watch workspaces, so only Windows is told.
             const madeBefore = windows.tally.rows;
-            told({ changed: [space(1, { inside: ["tester", "tester"] }),
-                space(2, { inside: ["tester"] }), space(3, { new: true }),
-                space(4, { output: "HDMI-A-1" })] },
+            windows.windowsDaemon.said(JSON.stringify({ changed: [
+                space(1, { inside: ["tester", "tester"] }), space(2, { inside: ["tester"] }),
+                space(3, { new: true }), space(4, { output: "HDMI-A-1" }),
                 Object.assign(desktop(logbook),
-                    { spaces: { "eDP-1": [1, 2, 3], "HDMI-A-1": [4] } }));
+                    { spaces: { "eDP-1": [1, 2, 3], "HDMI-A-1": [4] } })] }));
             const madeHearing = windows.tally.rows - madeBefore;
             const offered = windows.workspacesFor(windows.held.windows["window:11"]);
             Expect.same("Move to Workspace offers the others on its screen, saying what's on each",
