@@ -1,6 +1,7 @@
 // Keeps the launcher's openings (modules/quickshell/Trials.qml) through
-// Quickshell itself, offscreen, as the `the-launcher-keeps-its-trials-a-line-each`
-// check runs it: `qs -p shell.qml` beside Trials.qml and launcher/Trials.js.
+// Quickshell itself, offscreen, as the `the-launcher-keeps-its-trials-one-by-one`
+// check runs it: `qs -p shell.qml` beside Trials.qml, launcher/Trials.js and
+// Expect.js.
 // The list the shell kept before lines is carried into them as it starts,
 // the oldest past `remember` let go; a close adds its own opening's line
 // and touches none before it, so what it writes is the same however many
@@ -10,6 +11,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Expect.js" as Expect
 
 ShellRoot {
     id: root
@@ -20,11 +22,6 @@ ShellRoot {
     property var before: []
     // The Trials the loader made, as itself.
     readonly property Trials made: trials.item as Trials
-
-    function fail(message) {
-        console.warn(`FAIL ${message}`);
-        Qt.callLater(() => Qt.exit(1));
-    }
 
     function read() {
         kept.reload();
@@ -84,23 +81,23 @@ ShellRoot {
                 // Asked with `in`, since Trials has no such list for the lint to
                 // find, while its own members are seen.
                 if (!("remember" in root.made) || "trials" in root.made)
-                    return root.fail("the shell holds the openings");
+                    return Expect.fail("the shell holds the openings");
                 root.stage = "closing";
                 root.openAndClose();
             } else if (root.stage === "closing" && root.lines.length === 4) {
                 if (root.lines.slice(0, 3).join("\n") !== root.before.join("\n"))
-                    return root.fail(`a close rewrote what came before it: ${root.lines}`);
+                    return Expect.fail(`a close rewrote what came before it: ${root.lines}`);
                 if (JSON.parse(root.lines[3]).keys.letters !== 1)
-                    return root.fail(`the close's line isn't its opening: ${root.lines[3]}`);
+                    return Expect.fail(`the close's line isn't its opening: ${root.lines[3]}`);
                 root.stage = "closing again";
                 root.openAndClose();
             } else if (root.stage === "closing again" && root.lines.length === 5) {
                 // With one more kept, the second close still adds its line
                 // alone.
                 if (root.lines.slice(0, 4).join("\n") !== root.before.join("\n"))
-                    return root.fail(`a second close rewrote what came before it: ${root.lines}`);
+                    return Expect.fail(`a second close rewrote what came before it: ${root.lines}`);
                 if (Array.isArray(JSON.parse(root.lines[4])))
-                    return root.fail(`a close wrote a list: ${root.lines[4]}`);
+                    return Expect.fail(`a close wrote a list: ${root.lines[4]}`);
                 // Started again with five lines, the shell keeps three, the
                 // list from before left unread now there are lines.
                 root.stage = "starting again";
@@ -121,7 +118,7 @@ ShellRoot {
     Timer {
         interval: 20000
         running: true
-        onTriggered: root.fail(`stuck at ${root.stage}, the file holding ${root.lines}`)
+        onTriggered: Expect.fail(`stuck at ${root.stage}, the file holding ${root.lines}`)
     }
 
     Component.onCompleted: listed.setText(JSON.stringify([1, 2, 3, 4, 5].map(at => ({

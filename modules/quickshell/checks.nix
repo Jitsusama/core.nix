@@ -1360,14 +1360,15 @@ onLinux {
   # turned all 1,339 of Joel's into text, 39 ms a close at a load of 66
   # (2026-11-10). The shell starting carries the old list into lines and
   # lets the oldest go (tests/trials-kept.qml, through Quickshell).
-  the-launcher-keeps-its-trials-a-line-each =
-    pkgs.runCommandLocal "the-launcher-keeps-its-trials-a-line-each" { }
+  the-launcher-keeps-its-trials-one-by-one =
+    pkgs.runCommandLocal "the-launcher-keeps-its-trials-one-by-one" { }
       ''
         export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         mkdir launcher
         cp ${./Trials.qml} Trials.qml
         cp ${./launcher/Trials.js} launcher/Trials.js
         cp ${../../tests/trials-kept.qml} shell.qml
+        cp ${../../tests/lib/Expect.js} Expect.js
         export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
         mkdir -m 700 $XDG_RUNTIME_DIR
         ${shellFolderLint}

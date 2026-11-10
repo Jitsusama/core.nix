@@ -2307,7 +2307,7 @@
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
     miss only where letters were typed and nothing picked, and the file gains a close's line alone
   '';
-  the-launcher-keeps-its-trials-a-line-each = ''
+  the-launcher-keeps-its-trials-one-by-one = ''
     a close adds its own opening's line to the file and rewrites none before it, however many are
     kept, and a start carries the old list into lines and lets the oldest go
   '';
