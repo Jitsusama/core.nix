@@ -171,12 +171,19 @@ in
 
   nix.settings.min-free = 10 * gib;
   nix.settings.max-free = 24 * gib;
-  # A garbage collection keeps what built anything still installed, not only
-  # the result. Without it the disk guard, which deletes what
-  # `nix-store --gc --print-dead` lists every few minutes, threw away the
-  # reader's 329 crate tarballs, and the next switch spent most of 13 minutes
-  # fetching them again. On a workstation it kept 3.5 GiB more.
-  nix.settings.keep-outputs = true;
+  # A collection keeps what is in use, not everything that built it. With
+  # keep-outputs every live derivation kept the outputs of all that built it,
+  # and with keep-derivations every live path kept the derivation that built
+  # it, and with it every source that went in. So each system generation and
+  # dev shell held its whole build closure, and Nix called none of it garbage:
+  # on 10 November about 200 GB of a 344 GiB store, with the disk at 90% and
+  # the disk guard able to free nothing. A 5 GB copy of a work tree was held
+  # only because a derivation named it as a source. What a rebuild would
+  # fetch again, like the reader's crate tarballs, is kept as young garbage
+  # by the disk guard instead, within its budget and only while the disk is
+  # healthy, and an evaluation writes again any derivation it needs.
+  nix.settings.keep-outputs = false;
+  nix.settings.keep-derivations = false;
 
   systemd.slices.build.sliceConfig.CPUWeight = 10;
 

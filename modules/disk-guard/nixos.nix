@@ -30,6 +30,11 @@ in
       boot = lib.mkDefault config.boot.loader.efi.efiSysMountPoint;
       nix.bin = lib.mkDefault (lib.getExe' config.nix.package "nix");
       dedupe.systemd_run = lib.mkDefault (lib.getExe' config.systemd.package "systemd-run");
+      # A day of garbage stays while the disk is healthy, within the guard's
+      # budget, so a switch the next morning finds what the last one fetched:
+      # on 7 November the reader's 329 crate tarballs, collected between two
+      # switches, cost the second most of 13 minutes to fetch again.
+      garbage.keep = lib.mkDefault "1d";
       sources = {
         coredumps = lib.mkDefault {
           kind = "coredumps";
