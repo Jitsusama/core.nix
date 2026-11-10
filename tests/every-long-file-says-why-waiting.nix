@@ -4,7 +4,6 @@
 # that's split, says why or is gone, so the list only shrinks.
 [
   "checks.nix"
-  "modules"
   "modules/backlight/src/main.rs"
   "modules/backlight/src/monitor.rs"
   "modules/creative-pebble-x-plus/lights.rs"
