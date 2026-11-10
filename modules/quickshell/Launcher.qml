@@ -2659,9 +2659,11 @@ Scope {
     // the one row's actions are read, as pendingSaid reads them, and only
     // once it's selected (selectedActions), never in the foot's binding.
     function operatorKeys(choice) {
-        if (choice !== selectedActions.row)
-            return [];
-        const actions = selectedActions.actions;
+        return choice === selectedActions.row ? selectedActions.keys : [];
+    }
+
+    // d and y for a row, from its actions, as operatorKeys says them.
+    function operatorKeysOf(choice, actions) {
         const ending = Operators.endingOf(choice, actions);
         const copy = Operators.copyOf(choice, actions,
             one => verbOf(one) === "copy" && !!one.run);
@@ -5760,17 +5762,25 @@ Scope {
     // row made searchable: nine such rows a row, as a window has, took
     // 18 ms over 400 rows when timed alone (2026-11-05).
     // The selected row's actions, read as it's selected rather than in the
-    // foot's binding: a row's verbs() may ask its source, as Time's watch
-    // chrony, and a binding that read them would loop on what they set.
+    // foot's binding, and the d and y they give it, as the foot says them:
+    // a row's verbs() may ask its source, as Time's watch chrony, and a
+    // binding that read them would loop on what they set.
     // Only in normal and visual, where the foot names d and y, and never a row whose
     // verbs are the things inside it (nested), since reading those asks
     // for them: Search Slack's asked Slack with each letter typed, which
     // Slack allows only a few times a minute.
-    property var selectedActions: ({ row: null, actions: [] })
+    property var selectedActions: ({ row: null, keys: [] })
     function readSelectedActions() {
         const reads = selected && prompt.modal && ["normal", "visual"].includes(prompt.mode)
             && !selected.nested;
-        selectedActions = { row: selected, actions: reads ? actionsOf(selected) : [] };
+        const keys = reads ? operatorKeysOf(selected, actionsOf(selected)) : [];
+        // Told anew only where the foot would say something new
+        // (Standing.toldAnew); else the row they're for changes unsaid,
+        // since with no keys before or now no row's keys change.
+        if (Standing.toldAnew(selectedActions, selected, keys))
+            selectedActions = { row: selected, keys };
+        else
+            selectedActions.row = selected;
     }
 
     function actionsOf(row) {

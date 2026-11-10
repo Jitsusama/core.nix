@@ -1392,6 +1392,23 @@ QtObject {
         ])
             machine(`the find's keys in ${room}`, Standing.keysFitted(findKeys, keysWide, room,
                 ["complete", "next time"]).map(key => key[0]).join(" "), kept);
+        // The foot is told the selected row's d and y again only where
+        // they'd say something new.
+        const notes = { name: "Notes" };
+        const screens = { name: "Screens" };
+        const closes = [["d", "close"]];
+        for (const [what, last, row, keys, anew] of [
+            ["none before and none now tell nothing", { row: notes, keys: [] }, screens, [], false],
+            ["the same row's same keys tell nothing", { row: notes, keys: closes }, notes,
+                [["d", "close"]], false],
+            ["another row's keys, though alike, are told", { row: notes, keys: closes }, screens,
+                closes, true],
+            ["keys where none were are told", { row: screens, keys: [] }, notes, closes, true],
+            ["and none where keys were", { row: notes, keys: closes }, screens, [], true],
+            ["and a key's other word", { row: notes, keys: closes }, notes,
+                [["d", "quit"]], true]
+        ])
+            machine(what, Standing.toldAnew(last, row, keys), anew);
 
         // The network's figures, from /proc/net/dev and the shaper's file.
         const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"
