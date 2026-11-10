@@ -4,8 +4,9 @@
 // modules/quickshell/launcher/Pacing.js beside this file and runs
 // `qml -platform offscreen pacing.qml`, with launcher/Wanted.js. A burst of
 // changes is taken a pace apart, and never two refreshes closer than that,
-// however the first was asked for; and a source's rows are wanted only
-// where they're shown or searched, so a change nobody sees asks none.
+// however the first was asked for; a source's rows are wanted only where
+// they're shown or searched, so a change nobody sees asks none; and a key's
+// act is said shown by the first frame begun after its refresh.
 import QtQuick
 import "Pacing.js" as Pacing
 import "Wanted.js" as Wanted
@@ -52,6 +53,30 @@ QtObject {
         check(failures, "an act of its own waiting to be agreed keeps them wanted elsewhere",
             wanted({ held: [{ row: { from: people } }], becoming: [{ from: agents }] }, agents),
             true);
+    }
+
+    // A key's acts are each said shown by the first frame begun after its
+    // refresh. At 7b2252da0 dd marked a notice read, and a source no row
+    // showed changed just after, was taken for the key's, and refreshed as
+    // the notice's frame began; held back with it, the notice's act waited
+    // on a frame that source never drew, and was never said shown.
+    function framing(failures) {
+        const notices = { source: "notices" };
+        const wifi = { source: "wifi" };
+        const names = acts => acts.map(one => one.source).join(" ");
+        const refreshed = Pacing.refreshedActs(Pacing.unframed(), [notices]);
+        const swappedFirst = Pacing.frameSwapped(refreshed);
+        check(failures, "a swap of a frame begun before the refresh shows nothing",
+            names(swappedFirst.shown), "");
+        const begun = Pacing.frameBegun(swappedFirst.acts);
+        const late = Pacing.refreshedActs(begun, [wifi]);
+        const swapped = Pacing.frameSwapped(late);
+        check(failures, "the frame begun after the refresh shows it", names(swapped.shown),
+            "notices");
+        check(failures, "though another act was refreshed while it was drawn",
+            names(swapped.acts.waiting), "wifi");
+        check(failures, "which the next frame shows",
+            names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
     }
 
     function run() {
@@ -113,6 +138,7 @@ QtObject {
         check(failures, "and one long after it is no key's",
             Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within), false);
 
+        framing(failures);
         wanting(failures);
 
         for (const failure of failures)
