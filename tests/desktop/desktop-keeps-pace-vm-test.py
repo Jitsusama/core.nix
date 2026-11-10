@@ -139,6 +139,16 @@ STARTS = 4
 CROWD = "/run/user/1000/crowd"
 LISTED = 500
 STARTED = timedelta(seconds=8)
+# A storm of windows changing, as Joel's crowd of agents' windows makes: STORMING windows, each
+# a session's, retitled STORM times a second between them, which niri tells the shell of one
+# event at a time. The launcher is opened OPENINGS times through it, every core busy, and each
+# opening reaches its frame within OPENED_WITHIN ms, at the tail as at the middle: Joel's took
+# 6,184 ms to its frame for 107 ms of its own work on 2026-11-10.
+STORMING = 40
+STORM = 100
+OPENINGS = 20
+OPENED_WITHIN = 50
+OPENED_TAIL = 0.99
 
 
 @pytest.fixture(scope="module")
@@ -701,6 +711,50 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (
         f"the load slowed the first opening after a start: {first[True]} ms against "
         f"{first[False]} ms frozen"
+    )
+
+
+@pytest.fixture
+def storm(desktop: Desktop) -> Iterator[None]:
+    """Retitle STORMING windows STORM times a second, as a crowd of agents' windows does."""
+    machine = desktop.machine
+    # Through niri, so the windows reach it through xwayland-satellite,
+    # with no token to take the keys from the shell's.
+    desktop.as_account(
+        "niri msg action spawn -- env -u XDG_ACTIVATION_TOKEN"
+        f" {desktop.values['window_storm']} {STORMING} {STORM}"
+    )
+    stormy = 'niri msg --json windows | grep -o \'"title":"storm \' | wc -l'
+    listed = f"test $({stormy}) -eq {STORMING}"
+    machine.wait_until_succeeds(desktop.in_session(listed), timeout=REACHING)
+    try:
+        yield
+    finally:
+        desktop.as_account("pkill -f window-storm")
+        gone = '! niri msg --json windows | grep -q \'"title":"storm \''
+        machine.wait_until_succeeds(desktop.in_session(gone), timeout=REACHING)
+
+
+@pytest.mark.usefixtures("loaded", "storm")
+def test_each_opening_reaches_its_frame_soon_through_a_storm_of_windows_changing(
+    desktop: Desktop,
+) -> None:
+    """Each opening reaches its frame soon through a storm of windows changing, every core busy.
+
+    Joel's crowd of agents' windows retitle themselves all day, and an opening that waited on
+    the shell making every list again for each change took seconds to show (2026-11-10).
+    """
+    took: list[int] = []
+    try:
+        for _ in range(OPENINGS):
+            opening = opened_timed(desktop)
+            print(f"through the storm, an opening {opening}")
+            took.append(opening["took"])
+    finally:
+        desktop.launcher_left_closed()
+    tail = sorted(took)[math.ceil(OPENED_TAIL * len(took)) - 1]
+    assert tail <= OPENED_WITHIN, (
+        f"an opening through the storm took {tail} ms to its frame at the tail: {sorted(took)}"
     )
 
 
