@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 // For You weighs what waits on Joel again only when what the node says of
 // it changes, through Quickshell itself, with WaitingOnYou.qml as the shell
 // has it and the node stood in for. The node tells each kind again whole
