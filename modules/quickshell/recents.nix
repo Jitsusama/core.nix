@@ -38,7 +38,11 @@
       after another tab what `go` is given ({id}) to bring the file forward
       inside that window before Go To brings the window forward; such a
       file has no Close It. One with only `app`, `kind` and `opened` keeps
-      the list programs share for its program's other paths.
+      the list programs share for its program's other paths. One with a
+      `name` is a page's own list rather than its program's Recent, as
+      Chrome's downloads are: the programs daemon holds the lines its
+      `list` prints as they are, under `listed:` and its `app` and `name`,
+      read as that key is watched, so the page starts no process for it.
     '';
   };
 }

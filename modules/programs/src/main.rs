@@ -329,13 +329,10 @@ fn entries_changed(shared: &Shared) {
     keep(&mut daemon, records, &gone);
 }
 
-/// The sources whose `recent` or `opened` key is one of these, or every
-/// source with such a list when `keys` is none and the kind is wanted.
+/// The sources whose `recent`, `listed` or `opened` key is one of these,
+/// or every source with such a list when `keys` is none and its kind is
+/// wanted.
 fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String]>) -> Vec<usize> {
-    let kind = match run {
-        Run::List => "recent",
-        Run::Opened => "opened",
-    };
     shared
         .sources
         .iter()
@@ -345,9 +342,9 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
             Run::Opened => source.opened_key().is_some(),
         })
         .filter(|(_, source)| {
-            let key = match run {
-                Run::List => Some(source.recent_key()),
-                Run::Opened => source.opened_key(),
+            let (key, kind) = match run {
+                Run::List => (Some(source.list_key()), source.list_kind()),
+                Run::Opened => (source.opened_key(), "opened"),
             };
             match keys {
                 Some(keys) => key.is_some_and(|key| keys.contains(&key)),
@@ -395,7 +392,7 @@ fn run(argv: &[String]) -> Result<String, String> {
 fn read_source(shared: &Shared, at: usize, what: Run) {
     let source = &shared.sources[at];
     let (argv, key) = match what {
-        Run::List => (&source.list, source.recent_key()),
+        Run::List => (&source.list, source.list_key()),
         Run::Opened => (&source.opened, source.opened_key().unwrap_or_default()),
     };
     if what == Run::List {
@@ -517,7 +514,7 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     for at in sources_of(shared, Run::List, kinds, keys) {
         let due = {
             let daemon = lock(&shared.daemon);
-            due(shared, &daemon, at) || !daemon.held.contains_key(&shared.sources[at].recent_key())
+            due(shared, &daemon, at) || !daemon.held.contains_key(&shared.sources[at].list_key())
         };
         if due {
             read_source(shared, at, Run::List);
@@ -617,7 +614,7 @@ fn notice(shared: &Arc<Shared>, notify: &Notify, folders: &HashMap<i32, Heard>) 
             let watching = {
                 let mut daemon = lock(&shared.daemon);
                 daemon.stale[at] = true;
-                watched(&daemon, &shared.sources[at].recent_key())
+                watched(&daemon, &shared.sources[at].list_key())
             };
             if watching {
                 start(shared, at, Run::List);

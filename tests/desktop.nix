@@ -878,6 +878,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
               "/run/user/1000/chrome-open"
             ];
           }
+          # Its downloads, which the programs daemon reads as its page asks.
+          {
+            app = "google-chrome";
+            name = "downloads";
+            asked = true;
+            list = [
+              "${pkgs.coreutils}/bin/cat"
+              "/run/user/1000/chrome-downloads"
+            ];
+          }
         ];
         # And Chrome's own provider, as its module gives it (modules/chrome/
         # home.nix), for its downloads and Open the Latest Download. Its
@@ -885,10 +895,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.quickshell.launcher.providers.chrome = lib.mkIf bringsChrome {
           order = 52;
           source = ../modules/chrome/ChromeProgram.qml;
-          downloads = [
-            "${pkgs.coreutils}/bin/cat"
-            "/run/user/1000/chrome-downloads"
-          ];
+          downloads = "listed:google-chrome:downloads";
         };
         xdg.configFile."quickshell/launcher/ChromeDownloads.js" = lib.mkIf bringsChrome {
           source = ../modules/chrome/ChromeDownloads.js;

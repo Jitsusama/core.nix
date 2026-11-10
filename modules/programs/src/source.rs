@@ -1,6 +1,7 @@
 //! Each program's lists of what it had open, as recents.nix gives them
 //! (modules/quickshell/recents.nix says each field), and the lines their
-//! commands print made into `recent` and `opened` records.
+//! commands print made into `recent` and `opened` records, and a
+//! program page's own lists, as Chrome's downloads, into `listed` ones.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -14,6 +15,11 @@ pub struct Source {
     /// The desktop entry it's for, or none for the list programs share.
     #[serde(default)]
     pub app: Option<String>,
+    /// The name of a page's own list, as `downloads` is Chrome's, which
+    /// makes it a `listed` record of the lines its command printed, read
+    /// by the page, rather than the program's Recent.
+    #[serde(default)]
+    pub name: Option<String>,
     /// What each path is: a file, a folder or a site.
     #[serde(default)]
     pub kind: Option<String>,
@@ -35,9 +41,23 @@ pub struct Source {
 }
 
 impl Source {
-    /// The `recent` key its list is held under.
-    pub fn recent_key(&self) -> String {
-        format!("recent:{}", self.app.as_deref().unwrap_or("shared"))
+    /// The key its list is held under: `recent:` and its program, or
+    /// `listed:`, its program and the list's name.
+    pub fn list_key(&self) -> String {
+        let app = self.app.as_deref().unwrap_or("shared");
+        match &self.name {
+            Some(name) => format!("listed:{app}:{name}"),
+            None => format!("recent:{app}"),
+        }
+    }
+
+    /// The kind of record its list is: `listed` or `recent`.
+    pub fn list_kind(&self) -> &'static str {
+        if self.name.is_some() {
+            "listed"
+        } else {
+            "recent"
+        }
     }
 
     /// The `opened` key what it has open is held under, where it says.
@@ -73,8 +93,20 @@ pub fn dated(line: &str, is_dated: bool) -> (&str, Option<u64>) {
 /// The `recent` record of a source's list as its command printed it.
 pub fn recent(source: &Source, printed: &str) -> Value {
     let lines = printed.lines().filter(|line| !line.is_empty());
+    if let Some(name) = &source.name {
+        // A page's own list, its lines as printed, for its page to read,
+        // so the shell starts no process of its own for it.
+        let lines: Vec<&str> = lines.collect();
+        return json!({
+            "key": source.list_key(),
+            "kind": "listed",
+            "app": source.app,
+            "name": name,
+            "lines": lines,
+        });
+    }
     let mut record = json!({
-        "key": source.recent_key(),
+        "key": source.list_key(),
         "kind": "recent",
         "app": source.app,
         "of": source.kind.as_deref().unwrap_or("file"),
@@ -214,6 +246,26 @@ mod tests {
                 "path": "/a\tb.pdf",
                 "used_at_s": 1_793_000_000
             }])
+        );
+    }
+
+    #[test]
+    fn a_pages_own_list_keeps_its_lines_under_its_name() {
+        let downloads = source(json!({"app": "google-chrome", "name": "downloads"}));
+        assert_eq!(downloads.list_kind(), "listed");
+        let record = recent(
+            &downloads,
+            "/d/a.pdf\t12\t1793000000\thttps://a.example\n\n",
+        );
+        assert_eq!(
+            record,
+            json!({
+                "key": "listed:google-chrome:downloads",
+                "kind": "listed",
+                "app": "google-chrome",
+                "name": "downloads",
+                "lines": ["/d/a.pdf\t12\t1793000000\thttps://a.example"],
+            })
         );
     }
 

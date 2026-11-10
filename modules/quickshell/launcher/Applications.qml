@@ -708,9 +708,13 @@ Provider {
         return own === "desktop" ? "" : own;
     }
 
+    // The sources of each program's Recent: a page's own list, one with a
+    // `name` as Chrome's downloads, is its page's to read, not Recent's.
+    readonly property var recentSources: (settings.recents ?? []).filter(each => !each.name)
+
     // What each program had open lately, from the files they write.
     readonly property Recents recents: Recents {
-        sources: provider.settings.recents ?? []
+        sources: provider.recentSources
         showing: provider.launcher?.open ?? false
     }
 
@@ -874,7 +878,7 @@ Provider {
 
     // Its list's settings, or null where it has none.
     function sourceOf(entry) {
-        return (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
+        return recentSources.find(each => each.app === entry.id) ?? null;
     }
 
     // Whether it has a source of what it had: its own list's settings, the
@@ -1067,7 +1071,7 @@ Provider {
     function holding(entry) {
         const words = Words.of("program:recent").said ?? {};
         const fill = (said, count) => (said ?? "").replace("{count}", String(count));
-        const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
+        const source = recentSources.find(each => each.app === entry.id) ?? null;
         const open = provider.recents.openIn(entry.id);
         const site = source?.kind === "site";
         const addresses = new Set(open.map(line => line.split("\t")[4] ?? "")

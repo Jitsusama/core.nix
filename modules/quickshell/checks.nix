@@ -4504,9 +4504,10 @@ onLinux {
   # programs by the real fd, stat and grep (launcher/Repositories.qml),
   # with niri and the clipboard's history stood in (tests/program-acts.qml).
   # Chrome's downloads are read from Chrome's ChromeDownloads.js in Qt's
-  # engine and through its provider from a stand-in for chrome-recent-sites
-  # once Chrome is stepped into: file rows in its Recent, each drawer
-  # saying where it is then its kind and previewing a picture, and Open
+  # engine and through its provider from the real programs daemon, running
+  # a stand-in for chrome-recent-sites, once Chrome is stepped into: file
+  # rows in its Recent, each drawer saying where it is then its kind and
+  # previewing a picture, and Open
   # the Latest Download only while there's one, waiting in its place until
   # the first reading answers. Neovim's files open now come from a stand-in
   # open-now, whose reading of a real Neovim is open-with's own tests', each
@@ -4529,6 +4530,26 @@ onLinux {
       # tests/neovim-open-now.sh says.
       openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../../tests/neovim-open-now.sh);
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
+      programs = pkgs.callPackage ../programs/package.nix { };
+      # Chrome's downloads, as chrome-recent-sites prints them: one from a
+      # page, finished at a time of its own, one Chrome kept no time or
+      # page for, and a picture; the programs daemon runs it as Chrome's
+      # module has it run its own.
+      downloads = pkgs.writeShellScript "downloads-list" ''
+        printf '%s\t%s\t%s\t%s\n' "$HOME/Downloads/report.pdf" 2048 1800000100 \
+          'https://docs.example.com/q3?x=1' "$HOME/Downloads/undated.zip" 10 "" "" \
+          "$HOME/Downloads/tide-chart.png" 84300 1800000050 'https://tide.example.org/'
+      '';
+      sources = pkgs.writeText "sources.json" (
+        builtins.toJSON [
+          {
+            app = "google-chrome";
+            name = "downloads";
+            asked = true;
+            list = [ "${downloads}" ];
+          }
+        ]
+      );
       # Three repositories a folder deep, alpha's git written last, alpha's
       # origin and gamma's upstream on GitHub and beta's on GitLab, and one
       # four folders deep, past where they're looked for.
@@ -4595,6 +4616,7 @@ onLinux {
       cp ${../neovim/Neovim.js} launcher/Neovim.js
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
       cp ${../chrome/ChromeDownloads.js} launcher/ChromeDownloads.js
+      cp ${./Daemon.qml} Daemon.qml
       cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${../zathura/ZathuraProgram.qml} launcher/ZathuraProgram.qml
       cp ${../zathura/Zathura.js} launcher/Zathura.js
@@ -4614,16 +4636,13 @@ onLinux {
       export OPEN_NOW=${openNow}
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
-      # Chrome's downloads, as chrome-recent-sites prints them: one from a
-      # page, finished at a time of its own, one Chrome kept no time or
-      # page for, and a picture.
-      export DOWNLOADS_LIST=${pkgs.writeShellScript "downloads-list" ''
-        printf '%s\t%s\t%s\t%s\n' "$HOME/Downloads/report.pdf" 2048 1800000100 \
-          'https://docs.example.com/q3?x=1' "$HOME/Downloads/undated.zip" 10 "" "" \
-          "$HOME/Downloads/tide-chart.png" 84300 1800000050 'https://tide.example.org/'
-      ''}
+      mkdir $XDG_RUNTIME_DIR/daemons
+      XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$TMPDIR/data \
+        ${programs}/bin/programs $XDG_RUNTIME_DIR/daemons/programs.sock ${sources} &
+      daemon=$!
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      kill $daemon
       touch $out
     '';
 

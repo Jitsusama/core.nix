@@ -14,9 +14,13 @@
 //
 // Its Recent holds the files Chrome downloaded (`recentOf`, which
 // Applications.qml asks every provider that has it), each still where
-// Chrome saved it, as chrome-recent-sites lists them from its history
-// (`downloads`) as Chrome is stepped into, once each time the launcher
-// opens, never on a timer. Each is the one row every surface shows of a
+// Chrome saved it, as chrome-recent-sites lists them from its history,
+// which the programs daemon runs and holds under the key `downloads`
+// names, read as Chrome is stepped into, once each time the launcher
+// opens, never on a timer; the shell starts no process for it. The
+// daemon holds the lines as printed, and ChromeDownloads.js makes them
+// into files here, a stopgap until the daemon serves them as ready rows
+// on the launcher's ready-row record. Each is the one row every surface shows of a
 // file (Files.qml), keyed by its path, so the list programs share never
 // lists it twice, dated by when it finished, so Recent orders it among
 // the sites by when, newest first (Recent.js), and opened as the desktop
@@ -33,7 +37,6 @@ pragma ComponentBehavior: Bound
 
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "../Copied.js" as Copying
 import "../FileFacts.js" as FileFacts
@@ -62,7 +65,10 @@ Provider {
     // Whether any reading has answered since the shell started, and so
     // whether Open the Latest Download waits in its place for one.
     property bool downloadsRead: false
-    readonly property bool latestWaits: !downloadsRead && (settings.downloads ?? []).length > 0
+    readonly property bool latestWaits: !downloadsRead && downloadsKey !== ""
+    // The programs daemon's key for its downloads, or "" where none lists
+    // them.
+    readonly property string downloadsKey: settings.downloads ?? ""
     // So Programs › Chrome, held while any comes or goes, draws it.
     onLinkChanged: changed()
     onOnGitHubChanged: changed()
@@ -85,28 +91,28 @@ Provider {
     property bool lookedSince: false
 
     onSteppedInChanged: {
-        if (!steppedIn || lookedSince || (settings.downloads ?? []).length === 0)
-            return;
-        lookedSince = true;
-        // Read once the step is drawn (Launcher.qml's afterFrame), so its
-        // frame never waits on starting a process.
-        launcher.afterFrame(() => listing.running = true);
+        if (steppedIn && downloadsKey !== "")
+            lookedSince = true;
     }
 
-    Process {
+    // The daemon's downloads, watched by their key from the first step in
+    // an opening, which has the daemon read them afresh, and heard as it
+    // says them: the lines it holds at once, then those it reads.
+    Daemon {
         id: listing
 
-        command: provider.settings.downloads ?? []
-        running: false
-        stdout: StdioCollector {
-            id: listed
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
+        kind: "listed"
+        live: false
+        ahead: provider.lookedSince ? [provider.downloadsKey] : []
 
-            onStreamFinished: {
-                provider.downloads = Downloads.listed(listed.text.split("\n")
-                    .filter(line => line !== ""));
-                provider.downloadsRead = true;
-                provider.changed();
-            }
+        onHeard: changed => {
+            if (!changed.includes(provider.downloadsKey))
+                return;
+            provider.downloads = Downloads.listed(listing.held[provider.downloadsKey]
+                ?.lines ?? []);
+            provider.downloadsRead = true;
+            provider.changed();
         }
     }
 
