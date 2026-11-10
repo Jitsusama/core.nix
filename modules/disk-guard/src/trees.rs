@@ -93,7 +93,11 @@ fn site_packages(venv: &Path) -> Vec<PathBuf> {
 pub fn last_used(found: &Found) -> f64 {
     let checkout = checkout(found);
     if found.kind == Kind::Target {
-        return last_build(&found.path, checkout);
+        // A commit in the checkout is followed by a build into whichever
+        // target its shell names, and a run's own target kept inside that
+        // one isn't built again because of it.
+        let nested = crate::discover::enclosing(&found.path).is_some();
+        return last_build(&found.path, checkout.filter(|_| !nested));
     }
     let top = last_write(&found.path, 1, INSTALL_BUDGET);
     let packages = site_packages(&found.path)

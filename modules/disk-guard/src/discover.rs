@@ -67,6 +67,65 @@ fn marked(dir: &Path) -> bool {
     })
 }
 
+/// The first words of the target triples rustc names, for the directory
+/// cargo makes, and marks, inside a target it builds for another platform.
+const ARCHES: [&str; 21] = [
+    "aarch64",
+    "arm",
+    "avr",
+    "bpf",
+    "csky",
+    "hexagon",
+    "i586",
+    "i686",
+    "loongarch",
+    "m68k",
+    "mips",
+    "msp430",
+    "nvptx",
+    "powerpc",
+    "riscv",
+    "s390x",
+    "sparc",
+    "thumb",
+    "wasm",
+    "x86_64",
+    "xtensa",
+];
+
+/// Whether a directory inside a target is cargo's own, for a platform.
+fn for_a_platform(dir: &Path) -> bool {
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned());
+    name.is_some_and(|name| {
+        name.split_once('-')
+            .is_some_and(|(arch, _)| ARCHES.iter().any(|known| arch.starts_with(known)))
+    })
+}
+
+/// The targets kept inside a target, as a session gives each run its own
+/// `CARGO_TARGET_DIR` inside the one its zone names: each has its own last
+/// build, so each is judged and cleared on its own. Only the target's own
+/// children count, and never a platform's directory, which is the
+/// target's own build.
+pub fn nested(target: &Path) -> Vec<PathBuf> {
+    subdirs(target)
+        .into_iter()
+        .filter(|dir| kept_inside(dir))
+        .collect()
+}
+
+/// Whether a directory in a target is a target of its own, as `nested`
+/// takes one, rather than a profile or a platform's directory.
+pub fn kept_inside(dir: &Path) -> bool {
+    marked(dir) && !for_a_platform(dir)
+}
+
+/// The target `path` is kept inside, when it is one `nested` names.
+pub fn enclosing(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    (marked(parent) && kept_inside(path)).then(|| parent.to_owned())
+}
+
 /// The subdirectories of a directory, never through a symlink.
 fn subdirs(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -95,6 +154,8 @@ fn git_top(dir: &Path) -> Option<PathBuf> {
 /// to be found. A target is one cargo marked, or one named `target` beside
 /// a manifest before cargo has marked it; a `target` with no manifest
 /// beside it holds targets, one per project of a checkout holding many.
+/// A target kept inside a target, as `nested` finds one, is found as well,
+/// before the one it is in.
 /// `home` is the account's home, as `checkout_of` takes it.
 pub fn walk(root: &Path, depth: Option<usize>, home: Option<&Path>) -> io::Result<Vec<Found>> {
     walk_until(root, depth, home, &|| false)
@@ -154,26 +215,14 @@ pub fn walk_until(
                 }
             } else if name == "target" && has("Cargo.toml") {
                 let checkout = Checkout::At(git_top(&dir).unwrap_or_else(|| dir.clone()));
-                found.push(Found {
-                    path,
-                    kind: Kind::Target,
-                    checkout,
-                });
+                with_nested(&mut found, path, checkout, home);
             } else if marked(&path) {
                 let checkout = checkout_of(&path, home);
-                found.push(Found {
-                    path,
-                    kind: Kind::Target,
-                    checkout,
-                });
+                with_nested(&mut found, path, checkout, home);
             } else if name == "target" {
                 for project in subdirs(&path).into_iter().filter(|p| marked(p)) {
                     let checkout = checkout_of(&project, home);
-                    found.push(Found {
-                        path: project,
-                        kind: Kind::Target,
-                        checkout,
-                    });
+                    with_nested(&mut found, project, checkout, home);
                 }
             } else if path.join("pyvenv.cfg").is_file() {
                 if name == ".venv" {
@@ -185,6 +234,23 @@ pub fn walk_until(
         }
     }
     Ok(found)
+}
+
+/// A target found, and each target kept inside it.
+fn with_nested(found: &mut Vec<Found>, path: PathBuf, checkout: Checkout, home: Option<&Path>) {
+    for inner in nested(&path) {
+        let checkout = checkout_of(&inner, home);
+        found.push(Found {
+            path: inner,
+            kind: Kind::Target,
+            checkout,
+        });
+    }
+    found.push(Found {
+        path,
+        kind: Kind::Target,
+        checkout,
+    });
 }
 
 /// The absolute sources on a dep-info file's first rule, whose spaces are

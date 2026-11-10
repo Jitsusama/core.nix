@@ -1,4 +1,4 @@
-use disk_guard::activity::{Process, Use, judge};
+use disk_guard::activity::{Process, Use, judge, judge_within};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -218,5 +218,39 @@ fn the_guard_itself_is_left_out() {
             TARGET
         )]),
         Use::Free
+    );
+}
+
+/// A run's own target kept inside the zone's is built into only by what
+/// names it. A zone's shell names the outer one, and a build sitting in the
+/// checkout goes there too, so neither keeps the run's.
+#[test]
+fn a_target_kept_inside_another_is_used_only_by_what_names_it() {
+    const RUN: &str = "/home/u/src/app/target/run-1";
+    let run = |processes: &[Process]| {
+        judge_within(
+            processes,
+            ME,
+            Path::new(RUN),
+            Some(Path::new(CHECKOUT)),
+            Some(Path::new(TARGET)),
+        )
+    };
+    let zone = sits(carries(shell(10), "CARGO_TARGET_DIR", TARGET), CHECKOUT);
+    assert_eq!(
+        run(&[zone.clone(), sits(cargo(12), CHECKOUT)]),
+        Use::Free,
+        "the zone's shell and a build in the checkout leave the run's target free"
+    );
+    assert_eq!(
+        judged(&[zone]),
+        Use::Occupied(10),
+        "the zone's shell still occupies the zone's target"
+    );
+    let building = sits(carries(cargo(11), "CARGO_TARGET_DIR", RUN), CHECKOUT);
+    assert_eq!(
+        run(&[building]),
+        Use::Busy(11),
+        "a build naming the run's target is busy in it"
     );
 }

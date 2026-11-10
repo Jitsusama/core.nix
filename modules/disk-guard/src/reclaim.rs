@@ -74,10 +74,20 @@ pub fn target(
         Ok(Hold::Busy(lock)) => return Outcome::Kept(format!("cargo holds {}", lock.display())),
         Err(error) => return Outcome::Failed(format!("taking its locks: {error}")),
     };
-    let detached = match dir.detach(&KEEP) {
+    // The targets kept inside it are judged and reclaimed on their own.
+    let inside: Vec<String> = crate::discover::nested(&candidate.path)
+        .iter()
+        .filter_map(|path| path.file_name()?.to_str().map(str::to_owned))
+        .collect();
+    let keep: Vec<&str> = KEEP
+        .iter()
+        .copied()
+        .chain(inside.iter().map(String::as_str))
+        .collect();
+    let detached = match dir.detach(&keep) {
         Ok(detached) => detached,
         Err(error) if error.raw_os_error() == Some(libc::ENOSPC) => {
-            let removed = remove_in_place(&dir, &KEEP);
+            let removed = remove_in_place(&dir, &keep);
             drop(held);
             return match removed {
                 Ok(()) => Outcome::Reclaimed,

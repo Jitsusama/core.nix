@@ -281,3 +281,39 @@ fn a_build_on_its_own_filesystem_whose_checkout_left_the_home_is_orphaned() {
     assert_eq!(checkout_of(&t, Some(&home)), Checkout::Gone(gone));
     assert_eq!(checkout_of(&t, None), Checkout::Unknown);
 }
+
+/// A session giving each run its own `CARGO_TARGET_DIR` inside the one its
+/// zone names keeps targets in a target, each built at its own time, as one
+/// zone's held 23 GB on 10 November. A platform's directory, which cargo
+/// marks too, is the outer target's own, and a target's build directory
+/// inside a run's is the run's.
+#[test]
+fn a_target_kept_inside_a_target_is_found_on_its_own() {
+    let root = tempfile::tempdir().unwrap();
+    let root = real(root.path());
+    let outer = tagged(&root.join("tree/target/zone"), &[]);
+    let run = tagged(&outer.join("run-1"), &[]);
+    file(
+        &outer.join("x86_64-unknown-linux-gnu/CACHEDIR.TAG"),
+        CARGO_TAG,
+    );
+    file(&run.join("build/CACHEDIR.TAG"), CARGO_TAG);
+    assert_eq!(
+        sorted(walk(&root, None).unwrap()),
+        [
+            target(outer.clone(), Checkout::Unknown),
+            target(run.clone(), Checkout::Unknown)
+        ],
+        "the run's target is found beside the zone's, and nothing else"
+    );
+    assert_eq!(
+        disk_guard::discover::enclosing(&run),
+        Some(outer.clone()),
+        "the run's target is kept inside the zone's"
+    );
+    assert_eq!(
+        disk_guard::discover::enclosing(&outer.join("x86_64-unknown-linux-gnu")),
+        None,
+        "a platform's directory is no target of its own"
+    );
+}
