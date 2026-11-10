@@ -19,11 +19,13 @@
 // The figures are the machine daemon's (modules/machine), its supply
 // records, each power supply's every figure with what UPower works out of
 // the battery; it reads them once a second while Power's rows can be seen
-// (Seen.js), as Machine's Power row is. The charge limit is still written
-// here, through the kernel's own files.
+// (Seen.js), as Machine's Power row is, and once as the shell starts and
+// as UPower says a device came or went (Daemon.qml's refresh). The charge
+// limit is still written here, through the kernel's own files.
 import qs
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.UPower
 import QtQuick
 import "Numbers.js" as Numbers
 import "Machine.js" as Machine
@@ -119,6 +121,16 @@ Provider {
     // then.
     readonly property bool seen: Seen.seen(launcher, provider, ["energy", "power"],
         typed => Seen.asks(questions, plainly(typed)))
+
+    // The supplies are read once though nothing shows them, as the shell
+    // starts and as UPower says a device came or went. What's inside the
+    // battery is made while the launcher is closed, from what's held, so a
+    // battery read only while seen was missing from it, or kept after it
+    // had gone: its Health was never found from the root (the net's
+    // goes-places runs, 2026-11-09). UPower says so without being polled.
+    readonly property int upowerDevices: UPower.devices.values.length
+    onUpowerDevicesChanged: daemon.refresh()
+    Component.onCompleted: daemon.refresh()
 
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing

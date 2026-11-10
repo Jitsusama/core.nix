@@ -72,6 +72,12 @@ Provider {
     readonly property bool seen: Seen.seen(launcher, provider, ["heat"],
         typed => Seen.asks(questions.concat(Object.keys(partsAsked)), plainly(typed)))
 
+    // And once as the shell starts, though nothing shows them, since
+    // what's inside each part is made from what's held while the launcher
+    // is closed, and a part read only while seen was never found from the
+    // root until Heat had been shown (Daemon.qml's refresh).
+    Component.onCompleted: daemon.refresh()
+
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing
     // what it held before (Provider.stillReading).

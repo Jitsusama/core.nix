@@ -5,7 +5,9 @@
 // daemon running the client says it isn't answering and gives a get none
 // at once; once the daemon starts the client connects by itself and says
 // hello, which names the source; a watch narrowed to those listed holds
-// them alone; a search's answer is given to it and never held; one no
+// them alone; one not live holds nothing until it's refreshed, and then
+// holds its kind, watched no longer; a search's answer is given to it and
+// never held; one no
 // source knows any more is let go; the keys it watches ahead come to be
 // held, asked ahead; a get is answered by id, asked as a step-in; the
 // daemon stopping is said, keeping what was held and giving a get none,
@@ -97,6 +99,15 @@ ShellRoot {
     }
     property bool heldBoth: false
 
+    // Not live, so watching only once it's refreshed, until answered.
+    Daemon {
+        id: refreshed
+
+        socket: `${root.runtime}/daemons/people.sock`
+        kind: "person"
+        live: false
+    }
+
     // Watching a kind with no records.
     Daemon {
         id: none
@@ -163,6 +174,12 @@ ShellRoot {
             holds: () => root.eli in listed.held && !(root.hal in listed.held)
                 && root.hal in people.held && root.ivy in people.held
                 && root.hal in forgetting.held
+                && Object.keys(refreshed.held).length === 0
+        },
+        {
+            what: "one not live, refreshed, holds its kind and is watched no longer",
+            run: () => refreshed.refresh(),
+            holds: () => root.hal in refreshed.held && !refreshed.watched
         },
         {
             what: "a search's answer is given to it and never held",
