@@ -229,7 +229,7 @@ ShellRoot {
             // restart answers within it. The rows stay as last listed.
             windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             Expect.same("answering, Windows' row notes nothing", windows.noted(), "");
-            const listed = names(windows.everything());
+            const listed = names(windows.things);
             windows.windowsDaemon.gone();
             Expect.same("a daemon just gone isn't said yet", windows.noted(), "");
             windows.quietFor();
@@ -238,8 +238,7 @@ ShellRoot {
             Expect.same("and in the head while inside", windows.pressing, "not answering");
             Expect.same("and with none ever listed, the empty line", windows.collection.empty,
                 "Not answering.");
-            Expect.same("while the rows stay as last listed", names(windows.everything()),
-                listed);
+            Expect.same("while the rows stay as last listed", names(windows.things), listed);
             windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             Expect.same("and no more once it answers", windows.noted(), "");
             windows.windowsDaemon.gone();
