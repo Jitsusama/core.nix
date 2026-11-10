@@ -2680,6 +2680,7 @@ onLinux {
       cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./NoticeBody.js} NoticeBody.js
@@ -2701,13 +2702,15 @@ onLinux {
       printf '%s\n' "$HOME/src/core.nix" /etc > $HOME/recent
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
       # The list programs share, as recent-files prints it: the tester by
-      # its name and by its id, one file twice, one of no program here, and
-      # one the radio was given, which can't open a file itself, and one the
-      # viewer opened, named by its command as recent-files names it, each
-      # with when, in seconds, the viewer's last with none.
+      # its name and by its id, one file twice and a picture in a folder,
+      # one of no program here, and one the radio was given, which can't
+      # open a file itself, and one the viewer opened, named by its command
+      # as recent-files names it, each with when, in seconds, the viewer's
+      # last with none.
       printf '%s\t%s\t%s\n' Tester "$HOME/notes.md" 300 nobody-here "$HOME/lost.md" 290 \
         tester "$HOME/plan.md" 100 Tester "$HOME/notes.md" 50 radio "$HOME/song.ogg" 40 \
-        viewer "$HOME/paper.pdf" 30 viewer "$HOME/old.pdf" "" > $HOME/shared
+        tester "$HOME/Pictures/shot.png" 35 viewer "$HOME/paper.pdf" 30 \
+        viewer "$HOME/old.pdf" "" > $HOME/shared
       export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       # The browser's sites, as chrome-recent-sites prints them, each
       # reading saying which it is.

@@ -594,12 +594,33 @@ ShellRoot {
             const [switching, , , secret, logbook, draft, shared, told, quit, media, sound] = tester;
             same("Recent says how many it holds, and their names for its drawer",
                 `${shared.side} ${shared.count ?? ""}|${shared.heldNames.join(", ")}`,
-                "3 |notes.md, Plan Doc, plan.md");
+                "4 |notes.md, Plan Doc, plan.md, shot.png");
             const files = shared.targets();
             same("its files from the list programs share, by its name or its id, and what another "
                 + "provider gives it, merged by when each was last used, newest first",
                 `${names(files)} ${files.map(row => row.key).join(" ")}`,
-                `notes.md, Plan Doc, plan.md file:${root.home}/notes.md gdoc:plan file:${root.home}/plan.md`);
+                `notes.md, Plan Doc, plan.md, shot.png file:${root.home}/notes.md gdoc:plan `
+                + `file:${root.home}/plan.md file:${root.home}/Pictures/shot.png`);
+            // A file from the list programs share is said as a download
+            // is (ChromeProgram.qml): when it was last used at its right,
+            // with its folder after but the home's, a lone "~" saying
+            // nothing (VKCF3Z, 2026-11-09); a picture's mark or a video's,
+            // as files wear them; and a drawer saying where it is and what
+            // kind, its name, and a picture shown as it is.
+            const [notes, , , shot] = files;
+            same("each says when it was last used, then its folder but the home's",
+                `${notes.side} | ${shot.side}`,
+                "1\u00a0Jan\u00a01970 | 1\u00a0Jan\u00a01970 \u00b7 ~/Pictures");
+            same("a picture wears a picture's mark, and any other file a file's",
+                `${shot.glyph === Theme.glyph.picture} ${notes.glyph === Words.glyph("path:file")}`,
+                "true true");
+            const drawn = typeof shot.drawer === "function" ? shot.drawer() : shot.drawer;
+            same("its drawer says where it is and what kind, its name, and shows the picture",
+                `${drawn?.eyebrow} | ${drawn?.title} | ${drawn?.preview?.picture}`,
+                `in ~/Pictures \u00b7 PNG | shot.png | ${root.home}/Pictures/shot.png`);
+            same("one not a picture shows none",
+                (typeof notes.drawer === "function" ? notes.drawer() : notes.drawer)?.preview,
+                undefined);
             files[0].run();
             same("one opens by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["tester", `${root.home}/notes.md`]));
