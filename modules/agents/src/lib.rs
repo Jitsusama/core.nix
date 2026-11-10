@@ -14,6 +14,7 @@
 //! - `session`: a session as the node tells of it, and their order.
 //! - `file`: files another program writes whole, heard as each lands.
 //! - `inputs`: what every source last said, and every record made of it.
+//! - `sources`: each source followed on its own thread, heard in one loop.
 //! - `watch`: what the node and the other daemons hold, heard as it moves.
 
 pub mod figures;
@@ -23,6 +24,7 @@ pub mod row;
 pub mod said;
 pub mod served;
 pub mod session;
+pub mod sources;
 pub mod standing;
 pub mod summary;
 pub mod tree;

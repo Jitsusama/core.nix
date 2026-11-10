@@ -139,9 +139,21 @@ impl Watch {
     }
 
     /// Waits for the next answer to the watch and takes it, passing over
-    /// the hello's and any that move nothing; an end of the connection is
-    /// an error, so whoever holds the watch opens it again.
+    /// any that move nothing; an end of the connection is an error, so
+    /// whoever holds the watch opens it again.
     pub fn heard(&mut self) -> io::Result<Moved> {
+        loop {
+            let answer = self.answer()?;
+            let moved = self.held.took(&answer);
+            if !moved.is_empty() {
+                return Ok(moved);
+            }
+        }
+    }
+
+    /// Waits for the next answer to the watch, as it was said, passing
+    /// over the hello's, for whoever holds the records elsewhere.
+    pub fn answer(&mut self) -> io::Result<Value> {
         loop {
             let mut line = String::new();
             if self.lines.read_line(&mut line)? == 0 {
@@ -159,10 +171,7 @@ impl Watch {
             if let Some(error) = answer.get("error") {
                 return Err(io::Error::other(format!("the watch was refused: {error}")));
             }
-            let moved = self.held.took(&answer);
-            if !moved.is_empty() {
-                return Ok(moved);
-            }
+            return Ok(answer);
         }
     }
 }
