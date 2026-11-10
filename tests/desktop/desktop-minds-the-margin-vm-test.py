@@ -323,12 +323,11 @@ def test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep(
     desktop.close_launcher()
     desktop.reported("sets margin ", margin_points(""), since)
     # Another mark comes and goes, so the row slides aside and back, and
-    # what takes the pointer has to follow it there.
+    # what takes the pointer has to follow it there. Both left on, the later
+    # in the pieces' order stands further from the corner, whichever came first.
     since = desktop.mark()
     desktop.as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1")
-    desktop.reported(
-        "holds margin ", lambda rest: sorted(rest.split()) == ["awake", "muted"], since
-    )
+    desktop.reported("holds margin ", lambda rest: rest.split() == ["muted", "awake"], since)
     desktop.held_still()
     since = desktop.mark()
     desktop.as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")

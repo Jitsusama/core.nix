@@ -54,6 +54,11 @@ QtObject {
         check("its entry keeps the rest of the piece's",
             several.map(fact => fact.entry.name), ["battery", "devices", "devices", "clock"]);
         check("and the overview's own entry is left as it was", entries[1].mark, "device");
+        check("each fact keeps its place in the order, a thing of several its own",
+            several.map(fact => fact.place), [0, 1, 2, 3]);
+        check("and a place is counted over what's there, not the entries",
+            Facts.facts(entries, [battery, { each: [] }, clock]).map(fact => fact.place),
+            [0, 1]);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
