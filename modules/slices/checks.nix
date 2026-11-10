@@ -17,7 +17,8 @@
   # floor nobody has, and nothing says so. session.slice's and app.slice's
   # are hard: the kernel takes a soft one back under pressure, and the
   # compositor reads keys late. agents.slice's is soft, so idle sessions
-  # swap before work is ended, and every slice above claims both kinds.
+  # swap before work is ended, but for the hard part the sessions' kitty
+  # keeps, which the next check holds; every slice above claims both kinds.
   # Whether the parents' floors cover them is the VM test's to say, since
   # one is a share of memory and another a size.
   session-memory-is-protected =
@@ -39,7 +40,6 @@
         && systemd.user.slices.session.sliceConfig ? MemoryMin
         && systemd.user.slices.app.sliceConfig ? MemoryMin
         && agents ? MemoryLow
-        && !(agents ? MemoryMin)
       );
 
   # The compositor and the shell are how Joel drives the machine, so inside
@@ -83,6 +83,27 @@
     holds "sessions-sit-beside-the-programs"
       "Agents' sessions have no slice beside the apps at their weight, or the sorter doesn't watch it."
       (weight slices.agents == weight slices.app && watches "app.slice" && watches "agents.slice");
+
+  # The one kitty every session's window is drawn by comes before the
+  # sessions it holds, on the processor and in memory, inside their slice:
+  # starved and swapped out beside them, it stopped drawing and lost Joel's
+  # keys whenever a session opened (2026-11-09). Its hard floor holds only
+  # as far as agents.slice keeps one as large, and the rest of that slice's
+  # stays soft.
+  the-sessions-kitty-comes-before-its-sessions =
+    let
+      inherit (graphical.config) home-manager systemd;
+      kitty = home-manager.users.someone.systemd.user.services.sessions-kitty.Service;
+      agents = systemd.user.slices.agents.sliceConfig;
+    in
+    holds "the-sessions-kitty-comes-before-its-sessions"
+      "The sessions' kitty isn't in agents.slice ahead of its sessions' scopes, or its hard floor isn't one agents.slice keeps."
+      (
+        kitty.Slice == "agents.slice"
+        && (kitty.CPUWeight or 100) > 100
+        && kitty ? MemoryMin
+        && (agents.MemoryMin or null) == kitty.MemoryMin
+      );
 
   # Work other sessions wait on ranks with them on the disk, at their own
   # target, while on the processor it stays below what Joel uses and above

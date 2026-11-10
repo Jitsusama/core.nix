@@ -172,6 +172,7 @@ let
   # has the rest of memory, and when that runs out, it's what swaps.
   apps = "10%";
   agents = "15%";
+  agentsHeld = "512M";
   account = "15%";
 
   # The system's own services a call or the desktop waits on keep a soft
@@ -306,9 +307,16 @@ in
     # programs as one group of the same weight, as the empty slice's probe
     # met app.slice. Whoever starts
     # their terminal names this slice, and kitty puts each window's scope
-    # in its own.
+    # in its own. Its floor is soft but for one part, hard: the floor the
+    # kitty drawing every session's window keeps for itself (Quickshell's
+    # sessions-kitty), which a child's hard floor has only as far as its
+    # slice has one. Soft alone, the kernel took it back 285,154 times in
+    # 40 minutes of the account swapping on 2026-11-10, and Joel's typing
+    # stalled each time a session opened. Inside the account's 15% it sits
+    # beside session.slice's 2.5 GiB and app.slice's 6.2.
     systemd.user.slices.agents.sliceConfig = {
       MemoryLow = agents;
+      MemoryMin = agentsHeld;
     }
     // latency;
 
