@@ -232,6 +232,61 @@ pub fn parse_follower(journal: &str) -> Follower {
     follower
 }
 
+/// Every update's look at main from `journalctl -u update-to-main.service -o
+/// short-unix`, whoever asked for it. The service ends each update with a
+/// done or unchanged step naming the core it followed, the follower's and a
+/// person's alike, while the follower's own journal holds only its asks.
+/// On 9 November a switch by hand with a hold given put three merges on at
+/// 19:59, and a card read from the follower alone said none had a switch.
+#[must_use]
+pub fn parse_looks(journal: &str) -> Vec<Look> {
+    let mut looks = Vec::new();
+    for line in journal.lines() {
+        let Some((stamp, rest)) = line.split_once(' ') else {
+            continue;
+        };
+        let (Ok(at), Some(brace)) = (stamp.parse::<f64>(), rest.find('{')) else {
+            continue;
+        };
+        let Ok(step) = serde_json::from_str::<Said>(&rest[brace..]) else {
+            continue;
+        };
+        let switched = match step.step.as_deref() {
+            Some("done") => true,
+            Some("unchanged") => false,
+            _ => continue,
+        };
+        let Some(core) = step.followed.and_then(|f| f.core) else {
+            continue;
+        };
+        #[expect(clippy::cast_possible_truncation, reason = "a time in seconds")]
+        let at = at as i64;
+        looks.push(Look { at, core, switched });
+    }
+    looks
+}
+
+impl Follower {
+    /// Takes every update's looks, from the service's journal, over the
+    /// follower's own, which are some of them. A hold the follower met
+    /// before the newest look is over: only a person's ask with a hold sent
+    /// moves the machine on after one, and that look is it. None at all
+    /// keeps the follower's: an account outside the groups that read the
+    /// system's journal is told nothing, and its follower still knows its own.
+    pub fn saw(&mut self, looks: Vec<Look>) {
+        if looks.is_empty() {
+            return;
+        }
+        let newest = looks.iter().map(|look| look.at).max();
+        if let (Some((held, _)), Some(newest)) = (&self.held, newest)
+            && *held < newest
+        {
+            self.held = None;
+        }
+        self.looks = looks;
+    }
+}
+
 /// One run nix-offload sent to a builder.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Run {
@@ -436,6 +491,51 @@ mod tests {
                     switched: false
                 },
             ]
+        );
+    }
+
+    const SERVICE: &str = "\
+100.0 host update-to-main[4]: uid 1000 asks for an update
+200.0 host update-to-main[4]: {\"step\":\"done\",\"commit\":\"ab\",\"followed\":{\"core\":\"bebf965b8b6c\"}}
+301.0 host update-to-main[4]: {\"step\":\"unchanged\",\"commit\":\"ab\",\"followed\":{\"core\":\"be57b747568f\"}}
+450.0 host update-to-main[4]: {\"step\":\"building\",\"commit\":\"cd\"}
+500.0 host update-to-main[4]: {\"step\":\"done\",\"commit\":\"cd\",\"restart\":\"its kernel changed\",\"followed\":{\"core\":\"b508914f6b44\"}}
+600.0 host update-to-main[4]: {\"step\":\"done\",\"commit\":\"cd\"}
+";
+
+    #[test]
+    fn a_switch_by_hand_is_a_look_as_the_followers_are() {
+        let mut follower = parse_follower(JOURNAL);
+        follower.held = Some((420, "switching would change its kernel".into()));
+        follower.saw(parse_looks(SERVICE));
+        let looks: Vec<_> = follower.looks.iter().map(|l| (l.at, l.switched)).collect();
+        assert_eq!(
+            looks,
+            vec![(200, true), (301, false), (500, true)],
+            "every ended update naming its core is a look, once, and only those"
+        );
+        assert_eq!(
+            follower.looks[2].core, "b508914f6b44",
+            "the switch by hand names the core it followed"
+        );
+        assert_eq!(follower.held, None, "a hold before the newest look stood");
+    }
+
+    #[test]
+    fn a_hold_after_the_newest_look_stands_and_no_looks_keep_the_followers() {
+        let mut follower = parse_follower(JOURNAL);
+        follower.held = Some((700, "switching would change its kernel".into()));
+        follower.saw(parse_looks(SERVICE));
+        assert!(
+            follower.held.is_some(),
+            "a hold met after the newest look was dropped"
+        );
+        let mut follower = parse_follower(JOURNAL);
+        follower.saw(Vec::new());
+        assert_eq!(
+            follower.looks,
+            parse_follower(JOURNAL).looks,
+            "a journal that says nothing took the follower's looks away"
         );
     }
 

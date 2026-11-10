@@ -12,7 +12,8 @@ onLinux {
   # cadence's tests run as it builds: a merge reads its pull request and
   # parents, docs alone are tests only and the kernel or the lock is boot;
   # the follower's look names the core it built over the one it asked at,
-  # an ask with no end is under way and a switch put off for a call waits;
+  # a switch by hand counts as the follower's do and ends a hold, an ask
+  # with no end is under way and a switch put off for a call waits;
   # runs, pressure, memory, a machine-wide kill and the net's round are read
   # from their records; a merge off the machine past twenty minutes, slow
   # VM waits, high pressure, a fresh kill and the net's lag at each doubling
