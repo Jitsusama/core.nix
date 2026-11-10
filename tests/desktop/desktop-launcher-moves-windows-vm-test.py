@@ -76,11 +76,13 @@ def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
         desktop.in_session(f"grep -rqsF {picked} ~/.local/state/quickshell"),
         timeout=dt.timedelta(seconds=10),
     )
-    # And what the opening took: five letters, a Return, kitty picked for them.
-    kept = desktop.as_account(
-        "cat $(find ~/.local/state/quickshell -name launcher-trials.json) 2>/dev/null || true"
+    # And what the opening took, the file's last line: five letters, a
+    # Return, kitty picked for them. The pipe writes it on its own time.
+    last = "tail -n 1 $(find ~/.local/state/quickshell -name launcher-trials.jsonl)"
+    machine.wait_until_succeeds(
+        desktop.in_session(f"{last} | grep -qF program:kitty"), timeout=dt.timedelta(seconds=10)
     )
-    trial = json.loads(kept or "[]")[-1]
+    trial = json.loads(desktop.as_account(last))
     assert trial["picked"] == "program:kitty", trial
     assert trial["typed"] == "kitty", trial
     assert trial["keys"]["letters"] == len("kitty"), trial

@@ -172,8 +172,28 @@ function paced(trial, pace) {
     });
 }
 
-// The trials kept, this one last, the oldest let go past `most`.
-function kept(trials, trial, most) {
-    const all = (Array.isArray(trials) ? trials : []).concat(trial ? [trial] : []);
-    return all.length > most ? all.slice(all.length - most) : all;
+// One trial as the line the file gains as the launcher closes: that
+// opening's text alone, so a close costs the same however many are kept.
+// Turning all 1,339 of Joel's into text took 39 ms a close at a load of
+// 66 (2026-11-10), before the frame that hands his window the keys back.
+function said(trial) {
+    return `${JSON.stringify(trial)}\n`;
+}
+
+// What the file of lines should hold as the shell starts, given what it
+// holds (`lines`) and the list the shell kept before it kept lines
+// (`listed`, parsed only while the lines are empty): the newest `most`
+// lines, or null where it holds that already.
+function carried(lines, listed, most) {
+    let kept = String(lines ?? "").split("\n").filter(line => line.trim() !== "");
+    let changed = false;
+    if (kept.length === 0 && Array.isArray(listed)) {
+        kept = listed.map(trial => JSON.stringify(trial));
+        changed = kept.length > 0;
+    }
+    if (kept.length > most) {
+        kept = kept.slice(kept.length - most);
+        changed = true;
+    }
+    return changed ? kept.map(line => `${line}\n`).join("") : null;
 }

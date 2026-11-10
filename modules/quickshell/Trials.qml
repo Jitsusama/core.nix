@@ -1,8 +1,10 @@
 // What each opening of the launcher took (launcher/Trials.js counts it),
 // kept in the shell's state folder beside the picks, so the homes Joel
 // tries can be compared by the keys, picks, misses and time each cost him.
-// It's written once, as the launcher closes; nothing is spawned, and
-// nothing is read but the file itself, once, at start.
+// A line each, the newest last: as the launcher closes, that opening's line
+// goes down a pipe to the file's end, so a close costs the same however
+// many are kept. The shell holds none of them; the file is read once, at
+// start, to let the oldest go.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -14,13 +16,17 @@ Scope {
     // The home the launcher opens on, which each trial names: "today" is
     // the home as it was before the trials began.
     property string home: "today"
-    // How many openings to keep; the oldest go first. At about fifty
-    // openings a day that's two months.
+    // How many openings to keep; the oldest go as the shell starts. At
+    // about fifty openings a day that's two months.
     property int remember: 3000
 
     // The opening under way, or null while closed.
     property var trial: null
-    property var trials: []
+
+    // Whether the pipe is running to take a close's line, and the lines said
+    // while it wasn't, written once it starts.
+    property bool piped: false
+    property var waiting: []
 
     function opened() {
         trial = Trials.begun(Date.now(), home);
@@ -90,26 +96,75 @@ Scope {
         if (pace.late > 0)
             console.info(`launcher: ${pace.late} of ${pace.drawn} frames came late while`
                 + ` it moved, the longest ${pace.longest} ms after the one before`);
-        trials = Trials.kept(trials, Trials.ended(Trials.paced(trial, pace), Date.now()),
-            remember);
+        const said = Trials.said(Trials.ended(Trials.paced(trial, pace), Date.now()));
+        if (piped)
+            keeping.write(said);
+        else
+            waiting.push(said);
         trial = null;
-        file.setText(JSON.stringify(trials));
     }
 
+    // The lines, read once as the shell starts and written only to let the
+    // oldest go then; the pipe below adds each close's.
     FileView {
         id: file
-        path: Quickshell.statePath("launcher-trials.json")
+        path: Quickshell.statePath("launcher-trials.jsonl")
+        blockLoading: true
+        printErrors: false
+        // The pipe opens the file once it holds what it should, so it adds
+        // to the file written rather than one replaced.
+        onSaved: keeping.running = true
+        onSaveFailed: keeping.running = true
+    }
+
+    // The one list the shell kept before it kept lines, read only while
+    // there are no lines, to carry it into them.
+    FileView {
+        id: listed
         blockLoading: true
         printErrors: false
     }
 
-    Component.onCompleted: {
-        try {
-            const kept = JSON.parse(file.text() || "[]");
-            trials = Array.isArray(kept) ? kept : [];
-        } catch (e) {
-            console.warn(`The launcher's trials couldn't be read, so they start afresh: ${e}`);
-            trials = [];
+    // What carries each close's line to the file's end, open as long as the
+    // shell is, its folder made first on a machine that has kept nothing.
+    Process {
+        id: keeping
+        command: ["sh", "-c", 'mkdir -p "${1%/*}" && exec cat >> "$1"', "trials", file.path]
+        stdinEnabled: true
+        onStarted: {
+            root.piped = true;
+            root.waiting.splice(0).forEach(said => keeping.write(said));
         }
+        // A pipe that ends would lose every close after it without a word,
+        // so it's said and started again, a second on so one that ends at
+        // once doesn't spin.
+        onExited: (code, status) => {
+            root.piped = false;
+            console.warn(`launcher: the trials' pipe ended with ${code}, so it starts again`);
+            again.restart();
+        }
+    }
+
+    Timer {
+        id: again
+        interval: 1000
+        onTriggered: keeping.running = true
+    }
+
+    Component.onCompleted: {
+        const lines = file.text();
+        if (lines.trim() === "")
+            listed.path = Quickshell.statePath("launcher-trials.json");
+        let before = null;
+        try {
+            before = listed.path === "" ? null : JSON.parse(listed.text() || "[]");
+        } catch (e) {
+            console.warn(`The launcher's old trials couldn't be read, so none are carried: ${e}`);
+        }
+        const kept = Trials.carried(lines, before, remember);
+        if (kept === null)
+            keeping.running = true;
+        else
+            file.setText(kept);
     }
 }
