@@ -6,7 +6,8 @@ A test that can't run, for want of a filesystem, a device or a tool, fails the
 gate instead of returning early, since a skip nobody sees passes a gate that
 proved nothing. This reads the tests of TREE for each way one bows out: in
 Rust, an `#[ignore]` that gives no reason, a line printing that it skipped,
-and, in a tests folder, a `let ... else { return }`; in Python, pytest's and
+and, in a tests folder's file holding a test, a `let ... else { return }`;
+in Python, pytest's and
 unittest's skips and expected failures; in QML, a TestCase's `skip(`. An
 `#[ignore = "..."]` passes, since its reason names what runs it instead.
 
@@ -27,8 +28,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 # What bows a test out, by the kind of file it's in. A Rust test folder's early
-# return from a `let ... else` is read only there, since code beside it uses
-# the same shape for what it's meant to do.
+# return from a `let ... else` is read only in a file holding a test, since code
+# beside it, a stand-in's included, uses the same shape for what it's meant to
+# do.
 SKIPS = {
     ".rs": re.compile(r'#\[ignore\]|\be?println!\(\s*"(?i:skip)'),
     ".py": re.compile(
@@ -38,6 +40,8 @@ SKIPS = {
     ".qml": re.compile(r"\bskip\("),
 }
 RETURNS = re.compile(r"\belse\s*\{\s*return;?\s*\}")
+# A Rust test, by `#[test]` or a runtime's own, such as `#[tokio::test]`.
+RUST_TEST = re.compile(r"#\[(\w+::)*test\b")
 
 
 def is_test(path: Path) -> bool:
@@ -48,11 +52,12 @@ def is_test(path: Path) -> bool:
 def skips(path: Path, text: str) -> Iterator[int]:
     """Give the line of each way a test bows out, in a file of tests."""
     in_tests = "tests" in path.parts[:-1]
-    if path.suffix == ".rs" and not in_tests and "#[test]" not in text:
+    tested = path.suffix == ".rs" and RUST_TEST.search(text) is not None
+    if path.suffix == ".rs" and not in_tests and not tested:
         return
     for number, line in enumerate(text.splitlines(), 1):
         code = line.split("//" if path.suffix in {".rs", ".qml"} else "#", 1)[0]
-        returns = path.suffix == ".rs" and in_tests and RETURNS.search(code)
+        returns = tested and in_tests and RETURNS.search(code)
         if SKIPS[path.suffix].search(code) or returns:
             yield number
 
@@ -103,7 +108,8 @@ def main() -> None:
     )
     for failure in said:
         print(failure, file=sys.stderr)
-    print(f"{skips_said(sum(len(held) for held in found.values()))}, in {len(found)} files.")
+    files = f"{len(found)} file{'' if len(found) == 1 else 's'}"
+    print(f"{skips_said(sum(len(held) for held in found.values()))}, in {files}.")
     sys.exit(1 if said else 0)
 
 
