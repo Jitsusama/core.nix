@@ -105,15 +105,8 @@ impl Parakeet {
         cache: Option<&Path>,
         priority: Priority,
     ) -> Result<Self> {
-        // This build's own path changes with OpenVINO or this crate, either
-        // of which makes what's compiled differ.
-        let build = std::env::current_exe().unwrap_or_default();
-        let parts = [
-            dir.as_os_str().as_encoded_bytes(),
-            device.as_bytes(),
-            build.as_os_str().as_encoded_bytes(),
-        ];
-        let kept = cache.map(|cache| cache::folder(cache, &parts));
+        let parts = [dir.as_os_str().as_encoded_bytes(), device.as_bytes()];
+        let kept = cache.map(|cache| cache::kept(cache, &parts));
         let parakeet = Self::load_in(dir, device, kept.as_deref(), priority)?;
         if let (Some(cache), Some(kept)) = (cache, &kept) {
             cache::forget_others(cache, kept);
