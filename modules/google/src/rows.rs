@@ -11,6 +11,7 @@
 //! by key only while it shows. Mail.qml and Mail.js make the same row
 //! today; these take their place as the shell reads them.
 
+use std::cmp::Reverse;
 use std::fmt::Write;
 
 use serde_json::{Value, json};
@@ -21,6 +22,9 @@ use crate::mail::Mail;
 
 /// How many people a sent mail's row names before it counts the rest.
 const NAMED: usize = 2;
+
+/// How many Mail's Recent lists, as every Recent does.
+const RECENT: usize = 9;
 
 /// Gmail, where a new message is written in a window of its own.
 const COMPOSE: &str = "https://mail.google.com/mail/u/0/";
@@ -96,16 +100,64 @@ pub fn mail(held: &[Mail], words: &Words) -> Vec<Value> {
     wanting
         .iter()
         .enumerate()
-        .map(|(order, mail)| row(mail, order, words))
+        .map(|(order, mail)| row(mail, "mail", order, words))
         .collect()
 }
 
-/// Each wanting piece's drawer, by the key its row's drawer is watched by.
-pub fn mail_drawers(held: &[Mail], words: &Words) -> Vec<(String, Value)> {
-    held.iter()
+/// The mail Joel had lately, as Mail's Recent lists it (Mail.js's
+/// `lately`): what he sent or read in the last month, newest first, a
+/// conversation once by its newest, leaving out any conversation that
+/// still wants him, which Mail lists above it and is never Recent. A
+/// conversation is its page in Gmail, or the mail itself where it has
+/// none.
+fn had_lately<'a>(had: &'a [Mail], held: &[Mail]) -> Vec<&'a Mail> {
+    let talk = |mail: &Mail| {
+        if mail.page.is_empty() {
+            format!("mail:{}", mail.id)
+        } else {
+            mail.page.clone()
+        }
+    };
+    let mut seen: Vec<String> = held
+        .iter()
         .filter(|mail| mail.done.is_none())
-        .map(|mail| {
-            let key = format!("drawer:mail:{}", mail.id);
+        .map(talk)
+        .collect();
+    let mut lately: Vec<&Mail> = had.iter().collect();
+    lately.sort_by_key(|mail| Reverse(mail.at));
+    lately.retain(|&mail| {
+        let conversation = talk(mail);
+        let new = !seen.contains(&conversation);
+        seen.push(conversation);
+        new
+    });
+    lately.truncate(RECENT);
+    lately
+}
+
+/// Mail's Recent as rows, `row:lately:<id>`, each as Mail's row says it.
+pub fn lately(had: &[Mail], held: &[Mail], words: &Words) -> Vec<Value> {
+    had_lately(had, held)
+        .iter()
+        .enumerate()
+        .map(|(order, mail)| row(mail, "lately", order, words))
+        .collect()
+}
+
+/// Each wanting piece's drawer, and each of Mail's Recent's, by the key
+/// its row's drawer is watched by.
+pub fn mail_drawers(held: &[Mail], had: &[Mail], words: &Words) -> Vec<(String, Value)> {
+    let wanting = held
+        .iter()
+        .filter(|mail| mail.done.is_none())
+        .map(|mail| ("mail", mail));
+    let recent = had_lately(had, held)
+        .into_iter()
+        .map(|mail| ("lately", mail));
+    wanting
+        .chain(recent)
+        .map(|(place, mail)| {
+            let key = format!("drawer:{place}:{}", mail.id);
             (key, drawer(mail, titled(mail, words)))
         })
         .collect()
@@ -119,11 +171,11 @@ fn titled<'a>(mail: &'a Mail, words: &'a Words) -> &'a str {
     }
 }
 
-fn row(mail: &Mail, order: usize, words: &Words) -> Value {
+fn row(mail: &Mail, place: &str, order: usize, words: &Words) -> Value {
     json!({
-        "key": format!("row:mail:{}", mail.id),
+        "key": format!("row:{place}:{}", mail.id),
         "row": format!("mail:{}", mail.id),
-        "place": "mail",
+        "place": place,
         "kind": "mail",
         "order": order,
         "name": titled(mail, words),
@@ -131,7 +183,7 @@ fn row(mail: &Mail, order: usize, words: &Words) -> Value {
         "hue": "program",
         "depth": 0,
         "side": beside(mail, words),
-        "drawer": format!("drawer:mail:{}", mail.id),
+        "drawer": format!("drawer:{place}:{}", mail.id),
         "acts": acts(mail),
         "held": {
             "page": mail.page, "address": mail.address, "sent": mail.sent,
@@ -408,6 +460,53 @@ mod tests {
     }
 
     #[test]
+    fn mails_recent_is_what_joel_had_lately_a_conversation_once_none_still_wanting_him() {
+        let in_talk = |id: &str, at: i64, talk: &str| {
+            let mut mail = one(id, at);
+            mail.page = format!("https://mail.google.com/mail/u/0/#inbox/{talk}");
+            mail
+        };
+        let mut no_page = one("bare", 500);
+        no_page.page = String::new();
+        let had = [
+            in_talk("older", 1_000, "plans"),
+            in_talk("newer", 4_000, "plans"),
+            in_talk("asking", 3_000, "wanting"),
+            in_talk("alone", 2_000, "alone"),
+            no_page,
+        ];
+        let held = [in_talk("still", 5_000, "wanting")];
+        let rows = lately(&had, &held, &words());
+        let keys: Vec<&str> = rows.iter().filter_map(|row| row["key"].as_str()).collect();
+        assert_eq!(
+            keys,
+            ["row:lately:newer", "row:lately:alone", "row:lately:bare"],
+            "a conversation once at its newest, none that still wants him"
+        );
+        assert_eq!(rows[0]["place"], "lately");
+        assert_eq!(rows[0]["row"], "mail:newer");
+        assert_eq!(rows[0]["drawer"], "drawer:lately:newer");
+        assert_eq!(rows[2]["order"], 2);
+        let many: Vec<Mail> = (0..12)
+            .map(|at| in_talk(&format!("m{at}"), at, &format!("t{at}")))
+            .collect();
+        assert_eq!(lately(&many, &[], &words()).len(), 9, "a Recent lists nine");
+        let drawers: Vec<String> = mail_drawers(&held, &had, &words())
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect();
+        assert_eq!(
+            drawers,
+            [
+                "drawer:mail:still",
+                "drawer:lately:newer",
+                "drawer:lately:alone",
+                "drawer:lately:bare"
+            ]
+        );
+    }
+
+    #[test]
     fn mail_dealt_with_is_no_row_and_no_subject_is_said_untitled() {
         let mut done = one("done", 5_000);
         done.done = Some(Done {
@@ -420,7 +519,7 @@ mod tests {
         let rows = mail(&both, &words());
         assert_eq!(rows.len(), 1, "mail dealt with was kept a row: {rows:?}");
         assert_eq!(rows[0]["name"], "Mail Without a Subject");
-        let drawers = mail_drawers(&both, &words());
+        let drawers = mail_drawers(&both, &[], &words());
         assert_eq!(
             drawers.len(),
             1,
@@ -493,7 +592,7 @@ mod tests {
             rows[0]["drawer"], "drawer:mail:a",
             "the row didn't name its drawer"
         );
-        let drawers = mail_drawers(&[carrying], &words());
+        let drawers = mail_drawers(&[carrying], &[], &words());
         assert_eq!(drawers[0].0, "drawer:mail:a");
         assert_eq!(
             drawers[0].1,

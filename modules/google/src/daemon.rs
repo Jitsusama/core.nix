@@ -20,11 +20,13 @@
 //! (ask.rs), so the shell can do everything on one connection.
 //!
 //! Each piece of mail that wants Joel is also a `row:mail:<id>` record,
-//! each document a `row:documents:<id>`, each meeting to come a
-//! `row:calendar:<id>` and each held lately in Calendar's Recent a
-//! `row:held:<id>`, the row the launcher shows
-//! for it, worded in the vocabulary this program is handed (`rows.rs`,
-//! `document_rows.rs`, `calendar_rows.rs`), so the shell makes no rows of its own; a `list` or
+//! each in Mail's Recent a `row:lately:<id>`, each document a
+//! `row:documents:<id>`, each meeting to come a `row:calendar:<id>`,
+//! each held lately in Calendar's Recent a `row:held:<id>` and each call
+//! in Meet's Recent a `row:meet:<code>`, the row the launcher shows for
+//! it, worded in the vocabulary this program is handed (`rows.rs`,
+//! `document_rows.rs`, `calendar_rows.rs`), so the shell makes no rows
+//! of its own; a `list` or
 //! `watch` of rows names its `place`, one or a list of them, to hear only
 //! those. Each row's drawer is a `drawer:<place>:<id>` record of its own,
 //! which the row names, watched by its key only while it shows, so a
@@ -136,6 +138,7 @@ fn rows_of(state: &State, words: &Vocabulary, now: i64) -> Vec<(String, Value)> 
     let (meetings, held) = (&state.meetings, &state.held);
     let rows = rows::mail(&state.mail, &words.mail)
         .into_iter()
+        .chain(rows::lately(&state.lately, &state.mail, &words.mail))
         .chain(document_rows::documents(&state.documents, &words.documents))
         .chain(calendar_rows::meetings(
             meetings,
@@ -150,7 +153,7 @@ fn rows_of(state: &State, words: &Vocabulary, now: i64) -> Vec<(String, Value)> 
             (key, record)
         });
     let drives = &state.drive.places.drives.files;
-    let drawers = rows::mail_drawers(&state.mail, &words.mail)
+    let drawers = rows::mail_drawers(&state.mail, &state.lately, &words.mail)
         .into_iter()
         .chain(document_rows::drawers(
             &state.documents,
