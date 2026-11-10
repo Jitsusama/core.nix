@@ -27,6 +27,20 @@ let
         type = lib.types.str;
         description = "Its Nix machines line.";
       };
+      free = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        example = lib.literalExpression ''
+          pkgs.writeShellScript "free-work" "exec ssh -i ~/.ssh/collect builder@work collect 20"
+        '';
+        description = ''
+          For a builder beside, a program this account runs to free its
+          store while its proofs find it full, under the floor, as the
+          linux-builder's `collectableBy` lets a key do. It runs at once,
+          then at most every 15 minutes while it stays full, and is ended
+          past 10. Unset, a full one waits to collect its own.
+        '';
+      };
     };
   };
   names = cfg.standing != [ ] || cfg.beside != [ ];
@@ -490,6 +504,12 @@ in
 
     xdg.configFile."nix-offload/beside" = lib.mkIf names { text = builders cfg.beside; };
 
+    xdg.configFile."nix-offload/freeing" = lib.mkIf names {
+      text = lib.concatMapStrings (builder: "${builder.address} ${builder.free}\n") (
+        lib.filter (builder: builder.free != null) cfg.beside
+      );
+    };
+
     xdg.configFile."nix-offload/evaluators" = lib.mkIf (cfg.evaluators != [ ]) {
       text = lib.concatMapStrings (
         machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.owners}\n"
@@ -540,7 +560,11 @@ in
               ++ [ "--prefix ${cfg.prefix}" ]
               ++ lib.optional (cfg.whenNoneAnswers != null) "--tell ${cfg.whenNoneAnswers}"
           )
-          ++ lib.optional names "--standing ${listed "standing"} --beside ${listed "beside"}"
+          ++ lib.optionals names [
+            "--standing ${listed "standing"}"
+            "--beside ${listed "beside"}"
+            "--freeing ${listed "freeing"}"
+          ]
         );
         Environment = zoned;
       }

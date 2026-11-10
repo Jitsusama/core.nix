@@ -23,6 +23,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::freeing::{self, Freeing};
 use crate::proof::{self, Health, Keeper, State};
 use crate::there;
 
@@ -482,6 +483,11 @@ pub struct Machines {
     kept: Vec<(String, Keeper)>,
     /// The nix the builders beside are proven through.
     nix: String,
+    /// The file naming what frees each builder beside, read again with
+    /// `lists`, once `freeing_from` gives it.
+    freeing_from: Option<PathBuf>,
+    /// What frees each builder beside that names one, by its address.
+    freeing: Vec<(String, Freeing)>,
 }
 
 impl Machines {
@@ -512,6 +518,19 @@ impl Machines {
             telling: None,
             kept: Vec::new(),
             nix: "nix".to_owned(),
+            freeing_from: None,
+            freeing: Vec::new(),
+        }
+    }
+
+    /// With the file naming what frees each builder beside, read again
+    /// each time it names who answers, as [`freeing::programs`] reads it:
+    /// a builder beside whose proof finds it full is freed by its program.
+    #[must_use]
+    pub fn freeing_from(self, path: Option<PathBuf>) -> Self {
+        Self {
+            freeing_from: path,
+            ..self
         }
     }
 
@@ -621,6 +640,24 @@ impl Machines {
         if let Some(beside) = beside {
             self.beside = beside;
         }
+        let Some(programs) = self
+            .freeing_from
+            .as_ref()
+            .and_then(|path| fs::read_to_string(path).ok())
+            .map(|text| freeing::programs(&text))
+        else {
+            return;
+        };
+        // A run under way is kept while its builder still names the same
+        // program, so a reread never strands one.
+        let mut was = std::mem::take(&mut self.freeing);
+        for (address, program) in programs {
+            let kept = was
+                .iter()
+                .position(|(was, freeing)| *was == address && freeing.program() == program);
+            let freeing = kept.map_or_else(|| Freeing::of(&program), |at| was.swap_remove(at).1);
+            self.freeing.push((address, freeing));
+        }
     }
 
     /// Say the builder being made, a line of its own, or nothing once it
@@ -686,6 +723,19 @@ impl Machines {
             {
                 beside.push(builder.line.as_str());
             }
+        }
+        for (address, freeing) in &mut self.freeing {
+            let kept = self
+                .beside
+                .iter()
+                .find(|builder| builder.address == *address);
+            let full = kept.is_some_and(|builder| {
+                self.kept.iter().any(|(line, keeper)| {
+                    *line == builder.line && keeper.health.state() == State::Full
+                })
+            });
+            let name = kept.map_or_else(|| address.clone(), |builder| proof::named(&builder.line));
+            freeing.tend(&name, full, now);
         }
         if let Some(alone) = &mut self.alone {
             alone.say(text(beside.iter().copied(), None));
@@ -1399,6 +1449,70 @@ mod tests {
         );
         machines.show(None);
         assert_eq!(read(&alone), format!("{line}\n"), "back once it has room");
+        drop(listening);
+    }
+
+    // The same builder sat full until a person freed it, since nothing
+    // here could.
+    #[test]
+    fn a_full_builder_beside_is_freed_by_the_program_it_names() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let nix = nix_in(dir.path());
+        let (status, free) = (dir.path().join("status"), dir.path().join("free"));
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let line = "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark";
+        let (program, ran) = (dir.path().join("free-work"), dir.path().join("ran"));
+        executable(
+            &program,
+            &format!("#!/bin/sh\necho freed >> '{}'\n", ran.display()),
+        );
+        let freeing = dir.path().join("freeing");
+        fs::write(&freeing, format!("{address} {}\n", program.display())).expect("write");
+        let mut machines = Machines::new(
+            dir.path().join("machines"),
+            dir.path().join("machines-with-standing"),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![],
+        )
+        .beside(
+            dir.path().join("machines-beside"),
+            vec![Standing {
+                address,
+                line: line.to_owned(),
+            }],
+        )
+        .freeing_from(Some(freeing))
+        .proving_with(&nix);
+        fs::write(&status, "0").expect("write");
+        fs::write(&free, (proof::FLOOR * 2).to_string()).expect("write");
+        assert!(
+            !left_out(&mut machines.kept, line, &nix, Instant::now()),
+            "one with room takes builds"
+        );
+        machines.show(None);
+        assert!(!ran.exists(), "one with room is never freed");
+        fs::write(&free, (proof::FLOOR - 1).to_string()).expect("write");
+        assert!(
+            left_out(
+                &mut machines.kept,
+                line,
+                &nix,
+                Instant::now() + proof::EVERY
+            ),
+            "full"
+        );
+        let ending = Instant::now() + Duration::from_secs(5);
+        while !ran.exists() && Instant::now() < ending {
+            machines.show(None);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            fs::read_to_string(&ran).expect("freed"),
+            "freed\n",
+            "a full one is freed once"
+        );
         drop(listening);
     }
 
