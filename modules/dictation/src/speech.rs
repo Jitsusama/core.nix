@@ -36,16 +36,14 @@ impl Speech {
         words: &str,
         priority: Priority,
     ) -> Result<Self, String> {
-        // This build's own path changes with OpenVINO, GenAI or dictation,
-        // any of which makes what's compiled differ.
-        let build = std::env::current_exe().unwrap_or_default();
+        // The words size the decoder's first step, so they change what's
+        // compiled, as this build and the drivers do (cache::kept).
         let parts = [
             dir.as_os_str().as_encoded_bytes(),
             device.as_bytes(),
             words.as_bytes(),
-            build.as_os_str().as_encoded_bytes(),
         ];
-        let kept = cache.map(|cache| cache::folder(cache, &parts));
+        let kept = cache.map(|cache| cache::kept(cache, &parts));
         let speech = Self::load_in(dir, device, kept.as_deref(), words, priority)?;
         if let (Some(cache), Some(kept)) = (cache, &kept) {
             cache::forget_others(cache, kept);

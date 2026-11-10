@@ -2,9 +2,9 @@
 //!
 //! OpenVINO names each compiled model by a hash of what made it and never
 //! removes one, and on the NPU each of Whisper's is about 0.9 GB. A new
-//! model, a new build of dictation or OpenVINO, or a word added to Joel's
-//! words (which sizes the decoder's first step) each compiles another, so
-//! the old ones would pile up. So each set of those gets a folder of its
+//! model, a new build of dictation or OpenVINO, a new GPU or NPU driver, or
+//! a word added to Joel's words (which sizes the decoder's first step) each
+//! compiles another, so the old ones would pile up. So each set of those gets a folder of its
 //! own, and once a load from it succeeds, everything else in the cache goes.
 
 use std::fs;
@@ -23,6 +23,26 @@ pub fn folder(cache: &Path, parts: &[&[u8]]) -> PathBuf {
         }
     }
     cache.join(format!("{hash:016x}"))
+}
+
+/// Where the machine's GPU and NPU drivers are, which OpenVINO loads from
+/// outside this build, so a new driver doesn't change this build's path.
+const DRIVERS: &str = "/run/opengl-driver";
+
+/// The folder in `cache` for models this build compiles from `parts` on the
+/// drivers the machine has now. A new driver compiles anew, and the folder
+/// compiled for the old one then goes with the rest.
+pub fn kept(cache: &Path, parts: &[&[u8]]) -> PathBuf {
+    let build = std::env::current_exe().unwrap_or_default();
+    let drivers = fs::canonicalize(DRIVERS).unwrap_or_default();
+    folder_for(cache, parts, &build, &drivers)
+}
+
+fn folder_for(cache: &Path, parts: &[&[u8]], build: &Path, drivers: &Path) -> PathBuf {
+    let mut all = parts.to_vec();
+    all.push(build.as_os_str().as_encoded_bytes());
+    all.push(drivers.as_os_str().as_encoded_bytes());
+    folder(cache, &all)
 }
 
 /// Removes everything in `cache` but `kept`, saying what went. A failure is
@@ -81,6 +101,28 @@ mod tests {
             folder(cache, &[b"model", b"NPU", b"Tectonix Sarnia"])
         );
         assert_ne!(folder(cache, &[b"ab", b"c"]), folder(cache, &[b"a", b"bc"]),);
+    }
+
+    #[test]
+    fn a_new_build_or_new_drivers_find_another_folder() {
+        let cache = Path::new("/cache");
+        let parts: [&[u8]; 2] = [b"model", b"GPU"];
+        let (build, drivers) = (
+            Path::new("/nix/store/a-build"),
+            Path::new("/nix/store/a-drivers"),
+        );
+        let now = folder_for(cache, &parts, build, drivers);
+        assert_eq!(now, folder_for(cache, &parts, build, drivers));
+        assert_ne!(
+            now,
+            folder_for(cache, &parts, Path::new("/nix/store/b-build"), drivers),
+            "a new build compiled into the old one's folder"
+        );
+        assert_ne!(
+            now,
+            folder_for(cache, &parts, build, Path::new("/nix/store/b-drivers")),
+            "new drivers compiled into the old ones' folder"
+        );
     }
 
     #[test]
