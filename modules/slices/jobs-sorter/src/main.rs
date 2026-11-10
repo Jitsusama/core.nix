@@ -1083,9 +1083,10 @@ impl Doorway {
     }
 }
 
-/// Holds new heavy starts under `cgroup` in `root`, when there's a door,
-/// while memory is short or a call is on, as src/door.rs says, `uptime`
-/// ticks since boot.
+/// Ranks new heavy starts under `cgroup` in `root` behind other work, when
+/// there's a door, while memory is short, and holds them while it's
+/// shorter still or a call is on, as src/door.rs says, `uptime` ticks since
+/// boot.
 fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: u64) {
     let Some(cgroup) = cgroup.map(|cgroup| root.join(cgroup)) else {
         return;
@@ -1135,10 +1136,7 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
             }
         })
         .collect();
-    for done in doorway
-        .door
-        .look(&coming, machine, now, uptime, door::freeze)
-    {
+    for done in doorway.door.look(&coming, machine, now, uptime, door::act) {
         match done {
             door::Done::Held(pid) => {
                 door::tell(pid, machine);
@@ -1146,6 +1144,10 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
                 eprintln!("Held {pid} at the door, with {free} bytes available{call}.");
             }
             door::Done::LetIn(pid) => eprintln!("Let {pid} in."),
+            door::Done::Ranked(pid, high) => eprintln!(
+                "Let {pid} in behind other work, its memory held under {high} bytes, with \
+                 {free} bytes available."
+            ),
         }
     }
 }
