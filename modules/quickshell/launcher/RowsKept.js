@@ -23,8 +23,8 @@ function tagged(keys) {
 // the same order before and now, so every other row moves once rather
 // than each row it passes: a row falling to the end is one move, not one
 // for each row below it.
-function staying(held, into) {
-    const places = held.map(key => into.indexOf(key));
+function staying(held, placeOf) {
+    const places = held.map(key => placeOf.get(key));
     // tails[n]: the row ending the least rising run n + 1 long; before[at]:
     // the row before it in its run.
     const tails = [];
@@ -73,14 +73,16 @@ function steps(was, now) {
         end = at;
     }
     const held = from.filter(key => wanted.has(key));
-    const stay = staying(held, into);
+    // Each tagged key's place now, read once rather than searched for.
+    const placeOf = new Map(into.map((key, at) => [key, at]));
+    const stay = staying(held, placeOf);
     const settled = new Set(stay);
     for (let at = 0; at < into.length; at += 1) {
         // Rows before a staying row's place that aren't yet in theirs
         // move, so it never does.
         while (stay.has(into[at]) && held[at] !== into[at]) {
             const falling = held[at];
-            const next = into.slice(into.indexOf(falling) + 1).find(key => settled.has(key));
+            const next = into.slice(placeOf.get(falling) + 1).find(key => settled.has(key));
             const to = next === undefined ? held.length - 1 : held.indexOf(next) - 1;
             done.push({ move: at, to });
             held.splice(to, 0, ...held.splice(at, 1));
