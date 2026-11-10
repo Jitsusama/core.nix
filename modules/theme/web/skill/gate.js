@@ -210,6 +210,30 @@
     }
   }
 
+  // A drawing's labels never shrink under 12 px on screen, however narrow
+  // the page (craft.md draws it again narrow, or sets its labels as HTML).
+  // A label's size on screen is its font size scaled by every transform
+  // above it, so a wide drawing squeezed onto a phone shows here when the
+  // probe runs at 320 px; a drawing hidden at this width is skipped. It's
+  // in CSS pixels rather than rem, since a page may set its root's size.
+  const floor = 12;
+  const onScreen = (label) => {
+    const scale = label.getScreenCTM();
+    const size = Number.parseFloat(getComputedStyle(label).fontSize);
+    return scale === null ? size : size * Math.hypot(scale.a, scale.b);
+  };
+  for (const picture of [...page.querySelectorAll("svg[role='img']")].filter(shown)) {
+    const smallest = Math.min(...[...picture.querySelectorAll("text")].filter(shown).map(onScreen));
+    if (smallest < floor - 0.5) {
+      const caption = picture.querySelector("title")?.textContent.trim() ?? "";
+      const what = caption.length > 60 ? `${caption.slice(0, 57)}...` : caption || "a drawing";
+      missing.push(
+        `labels drawn at ${smallest.toFixed(1)} px in "${what}", under ` +
+          `${floor.toFixed(1)} px: draw it again narrow, or set its labels as HTML`,
+      );
+    }
+  }
+
   // The writing's guard, over every word a reader reads (code, keys and
   // samples are names, not prose): no emdash or Unicode ellipsis, Canadian
   // spelling, and nothing private that an agent's work left behind. It reads
