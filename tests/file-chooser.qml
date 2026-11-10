@@ -425,7 +425,10 @@ ShellRoot {
                     shellPicked.length === 0 && theChooser.asks.length === 0,
                     `${JSON.stringify(shellPicked)}, ${theChooser.asks.length} waiting`);
                 ask(8, { mode: "open", title: "Open", folder: home });
-            } else if (stage === 17 && theChooser.asking?.reply.endsWith("/8.sock") && ready([home])) {
+            // Shown, not only asked: an ask's places are made as it's
+            // shown, a turn after it comes, and until then they're the
+            // save's before it, which lists no Shared with Me.
+            } else if (stage === 17 && theChooser.shown.endsWith("/8.sock") && ready([home])) {
                 stage = 18;
                 elsewhere();
             } else if (stage === 18 && drive.fetches.length === 1) {
