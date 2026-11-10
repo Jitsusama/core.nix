@@ -190,13 +190,13 @@ mod tests {
         let records = sensors(&Root::new(&root));
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(records.len(), 1, "only the light sensor: {records:?}");
-        let room = &records[0];
-        assert_eq!(room["key"], "light:iio:device0");
-        assert_eq!(room["name"], "als");
-        assert_eq!(room["raw"], json!(1234.0));
-        assert_eq!(room["scale"], json!(0.1));
-        assert_eq!(room["offset"], json!(6.0));
-        let lux = room["lux"].as_f64().unwrap();
+        let sensor = &records[0];
+        assert_eq!(sensor["key"], "light:iio:device0");
+        assert_eq!(sensor["name"], "als");
+        assert_eq!(sensor["raw"], json!(1234.0));
+        assert_eq!(sensor["scale"], json!(0.1));
+        assert_eq!(sensor["offset"], json!(6.0));
+        let lux = sensor["lux"].as_f64().unwrap();
         assert!(
             (lux - 124.0).abs() < 1e-9,
             "(1234 + 6) x 0.1 is 124 lx, not {lux}"

@@ -246,8 +246,8 @@ Provider {
             // With the lid shut nothing hears the room, and a monitor has
             // no steps of the panel's, so it only says what sets it.
             note: inTheRoom(output)
-                ? partSaid("brightness", "followsRoom").replace("{now}", counted(light.now))
-                    .replace("{most}", counted(light.most))
+                ? partSaid("brightness", "followsRoom").replace("{now}", grouped(light.now))
+                    .replace("{most}", grouped(light.most))
                 : partSaid("brightness", "everyFollows")
         })];
         if (inTheRoom(output) && room !== null)
@@ -698,15 +698,15 @@ Provider {
                 // A monitor following the panel has none of its steps,
                 // and a hundred steps are its share again.
                 value: inTheRoom(output) && light.most !== 100 ? Plate.runs([`${light.share}%`,
-                    partSaid("", "steps").replace("{now}", counted(light.now))
-                        .replace("{most}", counted(light.most))])
+                    partSaid("", "steps").replace("{now}", grouped(light.now))
+                        .replace("{most}", grouped(light.most))])
                     : `${light.share}%`,
                 figure: { shape: "stroke", values: [light.now / light.most], warn: false }
             });
             // What the kernel says of the steps, only for the panel they
             // are, after the share they make (VKCF3Z, 2026-11-09).
             if (inTheRoom(output))
-                facts.push(...Backlight.kernelFacts(light, partName, told, counted));
+                facts.push(...Backlight.kernelFacts(light, partName, told, grouped));
             // The room as the sensor hears it now, which moves before the
             // level does, and is asked only for the screen it lights; or
             // that no light is heard, where the daemon follows nothing.
@@ -717,7 +717,7 @@ Provider {
                 facts.push({ label: partName("room"), value: heard });
             // What the sensor counts, after the lux it makes of them.
             if (inTheRoom(output) && roomSensor !== null)
-                facts.push(...Backlight.sensorFacts(roomSensor, partName, told, counted));
+                facts.push(...Backlight.sensorFacts(roomSensor, partName, told, grouped));
             // What sets the level, the Warmth, then the curve, which moves
             // only with a pick, so goes last of the light (VKCF3Z, 2026-11-08).
             const follows = inTheRoom(output) ? Backlight.follows(settled, said) : "";
@@ -858,7 +858,7 @@ Provider {
     }
 
     // A count, as of steps or of the sensor's, grouped in threes.
-    function counted(value) {
+    function grouped(value) {
         return Numbers.format(value, undefined, settings.group, settings.point);
     }
 

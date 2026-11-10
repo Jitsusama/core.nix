@@ -7,6 +7,7 @@
 // holds the daemon's records and draws the screen's drawer.
 .pragma library
 .import "Numbers.js" as Numbers
+.import "Order.js" as Order
 .import "Plate.js" as Plate
 
 // A fact a line, its name, a tab and its value, as the daemon writes them.
@@ -149,8 +150,8 @@ function chosen(lux, group, point) {
 // The first of a kind of the machine daemon's records (light.rs), by its
 // device's name as the kernel lists them, or null with none.
 function first(records, kind, holds) {
-    return records.filter(record => record?.kind === kind && holds(record))
-        .sort((a, b) => String(a.device).localeCompare(String(b.device)))[0] ?? null;
+    return Order.sorted(records.filter(record => record?.kind === kind && holds(record)),
+        Order.byName(record => record.device))[0] ?? null;
 }
 
 // The screen's backlight, from the machine daemon's records: its steps
