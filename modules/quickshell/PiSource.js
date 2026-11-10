@@ -84,10 +84,16 @@ function sorted(held, place) {
 }
 
 // What a session's presence says that only the launcher shows, and that
-// changes as the session works: its step, what it has used, and when it
-// was last heard. Joel's 113 sessions changed 26 times in 30 s on
-// 2026-11-09, and 21 of those changed nothing else.
-const SHOWN_ONLY = ["at", "heard", "step", "stepDetail", "usage"];
+// changes as the session works: its step, what it has used, when it was
+// last heard, and whether it's working or listening and since when. Joel's
+// 113 sessions changed 26 times in 30 s on 2026-11-09, and 21 of those
+// changed nothing else. Of the rest, 14 in 61 on 2026-11-10 moved only
+// between working and listening, which the launcher's foot and its
+// Agents say and nothing outside it reads: For You, Super+Tab and the
+// margin read what a session wants and where its window is. A park moves
+// the session to `resting` as well, so its state going is never all that
+// tells it.
+const SHOWN_ONLY = ["at", "busy", "heard", "since", "state", "step", "stepDetail", "usage"];
 
 // A sorting (`sorted`) as text, to tell whether a change is one anything
 // reads: all of it while the launcher shows it, and otherwise all but

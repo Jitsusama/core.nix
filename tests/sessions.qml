@@ -433,9 +433,11 @@ ShellRoot {
         expect("of a kitty's several windows, one unnamed by kitty's own list",
             unseen.window.id === 20, unseen.window.id);
         // Then it rests, as a session's own work moves it, its window
-        // the same.
+        // the same, with the launcher showing it, since a shut one holds
+        // a turn between working and listening back (PiSource.js).
         stage = "resting";
         retoldBefore = Object.assign({}, retold);
+        PiSource.showing = true;
         tell({
             changed: [{
                 key: "session:s-NOWIN6",
@@ -454,6 +456,7 @@ ShellRoot {
             retold.parked === retoldBefore.parked && retold.closed === retoldBefore.closed,
             `parked told ${retold.parked - retoldBefore.parked}, closed `
             + `${retold.closed - retoldBefore.closed}`);
+        PiSource.showing = false;
         // niri opening OTHER2's window anew, by the app id its record names,
         // changes its windows in place and says so by its revision alone, as
         // Niri.qml does, and the session's window follows.
