@@ -330,6 +330,16 @@ pub fn avg300(pressure: &str) -> Option<f64> {
         .ok()
 }
 
+/// The account's service manager's cgroup, from a process's own
+/// `/proc/self/cgroup` line: the folder under `/sys/fs/cgroup` that holds
+/// the slices Joel's apps and session run in, beside the agents' jobs.
+#[must_use]
+pub fn account(cgroup: &str) -> Option<String> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    let end = path.find(".service").filter(|_| path.contains("/user@"))?;
+    Some(format!("/sys/fs/cgroup{}", &path[..end + ".service".len()]))
+}
+
 /// Memory available and swap in use, in GiB, from `/proc/meminfo`.
 #[must_use]
 pub fn memory(meminfo: &str) -> (f64, f64) {
@@ -596,6 +606,16 @@ mod tests {
     fn cpu_pressure_reads_the_some_line() {
         let text = "some avg10=1.00 avg60=2.00 avg300=45.50 total=1\nfull avg10=0 avg60=0 avg300=9 total=0\n";
         assert_eq!(avg300(text), Some(45.5));
+    }
+
+    #[test]
+    fn the_account_is_read_from_a_jobs_own_cgroup() {
+        let line = "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service\n";
+        assert_eq!(
+            account(line).as_deref(),
+            Some("/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service")
+        );
+        assert_eq!(account("0::/system.slice/cadence.service\n"), None);
     }
 
     #[test]
