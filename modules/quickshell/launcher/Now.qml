@@ -841,11 +841,40 @@ Provider {
 
             path: filePath
             printErrors: false
-            onLoaded: provider.heardLook(fileName, text())
+            onLoaded: provider.readLook(fileName, text())
         }
     }
 
+    // A file as it was read, as the launcher opens: every file is read
+    // again at each opening, so one reading as it did changes nothing,
+    // and the rest are taken together once the turn's reads are done.
+    // Taken one by one, each parsed every file again and banded For You
+    // afresh, 166 times in each of Joel's openings, 60 to 82% of the
+    // 6.5 s his shell's thread was pegged (H6EDLC's profile, 2026-11-10).
+    function readLook(file, text) {
+        if (!(file in looksRead) && lookTexts[file] === text)
+            return;
+        looksRead[file] = text;
+        Qt.callLater(looksReadDue);
+    }
+    readonly property var looksRead: ({})
+
+    function looksReadDue() {
+        const files = Object.keys(looksRead);
+        if (files.length === 0)
+            return;
+        const next = Object.assign({}, lookTexts);
+        for (const file of files) {
+            next[file] = looksRead[file];
+            delete looksRead[file];
+        }
+        lookTexts = next;
+    }
+
+    // A file's text as Now wrote it, taken at once, so the act that wrote
+    // it is seen in its own frame; a read of it still waiting is older.
     function heardLook(file, text) {
+        delete looksRead[file];
         lookTexts = Object.assign({}, lookTexts, { [file]: text });
     }
 
@@ -1357,9 +1386,28 @@ Provider {
     // "1 to do \u00b7 44 to look at \u00b7 2 to try", and home's Now row says
     // the last two of while nothing needs Joel now (VKCF3Z, 3a92c450).
     // Being bound, they're banded at the moment the items last changed, so
-    // For You's rows are banded again as it's stepped into, at that time,
+    // For You's rows are banded again as it's stepped into a minute on,
     // since a deadline coming within the day lifts a row with no change.
-    readonly property var forYouBands: ForYou.banded(forYouItems, Date.now())
+    readonly property var forYouBands: bandsAt(Date.now())
+
+    // For You's items banded, once for each change of them and each
+    // minute: its count, its rows and its filter each banded them afresh,
+    // three to five times for each act in it and each step into it, as
+    // many milliseconds each as it holds items (2026-11-10). A deadline
+    // passing is heard within the minute. The node's ready For You rows
+    // (the agents daemon, Sat 14 Nov) take the banding over.
+    function bandsAt(now) {
+        const items = forYouItems;
+        const minute = Math.floor(now / 60000);
+        if (bandsKept.items !== items || bandsKept.minute !== minute) {
+            bandsKept.items = items;
+            bandsKept.minute = minute;
+            bandsKept.bands = ForYou.banded(items, now);
+            bandsKept.times += 1;
+        }
+        return bandsKept.bands;
+    }
+    readonly property var bandsKept: ({ items: null, minute: -1, bands: null, times: 0 })
     // A critical notice unread is among what needs him now, as the margin's
     // tray counts it (ForYouHolds.qml), though For You's Desktop holds it.
     readonly property int toDoCount: forYouBands.now.length + criticalNotices.length
@@ -1423,7 +1471,7 @@ Provider {
     // is, since History's looks are kept beside them.
     function waitingRows() {
         const now = Date.now();
-        const bands = ForYou.banded(forYouItems, now);
+        const bands = bandsAt(now);
         const keeps = [itemsKept, wantsKept, kindsKept];
         keeps.forEach(keeping => keepingBegun(keeping));
         for (const identity of Object.keys(itemsNow))
@@ -1447,7 +1495,7 @@ Provider {
     // 2026-11-09).
     function filterable() {
         const now = Date.now();
-        const bands = ForYou.banded(forYouItems, now);
+        const bands = bandsAt(now);
         return bandRows(bands.now, now).concat(bandRows(bands.look, now),
             bandRows(bands.try, now), latelyRows(now));
     }

@@ -38,9 +38,11 @@
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
 //!
-//! usage: google CREDENTIALS DAEMON, CREDENTIALS the harness's file, the
-//! account asked as being the file's default, as pi's own is, and DAEMON
-//! the daemon interface's socket.
+//! usage: google CREDENTIALS DAEMON [WORDS], CREDENTIALS the harness's
+//! file, the account asked as being the file's default, as pi's own is,
+//! DAEMON the daemon interface's socket, and WORDS the launcher's
+//! vocabulary (launcher/words.json), which its ready rows are said in;
+//! without it, it serves no rows.
 
 use std::env;
 use std::path::Path;
@@ -57,6 +59,7 @@ use google::ask::{self, Ask};
 use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
+use google::rows::Words;
 use google::saves;
 use google::state::{Standing, State};
 use google::watch::Watch;
@@ -78,7 +81,7 @@ fn main() -> ExitCode {
         args.next().map(PathBuf::from),
         args.next().map(PathBuf::from),
     ) else {
-        eprintln!("<3>usage: google CREDENTIALS DAEMON");
+        eprintln!("<3>usage: google CREDENTIALS DAEMON [WORDS]");
         return ExitCode::from(2);
     };
     let (asks, asked) = mpsc::channel();
@@ -89,6 +92,13 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Some(words) = args.next().map(PathBuf::from) {
+        match vocabulary(&words) {
+            Ok(words) => daemon.words(words),
+            // Said, never silent: the launcher falls back to its own rows.
+            Err(error) => eprintln!("<3>serving no rows, {}: {error}", words.display()),
+        }
+    }
     let tell = |state: &State| daemon.say(state, Timestamp::now().as_millisecond());
     let staged = saves::root(env::var_os("XDG_STATE_HOME"), env::var_os("HOME"));
     saves::prune(&staged, SystemTime::now());
@@ -191,6 +201,13 @@ fn places() -> Places {
             PathBuf::from,
         ),
     }
+}
+
+/// The words rows are said in, read from the launcher's vocabulary.
+fn vocabulary(path: &Path) -> Result<Words, String> {
+    let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let whole = serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    Words::read(&whole)
 }
 
 /// Whether an ask last made then is due again, a wait on; never made, it is.

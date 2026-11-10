@@ -286,6 +286,8 @@ in
           (lib.getExe google)
           (lib.escapeShellArg credentials)
           "%t/daemons/google.sock"
+          # The launcher's vocabulary, which its ready rows are said in.
+          (pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words))
         ];
         Restart = "on-failure";
         RestartSec = 10;

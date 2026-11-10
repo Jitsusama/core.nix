@@ -1,5 +1,4 @@
-// What AI use cost, a collection, from the file spend-watch writes
-// (SpendWatch.qml)
+// What AI use cost, a collection, from what spend-watch tells (SpendWatch.qml)
 // (modules/spend-watch). It's laid out as the other collections are: each
 // row a short name with a few muted words beside it, what else is known of
 // it in the footer while it's picked, and the rest a right arrow away,
@@ -19,7 +18,7 @@
 // for the caps, and a report by its words, "spend last week by quest" or
 // "spend today by model", whose words the daemon gives with the reports. The
 // daemon works out every figure and every word, so nothing here counts or
-// formats; with no file there's no collection, and nothing to answer. While
+// formats; with nothing told there's no collection, and nothing to answer. While
 // the screen is shared it lists the daemon's quiet lines, which hold no
 // amounts, and no report, and answers only that the amounts are hidden.
 import qs
@@ -33,15 +32,64 @@ Provider {
 
     what: "AI spend"
 
-    readonly property var said: SpendWatch.said
-    onSaidChanged: changed()
+    readonly property bool known: SpendWatch.known
     readonly property bool sharing: Quiet.sharing
-    readonly property var reports: said?.reports ?? {}
+    readonly property var reports: SpendWatch.reports
 
     // Named, and found, as the vocabulary says (Words.qml): a part of
     // Agents, wearing their glyph, and no longer found by pi's names.
-    collection: said === null ? null : Words.collection("spend")
-    examples: said?.examples ?? []
+    collection: known ? Words.collection("spend") : null
+    examples: SpendWatch.examples
+
+    // Only what's drawn is watched: the rows while the launcher is open,
+    // and the reports while these rows are wanted. A check's, with no
+    // launcher, watches everything.
+    Binding {
+        target: SpendWatch
+        property: "listing"
+        value: provider.launcher?.open ?? true
+        when: provider.launcher !== null
+    }
+    Binding {
+        target: SpendWatch
+        property: "reporting"
+        value: provider.wanted
+        when: provider.launcher !== null
+    }
+    Binding {
+        target: SpendWatch
+        property: "paced"
+        value: provider.launcher
+        when: provider.launcher !== null
+    }
+
+    // While the rows or the reports are read for this opening, what was
+    // held is drawn, and a report never held is said as "\u2026".
+    stillReading: SpendWatch.rowsReading || SpendWatch.reportsReading
+
+    Connections {
+        target: SpendWatch
+        // A session's or a quest's figure is Agents' alone, so it changes
+        // nothing here.
+        function onHeard(changed, gone) {
+            if (changed.concat(gone).some(key => !key.startsWith("session:")
+                && !key.startsWith("quest:")))
+                provider.changed();
+        }
+    }
+
+    // Each row of the lists kept by its record's key while its line, and
+    // the report it stands for, are the ones held before (keptAlike): a
+    // record SpendWatch didn't hear change is the same object, so a pass
+    // remakes only the rows whose records it changed.
+    readonly property var keeping: keeper()
+
+    function made(one) {
+        const given = one.line;
+        return keptAlike(keeping, one.key,
+            [given, given.report ? reports[given.report] ?? null : null, sharing],
+            () => build(given));
+    }
 
     // Each row's mark and colour by its role: what AI use has cost for how
     // things stand, a trend for what was found, the warning or the urgent
@@ -171,16 +219,32 @@ Provider {
     }
 
     // Made only while they're wanted (Provider.qml's whileWanted), since
-    // spend-watch writes its file again every few seconds and every row
-    // was made again each time: 90 in four minutes with the launcher shut
-    // on Joel's shell (YQZGPC, 2026-11-10). Home's figure is `said.today`.
-    readonly property var all: whileWanted("all", () => listed().map(build))
+    // every row was made again at each of the daemon's passes: 90 in four
+    // minutes with the launcher shut on Joel's shell (YQZGPC, 2026-11-10).
+    // Home's figure is SpendWatch's `today`.
+    readonly property var all: whileWanted("all", () => {
+        keepingBegun(keeping);
+        const rows = listedRows().map(made);
+        keptOnly(keeping);
+        return rows;
+    })
+
+    // The rows the daemon gives to be listed, each { key, line }, in order.
+    function listedRows() {
+        const rows = SpendWatch.rows;
+        return !known ? []
+            : sharing ? orderedRows([], rows.quiet)
+            : orderedRows(rows.now, rows.findings).concat(rows.more);
+    }
+
+    function orderedRows(rows, found) {
+        const asks = one => asking(one.line);
+        return found.filter(asks).concat(rows, found.filter(one => !asks(one)));
+    }
 
     // What the daemon gives to be listed, as it gives it.
     function listed() {
-        return said === null ? []
-            : sharing ? ordered([], said.quiet ?? [])
-            : ordered(said.now ?? [], said.findings ?? []).concat(said.more ?? []);
+        return listedRows().map(one => one.line);
     }
 
     // A row of the list as it reads now, for those who show it while these
@@ -207,10 +271,10 @@ Provider {
     // which holds no amount. Until the daemon writes `today`, as just
     // after a switch, today's row's side.
     function counted() {
-        if (!sharing && (said?.today ?? "") !== "")
-            return said.today;
-        const today = ((sharing ? said?.quiet : said?.now) ?? [])[0];
-        return today ? today.side : "";
+        if (!sharing && SpendWatch.today !== "")
+            return SpendWatch.today;
+        const today = (sharing ? SpendWatch.rows.quiet : SpendWatch.rows.now)[0];
+        return today ? today.line.side : "";
     }
 
     function search(typed) {
@@ -252,37 +316,59 @@ Provider {
             return "summary";
         if (["waste", "caps", "cap", "forecast", "quests", "outliers"].includes(text))
             return text === "cap" ? "caps" : text;
-        const period = named(text, said.periods ?? []);
+        const period = named(text, SpendWatch.periods);
         const rest = period ? period.rest : text;
         const by = /^by (.+)$/.exec(rest);
-        const cut = by ? named(by[1], said.cuts ?? []) : null;
+        const cut = by ? named(by[1], SpendWatch.cuts) : null;
         if ((rest !== "" && (cut === null || cut.rest !== "")) || (period === null && cut === null))
             return null;
         return `${period ? period.id : "this-week"}/${cut ? cut.id : "quest"}`;
     }
 
+    // While the reports are first read, held in its place as Firmware's
+    // answer is, rather than said as none.
+    function waitingAnswer() {
+        return {
+            headline: "\u2026",
+            rows: [],
+            asking: true,
+            note: "",
+            live: provider
+        };
+    }
+
+    // Beside each answer, unless the daemon answers: its last figures
+    // are said as such rather than passing as current.
+    function noted(note) {
+        return SpendWatch.fromFile ? "spend-watch isn't answering; these are its last figures"
+            : note;
+    }
+
     function answer(typed) {
-        if (said === null)
+        if (!known)
             return null;
         const id = reportFor(typed);
         const shown = id === null ? null : reports[id] ?? null;
         if (shown === null)
-            return null;
+            return id !== null && SpendWatch.reportsReading ? waitingAnswer() : null;
+        const quiet = SpendWatch.rows.quiet.map(one => one.line);
+        const now = SpendWatch.rows.now.map(one => one.line);
+        const found = SpendWatch.rows.findings.map(one => one.line);
         if (sharing)
             return {
                 // In lower case, as every other answer's headline is.
                 headline: "amounts are hidden while the screen is shared",
                 copy: "",
-                rows: ordered([], said.quiet ?? []).map(build),
+                rows: ordered([], quiet).map(build),
                 note: "ask again once sharing ends"
             };
         if (id === "summary") {
-            const lead = (said.now ?? [])[0];
+            const lead = now[0];
             return {
                 headline: lead ? lead.copy : shown.headline,
                 copy: shown.markdown,
-                rows: ordered((said.now ?? []).slice(1), said.findings ?? []).map(build),
-                note: "Return copies the summary"
+                rows: ordered(now.slice(1), found).map(build),
+                note: noted("Return copies the summary")
             };
         }
         return {
@@ -291,7 +377,7 @@ Provider {
             rows: shown.rows.map(build),
             // Not "the report", which in Agents is a quest's document
             // (docs/glossary.md).
-            note: "Return copies it whole"
+            note: noted("Return copies it whole")
         };
     }
 }

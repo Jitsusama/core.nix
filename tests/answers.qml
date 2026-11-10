@@ -781,11 +781,19 @@ QtObject {
             // and its figures, the room's white where a sensor sees it, then
             // the night's, a day said only when it isn't today (VKCF3Z,
             // 2026-11-08).
-            ["nothing warming the screen", Warmth.read({}), null],
-            ["a daemon before the night light", quoted(Warmth.read({ kelvin: 6500,
-                followsTheRoom: true })), quoted({ kelvin: 6500, followsTheRoom: true,
+            ["nothing warming the screen", Warmth.of([]), null],
+            ["a daemon before the night light", quoted(Warmth.of([{ kind: "warmth",
+                kelvin: 6500, follows_the_room: true }])), quoted({ kelvin: 6500,
+                followsTheRoom: true,
                 seesColour: false, roomWhite: null, nightLight: false, nightWhite: null,
                 sunset: null, sunrise: null })],
+            ["the night light, as the machine daemon serves it", quoted(Warmth.of([
+                { kind: "backlight", device: "panel" }, { kind: "warmth", kelvin: 3400,
+                    follows_the_room: false, sees_colour: true, room_white_kelvin: 5100,
+                    night_light: true, night_white_kelvin: 3400, sunset_ms: 1000,
+                    sunrise_ms: 2000 }])), quoted({ kelvin: 3400, followsTheRoom: false,
+                seesColour: true, roomWhite: 5100, nightLight: true, nightWhite: 3400,
+                sunset: 1000, sunrise: 2000 })],
             ["by night", Warmth.note(WarmthCases.night, WarmthCases.evening, WarmthCases.said,
                 WarmthCases.told), "night light until 07:04"],
             ["by day", Warmth.note(WarmthCases.night, WarmthCases.noon, WarmthCases.said,

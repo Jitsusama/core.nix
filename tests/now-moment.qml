@@ -18,7 +18,9 @@
 // again. Its Lately rows are kept too, so one notice arriving makes only
 // Desktop's row again, and a session's move that changes nothing For You
 // reads of it, its want the same, makes none; For You held still hears a
-// change its own row doesn't count, once the change is done.
+// change its own row doesn't count, once the change is done. For You is
+// banded once for each change, asked again it bands nothing, and the
+// files an opening reads are taken together, one read as it was not at all.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -211,16 +213,45 @@ ShellRoot {
         Qt.callLater(root.afterwards);
     }
 
-    // The cases that hold once what a change deferred has run.
+    // The cases that hold once what a change deferred has run, then once
+    // the files an opening reads in one turn are taken, together: each
+    // taken alone parsed every file and banded For You afresh, 166 times
+    // in each of Joel's openings (2026-11-10).
     function afterwards() {
-        let status = 0;
-        try {
+        const looksBefore = now.looks;
+        if (tried(() => {
             heldHears();
+            bandedAtReads = now.bandsKept.times;
+            ["e", "f", "g"].forEach(id => now.readLook(`${id}.json`, JSON.stringify({ v: 1,
+                id: id, kind: "page", at: "2026-11-09T12:00:00Z", title: id, why: "Because.",
+                target: "https://example.com", state: "waiting", session: "" })));
+            expect("files read in one turn wait for its end", now.looks === looksBefore,
+                JSON.stringify(Object.keys(now.lookTexts)));
+        }))
+            Qt.callLater(root.readsTaken);
+    }
+    property int bandedAtReads: 0
+
+    function readsTaken() {
+        const banded = () => now.bandsKept.times - bandedAtReads;
+        if (tried(() => expect("and are taken together, For You banded once",
+            JSON.stringify(now.looks.waiting.map(one => one.file))
+                === JSON.stringify(["e.json", "f.json", "g.json"]) && banded() === 1
+                && now.forYouBands.look.length === 3,
+            JSON.stringify([Object.keys(now.lookTexts), banded()]))))
+            Qt.exit(0);
+    }
+
+    // Whether the cases held, exiting 1 saying which didn't.
+    function tried(cases) {
+        try {
+            cases();
+            return true;
         } catch (error) {
             console.warn(`FAIL ${error.message ?? error}`);
-            status = 1;
+            Qt.exit(1);
+            return false;
         }
-        Qt.exit(status);
     }
 
     // How many times Now said its rows changed.
@@ -432,6 +463,18 @@ ShellRoot {
             again.every((row, at) => row === first[at]),
             JSON.stringify(again.map((row, at) => row === first[at])));
         const madeAgain = now.tally.rows - madeBefore;
+        // Banding For You is as many milliseconds as it holds items, and
+        // its count, its rows and its filter each banded it afresh.
+        const bandedBefore = now.bandsKept.times;
+        looked();
+        now.filterable();
+        expect("asked again with nothing changed, For You bands nothing again",
+            now.bandsKept.times === bandedBefore, now.bandsKept.times - bandedBefore);
+        // Every file is read again at each opening.
+        const looksBefore = now.looks;
+        now.readLook("a.json", now.lookTexts["a.json"]);
+        expect("a file read again as it was changes nothing", now.looks === looksBefore
+            && Object.keys(now.looksRead).length === 0, JSON.stringify(now.looksRead));
         now.lookTexts = Object.assign({}, now.lookTexts, { "b.json": lookAt("b", "Read B Now") });
         const changed = looked();
         expect("a look whose file changed is made again, and only it",

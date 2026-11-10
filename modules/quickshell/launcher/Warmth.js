@@ -1,6 +1,6 @@
 // The built-in screen's Warmth as Screens says it (launcher/Displays.qml),
-// from what the backlight daemon writes of it in
-// $XDG_RUNTIME_DIR/backlight-warmth (modules/backlight/src/main.rs): the
+// from what the backlight program says of it, as the machine daemon
+// serves it (`warmth:built-in`, modules/machine's steered.rs): the
 // warmth now, whether it follows the room and a sensor sees colour, the
 // room's white, and the night light, on or off, its white and the night's
 // sunset and sunrise. Its note says what holds the warmth, its figures are
@@ -11,23 +11,23 @@
 // `told.clock` and `told.kelvin`.
 .pragma library
 
-// What the daemon says, or null where nothing warms the screen: no file,
-// or `{}`, which the daemon leaves as it stops. A daemon older than the
-// night light says only the warmth and whether it follows the room.
-function read(said) {
-    if (typeof said?.kelvin !== "number" || typeof said?.followsTheRoom !== "boolean") {
+// What the machine daemon's records say of the warmth, or null where
+// nothing warms the screen, as when the backlight program has stopped.
+function of(records) {
+    const said = records.find(record => record?.kind === "warmth");
+    if (typeof said?.kelvin !== "number" || typeof said.follows_the_room !== "boolean") {
         return null;
     }
-    const time = at => (typeof at === "number" ? at : null);
+    const known = value => (typeof value === "number" ? value : null);
     return {
         kelvin: said.kelvin,
-        followsTheRoom: said.followsTheRoom,
-        seesColour: said.seesColour === true,
-        roomWhite: typeof said.roomWhite === "number" ? said.roomWhite : null,
-        nightLight: said.nightLight === true,
-        nightWhite: typeof said.nightWhite === "number" ? said.nightWhite : null,
-        sunset: time(said.sunset),
-        sunrise: time(said.sunrise)
+        followsTheRoom: said.follows_the_room,
+        seesColour: said.sees_colour === true,
+        roomWhite: known(said.room_white_kelvin),
+        nightLight: said.night_light === true,
+        nightWhite: known(said.night_white_kelvin),
+        sunset: known(said.sunset_ms),
+        sunrise: known(said.sunrise_ms)
     };
 }
 

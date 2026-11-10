@@ -312,10 +312,8 @@ in
   jitsusama.quickshell.launcher.providers.mpv = {
     order = 48;
     source = ./MpvProgram.qml;
-    stopped = [
-      (lib.getExe (pkgs.callPackage ./stopped.nix { }))
-      watchLater
-    ];
+    # The programs daemon's key for the files it left, listed below.
+    stopped = "listed:mpv:stopped";
   };
 
   # The file each mpv plays now, for its Recent in the launcher to lead
@@ -356,6 +354,16 @@ in
       app = "mpv";
       kind = "file";
       opened = import ../quickshell/kept-in.nix { inherit lib pkgs; } playing;
+    }
+    # The files it left, which the programs daemon reads as its page asks.
+    {
+      app = "mpv";
+      name = "stopped";
+      asked = true;
+      list = [
+        (lib.getExe (pkgs.callPackage ./stopped.nix { }))
+        watchLater
+      ];
     }
   ];
 

@@ -95,22 +95,15 @@ Provider {
             lookedSince = true;
     }
 
-    // The daemon's downloads, watched by their key from the first step in
-    // an opening, which has the daemon read them afresh, and heard as it
-    // says them: the lines it holds at once, then those it reads.
-    Daemon {
+    // The daemon's downloads, from the first step in an opening.
+    Listed {
         id: listing
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
-        kind: "listed"
-        live: false
-        ahead: provider.lookedSince ? [provider.downloadsKey] : []
+        key: provider.downloadsKey
+        wanted: provider.lookedSince
 
-        onHeard: changed => {
-            if (!changed.includes(provider.downloadsKey))
-                return;
-            provider.downloads = Downloads.listed(listing.held[provider.downloadsKey]
-                ?.lines ?? []);
+        onHeard: {
+            provider.downloads = Downloads.listed(listing.lines);
             provider.downloadsRead = true;
             provider.changed();
         }

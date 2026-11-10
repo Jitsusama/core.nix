@@ -175,7 +175,7 @@ ShellRoot {
         id: zathura
 
         launcher: theLauncher
-        settings: ({ zathura: "zathura", opened: [] })
+        settings: ({ zathura: "zathura", opened: "" })
     }
 
     Launcher.CopiedPicture {

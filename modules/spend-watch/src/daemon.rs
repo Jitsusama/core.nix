@@ -5,12 +5,14 @@
 //! most every thirty seconds and at least every five minutes, it works
 //! out how things stand, settles its findings, writes the shell's files
 //! and gives notices. Between, a heartbeat every thirty seconds says it
-//! still runs. A socket in the runtime directory answers `refresh`.
+//! still runs. A socket in the runtime directory answers `refresh`, and
+//! tells the shell the collection as it changes (`interface`).
 
 use crate::config::{Config, FeedConfig};
 use crate::feed::{self, Pace};
 use crate::findings::{Finding, Severity};
 use crate::history::History;
+use crate::interface::Hub;
 use crate::notices::{self, Buses, Desk};
 use crate::picture::Picture;
 use crate::status::{self, Writer};
@@ -19,6 +21,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -257,7 +260,7 @@ fn poll(config: &Config, wake: &Sender<Wake>) {
     }
 }
 
-fn listen(socket: &Path, wake: Sender<Wake>) -> Result<(), String> {
+fn listen(socket: &Path, wake: Sender<Wake>, hub: Arc<Hub>) -> Result<(), String> {
     let _ = std::fs::remove_file(socket);
     if let Some(dir) = socket.parent() {
         std::fs::create_dir_all(dir)
@@ -268,17 +271,28 @@ fn listen(socket: &Path, wake: Sender<Wake>) -> Result<(), String> {
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let wake = wake.clone();
-            std::thread::spawn(move || answer(&stream, &wake));
+            let hub = Arc::clone(&hub);
+            std::thread::spawn(move || answer(&stream, &wake, &hub));
         }
     });
     Ok(())
 }
 
-fn answer(stream: &UnixStream, wake: &Sender<Wake>) {
+/// Answers one word, as the command line asks, or serves the daemon
+/// interface to a connection whose first line is one of its asks, kept
+/// open for as long as it is.
+fn answer(stream: &UnixStream, wake: &Sender<Wake>, hub: &Hub) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let mut reader = BufReader::new(stream);
     let mut asked = String::new();
     if reader.read_line(&mut asked).is_err() {
+        return;
+    }
+    if asked.trim_start().starts_with('{') {
+        let _ = stream.set_read_timeout(None);
+        if let Ok(writing) = stream.try_clone() {
+            hub.serve(asked.trim(), reader, writing);
+        }
         return;
     }
     let (reply, replied) = mpsc::channel();
@@ -371,6 +385,7 @@ pub fn pass(
     writer: &mut Writer,
     desk: &mut dyn Desk,
     kept: &mut crate::picture::Kept,
+    hub: &Hub,
     now: f64,
 ) -> Result<status::Status, String> {
     let mut picture = Picture::read_keeping(history, config, now, kept)?;
@@ -402,12 +417,9 @@ pub fn pass(
     let said = heard(&findings, watched.as_deref());
     let mut shown = status::status(&picture, &said);
     shown.tokens = tokens;
-    writer.write(
-        &config.runtime()?,
-        &shown,
-        &crate::collection::collection(&picture, &findings, config),
-        Some(&standing),
-    )?;
+    let collection = crate::collection::collection(&picture, &findings, config);
+    writer.write(&config.runtime()?, &shown, &collection, Some(&standing))?;
+    hub.publish(&collection);
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.
     if config.notices.enable
@@ -514,13 +526,25 @@ fn hold(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
+/// The socket's hub, holding what the last run wrote until this run's
+/// first pass, which waits on reading pi's logs.
+fn hub(config: &Config) -> Result<Arc<Hub>, String> {
+    let since = u64::try_from(jiff::Timestamp::now().as_millisecond()).unwrap_or_default();
+    let hub = Arc::new(Hub::new(since));
+    if let Ok(written) = std::fs::read_to_string(config.runtime()?.join("collection.json")) {
+        hub.seed(&written);
+    }
+    Ok(hub)
+}
+
 pub fn run(config: &Config) -> Result<(), String> {
     let _lock = lock(&config.state)?;
     config.runtime()?;
     hold(config)?;
     let history = History::open(&config.history())?;
     let (wake, inbox): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
-    listen(&config.socket(), wake.clone())?;
+    let hub = hub(config)?;
+    listen(&config.socket(), wake.clone(), Arc::clone(&hub))?;
     watch(config.clone(), wake.clone());
     tick(wake.clone());
     harness(&history, config);
@@ -574,7 +598,15 @@ pub fn run(config: &Config) -> Result<(), String> {
             if let Err(error) = catch_up(&history, config) {
                 eprintln!("reading pi's logs: {error}");
             }
-            match pass(&history, config, &mut writer, &mut desk, &mut kept, now) {
+            match pass(
+                &history,
+                config,
+                &mut writer,
+                &mut desk,
+                &mut kept,
+                &hub,
+                now,
+            ) {
                 Ok(shown) => last_status = Some((shown, Instant::now(), Instant::now())),
                 Err(error) => eprintln!("a pass failed: {error}"),
             }

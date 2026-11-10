@@ -20,7 +20,6 @@
 // opens as a page. The reader takes a file alone, so a line copied after
 // the path is said but not gone to.
 import qs
-import Quickshell.Io
 import QtQuick
 import "../Copied.js" as Copying
 import "Reader.js" as Reader
@@ -56,12 +55,8 @@ Provider {
     property bool lookedSince: false
 
     onSteppedInChanged: {
-        if (!steppedIn || lookedSince || (settings.places ?? []).length === 0)
-            return;
-        lookedSince = true;
-        // Read once the step is drawn (Launcher.qml's afterFrame), so its
-        // frame never waits on starting a process.
-        launcher.afterFrame(() => listing.running = true);
+        if (steppedIn)
+            lookedSince = true;
     }
 
     // The next opening reads them again, as they may have changed since.
@@ -74,19 +69,18 @@ Provider {
         }
     }
 
-    Process {
+    // What reader --places printed, as the programs daemon holds it under
+    // the key its settings name, from the first step in an opening, so the
+    // shell starts no process for it (Listed.qml).
+    Listed {
         id: listing
 
-        command: provider.settings.places ?? []
-        running: false
-        stdout: StdioCollector {
-            id: listed
+        key: provider.settings.places ?? ""
+        wanted: provider.lookedSince
 
-            onStreamFinished: {
-                provider.left = Reader.places(listed.text.split("\n")
-                    .filter(line => line !== ""));
-                provider.changed();
-            }
+        onHeard: {
+            provider.left = Reader.places(listing.lines);
+            provider.changed();
         }
     }
 

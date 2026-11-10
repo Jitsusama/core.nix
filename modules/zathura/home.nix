@@ -308,10 +308,8 @@ in
   jitsusama.quickshell.launcher.providers.zathura = {
     order = 63;
     source = ./ZathuraProgram.qml;
-    opened = [
-      open-now
-      "zathura"
-    ];
+    # The programs daemon's key for what each has open, the list below.
+    opened = "listed:org.pwmt.zathura:reading";
     zathura = lib.getExe' config.programs.zathura.package "zathura";
   };
   # What zathura's provider works out, beside it, where its import finds it.
@@ -437,6 +435,17 @@ in
       app = "org.pwmt.zathura";
       kind = "file";
       opened = [
+        open-now
+        "zathura"
+      ];
+    }
+    # The same, with each document's page, for its own page in the
+    # launcher, which the programs daemon reads as the page asks.
+    {
+      app = "org.pwmt.zathura";
+      name = "reading";
+      asked = true;
+      list = [
         open-now
         "zathura"
       ];
