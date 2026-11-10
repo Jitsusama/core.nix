@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 18] = [
+pub const KINDS: [&str; 20] = [
     "processor",
     "memory",
     "disk",
@@ -27,6 +27,8 @@ pub const KINDS: [&str; 18] = [
     "brightness",
     "warmth",
     "camera",
+    "kept",
+    "profile",
 ];
 
 /// The kind a key names: `disk` for `disk:nvme0n1`.

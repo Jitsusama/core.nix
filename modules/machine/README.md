@@ -164,12 +164,23 @@ units, or named here as left out with the reason.
 |                 | the room's white, the night light, its white | Warmth's figures and Night Light switch   |
 |                 | the night's sunset and sunrise               | Warmth's note and figures                 |
 | `camera:<name>` | the camera's name, the programs holding it   | Camera's note and hint, and Cameras       |
+| `kept:idle`, `kept:lid` | whether Keep Awake holds the lock, its lock | Keep Awake, the margin, `:set awake` |
+| `profile:main`  | the profile power-profiles-daemon is on, those it offers | Session's Power Profile, judging a pick |
+|                 | each program's hold, why performance is slowed | nothing yet; the profile's drawer next  |
+|                 | what the machine chose, follow.sh's `wanted` | Now's Power Profile, set by hand or not   |
 
 `brightness` and `warmth` are the backlight program's (modules/backlight),
 which writes them whole in its files, and `camera` is each camera's file
 in /run/camera-holders, which modules/v4l2loopback and
 modules/usb-camera-holders write whole. All three are heard as they're
-written while watched, through inotify, and read at no other time.
+written while watched, through inotify, and read at no other time. Keep Awake's
+locks are the files its services leave in the runtime folder
+(modules/quickshell/home.nix), and the machine's choice is follow.sh's
+file in `/run/power-profile` (modules/power-profiles-daemon): both are
+heard through inotify from the daemon's start, and power-profiles-daemon
+as it says a property changed, since the shell watches them while the
+launcher's shut. A folder not there, or taken away as systemd does a
+service's runtime folder, is looked for again every 10 seconds.
 
 ## Left Out, and Why
 

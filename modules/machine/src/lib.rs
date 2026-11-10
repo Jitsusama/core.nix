@@ -25,6 +25,7 @@ pub mod disk;
 pub mod firmware;
 pub mod heat;
 pub mod interface;
+pub mod kept;
 pub mod light;
 pub mod memory;
 pub mod pressure;
