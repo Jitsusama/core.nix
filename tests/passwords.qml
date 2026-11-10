@@ -394,6 +394,20 @@ QtObject {
         [{ id: "passwords:entries", value: "1 in 1 vault" }]);
         check("nothing held, nothing said", Managers.held([], holds), []);
 
+        // Each manager that can't read leads the place with a row of its own:
+        // Unlock while it waits on Joel or its app, and its program while it's
+        // refused, never nothing (2026-11-10's empty place).
+        const kinds = ["one", "two", "three"].map(name => ({ name: name }));
+        check("a manager that can't read is never left without a row",
+            Managers.unread(kinds, {
+                one: { state: "refused", reason: "needs a setting" },
+                two: { state: "answering" },
+                three: { state: "signed-out", reason: "is closed" }
+            }).map(unread => [unread.manager.name, unread.row]),
+            [["one", "settle"], ["three", "unlock"]]);
+        check("one the daemon says nothing of is left alone",
+            Managers.unread(kinds, {}), []);
+
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);
             Qt.exit(1);

@@ -85,3 +85,14 @@ function noted(reason, called) {
     const name = String(called ?? "");
     return name !== "" && why.startsWith(`${name} `) ? why.slice(name.length + 1) : why;
 }
+
+// The row leading the place for each manager that can't read, by how its
+// daemon says it stands: Unlock while it's signed out, waiting on Joel or
+// its app, and its program while it's refused, where only a setting there
+// lets it read, so one that can't read is never left without a row
+// (2026-11-10: the place was empty while 1Password refused).
+function unread(managers, sources) {
+    const rows = { "signed-out": "unlock", refused: "settle" };
+    return managers.map(manager => ({ manager, row: rows[sources[manager.name]?.state] }))
+        .filter(led => led.row !== undefined);
+}

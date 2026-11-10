@@ -9318,6 +9318,7 @@
         "breaches": "seen in {count} breaches",
         "checking": "checking every password\u2026",
         "locked": "locked",
+        "refused": "can't read",
         "within": "in {vault} \u00b7 {kind}",
         "inVault": "{count} in 1 vault",
         "inVaults": "{count} in {vaults} vaults"
@@ -9330,6 +9331,15 @@
       "name": "{manager}",
       "verb": "unlock",
       "glyph": "signIn"
+    },
+    {
+      "id": "verb:passwords:settle",
+      "command": "signin",
+      "argument": "settings",
+      "in": "passwords",
+      "name": "{manager}",
+      "verb": "open",
+      "glyph": "program"
     },
     {
       "id": "verb:passwords:password",
@@ -13487,6 +13497,14 @@
     }
   },
   "meant": [
+    {
+      "word": "{manager}",
+      "things": [
+        "verb:passwords:settle",
+        "verb:passwords:unlock"
+      ],
+      "why": "A manager kept out by its setting can't be locked as well, so only one of the two leads Passwords for it at a time, each by the manager's name."
+    },
     {
       "word": "devices",
       "things": [
