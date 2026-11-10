@@ -53,8 +53,15 @@ Provider {
     // only those, not each event niri sends.
     onThingsChanged: changedTo(things)
 
+    // The window Joel's in is left out. Until this watch's first answer the
+    // rows are those the last opening made, and a window picked from them
+    // then moved the keys unheard, since the watch ended as the launcher
+    // closed; so niri's own word on where the keys are holds until the
+    // answer, or Super+Tab then Return would go to the window he's in.
     function everything() {
-        const others = things.filter(window => !window.focused);
+        const heard = daemon.answeredThisWatch;
+        const others = things.filter(window => window.is !== "windows:this"
+            && (heard ? !window.focused : window.id !== Niri.current));
         const rest = others.slice(1);
         return others.slice(0, 1).concat(rest.filter(window => window.waiting),
             rest.filter(window => !window.waiting));

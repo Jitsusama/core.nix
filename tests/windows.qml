@@ -119,6 +119,24 @@ ShellRoot {
             Expect.same("Capture lists every window but the one Joel's in", names(capture.windows),
                 "Draft, Notes");
 
+            // Super+Tab, Return on Draft: the keys move as the launcher
+            // closes, unheard, so the next opening's rows still mark the
+            // logbook. Until the watch's answer, niri says where the keys
+            // are, and Return goes back to the logbook.
+            windows.windowsDaemon.answeredThisWatch = false;
+            Niri.focused = 12;
+            Niri.revision += 1;
+            Expect.same("before the answer, the window left is first",
+                names(windows.everything()), "Logbook, Notes");
+            told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
+                Object.assign({}, draft, { order: 250000, focused: true }), notes] },
+                desktop(draft));
+            Expect.same("once answered, the rows say it", names(windows.everything()),
+                "Logbook, Notes");
+            Niri.focused = 11;
+            Niri.revision += 1;
+            told({ id: "all", records: [logbook, draft, notes] }, desktop(logbook));
+
             // The same whole answer again, as the launcher opens, makes none.
             const counted = windows.tally.rows;
             const kept = rowOf(12);
