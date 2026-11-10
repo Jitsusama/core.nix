@@ -6386,6 +6386,7 @@ Scope {
                         root.viewerCommandLine(words[1], words[2], words.slice(3).join(" "));
                     else
                         console.warn(`The launcher was told "${line}", which it doesn't know.`);
+                    root.askDone();
                 }
             }
         }
@@ -6397,6 +6398,7 @@ Scope {
         function toggle(): void {
             root.askedToOpen();
             root.open = !root.open;
+            root.askDone();
         }
 
         // Says a program outside the shell, asked from the launcher, may put
@@ -6410,6 +6412,7 @@ Scope {
         function collection(name: string): void {
             root.askedToOpen();
             root.into(name);
+            root.askDone();
         }
 
         // Each of the last openings, from its ask to its first frame, as
@@ -7723,8 +7726,23 @@ Scope {
     property var openingsTimed: []
     property int openingsDrawn: 0
     function askedToOpen() {
-        if (!open)
+        if (!open) {
             openAsked = KeyTimes.now();
+            openSettled = -1;
+            openBegun = -1;
+        }
+    }
+    // When the ask that opened it was done, every binding the opening
+    // changed made again with it, and when the frame that draws it began:
+    // what's left of an opening's time past its own work is the shell
+    // settling, then waiting for a frame, then drawing it, said apart so
+    // a slow one says which held it (Joel, 2026-11-10: 6,184 ms to the
+    // frame for 107 ms of its own work).
+    property real openSettled: -1
+    property real openBegun: -1
+    function askDone() {
+        if (openAsked >= 0 && openSettled < 0)
+            openSettled = KeyTimes.now();
     }
 
     // When the chord that asked for this opening ran launcher-say, on the
@@ -7748,12 +7766,17 @@ Scope {
         openAsked = -1;
         if (!open || asked < 0)
             return;
-        const took = Math.round(KeyTimes.now() - asked);
+        const drawn = KeyTimes.now();
+        const took = Math.round(drawn - asked);
         const felt = chordAt < 0 ? -1 : Math.round(Date.now() - chordAt);
         feltBegin(felt < 0 ? asked : KeyTimes.now() - felt, felt >= 0);
         const heard = Math.round(chordHeardAfter);
         chordAt = -1;
         const parts = Pacing.openingParts(openParts);
+        const settled = openSettled < 0 ? asked + openWorked : openSettled;
+        const begun = openBegun < 0 ? drawn : openBegun;
+        const after = { settling: Math.round(settled - asked - openWorked),
+            waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun) };
         const worked = Math.round(openWorked);
         const first = openingsDrawn === 0;
         openingsDrawn += 1;
@@ -7763,10 +7786,11 @@ Scope {
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
-        openingsTimed = openingsTimed.concat([{ took, worked, parts: openParts, rows, made: most,
-            verbs: openVerbsWeighed, first, felt }]).slice(-20);
+        openingsTimed = openingsTimed.concat([{ took, worked, parts: openParts, after, rows,
+            made: most, verbs: openVerbsWeighed, first, felt }]).slice(-20);
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
-            + ` (${parts}), ${rows} rows made (${most})`
+            + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
+            + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
             + (first ? ", the first since the shell started" : "")
             + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
     }
@@ -8124,6 +8148,8 @@ Scope {
             // much of it waited for its frame and how much drew it.
             function onAfterAnimating() {
                 const begun = KeyTimes.now();
+                if (root.afterFrames.includes(root.openDrawn) && root.openBegun < 0)
+                    root.openBegun = begun;
                 root.afterFramesDrawing = root.afterFramesDrawing
                     .concat(root.afterFrames.map(then => () => then(begun)));
                 root.afterFrames = [];
