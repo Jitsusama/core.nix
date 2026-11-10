@@ -633,10 +633,15 @@ fn the_screens_light_and_the_rooms_are_said_as_they_move() {
     let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": ["backlight", "light"]}));
     let records = &said["records"];
     assert_eq!(record(records, "backlight:panel")["brightness"], json!(60));
-    assert_eq!(record(records, "light:iio:device0")["lux"], json!(200.0));
+    // The sensor is read on its own, so the backlight's answer never
+    // waits on it; what it hears is told as soon as it's read.
+    assert_eq!(client.changed("light:iio:device0")["lux"], json!(200.0));
     // As the brightness keys set it, the watch is told within a read.
     write("sys/class/backlight/panel/brightness", "30\n");
     assert_eq!(client.changed("backlight:panel")["brightness"], json!(30));
+    // And as the room darkens, within the sensor's next read.
+    write("sys/bus/iio/devices/iio:device0/in_illuminance_raw", "40\n");
+    assert_eq!(client.changed("light:iio:device0")["lux"], json!(20.0));
 }
 
 #[test]

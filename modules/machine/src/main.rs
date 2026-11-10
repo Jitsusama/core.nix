@@ -181,7 +181,7 @@ impl Reader {
             records.extend(light::backlights(&self.root));
         }
         if wants("light") {
-            records.extend(light::sensors(&self.root));
+            records.extend(buses.light.iter().cloned());
         }
         if wants("awake") {
             records.push(sleep::awake(&buses.logind));
@@ -221,6 +221,7 @@ struct Buses {
     upower: BTreeMap<String, Value>,
     logind: Value,
     firmware: Vec<Value>,
+    light: Vec<Value>,
 }
 
 /// Everything the threads share.
@@ -239,6 +240,8 @@ struct Daemon {
     logind: Value,
     /// fwupd's records, as it last said them.
     firmware: Vec<Value>,
+    /// The light sensors' records, as `light_loop` last read them.
+    light: Vec<Value>,
     /// The kinds whose source said they changed, to be asked again now.
     hurried: HashSet<String>,
     /// When the last sleep began and ended, as logind's signal said.
@@ -280,6 +283,7 @@ fn main() {
             upower: BTreeMap::new(),
             logind: Value::Null,
             firmware: Vec::new(),
+            light: Vec::new(),
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
@@ -287,7 +291,7 @@ fn main() {
         }),
         reader: Mutex::new(Reader {
             fixed: processor::fixed(&root),
-            root,
+            root: root.clone(),
             page_b: u64::try_from(page).unwrap_or(4096),
             processor: None,
             memory: None,
@@ -321,6 +325,10 @@ fn main() {
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || firmware_loop(&shared));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || light_loop(&shared, &root));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -405,6 +413,7 @@ fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
             upower: daemon.upower.clone(),
             logind: daemon.logind.clone(),
             firmware: daemon.firmware.clone(),
+            light: daemon.light.clone(),
         };
         (buses, trees)
     };
@@ -611,6 +620,41 @@ fn proxy<'a>(
 fn system_bus() -> zbus::Result<zbus::blocking::Connection> {
     zbus::blocking::connection::Builder::system()
         .and_then(|builder| builder.method_timeout(BUS_WAIT).build())
+}
+
+/// Reads the light sensors each second while they're watched, on a
+/// thread of their own: a sensor's raw count takes about a tenth of a
+/// second to read, and read with the rest it would hold every other kind
+/// back, a step's first answer among them. What it reads is told at once.
+/// With the last watch its readings are let go, so the next watch's first
+/// answer says the sensor unread rather than an old count as now.
+fn light_loop(shared: &Shared, root: &Root) {
+    let mut last = None;
+    let kinds = HashSet::from(["light".to_owned()]);
+    loop {
+        if !due_while_watched(shared, "light", EVERY, &mut last) {
+            unheard(&mut lock(&shared.daemon));
+            due(shared, "light", EVERY, &mut last);
+        }
+        let said = light::sensors(root);
+        lock(&shared.daemon).light = said;
+        read(shared, &kinds, &[]);
+    }
+}
+
+/// Lets go of what each light sensor last heard, keeping the sensor and
+/// its scale, which don't change.
+fn unheard(daemon: &mut Daemon) {
+    let forget = |record: &mut Value| {
+        record["raw"] = Value::Null;
+        record["lux"] = Value::Null;
+    };
+    daemon.light.iter_mut().for_each(forget);
+    daemon
+        .held
+        .iter_mut()
+        .filter(|(key, _)| kind_of(key) == Some("light"))
+        .for_each(|(_, record)| forget(record));
 }
 
 /// Asks `UPower` what it works out of each supply every few seconds while

@@ -5,7 +5,8 @@
 //! `/sys/bus/iio/devices` (`light:<device>`), its raw count, the scale
 //! and offset that make it lux, and the lux they make. Displays reads
 //! both from here, so the shell reads no file on its own thread, and the
-//! sensor's slow raw read is the daemon's to wait on.
+//! sensor's slow raw read is the daemon's to wait on, on a thread of its
+//! own (`light_loop`), so no other kind waits behind it.
 
 use serde_json::{Value, json};
 

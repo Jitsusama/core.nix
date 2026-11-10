@@ -139,7 +139,7 @@ units, or named here as left out with the reason.
 |                 | the screen it lights                         | which screen holds Brightness, never said |
 | `light:<device>`| the lux it hears                             | Room Light, its row and the drawer        |
 |                 | its raw count, scale and offset              | the drawer's Raw, Per Count and Offset    |
-|                 | its name                                     | the drawer's Sensor, in the Name face     |
+|                 | its device                                   | the drawer's Sensor, in the Name face     |
 
 ## Left Out, and Why
 
@@ -217,6 +217,8 @@ units, or named here as left out with the reason.
   launcher can be seen, since a blanked panel shows nothing.
 - **The light sensor's sampling frequency.** It says how often the
   sensor hub samples, nothing Joel acts on; the lux it hears shows.
+- **The light sensor's name.** It's always `als`, since only a sensor
+  of that name is read, so it names nothing; its device does.
 - **The screen a backlight lights, as a name.** Its connector only
   chooses which screen's drawer holds Brightness, whose eyebrow already
   names it.
