@@ -103,10 +103,11 @@ function timesOf(thing) {
 // order. A thing is { kind: "todo" | "look", blocks, due, ready, since },
 // each time a number or an ISO time.
 function weigh(thing, now) {
-    return weighed(thing, now, timesOf(thing));
+    return weighBy(thing, now, timesOf(thing));
 }
 
-function weighed(thing, now, times) {
+// The same, from its times read once (timesOf), as banding reads them.
+function weighBy(thing, now, times) {
     const parts = [
         { id: "blocks", points: blocking(Number(thing.blocks ?? 0)) },
         { id: "due", points: dueing(times.due, now) },
@@ -163,7 +164,7 @@ function banded(items, now) {
         const band = OWN_ROWS.includes(item.kind) && !pressingBy(item.thing, now, times.due)
             ? item.kind : "now";
         bands[band].push({ at, since: times.since, item: Object.assign({}, item,
-            { weight: weighed(item.thing, now, times).weight }) });
+            { weight: weighBy(item.thing, now, times).weight }) });
     }
     return { now: inOrder(bands.now), look: inOrder(bands.look), try: inOrder(bands.try) };
 }
