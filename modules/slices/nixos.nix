@@ -581,7 +581,15 @@ in
           # ends, and every other pi gives way first to the OOM killer.
           "--orchestrators"
           "%h/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
-        ];
+        ]
+        # The session window Joel is at, as niri says, and those he was at
+        # in the last ten minutes, three in all, rank as his own programs:
+        # an app's weight, a floor inside agents.slice's own and the disk's
+        # target. On 10 November the pi he typed into, at an agent's rank
+        # beside eighty, had 726 MB in swap and his keys felt sluggish.
+        + lib.optionalString config.programs.niri.enable (
+          " " + lib.escapeShellArgs [ "--niri" (lib.getExe config.programs.niri.package) ]
+        );
         Restart = "on-failure";
         RestartSec = 5;
       };

@@ -61,6 +61,10 @@
 //! the last systemd-oomd ends, and every other pi gives way first to the
 //! kernel's OOM killer, as `src/keep.rs` says why and how.
 //!
+//! With `--niri` and `--background`, the session window Joel is at, as
+//! niri's event stream says, and those he was at in the last minutes, rank
+//! as his own programs do, as `src/focus.rs` says why and how.
+//!
 //! Terminals sit in each `--under` slice: Joel's apps' and, apart from
 //! them, the agents' sessions'.
 //!
@@ -71,10 +75,11 @@
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
 //!        [--revive jobs.slice] [--door jobs.slice] [--calls pw-dump]
-//!        [--orchestrators DIR]
+//!        [--orchestrators DIR] [--niri niri]
 
 mod calls;
 mod door;
+mod focus;
 mod keep;
 mod low;
 mod oom;
@@ -113,6 +118,7 @@ struct Settings {
     orchestrators: Option<PathBuf>,
     door: Option<String>,
     calls: Option<PathBuf>,
+    niri: Option<PathBuf>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -506,6 +512,133 @@ struct Windows<'a> {
     prefixes: &'a [String],
     dir: &'a Path,
     weight: u64,
+    /// niri's focus, when it's followed.
+    focus: Option<&'a focus::Following>,
+}
+
+/// How each window ranks, as last set: its weight, whether it's kept as
+/// an orchestrator's, and whether it's held as the one Joel is at.
+#[derive(Default)]
+struct Ranks {
+    weighing: low::Weighing,
+    keeping: keep::Keeping,
+    holding: focus::Holding,
+    /// Each held window's scope, by niri's id for it, or when it was last
+    /// looked for and not found.
+    found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
+}
+
+/// How long a window whose scope wasn't found waits to be looked for
+/// again, as one just opened may have started nothing yet.
+const LOOK_AGAIN: Duration = Duration::from_secs(5);
+
+/// Every window's scope, by its unit, with the app ids its processes were
+/// started with.
+fn started_with(scopes: &[PathBuf]) -> Vec<(String, Vec<String>)> {
+    scopes
+        .iter()
+        .filter_map(|scope| {
+            let unit = scope.file_name()?.to_str()?.to_owned();
+            let procs = fs::read_to_string(scope.join("cgroup.procs")).unwrap_or_default();
+            let apps = procs
+                .lines()
+                .filter_map(|pid| fs::read(format!("/proc/{pid}/environ")).ok())
+                .filter_map(|environ| focus::app_id(&environ))
+                .collect();
+            Some((unit, apps))
+        })
+        .collect()
+}
+
+/// Holds the scope of each window Joel is at or was at a moment ago, as
+/// niri's focus says, gives back each that aged out, and says which units
+/// are held. A failure is said once, and tried again on the next look.
+fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
+    let Some(following) = windows.focus else {
+        return HashSet::new();
+    };
+    let now = std::time::Instant::now();
+    let wanted = following.held(now);
+    ranks
+        .found
+        .retain(|id, _| wanted.iter().any(|window| window.id == *id));
+    let mut scopes: Option<Vec<PathBuf>> = None;
+    let mut held = Vec::new();
+    for window in &wanted {
+        let known = match ranks.found.get(&window.id) {
+            Some(Ok(scope)) if scope.exists() => Some(scope.clone()),
+            Some(Err(when)) if now.saturating_duration_since(*when) < LOOK_AGAIN => None,
+            _ => {
+                let all = scopes.get_or_insert_with(|| {
+                    windows
+                        .under
+                        .iter()
+                        .flat_map(|slice| homes(slice, windows.prefixes))
+                        .collect()
+                });
+                let unit = focus::scope_of(window, &started_with(all)).map(str::to_owned);
+                let scope = all
+                    .iter()
+                    .find(|scope| scope.file_name().and_then(|name| name.to_str()) == unit.as_deref())
+                    .cloned();
+                ranks
+                    .found
+                    .insert(window.id, scope.clone().ok_or(now));
+                scope
+            }
+        };
+        held.extend(known);
+    }
+    ranks.holding.keep_only(Path::exists);
+    for (scope, hold) in ranks.holding.changes(&held) {
+        let unit = scope
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let result = Command::new("busctl")
+            .args(focus::hold_call(&unit, hold))
+            .stdout(Stdio::null())
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {
+                // The latency target is the kernel's alone: systemd can't
+                // take one back once it's set (focus::latency).
+                let slice = scope.parent().map(|slice| slice.join("io.latency"));
+                let target = slice
+                    .and_then(|slice| fs::read_to_string(slice).ok())
+                    .and_then(|text| focus::latency(&text, hold));
+                if let Some(target) = target
+                    && let Err(error) = fs::write(scope.join("io.latency"), target)
+                    && !std::mem::replace(&mut ranks.holding.failed, true)
+                {
+                    eprintln!("Couldn't set {unit}'s disk target: {error}");
+                }
+                ranks.holding.done(&scope, hold);
+                // An orchestrator's window gave its floor up to this one,
+                // so it's kept again from nothing once given back.
+                ranks.keeping.done(&unit, false);
+                let says = if hold { "Held" } else { "Gave back" };
+                eprintln!("{says} {unit}, a window Joel is or was just at.");
+            }
+            Ok(output) => {
+                if !std::mem::replace(&mut ranks.holding.failed, true) {
+                    eprintln!(
+                        "Couldn't hold {unit}: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    );
+                }
+            }
+            Err(error) => {
+                if !std::mem::replace(&mut ranks.holding.failed, true) {
+                    eprintln!("Couldn't run busctl to hold {unit}: {error}");
+                }
+            }
+        }
+    }
+    held.iter()
+        .filter_map(|scope| Some(scope.file_name()?.to_str()?.to_owned()))
+        .collect()
 }
 
 /// Watches the folder of marks, made if it isn't there yet. Without a
@@ -520,16 +653,16 @@ fn watch_marks(dir: &Path) -> Option<low::Watch> {
 /// Waits out `every` between passes, weighing the windows each time a mark
 /// comes or goes and once at its end. A mark that goes is a key on its way,
 /// so its window is weighed back at once, and the pass still comes on time.
-fn rest(watch: &low::Watch, every: Duration, windows: &Windows, weighing: &mut low::Weighing) {
+fn rest(watch: &low::Watch, every: Duration, windows: &Windows, ranks: &mut Ranks) {
     let at = std::time::Instant::now() + every;
     loop {
         let left = at.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() || !watch.wait(left) {
             break;
         }
-        weigh_windows(windows, weighing);
+        weigh_windows(windows, ranks);
     }
-    weigh_windows(windows, weighing);
+    weigh_windows(windows, ranks);
 }
 
 /// Whether one of `pis` started within `low::STARTING_FOR` of `now`, in
@@ -540,15 +673,18 @@ fn starting(pis: &[Sample], now: u64) -> bool {
         .any(|proc| now.saturating_sub(proc.start) < ticks)
 }
 
-/// Weighs each window high while a pi in it starts, low while every pi in
-/// it is marked, and back once neither holds. A failure is said once, and
-/// tried again on the next look.
-fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
+/// Weighs each window high while Joel is at it or a pi in it starts, low
+/// while every pi in it is marked, and back once none of those holds. A
+/// failure is said once, and tried again on the next look.
+fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
+    let held = hold_windows(windows, ranks);
+    let weighing = &mut ranks.weighing;
     let Windows {
         under,
         prefixes,
         dir,
         weight,
+        focus: _,
     } = *windows;
     let now = uptime_ticks();
     let windows: Vec<(String, u64)> = under
@@ -563,7 +699,12 @@ fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
             let starting = now.is_some_and(|now| starting(&pis, now));
             let running: Vec<u32> = pis.iter().map(|proc| proc.pid).collect();
             let marked = |pid: u32| dir.join(pid.to_string()).exists();
-            Some((unit, low::wanted(&running, starting, marked, weight)))
+            let wanted = if held.contains(&unit) {
+                focus::WEIGHT
+            } else {
+                low::wanted(&running, starting, marked, weight)
+            };
+            Some((unit, wanted))
         })
         .collect();
     weighing.keep_only(
@@ -603,7 +744,10 @@ fn weigh_windows(windows: &Windows, weighing: &mut low::Weighing) {
 /// them, gives back each that no longer holds one, and puts each pi at
 /// the adjustment it wants. A failure is said once, and tried again on
 /// the next look.
-fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, keeping: &mut keep::Keeping) {
+fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, ranks: &mut Ranks) {
+    let Ranks {
+        keeping, holding, ..
+    } = ranks;
     let Ok(boot) = fs::read_to_string("/proc/sys/kernel/random/boot_id") else {
         return;
     };
@@ -640,7 +784,13 @@ fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, keeping: &mu
             .map(|(unit, _)| unit.clone())
             .collect::<Vec<_>>(),
     );
-    for (unit, keep) in keeping.changes(&windows) {
+    // A window held as one Joel is at has a floor over an orchestrator's,
+    // and is kept again once it's given back.
+    for (unit, keep) in keeping
+        .changes(&windows)
+        .into_iter()
+        .filter(|(unit, _)| !holding.holds(unit))
+    {
         match Command::new("busctl")
             .args(keep::keep_call(&unit, keep))
             .stdout(Stdio::null())
@@ -881,6 +1031,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         orchestrators: None,
         door: None,
         calls: None,
+        niri: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
@@ -898,6 +1049,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--revive" => settings.revive = Some(value()?),
             "--door" => settings.door = Some(value()?),
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
+            "--niri" => settings.niri = Some(PathBuf::from(value()?)),
             "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
             "--low-weight" => {
                 settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
@@ -1004,9 +1156,24 @@ fn run() -> Result<(), String> {
         .chain(&settings.weigh)
         .cloned()
         .collect();
-    let watch = settings.background.as_deref().and_then(watch_marks);
-    let mut weighing = low::Weighing::default();
-    let mut keeping = keep::Keeping::default();
+    let mut watch = settings.background.as_deref().and_then(watch_marks);
+    // Windows are weighed and held as the marks' watch wakes, so niri's
+    // focus is followed only beside it.
+    let following = match (settings.niri.as_deref(), watch.as_mut()) {
+        (Some(niri), Some(watch)) => {
+            let waker = watch
+                .waker()
+                .map_err(|error| eprintln!("The focus can't wake the sorter: {error}"))
+                .ok();
+            Some(focus::Following::start(niri, waker))
+        }
+        (Some(_), None) => {
+            eprintln!("--niri needs --background, so no window is held for focus.");
+            None
+        }
+        _ => None,
+    };
+    let mut ranks = Ranks::default();
     let mut doorway = Doorway::new(settings.calls.as_deref());
     loop {
         match (&watch, &settings.background) {
@@ -1016,8 +1183,9 @@ fn run() -> Result<(), String> {
                     prefixes: &windows,
                     dir,
                     weight: settings.low_weight,
+                    focus: following.as_ref(),
                 };
-                rest(watch, settings.every, &windows, &mut weighing);
+                rest(watch, settings.every, &windows, &mut ranks);
             }
             _ => thread::sleep(settings.every),
         }
@@ -1053,7 +1221,7 @@ fn run() -> Result<(), String> {
         }
         if pass.is_multiple_of(real_time::EVERY) {
             if let Some(dir) = &settings.orchestrators {
-                keep_windows(&under, &windows, dir, &mut keeping);
+                keep_windows(&under, &windows, dir, &mut ranks);
             }
             for cgroup in &settings.no_real_time {
                 real_time::take(&root.join(cgroup), &mut warned);
