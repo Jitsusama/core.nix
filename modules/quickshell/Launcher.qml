@@ -5396,7 +5396,8 @@ Scope {
     // let its press go.
     function keyTimed(typed, began, heard, pressed) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began,
-            searched: Date.now() - began, parts: searchParts, begun: null }]);
+            searched: Date.now() - began, parts: searchParts, begun: null,
+            rendered: null }]);
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
         // Its handler is done once it's searched or moved, all a key's own
@@ -5411,6 +5412,18 @@ Scope {
         for (const key of keysDrawing.waiting)
             key.begun = begun;
         keysDrawing = Pacing.frameBegun(keysDrawing);
+    }
+
+    // The frame those keys are in has been rendered and is being swapped
+    // onto the screen, which a check times apart, since a software swap
+    // in a test's machine took a median 30 ms a frame under load, where a
+    // key took 58 to its frame (keeps-pace, 2026-11-10). The window says
+    // so from the render thread, and it's heard here in order before the
+    // swap is, so a busy thread can only make the swap seem shorter.
+    function keysFrameRendered() {
+        const rendered = KeyTimes.now();
+        for (const key of keysDrawing.framing)
+            key.rendered = rendered;
     }
 
     // A frame was swapped: the keys it drew are timed by the newest of them.
@@ -5432,13 +5445,15 @@ Scope {
         for (const key of drawnKeys) {
             keysFramed.push(shown);
             keysBegun.push(key.begun);
+            keysRendered.push(key.rendered);
         }
         keysTimed += drawnKeys.length;
-        // The oldest go from all five at once, so each place still holds
+        // The oldest go from all six at once, so each place still holds
         // one key though keys typed as this frame was drawn wait on.
         const over = keysFramed.length - keysKept;
         if (over > 0) {
-            for (const kept of [keysFramed, keysBegun, keysHeard, keysDone, keysPressed])
+            for (const kept of [keysFramed, keysBegun, keysRendered, keysHeard, keysDone,
+                keysPressed])
                 kept.splice(0, over);
         }
     }
@@ -5479,8 +5494,10 @@ Scope {
     readonly property int keysKept: 300
     property var keysFramed: []
     // And when the frame each was drawn in began, after its handler was
-    // done, so a time is seen to be its own frame's.
+    // done, so a time is seen to be its own frame's, and when its render
+    // ended and its swap began, null where that wasn't heard.
     property var keysBegun: []
+    property var keysRendered: []
     // When each of those keys was pressed, as the compositor says, and
     // when the shell's own handler took it, all on the monotonic clock the
     // compositor's times are on, so the machine's load proof can time
@@ -6440,17 +6457,18 @@ Scope {
 
         // When each of the last keys, typed or arrowed, was pressed, when
         // the launcher's handler took it, when that handler was done, when
-        // the frame it's drawn in began and when that frame reached the
-        // screen, in milliseconds of the monotonic clock, oldest first, a
-        // key at each place in all five, its press null if no press made
-        // it; and how many keys have reached a frame since the shell
-        // started.
+        // the frame it's drawn in began, when that frame's swap began and
+        // when it reached the screen, in milliseconds of the monotonic
+        // clock, oldest first, a key at each place in all six, its press
+        // null if no press made it; and how many keys have reached a frame
+        // since the shell started.
         function framed(): string {
             const drawn = root.keysFramed.length;
             return JSON.stringify({ timed: root.keysTimed, clock: "monotonic",
                 pressed: root.keysPressed.slice(0, drawn),
                 heard: root.keysHeard.slice(0, drawn), done: root.keysDone.slice(0, drawn),
-                begun: root.keysBegun, frames: root.keysFramed });
+                begun: root.keysBegun, rendered: root.keysRendered,
+                frames: root.keysFramed });
         }
 
         // How many rows each source has made since the shell started, by
@@ -7818,6 +7836,10 @@ Scope {
             function onAfterAnimating() {
                 if (root.keysDrawing.waiting.length > 0)
                     root.keysFrameBegun();
+            }
+
+            function onAfterRendering() {
+                root.keysFrameRendered();
             }
 
             function onFrameSwapped() {
