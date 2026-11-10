@@ -23,6 +23,7 @@ pub mod link;
 pub mod mail;
 pub mod meet;
 pub mod people;
+pub mod rows;
 pub mod saves;
 pub mod state;
 pub mod token;
