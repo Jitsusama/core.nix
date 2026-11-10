@@ -1,9 +1,1 @@
-[
-  {
-    "at": 1794315108,
-    "commit": "136dc53843e1c2f32b8b236b5454dfd178845961",
-    "owner_pr": 2752,
-    "reason": "failed, then passed, at 136dc53843e1",
-    "test": "vm-a-hidden-queue-is-taken-back"
-  }
-]
+[]

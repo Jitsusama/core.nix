@@ -207,6 +207,12 @@ struct Shaped {
     /// queue in one: a VPN held under the link holds the queue in its own
     /// CAKE, and one the link's CAKE doesn't see is no router's.
     vpn_reads: (u32, u32),
+    /// The packets the upload's CAKE had dropped when last read, and what
+    /// it and the VPNs riding the link dropped since the controller was
+    /// last told, and when that was.
+    drops: Option<u64>,
+    dropped: u64,
+    told_at: Option<Instant>,
 }
 
 impl Shaped {
@@ -230,6 +236,9 @@ impl Shaped {
             *reads += 1;
             self.holding = Some(now);
         }
+        if let Some(now) = up.as_deref().and_then(qdisc::drops) {
+            self.dropped += since(self.drops.replace(now), now);
+        }
         let sent = |json: Option<String>| {
             json.and_then(|json| qdisc::shaped_bytes(&json))
                 .unwrap_or(0)
@@ -239,11 +248,14 @@ impl Shaped {
 
     /// Whose the upload's queue has been since last asked: whether CAKE
     /// held one in most reads, whether data waits to go, and what TCP
-    /// sent again, in kbit/s.
-    fn ours(&mut self, waiting: bool, resent: u64) -> Option<oneway::Ours> {
+    /// sent again and our queues dropped, in kbit/s.
+    fn ours(&mut self, waiting: bool, resent: u64, now: Instant) -> Option<oneway::Ours> {
         let link = std::mem::take(&mut self.queued_reads);
         let vpn = std::mem::take(&mut self.vpn_reads);
-        oneway::Ours::from_reads(link, vpn, waiting, resent)
+        let dropped = std::mem::take(&mut self.dropped);
+        let seconds = self.told_at.replace(now).map(|at| (now - at).as_secs_f64());
+        let dropped = seconds.map_or(0, |s| segments_kbit(dropped, s));
+        oneway::Ours::from_reads(link, vpn, waiting, (resent, dropped))
     }
 
     /// What the link sent and received since it was last counted, in
@@ -410,6 +422,9 @@ fn start(
         holding: None,
         queued_reads: (0, 0),
         vpn_reads: (0, 0),
+        drops: None,
+        dropped: 0,
+        told_at: None,
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
@@ -547,7 +562,7 @@ fn run(options: &Options) -> ExitCode {
                 let waiting = waiting::read(&options.proc);
                 let resent = resent_kbit(&mut last_resent, waiting::resent(&options.proc), now);
                 for (name, s) in &mut shaped {
-                    if let Some(ours) = s.ours(waiting, resent) {
+                    if let Some(ours) = s.ours(waiting, resent, now) {
                         l.see(name, ours);
                     }
                 }
@@ -641,6 +656,14 @@ struct Vpn {
 struct Heard {
     quiet: quiet::Quiet,
     held: Option<(u64, u64)>,
+    drops: Option<u64>,
+}
+
+/// What a count read `now` rose by since it read `before`: nothing at a
+/// count's first read, or once it starts over, as a link's queues made
+/// again do.
+fn since(before: Option<u64>, now: u64) -> u64 {
+    before.map_or(0, |b| now.saturating_sub(b))
 }
 
 /// The marks of the VPNs carrying only bulk now, whose own packets go as
@@ -656,12 +679,16 @@ fn quiet_vpns(
     heard.retain(|name, _| vpns.contains_key(name));
     let mut marks = Vec::new();
     let mut read = (0, 0);
+    let mut dropped = 0;
     for (name, vpn) in vpns {
         let json = sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default();
         let h = heard.entry(name.clone()).or_default();
         if let Some(now) = qdisc::holding(&json) {
             let queued = qdisc::queued(h.held.replace(now), now);
             read = (read.0.max(u32::from(queued)), 1);
+        }
+        if let Some(now) = qdisc::drops(&json) {
+            dropped += since(h.drops.replace(now), now);
         }
         let Some(unbulk) = qdisc::unbulk_bytes(&json) else {
             continue;
@@ -675,6 +702,7 @@ fn quiet_vpns(
     if let Some(s) = primary {
         s.vpn_reads.0 += read.0;
         s.vpn_reads.1 += read.1;
+        s.dropped += dropped;
     }
     marks.sort();
     marks.dedup();
@@ -1066,18 +1094,22 @@ fn resent_kbit(last: &mut Option<(u64, Instant)>, now_count: Option<u64>, now: I
         return 0;
     };
     let kbit = last.map_or(0, |(then, at)| {
-        let seconds = (now - at).as_secs_f64().max(0.001);
-        let bits = count.saturating_sub(then) * SEGMENT_BYTES * 8;
-        // A few hundred thousand kbit/s at most.
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "a positive rate far under u64's range"
-        )]
-        let kbit = (float(bits) / 1_000.0 / seconds).round() as u64;
-        kbit
+        segments_kbit(count.saturating_sub(then), (now - at).as_secs_f64())
     });
     *last = Some((count, now));
+    kbit
+}
+
+/// What `segments` full-sized packets over `seconds` come to, in kbit/s.
+fn segments_kbit(segments: u64, seconds: f64) -> u64 {
+    let bits = segments * SEGMENT_BYTES * 8;
+    // A few hundred thousand kbit/s at most.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a positive rate far under u64's range"
+    )]
+    let kbit = (float(bits) / 1_000.0 / seconds.max(0.001)).round() as u64;
     kbit
 }
 

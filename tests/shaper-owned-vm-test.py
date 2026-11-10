@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -47,6 +48,9 @@ UNSHAPED_SHARE = 0.2
 # to take the queue back from the router once the jobs fill it.
 COMING_UP = dt.timedelta(seconds=30)
 TAKING = dt.timedelta(seconds=90)
+# How long the shaper's rate must stay under the line to count as held
+# there: a moment under it, as a cut for delay makes, holds nothing.
+HELD = dt.timedelta(seconds=3)
 SENDING = dt.timedelta(seconds=60)
 
 
@@ -155,15 +159,21 @@ def loaded(rig: Rig) -> Rig:
     """Give the rig with the jobs' uploads filling the router, the shaper holding under it.
 
     The shaper starts above the line, so the router's queue is the one that fills;
-    only taking it back brings the shaper's rate under the line.
+    only taking it back brings the shaper's rate under the line, and keeps it there.
     """
     rig.uploads("uploads", "jobs.slice", JOBS, JOBS_PORT)
+    under_since: list[float] = []
 
     def taken_back(last_try: bool) -> bool:
         up = rig.up()
-        if last_try and not 0 < up < LINE:
-            print(f"never under the line, at {up} kbit/s:\n{rig.trace()}")
-        return 0 < up < LINE
+        if not 0 < up < LINE:
+            under_since.clear()
+        elif not under_since:
+            under_since.append(time.monotonic())
+        held = bool(under_since) and time.monotonic() - under_since[0] >= HELD.total_seconds()
+        if last_try and not held:
+            print(f"never held under the line, at {up} kbit/s:\n{rig.trace()}")
+        return held
 
     retry(taken_back, timeout=TAKING)
     return rig
