@@ -1875,6 +1875,7 @@ onLinux {
       cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/spend.qml} shell.qml
       cp ${../../tests/spend-told.qml} told.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
       cp ${shortcuts} Shortcuts.qml

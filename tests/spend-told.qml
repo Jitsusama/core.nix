@@ -13,6 +13,7 @@ import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 import "SpendWatch.js" as Records
+import "Expect.js" as Expect
 
 ShellRoot {
     id: root
@@ -51,11 +52,6 @@ ShellRoot {
     FileView {
         id: realCollection
         path: `${root.runtime}/written/collection.json`
-    }
-
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
     }
 
     // spend-watch's socket as its daemon serves it (its src/interface.rs):
@@ -163,10 +159,10 @@ ShellRoot {
         const first = spend.everything()[0];
         daemon.active = true;
         until("the socket answering", () => !SpendWatch.fromFile && !spend.stillReading, () => {
-            expect("the socket's answer, the same as the file's, makes no row",
+            Expect.expect("the socket's answer, the same as the file's, makes no row",
                 spend.everything()[0] === first && spend.tally.rows === streamed,
                 spend.tally.rows - streamed);
-            expect("its figures pass as current",
+            Expect.expect("its figures pass as current",
                 spend.answer("spend").note === "Return copies the summary",
                 spend.answer("spend").note);
             // Counted from here, since an answer asked makes its own rows.
@@ -181,7 +177,7 @@ ShellRoot {
 
     function sessionTold() {
         spend.everything();
-        expect("a session's figure changed makes none of the rows",
+        Expect.expect("a session's figure changed makes none of the rows",
             spend.tally.rows === streamed, spend.tally.rows - streamed);
         const row = Object.keys(served).find(key => key.startsWith("row:now:"));
         const line = Object.assign({}, served[row].line, { side: "$1 \u00b7 told" });
@@ -192,7 +188,7 @@ ShellRoot {
 
     function rowTold() {
         const rows = spend.everything();
-        expect("a row changed makes that row alone",
+        Expect.expect("a row changed makes that row alone",
             rows.some(one => one.side === "$1 \u00b7 told")
             && spend.tally.rows === streamed + 1, spend.tally.rows - streamed);
         unanswered();
@@ -208,10 +204,10 @@ ShellRoot {
         launcher.open = true;
         let ticks = 0;
         until("a watch left unanswered a while", () => ++ticks === 10, () => {
-            expect("a watch never answered is still reading", spend.stillReading
+            Expect.expect("a watch never answered is still reading", spend.stillReading
                 && !SpendWatch.fromFile, `${spend.stillReading} ${SpendWatch.fromFile}`);
             const still = spend.everything();
-            expect("drawn from what's held, no row made twice",
+            Expect.expect("drawn from what's held, no row made twice",
                 still.length === rows.length && spend.tally.rows === made,
                 spend.tally.rows - made);
             Qt.callLater(() => Qt.exit(0));
