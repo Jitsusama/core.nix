@@ -369,7 +369,10 @@ in
       hosts = {
         one = {
           inherit pi node;
-          environment.PROXY_ORIGIN = "https://proxy.example.com";
+          environment = {
+            PROXY_ORIGIN = "https://proxy.example.com";
+            GREETING = ''say "hi" there'';
+          };
         };
       };
       naming =
@@ -396,9 +399,11 @@ in
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
-        && lib.elem "MYCELIUM_REALM=one" environment
-        && lib.elem "PI_PACKAGE_DIR=${pi}" environment
-        && lib.elem "PROXY_ORIGIN=https://proxy.example.com" environment;
+        && lib.elem ''"MYCELIUM_REALM=one"'' environment
+        && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
+        && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
+        # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
+        && lib.elem ''"GREETING=say \"hi\" there"'' environment;
       hostsIn = services: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames services);
     in
     holds "pi-hosts-start-with-the-session"

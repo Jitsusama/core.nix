@@ -32,7 +32,9 @@ let
     value = {
       Unit = {
         Description = "Holds ${kinds.${kind}} in the ${realm} realm";
-        # Before the harness's first install there is no program to run.
+        # Until the harness ships the program there is nothing to run. systemd
+        # judges this only as the unit starts, so a realm named before then
+        # waits for the next login.
         ConditionPathExists = entry;
         # A restart parks every conversation the host holds and ends the turns
         # they are taking, so a switch leaves a running host be. A new pi or a
@@ -52,7 +54,8 @@ let
           entry
           kind
         ];
-        Environment = lib.mapAttrsToList (name: value: "${name}=${value}") (
+        # Quoted, as systemd splits an unquoted entry at its spaces.
+        Environment = lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
           host.environment
           // {
             MYCELIUM_REALM = realm;
