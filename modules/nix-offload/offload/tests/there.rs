@@ -5,6 +5,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::Duration;
 
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
@@ -106,7 +107,7 @@ echo "$@" > "$here/nix-was-given"
 echo "$@" >> "$here/nix-calls"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
 case "$*" in
-  *--substitute-on-destination*)
+  "copy --to "*--substitute-on-destination*)
     [ -e "$here/copy-takes" ] && exec sleep "$(cat "$here/copy-takes")"
     slow=$(cat "$here/slow-to-send" 2>/dev/null)
     case "$*" in *" $slow"*) [ -n "$slow" ] && exec sleep 30 ;; esac ;;
@@ -387,6 +388,82 @@ fn a_lent_builders_progress_is_its_processor_time_and_bytes_written() {
     assert_eq!(progress("nix-offload-more").status.code(), Some(255));
 }
 
+/// `there` given a derivation the builder lacks, run with `before` while
+/// the test holds every turn at sending up for `held_for`, with how long
+/// it took.
+fn sent_up_while_the_uplink_is_taken(before: &[&str], held_for: Duration) -> (Output, Duration) {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    let turns = folder.path().join("nix-offload-there");
+    fs::create_dir_all(&turns).unwrap();
+    let held: Vec<fs::File> = (1..=3)
+        .map(|turn| {
+            let file = fs::File::create(turns.join(format!("uplink-{turn}"))).unwrap();
+            file.lock().unwrap();
+            file
+        })
+        .collect();
+    let letting_go = std::thread::spawn(move || {
+        // Long enough for the run to reach its copy and find every turn
+        // taken, which takes it well under a second.
+        std::thread::sleep(held_for);
+        drop(held);
+    });
+    let began = std::time::Instant::now();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .arg("there")
+        .args(before)
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                folder.path().display(),
+                std::env::var("PATH").unwrap()
+            ),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    let took = began.elapsed();
+    letting_go.join().unwrap();
+    (ran, took)
+}
+
+#[test]
+fn a_copy_up_waits_its_turn_while_three_go_up() {
+    // On 10 November 30 runs at once shared an 11 Mbit/s uplink, and one
+    // run's inputs took 77 minutes to go up.
+    let (ran, took) = sent_up_while_the_uplink_is_taken(&[], Duration::from_secs(3));
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("so this waits its turn to send"), "{said}");
+    assert!(
+        took >= Duration::from_secs(3),
+        "sent before a turn was free: {took:?}"
+    );
+}
+
+#[test]
+fn a_copy_up_sent_first_takes_no_turn() {
+    let (ran, took) = sent_up_while_the_uplink_is_taken(&["--first"], Duration::from_secs(20));
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(!said.contains("waits its turn to send"), "{said}");
+    assert!(
+        took < Duration::from_secs(20),
+        "waited for a turn: {took:?}"
+    );
+}
+
 #[test]
 fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     // A build tool's targets come as derivations evaluated here, with no
@@ -428,7 +505,7 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     assert_eq!(
         fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
         format!(
-            "copy --no-recursive --to {} /nix/store/aaaa-x.drv\n",
+            "copy --no-recursive --substitute-on-destination --to {} /nix/store/aaaa-x.drv\n",
             STORE.trim()
         )
     );
@@ -491,7 +568,7 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     assert_eq!(
         fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
         format!(
-            "copy --to {} --derivation /nix/store/aaaa-x.drv\n",
+            "copy --derivation --substitute-on-destination --to {} /nix/store/aaaa-x.drv\n",
             STORE.trim()
         )
     );
@@ -870,7 +947,7 @@ fn a_download_this_machine_holds_that_the_builder_cant_fetch_goes_up() {
         fs::read_to_string(folder.join("nix-calls"))
             .unwrap()
             .lines()
-            .filter(|call| call.contains("--substitute-on-destination"))
+            .filter(|call| call.starts_with("copy --to "))
             .map(str::to_owned)
             .collect()
     };
@@ -995,7 +1072,7 @@ fn what_a_stopped_send_leaves_the_builder_to_build_goes_up_from_what_its_built_f
     let sends: Vec<String> = fs::read_to_string(folder.path().join("nix-calls"))
         .unwrap()
         .lines()
-        .filter(|call| call.contains("--substitute-on-destination"))
+        .filter(|call| call.starts_with("copy --to "))
         .map(str::to_owned)
         .collect();
     let send = |paths: &str| {
@@ -2521,6 +2598,63 @@ fn a_changed_run_both_lent_builders_turn_away_waits_at_the_first_it_asked() {
         "waits at the first, unmarked: {asked:?}"
     );
     assert!(asked[0].1 && asked[1].1, "{asked:?}");
+}
+
+/// A warm VM builder standing in `changed`'s folder, as its lender names it.
+fn warm_vm(changed: &Changed) {
+    let vm = changed.folder.path().join("offload-vm");
+    fs::create_dir_all(&vm).unwrap();
+    fs::write(vm.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_changed_run_both_lent_builders_turn_away_goes_to_a_warm_vm_builder() {
+    // On 10 November evaluations took 4.7 minutes with three or fewer on
+    // a lent builder and 7.5 with seven or more, while warm VM builders
+    // stood idle beside them.
+    let changed = Changed::new();
+    let more = changed.second();
+    warm_vm(&changed);
+    fs::write(changed.bin.join("busy-nix-offload"), "").unwrap();
+    fs::write(changed.bin.join("busy-nix-offload-more"), "").unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = changed.asked();
+    assert_eq!(
+        asked.last(),
+        Some(&("nix-offload-vm".to_owned(), true)),
+        "{asked:?}"
+    );
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    let said = String::from_utf8_lossy(&ran.stdout);
+    assert!(said.contains("changed  a"), "what it said: {said}");
+}
+
+#[test]
+fn a_changed_run_every_builder_turns_away_waits_at_the_first_lent_one() {
+    let changed = Changed::new();
+    let more = changed.second();
+    warm_vm(&changed);
+    for host in ["nix-offload", "nix-offload-more", "nix-offload-vm"] {
+        fs::write(changed.bin.join(format!("busy-{host}")), "").unwrap();
+    }
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = changed.asked();
+    assert_eq!(asked.len(), 4, "{asked:?}");
+    assert_eq!(asked[2], ("nix-offload-vm".to_owned(), true), "{asked:?}");
+    assert_eq!(
+        asked[3],
+        (asked[0].0.clone(), false),
+        "waits at the first lent builder, unmarked: {asked:?}"
+    );
+    assert_ne!(asked[0].0, "nix-offload-vm", "{asked:?}");
 }
 
 #[test]

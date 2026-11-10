@@ -737,7 +737,7 @@ fn up(asked: &Asked, lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) -> R
         .iter()
         .map(|path| path.split('^').next().unwrap_or(path))
         .collect();
-    derivations_up(&paths, lent, scratch, [ssh, nix])?;
+    derivations_up(&paths, lent, scratch, rank(asked), [ssh, nix])?;
     held_up(asked, &paths, lent, scratch, [ssh, nix]);
     Ok(())
 }
@@ -748,11 +748,15 @@ fn up(asked: &Asked, lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) -> R
 /// it path by path, and through the tunnel that took 79 s on 1 November
 /// for the 710 a one-line build needs, every one already there, against
 /// 4 s asked once. Without an answer they go the slow way. Each is named
-/// by its contents, so the builder takes them unsigned.
+/// by its contents, so the builder takes them unsigned. What they're built
+/// from can be outputs a cache holds, which the builder fetches itself
+/// rather than being sent: on 10 November one run's 1.1 GB took 77
+/// minutes to go up, 290 MB of it from cache.nixos.org.
 fn derivations_up(
     paths: &[&str],
     lent: &Builder,
     scratch: &Path,
+    rank: Rank,
     [ssh, nix]: [&str; 2],
 ) -> Result<(), String> {
     let mut copying = Command::new(nix);
@@ -768,7 +772,8 @@ fn derivations_up(
                 lent.host
             );
             copying
-                .args(["copy", "--no-recursive", "--to", &lent.store])
+                .args(["copy", "--no-recursive", "--substitute-on-destination"])
+                .args(["--to", &lent.store])
                 .args(lacking)
         }
         None => {
@@ -778,10 +783,12 @@ fn derivations_up(
                 lent.host
             );
             copying
-                .args(["copy", "--to", &lent.store, "--derivation"])
+                .args(["copy", "--derivation", "--substitute-on-destination"])
+                .args(["--to", &lent.store])
                 .args(paths)
         }
     };
+    let _turn = uplink_turn(rank);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let copied = copying
         .env("TMPDIR", "/tmp")
@@ -792,6 +799,47 @@ fn derivations_up(
     } else {
         Err("the derivations couldn't be copied up to the builder".to_owned())
     }
+}
+
+/// How many copies go up from this machine at once. On 10 November 30
+/// runs sent at once shared an uplink of 11 Mbit/s, and one run's 1.1 GB
+/// took 77 minutes. A few at once keep the link full, and the rest wait
+/// their turn and then go at its whole speed, rather than all crawling.
+const UPLOADS: u32 = 3;
+
+/// A turn at sending up from this machine, had while what this gives is
+/// held, so one that dies frees it. A run sent first takes none, as the
+/// net's go ahead of sessions'. When none can be had, the copy goes on
+/// without one.
+fn uplink_turn(rank: Rank) -> Option<fs::File> {
+    if rank == Rank::First {
+        return None;
+    }
+    let turns = std::env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(std::env::temp_dir, PathBuf::from)
+        .join("nix-offload-there");
+    fs::create_dir_all(&turns).ok()?;
+    let open = |turn: u32| {
+        fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(turns.join(format!("uplink-{turn}")))
+            .ok()
+    };
+    for turn in 1..=UPLOADS {
+        let held = open(turn)?;
+        if held.try_lock().is_ok() {
+            return Some(held);
+        }
+    }
+    eprintln!(
+        "nix-offload: {UPLOADS} copies already go up from this machine, so this waits its turn \
+         to send"
+    );
+    let held = open(std::process::id() % UPLOADS + 1)?;
+    held.lock().ok()?;
+    Some(held)
 }
 
 /// Every path the derivations at `paths` are built from, themselves
@@ -932,6 +980,11 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     let mut sending = held::instead(&planned, &derivations, &wanted, &holds);
     // What went up stays held, so what it's built from isn't sent again.
     let mut up = BTreeSet::new();
+    let _turn = if sending.is_empty() {
+        None
+    } else {
+        uplink_turn(rank(asked))
+    };
     while !sending.is_empty()
         && !sent_held(
             &sending,
