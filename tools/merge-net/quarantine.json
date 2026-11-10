@@ -12,5 +12,12 @@
     "owner_pr": 2880,
     "reason": "broken since #2880, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "vm-desktop-launcher-draws-still"
+  },
+  {
+    "at": 1794346840,
+    "commit": "a693826b5ecfa6c0a2d7dfd66671cbe93dbd8ee7",
+    "owner_pr": null,
+    "reason": "failed, then passed, at a693826b5ecf",
+    "test": "vm-desktop-keeps-pace"
   }
 ]
