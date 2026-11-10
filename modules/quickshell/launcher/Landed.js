@@ -50,11 +50,25 @@ function landingOf(session, one) {
     };
 }
 
-// The session a kept landing names, by its own id, among those there are,
-// or one standing for it, by its address, once it has ended.
-function lander(sessions, one) {
+// The sessions by their own ids, the first of each, so a thousand kept
+// landings find theirs among hundreds of sessions without a search each.
+function byId(sessions) {
+    const found = new Map();
+    for (const session of sessions) {
+        const id = session.presence?.session;
+        if (typeof id === "string" && !found.has(id)) {
+            found.set(id, session);
+        }
+    }
+    return found;
+}
+
+// The session a kept landing names, by its own id, among those there are
+// (`found`, by byId), or one standing for it, by its address, once it has
+// ended.
+function lander(found, one) {
     const id = String(one.session ?? "");
-    return sessions.find(session => session.presence?.session === id)
+    return found.get(id)
         ?? { address: String(one.address ?? ""), title: "", presence: { session: id } };
 }
 
@@ -64,14 +78,15 @@ function lander(sessions, one) {
 // the harness kept them, each once. Each is { key, at, ref, what, person,
 // url, quest, repo, machine, session }, `url` only a web link.
 function all(kept, sessions) {
-    const rows = kept.filter(worthReading).map(one => landingOf(lander(sessions, one), one));
-    const keys = rows.map(one => one.key);
+    const found = byId(sessions);
+    const rows = kept.filter(worthReading).map(one => landingOf(lander(found, one), one));
+    const keys = new Set(rows.map(one => one.key));
     for (const session of sessions) {
         for (const one of (session.presence?.landings ?? []).filter(worthReading)) {
             const row = landingOf(session, one);
-            if (!keys.includes(row.key)) {
+            if (!keys.has(row.key)) {
                 rows.push(row);
-                keys.push(row.key);
+                keys.add(row.key);
             }
         }
     }
@@ -157,8 +172,9 @@ function landedWhen(at, said) {
 // still kept or that a session still holds, so what's kept never grows
 // past what's there.
 function stillRead(kept, sessions, read) {
-    const held = kept.map(one => landingKey(lander(sessions, one), one)).concat(
+    const found = byId(sessions);
+    const held = new Set(kept.map(one => landingKey(lander(found, one), one)).concat(
         ...sessions.map(session => (session.presence?.landings ?? [])
-            .map(one => landingKey(session, one))));
-    return read.filter(key => held.includes(key));
+            .map(one => landingKey(session, one)))));
+    return read.filter(key => held.has(key));
 }
