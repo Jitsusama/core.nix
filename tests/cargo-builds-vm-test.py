@@ -43,6 +43,42 @@ def test_the_image_is_mounted_ext4_from_a_direct_loop(up: BaseMachine) -> None:
     assert up.succeed(f"stat -c %s {IMAGE}").strip() == str(600 * 1024 * 1024)
 
 
+def allocated(machine: BaseMachine, image: str = IMAGE) -> int:
+    """Say how many bytes of the system's disk an image holds, rather than its size."""
+    blocks, block = machine.succeed(f"stat -c '%b %B' {image}").split()
+    return int(blocks) * int(block)
+
+
+def test_the_image_holds_only_what_its_builds_use(up: BaseMachine) -> None:
+    """The image's size is a ceiling: it holds what's written, and hands back what's deleted.
+
+    On 9 November a 48 GB image held 48 GB of a disk at 83% while its builds used 21.
+    """
+    assert "discard" in up.succeed(f"findmnt -n -o OPTIONS --target {FOLDER}")
+    empty = allocated(up)
+    assert empty < 600 * 1024 * 1024 / 4, f"an empty image holds {empty} bytes"
+    as_account(up, f"head -c 200M /dev/urandom > {FOLDER}/joel/built && sync")
+    assert allocated(up) > empty + 150 * 1024 * 1024, "a build's bytes went nowhere"
+    as_account(up, f"rm {FOLDER}/joel/built && sync")
+    # ext4 hands freed blocks back as its journal commits, every 5 s at most.
+    up.wait_until_succeeds(
+        f"test $(($(stat -c '%b * %B' {IMAGE}))) -lt {empty + 50 * 1024 * 1024}", timeout=60
+    )
+
+
+def test_an_image_made_whole_hands_back_what_is_free_once_attached(up: BaseMachine) -> None:
+    """An image made before, every byte reserved, is trimmed down to what it holds when attached."""
+    script = up.succeed(f"systemctl show -P ExecStart {SERVICE}").split("path=")[1].split()[0]
+    image, folder = "/var/cache/whole.img", "/mnt/whole"
+    up.succeed(f"touch {image} && chattr +C {image} && fallocate -l 300M {image}")
+    up.succeed(f"mkfs.ext4 -q -E nodiscard {image}")
+    assert allocated(up, image) >= 300 * 1024 * 1024
+    up.succeed(f"{script} attach {image} 300M {folder} joel:users")
+    held = allocated(up, image)
+    assert held < 300 * 1024 * 1024 / 4, f"attached, it still holds {held} bytes"
+    up.succeed(f"{script} detach {folder} && rm {image}")
+
+
 def test_the_image_never_copies_on_write(up: BaseMachine) -> None:
     """Btrfs holds the image without copy-on-write, so builds only overwrite its blocks."""
     flags = up.succeed(f"lsattr {IMAGE}").split()[0]

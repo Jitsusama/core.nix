@@ -1,7 +1,8 @@
 # Boots a machine whose /var/cache is Btrfs, as a workstation's system disk
 # is, and checks cargo's own filesystem from there: the image made without
 # copy-on-write, attached with direct IO and mounted ext4 with a folder for
-# each account; kept across a detach and attach, and across a switch's
+# each account; holding only what's written in it, and an old image made
+# whole trimmed to that once attached; kept across a detach and attach, and across a switch's
 # reload with a file open in it; made again when it's past repairing; and
 # made at half what's free when asked for more than the disk holds.
 # The size asked for isn't the default, so the test proves it's read. The
