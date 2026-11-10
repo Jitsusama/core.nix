@@ -25,6 +25,8 @@ For other checks:
 | `Expect.js`                  | what a QML test says of its cases, as `expect`, `same` and `fail` |
 | `Frames.js`                  | a stand-in launcher's afterFrame, run as a test says a frame is   |
 | `HeardWindows.js`            | a stand-in niri's windows, told as the windows daemon tells them  |
+
+| `Watch.js`                   | a change a stand-in daemon tells the watch the shell holds on it  |
 | `qml-in-time.sh`             | a QML test that times itself, judged by its fastest of five runs  |
 | `qmllint-counted.{nix,sh}`   | qmllint, printing every message it counted                        |
 | `shell-folder-lint.{nix,sh}` | qmllint over a check's laid-out shell, against Quickshell's types |

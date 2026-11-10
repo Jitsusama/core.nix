@@ -10,23 +10,14 @@ pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Expect.js" as Expect
+import "Watch.js" as Watch
 import "launcher" as Launcher
 
 ShellRoot {
     id: root
 
     property string waiting: "the first reading"
-
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
-    }
-
-    function fail(message) {
-        root.waiting = "a failure";
-        console.warn(`FAIL ${message}`);
-        Qt.callLater(() => Qt.exit(1));
-    }
 
     // The launcher as Power reads it: open, "battery" typed, so Power's
     // rows can be seen and its daemon is watched.
@@ -61,12 +52,6 @@ ShellRoot {
     // The shell's watch, so the daemon can tell it more.
     property var watch: null
 
-    function tell(change) {
-        root.watch.socket.write(`${JSON.stringify(Object.assign({ id: root.watch.id },
-                change))}\n`);
-        root.watch.socket.flush();
-    }
-
     // A stand-in for the machine daemon, speaking the daemon interface:
     // hello, and a watch of the supplies answered whole.
     SocketServer {
@@ -99,7 +84,7 @@ ShellRoot {
     Timer {
         running: true
         interval: 30000
-        onTriggered: root.fail(`never came: ${root.waiting}`)
+        onTriggered: Expect.fail(`never came: ${root.waiting}`)
     }
 
     property var before: []
@@ -121,7 +106,8 @@ ShellRoot {
                 else if (root.waiting === "the port told anew")
                     root.portTold();
             } catch (error) {
-                root.fail(error.message);
+                root.waiting = "a failure";
+                Expect.fail(error.message);
             }
         }
     }
@@ -139,14 +125,14 @@ ShellRoot {
         root.waiting = "the battery told anew";
         const made = thePower.tally.rows;
         const again = thePower.answer("battery");
-        expect("asked again with nothing read, no row made", thePower.tally.rows === made,
+        Expect.expect("asked again with nothing read, no row made", thePower.tally.rows === made,
             `${thePower.tally.rows - made} rows`);
-        expect("asked again, the same rows", again.rows.length === answer.rows.length
+        Expect.expect("asked again, the same rows", again.rows.length === answer.rows.length
             && again.rows.every((row, at) => row === answer.rows[at]), "made anew");
-        expect("the Charger first", answer.rows[0].key === "power:charger", answer.rows[0].key);
+        Expect.expect("the Charger first", answer.rows[0].key === "power:charger", answer.rows[0].key);
         root.before = answer.rows;
         theLauncher.answer = answer;
-        root.tell({ changed: [root.battery(79)] });
+        Watch.tell(root.watch, { changed: [root.battery(79)] });
     }
 
     // The battery told anew: its rows are made again, saying its charge,
@@ -156,13 +142,13 @@ ShellRoot {
         if (charge(answer).side !== "79%")
             return;
         root.waiting = "the port told anew";
-        expect("the Charger's row kept", answer.rows[0] === root.before[0], "made anew");
+        Expect.expect("the Charger's row kept", answer.rows[0] === root.before[0], "made anew");
         root.before = answer.rows;
         // The sparks read again once a second; none falls due before the
         // port's case, however slow the machine running it, so what moves
         // is only what the daemon tells.
         thePower.series = Object.assign({}, thePower.series, { at: Date.now() + 3600000 });
-        root.tell({ changed: [root.port(true)] });
+        Watch.tell(root.watch, { changed: [root.port(true)] });
     }
 
     // The port told anew: the Charger's row is made again, and the
@@ -172,7 +158,7 @@ ShellRoot {
         if (answer.rows[0] === root.before[0])
             return;
         root.waiting = "the end";
-        expect("the battery's rows kept", answer.rows.slice(1).every((row, at) => row
+        Expect.expect("the battery's rows kept", answer.rows.slice(1).every((row, at) => row
             === root.before[at + 1]), "made anew");
         Qt.callLater(() => Qt.exit(0));
     }

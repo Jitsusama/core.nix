@@ -10,23 +10,14 @@ pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Expect.js" as Expect
+import "Watch.js" as Watch
 import "launcher" as Launcher
 
 ShellRoot {
     id: root
 
     property string waiting: "the first reading"
-
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
-    }
-
-    function fail(message) {
-        root.waiting = "a failure";
-        console.warn(`FAIL ${message}`);
-        Qt.callLater(() => Qt.exit(1));
-    }
 
     // The launcher as Heat reads it: open, "heat" typed, so Heat's rows
     // can be seen and its daemon is watched.
@@ -67,12 +58,6 @@ ShellRoot {
     // The shell's watch, so the daemon can tell it more.
     property var watch: null
 
-    function tell(change) {
-        root.watch.socket.write(`${JSON.stringify(Object.assign({ id: root.watch.id },
-                change))}\n`);
-        root.watch.socket.flush();
-    }
-
     // A stand-in for the machine daemon, speaking the daemon interface:
     // hello, and a watch of Heat's kinds answered whole.
     SocketServer {
@@ -105,7 +90,7 @@ ShellRoot {
     Timer {
         running: true
         interval: 30000
-        onTriggered: root.fail(`never came: ${root.waiting}`)
+        onTriggered: Expect.fail(`never came: ${root.waiting}`)
     }
 
     property var before: []
@@ -129,7 +114,8 @@ ShellRoot {
                 else if (root.waiting === "the fan let go")
                     root.fanGone();
             } catch (error) {
-                root.fail(error.message);
+                root.waiting = "a failure";
+                Expect.fail(error.message);
             }
         }
     }
@@ -143,18 +129,18 @@ ShellRoot {
         root.waiting = "the fan's change";
         const made = theHeat.tally.rows;
         const again = theHeat.answer("heat");
-        expect("asked again with nothing read, no row made", theHeat.tally.rows === made,
+        Expect.expect("asked again with nothing read, no row made", theHeat.tally.rows === made,
             `${theHeat.tally.rows - made} rows`);
-        expect("asked again, the same rows", again.rows.every((row, at) => row
+        Expect.expect("asked again, the same rows", again.rows.every((row, at) => row
             === answer.rows[at]), "made anew");
         root.before = answer.rows;
         root.chipsBefore = Object.assign({}, theHeat.chipsMade);
-        expect("each chip made by its key", Object.keys(root.chipsBefore).length === 2,
+        Expect.expect("each chip made by its key", Object.keys(root.chipsBefore).length === 2,
             Object.keys(root.chipsBefore).join(", "));
         root.counted = made;
         // Shown, so what the daemon tells is answered at once.
         theLauncher.answer = answer;
-        root.tell({ changed: [root.fan(3100)] });
+        Watch.tell(root.watch, { changed: [root.fan(3100)] });
     }
 
     // The daemon tells the fan's chip anew: the processor's chip and row
@@ -164,18 +150,18 @@ ShellRoot {
         if (!fan || fan.fans[0].value !== 3100)
             return;
         root.waiting = "the fan let go";
-        expect("the processor's chip kept", theHeat.chipsMade[root.processorKey]
+        Expect.expect("the processor's chip kept", theHeat.chipsMade[root.processorKey]
             === root.chipsBefore[root.processorKey], "made anew");
         theHeat.reads = null;
         const answer = theHeat.answer("heat");
-        expect("the processor's row kept", answer.rows[0] === root.before[0],
+        Expect.expect("the processor's row kept", answer.rows[0] === root.before[0],
             answer.rows[0]?.name);
         const fanRow = answer.rows[1];
-        expect("the fan's row made again, saying its speed", fanRow !== root.before[1]
+        Expect.expect("the fan's row made again, saying its speed", fanRow !== root.before[1]
             && fanRow.side.includes("3,100"), fanRow?.side);
-        expect("one row made", theHeat.tally.rows - root.counted === 1,
+        Expect.expect("one row made", theHeat.tally.rows - root.counted === 1,
             `${theHeat.tally.rows - root.counted} rows`);
-        root.tell({ gone: [root.fanKey] });
+        Watch.tell(root.watch, { gone: [root.fanKey] });
     }
 
     // The fan's chip let go, its row goes with it.
@@ -185,7 +171,7 @@ ShellRoot {
         root.waiting = "the end";
         theHeat.reads = null;
         const answer = theHeat.answer("heat");
-        expect("the fan gone", answer.rows.length === 1 && answer.rows[0] === root.before[0],
+        Expect.expect("the fan gone", answer.rows.length === 1 && answer.rows[0] === root.before[0],
             answer.rows.map(row => row.name));
         Qt.callLater(() => Qt.exit(0));
     }
