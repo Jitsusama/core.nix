@@ -1,7 +1,8 @@
 // The host-only InteractiveMode patch does in its viewers' terminals what
 // pi does in its own: a copy (a selection's too) reaches them rather than
 // the host's clipboard, a viewer who joins late is sent the images already
-// on the screen, the external editor opens where the viewer who asked
+// on the screen, every frame is drawn within its terminal's render scope,
+// the external editor opens where the viewer who asked
 // is, through its host, or is refused when its host can't, and an
 // extension's own component, overlays too, says it waits on the person.
 // The real methods run against fake runtimes and a fake terminal; no TTY,
@@ -174,6 +175,69 @@ it("a repaint for a viewer who joined late sends the images already on the scree
   // Stopping prints the transcript, its image too, on the main screen.
   renderer.stop();
   assert.equal(repainted, 2, "a viewer who joined late is sent the image's data");
+});
+
+// Whether each frame a renderer in `tuiMode` drew was inside its terminal's
+// render scope: one drawn now, one forced and one throttled, as a theme
+// change asks for them from another screen's call.
+async function framesInScope(tuiMode) {
+  let scoped = false;
+  const terminal = viewerTerminal();
+  // A hosted screen's terminal draws as the conversation it shows.
+  terminal.renderScope = (draw) => {
+    scoped = true;
+    try {
+      draw();
+    } finally {
+      scoped = false;
+    }
+  };
+  const renderer = createInteractiveTui({
+    tuiMode,
+    showHardwareCursor: false,
+    logDirectory: process.env.HOME,
+    terminal,
+  });
+  const drawn = [];
+  renderer.addChild({
+    render: () => {
+      drawn.push(scoped);
+      return [`frame ${drawn.length}`];
+    },
+    invalidate: () => undefined,
+  });
+  // A throttled frame waits out pi's frame interval; a second is ample.
+  const drawnPast = (count, until = Date.now() + 1000) =>
+    drawn.length > count || Date.now() > until
+      ? Promise.resolve()
+      : new Promise((settle) => setImmediate(settle)).then(() => drawnPast(count, until));
+  renderer.start();
+  renderer.renderNow(true);
+  const now = drawn.length;
+  renderer.requestRender(true);
+  await drawnPast(now);
+  const forced = drawn.length;
+  renderer.requestRender();
+  await drawnPast(forced);
+  // Stopping prints the transcript, which is no frame.
+  const frames = [...drawn];
+  renderer.stop();
+  return frames;
+}
+
+it("every frame is drawn within its terminal's render scope, whoever asked for it", async () => {
+  const [regular, fullscreen] = await Promise.all([
+    framesInScope("regular"),
+    framesInScope("fullscreen"),
+  ]);
+  for (const [tuiMode, frames] of Object.entries({ regular, fullscreen })) {
+    assert.ok(frames.length >= 3, `${tuiMode}: three frames were drawn, not ${frames.length}`);
+    assert.deepEqual(
+      frames.filter((inScope) => !inScope),
+      [],
+      `${tuiMode}: every frame is drawn in scope`,
+    );
+  }
 });
 
 it("a hosted screen whose host can't edit refuses the external editor in place", async () => {
