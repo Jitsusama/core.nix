@@ -200,7 +200,11 @@
   // views kept hidden too, since each is a page the reader opens. A proper
   // name is marked translate="no", the standard's own way of saying it stays
   // as written, so a surname such as Gray is never asked to be respelled.
-  const names = '[translate="no"]';
+  // A person's own words, typed into a site that shows them as written, sit
+  // in an element marked data-said-by with who said them; they're theirs,
+  // never rewritten, so only the marker counts, never a bare quote, which
+  // could hide a site's own prose.
+  const names = '[translate="no"], [data-said-by]';
   const prose = [];
   const walker = page.createTreeWalker(page.body, NodeFilter.SHOW_TEXT);
   for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
