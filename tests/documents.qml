@@ -27,7 +27,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: standIn
 
         property bool open: false
         // Whether Documents' rows are wanted (Provider.qml's wanted), as
@@ -40,7 +40,7 @@ ShellRoot {
     Launcher.Documents {
         id: documents
 
-        launcher: launcher
+        launcher: standIn
         settings: ({ name: "documents" })
     }
 
@@ -61,14 +61,14 @@ ShellRoot {
             Google.documents = [document("d1", "Quarterly Plan"), document("d2", "Roadmap")];
             expect("nor a document coming", documents.tally.rows === shut,
                 documents.tally.rows - shut);
-            launcher.open = true;
+            standIn.open = true;
             expect("opened, it holds every document", titles() === "Quarterly Plan, Roadmap",
                 titles());
             expect("made once", documents.tally.rows - shut === 2, documents.tally.rows - shut);
             expect("and its program's Recent holds them",
                 documents.recentOf("google-docs").map(row => row.name).join(", ")
                 === "Quarterly Plan, Roadmap", "");
-            launcher.open = false;
+            standIn.open = false;
             const closed = documents.tally.rows;
             Calendar.now += 60000;
             expect("shut again, it keeps what it made", titles() === "Quarterly Plan, Roadmap",

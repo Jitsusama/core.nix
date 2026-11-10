@@ -3404,6 +3404,10 @@ onLinux {
         property var documents: []
         property var drive: ({ places: {}, kept: {}, listings: [], downloads: [] })
         property var account: null
+        function list(folder) {}
+        function listing(folder, since) { return null; }
+        function download(file, how, to) {}
+        function downloading(file, since) { return null; }
       '';
       calendar = singleton "Calendar.qml" ''property real now: Date.parse("2026-11-10T12:00:00Z")'';
       mail = singleton "Mail.qml" "property var dates: ({})";
