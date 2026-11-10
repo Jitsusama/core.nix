@@ -5476,6 +5476,7 @@ Scope {
         const pressed = KeyTimes.pressed();
         searchParts = null;
         current = to;
+        console.info(`diag moved ${Date.now() - began} ms`);
         keyTimed(arrow, began, heard, pressed);
     }
 
@@ -6504,8 +6505,10 @@ Scope {
     function drawerOf(row, told) {
         if (!drawable(row))
             return null;
+        const t0 = Date.now();
         const own = typeof row.drawer === "function" ? row.drawer()
             : row.drawer ?? heldDrawer(row);
+        console.info(`diag drawerOf ${row.name} ${Date.now() - t0} ms`);
         if (told && typeof row.drawerUnread === "function" && row.drawerUnread())
             told.unread = true;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",

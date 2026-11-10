@@ -446,23 +446,37 @@ Provider {
     // file it opens, its keywords and its package, is the programs
     // daemon's record of it (`entryOf`).
     function programDrawer(entry) {
+        const t0 = Date.now();
+        const made = programDrawn(entry);
+        console.info(`diag programDrawer ${entry.id} ${Date.now() - t0} ms`);
+        return made;
+    }
+    function programDrawn(entry) {
         if (entry.id === undefined || entry.name === undefined)
             return null;
+        const t0 = Date.now();
         const looked = {};
         const player = playerOf(given => provider.names(entry, given, looked));
+        const t1 = Date.now();
         // Each process once, as two windows are often one process's.
         const pids = Array.from(new Set((running[entry.id] ?? []).map(window => window.pid)
             .filter(pid => Number.isInteger(pid) && pid > 0))).sort((a, b) => a - b);
+        const usage = Program.usage(treesOf(pids));
+        const t2 = Date.now();
+        const given = hooked("programFacts", entry.id);
+        const t3 = Date.now();
+        const record = entryOf(entry.id);
+        console.info(`diag drawn parts player ${t1 - t0} usage ${t2 - t1} given ${t3 - t2} record ${Date.now() - t3}`);
         return Program.drawer({
             name: entry.name,
-            usage: Program.usage(treesOf(pids)),
+            usage: usage,
             asking: pids.length > 0,
             places: (running[entry.id] ?? [])
                 .map(window => Niri.workspaces[window.workspace_id]?.idx)
                 .filter(place => place !== undefined),
             playing: player && player.trackTitle !== "" ? nowPlaying(player) : "",
-            given: hooked("programFacts", entry.id),
-            record: entryOf(entry.id),
+            given: given,
+            record: record,
             categories: entry.categories,
             command: entry.command,
             id: entry.id,

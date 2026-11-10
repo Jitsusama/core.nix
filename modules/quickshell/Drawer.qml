@@ -1252,6 +1252,12 @@ Floating {
     // valueLine gives way on, an identifier as identifierKept lays it, and
     // any other as itemsKept does. Its `value` is still what's copied.
     function valueDrawn(fact) {
+        const t0 = Date.now();
+        const said = valueLaid(fact);
+        console.info(`diag valueDrawn ${fact.modelData?.identifies === true} ${Date.now() - t0} ms`);
+        return said;
+    }
+    function valueLaid(fact) {
         const data = fact.modelData;
         const width = text => faceOf(data).advanceWidth(text);
         if (!fact.known) {
