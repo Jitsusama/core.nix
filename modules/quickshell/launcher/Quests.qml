@@ -171,7 +171,14 @@ Provider {
     readonly property var kept: ({})
 
     // Open first, by priority and then rank; the rest, last touched first.
-    readonly property var all: {
+    // Made only while they're wanted (Provider.qml's wanted), giving those
+    // last made otherwise and reading nothing else, so a list the harness
+    // writes with the launcher shut makes none: Joel's shut launcher made
+    // 184 in 240 s, 128 in one burst (YQZGPC, 2026-11-10). Asked for while
+    // not wanted, as Start a Session steps in, they're laid out then
+    // (laidOut), keeping those that read the same.
+    readonly property var all: provider.wanted ? laidOut() : kept.rows ?? []
+    function laidOut() {
         const bucket = q => {
             const at = priorities.indexOf(q.priority);
             return at < 0 ? priorities.length : at;
@@ -195,7 +202,12 @@ Provider {
         for (const id of Object.keys(provider.kept))
             delete provider.kept[id];
         Object.assign(provider.kept, next);
+        // Not a quest's id, which begins with QEST-.
+        provider.kept.rows = rows;
         return rows;
+    }
+    function rowsNow() {
+        return provider.wanted ? all : laidOut();
     }
     onAllChanged: changedTo(all)
 
@@ -417,20 +429,21 @@ Provider {
     }
 
     function everything() {
-        return all.filter(row => row.unfinished);
+        return rowsNow().filter(row => row.unfinished);
     }
 
     // A search looks through every quest, finished ones too.
     function looksThrough() {
-        return all;
+        return rowsNow();
     }
 
+    // Counted from the quests themselves, so saying how many makes no row.
     function counted() {
-        const open = everything();
-        if (open.length === 0)
+        const open = quests.filter(quest => isOpen(quest)).length;
+        if (open === 0)
             return "empty";
         const driving = quests.filter(quest => isOpen(quest) && quest.priority === "driving").length;
-        return [`${open.length} open`, driving > 0 ? `${driving} driving` : ""]
+        return [`${open} open`, driving > 0 ? `${driving} driving` : ""]
             .filter(part => part !== "").join(", ");
     }
 
