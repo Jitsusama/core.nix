@@ -185,6 +185,9 @@ ShellRoot {
                 ghost: " = Today: $484 · usual, ends near $1,457 ($800 to $2,216), billed"
             }
             Prompt { id: hinted; width: root.panel; hint: root.sentence }
+            // A field with a hint and a ghost, filled and emptied as a step
+            // into a place empties it.
+            Prompt { id: filled; width: root.panel; hint: "what to do?"; ghost: "ovim" }
             PromptFoot { id: footed; width: root.panel; leads: "Asked by sudo" }
             StatusLine {
                 id: lined
@@ -408,6 +411,18 @@ ShellRoot {
                     from: at.x, to: at.x + child.contentWidth });
             }
             drawn(child, into);
+        }
+        return into;
+    }
+
+    // The face of every piece of text under an item, shown or not, in the
+    // order its children stand, so two readings compare piece by piece.
+    function facesUnder(item, into) {
+        for (const child of item.children) {
+            if (typeof child.text === "string" && child.font !== undefined)
+                into.push({ text: child.text, face: `${child.font.family} ${child.font.italic}`
+                    + ` ${child.font.pointSize} ${JSON.stringify(child.font.variableAxes)}` });
+            facesUnder(child, into);
         }
         return into;
     }
@@ -1119,6 +1134,19 @@ ShellRoot {
             texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
             expect("a field's note gives way to its hint rather than lying over it",
                 texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
+            // Filling a field and emptying it turns no text's face: the hint
+            // and the ghost keep their own, since a face turned lays its
+            // words out again, which slowed every step into a place from a
+            // find (keeps-pace's step probe).
+            const emptyFaces = root.facesUnder(filled, []);
+            filled.text = "ne";
+            const filledFaces = root.facesUnder(filled, []);
+            filled.text = "";
+            const turned = emptyFaces.map((one, at) => ({ one: one, now: filledFaces[at]?.face }))
+                .filter(pair => pair.now !== pair.one.face)
+                .map(pair => `"${pair.one.text}" ${pair.one.face} to ${pair.now}`);
+            expect("filling a field turns no text's face", turned.length === 0,
+                turned.join("; "));
             const plainRow = root.setting(plainSaid, root.voice);
             const voicedRow = root.setting(voicedSaid, root.voice);
             expect("a row's words in the voice, on the mono's baseline",

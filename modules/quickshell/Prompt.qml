@@ -1333,49 +1333,67 @@ Item {
         // The letters are measured as a Text set exactly as the ghost's is,
         // its axes too, which a FontMetrics given the ghost's font left out,
         // measuring them narrow; the ghost ends in its letters, so the
-        // ground ends where it does.
+        // ground ends where it does. Only the ghost flashes, since only it
+        // says the answer y copies.
         Rectangle {
-            readonly property real before: Math.max(0, hintText.implicitWidth - inked.implicitWidth)
-            visible: prompt.ghostFlashed && hintText.visible && inked.text !== ""
-            x: hintText.x + before
-            y: hintText.y
-            width: Math.max(0, Math.min(hintText.width, hintText.implicitWidth) - before)
-            height: hintText.height
+            readonly property real before: Math.max(0, ghostText.implicitWidth - inked.implicitWidth)
+            visible: prompt.ghostFlashed && ghostText.visible && inked.text !== ""
+            x: ghostText.x + before
+            y: ghostText.y
+            width: Math.max(0, Math.min(ghostText.width, ghostText.implicitWidth) - before)
+            height: ghostText.height
             color: Theme.accent
 
             Text {
                 id: inked
                 visible: false
                 textFormat: Text.PlainText
-                text: hintText.text.trim()
-                font.family: hintText.level.family
-                font.italic: hintText.level.italic
-                font.pointSize: hintText.level.pointSize
-                font.variableAxes: hintText.level.variableAxes
+                text: ghostText.text.trim()
+                font.family: Theme.level.figure.family
+                font.italic: Theme.level.figure.italic
+                font.pointSize: Theme.level.figure.pointSize
+                font.variableAxes: Theme.level.figure.variableAxes
             }
         }
 
+        // The hint and the ghost are a Text each, each in its own face for
+        // good, rather than one Text whose face turns as the field empties
+        // or fills: turning it, under load, was 7 to 18 ms of a step into a
+        // place from a find, and with a Text each that time was gone
+        // (keeps-pace's step probe, 2026-11-10).
         Text {
             id: hintText
-            readonly property bool voiced: input.text === ""
-            readonly property var level: hintText.voiced ? Theme.level.voice : Theme.level.figure
             // With nothing typed, past the caret where one is drawn, a mark
             // after it, so the caret never covers the hint's first letter
             // (VKCF3Z's space audit of the picker, fault 11).
-            x: input.text !== "" ? input.contentWidth
-                : prompt.caretShown ? prompt.caretWidth + Theme.space.rung.mark : 0
+            x: prompt.caretShown ? prompt.caretWidth + Theme.space.rung.mark : 0
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.baseline: parent.baseline
             textFormat: Text.PlainText
-            text: input.text === "" ? prompt.hint : prompt.ghost
-            visible: text !== "" && (input.text === "" || !prompt.secret)
-                && !(input.text !== "" && prompt.narrowSaid)
+            text: prompt.hint
+            visible: input.text === "" && text !== ""
+            color: Theme.muted
+            font.family: Theme.level.voice.family
+            font.italic: Theme.level.voice.italic
+            font.pointSize: Theme.level.voice.pointSize
+            font.variableAxes: Theme.level.voice.variableAxes
+        }
+
+        Text {
+            id: ghostText
+            x: input.contentWidth
+            width: Math.max(0, input.width - x)
+            elide: Text.ElideRight
+            anchors.baseline: parent.baseline
+            textFormat: Text.PlainText
+            text: prompt.ghost
+            visible: input.text !== "" && text !== "" && !prompt.secret && !prompt.narrowSaid
             color: prompt.ghostFlashed ? Theme.on_accent : Theme.muted
-            font.family: hintText.level.family
-            font.italic: hintText.level.italic
-            font.pointSize: hintText.level.pointSize
-            font.variableAxes: hintText.level.variableAxes
+            font.family: Theme.level.figure.family
+            font.italic: Theme.level.figure.italic
+            font.pointSize: Theme.level.figure.pointSize
+            font.variableAxes: Theme.level.figure.variableAxes
         }
 
         // The narrowed find's count, apart from what's typed, muted at
