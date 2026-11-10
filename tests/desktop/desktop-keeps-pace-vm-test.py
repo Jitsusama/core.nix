@@ -68,7 +68,9 @@ WORDS = ["power", "sound", "files", "night", "music", "clock", "paint", "light",
 # which is the compositor's frame callback. Since a key waits for a frame begun after its
 # handler (#2860), one handled as a frame is drawn pays the next frame's whole swap, which under
 # load took a median 30 ms a frame against 12 frozen (2026-11-10), so as written the middle key
-# read 106 to 125 ms against 28 to 31 on one builder and 58 against 24 on another.
+# read 106 to 125 ms against 28 to 31 on one builder and 58 against 24 on another. A laptop's
+# compositor makes a frame callback wait too, so the laptop's journal of Joel's own keys, which
+# times the whole of each, stays the final judge.
 PHASE = 20
 # The frozen turns don't cancel the builder out at the tail: under load all four of the VM's
 # processors want to run, and the builder, which can't see the guest's weights, holds the one
