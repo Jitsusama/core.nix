@@ -3,8 +3,9 @@
 //! of the kernel's files says, made into records ([`processor`],
 //! [`memory`], [`disk`], [`boot`], [`using`], [`tree`], [`heat`],
 //! [`supply`], [`sleep`], [`firmware`], [`light`], and what the backlight
-//! program steers the screen to, [`steered`], and who has each camera open,
-//! [`camera`], both heard as they're written through [`written`]), and the
+//! program steers the screen to, [`steered`], who has each camera open,
+//! [`camera`], and the keyboards connected, caps lock and a board's layer,
+//! [`keyboards`], each heard as it's written through [`written`]), and the
 //! user units the shell may restart, [`units`], and the parts Heat's rows
 //! say, gathered from those records and the processor's own telemetry
 //! ([`parts`], [`telemetry`]), and Heat's and Power's rows made of them,
@@ -31,6 +32,7 @@ pub mod firmware;
 pub mod heat;
 pub mod heat_rows;
 pub mod interface;
+pub mod keyboards;
 pub mod kept;
 pub mod light;
 pub mod memory;

@@ -6,9 +6,9 @@
 //! the machine most, its sensors, thermal zones and cooling, each power
 //! supply, how it sleeps, its firmware, the screen's backlight and the
 //! room's light, the brightness and warmth the backlight program
-//! steers the built-in screen to, who has each camera open, and Keep
-//! Awake's locks and the power profile (kept.rs), each a record whose
-//! figures are
+//! steers the built-in screen to, who has each camera open, Keep Awake's
+//! locks and the power profile (kept.rs), and the keyboards connected,
+//! caps lock and a board's layer, each a record whose figures are
 //! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
@@ -32,7 +32,9 @@
 //! program's files are heard as it writes them while their kinds are
 //! watched, so a switch turned in the launcher reads turned within a
 //! frame, not at the next second's read, and so are the cameras' holders,
-//! so a program opening a camera is said as it does. Keep Awake's files and the
+//! so a program opening a camera is said as it does, and the keyboards'
+//! watchers' files, so caps lock is lit on the screen as it is on the
+//! board. Keep Awake's files and the
 //! machine's chosen profile are heard as they're written, and
 //! power-profiles-daemon as it says it changed, from the daemon's start,
 //! since the shell watches them while the launcher's shut: neither is
@@ -68,9 +70,9 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, boot, camera, clock_ms, disk, firmware, heat, heat_rows, kept, light, memory, now_ms,
-    power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree, units, using,
-    written::Written,
+    Root, boot, camera, clock_ms, disk, firmware, heat, heat_rows, keyboards, kept, light, memory,
+    now_ms, power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree, units,
+    using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -99,7 +101,8 @@ const LEEWAY: Duration = Duration::from_millis(50);
 /// The kinds read as their files are written (`heard_loop`), never on
 /// the second.
 const STEERED: [&str; 2] = ["brightness", "warmth"];
-const HEARD: [&str; 3] = ["brightness", "warmth", "camera"];
+const KEYBOARDS: [&str; 2] = ["keyboards", "capslock"];
+const HEARD: [&str; 6] = ["brightness", "warmth", "camera", "keyboards", "capslock", "layer"];
 /// How often a watch on files heard looks to see whether it's still
 /// wanted, once every folder is watched.
 const RESTING: Duration = Duration::from_secs(60);
@@ -206,6 +209,9 @@ struct Reader {
     steered: Option<steered::Files>,
     /// The session's runtime folder, where Keep Awake leaves its files.
     runtime: Option<String>,
+    /// Where a board's watcher says its layer, or none for a session with
+    /// no runtime folder.
+    layer: Option<String>,
 }
 
 impl Reader {
@@ -224,6 +230,15 @@ impl Reader {
         }
         if wants("camera") {
             records.extend(camera::cameras(&self.root));
+        }
+        if wants("keyboards") {
+            records.push(keyboards::connected(&self.root));
+        }
+        if wants("capslock") {
+            records.push(keyboards::capslock(&self.root));
+        }
+        if wants("layer") {
+            records.extend(keyboards::layer(&self.root, self.layer.as_deref()));
         }
         records
     }
@@ -479,6 +494,22 @@ fn main() {
     }
     {
         let shared = Arc::clone(&shared);
+        let folders = vec![root.path(keyboards::LIGHTS)];
+        std::thread::spawn(move || heard_loop(&shared, &KEYBOARDS, &folders, keyboards::names));
+    }
+    if let Some(folder) = keyboards::layer_file()
+        .as_deref()
+        .and_then(|file| std::path::Path::new(file).parent())
+        .map(|folder| root.path(&folder.to_string_lossy()))
+    {
+        let shared = Arc::clone(&shared);
+        let folders = vec![folder];
+        std::thread::spawn(move || {
+            heard_loop(&shared, &["layer"], &folders, keyboards::names_the_layer);
+        });
+    }
+    {
+        let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
@@ -550,6 +581,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             runtime: std::env::var("XDG_RUNTIME_DIR")
                 .ok()
                 .filter(|folder| !folder.is_empty()),
+            layer: keyboards::layer_file(),
         }),
         woken: Condvar::new(),
     }
@@ -1039,7 +1071,8 @@ fn light_loop(shared: &Shared, root: &Root) {
 
 /// Hears the files of these kinds in these folders as they're written
 /// while the kinds are watched, and tells what changed at once: the
-/// backlight program's, and the cameras' holders'. They're read at no
+/// backlight program's, the cameras' holders', and the keyboards'
+/// watchers'. They're read at no
 /// other time but a watch's first answer and a get. They're read once more
 /// as the watch on them begins, so one written since the first answer is
 /// said all the same. With the last watch the files are let be, so an

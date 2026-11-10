@@ -7,10 +7,11 @@
 //! disk's file systems are found through what's mapped over it; the
 //! brightness and warmth the backlight program steers the screen to are
 //! told as it writes them, as are Keep Awake's locks and the machine's
-//! chosen profile; who has each camera is told as its file is; a charge
-//! limit set is told before it's answered; Heat's rows are made for a
-//! watch of their place and told as they move; and an ask, act or kind
-//! it doesn't know is refused.
+//! chosen profile; who has each camera is told as its file is; the
+//! keyboards, caps lock and a board's layer are told as their watchers
+//! write them; a charge limit set is told before it's answered; Heat's
+//! rows are made for a watch of their place and told as they move; and
+//! an ask, act or kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -950,6 +951,50 @@ fn keep_awakes_locks_and_the_chosen_profile_are_told_as_theyre_written() {
     // On battery, follow.sh writes its new choice in place.
     std::fs::write(root.join("run/power-profile/wanted"), "balanced\n").unwrap();
     assert_eq!(client.changed("profile:main")["wanted"], "balanced");
+}
+
+#[test]
+fn the_keyboards_caps_lock_and_a_boards_layer_are_told_as_their_watchers_write() {
+    let running = Running::new("keyboards");
+    let root = running.root();
+    let lights = root.join("run/keyboard-lights");
+    let runtime = root.join("run/user/1000");
+    std::fs::create_dir_all(root.join("proc/bus/input")).unwrap();
+    std::fs::create_dir_all(&runtime).unwrap();
+    let board = "I: Bus=0003 Vendor=3297 Product=4975 Version=0111\n\
+        N: Name=\"ZSA Technology Labs ErgoDox EZ\"\n\
+        P: Phys=usb-0000:00:14.0-2/input0\n\
+        S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.0/input/input12\n\
+        U: Uniq=\n\
+        H: Handlers=sysrq kbd leds event12\n\
+        B: LED=1f\n";
+    let mut client = running.client();
+    // Nothing yet from either watcher, as on a machine just booted.
+    let said = client.ask(&json!({
+        "id": "all", "ask": "watch", "kind": ["keyboards", "capslock", "layer"],
+    }));
+    assert_eq!(
+        record(&said["records"], "keyboards:connected")["listed"],
+        json!([])
+    );
+    assert_eq!(record(&said["records"], "capslock:keyboard")["on"], false);
+    // A board plugged in: the kernel lists it, and the watcher's list,
+    // written beside and renamed over, says it holds one more.
+    std::fs::write(root.join("proc/bus/input/devices"), board).unwrap();
+    std::fs::create_dir_all(&lights).unwrap();
+    std::fs::write(lights.join("keyboards.new"), "12\n").unwrap();
+    std::fs::rename(lights.join("keyboards.new"), lights.join("keyboards")).unwrap();
+    let listed = &client.changed("keyboards:connected")["listed"];
+    assert_eq!(listed[0]["vendor"], "3297");
+    // Caps lock, written in place as the watcher writes it.
+    std::fs::write(lights.join("capslock"), "1\n").unwrap();
+    assert_eq!(client.changed("capslock:keyboard")["on"], true);
+    std::fs::write(runtime.join("keyboard-layer"), "Numb locked\n").unwrap();
+    let layer = client.changed("layer:keyboard");
+    assert_eq!((&layer["name"], &layer["locked"]), (&json!("Numb"), &json!(true)));
+    // Unplugged, the board's watcher says "-", and there's no layer.
+    std::fs::write(runtime.join("keyboard-layer"), "-\n").unwrap();
+    assert_eq!(client.gone(), [json!("layer:keyboard")]);
 }
 
 #[test]
