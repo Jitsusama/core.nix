@@ -16,6 +16,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Ago.js" as Ago
+import "../When.js" as When
 import "RealmMachines.js" as Listed
 
 Provider {
@@ -77,11 +78,18 @@ Provider {
     }
 
     // What RealmMachines.js needs to say them: the words, the realms, now, this
-    // machine's core and how the disk guard bands a disk.
+    // machine's core, how the disk guard bands a disk, and a moment's day and
+    // time as the launcher says them everywhere (When.js).
     function placeNow(listed) {
         const here = listed.find(record => record.here === true);
+        const said = Words.of("machines").said ?? {};
         return {
-            said: Words.of("machines").said ?? {},
+            said: said,
+            day: (at, now) => When.day(at, now, {
+                yesterday: said.yesterday ?? "",
+                date: (date, format) => Qt.formatDate(date, format)
+            }),
+            clock: at => Qt.formatDateTime(new Date(at), "HH:mm"),
             named: id => Words.name(`machines:${id}`),
             now: Date.now(),
             realms: realms.length,

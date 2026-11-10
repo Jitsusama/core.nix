@@ -204,9 +204,22 @@ function takes(room, said) {
     return [one(counts.builds, "build"), one(counts.vm_tests, "vmTest")].join(", ");
 }
 
+// When its last update ended, as the launcher says a moment: "23:40"
+// today, else its day before it, "yesterday 23:40", "Friday 23:40" or
+// "7 Nov 23:40"; nothing where its node says no `at` (VKCF3Z,
+// 2026-11-09: "failed \u00b7 yesterday 23:40").
+function ended(at, place) {
+    const time = Date.parse(String(at ?? ""));
+    if (Number.isNaN(time)) {
+        return "";
+    }
+    return [place.day(time, place.now), place.clock(time)].filter(part => part !== "")
+        .join(" ");
+}
+
 // Its update: the commit its machine runs, shortened, and core's beside
-// this machine's where both say one, then how its last update ended, then
-// why it said it needs a reboot.
+// this machine's where both say one, then how its last update ended and
+// when, then why it said it needs a reboot.
 function update(updated, place) {
     if (!updated) {
         return [];
@@ -219,7 +232,8 @@ function update(updated, place) {
     return [
         fact(named("commit"), String(updated.commit ?? "").slice(0, SHORT_COMMIT)),
         fact(named("core"), coreSaid),
-        fact(named("step"), updated.step ?? ""),
+        fact(named("step"), [updated.step ?? "", ended(updated.at, place)]
+            .filter(part => part !== "").join(BETWEEN)),
         fact(named("reboot"), updated.restart ?? "")
     ];
 }
