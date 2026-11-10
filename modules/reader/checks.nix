@@ -165,6 +165,7 @@ onLinux {
       cp ${./Reader.js} launcher/Reader.js
       cp ${../../tests/reader-program.qml} shell.qml
       cp ${../../tests/lib/Expect.js} Expect.js
+      cp ${../../tests/lib/Frames.js} Frames.js
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml

@@ -4454,6 +4454,7 @@ onLinux {
       cp ${../reader/Reader.js} launcher/Reader.js
       cp ${../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
       cp ${../../tests/program-acts.qml} shell.qml
+      cp ${../../tests/lib/Frames.js} Frames.js
       export XDG_RUNTIME_DIR=$TMPDIR/runtime
       export PATH=${
         lib.makeBinPath [

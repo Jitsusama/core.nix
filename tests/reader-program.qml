@@ -28,6 +28,7 @@ import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 import "Expect.js" as Expect
+import "Frames.js" as Frames
 import "launcher/Reader.js" as Reader
 
 ShellRoot {
@@ -82,16 +83,13 @@ ShellRoot {
         property string underListed: ""
 
         // What waits for the next frame, as the launcher's afterFrame
-        // keeps it, run as a frame is drawn (`drawn`).
-        property var frames: []
+        // keeps it (tests/lib/Frames.js), run as a frame is drawn.
+        readonly property var frames: Frames.kept()
         function afterFrame(then) {
-            frames = frames.concat([then]);
+            frames.due.push(then);
         }
         function drawn() {
-            const due = frames;
-            frames = [];
-            for (const then of due)
-                then();
+            Frames.drawn(frames);
         }
     }
 
@@ -173,7 +171,7 @@ ShellRoot {
             same("nothing is listed before the reader is stepped into", listings(), 0);
             theLauncher.held = [{ row: program("reader"), rows: [] }];
             // A step's frame never waits on starting a process.
-            same("reader --places waits for the step to be drawn", theLauncher.frames.length, 1);
+            same("reader --places waits for the step to be drawn", theLauncher.frames.due.length, 1);
             theLauncher.drawn();
         } catch (error) {
             fail(error.message);
