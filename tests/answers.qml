@@ -2301,6 +2301,27 @@ QtObject {
             Firmware.installPatience({ release: { minutes: 3 } }), 30);
         machine("an install fwupd gives no length is waited for the least",
             Firmware.installPatience({ release: null }), 30);
+        machine("a fix or an undo is waited for two minutes", Firmware.changePatience(), 2);
+        // How a run of fwupdmgr ended, as its row keeps it: by itself, in
+        // its own words, or stopped once its patience ran out.
+        const actSaid = { stopped: "stopped waiting after {count} min" };
+        machine("an install that ended well went in",
+            Firmware.ended({ code: 0, stopped: 0, err: "" }, actSaid, "installed"),
+            { outcome: "installed", reason: "" });
+        machine("an install fwupdmgr refused says why in its words", Firmware.ended(
+            { code: 1, stopped: 0, err: "System Firmware cannot be updated: on battery\n" },
+            actSaid, "installed"),
+            { outcome: "failed", reason: "system Firmware cannot be updated: on battery" });
+        machine("an install stopped says how long it was waited for, not fwupdmgr's words",
+            Firmware.ended({ code: 15, stopped: 50, err: "Waiting\u2026" }, actSaid,
+                "installed"),
+            { outcome: "failed", reason: "stopped waiting after 50 min" });
+        machine("a fix stopped is failed even where fwupdmgr ended well as it was stopped",
+            Firmware.ended({ code: 0, stopped: 2, err: "" }, actSaid, "changed"),
+            { outcome: "failed", reason: "stopped waiting after 2 min" });
+        machine("an undo that ended well changed it",
+            Firmware.ended({ code: 0, stopped: 0, err: "" }, actSaid, "changed"),
+            { outcome: "changed", reason: "" });
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",
             Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");

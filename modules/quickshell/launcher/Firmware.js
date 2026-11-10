@@ -309,6 +309,23 @@ function changePatience() {
     return CHANGE_PATIENCE;
 }
 
+// How a run of fwupdmgr ended, as its row keeps it until Firmware is
+// opened again: `done` ("installed" or "changed") where it ended by
+// itself with nothing wrong; otherwise "failed", saying it stopped
+// waiting after so many minutes where its patience ran out, else why in
+// fwupdmgr's last line. `run` is { code, stopped, err }: its exit code,
+// the minutes it was waited for before it was stopped or 0, and what it
+// said on stderr; `said` is its act's words, holding "stopped".
+function ended(run, said, done) {
+    if (run.code === 0 && run.stopped === 0) {
+        return { outcome: done, reason: "" };
+    }
+    const why = run.stopped > 0
+        ? String(said?.stopped ?? "").replace("{count}", run.stopped)
+        : reason(run.err);
+    return { outcome: "failed", reason: why };
+}
+
 // Release notes as words: fwupd gives them as a little HTML, paragraphs
 // and lists, so each becomes a line of its own and nothing else is kept.
 function words(html) {
