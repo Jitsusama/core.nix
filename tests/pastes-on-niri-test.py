@@ -142,7 +142,9 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
         return "pastes into foot" in reports
 
     until(asked, "asked for the paste")
+    asked_at = time.monotonic()
     until(launcher_let_go, "had the launcher let go of the keys")
+    let_go_at = time.monotonic()
     assert shell.process is not None
     shell.process.send_signal(signal.SIGSTOP)
     try:
@@ -155,6 +157,12 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
         shell.process.send_signal(signal.SIGCONT)
     at = pasted_at(log)
     assert at is not None
-    assert at - pressed < BAR, f"the paste landed {(at - pressed) * 1000:.0f} ms after Return"
-    print(f"the paste landed {(at - pressed) * 1000:.1f} ms after Return")
+    # Where the time went, as each was first seen: the shell asking, niri giving the keys back,
+    # and the copy landing.
+    took = (
+        f"the paste landed {(at - pressed) * 1000:.1f} ms after Return: asked by"
+        f" {(asked_at - pressed) * 1000:.1f} ms, let go by {(let_go_at - pressed) * 1000:.1f} ms"
+    )
+    assert at - pressed < BAR, took
+    print(took)
     shell.as_account("niri msg action close-window")

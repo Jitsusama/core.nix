@@ -226,23 +226,19 @@ fn asked_niri(socket: &Path) -> Option<bool> {
     let_go(&answer)
 }
 
-/// Waits until niri says the launcher has let go of the keys, and says so
-/// twice, so the answer comes after niri has given them to the window; or
-/// with no niri to ask, a moment. Answers whether they're free to press.
+/// Waits until niri says the launcher has let go of the keys, or with no
+/// niri to ask, a moment. Answers whether they're free to press. Once
+/// is enough: niri gives the keys to the window as it ends the turn that
+/// answered, before it reads the keys pressed after the answer, and asking
+/// again waited behind niri drawing, 89 ms on a builder (2026-11-10).
 fn keys_let_go(niri: Option<&Path>) -> bool {
     let Some(niri) = niri else {
         thread::sleep(UNASKED);
         return true;
     };
     let deadline = Instant::now() + LETTING_GO;
-    let mut free = 0;
     while Instant::now() < deadline {
-        free = if asked_niri(niri) == Some(true) {
-            free + 1
-        } else {
-            0
-        };
-        if free == 2 {
+        if asked_niri(niri) == Some(true) {
             return true;
         }
         thread::sleep(ASKING);
