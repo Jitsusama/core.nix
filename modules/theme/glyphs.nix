@@ -1503,8 +1503,9 @@ in
     console = "p";
     means = "painting on a picture, and what edits one";
   };
+  # A curve with its handles, as a path is drawn in shapes and paths.
   vector = {
-    glyph = nerd "f0ae7";
+    glyph = nerd "f0559";
     console = "d";
     means = "drawing in shapes and paths, and what draws so";
   };
