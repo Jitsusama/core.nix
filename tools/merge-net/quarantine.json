@@ -5,5 +5,12 @@
     "owner_pr": 2798,
     "reason": "broken since #2798, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "vm-desktop-launcher-goes-places"
+  },
+  {
+    "at": 1794323182,
+    "commit": "fae11ae45848bb50b14bca183ea0b0d17fdbd54f",
+    "owner_pr": 2834,
+    "reason": "failed, then passed, at fae11ae45848",
+    "test": "vm-desktop-launcher-answers"
   }
 ]
