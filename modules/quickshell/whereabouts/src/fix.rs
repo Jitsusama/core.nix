@@ -64,7 +64,27 @@ pub struct Fix {
     pub speed: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub heading: Option<f64>,
+    /// Which of GeoClue's sources found it, by the name `SOURCES` or
+    /// `SOURCES_BEGUN` gives it; left out of the file while GeoClue's
+    /// description names none, as one set by hand never does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
+
+/// GeoClue's descriptions of a position, as each of its sources writes
+/// one (geoclue 2.8's gclue-mozilla.c, gclue-ip.c, gclue-cdma.c,
+/// gclue-location.c and gclue-static-source.c), and the name the record
+/// gives each, for a description that is exactly one of them.
+const SOURCES: [(&str, &str); 5] = [
+    ("3GPP + WiFi", "wifi-and-cell"),
+    ("3GPP", "cell"),
+    ("WiFi", "wifi"),
+    ("CDMA", "cdma"),
+    ("Static location", "file"),
+];
+/// The descriptions that start with a source's name and go on to say
+/// what it read, as `"GeoIP (ichnaea)"` and `"GPS GGA+RMC"` do.
+const SOURCES_BEGUN: [(&str, &str); 2] = [("GeoIP", "ip"), ("GPS", "gps")];
 
 impl Fix {
     /// A fix from what GeoClue says, or nothing when what it says can't be
@@ -84,6 +104,7 @@ impl Fix {
             altitude: None,
             speed: None,
             heading: None,
+            source: None,
         };
         fix.holds().then_some(fix)
     }
@@ -127,6 +148,19 @@ impl Fix {
         self.altitude = altitude.filter(|metres| metres.is_finite());
         self.speed = speed.filter(|speed| speed.is_finite() && *speed >= 0.0);
         self.heading = heading.filter(|degrees| (0.0..360.0).contains(degrees));
+        self
+    }
+
+    /// The fix with the source GeoClue's `description` names, or none
+    /// where it names none known.
+    pub fn sourced(mut self, description: &str) -> Fix {
+        let exactly = SOURCES.iter().find(|(said, _)| *said == description);
+        let begun = || {
+            SOURCES_BEGUN
+                .iter()
+                .find(|(said, _)| description.starts_with(said))
+        };
+        self.source = exactly.or_else(begun).map(|(_, name)| (*name).to_owned());
         self
     }
 
@@ -225,6 +259,32 @@ mod tests {
         assert!(!fix.unnamed());
         let text = serde_json::to_string(&fix).unwrap();
         assert!(text.ends_with(r#""zone":"America/Halifax","country":"Canada"}"#));
+    }
+
+    #[test]
+    fn each_of_geoclues_sources_is_named_and_another_is_none() {
+        let named = |description: &str| at(1.0, 2.0, 3.0).sourced(description).source;
+        let cases = [
+            ("WiFi", Some("wifi")),
+            ("3GPP", Some("cell")),
+            ("3GPP + WiFi", Some("wifi-and-cell")),
+            ("CDMA", Some("cdma")),
+            ("GeoIP", Some("ip")),
+            ("GeoIP (reallyfreegeoip)", Some("ip")),
+            ("GPS GGA+RMC", Some("gps")),
+            ("Static location", Some("file")),
+            ("", None),
+            ("Galileo", None),
+        ];
+        for (description, name) in cases {
+            assert_eq!(
+                named(description).as_deref(),
+                name,
+                "{description:?} names the wrong source"
+            );
+        }
+        let text = serde_json::to_string(&at(1.0, 2.0, 3.0).sourced("WiFi")).unwrap();
+        assert!(text.ends_with(r#","source":"wifi"}"#), "{text}");
     }
 
     #[test]

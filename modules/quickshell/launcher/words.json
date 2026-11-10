@@ -5257,7 +5257,20 @@
       "term": "Desktop/location",
       "said": {
         "via": "found \u00b7 location",
+        "viaSource": "via {source} \u00b7 location",
         "viaHand": "set by hand \u00b7 location",
+        "sources": {
+          "wifi": "Wi-Fi",
+          "cell": "cell towers",
+          "wifi-and-cell": "Wi-Fi and cell towers",
+          "cdma": "CDMA",
+          "ip": "IP address",
+          "gps": "GPS",
+          "file": "a fixed file"
+        },
+        "altitude": "{n} m",
+        "speed": "{n} m/s",
+        "heading": "{n}\u00b0",
         "hand": "set by hand",
         "metres": "within {n} m",
         "kilometres": "within {n} km",
@@ -5275,7 +5288,23 @@
         "foundWithin": "found {within}"
       },
       "tells": {
-        "leftOut": "Neither Wi-Fi nor a network's address gives altitude, speed or heading."
+        "leftOut": "{gives} no {missing}.",
+        "gives": {
+          "wifi": "Wi-Fi gives",
+          "cell": "Cell towers give",
+          "wifi-and-cell": "Wi-Fi and cell towers give",
+          "cdma": "CDMA gives",
+          "ip": "An IP address gives",
+          "gps": "GPS gave",
+          "file": "A fixed file gives",
+          "unknown": "Its source gives"
+        },
+        "missing": {
+          "altitude": "altitude",
+          "speed": "speed",
+          "heading": "heading"
+        },
+        "or": "or"
       }
     },
     {
@@ -5307,6 +5336,21 @@
       "id": "location:coordinates",
       "in": "location",
       "name": "Coordinates"
+    },
+    {
+      "id": "location:altitude",
+      "in": "location",
+      "name": "Altitude"
+    },
+    {
+      "id": "location:speed",
+      "in": "location",
+      "name": "Speed"
+    },
+    {
+      "id": "location:heading",
+      "in": "location",
+      "name": "Heading"
     },
     {
       "id": "location:zone",

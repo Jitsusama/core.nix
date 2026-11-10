@@ -101,14 +101,69 @@ function located(when, now, told) {
     return [told.day(at, now), told.clock(at)].filter(part => part !== "").join(" ");
 }
 
+// What found it, as a plate's eyebrow says where then what, as WARP's
+// "via WARP \u00b7 tunnel" does (VKCF3Z, 2026-11-09): "via Wi-Fi \u00b7
+// location", "found \u00b7 location" where GeoClue named no source
+// whereabouts knows, and "set by hand \u00b7 location" for Joel's own.
+function eyebrow(here, said) {
+    if (here.hand === true) {
+        return said.viaHand;
+    }
+    const source = said.sources?.[here.source ?? ""] ?? "";
+    return source === "" ? said.via : said.viaSource.replace("{source}", source);
+}
+
+// The figures only some sources give, as GPS does, each in GeoClue's own
+// units and only while held: altitude to the metre, speed to a tenth of
+// a metre a second, and heading to the degree east of north.
+const MEASURES = [
+    { id: "altitude", decimals: 0 },
+    { id: "speed", decimals: 1 },
+    { id: "heading", decimals: 0 }
+];
+
+function held(value) {
+    return Number.isFinite(value);
+}
+
+function measures(here, said, told) {
+    return MEASURES.map(({ id, decimals }) => ({
+        id,
+        value: held(here[id]) ? said[id].replace("{n}", told.number(here[id], decimals)) : ""
+    }));
+}
+
+// What its source couldn't give of the three, in one sentence the plate's
+// body says, naming the source as its eyebrow does: "Wi-Fi gives no
+// altitude, speed or heading.", "GPS gave no speed or heading." Nothing
+// when all three are held, nor for a place set by hand, which no source
+// found (VKCF3Z, 2026-11-09). `tells` is the vocabulary's.
+function leftOut(here, tells) {
+    if (here.hand === true) {
+        return "";
+    }
+    const missing = MEASURES.filter(({ id }) => !held(here[id])).map(({ id }) => tells.missing[id]);
+    if (missing.length === 0) {
+        return "";
+    }
+    const last = missing.pop();
+    const listed = missing.length === 0 ? last : `${missing.join(", ")} ${tells.or} ${last}`;
+    const gives = tells.gives[here.source ?? ""] ?? tells.gives.unknown;
+    return tells.leftOut.replace("{gives}", gives).replace("{missing}", listed);
+}
+
 // Its plate's facts, from what moves most: when it was found, how near,
-// where on a map, its country, then its zone, the identifier it is, last.
-// The town is the row's side, so the plate never says it again.
+// where on a map, and how high, fast and which way where a source gives
+// them, its country, then its zone, the identifier it is, last. The town
+// is the row's side, so the plate never says it again. Whether the zone
+// holds round the fix is left out: the note's "near a time zone's edge"
+// says it where it matters (VKCF3Z, 2026-11-09).
 function facts(here, now, said, told) {
     return [
         { id: "located", value: located(here.when, now, told) },
         { id: "accuracy", value: here.hand === true ? "" : within(here.accuracy, said, told) },
         { id: "coordinates", value: coordinates(here, said) },
+        ...measures(here, said, told),
         { id: "country", value: here.country ?? "" },
         { id: "zone", value: here.zone ?? "", identifies: true }
     ].filter(fact => fact.value !== "");

@@ -631,7 +631,16 @@ QtObject {
         // English locale's marks.
         const hereSaid = { metres: "within {n} m", kilometres: "within {n} km", north: "N",
             south: "S", east: "E", west: "W", nearEdge: "near a time zone's edge",
-            foundWithin: "found {within}" };
+            foundWithin: "found {within}", via: "found \u00b7 location",
+            viaSource: "via {source} \u00b7 location", viaHand: "set by hand \u00b7 location",
+            sources: { wifi: "Wi-Fi", gps: "GPS" }, altitude: "{n} m", speed: "{n} m/s",
+            heading: "{n}\u00b0" };
+        const hereTells = { leftOut: "{gives} no {missing}.", or: "or",
+            gives: { wifi: "Wi-Fi gives", gps: "GPS gave", unknown: "Its source gives" },
+            missing: { altitude: "altitude", speed: "speed", heading: "heading" } };
+        // A fix GPS found, with as many of its three figures as given.
+        const gps = (altitude, speed, heading) => ({ latitude: 12.3457, longitude: -98.7654,
+            accuracy: 5, when: 1000, source: "gps", altitude, speed, heading });
         // A fix in another zone, by its width and whether its zone holds.
         const unfollowed = (accuracy, zoneHolds) => Here.unfollowed({ accuracy, zoneHolds },
             hereSaid, hereTold);
@@ -873,7 +882,41 @@ QtObject {
                 unfollowed(26_000, true), ""],
             ["one unsaid round its circle is followed only within 10 km",
                 `${unfollowed(9000, null)}|${unfollowed(26_000, null)}`, "|found within 26 km"],
-            ["one of no width says nothing", unfollowed(null, true), ""]
+            ["one of no width says nothing", unfollowed(null, true), ""],
+            // Its plate's eyebrow says what found it, its facts the
+            // figures only some sources give, and its body what its
+            // source couldn't (VKCF3Z, 2026-11-09).
+            ["found by Wi-Fi", Here.eyebrow({ source: "wifi" }, hereSaid),
+                "via Wi-Fi \u00b7 location"],
+            ["found by a source unknown", Here.eyebrow({ source: "galileo" }, hereSaid),
+                "found \u00b7 location"],
+            ["found by none named", Here.eyebrow({ source: null }, hereSaid),
+                "found \u00b7 location"],
+            ["set by hand, though a source is named",
+                Here.eyebrow({ source: "wifi", hand: true }, hereSaid),
+                "set by hand \u00b7 location"],
+            ["GPS's figures follow where on a map, in its own units",
+                Here.facts(gps(212.4, 4.26, 274.6), 1000, hereSaid,
+                    Object.assign({ ago: () => "now" }, hereTold))
+                    .map(fact => `${fact.id} ${fact.value}`).slice(2).join("|"),
+                "coordinates 12.3457\u00b0 N \u00b7 98.7654\u00b0 W|altitude 212 m|speed 4.3 m/s|"
+                    + "heading 275\u00b0"],
+            ["a speed of none is held, and said", Here.facts(gps(null, 0, null), 1000,
+                hereSaid, Object.assign({ ago: () => "now" }, hereTold))
+                .filter(fact => ["altitude", "speed", "heading"].includes(fact.id))
+                .map(fact => fact.value).join("|"), "0.0 m/s"],
+            ["Wi-Fi gives none of the three", Here.leftOut({ source: "wifi" }, hereTells),
+                "Wi-Fi gives no altitude, speed or heading."],
+            ["GPS gave two of them not", Here.leftOut(gps(212, null, null), hereTells),
+                "GPS gave no speed or heading."],
+            ["GPS gave one of them not", Here.leftOut(gps(212, 4, null), hereTells),
+                "GPS gave no heading."],
+            ["all three given leaves nothing to say", Here.leftOut(gps(212, 4, 275), hereTells),
+                ""],
+            ["a source unnamed is said as its source", Here.leftOut({ source: null }, hereTells),
+                "Its source gives no altitude, speed or heading."],
+            ["one set by hand was found by no source",
+                Here.leftOut({ source: null, hand: true }, hereTells), ""]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

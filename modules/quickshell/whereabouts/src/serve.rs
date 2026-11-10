@@ -110,6 +110,7 @@ pub fn record(known: &Known) -> Value {
         "altitude_m": here.and_then(|fix| fix.altitude),
         "speed_m_s": here.and_then(|fix| fix.speed),
         "heading_deg": here.and_then(|fix| fix.heading),
+        "source": here.and_then(|fix| fix.source.as_deref()),
         "place": here.and_then(|fix| fix.place.as_deref()),
         "country": here.and_then(|fix| fix.country.as_deref()),
         "zone": here.and_then(|fix| fix.zone.as_deref()),
@@ -343,6 +344,7 @@ mod tests {
         assert_eq!(said["zone"], "America/Toronto");
         assert_eq!(said["hand"], false);
         assert!(said["altitude_m"].is_null(), "Wi-Fi finds no altitude");
+        assert!(said["source"].is_null(), "a fix GeoClue named no source of");
     }
 
     #[test]

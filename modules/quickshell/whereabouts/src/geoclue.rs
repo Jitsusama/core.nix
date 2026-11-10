@@ -82,6 +82,11 @@ trait Location {
     #[zbus(property)]
     fn heading(&self) -> zbus::Result<f64>;
 
+    /// Which of GeoClue's sources found it, in its own words: `"WiFi"`,
+    /// `"GeoIP"`, `"GPS GGA"` and the like.
+    #[zbus(property)]
+    fn description(&self) -> zbus::Result<String>;
+
     /// Seconds and microseconds since the epoch.
     #[zbus(property)]
     fn timestamp(&self) -> zbus::Result<(u64, u64)>;
@@ -140,9 +145,13 @@ pub async fn fix(bus: &Connection, path: OwnedObjectPath) -> Option<Fix> {
         .await
         .ok()
         .filter(|metres| *metres > f64::MIN);
-    Some(fix.measured(
-        altitude,
-        location.speed().await.ok(),
-        location.heading().await.ok(),
-    ))
+    let description = location.description().await.unwrap_or_default();
+    Some(
+        fix.measured(
+            altitude,
+            location.speed().await.ok(),
+            location.heading().await.ok(),
+        )
+        .sourced(&description),
+    )
 }
