@@ -10060,7 +10060,8 @@
         "on": "on {places}",
         "workspaces": "on {count} workspaces",
         "program": "program",
-        "more": "{count} more"
+        "more": "{count} more",
+        "terminal": "a terminal"
       },
       "tells": {
         "holding": "Every program on this machine, and what each has open."
@@ -11813,6 +11814,16 @@
       "id": "applications:starts-in",
       "in": "applications",
       "name": "Starts In"
+    },
+    {
+      "id": "applications:runs-in",
+      "in": "applications",
+      "name": "Runs In"
+    },
+    {
+      "id": "applications:entry-file",
+      "in": "applications",
+      "name": "Entry File"
     },
     {
       "id": "applications:version",

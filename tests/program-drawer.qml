@@ -25,7 +25,8 @@ QtObject {
         on: "on {places}",
         workspaces: "on {count} workspaces",
         program: "program",
-        more: "{count} more"
+        more: "{count} more",
+        terminal: "a terminal"
     })
 
     function named(id) {
@@ -86,6 +87,8 @@ QtObject {
             handles: ["http", "https"],
             keywords: ["web", "internet"],
             starts_in: "/srv/web",
+            terminal: true,
+            entry_path: "/usr/share/applications/google-chrome.desktop",
             window_class: "Google-chrome",
             package: { name: "google-chrome", version: "142.0.7444.59",
                 store_path: "/nix/store/abc-google-chrome-142.0.7444.59" }
@@ -135,6 +138,7 @@ QtObject {
                     valueItems: [{ said: "web" }, { said: "internet" }] },
                 { label: "[starts-in]", value: "/srv/web",
                     valueItems: [{ said: "/srv/web", whole: true }] },
+                { label: "[runs-in]", value: "a terminal" },
                 { label: "[version]", value: "142.0.7444.59" },
                 { label: "[package]", value: "google-chrome" },
                 { label: "[command]", value: "google-chrome-stable %U",
@@ -143,6 +147,10 @@ QtObject {
                     between: " ", identifies: true },
                 { label: "[window-class]", value: "Google-chrome", identifies: true },
                 { label: "[desktop-id]", value: "google-chrome", identifies: true },
+                { label: "[entry-file]",
+                    value: "/usr/share/applications/google-chrome.desktop", identifies: true,
+                    valueItems: [{ said: "/usr/share/applications/google-chrome.desktop",
+                        whole: true }] },
                 { label: "[store-path]", value: "/nix/store/abc-google-chrome-142.0.7444.59",
                     identifies: true, valueItems: [{
                         said: "/nix/store/abc-google-chrome-142.0.7444.59", whole: true }] }
@@ -160,6 +168,10 @@ QtObject {
             command: ["gimp"], record: { window_class: "gimp" } }, named, said);
         expect("a window class that's its entry's id is said once, as the id",
             classed.facts.map(fact => fact.label), ["[command]", "[desktop-id]"]);
+        const windowed = Program.drawer({ name: "GIMP", places: [], usage: null, id: "gimp",
+            command: ["gimp"], record: { terminal: false } }, named, said);
+        expect("a program that needs no terminal says nothing of one",
+            windowed.facts.map(fact => fact.label), ["[command]", "[desktop-id]"]);
         const asking = Program.drawer({ name: "GIMP", places: [2], usage: null, asking: true,
             id: "gimp", command: ["gimp"] }, named, said);
         expect("while its figures are asked, they hold their places",

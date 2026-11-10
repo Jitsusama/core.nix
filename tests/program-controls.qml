@@ -629,7 +629,7 @@ ShellRoot {
                 "on 2 workspaces \u00b7 program: Tester");
             same("what it plays, then opens, then how it starts",
                 described.facts.map(fact => fact.label).join(", "),
-                "Playing, Opens, Handles, Categories, Command, Desktop ID");
+                "Playing, Opens, Handles, Categories, Command, Desktop ID, Entry File");
             same("what it opens, from its desktop file", described.facts[1].value, "HTML");
             same("its categories, as words", described.facts[3].value,
                 "Office \u00b7 Text Editor");
