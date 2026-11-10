@@ -208,6 +208,94 @@ function forbidProcessExit() {
   });
 }
 
+// A screen whose startup runs for real until it reaches `quitAt`, where its
+// viewer quits before startup carries on.
+function startingScreen(quitAt) {
+  const started = screen();
+  const { mode } = started;
+  const quit = (step) => (step === quitAt ? mode.shutdown() : Promise.resolve());
+  let providerCounts = 0;
+  Object.assign(mode, {
+    isInitialized: false,
+    registerSignalHandlers: mock.fn(),
+    getChangelogForDisplay: () => undefined,
+    getExtensionChangelogUpdates: () => undefined,
+    renderer: { mode: "regular" },
+    getModelScopeNotice: () => undefined,
+    renderWidgets: mock.fn(),
+    mountInteractiveTui: mock.fn(),
+    defaultEditor: { onAction: mock.fn() },
+    programStatus: { report: mock.fn(), reset: mock.fn() },
+    ensurePngTranscoder: mock.fn(),
+    shouldShowStartupHeader: () => false,
+    headerContainer: { addChild: mock.fn() },
+    // Offline, finding neither tool says so here rather than downloading it.
+    showManagedToolStatus: () => quit("tools"),
+    setupKeyHandlers: mock.fn(),
+    setupEditorSubmitHandler: mock.fn(),
+    applyRuntimeSettings: mock.fn(),
+    bindCurrentSessionExtensions: () => quit("extensions"),
+    subscribeToAgent: mock.fn(),
+    updateAvailableProviderCount: () => {
+      providerCounts += 1;
+      // The first count is the session's rebind, the second startup's own.
+      return providerCounts === 2 ? quit("providers") : Promise.resolve();
+    },
+    updateEditorBorderColor: mock.fn(),
+    updateTerminalTitle: mock.fn(),
+    renderInitialMessages: mock.fn(),
+    footerDataProvider: { onBranchChange: mock.fn() },
+  });
+  for (const part of [
+    "documentContainer",
+    "pendingMessagesContainer",
+    "statusContainer",
+    "widgetContainerAbove",
+    "editorContainer",
+    "widgetContainerBelow",
+    "footerContainer",
+  ]) {
+    mode[part] = {};
+  }
+  mode.options.initialMessage = "hello";
+  mode.runtimeHost.session.settingsManager.getFullscreenScrollbar = () => "auto";
+  Object.assign(mode.themeController, {
+    applyFromSettings: mock.fn(),
+    waitForTerminalColors: () => quit("colors"),
+  });
+  Object.assign(mode.ui, { setFocus: mock.fn(), renderNow: mock.fn() });
+  return started;
+}
+
+for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
+  it(`a hosted screen that quits while startup waits on ${quitAt} binds nothing after`, async () => {
+    forbidProcessExit();
+    process.env.PI_OFFLINE = "1";
+    const { mode, exits } = startingScreen(quitAt);
+    // With fd and rg on no path, startup stops to say so rather than finding them.
+    const path = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      await mode.run();
+    } finally {
+      process.env.PATH = path;
+    }
+    assert.deepEqual(exits, [{ code: 0, error: undefined }]);
+    assert.equal(mode.ui.start.mock.callCount(), 1);
+    // No theme listener outlives it in the host's one theme: its stop has
+    // run, so one still held here would never be released.
+    assert.equal(mode.themeChangeUnsubscribe, undefined, "a theme listener was left behind");
+    // A subscription made before the quit is the screen's stop to release;
+    // none is made after, and nothing is prompted or drawn.
+    assert.equal(mode.subscribeToAgent.mock.callCount(), quitAt === "providers" ? 1 : 0);
+    assert.equal(mode.runtimeHost.session.prompt.mock.callCount(), 0);
+    assert.equal(mode.ui.renderNow.mock.callCount(), 0);
+    // A late event never starts it again.
+    await mode.init();
+    assert.equal(mode.ui.start.mock.callCount(), 1);
+  });
+}
+
 it("quitting one hosted screen leaves its sibling alive and notifies once", async () => {
   forbidProcessExit();
   const first = screen();
