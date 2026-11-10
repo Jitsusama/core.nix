@@ -1686,6 +1686,7 @@ onLinux {
     pkgs.runCommandLocal "a-long-name-reads-at-one-pace" { } ''
       cp ${../../tests/reading.qml} reading.qml
       cp ${./Reading.js} Reading.js
+      cp ${./Measures.js} Measures.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
