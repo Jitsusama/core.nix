@@ -554,6 +554,11 @@ def tray_counted(desktop: Desktop) -> int:
     return next((int(glyph["state"]) for glyph in drawn if glyph["mark"] == "forYou"), 0)
 
 
+def tray_counts(desktop: Desktop, count: int) -> None:
+    """Wait for For You's tray to count this many, as the margin last set it."""
+    retry(lambda _: tray_counted(desktop) == count, timeout=dt.timedelta(seconds=20))
+
+
 def indexed(desktop: Desktop, *quests: str) -> None:
     """Write the harness's index of quests, which holds only those still open, as these."""
     index = {
@@ -1230,6 +1235,9 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
         # over the launcher in the shots, so it's left to rest first, ten seconds on.
         with desktop.told("rests Answer the ask", timeout=dt.timedelta(seconds=60)):
             kept(desktop, f"{MISSION}/waiting/QUEST2.json", asked)
+        # Closed, the launcher lists no looks, so the tray counts the look as the to-do
+        # daemon's stream tells it, beside the to-do.
+        tray_counts(desktop, 2)
         for_you_counts_its_bands(desktop)
         for scale in (*JOELS_SCALES, "1"):
             named = at_scale_shooting_now(desktop, scale)

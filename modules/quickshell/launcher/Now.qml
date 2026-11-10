@@ -1060,8 +1060,10 @@ Provider {
     // its one to-do for what its last check found: read once as each
     // changes, those to do weighed beside the rest, those done in History.
     readonly property var given: ForYou.given(provider.launcher?.sources ?? [])
-    // The looks and what the sources give, as Now reads them, counted
-    // with the rest where the tray counts them too.
+    // What the sources give, as Now reads them, counted with the rest where
+    // the tray counts them too; and the looks, which the tray hears from the
+    // to-do daemon instead wherever it runs (ForYouHolds.qml), both read
+    // from the same folder.
     Binding {
         target: ForYouHolds
         property: "looks"

@@ -3,12 +3,17 @@ pragma Singleton
 // for the two that say it: For You's own row (launcher/Now.qml's
 // waitsNow) and the margin's tray (pieces/ForYou.qml), so they never say
 // different numbers (Y2YBTS, 2026-11-09). The sessions, the to-dos and
-// the notices it hears itself; the looks and what the launcher's sources
-// give, Now sets as it reads them, since only it lists them, while the
-// launcher is open, and what it read last stands while it's closed.
+// the notices it hears itself. The looks it hears from the to-do daemon's
+// stream (modules/to-do), so the tray lights for one left while the
+// launcher is closed, as WCJQSG asked (2026-11-09): one Rust daemon per
+// domain, heard, never a folder watched in the shell. Where the daemon
+// isn't there, as on a machine without it, the looks are Now's, as it
+// last listed their folder while open. What the launcher's sources give,
+// Now sets as it reads them, since only it holds those sources.
 import qs
 import Quickshell
 import QtQuick
+import "launcher/ForYou.js" as ForYou
 import "pieces/Holding.js" as Holding
 
 Singleton {
@@ -16,10 +21,30 @@ Singleton {
     // launcher's other sources give him to do, as Now last read them.
     property var looks: []
     property var given: []
+
+    // The to-do daemon's looks, each a look file whole, watched while the
+    // shell runs; a change to the looks folder is told as it happens, so
+    // nothing is polled and nothing wakes while none changes.
+    Daemon {
+        id: toDo
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/to-do.sock`
+        kind: "look"
+        // Its watch is every look there is, so one held that it no longer
+        // says went while the shell wasn't hearing.
+        answersWhole: true
+    }
+    // The looks that wait, as the stream says them, weighed as For You
+    // weighs the folder's, or Now's while the daemon hasn't answered.
+    readonly property var waitingLooks: {
+        void toDo.revision;
+        return toDo.answered ? ForYou.looks(Holding.lookFiles(toDo.held)).waiting : looks;
+    }
+
     readonly property var holds: Holding.held({
         wanting: Sessions.wanting,
         toDo: WaitingOnYou.now,
-        looks: looks,
+        looks: waitingLooks,
         given: given,
         notices: Notices.history,
         // The notices with a card up, those still open and not resting.

@@ -201,6 +201,18 @@ QtObject {
             saidBy({ wanting: [session], toDo: [{}] }), "");
         expect("nor anything else", saidBy({ notices: [critical] }), "");
 
+        // The to-do daemon's records, as its stream holds them: a look's file
+        // whole, beside a to-do and the summary, which are no looks.
+        const plan = { id: "a1", title: "Read the plan", state: "waiting" };
+        expect("a streamed look is its file, as the folder holds it",
+            Holding.lookFiles({ "look:a1": { kind: "look", look: plan },
+                "to-do:QUEST1:ask": { kind: "to-do", state: "now" },
+                "waiting:summary": { kind: "waiting", looks: { waiting: 1 } } }),
+            [{ file: "a1.json", text: JSON.stringify(plan) }]);
+        expect("and a record holding no look, or none at all, is none",
+            Holding.lookFiles({ "look:b2": { kind: "look" } })
+                .concat(Holding.lookFiles(null)), []);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
