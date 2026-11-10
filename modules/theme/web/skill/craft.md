@@ -140,10 +140,25 @@ coincidence:
 .list > .row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
 ```
 
-- **Columns come from the measure:** `repeat(auto-fit, minmax(min(100%,
-  var(--measure-least)), 1fr))` drops a column rather than squeezing one.
-  Container queries (`container-type: inline-size`) let a part change shape by
-  its own width.
+- **Columns come from the room**, set by a container query on the part's own
+  width: one on a phone, two on a tablet or a laptop, three on a wide screen
+  where that reads better, and never one under 256 px. A part changes shape
+  by its own width, not the window's.
+- **Things side by side are one grid row, ending level**: each spans the
+  rows its parts need and takes them as a subgrid, so state, title, figure,
+  line and fold each sit on one line across the row, and every box stretches
+  to the tallest. Never padding or a fixed height to even them out:
+
+```css
+.steps { container-type: inline-size; }
+.steps > ol { display: grid; gap: var(--groups) var(--items);
+  grid-template-columns: 1fr; grid-auto-rows: auto; }
+@container (min-width: 34em) { .steps > ol { grid-template-columns: repeat(2, 1fr); } }
+@container (min-width: 56em) { .steps > ol { grid-template-columns: repeat(3, 1fr); } }
+.steps li { display: grid; grid-row: span 4; grid-template-rows: subgrid;
+  row-gap: var(--apart); } /* state, title, line, fold */
+```
+
 - **Space as hierarchy.** Gaps on the parent (`gap`, `row-gap`), each level's
   rung wider than the one inside it: `--tie` inside a mark, `--mark` between a
   mark and its words, `--apart` between parts of a row, `--items` between
@@ -269,6 +284,42 @@ that won't answer.
   one being read.
 - `hidden="until-found"` on a long fold lets find-in-page open it.
 - Whatever measures the page measures it with every fold open too.
+- **Opening one grows only itself, downward**: nothing above moves, nothing
+  beside resizes, and only what's below in its own column moves down.
+  `layout.js` opens each fold and measures every box before and after. A fold
+  inside one of several things side by side would stretch the whole row and
+  move its neighbours' parts, so it opens a side sheet instead.
+
+## A Side Sheet
+
+Evidence too long to open in place, or asked for from one of several things
+side by side, opens over the page in a sheet, so the page under it never
+moves:
+
+```html
+<button type="button" aria-haspopup="dialog" aria-controls="proof-3">The evidence</button>
+<dialog id="proof-3" class="sheet" aria-labelledby="proof-3-title">
+  <header><h2 id="proof-3-title">Suspend and resume</h2>
+    <button type="button" class="close" aria-label="Close">...</button></header>
+  ...
+</dialog>
+```
+
+```css
+.sheet { margin: 0 0 0 auto; block-size: 100dvh; max-block-size: none;
+  inline-size: min(100vw, var(--measure) + 2 * var(--inset)); }
+@media (max-width: 40em) { .sheet { inline-size: 100vw; } }
+```
+
+- **It opens with `showModal()`**, so focus goes in, the page under it is
+  inert, and closing returns focus to the button that opened it.
+- **Escape closes it**, as it closes the Keys list, since a sheet of
+  evidence holds nothing to lose; so do its close button and :q. A sheet
+  holding work (a form, a draft) cancels its `cancel` event and closes only
+  by its own control or :q, as SKILL.md's Keys rule says.
+- **From the right on a wide screen, the full screen on a phone**, sliding
+  in on `--arrive` and still under reduced motion. The scrollbar's gutter is
+  kept, so the page under it doesn't shift sideways.
 
 ## Motion
 
@@ -361,8 +412,10 @@ const mod = mac ? "⌘" : "Ctrl";
 </div>
 ```
 
-- **On a phone a comparison may stack**, each row a small block, its cells
-  labelled from the header through `data-label` and `content: attr(data-label)`.
+- **When narrow, a comparison stacks** rather than squeezing its columns:
+  each row a small block, its cells labelled from the header through
+  `data-label` and `content: attr(data-label)`, by a container query on the
+  table's own width.
 - Ratios as bars in CSS from a property (`--r: 0.42`), with the figure beside
   them in Monaspace.
 

@@ -31,6 +31,8 @@ Beside this file:
 - `gate.js`: the probe that opens the gate before every publish, finding
   what a page lacks of its parts ([Every Page Has Its
   Parts](#every-page-has-its-parts)) and what its words get wrong.
+- `layout.js`: the probe run after it, finding rows and folds that don't
+  hold their layout ([Layout That Holds](#layout-that-holds)).
 
 The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/`
 ([The Kit](#the-kit)). Never retype a colour, a size or a face.
@@ -327,6 +329,36 @@ Each rule says why, in his words where he said it.
   width. "wrapping in shitty spots" (2026-09-10); "text overflowing into other
   text" (2026-11-07).
 
+### Layout That Holds
+
+"we can't have cards beside each other with different heights looking like
+shit", "we need adaptive layouts, we also can't have opening a disclosure
+causing the page to reformat" (2026-11-10). `layout.js` measures all three.
+
+- **Things side by side end level, by layout.** Steps, panels or
+  comparisons set beside each other are one grid row: each stretches to the
+  row's height, and their parts (state, title, figure, line, fold) share
+  rows through subgrid, so every title starts on one line and every fold on
+  another. Never padding, a fixed height or a spacer to even them out.
+- **Opening a fold never reflows the page.** Nothing above it moves and
+  nothing beside it resizes, jumps or reorders. Evidence opens in place,
+  growing only itself downward, so only what's below it in its own column
+  moves down. A fold inside one of several things side by side would
+  stretch the row, so it opens in a side sheet instead: from the right on a
+  wide screen, the full screen on a phone, focus going in and coming back
+  to its summary on close.
+- **Layouts adapt; they never squeeze.** Columns come from the room there
+  is: one on a phone, two on a tablet or a laptop, three on a wide screen
+  where that reads better, and none under 256 px. Each part changes shape by
+  its own width through a container query. A table stacks into labelled
+  rows when narrow, and a figure is drawn wide and narrow.
+- **Read the whole page cold before every change, and redesign what
+  doesn't come across.** "we need to constantly evaluate whether it is
+  holistically communicating well and not be afraid of redesigning parts or
+  all of it at any time" (2026-11-10). If the big picture doesn't land at a
+  glance, a part or the whole page is redesigned, however much work it
+  undoes. Fewer words isn't the measure; a reader getting it is.
+
 ### Colour and Surfaces
 
 - **Roles, never colours,** and colour on glyphs, marks and bars, never on
@@ -376,7 +408,8 @@ Each rule says why, in his words where he said it.
 - **Native `<details>`, growing open rather than jumping** (`base.css`), so the
   keyboard, a screen reader and find-in-page all work. Opening one never shifts
   the text beside it: "opening and closing disclosures causes text to shift
-  which is jarring" (2026-09-28).
+  which is jarring" (2026-09-28). Where it would, among things side by side,
+  it's a side sheet ([Layout That Holds](#layout-that-holds)).
 
 ### Motion
 
@@ -417,7 +450,9 @@ Each rule says why, in his words where he said it.
   on both systems" (2026-11-05). On a page to read, where Space scrolls, ? is
   the key.
 - **Escape closes what a mode opened, as Vim's closes its completion menu**:
-  the palette, a menu, a hover card, and a question it answers "no" to. It
+  the palette, a menu, a hover card, a side sheet of evidence, and a question
+  it answers "no" to. A sheet of evidence holds nothing to lose, like the Keys
+  list, so Escape closes it too. It
   never closes a drawer or a dialog holding work, which close with their own
   control or :q; it never leaves a page, steps a level, clears work or quits.
   That's the desktop's rule ("fuck escape quitting", 2026-11-05), and it
@@ -591,7 +626,9 @@ Each is a verdict on a real site; the rule it gave is above.
   roles. "having a hard time recognizing any improvements" (2026-10-21).
 - **Judge the whole page after every fix.** One site swung from crowded to
   cramped in an afternoon because each fix was checked on its own and nobody
-  judged the whole page.
+  judged the whole page. Every update starts with a cold read of the whole,
+  and a part that doesn't come across is redesigned, not patched
+  ([Layout That Holds](#layout-that-holds)).
 - **Hold it beside its model.** Open the page beside the one it's built like
   (omni-ref, his best page of its kind, or its own last good version), part
   by part, and list what that one has that this one lacks: a figure, an
