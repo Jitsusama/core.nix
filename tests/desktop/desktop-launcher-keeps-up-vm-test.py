@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -46,6 +47,12 @@ REPEAT = 1 / 30
 # what the changes cost the keys is what's left between them.
 KEYS = 90
 TURNS = 4
+# What the stand-ins wrote just before they froze reached the shell up to 2.5 s after, so a
+# frozen turn's arrows were blamed for the rows it made: 40 of Agents' at 2 and 220 at 1.5 (a
+# whole run and a diagnostic one, 2026-11-09). A frozen turn begins once the shell has sorted
+# pi's sessions no more for longer than that, and gives up after so many looks.
+UNHEARD = 3.0
+LOOKS = 10
 # As many sessions as a busy day of Joel's, a few changing each beat as his do (2026-11-08: his
 # openings heard Agents change 27 to 75 times in their first three seconds), and as many people
 # as his People knows, said anew each round as Slack's answers say them.
@@ -146,9 +153,19 @@ def framed(desktop: Desktop) -> Json:
     return cast("Json", json.loads(desktop.as_account("qs ipc call launcher framed")))
 
 
-def made(desktop: Desktop) -> Json:
-    """Give how many rows each source has made, and how often the open launcher refreshed."""
-    return cast("Json", json.loads(desktop.as_account("qs ipc call launcher made")))
+def made(desktop: Desktop) -> tuple[Json, float, float]:
+    """Give how many rows each source has made and how often the open launcher refreshed.
+
+    With them come the machine's uptime in seconds just before it was asked and just after it
+    answered, so a span between two of them holds every refresh counted between them.
+    """
+    said = desktop.as_account("cat /proc/uptime; qs ipc call launcher made; cat /proc/uptime")
+    asked, answer, answered = said.strip().splitlines()
+    return (
+        cast("Json", json.loads(answer)),
+        float(asked.split()[0]),
+        float(answered.split()[0]),
+    )
 
 
 def ranked(times: list[float], share: float) -> float:
@@ -173,9 +190,16 @@ class Turns:
         self.keys_made: dict[str, int] = {}
         self.agents_made: list[int] = []
         self.walked: dict[str, int] = {}
+        # Refreshes while things changed, counted from before a turn's keys until its last key's
+        # frame, and the seconds and turns they were counted over. Divided by the keys' span
+        # alone, the frames still coming after it counted at home at 2 as 4.5 a second, though no
+        # two refreshes began within the pace's quarter second (net, a99645168, 2026-11-09).
         self.refreshes = 0
+        self.window = 0.0
+        self.turns = 0
+        # The keys' own span, said beside it to show how far the frames run past it.
+        self.pressing = 0.0
         self.keyed = 0
-        self.seconds = 0.0
         self.handled: dict[bool, list[float]] = {True: [], False: []}
         self.drawn: dict[bool, list[float]] = {True: [], False: []}
         # How often the list was composed, refreshed and drew a row afresh, frozen and not.
@@ -189,6 +213,19 @@ class Turns:
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
         self.desktop.as_account(f"{wait} systemctl --user {verb} stand-in-sessions crowd-load")
         self.frozen = frozen
+        if frozen:
+            self.settle()
+
+    def settle(self) -> None:
+        """Wait until the shell has heard the last of what the stand-ins wrote before freezing."""
+        heard = sorts(self.desktop)["heard"]
+        for _ in range(LOOKS):
+            time.sleep(UNHEARD)
+            now = sorts(self.desktop)["heard"]
+            if now == heard:
+                return
+            heard = now
+        pytest.fail(f"the shell went on sorting pi's sessions {LOOKS * UNHEARD} s after a freeze")
 
     def keys(self, rows: int) -> list[str]:
         """Give a turn's keys, down and up the band, turning before an end a key couldn't pass."""
@@ -211,7 +248,7 @@ class Turns:
         pressed = self.keys(rows)
         said = int(machine.succeed(f"wc -l < {SAID}").strip())
         timed = framed(desktop)["timed"]
-        before = made(desktop)
+        before, since, _ = made(desktop)
         machine.succeed(f"printf '%s\\n' {' '.join(pressed)} > /tmp/keys && sh /tmp/hold.sh")
         noted: Json = {}
 
@@ -223,7 +260,7 @@ class Turns:
             retry(drawn, timeout=REACHING)
         except AssertionError:
             pytest.fail(f"{timed + KEYS - noted['timed']} of {KEYS} keys never reached a frame")
-        after = made(desktop)
+        after, _, until = made(desktop)
         assert noted["timed"] == timed + KEYS, (
             f"the launcher timed {noted['timed'] - timed} keys of {KEYS} pressed"
         )
@@ -272,19 +309,22 @@ class Turns:
             self.unseen_made[name] = self.unseen_made.get(name, 0) + rows_of(name)
         self.agents_made.append(rows_of("agents"))
         self.refreshes += after["refreshes"] - before["refreshes"]
-        self.seconds += downs[-1] - downs[0] + REPEAT * 1000
+        self.window += until - since
+        self.turns += 1
+        self.pressing += (downs[-1] - downs[0]) / 1000 + REPEAT
 
     def held(self, where: str, scale: str) -> None:
         """Say how the turns went, and fail a launcher that didn't keep up."""
         at = f"in {where} at {scale}"
-        rate = self.refreshes / (self.seconds / 1000)
+        rate = self.refreshes / self.window
         handled = {frozen: ranked(times, TAIL) for frozen, times in self.handled.items()}
         middle = {frozen: ranked(times, 0.5) for frozen, times in self.drawn.items()}
         print(
             f"{at}: while things changed the unseen made {self.unseen_made} rows and Agents "
             f"{self.agents_made} a turn, and while frozen the keys made {self.keys_made}, "
             f"and the look for where rows live {self.walked}; "
-            f"{self.refreshes} refreshes in {self.seconds / 1000:.1f} s, {rate:.1f} a second, "
+            f"{self.refreshes} refreshes in {self.window:.1f} s, {rate:.1f} a second, the keys "
+            f"pressed over {self.pressing:.1f} s of it, "
             f"{self.keyed} taken on a key's path; handlers 95% within {handled[False]:.1f} ms "
             f"changing against {handled[True]:.1f} ms frozen, the slowest "
             f"{max(self.handled[False]):.1f} against {max(self.handled[True]):.1f} ms; keys to "
@@ -306,7 +346,13 @@ class Turns:
             f"{at}, with no Ctrl+] pressed the look for where rows live made {self.walked} rows"
         )
         assert self.keyed == 0, f"{at}, {self.keyed} refreshes were taken on a key's path"
-        assert rate <= REFRESHES, f"{at}, the list refreshed {rate:.1f} a second"
+        # The pace lets one refresh at once and one each quarter second after it, so a turn's span
+        # holds at most one more than its share.
+        most = REFRESHES * self.window + self.turns
+        assert self.refreshes <= most, (
+            f"{at}, the list refreshed {self.refreshes} times in {self.window:.1f} s over "
+            f"{self.turns} turns, past the pace's {most:.0f}"
+        )
         # A key that composed the list, or drew rows afresh with nothing changing, did the work a
         # change costs on its own path, which the times a loaded builder stretches can't tell.
         for frozen in (False, True):
