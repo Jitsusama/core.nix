@@ -132,6 +132,25 @@ struct Reader {
 }
 
 impl Reader {
+    /// Reads the kinds of these that are heard as their files are
+    /// written (`HEARD`).
+    fn heard(&self, kinds: &HashSet<String>) -> Vec<Value> {
+        let wants = |kind: &str| kinds.contains(kind);
+        let mut records = Vec::new();
+        if let Some(files) = self.steered.as_ref() {
+            if wants("brightness") {
+                records.extend(steered::brightness(&self.root, files));
+            }
+            if wants("warmth") {
+                records.extend(steered::warmth(&self.root, files));
+            }
+        }
+        if wants("camera") {
+            records.extend(camera::cameras(&self.root));
+        }
+        records
+    }
+
     /// Reads these kinds, as rates from their last read, the trees of
     /// these pids among them, with what the buses last said.
     fn read(
@@ -204,17 +223,7 @@ impl Reader {
         if wants("light") {
             records.extend(buses.light.iter().cloned());
         }
-        if let Some(files) = self.steered.as_ref() {
-            if wants("brightness") {
-                records.extend(steered::brightness(&self.root, files));
-            }
-            if wants("warmth") {
-                records.extend(steered::warmth(&self.root, files));
-            }
-        }
-        if wants("camera") {
-            records.extend(camera::cameras(&self.root));
-        }
+        records.extend(self.heard(kinds));
         if wants("awake") {
             records.push(sleep::awake(&buses.logind));
         }
