@@ -19,17 +19,21 @@
 //!
 //! The load goes on the link only while no call is on and Joel has been
 //! idle two minutes, as Wayland's idle notice tells swayidle; the moment
-//! either changes, every load stops, the shaper goes back as it was, and
-//! it exits 75. It passes when, with the shaper on, the call's 99th
-//! percentile is within `CALL_MARGIN_MS` of its median through the shaper
-//! before the proof's load starts, Joel's upload
-//! gets at least half of what the link sends, and at least `FAVOUR` of
-//! every `FAVOUR_OF` pairs favour the shaper. A block with the shaper on
+//! either changes, every load stops, the shaper goes back as it was, the
+//! pair under way is dropped, and it waits for his next idle stretch. It
+//! waits `--wait` seconds from its start in all, and exits 75 if they run
+//! out before every pair is measured, writing what it measured to
+//! `--out`. The call's packets are src/call.rs's.
+//!
+//! It passes when, with the shaper on, the call's 99th percentile is
+//! within `CALL_MARGIN_MS` of its median through the shaper before the
+//! proof's load starts, Joel's upload gets at least half of what the link
+//! sends, and at least `FAVOUR` of every `FAVOUR_OF` pairs favour the
+//! shaper. A block with the shaper on
 //! whose CAKE never held a queue says nothing of it, and is void.
 
 use crate::qdisc;
 use std::fs;
-use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::sync::Arc;
@@ -40,7 +44,6 @@ use std::time::{Duration, Instant};
 /// Where the server is named when `--server` doesn't: the machine's
 /// `jitsusama.shaper.speedServer`, which the wrapper sets.
 const SERVER_ENV: &str = "SHAPER_SPEED_SERVER";
-const STUN: &str = "stun.l.google.com:19302";
 /// How far over the idle median a call's 99th percentile may go.
 const CALL_MARGIN_MS: f64 = 30.0;
 /// The least share of what the link sends that Joel's upload must get.
@@ -55,10 +58,6 @@ const FAVOUR_OF: f64 = 12.0;
 const SETTLE: Duration = Duration::from_secs(15);
 /// What the gate's idle notice waits for, in seconds.
 const IDLE_S: u32 = 120;
-/// A STUN probe's spacing, and how long one goes unanswered before it's
-/// lost.
-const CALL_EVERY: Duration = Duration::from_millis(200);
-const CALL_LOST: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Arm {
@@ -188,79 +187,6 @@ fn judge(idle_call: &[f64], pairs: &[[Block; 2]]) -> Verdict {
         fair: shaped_share >= SHARE,
         consistent,
     }
-}
-
-/// A STUN binding request with this transaction id.
-fn stun_request(id: [u8; 12]) -> [u8; 20] {
-    let mut packet = [0_u8; 20];
-    packet[0..2].copy_from_slice(&0x0001_u16.to_be_bytes());
-    packet[4..8].copy_from_slice(&0x2112_A442_u32.to_be_bytes());
-    packet[8..20].copy_from_slice(&id);
-    packet
-}
-
-/// The transaction id a STUN binding success answers, if it is one.
-fn stun_answer(packet: &[u8]) -> Option<[u8; 12]> {
-    let head = packet.get(0..20)?;
-    (head[0..2] == 0x0101_u16.to_be_bytes() && head[4..8] == 0x2112_A442_u32.to_be_bytes())
-        .then(|| head[8..20].try_into().ok())
-        .flatten()
-}
-
-/// `shaper proof-call SECONDS`: STUN round trips five times a second, one
-/// line each, in ms or `lost`, run in app.slice as a call would be.
-pub fn call(args: &[String]) -> ExitCode {
-    let Some(seconds) = args.first().and_then(|s| s.parse::<u64>().ok()) else {
-        eprintln!("usage: shaper proof-call SECONDS");
-        return ExitCode::from(2);
-    };
-    let Some(server) = STUN
-        .to_socket_addrs()
-        .ok()
-        .and_then(|mut all| all.find(SocketAddr::is_ipv4))
-    else {
-        eprintln!("couldn't find {STUN}");
-        return ExitCode::FAILURE;
-    };
-    let Ok(socket) = UdpSocket::bind(("0.0.0.0", 0)) else {
-        return ExitCode::FAILURE;
-    };
-    let end = Instant::now() + Duration::from_secs(seconds);
-    let mut sent: Vec<([u8; 12], Instant)> = Vec::new();
-    let mut next = Instant::now();
-    let mut seq = 0_u64;
-    let mut buffer = [0_u8; 512];
-    while Instant::now() < end {
-        let now = Instant::now();
-        if now >= next {
-            seq += 1;
-            let mut id = [0_u8; 12];
-            id[4..].copy_from_slice(&seq.to_be_bytes());
-            if socket.send_to(&stun_request(id), server).is_ok() {
-                sent.push((id, now));
-            }
-            next = now + CALL_EVERY;
-        }
-        sent.retain(|&(_, at)| {
-            let gone = now - at > CALL_LOST;
-            if gone {
-                println!("lost");
-            }
-            !gone
-        });
-        let wait = next
-            .saturating_duration_since(Instant::now())
-            .max(Duration::from_millis(1));
-        let _ = socket.set_read_timeout(Some(wait));
-        if let Ok(length) = socket.recv(&mut buffer)
-            && let Some(id) = stun_answer(&buffer[..length])
-            && let Some(at) = sent.iter().position(|&(s, _)| s == id)
-        {
-            let (_, when) = sent.remove(at);
-            println!("{:.1}", when.elapsed().as_secs_f64() * 1_000.0);
-        }
-    }
-    ExitCode::SUCCESS
 }
 
 const USAGE: &str = "shaper proof [--server URL] [--pairs N] [--seconds S] [--uploads N] \
@@ -555,57 +481,36 @@ pub fn command(args: &[String]) -> ExitCode {
         eprintln!("couldn't start swayidle to hear whether Joel is away");
         return ExitCode::FAILURE;
     };
-    let waiting = Instant::now();
-    while !gate.open() {
-        if waiting.elapsed() >= Duration::from_secs(asked.wait) {
-            eprintln!("Joel hasn't been idle two minutes, or a call is on: not loading the link");
-            return ExitCode::from(75);
-        }
-        // The gate is asked once a second while it's waited for.
-        thread::sleep(Duration::from_secs(1));
-    }
+    let gate = Arc::new(gate);
+    let deadline = Instant::now() + Duration::from_secs(asked.wait);
     let was_on = systemctl("is-active");
-    // The rest of the machine's traffic runs through the whole proof, and
-    // with the router alone it bloats the router's queue: the first run's
-    // idle median was 81 ms, where a loaded call through the shaper took
-    // 38. So the call's quiet is heard with the shaper on, and the bar
-    // asks what the proof's own load adds to it.
-    systemctl("start");
-    // The shaper settles before its quiet counts, as SETTLE says.
-    thread::sleep(SETTLE);
-    eprintln!("idle: the call's round trips through the shaper, with the proof loading nothing");
-    let idle = idle_call(asked.seconds.min(15));
-    let stop = Arc::new(AtomicBool::new(false));
-    let watch = {
-        let stop = Arc::clone(&stop);
-        thread::spawn(move || {
-            while !stop.load(Ordering::Relaxed) {
-                if !gate.open() {
-                    eprintln!("Joel is back, or a call started: stopping the load");
-                    stop.store(true, Ordering::Relaxed);
-                    stop_scopes();
-                }
-                // The gate is asked once a second while the load runs.
-                thread::sleep(Duration::from_secs(1));
-            }
-        })
-    };
-    load(asked.uploads, &asked.server);
-    let pairs = run_pairs(&asked, &link, &stop);
-    let stopped = stop.swap(true, Ordering::Relaxed);
-    stop_scopes();
-    let _ = watch.join();
-    systemctl(if was_on { "start" } else { "stop" });
-    if stopped {
+    let mut idle: Vec<f64> = Vec::new();
+    let (pairs, complete) = across_windows(
+        asked.pairs,
+        || opened(&gate, deadline),
+        |from| window(&asked, &link, &gate, was_on, from, &mut idle),
+    );
+    if pairs.is_empty() {
+        eprintln!("Joel hasn't been idle two minutes, or a call is on: not loading the link");
         return ExitCode::from(75);
     }
     let verdict = judge(&idle, &pairs);
     verdict.say();
     if let Some(out) = &asked.out {
-        let report = serde_json::json!({"verdict": verdict, "idle_call_ms": idle, "pairs": pairs});
+        let report = serde_json::json!({
+            "verdict": verdict, "complete": complete, "idle_call_ms": idle, "pairs": pairs
+        });
         if fs::write(out, report.to_string()).is_err() {
             eprintln!("couldn't write {}", out.display());
         }
+    }
+    if !complete {
+        eprintln!(
+            "the wait ran out after {} of {} pairs: not enough to judge",
+            pairs.len(),
+            asked.pairs
+        );
+        return ExitCode::from(75);
     }
     if verdict.passed() {
         ExitCode::SUCCESS
@@ -627,11 +532,99 @@ fn load(uploads: u32, server: &str) {
     }
 }
 
+/// Gathers the pairs across Joel's idle windows, `opened` waiting for the
+/// next and `window` measuring from the pair it's given until the gate
+/// closes. Each window starts after the last pair kept, since a pair's
+/// arms run back to back and so compare alike in any window. Returns the
+/// pairs and whether all were measured before the wait ran out.
+fn across_windows(
+    pairs: u32,
+    mut opened: impl FnMut() -> bool,
+    mut window: impl FnMut(u32) -> Vec<[Block; 2]>,
+) -> (Vec<[Block; 2]>, bool) {
+    let mut kept: Vec<[Block; 2]> = Vec::new();
+    while kept.len() < pairs as usize {
+        if !opened() {
+            return (kept, false);
+        }
+        let from = u32::try_from(kept.len()).unwrap_or(pairs);
+        kept.extend(window(from));
+    }
+    (kept, true)
+}
+
+/// Waits for the gate to open, until `deadline`.
+fn opened(gate: &Gate, deadline: Instant) -> bool {
+    while !gate.open() {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        // The gate is asked once a second while it's waited for.
+        thread::sleep(Duration::from_secs(1));
+    }
+    true
+}
+
+/// One idle window: the load and the pairs from `from` on, until they're
+/// done or the gate closes, the shaper going back to `was_on` after. The
+/// call's quiet is heard first, in the run's first window.
+fn window(
+    asked: &Asked,
+    link: &str,
+    gate: &Arc<Gate>,
+    was_on: bool,
+    from: u32,
+    idle: &mut Vec<f64>,
+) -> Vec<[Block; 2]> {
+    // The rest of the machine's traffic runs through the whole proof, and
+    // with the router alone it bloats the router's queue: the first run's
+    // idle median was 81 ms, where a loaded call through the shaper took
+    // 38. So the call's quiet is heard with the shaper on, and the bar
+    // asks what the proof's own load adds to it.
+    if idle.is_empty() {
+        systemctl("start");
+        // The shaper settles before its quiet counts, as SETTLE says.
+        thread::sleep(SETTLE);
+        eprintln!(
+            "idle: the call's round trips through the shaper, with the proof loading nothing"
+        );
+        *idle = idle_call(asked.seconds.min(15));
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    let watch = {
+        let (stop, gate) = (Arc::clone(&stop), Arc::clone(gate));
+        thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                if !gate.open() {
+                    eprintln!("Joel is back, or a call started: stopping the load");
+                    stop.store(true, Ordering::Relaxed);
+                    stop_scopes();
+                }
+                // The gate is asked once a second while the load runs.
+                thread::sleep(Duration::from_secs(1));
+            }
+        })
+    };
+    load(asked.uploads, &asked.server);
+    let pairs = run_pairs(asked, link, &stop, from);
+    let stopped = stop.swap(true, Ordering::Relaxed);
+    stop_scopes();
+    let _ = watch.join();
+    systemctl(if was_on { "start" } else { "stop" });
+    if stopped {
+        eprintln!(
+            "kept {} pairs, the one under way dropped; waiting for Joel's next idle",
+            from as usize + pairs.len()
+        );
+    }
+    pairs
+}
+
 /// Measures the pairs, the shaper on for one block of each and off for the
 /// other, until they're done or the gate closes.
-fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool) -> Vec<[Block; 2]> {
+fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Block; 2]> {
     let mut pairs: Vec<[Block; 2]> = Vec::new();
-    'pairs: for pair in 0..asked.pairs {
+    'pairs: for pair in from..asked.pairs {
         eprintln!("pair {} of {}", pair + 1, asked.pairs);
         let mut done: Vec<Block> = Vec::new();
         for arm in arms(pair) {
@@ -742,27 +735,40 @@ mod tests {
     }
 
     #[test]
-    fn the_shaper_goes_first_in_every_other_pair() {
-        assert_eq!(arms(0), [Arm::On, Arm::Off]);
-        assert_eq!(arms(1), [Arm::Off, Arm::On]);
+    fn pairs_measured_in_three_windows_are_kept_as_one_run() {
+        let mut froms = Vec::new();
+        let mut windows = [5, 0, 7].into_iter();
+        let (kept, complete) = across_windows(
+            12,
+            || true,
+            |from| {
+                froms.push(from);
+                pairs(windows.next().unwrap_or(0), 0.8, 0.05)
+            },
+        );
+        assert_eq!((kept.len(), complete), (12, true));
+        assert_eq!(
+            froms,
+            [0, 5, 5],
+            "a window didn't start after the last pair kept"
+        );
     }
 
     #[test]
-    fn a_stun_answer_is_matched_to_its_request() {
-        let id = [7_u8; 12];
-        let mut answer = stun_request(id);
-        answer[0..2].copy_from_slice(&0x0101_u16.to_be_bytes());
-        assert_eq!(stun_answer(&answer), Some(id));
-        assert_eq!(
-            stun_answer(&stun_request(id)),
-            None,
-            "a request read as an answer"
+    fn a_wait_that_runs_out_keeps_the_pairs_measured() {
+        let mut opens = [true, false].into_iter();
+        let (kept, complete) = across_windows(
+            12,
+            || opens.next().unwrap_or(false),
+            |_| pairs(4, 0.8, 0.05),
         );
-        assert_eq!(
-            stun_answer(&answer[..10]),
-            None,
-            "a short packet read as an answer"
-        );
+        assert_eq!((kept.len(), complete), (4, false));
+    }
+
+    #[test]
+    fn the_shaper_goes_first_in_every_other_pair() {
+        assert_eq!(arms(0), [Arm::On, Arm::Off]);
+        assert_eq!(arms(1), [Arm::Off, Arm::On]);
     }
 
     #[test]

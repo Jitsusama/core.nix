@@ -23,6 +23,7 @@
 //!        shaper record [--state DIR]
 //!        shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...
 
+mod call;
 mod classes;
 mod cpu;
 mod icmp;
@@ -149,7 +150,7 @@ fn main() -> ExitCode {
         Some("record") => recording(&options(rest).state),
         Some("replay") => replay::command(rest),
         Some("proof") => proof::command(rest),
-        Some("proof-call") => proof::call(rest),
+        Some("proof-call") => call::command(rest),
         _ => {
             eprintln!("usage: shaper run | status | stop | record | replay | proof");
             ExitCode::from(2)
