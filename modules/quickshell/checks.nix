@@ -3079,6 +3079,24 @@ onLinux {
       touch $out
     '';
 
+  # The shell's niri, told niri's events as its stream would, moves the keys
+  # without making any list again, and still lists a window retitled,
+  # opened, closed or used (tests/niri-focus.qml).
+  niri-moving-the-keys-makes-no-list-again =
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "niri-moving-the-keys-makes-no-list-again" { } ''
+      cp ${./Niri.qml} Niri.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
+      cp ${../../tests/niri-focus.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's Screens, asked of niri anew at every workspace change and
   # opening, makes no screen's row again while niri's answer reads the same,
   # and draws a screen that changed as it now stands (tests/displays.qml),

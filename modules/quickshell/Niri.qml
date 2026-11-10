@@ -45,9 +45,14 @@ Singleton {
 
     // Every window and workspace by id, as niri's events describe them,
     // changed in place. `revision` counts the changes a list of them would
-    // show, a window opening, closing, retitled or focused, so what's drawn
+    // show, a window opening, closing, retitled or used, so what's drawn
     // from them follows it; a window only moving or resizing says so through
-    // layoutsChanged instead, since that happens many times a second.
+    // layoutsChanged instead, since that happens many times a second. The
+    // keys moving, to a window or to a workspace's other window, change
+    // only `focused` and `current`, which say so themselves: nothing lists
+    // by a window's is_focused, yet those were nearly half of what niri said
+    // as Joel worked (17 of 36 events in a minute, 2026-11-10), and each
+    // made every list again, Sessions' every session among them.
     property var windows: ({})
     property var workspaces: ({})
     property var focused: null
@@ -56,11 +61,14 @@ Singleton {
     // The window the keys were in, by id. niri says no window has focus
     // while a layer such as the launcher has the keys, so it's the focused
     // workspace's active window then; null on an empty workspace.
-    readonly property var current: {
-        void revision;
+    // Followed after each event, and set only when it differs, so what
+    // reads it wakes only as it moves.
+    property var current: null
+    function follow(): void {
         const workspace = root.workspace();
-        const id = focused ?? (workspace ? workspace.active_window_id : null);
-        return id ?? null;
+        const id = focused ?? (workspace ? workspace.active_window_id : null) ?? null;
+        if (current !== id)
+            current = id;
     }
 
     // Every screencast by its stream's id: a program sharing the screen
@@ -170,7 +178,6 @@ Singleton {
             focused = event.WindowFocusChanged.id;
             for (const id in windows)
                 windows[id].is_focused = windows[id].id === focused;
-            revision++;
         } else if (event.WindowFocusTimestampChanged) {
             const change = event.WindowFocusTimestampChanged;
             if (windows[change.id])
@@ -224,8 +231,8 @@ Singleton {
             const change = event.WorkspaceActiveWindowChanged;
             if (workspaces[change.workspace_id])
                 workspaces[change.workspace_id].active_window_id = change.active_window_id;
-            revision++;
         }
+        follow();
     }
 
     function act(action: var): void {
