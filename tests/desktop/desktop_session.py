@@ -109,6 +109,11 @@ STARTING = timedelta(seconds=120)
 # while its libinput said it was lagging behind (2026-10-30). 50 ms a key holds a stall
 # that long.
 KEY_PACE = timedelta(milliseconds=50)
+# How many keys type_in sends before the launcher holds the ones before them. Pacing alone
+# holds a stall of about 64 events' worth of keys: a guest starved for 1.04 s on a loaded
+# builder kept "3c:2" and "6" of "3c:22:fb:12:34:56" (2026-11-10). Six keys, a shifted one
+# eight events, never fill the queue, however long the stall.
+KEYS_IN_FLIGHT = 6
 # More rows than this name something across everything the launcher is asked for in its
 # survey, so the rows were looked at rather than all empty.
 ROWS_LOOKED_AT = 100
@@ -775,7 +780,18 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         found later, such as a window or a copy, can be named to wait for too.
         """
         self.on_find()
-        self.machine.send_chars(text, delay=KEY_PACE)
+        # At most KEYS_IN_FLIGHT go before the launcher holds those sent so far, so a guest
+        # starved however long can't drop the middle of what's typed.
+        sent = ""
+
+        def holds_sent(shown: Json) -> object:
+            return shown["typed"].endswith(sent)
+
+        while len(text) - len(sent) > KEYS_IN_FLIGHT:
+            sent += text[len(sent) : len(sent) + KEYS_IN_FLIGHT]
+            self.machine.send_chars(sent[-KEYS_IN_FLIGHT:], delay=KEY_PACE)
+            self.launcher_until(holds_sent)
+        self.machine.send_chars(text[len(sent) :], delay=KEY_PACE)
 
         def holds(shown: Json) -> object:
             row = shown["selected"]
