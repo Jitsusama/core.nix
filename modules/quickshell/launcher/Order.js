@@ -12,11 +12,15 @@
 // hold it in Qt's own engine.
 .pragma library
 
-// The first of the orders that tells two rows apart.
+// The first of the orders that tells two rows apart. Looped by index,
+// since a sort calls it for every pair it weighs, and for...of makes an
+// iterator and a result for each step of each call: on the laptop that
+// was most of an opening's seconds (2026-11-10).
 function then(...orders) {
     return (one, other) => {
-        for (const order of orders) {
-            const said = order(one, other);
+        // biome-ignore lint/style/useForOf: Qt's engine makes an iterator result per step.
+        for (let at = 0; at < orders.length; at += 1) {
+            const said = orders[at](one, other);
             if (said !== 0) {
                 return said;
             }

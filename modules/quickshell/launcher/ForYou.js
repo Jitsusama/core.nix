@@ -93,16 +93,26 @@ function waiting(since, now) {
     return Math.min(WAITED_MOST, Math.round(WAITED_RATE * Math.log2(1 + hours)));
 }
 
+// A thing's times as milliseconds, { due, since }, each null where it has
+// none, read once so its band, its weight and its order share them.
+function timesOf(thing) {
+    return { due: when(thing.due), since: when(thing.since) };
+}
+
 // What a thing weighs: { weight, parts }, its parts always in the same
 // order. A thing is { kind: "todo" | "look", blocks, due, ready, since },
 // each time a number or an ISO time.
 function weigh(thing, now) {
+    return weighed(thing, now, timesOf(thing));
+}
+
+function weighed(thing, now, times) {
     const parts = [
         { id: "blocks", points: blocking(Number(thing.blocks ?? 0)) },
-        { id: "due", points: dueing(when(thing.due), now) },
+        { id: "due", points: dueing(times.due, now) },
         { id: "ready", points: thing.ready === true ? READY : 0 },
         { id: "kind", points: KIND_POINTS[thing.kind] ?? 0 },
-        { id: "waited", points: waiting(when(thing.since), now) }
+        { id: "waited", points: waiting(times.since, now) }
     ];
     return { weight: parts.reduce((sum, part) => sum + part.points, 0), parts };
 }
@@ -122,7 +132,11 @@ const OWN_ROWS = ["look", "try"];
 // is lifted over the rest: it blocks a session, or its deadline has
 // passed or comes within the day, as its weight counts one.
 function pressing(thing, now) {
-    return Number(thing.blocks ?? 0) > 0 || dueing(when(thing.due), now) > 0;
+    return pressingBy(thing, now, when(thing.due));
+}
+
+function pressingBy(thing, now, due) {
+    return Number(thing.blocks ?? 0) > 0 || dueing(due, now) > 0;
 }
 
 // The band a thing of a kind stands in: a to-do, or anything pressing,
@@ -135,17 +149,38 @@ function bandOf(kind, thing, now) {
 // For You's items in their bands, { now, look, try }, each item
 // { kind, thing } with whatever else its caller keeps, and given its
 // `weight`. Each band is heaviest first, those alike the oldest first,
-// then in the order they came (VKCF3Z, 2026-11-09).
+// then in the order they came (VKCF3Z, 2026-11-09). Each item's times are
+// read once and the bands sorted on numbers: a sort that read them in its
+// comparator parsed each ISO time over again for every pair it weighed,
+// and held the shell's thread for seconds of each opening on the laptop
+// (2026-11-10).
 function banded(items, now) {
     const bands = { now: [], look: [], try: [] };
-    for (const item of items ?? []) {
-        bands[bandOf(item.kind, item.thing, now)].push(Object.assign({}, item,
-            { weight: weigh(item.thing, now).weight }));
+    const list = items ?? [];
+    for (let at = 0; at < list.length; at += 1) {
+        const item = list[at];
+        const times = timesOf(item.thing);
+        const band = OWN_ROWS.includes(item.kind) && !pressingBy(item.thing, now, times.due)
+            ? item.kind : "now";
+        bands[band].push({ at, since: times.since, item: Object.assign({}, item,
+            { weight: weighed(item.thing, now, times).weight }) });
     }
-    const order = Order.then((one, other) => other.weight - one.weight,
-        Order.smaller(one => when(one.thing.since)));
-    return { now: Order.sorted(bands.now, order), look: Order.sorted(bands.look, order),
-        try: Order.sorted(bands.try, order) };
+    return { now: inOrder(bands.now), look: inOrder(bands.look), try: inOrder(bands.try) };
+}
+
+// A band's items heaviest first, those alike the oldest first, one with no
+// time after every one with one, then in the order they came: the order
+// Order.then and Order.smaller say, on numbers already read.
+function inOrder(band) {
+    return band.sort((one, other) => other.item.weight - one.item.weight
+        || older(one.since, other.since) || one.at - other.at).map(each => each.item);
+}
+
+function older(one, other) {
+    if (one === null || other === null) {
+        return Number(other !== null) - Number(one !== null);
+    }
+    return Math.sign(one - other);
 }
 
 // How many each band holds, as items for a row's side: "1 to do \u00b7 44
