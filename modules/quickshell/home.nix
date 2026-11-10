@@ -125,6 +125,7 @@ let
     "Search.js"
     "Operators.js"
     "Finding.js"
+    "Glide.js"
     "Confirm.js"
     "KeyHints.qml"
     "StatusLine.qml"
