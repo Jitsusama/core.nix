@@ -146,6 +146,7 @@
 //! the second lent builder, else the warm VM builders, that passed theirs.
 
 mod changed;
+mod cloud;
 mod decide;
 mod freeing;
 mod held;
@@ -166,9 +167,11 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, fs, thread};
+
+use cloud::Place;
 
 use decide::{Hours, Restart, Tick};
 use journal::{Event, Ran};
@@ -336,6 +339,9 @@ struct Lent {
     /// epoch, so one that ran out while the machine slept isn't taken for
     /// lost.
     ends: u64,
+    /// Where it is in the cloud, as its helper last said, which it says
+    /// again while it holds it.
+    place: Arc<Mutex<Place>>,
 }
 
 /// A builder that handed over to a successor, finishing what it has.
@@ -356,17 +362,20 @@ impl Lent {
 }
 
 /// What the helper said once its builder was made: its price and its
-/// store, if it gave them, and its machines line.
+/// store, if it gave them, where it is in the cloud, and its machines
+/// line.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Heard {
     rate: Option<u64>,
     store: Option<String>,
+    place: Place,
     line: String,
 }
 
-/// Read what the helper says: `price DOLLARS` and `store URI` lines, in
-/// any order, then its machines line.
-fn heard_from(helper: impl BufRead) -> Heard {
+/// Read what the helper says: `price DOLLARS`, `store URI`, `instance
+/// NAME ZONE` and `cloud-token TOKEN` lines, in any order, then its
+/// machines line.
+fn heard_from(helper: &mut impl BufRead) -> Heard {
     let mut heard = Heard::default();
     for line in helper.lines() {
         let Ok(line) = line else { break };
@@ -374,12 +383,32 @@ fn heard_from(helper: impl BufRead) -> Heard {
             heard.rate = journal::price(price.trim());
         } else if let Some(store) = line.strip_prefix("store ") {
             heard.store = Some(store.trim().to_owned());
-        } else {
+        } else if !heard.place.heard(&line) {
             heard.line = line;
             break;
         }
     }
     heard
+}
+
+/// Where the builder is, as its helper last said.
+fn placed(place: &Mutex<Place>) -> Place {
+    place
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+/// Hear where the builder is from what the helper says after its line,
+/// into `place`, until it ends: a fresh token while it holds the builder.
+/// Read to its end, so a helper never writes to a pipe nobody reads.
+fn heard_after(helper: impl BufRead, place: &Mutex<Place>) {
+    for line in helper.lines() {
+        let Ok(line) = line else { break };
+        if let Ok(mut place) = place.lock() {
+            place.heard(&line);
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -1763,7 +1792,11 @@ fn machines_of(settings: &Settings) -> Machines {
     )
     .for_anything(dir.join("machines-for-anything"))
     .read_from(settings.standing.clone(), settings.beside.clone())
-    .freeing_from(settings.freeing.clone());
+    .freeing_from(settings.freeing.clone())
+    // Every lender says where its builder is, since another's builder
+    // stands in for the first's in the lines root reads, and each line
+    // is vouched for by its own lender's folder.
+    .in_cloud(cloud::Cloud::in_dir(dir, Path::new(cloud::GROUPS)));
     // Only the lender for every build has others stand in for it: the
     // rest lend only to `there`, which reads no file for any work.
     if settings.only_there {
@@ -1876,6 +1909,7 @@ fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Optio
         (None, None) => State::None,
     };
     machines.proven(lent.map(|builder| builder.line.as_str()), state);
+    machines.placing(lent.map(|builder| placed(&builder.place)));
     machines.show(lent.map(Lent::lending));
     proof::write(dir, health, machines.beside_health().as_deref(), now());
 }
@@ -2197,8 +2231,10 @@ fn ask(
         eprintln!("nix-offload: journalling the ask: {error}; none is asked for");
         return None;
     }
-    let (mut helper, said) = hear(settings, &["up", &name, &left.to_string()])?;
-    let Heard { rate, store, line } = said;
+    let (mut helper, said, place) = hear(settings, &["up", &name, &left.to_string()])?;
+    let Heard {
+        rate, store, line, ..
+    } = said;
     let line = line.trim();
     match host_of(line) {
         Some(host) if helper.try_wait().ok().flatten().is_none() => {
@@ -2206,6 +2242,7 @@ fn ask(
             if let Some(store) = &store {
                 warm(settings, &name, store);
             }
+            machines.placing(Some(placed(&place)));
             machines.show(Some(machines::Lending {
                 line,
                 store: store.as_deref(),
@@ -2232,6 +2269,7 @@ fn ask(
                 since: now,
                 used: self::now(),
                 ends: now + left,
+                place,
             })
         }
         _ if ENDING.load(Ordering::SeqCst) => {
@@ -2301,8 +2339,9 @@ fn warm(settings: &Settings, name: &str, store: &str) {
 }
 
 /// Run the helper with `arguments`, and hear what it says until its
-/// machines line, for as long as a builder may take to be ready.
-fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard)> {
+/// machines line, for as long as a builder may take to be ready, then
+/// where its builder is for as long as it runs, into the place given.
+fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard, Arc<Mutex<Place>>)> {
     let mut helper = match &settings.outlasting {
         Some(outlasting) => {
             let mut through = Command::new(outlasting);
@@ -2320,8 +2359,16 @@ fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard)> {
         .ok()?;
     let (said, heard) = mpsc::channel();
     let out = helper.stdout.take()?;
+    let place = Arc::new(Mutex::new(Place::default()));
+    let placing = Arc::clone(&place);
     thread::spawn(move || {
-        let _ = said.send(heard_from(BufReader::new(out)));
+        let mut out = BufReader::new(out);
+        let heard = heard_from(&mut out);
+        if let Ok(mut place) = placing.lock() {
+            place.clone_from(&heard.place);
+        }
+        let _ = said.send(heard);
+        heard_after(out, &placing);
     });
     // In short waits, so a stop is heard while the builder is being made.
     let asked = Instant::now();
@@ -2336,7 +2383,7 @@ fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard)> {
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-    Some((helper, said))
+    Some((helper, said, place))
 }
 
 /// Take back the builder the last stop left, before the deadline, rather
@@ -2358,14 +2405,17 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
     let ended = left.ended?;
     let name = left.name;
     eprintln!("nix-offload: taking back {name}, which the last stop left");
-    let (mut helper, said) = hear(settings, &["hold", &name])?;
-    let Heard { rate, store, line } = said;
+    let (mut helper, said, place) = hear(settings, &["hold", &name])?;
+    let Heard {
+        rate, store, line, ..
+    } = said;
     let line = line.trim();
     let Some(host) = host_of(line).filter(|_| helper.try_wait().ok().flatten().is_none()) else {
         eprintln!("nix-offload: {name} couldn't be taken back, so it's given back");
         end(&mut helper);
         return None;
     };
+    machines.placing(Some(placed(&place)));
     machines.show(Some(machines::Lending {
         line,
         store: store.as_deref(),
@@ -2382,6 +2432,7 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
         since: left.asked,
         used: ended.at,
         ends: decide::ends(settings.hours, left.asked, now(), into_day),
+        place,
     })
 }
 
@@ -2777,22 +2828,32 @@ exit 0
         let line = "ssh-ng://nix-offload x86_64-linux /key 5 1 kvm - aG9zdA==";
         let store = "ssh-ng://nix-offload?ssh-key=/k";
         assert_eq!(
-            heard_from(format!("price 0.89\nstore {store}\n{line}\nlater\n").as_bytes()),
+            heard_from(
+                &mut format!(
+                    "price 0.89\ninstance lend-5 us-central1-a\nstore {store}\n\
+                     cloud-token ya29.x\n{line}\nlater\n"
+                )
+                .as_bytes()
+            ),
             Heard {
                 rate: Some(890),
                 store: Some(store.to_owned()),
+                place: Place {
+                    instance: Some("lend-5 us-central1-a".to_owned()),
+                    token: Some("ya29.x".to_owned()),
+                },
                 line: line.to_owned(),
             }
         );
         assert_eq!(
-            heard_from(format!("{line}\n").as_bytes()),
+            heard_from(&mut format!("{line}\n").as_bytes()),
             Heard {
                 line: line.to_owned(),
                 ..Heard::default()
             }
         );
         assert_eq!(
-            heard_from("price 0.89\n".as_bytes()),
+            heard_from(&mut "price 0.89\n".as_bytes()),
             Heard {
                 rate: Some(890),
                 ..Heard::default()
@@ -2879,6 +2940,54 @@ exit 1
             journal::unreturned(&journal)[0].ended.is_none(),
             "{journal}"
         );
+    }
+
+    /// A helper that holds `lend-5`, saying where it is, and a fresh
+    /// token after its line.
+    const PLACES: &str = r#"#!/bin/sh
+echo "instance lend-5 us-central1-a"
+echo "cloud-token first"
+echo "ssh-ng://far x86_64-linux /k 8 1 big-parallel - -"
+echo "cloud-token fresh"
+exec sleep 60
+"#;
+
+    #[test]
+    fn the_lender_says_where_its_builder_is_and_takes_each_fresh_token() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = [
+            r#"{"at":5,"event":"asked","name":"lend-5"}"#,
+            r#"{"at":9,"event":"ended","name":"lend-5","seconds":4}"#,
+        ]
+        .join("\n")
+            + "\n";
+        let (settings, machines) = holding(folder.path(), &journal);
+        executable(&settings.helper, PLACES);
+        let dir = folder.path();
+        let mut machines = machines.in_cloud(cloud::Cloud::in_dir(dir, &dir.join("no-groups")));
+        let mut lent = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let read = |name: &str| fs::read_to_string(dir.join(name)).unwrap_or_default();
+        assert_eq!(
+            read("instance"),
+            "lend-5 us-central1-a\n",
+            "where it is, before Nix is told of it"
+        );
+        let asked = Instant::now();
+        while placed(&lent.place).token.as_deref() != Some("fresh")
+            && asked.elapsed() < Duration::from_secs(5)
+        {
+            thread::sleep(Duration::from_millis(20));
+        }
+        named(dir, &mut machines, Some(&lent), None);
+        assert_eq!(read("cloud-token"), "fresh\n", "the token it said last");
+        named(dir, &mut machines, None, None);
+        assert_eq!(
+            (read("instance"), read("cloud-token")),
+            (String::new(), String::new()),
+            "nothing lent, nothing placed"
+        );
+        end(&mut lent.helper);
     }
 
     /// A helper whose `hold lend-5` hands over when told to, ending as
