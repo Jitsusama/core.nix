@@ -6,7 +6,8 @@ is timed from the moment a stand-in keyboard pressed it to the first frame the l
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
 those under load are held against the others, so the builder's own load slows both alike. That
 text a program types at once is searched once, and a Return among it acts on what it found, is
-proven on a nested niri, in tests/launcher-on-niri-test.py.
+proven on a nested niri, in tests/launcher-on-niri-test.py. Long because its keys, steps and
+openings are each timed against the same loaded desktop, and a split would boot it again.
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
