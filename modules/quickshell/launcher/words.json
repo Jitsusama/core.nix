@@ -2495,8 +2495,7 @@
         "hottest": "{degrees} at the {part}",
         "stopped": "fans stopped",
         "turning": "a fan turning",
-        "turnings": "{count} fans turning",
-        "read": "read just now"
+        "turnings": "{count} fans turning"
       }
     },
     {

@@ -136,7 +136,13 @@ Provider {
     }
     property string outputsSaid: ""
 
-    Component.onCompleted: refresh()
+    // The lights are read once as the shell starts too, though the
+    // launcher is closed, since what's inside a screen is made from what's
+    // held while it's closed (Daemon.qml's refresh).
+    Component.onCompleted: {
+        refresh();
+        lights.refresh();
+    }
 
     Connections {
         target: Niri

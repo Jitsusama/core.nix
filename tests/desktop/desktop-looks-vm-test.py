@@ -1651,10 +1651,11 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
         drawer = plate_shown(desktop, scale)
         facts = drawer["facts"]
         assert facts.index("Follows") < facts.index("Curve"), f"at {scale}: {drawer}"
-        driven = drawer["values"][facts.index("Driven By")]
-        assert driven == "the graphics chip", f"at {scale}: {drawer}"
-        follows = drawer["values"][facts.index("Follows")]
-        assert follows == "the room \u00b7 on its way to 95%", f"at {scale}: {drawer}"
+        said = dict(zip(facts, drawer["values"], strict=False))
+        assert (said["Driven By"], said["Follows"]) == (
+            "the graphics chip",
+            "the room \u00b7 on its way to 95%",
+        ), f"at {scale}: {drawer}"
         desktop.shoot(f"launcher-plate-screen-following-at-{at}")
         # Its settings' choices, each by its value alone: Rotation's four
         # turns then four mirrored, and Scale's multiples (VKCF3Z, 2026-11-09).
