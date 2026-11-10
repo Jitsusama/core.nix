@@ -22,10 +22,12 @@ function indexed(records) {
     const pids = {};
     const opened = {};
     for (const record of records.slice().sort((a, b) => a.id - b.id)) {
-        if (record.pid)
-            (pids[record.pid] = pids[record.pid] ?? []).push(record);
-        if (!(String(record.opened) in opened))
+        if (record.pid) {
+            pids[record.pid] = (pids[record.pid] ?? []).concat([record]);
+        }
+        if (!(String(record.opened) in opened)) {
             opened[String(record.opened)] = record;
+        }
     }
     return { pids, opened };
 }
