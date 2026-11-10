@@ -2,8 +2,8 @@
 # laptops' is, and starts it from its image, the disk's passphrase typed at
 # the theme's ask. The kernel stops every program before it reads the image
 # back, Plymouth with them, so what the screen shows while it reads is the
-# last frame Plymouth drew: the test photographs the screen until the
-# kernel says it has read it all, and reads the photographs taken while it
+# last frame Plymouth drew: the test shoots the screen until the
+# kernel says it has read it all, and reads the shots taken while it
 # was reading for the theme's words for a restore. Once the machine is back,
 # the hook says how long the restore took after the disk opened. The
 # machine holds incompressible bytes in memory first, so the image takes
@@ -13,8 +13,8 @@
 # image is read (modules/kernel/hibernate-progress.patch), on two screens
 # of different sizes, as a laptop's panel and a monitor are. The disk is
 # held to a crawl until the kernel starts reading, so both screens are
-# photographed with the theme's track still empty, then let go, and the
-# photographs taken while it reads must show the kernel's bar lying exactly
+# shot with the theme's track still empty, then let go, and the
+# shots taken while it reads must show the kernel's bar lying exactly
 # on the track, partly filled and never going back. The script is
 # plymouth-restore-vm-test.py.
 { self, pkgs }:

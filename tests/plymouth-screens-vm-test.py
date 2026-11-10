@@ -49,13 +49,13 @@ class Splash:
     magick: str
     tesseract: str
 
-    def photographed(self, name: str, device: str | None = None) -> Path:
-        """Photograph a screen, the first as the driver does and another by its device's name."""
+    def shoot(self, name: str, device: str | None = None) -> Path:
+        """Shoot a screen, the first as the driver does and another by its device's name."""
         path = self.machine.out_dir / f"{name}.png"
         if device is None:
             self.machine.screenshot(name)
             return path
-        # As the driver photographs the first: a PPM, which every QEMU
+        # As the driver shoots the first: a PPM, which every QEMU
         # writes, turned into a PNG.
         raw = path.with_suffix(".ppm")
         said = self.machine.send_monitor_command(f"screendump {raw} {device}")
@@ -134,7 +134,7 @@ def test_the_smaller_screen_shows_the_whole_ask(splash: Splash) -> None:
 
     def whole_on_small(_: bool) -> bool:
         """Say whether the smaller screen's bottom left shows the line saying what's booting."""
-        return "Linux" in splash.bottom_left(splash.photographed("small"), splash.small)
+        return "Linux" in splash.bottom_left(splash.shoot("small"), splash.small)
 
     retry(whole_on_small, timeout=DRAWING)
 
@@ -144,7 +144,7 @@ def test_the_larger_screen_shows_the_whole_ask_too(splash: Splash) -> None:
 
     def whole_on_large(_: bool) -> bool:
         """Say whether the larger screen shows the ask and its bottom left's line."""
-        shot = splash.photographed("large", "large")
+        shot = splash.shoot("large", "large")
         return "Linux" in splash.bottom_left(shot, splash.large) and "locked" in splash.read(shot)
 
     retry(whole_on_large, timeout=DRAWING)

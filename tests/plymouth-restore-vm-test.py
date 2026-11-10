@@ -57,7 +57,7 @@ TOOK = (
 # Incompressible bytes held in memory, in MiB, so the image takes seconds to read rather
 # than the moment a bare machine's does.
 HELD = 600
-# How fast the disk reads, in bytes a second, until the empty track is photographed: slow
+# How fast the disk reads, in bytes a second, until the empty track is shot: slow
 # enough that the kernel fills none of it in the meantime, which takes a 350th of the image.
 CRAWL = 64 * 1024
 # The QEMU device of the larger screen, as tests/plymouth-restore.nix names it.
@@ -69,7 +69,7 @@ TRACK_LEAST = 64
 
 @dataclass(frozen=True)
 class Shot:
-    """A photograph of each screen, and how much the console had said when they were taken."""
+    """A shot of each screen, and how much the console had said when they were taken."""
 
     path: Path
     large: Path
@@ -78,7 +78,7 @@ class Shot:
 
 @dataclass(frozen=True)
 class Picture:
-    """A photograph's pixels, as QEMU writes them: a binary PPM, three bytes a pixel."""
+    """A shot's pixels, as QEMU writes them: a binary PPM, three bytes a pixel."""
 
     width: int
     height: int
@@ -86,7 +86,7 @@ class Picture:
 
     @classmethod
     def read(cls, path: Path) -> Picture:
-        """Read a photograph QEMU wrote."""
+        """Read a shot QEMU wrote."""
         data = path.read_bytes()
         # The header is the magic, the width, the height and the largest value, each followed
         # by one whitespace byte; QEMU writes no comments.
@@ -126,7 +126,7 @@ class Track:
 
 
 def colour(hex_colour: str) -> bytes:
-    """Give a theme's #rrggbb as a photograph's three bytes."""
+    """Give a theme's #rrggbb as a shot's three bytes."""
     return bytes.fromhex(hex_colour.removeprefix("#"))
 
 
@@ -192,7 +192,7 @@ def filled(picture: Picture, track: Track, bar: bytes, ink: bytes) -> int:
 
 @dataclass
 class Restore:
-    """A machine started from its image, and the screens photographed as it was read."""
+    """A machine started from its image, and the screens shot as it was read."""
 
     machine: QemuMachine
     # Both screens as the kernel began to read the image, once every program was frozen.
@@ -203,7 +203,7 @@ class Restore:
     after: Shot
 
     def while_reading(self) -> list[Shot]:
-        """Give the photographs taken while the kernel read the image."""
+        """Give the shots taken while the kernel read the image."""
         log = self.machine.get_console_log()
         return [
             shot
@@ -212,10 +212,10 @@ class Restore:
         ]
 
 
-def photographed(machine: QemuMachine, burst: Path, name: str) -> Shot:
-    """Photograph both screens.
+def shoot(machine: QemuMachine, burst: Path, name: str) -> Shot:
+    """Shoot both screens.
 
-    As the driver photographs for its own reading: raw, since its OCR can't read PNG.
+    As the driver shoots for its own reading: raw, since its OCR can't read PNG.
     """
     said = len(machine.get_console_log())
     shot = Shot(burst / f"{name}.ppm", burst / f"{name}-large.ppm", said)
@@ -224,11 +224,11 @@ def photographed(machine: QemuMachine, burst: Path, name: str) -> Shot:
     return shot
 
 
-def photographs_until(machine: QemuMachine, burst: Path, words: str) -> list[Shot]:
-    """Photograph the screens as fast as QEMU can until the console says words.
+def shots_until(machine: QemuMachine, burst: Path, words: str) -> list[Shot]:
+    """Shoot the screens as fast as QEMU can until the console says words.
 
     The driver's console log starts again with each start, so what it says is this start's.
-    Each photograph keeps how far the console had got as it was taken, so the ones taken while
+    Each shot keeps how far the console had got as it was taken, so the ones taken while
     the image was read can be told apart. Reading one takes longer than the image takes to
     read, so they're read afterwards.
     """
@@ -239,7 +239,7 @@ def photographs_until(machine: QemuMachine, burst: Path, words: str) -> list[Sho
             return shots
         if time.monotonic() - began > READING.total_seconds():
             pytest.fail(f"the console never said {words}")
-        shots.append(photographed(machine, burst, str(len(shots))))
+        shots.append(shoot(machine, burst, str(len(shots))))
 
 
 def until_said(machine: QemuMachine, words: re.Pattern[str]) -> None:
@@ -261,12 +261,12 @@ def the_disk(machine: QemuMachine) -> str:
 
 
 def read_in(path: Path, ink: bytes) -> str:
-    """Give the words a photograph shows in ink's colour, as OCR reads them."""
+    """Give the words a shot shows in ink's colour, as OCR reads them."""
     return perform_ocr_on_screenshot(Picture.read(path).words(ink, path.with_suffix(".pgm")))
 
 
 def says(path: Path, words: str, ink: bytes) -> bool:
-    """Whether a photograph shows words in ink's colour."""
+    """Whether a shot shows words in ink's colour."""
     return re.search(words, read_in(path, ink)) is not None
 
 
@@ -282,10 +282,10 @@ def shown(machine: QemuMachine, words: str, ink: bytes) -> bool:
 
 
 def kept(machine: QemuMachine, path: Path, name: str) -> None:
-    """Keep a photograph for a person to judge, under name."""
+    """Keep a shot for a person to judge, under name."""
     with (machine.out_dir / f"{name}.png").open("wb") as png:
         # pnmtopng is on the driver's PATH, which its own screenshots use it from, and the
-        # photograph is the test's own.
+        # shot is the test's own.
         subprocess.run(["pnmtopng", path], stdout=png, check=True)  # noqa: S603, S607
 
 
@@ -312,10 +312,10 @@ def swapping(machine: BaseMachine, values: dict[str, Any]) -> QemuMachine:
 
 @pytest.fixture(scope="module")
 def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
-    """Hibernate the machine, then start it from its image, photographing the screens as it reads.
+    """Hibernate the machine, then start it from its image, shooting the screens as it reads.
 
     The disk crawls from the passphrase until the kernel has frozen every program and begins
-    to read, when both screens are photographed; then it's let go, and the photographs run
+    to read, when both screens are shot; then it's let go, and the shots run
     until the kernel says it has read the image.
     """
     machine = swapping
@@ -333,7 +333,7 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     if not shown(machine, ASKED, colour(values["words"])):
         # What the screens showed instead, while the disk still waits, for whoever reads
         # the failure.
-        shot = photographed(machine, Path(tempfile.mkdtemp()), "unasked")
+        shot = shoot(machine, Path(tempfile.mkdtemp()), "unasked")
         kept(machine, shot.path, "unasked")
         kept(machine, shot.large, "unasked-large")
         pytest.fail(f"the screen never said {ASKED}")
@@ -342,10 +342,10 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     machine.send_chars(f"{values['passphrase']}\n")
     until_said(machine, LOADING)
     burst = Path(tempfile.mkdtemp())
-    before = photographed(machine, burst, "before")
+    before = shoot(machine, burst, "before")
     machine.send_monitor_command(f"block_set_io_throttle {disk} 0 0 0 0 0 0")
-    shots = photographs_until(machine, burst, READ)
-    after = photographed(machine, burst, "after")
+    shots = shots_until(machine, burst, READ)
+    after = shoot(machine, burst, "after")
     machine.wait_for_unit("default.target")
     return Restore(machine, before, shots, after)
 
@@ -353,17 +353,17 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
 def test_the_screen_says_it_restores_while_the_image_is_read(
     restored: Restore, values: dict[str, Any]
 ) -> None:
-    """The photographs taken while the kernel read the image say the machine is restoring.
+    """The shots taken while the kernel read the image say the machine is restoring.
 
     The first, the middle and the last are read, since each reading takes seconds.
     """
     reading = restored.while_reading()
-    assert reading, f"none of {len(restored.shots)} photographs was taken as the image was read"
+    assert reading, f"none of {len(restored.shots)} shots was taken as the image was read"
     middle = reading[len(reading) // 2]
     for shot in dict.fromkeys([reading[0], middle, reading[-1]]):
         read = read_in(shot.path, colour(values["words"]))
         assert re.search(RESTORING, read), (
-            f"photograph {shot.path.name}, taken as it read, says only {read!r}"
+            f"shot {shot.path.name}, taken as it read, says only {read!r}"
         )
     kept(restored.machine, middle.path, "restoring")
 
@@ -384,7 +384,7 @@ def test_each_screen_shows_the_empty_track_as_the_read_begins(
 def test_the_kernel_fills_each_track_as_it_reads(restored: Restore, values: dict[str, Any]) -> None:
     """While the image is read, the kernel's bar lies exactly on each screen's track.
 
-    Some photograph shows it partly filled, and from one photograph to the next it never goes
+    Some shot shows it partly filled, and from one shot to the next it never goes
     back.
     """
     ink, bar = colour(values["track"]), colour(values["bar"])
@@ -396,7 +396,7 @@ def test_the_kernel_fills_each_track_as_it_reads(restored: Restore, values: dict
         partly = [
             shot for shot, length in zip(reading, reached, strict=True) if 0 < length < track.width
         ]
-        assert partly, f"no photograph of {screen} shows the bar partly filled: {reached}"
+        assert partly, f"no shot of {screen} shows the bar partly filled: {reached}"
         kept(
             restored.machine,
             getattr(partly[len(partly) // 2], screen),

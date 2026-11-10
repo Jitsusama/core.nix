@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from test_driver.machine import BaseMachine, QemuMachine
 
 # The longest a wait may take for what it waits on: words to show on
-# the screen, a shell to start or stop, a photograph to change. A wait
+# the screen, a shell to start or stop, a shot to change. A wait
 # ends when it happens, so this is only a ceiling: on a host busy with
 # other machines and builds, one reading took over a minute, and a
 # login shell over 30 seconds, so a shorter wait fails before it can
@@ -79,20 +79,20 @@ class Boot:
         self.infocmp: str = values["infocmp"]
         self.sleep: str = values["sleep"]
         self.plymouth: str = values["plymouth"]
-        # Where photographs_until keeps its photographs, which it numbers by how many are
+        # Where shots_until keeps its shots, which it numbers by how many are
         # there already.
         self.burst = Path(tempfile.mkdtemp())
 
-    def photographed(self, name: str) -> Path:
-        """Photograph the screen, kept for a person to judge."""
+    def shoot(self, name: str) -> Path:
+        """Shoot the screen, kept for a person to judge."""
         self.machine.screenshot(name)
         return self.machine.out_dir / f"{name}.png"
 
-    def photographs_until(self, words: str, mark: int, within: timedelta) -> list[Path]:
-        """Photograph the screen about once a second until the console, from mark on, says words.
+    def shots_until(self, words: str, mark: int, within: timedelta) -> list[Path]:
+        """Shoot the screen about once a second until the console, from mark on, says words.
 
         Reading a screen can take longer under load than a shutdown's screen stays up, so the
-        photographs are read only afterwards, by showing.
+        shots are read only afterwards, by showing.
         """
         shots = []
         began = time.monotonic()
@@ -100,7 +100,7 @@ class Boot:
             assert time.monotonic() - began < within.total_seconds(), (
                 f"the console never said {words}"
             )
-            # As the driver photographs for its own reading: raw, since
+            # As the driver shoots for its own reading: raw, since
             # its OCR can't read PNG.
             shot = self.burst / f"{len(list(self.burst.iterdir()))}.ppm"
             self.machine.send_monitor_command(f"screendump {shot}")
@@ -109,20 +109,20 @@ class Boot:
         return shots
 
     def showing(self, shots: list[Path], words: str, name: str) -> Path:
-        """Keep the newest of the photographs that shows words under name, for a person to judge."""
+        """Keep the newest of the shots that shows words under name, for a person to judge."""
         for shot in reversed(shots):
             if any(re.search(words, text) for text in perform_ocr_variants_on_screenshot(shot)):
                 kept = self.machine.out_dir / f"{name}.png"
                 with kept.open("wb") as png:
                     # pnmtopng is on the driver's PATH, which its own screenshots use it from,
-                    # and the photograph is the test's own.
+                    # and the shot is the test's own.
                     subprocess.run(["pnmtopng", shot], stdout=png, check=True)  # noqa: S603, S607
                 return kept
-        message = f"none of {len(shots)} photographs showed {words}"
+        message = f"none of {len(shots)} shots showed {words}"
         raise AssertionError(message)
 
     def alerting(self, path: Path) -> int:
-        """Count how many of a photograph's pixels are the theme's alert colour.
+        """Count how many of a shot's pixels are the theme's alert colour.
 
         Only the frame of a refused secret is drawn in it. The muted hint inside it is too faint
         on the dark panel for OCR to read.
@@ -152,7 +152,7 @@ class Boot:
         )
 
     def inked(self, path: Path, crop: str) -> int:
-        """Count how many of a photograph's pixels in crop are other than the background."""
+        """Count how many of a shot's pixels in crop are other than the background."""
         # The program and every argument are the test's own, from Nix and this file.
         return int(
             subprocess.check_output(  # noqa: S603
@@ -181,7 +181,7 @@ class Boot:
         )
 
     def differing(self, one: Path, other: Path) -> int:
-        """Count how many pixels differ between two photographs."""
+        """Count how many pixels differ between two shots."""
         # The program and every argument are the test's own, from Nix and this file.
         compared = subprocess.run(  # noqa: S603
             [self.magick, "compare", "-metric", "AE", "-fuzz", "4%", one, other, "null:"],
@@ -194,14 +194,14 @@ class Boot:
         return int(float(compared.stderr.split()[0]))
 
     def changed_from(self, before: Path, name: str) -> None:
-        """Wait for the screen to differ from a photograph.
+        """Wait for the screen to differ from a shot.
 
         It does once Plymouth has drawn what a key changed.
         """
 
         def differs(_: bool) -> bool:
-            """Say whether a new photograph differs from the one before."""
-            return not filecmp.cmp(before, self.photographed(name), shallow=False)
+            """Say whether a new shot differs from the one before."""
+            return not filecmp.cmp(before, self.shoot(name), shallow=False)
 
         retry(differs, timeout=READING)
 
@@ -287,19 +287,19 @@ def on_kmscon(opened: Boot) -> Boot:
 
 def test_the_theme_asks_for_the_disks_passphrase(asking: Boot) -> None:
     """The theme asks for the disk's passphrase."""
-    asked = asking.photographed("asks")
+    asked = asking.shoot("asks")
     assert asking.alerting(asked) < FRAMED // 10, "the first ask is framed in alert"
 
 
 def test_the_splash_names_the_generation_the_boot_loader_started(asking: Boot) -> None:
     """The splash names the generation the boot loader started."""
     asking.machine.wait_for_text("generation 7", timeout=READING)
-    asking.photographed("generation")
+    asking.shoot("generation")
 
 
 def test_each_key_shows_as_a_dot(asking: Boot) -> None:
     """Each key shows as a dot."""
-    before = asking.photographed("before-typing")
+    before = asking.shoot("before-typing")
     asking.machine.send_chars("48")
     asking.changed_from(before, "typing")
     for _ in range(2):
@@ -310,7 +310,7 @@ def test_a_wrong_one_is_refused_in_the_alert_frame(asking: Boot) -> None:
     """A wrong one is refused in the alert frame."""
     asking.machine.send_chars("0000\n")
     retry(
-        lambda _: asking.alerting(asking.photographed("wrong")) >= FRAMED,
+        lambda _: asking.alerting(asking.shoot("wrong")) >= FRAMED,
         timeout=READING,
     )
 
@@ -344,7 +344,7 @@ def test_a_console_draws_the_themes_face_with_room_round_it(on_kmscon: Boot) -> 
     )
     # The padding is clear on all four sides: nothing but the
     # background in it, though the prompt sits at the left and top.
-    shot = boot.photographed("console")
+    shot = boot.shoot("console")
     for crop in [
         f"{boot.padding_x}x{HEIGHT}+0+0",
         f"{boot.padding_x}x{HEIGHT}+{WIDTH - boot.padding_x}+0",
@@ -475,7 +475,7 @@ def test_a_slow_job_is_said_while_it_runs_and_goes_when_it_ends(opened: Boot) ->
     # to read the words off the screen, it's still running when that's done.
     # The screen says it plainly, and the journal names the unit.
     machine.wait_for_text("waiting on something to start", timeout=READING)
-    opened.photographed("waiting")
+    opened.shoot("waiting")
     assert "Slow" not in machine.get_screen_text()
     machine.succeed("journalctl -b -u plymouth-waits.service | grep -F 'slow.service (Slow Hello)'")
     machine.succeed("systemctl stop slow.service")
@@ -496,13 +496,13 @@ def test_a_security_key_waiting_for_a_touch_is_asked_for_until_it_is_touched(
     opened.bare()
     machine.succeed("systemctl restart plymouth-start.service")
     machine.wait_for_text("starting", timeout=READING)
-    # Once the splash has faded in, two photographs a moment apart are the same.
-    shots = [opened.photographed("before-touch-0")]
+    # Once the splash has faded in, two shots a moment apart are the same.
+    shots = [opened.shoot("before-touch-0")]
 
     def settled(_: bool) -> bool:
-        """Say whether a new photograph matches the one before it."""
+        """Say whether a new shot matches the one before it."""
         time.sleep(1)
-        shots.append(opened.photographed(f"before-touch-{len(shots)}"))
+        shots.append(opened.shoot(f"before-touch-{len(shots)}"))
         return opened.differing(shots[-2], shots[-1]) == 0
 
     retry(settled, timeout=READING)
@@ -514,11 +514,11 @@ def test_a_security_key_waiting_for_a_touch_is_asked_for_until_it_is_touched(
         " --text='Please confirm presence on security token to unlock.'"
     )
     machine.wait_for_text("touch the security key", timeout=READING)
-    opened.photographed("touch")
+    opened.shoot("touch")
     assert "confirm presence" not in machine.get_screen_text()
     machine.succeed(f"{opened.plymouth} display-message --text=''")
     retry(
-        lambda _: opened.differing(before, opened.photographed("touched")) == 0,
+        lambda _: opened.differing(before, opened.shoot("touched")) == 0,
         timeout=READING,
     )
     machine.succeed("systemd-run --wait --collect plymouth quit")
@@ -542,7 +542,7 @@ def test_a_splash_shown_after_the_generation_is_told_still_names_it(opened: Boot
         f"{opened.plymouth} show-splash",
     )
     machine.wait_for_text("generation 8", timeout=READING)
-    opened.photographed("told-before-shown")
+    opened.shoot("told-before-shown")
     machine.succeed(
         f"rm {drop_in}/no-splash.conf",
         "systemctl daemon-reload",
@@ -594,7 +594,7 @@ def test_the_emergency_shell_wears_the_face_and_says_what_failed(opened: Boot) -
         "Ctrl+Alt+Delete",
     ]:
         assert words in said, said
-    opened.photographed("emergency")
+    opened.shoot("emergency")
 
 
 def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boot) -> None:
@@ -632,12 +632,10 @@ def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boo
     machine.connected = False
     # Every wait is bounded, so a restart that stalls fails here in
     # minutes rather than holding its VM until the hour is up.
-    stopping = opened.photographs_until(
+    stopping = opened.shots_until(
         "Sending SIGTERM to remaining processes", mark, timedelta(seconds=120)
     )
-    last = opened.photographs_until(
-        "Sending SIGKILL to remaining processes", mark, timedelta(seconds=60)
-    )
+    last = opened.shots_until("Sending SIGKILL to remaining processes", mark, timedelta(seconds=60))
     opened.showing(stopping, "waiting on something to stop", "stopping-slowly")
     opened.showing(last, "waiting on the last programs", "last-stage")
     # A shutdown's splash is a new one, told the generation that's running:
@@ -671,4 +669,4 @@ def test_a_failed_initrd_says_what_stopped_it(opened: Boot) -> None:
     machine.start()
     for words in ["breaks.service", "the disk was not there", "Ctrl.Alt.Delete"]:
         machine.wait_for_text(words, timeout=READING)
-    opened.photographed("initrd-stops")
+    opened.shoot("initrd-stops")

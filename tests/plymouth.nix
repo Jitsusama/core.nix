@@ -6,7 +6,7 @@
 # for in the theme's words until it's touched, a shutdown's last stage is said in the
 # theme's words, and a restart's screen lasts to its end. The test reads
 # the screen with OCR, so each step waits on what's drawn rather than on a
-# timer, and photographs each state for a person to judge. The script is
+# timer, and shoots each state for a person to judge. The script is
 # plymouth-vm-test.py.
 { self, pkgs }:
 let
