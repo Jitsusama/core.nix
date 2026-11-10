@@ -39,6 +39,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../PiSource.js" as Pi
 import "../When.js" as When
 import "Landed.js" as Landed
 import "Moment.js" as Moment
@@ -1063,15 +1064,18 @@ Provider {
     // Reopen's alone. It always stands, after Landed and before Start, its
     // names in its drawer and how many at its right, and Return on one
     // reopens it where it left off, by its id (VKCF3Z, 2026-11-08).
-    // Made again only when what it lists reads otherwise, said as a string,
-    // which tells its readers only when it changes: Sessions makes every
-    // session anew as any one changes, and a new Recent each time was a
-    // change to Agents' things, which has the launcher walk again where
+    // Made again only when what it lists reads otherwise, counted by a
+    // number, which tells its readers only when it changes: Sessions makes
+    // every session anew as any one changes, and a new Recent each time was
+    // a change to Agents' things, which has the launcher walk again where
     // every row lives (Launcher.qml's stale). What it lists is kept beside
     // it in recentListed, a plain object that's never reassigned, so
-    // writing its field notifies nothing and can't loop;
-    // recent reads the field only once this string has said it changed.
-    readonly property string recentFrom: {
+    // writing its fields notifies nothing and can't loop; recent reads them
+    // only once this number has said they changed. The rows are compared
+    // in place rather than as text, since nine of Joel's closed sessions'
+    // text, about 30,000 characters, started a garbage collection every
+    // second change with the launcher open (2026-11-10).
+    readonly property int recentFrom: {
         const closed = Sessions.closed;
         const live = Sessions.running.concat(Sessions.parked);
         const addresses = (source("orchestrators")?.closed ?? []).map(one => one.address)
@@ -1079,12 +1083,20 @@ Provider {
         const quests = live.map(one => one.presence?.questInfo?.id ?? one.presence?.quest ?? "");
         const listed = Recent.listed([SessionRow.closedRecent(closed)],
             SessionRow.shownElsewhere(closed, Sessions.toReopen, addresses, quests));
+        const rows = listed.map(one => one.row);
+        const day = new Date().toDateString();
         recentListed.rows = listed;
-        return JSON.stringify([listed.map(one => one.row), new Date().toDateString()]);
+        if (recentListed.made > 0 && recentListed.day === day
+            && Pi.alike(recentListed.said, rows))
+            return recentListed.made;
+        recentListed.said = rows;
+        recentListed.day = day;
+        recentListed.made += 1;
+        return recentListed.made;
     }
-    readonly property var recentListed: ({ rows: [] })
+    readonly property var recentListed: ({ rows: [], said: [], day: "", made: 0 })
     readonly property var recent: {
-        const listed = recentFrom === "" ? [] : recentListed.rows;
+        const listed = recentFrom === 0 ? [] : recentListed.rows;
         const words = Words.of("agents:recent");
         const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
             || one.row.id)), false, words.said ?? {});
