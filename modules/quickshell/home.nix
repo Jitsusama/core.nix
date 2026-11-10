@@ -2468,8 +2468,11 @@ in
     # Keep Awake, from the launcher (KeepAwake.qml): one service holds
     # logind's lock against going idle and the other its lock against the
     # lid, which the shell takes only while there's power. Neither holds the
-    # lock against sleep, which would refuse a suspend Joel asks for himself
-    # with the power key or the launcher, and the lid's suspend on battery.
+    # lock against sleep: logind's own handling of the power and suspend keys
+    # honours it, so a suspend Joel asks for with the power key would be
+    # refused. (The launcher's suspend is his own and passes his own locks,
+    # and the lid passes the sleep lock by logind's default, so neither would
+    # be held back; logind v262, KP0L6A, 2026-11-10.)
     # Each leaves a file in the runtime directory while it runs, for the
     # shell to watch.
     systemd.user.services.keep-awake = holding {
