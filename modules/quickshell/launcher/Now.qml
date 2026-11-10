@@ -65,11 +65,18 @@ Provider {
         // there, so the top never moves; then the rest by group, what
         // wants Joel first, and by name within each, so a row keeps its
         // place while its group stands (NowGroups.js).
+        keepingBegun(piecesKept);
+        for (const mark of Object.keys(piecesNow))
+            delete piecesNow[mark];
+        for (const fact of lit)
+            piecesNow[fact.entry.mark] = fact.piece;
         const rows = lit.map(fact => ({
             group: fact.piece.group,
             name: fact.piece.title,
-            row: own(fact) ?? made(fact)
+            row: own(fact) ?? keptOr(piecesKept, fact.entry.mark, pieceSays(fact),
+                () => made(fact))
         }));
+        keptOnly(piecesKept);
         // What sessions landed that he hasn't read, Agents' own row too,
         // while any is (VKCF3Z's design: Landed in Now, tier 2).
         const landed = source("agents")?.landed ?? null;
@@ -82,6 +89,27 @@ Provider {
     // each change said makes the launcher refresh (Joel, 2026-11-08: "weird
     // lag can happen").
     onAllChanged: changedTo(all)
+
+    // Each piece's row, with its acts, kept while what it shows reads the
+    // same: `all` is made again whenever any fact moves, and made every
+    // lit piece's rows anew each time, about 12 a change on Joel's shell
+    // (2026-11-10). What its row says is read from the piece as text
+    // (pieceSays); what it does and draws is asked of the piece as it's
+    // done, the piece by its mark as `all` last read it (piecesNow), since
+    // a thing a piece stands for is made anew as its piece moves
+    // (Facts.js). Written into, never reassigned, so it notifies nothing.
+    readonly property var piecesKept: keeper()
+    readonly property var piecesNow: ({})
+    function pieceSays(fact) {
+        const piece = fact.piece;
+        const acts = list => (list ?? []).map(action => [action.name, action.side ?? "",
+            action.glyph ?? "", action.chord ?? [], action.stays ?? false, action.verb ?? ""]);
+        return JSON.stringify([provider.same[fact.entry.mark] ?? "", piece.title, piece.value,
+            piece.valueItems ?? [], piece.counts ?? null, parted(piece), piece.heldNames ?? null,
+            piece.widest ?? null, piece.context ?? "", piece.markGlyph ?? "", Marks.tone(piece),
+            acts(piece.actions), acts(piece.every), typeof piece.rows, typeof piece.drawer,
+            piece.drawnBy ?? null]);
+    }
 
     // This moment, Now's own rows, right after what waits on Joel and
     // before what else is on: the
@@ -1616,9 +1644,10 @@ Provider {
     // own, as For You's Lately rows do.
     function made(fact, over) {
         const piece = fact.piece;
+        const now = () => piecesNow[fact.entry.mark] ?? piece;
         // Every act a piece has, where it keeps more than its notice can
         // offer (pieces/Pi.qml's every).
-        const actions = (piece.every ?? piece.actions).map(action => thing({
+        const actions = (piece.every ?? piece.actions).map((action, at) => thing({
             // Where it goes, too, since acts of one name, Go To, can
             // differ by where (pieces/Pi.qml).
             key: [`verb:on:${fact.entry.mark}`, action.name].concat(action.side ? [action.side] : [])
@@ -1631,14 +1660,16 @@ Provider {
             // One that changes how things stand, such as Let It Sleep,
             // keeps the launcher, which shows it changed (Piece.qml).
             stays: action.stays ?? false,
-            run: () => action.run(provider.shell)
+            // The piece's act as it is when run, since its row may be kept
+            // while the act was made again saying the same.
+            run: () => ((now().every ?? now().actions)[at] ?? action).run(provider.shell)
         }));
         // A piece standing for things of the launcher's own, such as the
         // mail that wants Joel, lists them on Return, each the row it is
         // everywhere else, and its own acts after them (Piece.qml's rows).
         // Its rows say what they hold after their names as its own row
         // does, giving way by whole items (listedAfter).
-        const holding = piece.rows ? () => piece.rows(thing, listedAfter).concat(actions) : null;
+        const holding = piece.rows ? () => now().rows(thing, listedAfter).concat(actions) : null;
         // Everything its source says, under the row, where the piece gives
         // it (Piece.qml's drawer), as the network allows, read again as the
         // drawn clock turns. Its note is said there, once, while the drawer
@@ -1649,8 +1680,8 @@ Provider {
             noteInDrawer: true,
             drawer: () => {
                 void drawnClock.date;
-                return Showing.noted(piece.drawer({ lookups: settings.lookups !== false }),
-                    piece.context);
+                return Showing.noted(now().drawer({ lookups: settings.lookups !== false }),
+                    now().context);
             }
         } : piece.drawnBy ? {
             thing: true,
@@ -1658,10 +1689,10 @@ Provider {
             // Which row it draws, so a place reading more of a thing
             // while it's selected, as Wi-Fi does, reads it here too.
             borrows: piece.drawnBy,
-            drawer: () => Showing.noted(provider.borrowed(piece.drawnBy, {
-                side: piece.value,
-                note: piece.context
-            }), piece.context)
+            drawer: () => Showing.noted(provider.borrowed(now().drawnBy, {
+                side: now().value,
+                note: now().context
+            }), now().context)
         } : {};
         return member(Object.assign({
             key: `on:${fact.entry.mark}`,
