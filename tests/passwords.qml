@@ -4,7 +4,8 @@
 // link in its manager's program, what its drawer says and that it never
 // says a secret, its health once every password is checked, those
 // needing attention, what the foot says of a copy as its time runs out,
-// a manager's entries by vault and what its drawer says it holds, and
+// a manager's entries by vault and what its drawer says it holds, each
+// entry's row kept while the daemon lists it again saying the same, and
 // For You's one to-do from what the last check found: whether it stands
 // or is done, what its side says and what For You weighs, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The `the-passwords-show-every-figure-but-the-secret`
@@ -356,6 +357,30 @@ QtObject {
         check("a note naming no manager is said whole", Managers.noted(
             "it stopped answering", "1Password"), "it stopped answering");
         check("a note with no reason says nothing", Managers.noted(undefined, "1Password"), "");
+
+        // An entry's row is made once, and kept as the daemon lists it
+        // again as a new object saying the same, as each step in has it.
+        let made = 0;
+        const make = record => {
+            made += 1;
+            return { key: record.key, name: record.title };
+        };
+        const first = Managers.rowsKept([gitHub, bank], {}, make);
+        check("each entry listed first is made", [made, first.rows.map(row => row.name)],
+            [2, [gitHub.title, bank.title]]);
+        made = 0;
+        const again = Managers.rowsKept([Object.assign({}, gitHub), Object.assign({}, bank)],
+            first.kept, make);
+        check("listed again saying the same, none is made again", made, 0);
+        check("and each keeps its row", again.rows.map((row, at) => row === first.rows[at]),
+            [true, true]);
+        const renamed = Object.assign({}, bank, { title: "Harbour Credit Union" });
+        const retitled = Managers.rowsKept([gitHub, renamed], again.kept, make);
+        check("one saying something new is made again, alone",
+            [made, retitled.rows[0] === first.rows[0], retitled.rows[1].name],
+            [1, true, "Harbour Credit Union"]);
+        check("and one no longer listed isn't kept",
+            Object.keys(Managers.rowsKept([gitHub], retitled.kept, make).kept), [gitHub.key]);
 
         // What 1Password's drawer in Programs says it holds.
         const holds = { inVault: "{count} in 1 vault", inVaults: "{count} in {vaults} vaults" };

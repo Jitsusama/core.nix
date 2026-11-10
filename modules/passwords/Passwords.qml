@@ -120,21 +120,15 @@ Provider {
         return Object.values(held).filter(record => record && record.gone !== true);
     }
 
-    // Each entry's row, made again only when its record is: the daemon
-    // replaces a record whole when it changes, so one the same object is
-    // the same entry. The rows made are kept in a plain object, which
-    // changing tells no binding, so keeping them never makes them again.
+    // Each entry's row, made again only when its record says something
+    // new (Managers.js's rowsKept). The rows made are kept in a plain
+    // object, which changing tells no binding, so keeping them never makes
+    // them again.
     readonly property var madeOf: ({ rows: {} })
     readonly property var everyone: {
-        const kept = {};
-        const rows = records.map(record => {
-            const was = madeOf.rows[record.key];
-            const row = was && was.record === record ? was.row : made(record);
-            kept[record.key] = { record: record, row: row };
-            return row;
-        });
-        madeOf.rows = kept;
-        return rows;
+        const listed = Managers.rowsKept(records, madeOf.rows, record => provider.made(record));
+        madeOf.rows = listed.kept;
+        return listed.rows;
     }
 
     // Those listed with nothing typed, led by a row for each manager that
