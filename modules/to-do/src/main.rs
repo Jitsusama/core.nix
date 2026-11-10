@@ -86,6 +86,11 @@ enum Woken {
         check: String,
         run: Run,
     },
+    /// Core's history fetched for the core named, or why it wasn't.
+    Fetched {
+        core: Option<String>,
+        result: Result<(), String>,
+    },
 }
 
 struct Paths {
@@ -118,6 +123,8 @@ struct Daemon {
     fetched: Option<String>,
     /// When fetching it next may be tried, after one failed.
     fetch_again: Option<i64>,
+    /// Whether a fetch is under way, on a thread of its own.
+    fetching: bool,
     /// What was last found of each to-do, a done one kept as it was.
     found: BTreeMap<String, Verdict>,
     written: Option<String>,
@@ -210,20 +217,40 @@ impl Daemon {
         let may = self.fetch_again.is_none_or(|again| at >= again);
         if commits.is_empty() {
             self.fetch_again = None;
-        } else if self.fetched != self.follower.core && may {
-            let mut wanted = commits.clone();
-            wanted.extend(self.follower.core.as_deref());
-            match self.core.fetch_for(&wanted) {
-                Ok(()) => {
-                    self.fetched.clone_from(&self.follower.core);
-                    self.fetch_again = None;
-                }
-                Err(error) => {
-                    // Tried again only after the longest wait a check
-                    // has, rather than on every wake.
-                    self.fetch_again = Some(now() + pace::LONGEST);
-                    eprintln!("<4>core's history couldn't be fetched: {error}");
-                }
+        } else if self.fetched != self.follower.core && may && !self.fetching {
+            // A fetch can take minutes on a slow network, so it runs on a
+            // thread of its own and every other to-do is judged meanwhile;
+            // a switch's is judged again once it's told.
+            let mut wanted: Vec<String> = commits.iter().map(|&c| c.to_owned()).collect();
+            wanted.extend(self.follower.core.clone());
+            let core = self.core.clone();
+            let target = self.follower.core.clone();
+            let tell = self.tell.clone();
+            self.fetching = true;
+            thread::spawn(move || {
+                let wanted: Vec<&str> = wanted.iter().map(String::as_str).collect();
+                let result = core.fetch_for(&wanted).map_err(|e| e.to_string());
+                let _ = tell.send(Woken::Fetched {
+                    core: target,
+                    result,
+                });
+            });
+        }
+    }
+
+    /// Takes in a fetch as it ends.
+    fn fetched(&mut self, core: Option<String>, result: Result<(), String>) {
+        self.fetching = false;
+        match result {
+            Ok(()) => {
+                self.fetched = core;
+                self.fetch_again = None;
+            }
+            Err(error) => {
+                // Tried again only after the longest wait a check has,
+                // rather than on every wake.
+                self.fetch_again = Some(now() + pace::LONGEST);
+                eprintln!("<4>core's history couldn't be fetched: {error}");
             }
         }
     }
@@ -619,6 +646,7 @@ fn run(
         since: HashMap::new(),
         fetched: None,
         fetch_again: None,
+        fetching: false,
         found,
         written: None,
         systemctl: tools.systemctl,
@@ -689,6 +717,10 @@ fn wake(daemon: &mut Daemon, woken: &Receiver<Woken>) -> io::Result<()> {
                 Woken::Changed | Woken::Said => false,
                 Woken::Ran { key, check, run } => {
                     daemon.took(&key, &check, run);
+                    false
+                }
+                Woken::Fetched { core, result } => {
+                    daemon.fetched(core, result);
                     false
                 }
             };

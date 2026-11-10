@@ -275,6 +275,62 @@ fn a_check_that_hangs_holds_up_no_other() {
 }
 
 #[test]
+fn a_slow_fetch_of_cores_history_holds_up_no_check() {
+    let dir = tempfile::tempdir().unwrap();
+    // The stand-in follower's journal says the machine runs a core the
+    // clone hasn't got, and the stand-in git notes it was asked, then
+    // takes longer than the test waits, as a slow network would.
+    let journalctl = dir.path().join("journalctl");
+    runnable(
+        &journalctl,
+        &format!(
+            "#!{}\necho '5 x: {{\"step\":\"unchanged\",\"followed\":{{\"core\":\"ccc\"}}}}'\n\
+             exec sleep 30\n",
+            shell().display()
+        ),
+    );
+    let asked = dir.path().join("git-asked");
+    let git = dir.path().join("git");
+    runnable(
+        &git,
+        &format!(
+            "#!{}\ntouch {}\nexec sleep 15\n",
+            shell().display(),
+            asked.display()
+        ),
+    );
+    let mut command = command(dir.path(), Path::new("none"));
+    command
+        .arg("--follower")
+        .arg("update-to-main-follows")
+        .arg("--journalctl")
+        .arg(&journalctl)
+        .arg("--git")
+        .arg(&git);
+    let running = Running {
+        child: command.spawn().unwrap(),
+        verdicts: dir.path().join("verdicts.json"),
+    };
+    to_dos(
+        dir.path(),
+        "QEST-6",
+        r#"{"id":"switched","title":"S","doneWhen":{"signal":"switch:ddd"}}"#,
+    );
+    daemon_client::until("the daemon asks git for core's history", || asked.exists());
+    to_dos(
+        dir.path(),
+        "QEST-7",
+        r#"{"id":"quick","title":"Q","doneWhen":{"check":"true"}}"#,
+    );
+    let found = until(&running, |v| state(v, "QEST-7:quick").is_some());
+    assert_eq!(
+        state(&found, "QEST-7:quick"),
+        Some("done"),
+        "a check is judged while the fetch runs: {found}"
+    );
+}
+
+#[test]
 fn a_done_to_do_stays_done_though_its_check_fails_after_and_across_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let once = dir.path().join("once");

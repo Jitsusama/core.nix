@@ -158,6 +158,7 @@ const READING: Duration = Duration::from_secs(10);
 const FETCHING: Duration = Duration::from_secs(120);
 
 /// Core's history, from a bare clone of its own.
+#[derive(Clone)]
 pub struct Core {
     pub folder: PathBuf,
     /// The git it's read with.
