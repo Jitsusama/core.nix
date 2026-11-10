@@ -207,7 +207,9 @@ asked for. The last one Joel kept: auto in the middle, the thumb on
 ## The Key Line and the Keys List
 
 As omni-ref has them. The line sits in the head, under the parts it steps
-between and above the switch, in Note and muted:
+between and above the switch, in Note and muted. It's drawn at every width
+and on touch too, never hidden behind `(hover: none)`, since a tablet often
+has a keyboard; and never in a footer, the length of the page away:
 
 ```html
 <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step from part to part, and

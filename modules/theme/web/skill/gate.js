@@ -157,8 +157,19 @@
       key.checkVisibility() &&
       !keysList?.parentElement?.contains(key),
   );
+  // It's in the head, where a reader finds it as the page opens: inside the
+  // first <header>, or anywhere before <main>, never in a footer the length
+  // of the page away. A key outside <main> and before it finds <main>
+  // following it, and nothing more, since neither holds the other.
+  const main = page.querySelector("main");
+  const following = Node.DOCUMENT_POSITION_FOLLOWING;
+  const upTop = (key) =>
+    head?.contains(key) === true ||
+    (main !== null && key.compareDocumentPosition(main) === following);
   if (keyLine === undefined) {
     missing.push("the key line under the head, naming ? for the keys");
+  } else if (!upTop(keyLine)) {
+    missing.push("the key line in the head, not further down the page");
   }
   const first = page.querySelector("a[href], button, input, select, textarea, [tabindex]");
   // The target is found by its id rather than as a selector, since a link to
