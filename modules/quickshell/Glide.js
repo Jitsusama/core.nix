@@ -21,7 +21,7 @@ const lands = 50;
 // a late one. A move no key pressed, or a press of unknown time, glides
 // whole.
 function lasting(since, frame) {
-    const late = since > 0 ? since : 0;
+    const late = Math.max(since, 0);
     const left = lands - late - frame;
     const run = Math.min(glide, left);
     return run < frame ? 0 : Math.round(run);
