@@ -2027,7 +2027,9 @@ onLinux {
   # GeoClue isn't there to say another, and the clock's zone is a link
   # that names another than the place's. For You's looks are given as
   # their files' texts, kept only while each reads the same, and what's
-  # on as pieces whose rows are kept while each reads the same.
+  # on as pieces whose rows are kept while each reads the same. For You's
+  # Desktop holds the notices' own rows (launcher/PastNotices.qml), each
+  # kept while its notice is the same.
   the-launcher-shows-the-moment-in-now =
     let
       facts = singleton "Facts.qml" ''
@@ -2062,14 +2064,20 @@ onLinux {
       niri = singleton "Niri.qml" ''
         function spawn(command) {}
       '';
-      # For You's Desktop row holds the notices unread, and For You counts
-      # a critical one among what waits while no card says it.
+      # For You's Desktop row holds the notices unread, as their own rows
+      # say them, and For You counts a critical one among what waits while
+      # no card says it. No sender has a window here.
       notices = singleton "Notices.qml" ''
         property var history: []
         property var live: ({})
         property var resting: ({})
+        property var waiting: []
         function markRead(ids) {}
         function seen() {}
+        function mark(id, read) {}
+        function pictureOf(notice) { return ""; }
+        function sender(name) { return { glyph: 0xf0f3, hue: "program", name: name }; }
+        function senderWindow(app) { return null; }
       '';
       whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
     in
@@ -2085,6 +2093,9 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Now.qml} launcher/Now.qml
+      cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
+      cp ${./launcher/Notice.js} launcher/Notice.js
+      cp ${./NoticeBody.js} NoticeBody.js
       cp ${./launcher/NeedsYou.js} launcher/NeedsYou.js
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
