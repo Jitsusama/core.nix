@@ -95,7 +95,8 @@ function openingParts(parts) {
     const said = Object.keys(parts).map(name => ({ name, ms: Math.round(parts[name]) }))
         .filter(part => part.ms >= 1)
         .sort((a, b) => b.ms - a.ms || a.name.localeCompare(b.name));
-    if (said.length === 0)
+    if (said.length === 0) {
         return "none over a millisecond";
+    }
     return said.map(part => `${part.name} ${part.ms}`).join(", ");
 }
