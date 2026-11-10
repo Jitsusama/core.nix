@@ -34,7 +34,9 @@ through axe-core and its own console.
    own words, shown as they typed them (a description, a comment, a
    gist), sit in an element marked `data-said-by="who"`, which the guard
    skips too, since they are never rewritten; a bare `blockquote` or `q`
-   is still guarded. Neither is ever for a word of our own.
+   is still guarded. A tab's title is read without what either holds, so
+   a title someone gave an issue is marked where the page draws it. Neither
+   is ever for a word of our own.
 2. **Accessibility, at WCAG 2.2 AA, measured.** `browser_check` with `kind:
    "accessibility"` and `level: "AA"` at 320, 768 and 1440 px, in both looks
    (`browser_go` emulate `colorScheme`), every fold open: no failure, and

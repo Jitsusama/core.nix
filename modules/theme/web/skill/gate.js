@@ -229,7 +229,15 @@
       prose.push(text.textContent);
     }
   }
-  const words = `${page.title} ${meta('meta[name="description"]')} ${prose.join(" ")}`;
+  // A tab's title can't carry a marker, so it's read without whatever the
+  // page's own marked names and words hold: an issue titled by the person
+  // who filed it is drawn on the page with data-said-by, and its tab reads
+  // only the site's parts around it.
+  const tabTitle = [...page.querySelectorAll(names)]
+    .map((element) => element.textContent.trim())
+    .filter((marked) => marked !== "")
+    .reduce((left, marked) => left.replaceAll(marked, " "), page.title);
+  const words = `${tabTitle} ${meta('meta[name="description"]')} ${prose.join(" ")}`;
   const faults = [
     ["\u2014", "an emdash: a comma, colon or full stop instead"],
     ["\u2026", "a Unicode ellipsis: three full stops, or say it whole"],
