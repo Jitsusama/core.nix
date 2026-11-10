@@ -413,16 +413,21 @@ fn ask_ahead_of(daemon: &mut Daemon, sources: &[String], keys: &[String]) {
 fn gather(shared: &Shared) {
     loop {
         std::thread::sleep(GATHERED);
-        let mut daemon = lock(shared);
-        daemon.watches.retain_mut(|watch| {
-            if watch.pending.is_empty() {
-                return true;
-            }
-            let changed: Vec<Value> = watch.pending.drain().map(|(_, record)| record).collect();
-            let line = json!({"id": watch.id, "changed": changed}).to_string();
-            watch.told.send(line).is_ok()
-        });
+        say_gathered(&mut lock(shared));
     }
+}
+
+/// Tells each watch what changed since it was last told, dropping one
+/// that's gone.
+fn say_gathered(daemon: &mut Daemon) {
+    daemon.watches.retain_mut(|watch| {
+        if watch.pending.is_empty() {
+            return true;
+        }
+        let changed: Vec<Value> = watch.pending.drain().map(|(_, record)| record).collect();
+        let line = json!({"id": watch.id, "changed": changed}).to_string();
+        watch.told.send(line).is_ok()
+    });
 }
 
 /// Answers one client until it goes.
@@ -441,7 +446,9 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
     });
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
-        let answer = answer(shared, ask(&line), connection, &told);
+        let Some(answer) = answer(shared, ask(&line), connection, &told) else {
+            continue;
+        };
         if told.send(answer.to_string()).is_err() {
             break;
         }
@@ -451,9 +458,10 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
         .retain(|watch| watch.connection != connection);
 }
 
-/// What one ask is answered with.
-fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -> Value {
-    match asked {
+/// What one ask is answered with, or nothing where it's already told, as a
+/// watch's answer is.
+fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -> Option<Value> {
+    Some(match asked {
         Ask::Hello { id } => {
             let daemon = lock(shared);
             json!({
@@ -506,15 +514,22 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            // It's told under the lock that holds the watch, so what's
+            // gathered once the lock is let go is told after it. Told after
+            // the lock was let go, a change could be said first, and the
+            // whole answer after it would put back what the change moved on
+            // from. Where it can't be told, the connection's writer has
+            // gone, and so has the connection.
+            let _ = told.send(json!({"id": id, "records": held}).to_string());
             daemon.watches.push(Watch {
                 connection,
-                id: id.clone(),
+                id,
                 keys,
                 listed,
                 told: told.clone(),
                 pending: HashMap::new(),
             });
-            json!({"id": id, "records": held})
+            return None;
         }
         Ask::Unwatch { id } => {
             lock(shared)
@@ -551,7 +566,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             &format!("this daemon keeps only {KIND}, not {kind}"),
         ),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?}")),
-    }
+    })
 }
 
 fn standings(daemon: &Daemon) -> Value {
@@ -615,4 +630,52 @@ fn get(shared: &Shared, id: &Value, keys: &[String], patience: u64) -> Value {
         return error(id, "not-ready", "no source has answered yet");
     }
     json!({"id": id, "records": records, "waiting": waiting, "took": took})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_watch_is_answered_whole_before_any_change_told_it() {
+        let shared: Shared = Arc::new((
+            Mutex::new(Daemon {
+                book: Book::of(&[]),
+                inputs: HashMap::new(),
+                ahead: HashMap::new(),
+                put_off: HashMap::new(),
+                stepping: HashMap::new(),
+                watches: Vec::new(),
+                took: VecDeque::new(),
+                since: now(),
+            }),
+            Condvar::new(),
+        ));
+        let (told, lines) = mpsc::channel::<String>();
+        let first = answer(&shared, ask(r#"{"id":"all","ask":"watch"}"#), 1, &told);
+        // A change gathered once the answer's lock is let go.
+        {
+            let mut daemon = lock(&shared);
+            let someone = json!({"key": "someone@example.com"});
+            for watch in &mut daemon.watches {
+                watch
+                    .pending
+                    .insert("someone@example.com".to_owned(), someone.clone());
+            }
+            say_gathered(&mut daemon);
+        }
+        if let Some(first) = first {
+            told.send(first.to_string()).expect("told");
+        }
+        let said: Vec<Value> = lines
+            .try_iter()
+            .map(|line| serde_json::from_str(&line).expect("json"))
+            .collect();
+        assert_eq!(said.len(), 2, "{said:?}");
+        assert!(said[0]["records"].is_array(), "{said:?}");
+        assert_eq!(
+            said[1]["changed"][0]["key"], "someone@example.com",
+            "{said:?}"
+        );
+    }
 }

@@ -669,7 +669,9 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
     });
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
-        let answer = answer(shared, ask(&line), connection, &told);
+        let Some(answer) = answer(shared, ask(&line), connection, &told) else {
+            continue;
+        };
         if told.send(answer.to_string()).is_err() {
             break;
         }
@@ -679,16 +681,20 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
         .retain(|watch| watch.connection != connection);
 }
 
-/// What one ask is answered with.
-fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -> Value {
+/// What one ask is answered with, or nothing where it's already told, as a
+/// watch's answer is.
+fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -> Option<Value> {
     let mut daemon = lock(shared);
     let at = now();
-    match asked {
+    Some(match asked {
         Ask::Hello { id } => json!({
             "id": id, "version": VERSION, "domain": "timers", "state": "answering",
             "since": daemon.since, "sources": {},
         }),
-        Ask::Watch { id, kinds } => watch(&mut daemon, connection, told, id, kinds),
+        Ask::Watch { id, kinds } => {
+            watch(&mut daemon, connection, told, id, kinds);
+            return None;
+        }
         Ask::Unwatch { id } => {
             daemon
                 .watches
@@ -752,7 +758,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         ),
         Ask::Malformed { id, why } => error(&id, "malformed", why),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?}")),
-    }
+    })
 }
 
 /// A watch begun: every record of the kinds it asked for, and every change
@@ -764,7 +770,7 @@ fn watch(
     told: &Sender<String>,
     id: Value,
     kinds: Vec<String>,
-) -> Value {
+) {
     daemon
         .watches
         .retain(|watch| !(watch.connection == connection && watch.id == id));
@@ -775,14 +781,18 @@ fn watch(
     if watched(&kinds, STOPWATCH) {
         records.push(daemon.held.stopwatch.json());
     }
-    let answer = json!({"id": id, "records": records});
+    // It's told under the lock that holds the watch, so a timer that rings
+    // once the lock is let go is told after it. Told after the lock was let
+    // go, a ring could be said first, and the whole answer after it would
+    // put back what the ring moved on from. Where it can't be told, the
+    // connection's writer has gone, and so has the connection.
+    let _ = told.send(json!({"id": id, "records": records}).to_string());
     daemon.watches.push(Watch {
         connection,
         id,
         kinds,
         told: told.clone(),
     });
-    answer
 }
 
 /// The records asked for by key, the stopwatch's included, passing over a
@@ -829,5 +839,45 @@ fn withdraw(shared: &Shared, shown: Option<Notice>, done: bool) {
         && done
     {
         say(shared, Tell::Withdraw(notice));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_watch_is_answered_whole_before_any_change_told_it() {
+        let wake = eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK).expect("a wake");
+        let (tell, _notices) = mpsc::channel();
+        let kept = std::env::temp_dir().join(format!("timers-{}.json", std::process::id()));
+        let shared = Shared {
+            daemon: Mutex::new(Daemon {
+                held: Held::default(),
+                kept: kept.clone(),
+                watches: Vec::new(),
+                since: now(),
+            }),
+            wake,
+            notices: Mutex::new(tell),
+            aloud: None,
+        };
+        let (told, lines) = mpsc::channel::<String>();
+        let asked = ask(r#"{"id":"all","ask":"watch","kind":["stopwatch"]}"#);
+        let first = answer(&shared, asked, 1, &told);
+        // A change made once the answer's lock is let go, as a ring is.
+        let ran = json!({"key": STOPWATCH, "kind": STOPWATCH, "running": true});
+        changes(&shared, &mut lock(&shared), &[ran], &[]);
+        if let Some(first) = first {
+            told.send(first.to_string()).expect("told");
+        }
+        let said: Vec<Value> = lines
+            .try_iter()
+            .map(|line| serde_json::from_str(&line).expect("json"))
+            .collect();
+        let _ = std::fs::remove_file(&kept);
+        assert_eq!(said.len(), 2, "{said:?}");
+        assert!(said[0]["records"].is_array(), "{said:?}");
+        assert_eq!(said[1]["changed"][0]["running"], true, "{said:?}");
     }
 }
