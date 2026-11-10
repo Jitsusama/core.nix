@@ -271,37 +271,7 @@ fn main() {
             std::process::exit(71);
         }
     };
-    // SAFETY: sysconf only reads a constant of the running system.
-    let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    let shared = Arc::new(Shared {
-        daemon: Mutex::new(Daemon {
-            held: BTreeMap::new(),
-            read_at: HashMap::new(),
-            watches: Vec::new(),
-            health: BTreeMap::new(),
-            udisks: json!({"state": "starting"}),
-            upower: BTreeMap::new(),
-            logind: Value::Null,
-            firmware: Vec::new(),
-            light: Vec::new(),
-            hurried: HashSet::new(),
-            slept: Arc::new(Mutex::new(Value::Null)),
-            took: VecDeque::new(),
-            since: now_ms(),
-        }),
-        reader: Mutex::new(Reader {
-            fixed: processor::fixed(&root),
-            root: root.clone(),
-            page_b: u64::try_from(page).unwrap_or(4096),
-            processor: None,
-            memory: None,
-            disks: None,
-            disk_sensors: disk::Kept::default(),
-            programs: None,
-            sensors: heat::Kept::default(),
-        }),
-        woken: Condvar::new(),
-    });
+    let shared = Arc::new(shared(&root));
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || watch_loop(&shared));
@@ -337,6 +307,41 @@ fn main() {
         };
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
+    }
+}
+
+/// What every thread shares, holding nothing yet, reading under `root`.
+fn shared(root: &Root) -> Shared {
+    // SAFETY: sysconf only reads a constant of the running system.
+    let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    Shared {
+        daemon: Mutex::new(Daemon {
+            held: BTreeMap::new(),
+            read_at: HashMap::new(),
+            watches: Vec::new(),
+            health: BTreeMap::new(),
+            udisks: json!({"state": "starting"}),
+            upower: BTreeMap::new(),
+            logind: Value::Null,
+            firmware: Vec::new(),
+            light: Vec::new(),
+            hurried: HashSet::new(),
+            slept: Arc::new(Mutex::new(Value::Null)),
+            took: VecDeque::new(),
+            since: now_ms(),
+        }),
+        reader: Mutex::new(Reader {
+            fixed: processor::fixed(root),
+            root: root.clone(),
+            page_b: u64::try_from(page).unwrap_or(4096),
+            processor: None,
+            memory: None,
+            disks: None,
+            disk_sensors: disk::Kept::default(),
+            programs: None,
+            sensors: heat::Kept::default(),
+        }),
+        woken: Condvar::new(),
     }
 }
 
@@ -1147,7 +1152,9 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     });
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
-        let answer = answer(shared, ask(&line), connection, &told, &hangup);
+        let Some(answer) = answer(shared, ask(&line), connection, &told, &hangup) else {
+            continue;
+        };
         if told.send(answer.to_string()).is_err() {
             break;
         }
@@ -1233,15 +1240,16 @@ fn sources(daemon: &Daemon) -> Value {
     json!({"kernel": {"state": "answering"}, "udisks": daemon.udisks})
 }
 
-/// What one ask is answered with.
+/// What one ask is answered with, or none where the answer is already
+/// queued to be said.
 fn answer(
     shared: &Arc<Shared>,
     asked: Ask,
     connection: u64,
     told: &SyncSender<String>,
     hangup: &Arc<UnixStream>,
-) -> Value {
-    match asked {
+) -> Option<Value> {
+    Some(match asked {
         Ask::Hello { id } => {
             let daemon = lock(&shared.daemon);
             json!({
@@ -1255,14 +1263,24 @@ fn answer(
         Ask::List { id, kinds } => json!({"id": id, "records": records(shared, &kinds, None)}),
         Ask::Watch { id, kinds, keys } => {
             refresh(shared, &kinds, keys.as_deref());
-            // What it's told first is taken under the lock that holds the
-            // watch, so a read between them is either in it or told after.
+            // What it's told first is taken, and queued, under the lock
+            // that holds the watch, so a read between them is either in it
+            // or told after it. Queued once the lock was let go, a change
+            // read in between could be said first, and the whole answer
+            // after it would put back what the change moved on from.
             let mut daemon = lock(&shared.daemon);
             let snapshot = held(&daemon, &kinds, keys.as_deref());
             // A watch asked again by its id replaces the one before.
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            // One that can't be queued is hung up on, as a change would
+            // hang up on it.
+            let first = json!({"id": id, "records": snapshot});
+            if told.try_send(first.to_string()).is_err() {
+                let _ = hangup.shutdown(Shutdown::Both);
+                return None;
+            }
             daemon.watches.push(Watch {
                 connection,
                 id: id.clone(),
@@ -1272,7 +1290,7 @@ fn answer(
                 stream: Arc::clone(hangup),
             });
             shared.woken.notify_all();
-            json!({"id": id, "records": snapshot})
+            return None;
         }
         Ask::Unwatch { id } => {
             let mut daemon = lock(&shared.daemon);
@@ -1294,5 +1312,44 @@ fn answer(
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sensor(raw: &Value) -> Value {
+        json!({"key": "light:iio:device0", "kind": "light", "device": "iio:device0",
+            "name": "als", "raw": raw, "scale": 0.001, "offset": 0.0})
+    }
+
+    // The shell takes a watch's whole answer over what it held, so said
+    // after a change read once the watch is held, it puts back what the
+    // change moved on from, and nothing tells the change again: the room's
+    // sensor stayed unread for the looks VM test's 30 seconds (2026-11-10).
+    #[test]
+    fn a_watch_is_answered_whole_before_any_change_told_it() {
+        let shared = Arc::new(shared(&Root::new(std::env::temp_dir())));
+        let (told, lines) = mpsc::sync_channel(QUEUED);
+        let (end, _other) = UnixStream::pair().unwrap();
+        let hangup = Arc::new(end);
+        lock(&shared.daemon).light = vec![sensor(&Value::Null)];
+        let watch = ask(r#"{"id":"all","ask":"watch","kind":["light"]}"#);
+        let first = answer(&shared, watch, 1, &told, &hangup);
+        // The sensor's count is read before the answer is said, as
+        // light_loop reads it once the watch wakes it.
+        lock(&shared.daemon).light = vec![sensor(&json!(0.0))];
+        read(&shared, &HashSet::from(["light".to_owned()]), &[]);
+        if let Some(first) = first {
+            told.send(first.to_string()).unwrap();
+        }
+        let said: Vec<Value> = lines
+            .try_iter()
+            .map(|line| serde_json::from_str(&line).unwrap())
+            .collect();
+        assert_eq!(said.len(), 2, "the whole answer, then the change: {said:?}");
+        assert_eq!(said[0]["records"][0]["raw"], Value::Null, "{said:?}");
+        assert_eq!(said[1]["changed"][0]["raw"], json!(0.0), "{said:?}");
     }
 }

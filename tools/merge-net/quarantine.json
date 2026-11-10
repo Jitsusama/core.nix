@@ -1,16 +1,1 @@
-[
-  {
-    "at": 1794323182,
-    "commit": "fae11ae45848bb50b14bca183ea0b0d17fdbd54f",
-    "owner_pr": 2834,
-    "reason": "failed, then passed, at fae11ae45848",
-    "test": "vm-desktop-launcher-answers"
-  },
-  {
-    "at": 1794323952,
-    "commit": "fae11ae45848bb50b14bca183ea0b0d17fdbd54f",
-    "owner_pr": 2834,
-    "reason": "failed, then passed, at fae11ae45848",
-    "test": "vm-desktop-looks"
-  }
-]
+[]

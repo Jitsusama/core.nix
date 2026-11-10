@@ -644,7 +644,9 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     });
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
-        let answer = answer(shared, ask(&line), connection, &told, &hangup);
+        let Some(answer) = answer(shared, ask(&line), connection, &told, &hangup) else {
+            continue;
+        };
         if told.send(answer.to_string()).is_err() {
             break;
         }
@@ -691,8 +693,8 @@ fn answer(
     connection: u64,
     told: &SyncSender<String>,
     hangup: &Arc<UnixStream>,
-) -> Value {
-    match asked {
+) -> Option<Value> {
+    Some(match asked {
         Ask::Hello { id } => {
             let daemon = lock(&shared.daemon);
             json!({
@@ -714,12 +716,23 @@ fn answer(
             if names_programs(&kinds, keys.as_deref()) {
                 read_programs(shared, keys.as_deref());
             }
-            let snapshot = {
+            {
                 let mut daemon = lock(&shared.daemon);
                 // A watch asked again by its id replaces the one before.
                 daemon
                     .watches
                     .retain(|watch| !(watch.connection == connection && watch.id == id));
+                // What it's told first is queued under the lock that holds
+                // the watch, so a change read since, as inotify's are, is
+                // told after it. Queued once the lock was let go, a change
+                // could be said first, and the whole answer after it would
+                // put back what the change moved on from. One that can't
+                // be queued is hung up on, as a change would hang up on it.
+                let first = json!({"id": id, "records": held(&daemon, &kinds, keys.as_deref())});
+                if told.try_send(first.to_string()).is_err() {
+                    let _ = hangup.shutdown(Shutdown::Both);
+                    return None;
+                }
                 daemon.watches.push(Watch {
                     connection,
                     id: id.clone(),
@@ -728,14 +741,12 @@ fn answer(
                     told: told.clone(),
                     stream: Arc::clone(hangup),
                 });
-                held(&daemon, &kinds, keys.as_deref())
-            };
+            }
             // What it reads now it's told as a change, after this answer,
             // so the answer says what's held and the rest follows.
-            let answer = json!({"id": id, "records": snapshot});
             let shared = Arc::clone(shared);
             std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref()));
-            answer
+            return None;
         }
         Ask::Unwatch { id } => {
             let mut daemon = lock(&shared.daemon);
@@ -757,5 +768,5 @@ fn answer(
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
-    }
+    })
 }
