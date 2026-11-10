@@ -48,6 +48,20 @@ pub const KIND: &str = "entry";
 /// (rows.rs).
 pub const ROW: &str = "row";
 
+/// The kind each row's drawer is served as, by the key its row names,
+/// to list and watch only while it shows (rows.rs).
+pub const DRAWER: &str = "drawer";
+
+/// What a list or a watch is of: the entries, their ready rows, or the
+/// drawers those rows name, by key, which the launcher watches only while
+/// one shows. Asked for no keys, drawers are none.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Of {
+    Entries,
+    Rows,
+    Drawers(Vec<String>),
+}
+
 /// The domain it answers for, as hello says it.
 pub const DOMAIN: &str = "passwords";
 
@@ -85,8 +99,8 @@ pub enum Ask {
         asked: bool,
         held: bool,
         patience: u64,
-        /// Whether it asks for the entries' ready rows rather than them.
-        rows: bool,
+        /// Whether it asks for the entries, their rows or their drawers.
+        of: Of,
     },
     /// Entries by key with every detail, read from their managers when
     /// held only in summary, unless `held` asks for what's held alone.
@@ -97,11 +111,11 @@ pub enum Ask {
         held: bool,
         patience: u64,
     },
-    /// Entries as they change, or their rows where `rows` asks, and how
-    /// each manager stands.
+    /// Entries as they change, or their rows or drawers where `of` asks,
+    /// and how each manager stands.
     Watch {
         id: Value,
-        rows: bool,
+        of: Of,
     },
     Unwatch {
         id: Value,
@@ -186,14 +200,31 @@ pub fn ask(line: &str) -> Ask {
         .get("patience")
         .and_then(Value::as_u64)
         .unwrap_or(PATIENCE);
+    let keys = |prefix: &str| -> Vec<String> {
+        said.get("keys")
+            .and_then(Value::as_array)
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(Value::as_str)
+                    .filter(|key| key.starts_with(prefix))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     let kind = said.get("kind").and_then(Value::as_str).unwrap_or(KIND);
-    let rows = kind == ROW && matches!(asked, "list" | "watch");
-    if matches!(asked, "list" | "watch" | "search") && kind != KIND && !rows {
-        return Ask::UnknownKind {
-            id,
-            kind: kind.to_owned(),
-        };
-    }
+    let of = match kind {
+        KIND => Of::Entries,
+        ROW if matches!(asked, "list" | "watch") => Of::Rows,
+        DRAWER if matches!(asked, "list" | "watch") => Of::Drawers(keys("drawer:entry:")),
+        _ if matches!(asked, "list" | "watch" | "search") => {
+            return Ask::UnknownKind {
+                id,
+                kind: kind.to_owned(),
+            };
+        }
+        _ => Of::Entries,
+    };
     match asked {
         "hello" => Ask::Hello { id },
         "list" => Ask::List {
@@ -203,26 +234,19 @@ pub fn ask(line: &str) -> Ask {
             asked: flag("asked"),
             held: flag("held"),
             patience,
-            rows,
+            of,
         },
         "get" => Ask::Get {
             id,
-            keys: said
-                .get("keys")
-                .and_then(Value::as_array)
-                .map(|keys| {
-                    keys.iter()
-                        .filter_map(Value::as_str)
-                        .filter(|key| named(key).is_some())
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default(),
+            keys: keys("entry:")
+                .into_iter()
+                .filter(|key| named(key).is_some())
+                .collect(),
             asked: flag("asked"),
             held: flag("held"),
             patience,
         },
-        "watch" => Ask::Watch { id, rows },
+        "watch" => Ask::Watch { id, of },
         "unwatch" => Ask::Unwatch { id },
         "search" => Ask::Search {
             id,
@@ -1032,14 +1056,30 @@ mod tests {
                 asked: true,
                 held: false,
                 patience: PATIENCE,
-                rows: false
+                of: Of::Entries
             }
         );
         assert_eq!(
             ask(r#"{"id":7,"ask":"watch","kind":"row"}"#),
             Ask::Watch {
                 id: json!(7),
-                rows: true
+                of: Of::Rows
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id":9,"ask":"watch","kind":"drawer",
+                    "keys":["drawer:entry:onepassword:a","row:entry:onepassword:b"]}"#),
+            Ask::Watch {
+                id: json!(9),
+                of: Of::Drawers(vec!["drawer:entry:onepassword:a".to_owned()])
+            },
+            "a drawer watch kept a key that names no drawer"
+        );
+        assert_eq!(
+            ask(r#"{"id":10,"ask":"search","kind":"drawer"}"#),
+            Ask::UnknownKind {
+                id: json!(10),
+                kind: "drawer".to_owned()
             }
         );
         assert_eq!(

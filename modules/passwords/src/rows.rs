@@ -9,8 +9,11 @@
 //! an entry with neither is found by typing alone. Times travel as `{at,
 //! as}` for the shell to word against its own clock, so no row changes
 //! each minute. Passwords.js makes the same rows today; these take its
-//! place as the shell reads them. No secret is ever in one: an entry is
-//! held without its secrets (lib.rs's `Entry`), and a copy is an ask.
+//! place as the shell reads them. A row's drawer is a `drawer:<entry
+//! key>` record of its own, which the row names and the shell watches by
+//! key only while it shows, so a watch of rows never carries every
+//! entry's figures. No secret is ever in either: an entry is held without
+//! its secrets (lib.rs's `Entry`), and a copy is an ask.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -145,7 +148,7 @@ impl Words {
 
 /// Every entry's row, in the order held, from the records the daemon
 /// serves (lib.rs's `Held::records`).
-pub fn rows(records: &[Value], managers: &[Shown], words: &Words) -> Vec<Value> {
+pub fn rows(records: &[Value], managers: &[Shown]) -> Vec<Value> {
     let listed = places(&listed(records));
     let needing = places(&needing(records));
     let naming = managers.len() >= 2;
@@ -166,8 +169,23 @@ pub fn rows(records: &[Value], managers: &[Shown], words: &Words) -> Vec<Value> 
                         .map_or("", |manager| &manager.called),
                     shows: manager.map_or("", |manager| &manager.shows),
                 },
-                words,
             )
+        })
+        .collect()
+}
+
+/// Every entry's drawer, by the key its row names, `drawer:<entry key>`.
+pub fn drawers(records: &[Value], managers: &[Shown], words: &Words) -> Vec<(String, Value)> {
+    let naming = managers.len() >= 2;
+    records
+        .iter()
+        .map(|record| {
+            let called = managers
+                .iter()
+                .find(|manager| naming && manager.name == text(record, "manager"))
+                .map_or("", |manager| manager.called.as_str());
+            let key = format!("drawer:{}", text(record, "key"));
+            (key, drawer(record, called, words))
         })
         .collect()
 }
@@ -180,7 +198,7 @@ struct Placed<'a> {
     shows: &'a str,
 }
 
-fn row(record: &Value, placed: &Placed, words: &Words) -> Value {
+fn row(record: &Value, placed: &Placed) -> Value {
     let key = text(record, "key");
     let category = text(record, "category");
     let username = username(record);
@@ -213,7 +231,7 @@ fn row(record: &Value, placed: &Placed, words: &Words) -> Value {
         "words": found_by(record),
         "passworded": passworded(record),
         "acts": acts(record, &link),
-        "drawer": drawer(record, placed.called, words),
+        "drawer": format!("drawer:{key}"),
         "held": {"manager": text(record, "manager"), "id": text(record, "id"),
                  "website": address, "fills": browsed(&address)},
     })
