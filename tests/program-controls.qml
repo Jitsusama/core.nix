@@ -86,6 +86,10 @@ ShellRoot {
         property var held: []
         property string typed: ""
         property var belowChord: []
+        // What each program's step lists from other places, and the one
+        // listed under its row, which a program's note reads: none here.
+        property var partsOfRows: ({})
+        property string underListed: ""
         property var sources: [notices, keys, giver]
         property var entered: null
         property var went: null
@@ -134,7 +138,18 @@ ShellRoot {
             ];
         }
 
+        // How many times it was asked a program's Recent and what a program
+        // has open, so a case sees a program's note asks each once.
+        property int askedRecent: 0
+        property int askedOpen: 0
+
+        function programOpen(program) {
+            askedOpen += 1;
+            return [];
+        }
+
         function recentOf(program) {
+            askedRecent += 1;
             return program === "tester" ? [{ key: "gdoc:plan", name: "Plan Doc", at: 200000 }]
                 : program === "pair" ? [{ key: "gdoc:notes", name: "Pair Notes" }] : [];
         }
@@ -896,6 +911,16 @@ ShellRoot {
             same("and it's found there", applications.things.filter(row => row.key
                 === "program-act:pair:pair:room").length, 1);
             giver.foundActs = [];
+            // A program's note, read with its row, asks each other provider
+            // for its Recent and what it has open once: it asked each twice,
+            // and a row that doesn't step in reads its note for its count
+            // too, on every row a step into Programs draws (2026-11-10).
+            const recentAsked = giver.askedRecent;
+            const openAsked = giver.askedOpen;
+            same("a program's note counts what another provider gives its Recent",
+                program("pair").note, "1 recent");
+            same("asking that provider for its Recent once", giver.askedRecent - recentAsked, 1);
+            same("and for what it has open once", giver.askedOpen - openAsked, 1);
             // Written while the launcher is closed, quiet's list isn't read
             // until it opens, however long that is.
             root.waiting = "a change while closed";
