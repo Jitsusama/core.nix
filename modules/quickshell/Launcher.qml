@@ -5367,14 +5367,17 @@ Scope {
     // What each collection took in the last search of them.
     property var listsTook: ({})
 
-    // Times each key from its search to the first frame shown after it,
-    // the one its new rows are in: the window says when a frame's been
-    // swapped onto the screen, and it's listened to only while a key waits
-    // for one.
-    property bool keyWaits: false
-    property real keyBegan: 0
-    property real keySearched: 0
-    property string keyText: ""
+    // Times each key from its search to the first frame begun after it,
+    // the one its new rows are in: the window says when a frame begins and
+    // when it's been swapped onto the screen, and it's listened to only
+    // while a key waits for one. A key waits as an act does
+    // (launcher/Pacing.js's frameSwapped), so a swap of a frame already
+    // under way when its handler ran isn't taken for it: a step from
+    // normal, just after Escape, was credited with Escape's frame and said
+    // 33 to 51 ms, where its own frame came 117 to 158 ms after the key
+    // (keeps-pace under load, 2026-11-10). Each key keeps what it is, when
+    // it began, its search and the frame's start (`begun`).
+    property var keysDrawing: Pacing.unframed()
 
     // A key is heard when its handler began, read then on the clock its
     // press is stamped by, rather than worked back from the wall clock,
@@ -5383,11 +5386,8 @@ Scope {
     // searched later, with others typed at once, is timed after KeyTimes has
     // let its press go.
     function keyTimed(typed, began, heard, pressed) {
-        keyBegan = began;
-        keySearched = Date.now() - began;
-        keyText = typed;
-        keyWaits = true;
-        keysWaiting += 1;
+        keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began,
+            searched: Date.now() - began, parts: searchParts, begun: null }]);
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
         // Its handler is done once it's searched or moved, all a key's own
@@ -5395,19 +5395,40 @@ Scope {
         keysDone.push(KeyTimes.now());
     }
 
-    function keyDrawn() {
-        keyWaits = false;
+    // A frame begins, so it draws every key that waited, and each is told
+    // when, on the monotonic clock.
+    function keysFrameBegun() {
+        const begun = KeyTimes.now();
+        for (const key of keysDrawing.waiting)
+            key.begun = begun;
+        keysDrawing = Pacing.frameBegun(keysDrawing);
+    }
+
+    // A frame was swapped: the keys it drew are timed by the newest of them.
+    function keysFrameSwapped() {
+        const swapped = Pacing.frameSwapped(keysDrawing);
+        if (swapped.shown.length === 0)
+            return;
+        keysDrawing = swapped.acts;
+        keyDrawn(swapped.shown);
+    }
+
+    function keyDrawn(drawnKeys) {
         const drawn = Date.now();
         const shown = KeyTimes.now();
-        trials.timed(keySearched, drawn - keyBegan, searchParts, keyText);
-        // Every key since the last frame shows in this one, so each keeps
-        // it as its own, and the list holds one time a key.
-        for (let each = 0; each < keysWaiting; each += 1)
+        const newest = drawnKeys[drawnKeys.length - 1];
+        trials.timed(newest.searched, drawn - newest.began, newest.parts, newest.text);
+        // Every key the frame drew keeps it as its own, and the list holds
+        // one time a key.
+        for (const key of drawnKeys) {
             keysFramed.push(shown);
-        keysTimed += keysWaiting;
-        keysWaiting = 0;
+            keysBegun.push(key.begun);
+        }
+        keysTimed += drawnKeys.length;
         if (keysFramed.length > keysKept)
             keysFramed.splice(0, keysFramed.length - keysKept);
+        if (keysBegun.length > keysKept)
+            keysBegun.splice(0, keysBegun.length - keysKept);
         if (keysHeard.length > keysKept)
             keysHeard.splice(0, keysHeard.length - keysKept);
         if (keysDone.length > keysKept)
@@ -5451,6 +5472,9 @@ Scope {
     // changed in place.
     readonly property int keysKept: 300
     property var keysFramed: []
+    // And when the frame each was drawn in began, after its handler was
+    // done, so a time is seen to be its own frame's.
+    property var keysBegun: []
     // When each of those keys was pressed, as the compositor says, and
     // when the shell's own handler took it, all on the monotonic clock the
     // compositor's times are on, so the machine's load proof can time
@@ -5463,7 +5487,6 @@ Scope {
     property var keysHeard: []
     property var keysDone: []
     property int keysTimed: 0
-    property int keysWaiting: 0
 
     // The last f or F, which ; and , go again (Finding.js).
     property var lastLetter: null
@@ -6395,17 +6418,18 @@ Scope {
         }
 
         // When each of the last keys, typed or arrowed, was pressed, when
-        // the launcher's handler took it, when that handler was done and
-        // when it reached its frame, in milliseconds of the monotonic
-        // clock, oldest first, a key at each place in all four, its press
-        // null if no press made it; and how many keys have reached a frame
-        // since the shell started.
+        // the launcher's handler took it, when that handler was done, when
+        // the frame it's drawn in began and when that frame reached the
+        // screen, in milliseconds of the monotonic clock, oldest first, a
+        // key at each place in all five, its press null if no press made
+        // it; and how many keys have reached a frame since the shell
+        // started.
         function framed(): string {
             const drawn = root.keysFramed.length;
             return JSON.stringify({ timed: root.keysTimed, clock: "monotonic",
                 pressed: root.keysPressed.slice(0, drawn),
                 heard: root.keysHeard.slice(0, drawn), done: root.keysDone.slice(0, drawn),
-                frames: root.keysFramed });
+                begun: root.keysBegun, frames: root.keysFramed });
         }
 
         // How many rows each source has made since the shell started, by
@@ -7737,10 +7761,15 @@ Scope {
 
         Connections {
             target: card.Window.window
-            enabled: root.keyWaits
+            enabled: root.keysDrawing.waiting.length + root.keysDrawing.framing.length > 0
+
+            function onAfterAnimating() {
+                if (root.keysDrawing.waiting.length > 0)
+                    root.keysFrameBegun();
+            }
 
             function onFrameSwapped() {
-                root.keyDrawn();
+                root.keysFrameSwapped();
             }
         }
 

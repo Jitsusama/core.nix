@@ -115,6 +115,22 @@ QtObject {
         const next = Pacing.heard(elsewhere, 1393, every);
         check(failures, "so the next change waits a pace from it", next.pace.due, 1606);
 
+        // A key, or an act's refresh, is drawn by a frame begun after it: a
+        // step just after Escape was timed by Escape's frame, under way as
+        // its handler ran (keeps-pace under load, 2026-11-10).
+        const typed = Pacing.refreshedActs(Pacing.unframed(), ["step"]);
+        check(failures, "a swap of a frame begun before a key isn't the key's",
+            Pacing.frameSwapped(typed).shown.length, 0);
+        const drawing = Pacing.frameBegun(typed);
+        check(failures, "a frame begun after it draws it",
+            Pacing.frameSwapped(drawing).shown.join(), "step");
+        const another = Pacing.refreshedActs(drawing, ["letter"]);
+        const swapped = Pacing.frameSwapped(another);
+        check(failures, "a key typed while that frame is drawn isn't drawn by it",
+            swapped.shown.join(), "step");
+        check(failures, "but waits for the next", swapped.acts.waiting.join(), "letter");
+        check(failures, "which nothing yet draws", swapped.acts.framing.length, 0);
+
         // A change just after a key that acted is its own, shown at once;
         // one just after a key that only moved is no key's, and waits on the
         // pace, since Now's change each second and Agents' every few were
