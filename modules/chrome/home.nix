@@ -178,6 +178,17 @@ in
         ];
       }
     )
+    # Its downloads, which the programs daemon reads as Chrome's page
+    # watches them, as it's stepped into, so the page starts no process.
+    {
+      app = "google-chrome";
+      name = "downloads";
+      asked = true;
+      list = [
+        recentSites
+        "downloads"
+      ];
+    }
   ];
 
   xdg.configFile."quickshell/launcher/ChromeDownloads.js".source = ./ChromeDownloads.js;
@@ -186,16 +197,14 @@ in
   # Repository on GitHub, through the git repositories under ~/src, which fd
   # finds, stat dates and grep reads the remotes of, and Open the Copied
   # Link, each in a new window, and Open the Latest Download, as the
-  # desktop opens the file. Its downloads, which recent-sites lists as
-  # Chrome is stepped into, are in its Recent too. After every other
+  # desktop opens the file. Its downloads, which the programs daemon has
+  # recent-sites list as Chrome is stepped into, are in its Recent too. After every other
   # provider, as it adds no rows of its own.
   jitsusama.quickshell.launcher.providers.chrome = {
     order = 52;
     source = ./ChromeProgram.qml;
-    downloads = [
-      recentSites
-      "downloads"
-    ];
+    # The programs daemon's key for its downloads, the list above.
+    downloads = "listed:google-chrome:downloads";
     folder = "${config.home.homeDirectory}/src";
     fd = lib.getExe pkgs.fd;
     stat = lib.getExe' pkgs.coreutils "stat";

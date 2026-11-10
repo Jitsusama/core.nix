@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 3] = ["program", "recent", "opened"];
+pub const KINDS: [&str; 4] = ["program", "recent", "opened", "listed"];
 
 /// The kind a key names: `program` for `program:kitty`.
 pub fn kind_of(key: &str) -> Option<&str> {
