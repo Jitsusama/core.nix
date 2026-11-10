@@ -27,6 +27,20 @@ QtObject {
             failures.push(`${what}: got ${got}, wanted ${want}`);
     }
 
+    // An opening says what its own work went on, slowest first, so the
+    // line Joel's slow opening left names its cause (2026-11-10).
+    function opening(failures) {
+        check(failures, "the parts are said slowest first",
+            Pacing.openingParts({ joining: 14.2, finding: 30.6, foot: 3 }),
+            "finding 31, joining 14, foot 3");
+        check(failures, "a part under a millisecond is left out",
+            Pacing.openingParts({ joining: 5, before: 0.4 }), "joining 5");
+        check(failures, "parts as long are said by name",
+            Pacing.openingParts({ verbs: 2, foot: 2 }), "foot 2, verbs 2");
+        check(failures, "an opening with none says so", Pacing.openingParts({ before: 0 }),
+            "none over a millisecond");
+    }
+
     // Agents says how its sessions stand at home, and People is named
     // there by who it lists (Joel, 2026-11-08: "weird lag can happen").
     function wanting(failures) {
@@ -156,6 +170,7 @@ QtObject {
 
         framing(failures);
         wanting(failures);
+        opening(failures);
 
         for (const failure of failures)
             console.warn(failure);

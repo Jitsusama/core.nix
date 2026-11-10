@@ -86,3 +86,16 @@ function frameBegun(acts) {
 function frameSwapped(acts) {
     return { shown: acts.framing, acts: { waiting: acts.waiting, framing: [] } };
 }
+
+// What an opening's own work went on, from each part's milliseconds by its
+// name, said slowest first, since the slowest is what its line is read for.
+// A part under a millisecond is left out, and an opening with none left
+// says so.
+function openingParts(parts) {
+    const said = Object.keys(parts).map(name => ({ name, ms: Math.round(parts[name]) }))
+        .filter(part => part.ms >= 1)
+        .sort((a, b) => b.ms - a.ms || a.name.localeCompare(b.name));
+    if (said.length === 0)
+        return "none over a millisecond";
+    return said.map(part => `${part.name} ${part.ms}`).join(", ");
+}

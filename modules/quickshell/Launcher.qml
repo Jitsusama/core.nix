@@ -7364,6 +7364,16 @@ Scope {
     }
 
     onOpenChanged: {
+        // Each part of an opening's own work, timed as it's done, so the
+        // line its frame says names what an opening slow to draw spent its
+        // time on (Joel, 2026-11-10: the launcher takes forever to load).
+        let lapped = KeyTimes.now();
+        const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
+        const lap = name => {
+            const now = KeyTimes.now();
+            parts[name] = (parts[name] ?? 0) + now - lapped;
+            lapped = now;
+        };
         openMark.setText(open ? "open\n" : "closed\n");
         keysHeld = false;
         // A viewer's line is over once the launcher closes (viewerCommandLine),
@@ -7391,10 +7401,11 @@ Scope {
             // machine's room) that marks nothing stale as it changes, so
             // home would open saying the count of the last join.
             choicesStale = true;
-            const joining = KeyTimes.now();
+            lap("marking");
             freshen();
-            openJoined = KeyTimes.now() - joining;
+            lap("joining");
             trials.opened();
+            lap("trials");
             partingLater.stop();
             fading = false;
             parting = "";
@@ -7411,13 +7422,17 @@ Scope {
             listing = false;
             listedInDrawer = false;
             prompt.forget();
+            lap("forgetting");
             often = picks.counts();
+            lap("counting");
             spotsLater.stop();
             restart("");
+            lap("finding");
             // Nothing to rest from as it opens, so the drawer is out at once
             // when the first row has details.
             drawerResting.stop();
             drawerSettled();
+            lap("drawer");
             // Always the same height, eight rows, kept until it closes, so
             // the card is the same shape however much home holds and its
             // rows fill it to the foot, none held under the last.
@@ -7425,25 +7440,32 @@ Scope {
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
+            lap("keys");
             // The gutter as wide as every place's.
             gutterDigits = leastDigits;
             numberDigits = 1;
             noteDigits();
+            lap("digits");
             // Weighed once an opening, not on every mode change, which
             // walks every thing's verbs.
             footVerbRoom = widestVerb(Words.all.things ?? []);
+            lap("verbs");
             // The foot's room once the line is back on the find: set
             // before, the rows noted their keys while it was still in
             // the normal it closed in, and the find opened with normal's
             // room, cutting the glance's date and charge.
             footReset();
+            lap("foot");
             noteKeys();
+            lap("noting");
             if (toldOnOpen.length > 0) {
                 say(toldOnOpen, toldLoose);
                 Report.say(`told ${JSON.stringify(toldOnOpen)}`);
                 toldOnOpen = [];
             }
             Report.say(`stands ${standing.said}`);
+            lap("telling");
+            openParts = parts;
             if (openAsked >= 0) {
                 openWorked = KeyTimes.now() - openAsked;
                 afterFrame(openDrawn);
@@ -7484,15 +7506,15 @@ Scope {
     }
     // When the launcher was last asked to open, as its chord asks, on the
     // monotonic clock its keys are timed by, or -1 while no opening waits
-    // for its frame; how long that opening took joining every source's
-    // things, and in all of its own work before it could draw; and each of
+    // for its frame; how long each part of that opening's own work took,
+    // and all of it, from the ask until it could draw; and each of
     // the last openings, from its ask to its first frame, with the rows
     // made by then, said in the journal as it's drawn. The first since the shell
     // started makes every source's rows it reads, which is the one Joel
     // meets after each switch (Y2YBTS, 2026-11-10: the start is slow), so
     // it says so, and the keeps-pace check times it under load.
     property real openAsked: -1
-    property real openJoined: 0
+    property var openParts: ({})
     property real openWorked: 0
     property var openingsTimed: []
     property int openingsDrawn: 0
@@ -7506,7 +7528,7 @@ Scope {
         if (!open || asked < 0)
             return;
         const took = Math.round(KeyTimes.now() - asked);
-        const joined = Math.round(openJoined);
+        const parts = Pacing.openingParts(openParts);
         const worked = Math.round(openWorked);
         const first = openingsDrawn === 0;
         openingsDrawn += 1;
@@ -7516,10 +7538,10 @@ Scope {
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
-        openingsTimed = openingsTimed.concat([{ took, joined, worked, rows, made: most, first }])
-            .slice(-20);
-        console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working,`
-            + ` ${joined} of it joining, ${rows} rows made (${most})`
+        openingsTimed = openingsTimed.concat([{ took, worked, parts: openParts, rows, made: most,
+            first }]).slice(-20);
+        console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
+            + ` (${parts}), ${rows} rows made (${most})`
             + (first ? ", the first since the shell started" : ""));
     }
     function madeSince(when) {
