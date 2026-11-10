@@ -1072,6 +1072,23 @@ onLinux {
       touch $out
     '';
 
+  # The rows drawn are told where they stand only when it changes, so a
+  # refresh in the place they stay in redraws none of them:
+  # tests/rows-place.qml holds launcher/RowsPlace.js to it in Qt's own engine.
+  the-rows-hear-only-a-new-place =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-rows-hear-only-a-new-place" { } ''
+      cp ${../../tests/rows-place.qml} rows-place.qml
+      cp ${./launcher/RowsPlace.js} RowsPlace.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml rows-place.qml
+      touch $out
+    '';
+
   # For You's :filter narrows to a kind and a source, by their words, as
   # VKCF3Z ruled it; tests/for-you-filter.qml holds launcher/ForYouFilter.js
   # to it in Qt's own engine.
