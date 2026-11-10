@@ -337,6 +337,58 @@ pub fn lets_its_command_in(settings: &str) -> Option<bool> {
     )
 }
 
+/// What Joel reads while 1Password hasn't let the launcher in.
+pub const LET_IN: &str = "1Password asks you to let the launcher in";
+
+/// What Joel reads while 1Password keeps its command out, by the setting's
+/// own name and where the app has it, so he can find it there.
+pub const KEPT_OUT: &str =
+    "1Password needs Integrate with 1Password CLI on, in Settings \u{203a} Developer";
+
+/// What Joel reads while 1Password's app isn't running, so op has nothing
+/// to ask him through, and what Unlock does about it.
+pub const CLOSED: &str = "1Password is closed, and Unlock opens it";
+
+/// What Joel reads while the app is being opened for his ask.
+pub const OPENING: &str = "1Password is opening, to let the launcher in";
+
+/// How the manager stands, from what it knows of 1Password: whether the
+/// app keeps its command out, whether the app is open (`None` where
+/// nothing says), and whether op has let it in since.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stands {
+    KeptOut,
+    Closed,
+    LetIn,
+    Answering,
+}
+
+impl Stands {
+    /// The setting comes first, since nothing else helps while it's off;
+    /// then the app, since op can't prompt without it; then op's leave.
+    pub fn of(kept_out: bool, open: Option<bool>, let_in: bool) -> Self {
+        if kept_out {
+            Self::KeptOut
+        } else if open == Some(false) {
+            Self::Closed
+        } else if let_in {
+            Self::Answering
+        } else {
+            Self::LetIn
+        }
+    }
+
+    /// As Passwords' line protocol says a standing.
+    pub fn said(self) -> Value {
+        match self {
+            Self::KeptOut => json!({"state": "refused", "reason": KEPT_OUT}),
+            Self::Closed => json!({"state": "signed-out", "reason": CLOSED}),
+            Self::LetIn => json!({"state": "signed-out", "reason": LET_IN}),
+            Self::Answering => json!({"state": "answering"}),
+        }
+    }
+}
+
 /// Where 1Password keeps its settings: under `XDG_CONFIG_HOME`, else
 /// the home's `.config`, as the app finds its own folder.
 pub fn settings_file(config_home: Option<&str>, home: Option<&str>) -> Option<String> {
@@ -370,6 +422,18 @@ pub fn reason(said: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_setting_stands_before_the_app_and_the_app_before_the_leave() {
+        assert_eq!(Stands::of(true, Some(false), true), Stands::KeptOut);
+        assert_eq!(Stands::of(false, Some(false), true), Stands::Closed);
+        assert_eq!(Stands::of(false, Some(true), true), Stands::Answering);
+        assert_eq!(Stands::of(false, None, false), Stands::LetIn);
+        assert_eq!(
+            Stands::Closed.said(),
+            json!({"state": "signed-out", "reason": CLOSED})
+        );
+    }
 
     /// A login as op item get gives it, in op 2's JSON.
     fn login() -> Value {

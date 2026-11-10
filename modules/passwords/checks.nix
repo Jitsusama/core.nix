@@ -118,7 +118,7 @@ onLinux {
         && lib.elem "graphical-session.target" (service.Unit.PartOf or [ ])
         && lib.any (lib.hasInfix "PASSWORDS_COPIER=") (lib.toList (service.Service.Environment or [ ]))
         && home.jitsusama.passwords.managers ? "1password"
-        && lib.hasSuffix "/op" (lib.last home.jitsusama.passwords.managers."1password".command)
+        && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
   # Each kind's mark, who's listed with nothing typed and in what order,

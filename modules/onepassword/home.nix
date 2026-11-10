@@ -41,6 +41,14 @@ let
   # 1Password's app trusts to ask it (nixos.nix).
   op = "${osConfig.security.wrapperDir or "/run/wrappers/bin"}/op";
   manager = pkgs.callPackage ./manager/package.nix { };
+  systemctl = "${pkgs.systemd}/bin/systemctl";
+  # 1Password opened from its desktop entry, its unit started first, so
+  # the app runs in the unit, which says it's open, and the second run
+  # hands the unit's app its window, as 1Password runs once a session.
+  inItsUnit = pkgs.writeShellScript "1password-in-its-unit" ''
+    ${systemctl} --user start onepassword.service || true
+    exec ${lib.getExe' app.package "1password"} "$@"
+  '';
   # op's completion, as op's package has it.
   opCompletion = pkgs.runCommandLocal "op-zsh-completion" { } ''
     install -D -m 444 ${cli.package}/share/zsh/site-functions/_op \
@@ -155,6 +163,12 @@ in
             (lib.getExe manager)
             "--op"
             op
+            # Joel's own ask while the app is closed starts its unit, and
+            # the file the unit keeps while it runs says it's open.
+            "--open-unit"
+            "onepassword.service"
+            "--systemctl"
+            systemctl
           ];
           program = "com.onepassword.OnePassword";
           called = "1Password";
@@ -184,8 +198,16 @@ in
         (lib.getExe' app.package "1password")
         "--silent"
       ];
-      # Quitting it from its own menu ends it for the session; a crash
-      # starts it again.
+      # While it runs, a file says so, which 1Password's manager watches,
+      # so Passwords says the moment it closes and its Unlock opens it.
+      ExecStartPost = "${pkgs.coreutils}/bin/touch %t/onepassword/open";
+      ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/onepassword/open";
+      RuntimeDirectory = "onepassword";
+      RuntimeDirectoryPreserve = true;
+      # Quitting it, or closing its window, ends it for the session; a
+      # crash starts it again. Never always: a second 1Password hands its
+      # window to the first and ends well, so always would start the
+      # unit over and over (2026-11-10), and a closed app is now said.
       Restart = "on-failure";
       Slice = "app.slice";
     };
@@ -200,7 +222,7 @@ in
     "com.onepassword.OnePassword" = {
       name = "1Password";
       comment = "Password manager and secure wallet";
-      exec = "1password %U";
+      exec = if app.enable or false then "${inItsUnit} %U" else "1password %U";
       icon = "1password";
       categories = [ "Office" ];
       mimeType = [
