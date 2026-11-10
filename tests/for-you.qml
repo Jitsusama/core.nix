@@ -130,6 +130,26 @@ QtObject {
             looked.try.length], [["f"], 0]);
         expect("no items, three empty bands", ForYou.banded(undefined, now),
             { now: [], look: [], try: [] });
+        // Each thing's times are read once in banding it, whatever its sort
+        // weighs: read in the comparator, each ISO time was parsed again
+        // for every pair, seconds of each opening on the laptop.
+        const reads = { due: 0, since: 0 };
+        const counted = at => {
+            const thing = { kind: "look" };
+            Object.defineProperty(thing, "since", { get: () => {
+                reads.since += 1;
+                return new Date(now - (at % 7) * hour).toISOString();
+            } });
+            Object.defineProperty(thing, "due", { get: () => {
+                reads.due += 1;
+                return null;
+            } });
+            return { kind: "look", thing, name: `${at}` };
+        };
+        const many = ForYou.banded(Array.from({ length: 50 }, (_, at) => counted(at)), now);
+        expect("fifty things' times read once each", [reads.since, reads.due], [50, 50]);
+        expect("read once, still the oldest first", many.look.slice(0, 3).map(one =>
+            one.name), ["6", "13", "20"]);
 
         // A look blocks the session that left it while that session wants
         // Joel, named by its session or its address, as the session's own
