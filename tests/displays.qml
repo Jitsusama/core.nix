@@ -55,6 +55,12 @@ ShellRoot {
                 displays.tally.rows === madeBefore, displays.tally.rows - madeBefore);
             expect("and each row is the one it was", screens().every((row, at) => row === first[at]),
                 "");
+            // The same screens said in the other order, as niri's map may
+            // give them at any ask.
+            Niri.turned = true;
+            Niri.workspaces = { said: "turned" };
+            expect("the same screens in another order make no screen's row again",
+                displays.tally.rows === madeBefore, displays.tally.rows - madeBefore);
             // The monitor turned off, so its row says so.
             Niri.monitorOn = false;
             Niri.workspaces = { said: "again" };

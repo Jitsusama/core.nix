@@ -2996,6 +2996,9 @@ onLinux {
         property var workspaces: ({})
         property int revision: 0
         property bool monitorOn: true
+        // niri's answer is a map collected afresh at each ask, so the same
+        // screens may come in either order.
+        property bool turned: false
         readonly property bool powersOffEach: false
         function workspace() { return { output: "eDP-1" }; }
         function act(request) {}
@@ -3014,10 +3017,14 @@ onLinux {
           const at = (x, y) => ({
             x: x, y: y, width: 1440, height: 900, scale: 2, transform: "Normal"
           });
-          answer({ Outputs: {
-            "eDP-1": screen("eDP-1", "LG Display", "0x07C6", at(0, 0)),
-            "DP-1": screen("DP-1", "Dell Inc.", "U2723QE", monitorOn ? at(1440, 0) : null)
-          } });
+          const screens = [
+            ["eDP-1", screen("eDP-1", "LG Display", "0x07C6", at(0, 0))],
+            ["DP-1", screen("DP-1", "Dell Inc.", "U2723QE", monitorOn ? at(1440, 0) : null)]
+          ];
+          const outputs = {};
+          for (const [name, said] of turned ? screens.reverse() : screens)
+            outputs[name] = said;
+          answer({ Outputs: outputs });
         }
       '';
     in
