@@ -102,3 +102,19 @@ function take(held, records, gone) {
     }
     return differ;
 }
+
+// The workspaces a window on this one could go to, from the daemon's
+// records by key (`said`): the others on its screen, in the order the
+// desktop record lists that screen's, so nothing is sorted and no window
+// walked. None while the daemon hasn't said the window's workspace.
+function spacesFrom(said, workspace) {
+    const from = said[`workspace:${workspace}`];
+    if (from === undefined) {
+        return [];
+    }
+    const ids = said.desktop?.spaces?.[from.output] ?? [];
+    return ids
+        .filter((id) => id !== from.id)
+        .map((id) => said[`workspace:${id}`])
+        .filter((space) => space !== undefined);
+}

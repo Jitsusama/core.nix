@@ -61,5 +61,20 @@ QtObject {
         const floating = HeldWindows.asWindow(record(6, 0, { column: null, down: null }));
         Expect.same("one never looked at, and floating, has no time and no column",
             [floating.focus_timestamp, floating.layout.pos_in_scrolling_layout], [null, null]);
+
+        const space = (id, output) => ({ key: `workspace:${id}`, id: id, output: output });
+        const said = {
+            "workspace:1": space(1, "eDP-1"), "workspace:2": space(2, "eDP-1"),
+            "workspace:3": space(3, "eDP-1"), "workspace:4": space(4, "HDMI-A-1"),
+            desktop: { key: "desktop", spaces: { "eDP-1": [3, 1, 2], "HDMI-A-1": [4] } }
+        };
+        Expect.same("a window's workspaces are the others on its screen, in the desktop's order",
+            HeldWindows.spacesFrom(said, 1).map(each => each.id), [3, 2]);
+        Expect.same("and one alone on its screen has none to go to",
+            HeldWindows.spacesFrom(said, 4), []);
+        Expect.same("nor has one on a workspace the daemon hasn't said",
+            HeldWindows.spacesFrom(said, 9), []);
+        Expect.same("nor any, before the desktop is said",
+            HeldWindows.spacesFrom({ "workspace:1": space(1, "eDP-1") }, 1), []);
     }
 }

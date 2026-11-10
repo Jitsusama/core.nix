@@ -258,19 +258,10 @@ impl Desktop {
                 })
             })
             .collect();
-        records.extend(self.workspaces.values().map(|w| {
-            json!({
-                "key": format!("workspace:{}", w["id"]),
-                "id": w["id"],
-                "idx": w["idx"],
-                "name": w["name"],
-                "output": w["output"],
-                "active": w["is_active"] == true,
-                "focused": w["is_focused"] == true,
-                "urgent": w["is_urgent"] == true,
-                "active_window": w["active_window_id"],
-            })
-        }));
+        let inside = seen.iter().filter_map(|(window, _, _, named)| {
+            Some((id_of(&window["workspace_id"])?, named.program.as_str()))
+        });
+        let spaces = self.workspace_records(inside, &mut records);
         let front = self.here();
         // The window the keys were in, as what's done to it says it, so
         // Capture watches this record alone rather than every window.
@@ -293,10 +284,63 @@ impl Desktop {
             "window": window,
             "workspace": front.map(|w| w["id"].clone()),
             "output": front.map(|w| w["output"].clone()),
+            "spaces": spaces,
             "overview": self.overview,
             "settings_failed": self.settings_failed,
         }));
         records
+    }
+
+    /// Each workspace's record, with the programs on it (`inside`, by
+    /// their windows' ids), and each screen's workspaces in niri's order,
+    /// so a row offering one says what's on it and the shell offers them
+    /// in order, without walking every window or sorting.
+    fn workspace_records<'p>(
+        &self,
+        inside: impl Iterator<Item = (u64, &'p str)>,
+        records: &mut Vec<Value>,
+    ) -> BTreeMap<&str, Vec<Value>> {
+        let mut on_each: HashMap<u64, Vec<&'p str>> = HashMap::new();
+        for (workspace, program) in inside {
+            on_each.entry(workspace).or_default().push(program);
+        }
+        let mut spaces: BTreeMap<&str, Vec<&Value>> = BTreeMap::new();
+        for w in self.workspaces.values() {
+            spaces
+                .entry(w["output"].as_str().unwrap_or(""))
+                .or_default()
+                .push(w);
+        }
+        for on in spaces.values_mut() {
+            on.sort_by_key(|w| w["idx"].as_u64().unwrap_or(0));
+        }
+        records.extend(self.workspaces.values().map(|w| {
+            let id = id_of(&w["id"]).unwrap_or(0);
+            let programs = on_each.get(&id).cloned().unwrap_or_default();
+            // niri keeps an empty workspace last on each screen, which is
+            // how a new one is made.
+            let last = spaces
+                .get(w["output"].as_str().unwrap_or(""))
+                .and_then(|on| on.last())
+                .is_some_and(|l| id_of(&l["id"]) == Some(id));
+            json!({
+                "key": format!("workspace:{}", w["id"]),
+                "id": w["id"],
+                "idx": w["idx"],
+                "name": w["name"],
+                "output": w["output"],
+                "active": w["is_active"] == true,
+                "focused": w["is_focused"] == true,
+                "urgent": w["is_urgent"] == true,
+                "active_window": w["active_window_id"],
+                "new": last && programs.is_empty(),
+                "inside": programs,
+            })
+        }));
+        spaces
+            .into_iter()
+            .map(|(output, on)| (output, on.iter().map(|w| w["id"].clone()).collect()))
+            .collect()
     }
 }
 
@@ -551,8 +595,12 @@ mod tests {
         let mut desktop = heard(BEGINNING);
         let before = records(&desktop);
         hear(&mut desktop, r#"{"WindowClosed":{"id":13}}"#);
-        // A window closed elsewhere changes no other record.
-        assert_eq!(changed(&before, &records(&desktop)), ["window:13"]);
+        // A window closed elsewhere changes no other window's record, only
+        // what its workspace says is on it.
+        assert_eq!(
+            changed(&before, &records(&desktop)),
+            ["workspace:2", "window:13"]
+        );
         hear(
             &mut desktop,
             r#"{"WindowsChanged":{"windows":[{"id":10,"title":"pi","app_id":"pi-session.3","pid":100,"workspace_id":1,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[640,800]},"focus_timestamp":{"secs":1000,"nanos":500000000}}]}}"#,
@@ -562,6 +610,52 @@ mod tests {
             .filter(|key| key.starts_with("window:"))
             .collect();
         assert_eq!(left, ["window:10"]);
+    }
+
+    #[test]
+    fn a_workspace_says_whats_on_it_and_each_screen_its_workspaces_in_order() {
+        let mut desktop = heard(BEGINNING);
+        // niri's empty last workspace on each screen, and a second
+        // screen whose workspaces it lists out of order.
+        hear(
+            &mut desktop,
+            r#"{"WorkspacesChanged":{"workspaces":[
+        {"id":1,"idx":1,"name":null,"output":"eDP-1","is_urgent":false,"is_active":true,"is_focused":true,"active_window_id":10},
+        {"id":2,"idx":2,"name":"mail","output":"eDP-1","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":12},
+        {"id":5,"idx":2,"name":null,"output":"HDMI-A-1","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null},
+        {"id":3,"idx":3,"name":null,"output":"eDP-1","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null},
+        {"id":4,"idx":1,"name":null,"output":"HDMI-A-1","is_urgent":false,"is_active":true,"is_focused":false,"active_window_id":null}]}}"#,
+        );
+        let said = records(&desktop);
+        assert_eq!(
+            said["workspace:1"]["inside"],
+            json!(["kitty", "Google Chrome"])
+        );
+        assert_eq!(
+            said["workspace:2"]["inside"],
+            json!(["Google Chrome", "foot"])
+        );
+        assert_eq!(said["workspace:2"]["name"], "mail");
+        assert_eq!(said["workspace:3"]["inside"], json!([]));
+        assert_eq!(
+            [1, 2, 3, 4, 5].map(|id| said[&format!("workspace:{id}")]["new"].clone()),
+            [false, false, true, false, true].map(Value::Bool)
+        );
+        assert_eq!(
+            said["desktop"]["spaces"],
+            json!({"HDMI-A-1": [4, 5], "eDP-1": [1, 2, 3]})
+        );
+        // A window opened on the empty last one makes it no longer new,
+        // and changes no other workspace. Its title is its own, so no
+        // other window's column count (`alike`) moves.
+        let before = said;
+        hear(
+            &mut desktop,
+            r#"{"WindowOpenedOrChanged":{"window":{"id":14,"title":"~/notes","app_id":"foot","pid":103,"workspace_id":3,"is_focused":false,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[640,800]},"focus_timestamp":null}}}"#,
+        );
+        let after = records(&desktop);
+        assert_eq!(changed(&before, &after), ["window:14", "workspace:3"]);
+        assert_eq!(after["workspace:3"]["new"], false);
     }
 
     #[test]
