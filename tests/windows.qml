@@ -91,13 +91,20 @@ ShellRoot {
                 title: record.title, app_id: record.app_id, entry: null, program: "tester" } };
     }
 
+    // A workspace's record as the daemon says it, on the one screen.
+    function space(id, fields) {
+        return Object.assign({ key: `workspace:${id}`, id: id, idx: id, name: null,
+            output: "eDP-1", active: id === 1, focused: id === 1, urgent: false,
+            active_window: null, new: false, inside: [] }, fields ?? {});
+    }
+
     // What the daemon tells, said to both sources as each one's own line,
-    // Capture hearing the desktop too.
+    // with the desktop when it's given.
     function told(said, desktopNow) {
-        windows.windowsDaemon.said(JSON.stringify(said));
         const withDesktop = desktopNow === undefined ? said : Object.assign({}, said,
             said.records ? { records: said.records.concat([desktopNow]) }
                 : { changed: (said.changed ?? []).concat([desktopNow]) });
+        windows.windowsDaemon.said(JSON.stringify(withDesktop));
         capture.windowsDaemon.said(JSON.stringify(withDesktop));
     }
 
@@ -118,6 +125,21 @@ ShellRoot {
                 "tester \u00b7 workspace 2");
             Expect.same("Capture lists every window but the one Joel's in", names(capture.windows),
                 "Draft, Notes");
+
+            // Move to Workspace offers the others on the window's screen as
+            // the daemon says them, niri's empty last one as new, and
+            // heard of them, no window's row is made again.
+            const madeBefore = windows.tally.rows;
+            told({ changed: [space(1, { inside: ["tester", "tester"] }),
+                space(2, { inside: ["tester"] }), space(3, { new: true }),
+                space(4, { output: "HDMI-A-1" })] },
+                Object.assign(desktop(logbook), { spaces: { "eDP-1": [1, 2, 3], "HDMI-A-1": [4] } }));
+            const offered = windows.workspacesFor(windows.held.windows["window:11"]);
+            Expect.same("Move to Workspace offers the others on its screen, saying what's on each",
+                offered.map(row => `${row.name}: ${row.side}`).join("; "),
+                "Workspace 2: tester; A new workspace: ");
+            Expect.same("and hearing the workspaces makes no window's row",
+                windows.tally.rows - madeBefore, 0);
 
             // Super+Tab, Return on Draft: the keys move as the launcher
             // closes, unheard, so the next opening's rows still mark the

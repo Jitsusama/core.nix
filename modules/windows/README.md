@@ -32,7 +32,9 @@ rows made in four minutes with the launcher shut).
 |                     | `focused`: whether the keys were in it          | This Window, Super+Tab        |
 |                     | `order`: when it was last looked at, in ms      | where its row is placed       |
 | `workspace:<id>`    | number, name, output, active, focused, urgent, its active window | the verbs that move a window |
+|                     | `inside`: its windows' programs, `new`: niri's empty last one | Move to Workspace's rows |
 | `desktop`           | the window the keys were in, with its title and program, the workspace and output in front, the overview, whether niri's settings failed to load | Capture |
+|                     | `spaces`: each output's workspaces, in order    | Move to Workspace's order     |
 
 A window's program is the desktop entry its app id names, as Quickshell's
 `heuristicLookup` finds it: by its id, its id in any case, its class,

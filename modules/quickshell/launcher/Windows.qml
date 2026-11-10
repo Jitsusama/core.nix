@@ -155,7 +155,9 @@ Provider {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
-        kind: "window"
+        // The workspaces and the desktop too, which a window's Move to
+        // Workspace offers from (workspacesFor).
+        kind: ["window", "workspace", "desktop"]
         live: provider.wanted
         paced: provider.launcher
         answersWhole: true
@@ -179,9 +181,12 @@ Provider {
     // only of the windows it moved, never all of them.
     readonly property var windowsDaemon: daemon
     function hear(changed, gone) {
-        provider.tally.looked += changed.length + gone.length;
-        const records = changed.map(key => daemon.held[key]).filter(record => record);
-        remake(HeldWindows.take(provider.held, records, gone), gone);
+        const windowsOnly = keys => keys.filter(key => key.startsWith("window:"));
+        const told = windowsOnly(changed);
+        const went = windowsOnly(gone);
+        provider.tally.looked += told.length + went.length;
+        const records = told.map(key => daemon.held[key]).filter(record => record);
+        remake(HeldWindows.take(provider.held, records, went), went);
     }
 
     function waitingTurned() {
@@ -432,16 +437,12 @@ Provider {
         return { run: () => Niri.act({ CloseWindow: { id: window.id } }) };
     }
 
-    // The workspaces a window could go to, on its own screen in order, each
-    // saying what's on it. niri always keeps an empty one last, which is
-    // how a new workspace is made, so that one is offered as new.
     // The lit screens a window isn't on, as Screens names them, or none when
     // there's one screen, or no Screens to ask.
     function screensFor(window) {
         const displays = (provider.launcher?.sources ?? [])
             .find(source => source.settings.name === "displays") ?? null;
-        const from = Niri.workspaces[window.workspace_id];
-        const here = from ? from.output : "";
+        const here = daemon.held[`workspace:${window.workspace_id}`]?.output ?? "";
         const others = displays ? displays.lit.filter(output => output.name !== here) : [];
         return others.map(output => thing({
             key: `screen:${output.name}`,
@@ -470,37 +471,29 @@ Provider {
         }));
     }
 
+    // The workspaces a window could go to, on its own screen in order, each
+    // saying what's on it, as the windows daemon holds them. niri always
+    // keeps an empty one last, which is how a new workspace is made, so that
+    // one is offered as new.
     function workspacesFor(window) {
-        const from = Niri.workspaces[window.workspace_id];
-        const output = from ? from.output : null;
-        const here = Niri.workspace();
-        const spaces = Object.values(Niri.workspaces)
-            .filter(space => space.output === output)
-            .sort((a, b) => a.idx - b.idx);
-        const names = space => Object.values(Niri.windows)
-            .filter(other => other.workspace_id === space.id)
-            .map(other => {
-                const entry = other.app_id ? DesktopEntries.heuristicLookup(other.app_id) : null;
-                return entry ? entry.name : (other.app_id ?? "");
-            });
+        const said = daemon.held;
+        const current = said.desktop?.current ?? null;
         // The chord that moves the focused window there, to learn next time.
         const chordTo = idx => {
             const does = `Move the window to workspace ${idx}`;
             const action = Shortcuts.actions.find(a => a.does === does);
             return action ? action.chord.map(key => key.text).join("+") : "";
         };
-        return spaces.map((space, at) => {
-            const inside = names(space);
-            const last = at === spaces.length - 1 && inside.length === 0;
-            const chord = window.id === Niri.current ? chordTo(space.idx) : "";
+        return HeldWindows.spacesFrom(said, window.workspace_id).map(space => {
+            const chord = window.id === current ? chordTo(space.idx) : "";
             return thing({
                 key: `workspace:${space.idx}`,
                 verb: "move",
-                name: last ? "A new workspace" : space.name ?? `Workspace ${space.idx}`,
-                count: here && space.id === here.id ? "here" : "",
-                glyph: last ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
+                name: space.new ? "A new workspace" : space.name ?? `Workspace ${space.idx}`,
+                count: space.focused ? "here" : "",
+                glyph: space.new ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
                 hue: "machine",
-                side: last ? "" : inside.length === 0 ? "empty" : inside.join(", "),
+                side: space.new ? "" : space.inside.length === 0 ? "empty" : space.inside.join(", "),
                 note: chord === "" ? "" : `next time ${chord}`,
                 run: () => Niri.act({
                     MoveWindowToWorkspace: {
@@ -510,6 +503,6 @@ Provider {
                     }
                 })
             });
-        }).filter(target => target.key !== `workspace:${from ? from.idx : -1}`);
+        });
     }
 }
