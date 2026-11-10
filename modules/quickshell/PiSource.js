@@ -95,31 +95,67 @@ function sorted(held, place) {
 // tells it.
 const SHOWN_ONLY = ["at", "busy", "heard", "since", "state", "step", "stepDetail", "usage"];
 
-// A sorting (`sorted`) as text, to tell whether a change is one anything
-// reads: all of it while the launcher shows it, and otherwise all but
-// what only the launcher shows. A running session elsewhere carries when
-// it changed from its record's own time, which moves with each step and
-// only orders the launcher's lists, so it goes too. With the launcher
-// shut, each change of a session's step had cost the shell's main thread
-// 20 to 370 ms of sorting and binding that nothing on screen read.
-function telling(sorting, shown) {
-    if (shown) {
-        return JSON.stringify(sorting);
+// Whether two values say the same, as JSON would: a field left undefined
+// is one not said, and the order fields come in tells nothing.
+function alike(before, after) {
+    if (before === after) {
+        return true;
     }
-    const kept = running => one => {
-        const presence = Object.assign({}, one.presence);
-        for (const name of SHOWN_ONLY) {
-            delete presence[name];
+    if (typeof before !== "object" || typeof after !== "object" || before === null
+        || after === null || Array.isArray(before) !== Array.isArray(after)) {
+        return false;
+    }
+    if (Array.isArray(before)) {
+        return before.length === after.length && before.every((one, at) => alike(one, after[at]));
+    }
+    return fieldsAlike(before, after, []);
+}
+
+// Whether two objects say the same in every field but those passed over.
+function fieldsAlike(before, after, passed) {
+    const told = name => passed.includes(name) || alike(before[name], after[name]);
+    return Object.keys(before).every(told) && Object.keys(after).every(told);
+}
+
+// What a sorted session (`sorted`) says that a shut launcher passes over
+// besides its presence's own: a running session elsewhere carries when it
+// changed from its record's own time, which moves with each step and only
+// orders the launcher's lists.
+const PRESENCE = ["presence"];
+const ELSEWHERE = ["presence", "changed"];
+
+// Whether two sortings (`sorted`) tell the same to what reads them: all
+// of them while the launcher shows them, and otherwise all but what only
+// the launcher shows. With the launcher shut, each change of a session's
+// step had cost the shell's main thread 20 to 370 ms of sorting and
+// binding that nothing on screen read. Compared field by field rather
+// than as text: Joel's 117 sessions are about 280,000 characters as JSON,
+// and a text that size made each of the node's changes, about one a
+// second, start a garbage collection of its own (303 in 300 changes,
+// against 12 compared in place, in Qt's engine on 2026-11-10).
+function tellsAlike(before, after, shown) {
+    for (const how of ["live", "resting", "ending"]) {
+        const was = before[how];
+        const is = after[how];
+        if (was.length !== is.length) {
+            return false;
         }
-        const whole = Object.assign({}, one, { presence });
-        if (running && one.here === false) {
-            // Left unsaid, since the text leaves out what's undefined.
-            whole.changed = undefined;
+        const running = how === "live";
+        if (!was.every((one, at) => entryAlike(one, is[at], running, shown))) {
+            return false;
         }
-        return whole;
-    };
-    return JSON.stringify({ live: sorting.live.map(kept(true)),
-        resting: sorting.resting.map(kept(false)), ending: sorting.ending.map(kept(false)) });
+    }
+    return true;
+}
+
+// Whether one sorted session tells the same as another (`tellsAlike`).
+function entryAlike(before, after, running, shown) {
+    if (shown) {
+        return alike(before, after);
+    }
+    const passed = running && before.here === false ? ELSEWHERE : PRESENCE;
+    return fieldsAlike(before, after, passed)
+        && fieldsAlike(before.presence ?? {}, after.presence ?? {}, SHOWN_ONLY);
 }
 
 // Copies the fields named from `from` that are said, so one unsaid is

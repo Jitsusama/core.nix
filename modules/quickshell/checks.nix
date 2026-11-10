@@ -1206,6 +1206,32 @@ onLinux {
       touch $out
     '';
 
+  # pi's sessions, as many and as large as Joel's, each changing its step
+  # with the launcher shut, start a garbage collection in well under one
+  # change in five, as QV4's own report of each collection counts them.
+  # Told apart as text they had started one nearly every change (135 in
+  # 200), each a sweep that stalls the shell's main thread.
+  pi-sorts-without-collecting =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "pi-sorts-without-collecting" { } ''
+      cp ${../../tests/pi-source-collects.qml} pi-source-collects.qml
+      cp ${./PiSource.js} PiSource.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      export QT_LOGGING_RULES=qt.qml.gc.allocatorStats=true
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 120 ${qt}/bin/qml pi-source-collects.qml \
+        > said 2>&1 || { cat said; exit 1; }
+      started=$(grep -c 'triggered by unmanaged heap:' said || true)
+      echo "collections the text started in 100 changes: $started"
+      if [ "$started" -ge 20 ]; then
+        exit 1
+      fi
+      touch $out
+    '';
+
   # A screen darkens by name where niri powers one output off, docked with
   # its hub powered, and unplugs only as the bigger step; the last one lit
   # waits for the key that asked to come up; an older niri only unplugs, as

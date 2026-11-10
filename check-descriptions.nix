@@ -2283,6 +2283,10 @@
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
     boot, and says each as the agent source contract's record, leaving out what pi didn't say
   '';
+  pi-sorts-without-collecting = ''
+    pi's sessions, as many and as large as Joel's, each changing its step with the launcher shut,
+    start a garbage collection in fewer than one change in five, told apart without text
+  '';
   the-launcher-says-every-machine-of-the-realm = ''
     Machines says every machine of the realms this one links, this one first, each in words with how
     it stands, and its drawer from what moves most to the model's identifier, leaving out what no
