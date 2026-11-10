@@ -454,6 +454,15 @@ ShellRoot {
             retold.parked === retoldBefore.parked && retold.closed === retoldBefore.closed,
             `parked told ${retold.parked - retoldBefore.parked}, closed `
             + `${retold.closed - retoldBefore.closed}`);
+        // niri opening OTHER2's window anew, by the app id its record names,
+        // changes its windows in place and says so by its revision alone, as
+        // Niri.qml does, and the session's window follows.
+        const windows = Niri.windows;
+        delete windows["21"];
+        windows["23"] = { id: 23, pid: 600, title: "\u03c0 - Lighthouse", opened: "pi-session.7" };
+        Niri.revision += 1;
+        expect("a window opened anew by its app id is its session's once niri says so",
+            find("OTHER2")?.window?.id === 23, JSON.stringify(find("OTHER2")?.window));
         stage = "ended";
         tell({ changed: [{ key: "session:s-OTHER2", state: "ended" }] });
     }
