@@ -2326,6 +2326,11 @@
     so, each drawer says where it is and its kind, the heading, how far down, each mark and its
     path, and the reader's drawer says how many files are still to finish
   '';
+  the-launcher-remakes-only-the-screens-that-changed = ''
+    the launcher's Screens, asking niri again at every workspace change and opening, makes no
+    screen's row again while niri's answer reads the same, and draws a screen that changed as it
+    now stands
+  '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows list This Window, then the rest the one used last first, and when the
     focus moves make again only the rows of the windows it moved between, a renamed one too, as

@@ -2986,6 +2986,46 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's Screens, asked of niri anew at every workspace change and
+  # opening, makes no screen's row again while niri's answer reads the same,
+  # and draws a screen that changed as it now stands (tests/displays.qml),
+  # with niri stood in.
+  the-launcher-remakes-only-the-screens-that-changed =
+    let
+      # A panel and a monitor, answered anew at each ask, as niri does.
+      niri = ./tests/stand-ins/displays-niri.qml;
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "the-launcher-remakes-only-the-screens-that-changed" { } ''
+      mkdir -p launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Backlight.js} launcher/Backlight.js
+      cp ${./launcher/Displays.qml} launcher/Displays.qml
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/Plate.js} launcher/Plate.js
+      cp ${./launcher/Power.js} launcher/Power.js
+      cp ${./launcher/ScreenAnswers.js} launcher/ScreenAnswers.js
+      cp ${./launcher/Screens.js} launcher/Screens.js
+      cp ${./launcher/Warmth.js} launcher/Warmth.js
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/displays.qml} shell.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
+      cp ${niri} Niri.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's queue, Agents' place for the machine's heavy work, says
   # what each job is from the queue pi's harness writes (tests/queue.qml),
   # with the queue, pi's sessions, niri, Quests and a slice's memory stood
