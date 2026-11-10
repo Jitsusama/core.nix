@@ -2225,7 +2225,8 @@
     Notifications, in order and only where they apply, each reaching only that program, with what
     another provider gives it to copy last, and a hidden program another provider gives acts to is
     listed and steps in rather than starting; the list programs share heard again unchanged
-    changes nothing, and an act another provider gives makes its own row and no program's
+    changes nothing, an act another provider gives makes its own row and no program's, and a
+    step asked again makes none of its Recent's rows again
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes

@@ -47,7 +47,8 @@
 // top that asks for a choice goes to its list inside its program. The list
 // programs share, heard again as it was, changes nothing, and an act
 // another provider gives to be found from the top makes its own row and
-// no program's own again. Typing on
+// no program's own again. A step asked again, as a held one is at each
+// change, makes none of its Recent's rows again. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -293,6 +294,17 @@ ShellRoot {
                 "9 folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9, "
                     + "folder 10");
             same("each in the folder it's in", recent.targets()[0].side, "~");
+            // A step held is drawn again at each change of the provider it
+            // came from, so one that said its Recent anew made every row of
+            // it again each time (Joel's shell, 2026-11-10: Chrome's step
+            // made again as its downloads were read, 136 ms).
+            const before = recent.targets();
+            const again = program("quiet").verbs()[2];
+            const made = applications.tally.rows;
+            const held = again.targets();
+            expect("asked again, its Recent makes none of its rows again",
+                applications.tally.rows === made && held.every((row, at) => row === before[at]),
+                applications.tally.rows - made);
             // Read once every handler of the change has run.
             Qt.callLater(() => {
                 try {
@@ -353,6 +365,9 @@ ShellRoot {
                 + "Filed, Left out, Recent, Quit");
             const visited = rows[9].targets();
             const sites = rows.slice(3, 8).concat(visited);
+            expect("asked again, the sites it visited are the rows made before",
+                program("browser").verbs()[9].targets().every((row, at) => row === visited[at]),
+                names(visited));
             same("what's open, one row a page, newest looked at first, then in Recent what was "
                 + "open, never a page open now nor one left out", names(sites),
                 `Open A, Older page, Another, Behind, Filed, Page ${reading}`);
