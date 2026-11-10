@@ -41,7 +41,7 @@ impl Niri {
         let counted = Arc::clone(&streams);
         std::thread::spawn(move || {
             for stream in listener.incoming() {
-                let Ok(mut stream) = stream else { return };
+                let mut stream = stream.expect("the stand-in takes each connection");
                 let mut asked = String::new();
                 BufReader::new(stream.try_clone().unwrap())
                     .read_line(&mut asked)
