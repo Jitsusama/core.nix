@@ -91,8 +91,12 @@ Provider {
 
     // How long after an ask of Joel's a manager's window may come and still
     // be his answer to it: the manager waits up to 20 s for a closed app to
-    // open, and its prompt follows within a few more.
-    readonly property int answering: 30000
+    // open, and its prompt follows within a few more. One already answering
+    // asks again only once its leave lapses, and at once, so its window is
+    // given less, lest one changing for its own reasons close the launcher
+    // as Joel reads.
+    readonly property int opening: 30000
+    readonly property int asking: 5000
 
     // Said just before an ask that may have a manager put its prompt up
     // while the launcher is open, so the launcher closes and that window
@@ -102,8 +106,10 @@ Provider {
     function handOver() {
         const windows = managers.map(manager => manager.windows ?? [])
             .reduce((all, some) => all.concat(some), []);
+        const answering = managers.every(manager =>
+            daemon.sources[manager.name]?.state === "answering");
         if (windows.length > 0)
-            provider.launcher?.handsOver?.(windows, answering);
+            provider.launcher?.handsOver?.(windows, answering ? asking : opening);
     }
     // Whether rows name their manager: only while two or more are here.
     readonly property bool naming: Passwords.named(managers)
