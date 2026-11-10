@@ -471,6 +471,8 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
     let deadline = Instant::now() + Duration::from_secs(10);
     while client.ask(&json!({"id": 0, "ask": "health"}))["people"] != 3 {
         assert!(Instant::now() < deadline, "the roster was never held");
+        // The roster's three lines land as the source starts, asked about
+        // again each 20 ms until the deadline.
         std::thread::sleep(Duration::from_millis(20));
     }
     let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "listing"}));

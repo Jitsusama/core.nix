@@ -1420,7 +1420,7 @@
     clippy finds nothing in the people daemon or its tests
   '';
   people-runs-where-a-source-names-a-program = ''
-    the people daemon runs for Slack's and Tuple's sources on the daemons' socket, which systemd
+    the people daemon runs for Slack's, Tuple's and Google's sources on the daemons' socket, which systemd
     holds for it, restarting as the new one after a switch, and neither it nor its socket is
     there where no source names a program for it
   '';

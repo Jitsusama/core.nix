@@ -330,34 +330,40 @@ fn by_pieces(one: &[String], other: &[String]) -> Ordering {
 /// then by the last thing with each, the newest first, those with nothing
 /// yet after, then A to Z, and those alike in all three in the order heard.
 pub fn ordered(persons: &[Person], now: f64) -> Vec<&Person> {
-    let mut measured: Vec<(bool, Option<f64>, Vec<String>, usize, &Person)> = persons
+    /// Someone listed, with what they're ordered by, each measured once.
+    struct Measured<'a> {
+        favourite: bool,
+        last: Option<f64>,
+        pieces: Vec<String>,
+        heard: usize,
+        person: &'a Person,
+    }
+    let mut measured: Vec<Measured> = persons
         .iter()
         .enumerate()
         .filter(|(_, person)| person.listed(now))
-        .map(|(at, person)| {
-            (
-                person.stood.favourite,
-                person.last(now),
-                pieces(&person.name),
-                at,
-                person,
-            )
+        .map(|(heard, person)| Measured {
+            favourite: person.stood.favourite,
+            last: person.last(now),
+            pieces: pieces(&person.name),
+            heard,
+            person,
         })
         .collect();
     measured.sort_by(|one, other| {
         other
-            .0
-            .cmp(&one.0)
-            .then_with(|| match (one.1, other.1) {
+            .favourite
+            .cmp(&one.favourite)
+            .then_with(|| match (one.last, other.last) {
                 (Some(a), Some(b)) => b.partial_cmp(&a).unwrap_or(Ordering::Equal),
                 (Some(_), None) => Ordering::Less,
                 (None, Some(_)) => Ordering::Greater,
                 (None, None) => Ordering::Equal,
             })
-            .then_with(|| by_pieces(&one.2, &other.2))
-            .then_with(|| one.3.cmp(&other.3))
+            .then_with(|| by_pieces(&one.pieces, &other.pieces))
+            .then_with(|| one.heard.cmp(&other.heard))
     });
-    measured.into_iter().map(|(.., person)| person).collect()
+    measured.into_iter().map(|one| one.person).collect()
 }
 
 /// When who's listed, and their order, next change with the clock alone:
