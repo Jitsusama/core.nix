@@ -19,6 +19,7 @@ PersonSource {
     // row moves at once rather than when Tuple tells it: each is kept
     // until the daemon's record says what was asked, or isn't held.
     property var favoured: ({})
+    standing: favoured
 
     Connections {
         target: source.place
@@ -27,7 +28,7 @@ PersonSource {
             const kept = {};
             for (const id in source.favoured) {
                 const asked = source.favoured[id];
-                const entry = source.place.recordOf[asked.key]?.sources?.[source.settings.name];
+                const entry = source.place.recordFor(asked.key)?.sources?.[source.settings.name];
                 if (entry && entry.favourite !== asked.wanted)
                     kept[id] = asked;
             }
