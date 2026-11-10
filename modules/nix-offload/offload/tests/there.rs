@@ -123,7 +123,7 @@ const NO_SECOND: &str = "/nonexistent/nix-offload-more";
 /// machine's own.
 const NO_SECOND_VM: &str = "/nonexistent/nix-offload-vm-more";
 
-/// And the VM lenders' past the second, as /run/nix-offload-vm-3 to -8
+/// And the VM lenders' past the second, as /run/nix-offload-vm-3 to -16
 /// are this machine's own: left to them, a run here split its VM tests
 /// between the real ones from 6 November.
 const NO_MORE_VMS: &str = "/nonexistent/nix-offload-vm-3";

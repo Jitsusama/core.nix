@@ -87,14 +87,14 @@
       # And of a second for VM tests, for those past the first's room.
       "d /run/nix-offload-vm-more 0755 ${config.jitsusama.nix-offload.account} - -"
     ]
-    # And of up to six past it, as home.nix's vmTests.extra lends them,
+    # And of up to fourteen past it, as home.nix's vmTests.extra lends them,
     # which stay empty until one does.
     ++ map (
       let
         account = config.jitsusama.nix-offload.account;
       in
       number: "d /run/nix-offload-vm-${toString number} 0755 ${account} - -"
-    ) (lib.range 3 8)
+    ) (lib.range 3 16)
     ++ [
       # And of a third, for what `there` sends while the first is full.
       "d /run/nix-offload-more 0755 ${config.jitsusama.nix-offload.account} - -"
