@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -46,6 +47,12 @@ REPEAT = 1 / 30
 # what the changes cost the keys is what's left between them.
 KEYS = 90
 TURNS = 4
+# What the stand-ins wrote just before they froze reached the shell up to 2.5 s after, so a
+# frozen turn's arrows were blamed for the rows it made: 40 of Agents' at 2 and 220 at 1.5 (a
+# whole run and a diagnostic one, 2026-11-09). A frozen turn begins once the shell has sorted
+# pi's sessions no more for longer than that, and gives up after so many looks.
+UNHEARD = 3.0
+LOOKS = 10
 # As many sessions as a busy day of Joel's, a few changing each beat as his do (2026-11-08: his
 # openings heard Agents change 27 to 75 times in their first three seconds), and as many people
 # as his People knows, said anew each round as Slack's answers say them.
@@ -206,6 +213,19 @@ class Turns:
         wait = f"SYSTEMD_BUS_TIMEOUT={round(FREEZING.total_seconds())}"
         self.desktop.as_account(f"{wait} systemctl --user {verb} stand-in-sessions crowd-load")
         self.frozen = frozen
+        if frozen:
+            self.settle()
+
+    def settle(self) -> None:
+        """Wait until the shell has heard the last of what the stand-ins wrote before freezing."""
+        heard = sorts(self.desktop)["heard"]
+        for _ in range(LOOKS):
+            time.sleep(UNHEARD)
+            now = sorts(self.desktop)["heard"]
+            if now == heard:
+                return
+            heard = now
+        pytest.fail(f"the shell went on sorting pi's sessions {LOOKS * UNHEARD} s after a freeze")
 
     def keys(self, rows: int) -> list[str]:
         """Give a turn's keys, down and up the band, turning before an end a key couldn't pass."""
