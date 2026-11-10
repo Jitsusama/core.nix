@@ -1,5 +1,7 @@
 //! The agents' words, as the launcher's vocabulary says them
-//! (modules/quickshell/launcher/words.json, the `agents` thing's `said`),
+//! (modules/quickshell/launcher/words.json, a thing's `said`: `agents`'s,
+//! and `agents:machine`'s and `agents:wants`' for a session elsewhere and
+//! what it wants),
 //! read rather than written again here, so a row says what the launcher
 //! would and one word changes in one place.
 
@@ -8,7 +10,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_json::Value;
 
-/// The agents' words, by their keys.
+/// One thing's words, by their keys.
 #[derive(Debug, Default)]
 pub struct Said(HashMap<String, String>);
 
@@ -31,11 +33,16 @@ impl Said {
     /// The agents' words from the vocabulary's text; none where it names
     /// no agents.
     pub fn from_vocabulary(text: &str) -> serde_json::Result<Self> {
+        Self::of_thing(text, "agents")
+    }
+
+    /// The words of the thing going by `id`; none where there's none.
+    pub fn of_thing(text: &str, id: &str) -> serde_json::Result<Self> {
         let vocabulary: Vocabulary = serde_json::from_str(text)?;
         let said = vocabulary
             .things
             .into_iter()
-            .find(|thing| thing.id == "agents")
+            .find(|thing| thing.id == id)
             .and_then(|thing| match thing.said {
                 Value::Object(words) => Some(words),
                 _ => None,
@@ -118,6 +125,19 @@ mod tests {
                 said.word(key),
                 "",
                 "core's vocabulary lacks the agents' {key}"
+            );
+        }
+        let text = include_str!("../../quickshell/launcher/words.json");
+        for (thing, key) in [
+            ("agents:machine", "on"),
+            ("agents:machine", "away"),
+            ("agents:wants", "question"),
+        ] {
+            let said = Said::of_thing(text, thing).expect("core's vocabulary reads");
+            assert_ne!(
+                said.word(key),
+                "",
+                "core's vocabulary lacks {thing}'s {key}"
             );
         }
     }

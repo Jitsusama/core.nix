@@ -8,7 +8,7 @@ use crate::said::Said;
 
 /// One thing a row says at its right, with how much it's needed, so
 /// where room runs short they give way whole (Choice.qml).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Item {
     pub said: String,
     pub keep: u8,

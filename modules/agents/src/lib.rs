@@ -9,10 +9,14 @@
 //! - `figures`: what a row says at its right, and its drawer's figures.
 //! - `summary`: how the sessions stand together.
 //! - `said`: the launcher's own words for all of it.
+//! - `row`: a session's row, and every row laid out, folds and all.
+//! - `session`: a session as the node tells of it, and their order.
 //! - `watch`: what the node and the other daemons hold, heard as it moves.
 
 pub mod figures;
+pub mod row;
 pub mod said;
+pub mod session;
 pub mod standing;
 pub mod summary;
 pub mod tree;
