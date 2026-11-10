@@ -123,9 +123,13 @@ fn word(state: Option<&State>) -> (&'static str, &'static str) {
     }
 }
 
-/// When Google last answered, or none before it first has.
-fn read(state: Option<&State>) -> Option<i64> {
-    state.and_then(|state| state.heard)
+/// A list's or a watch's answer: its records, when Google last answered
+/// (none before it first has), and how the account stands.
+fn listed<T: serde::Serialize>(id: &Value, records: &[T], state: Option<&State>) -> Value {
+    json!({
+        "id": id, "records": records, "read": state.and_then(|state| state.heard),
+        "sources": {"google": word(state).0},
+    })
 }
 
 /// One watch a client holds.
@@ -356,11 +360,7 @@ impl Daemon {
                     .filter_map(|key| held.records.get(key))
                     .take(limit)
                     .collect();
-                let (state, _) = word(held.state.as_ref());
-                json!({
-                    "id": id, "records": records, "read": read(held.state.as_ref()),
-                    "sources": {"google": state},
-                })
+                listed(&id, &records, held.state.as_ref())
             }
             "watch" => {
                 let watch = Watch {
@@ -384,11 +384,7 @@ impl Daemon {
                 // Sent while Google's next answer waits on the lock, so
                 // whatever it changes reaches the watch after these, and
                 // the shell never takes them over that change.
-                let (state, _) = word(held.state.as_ref());
-                let answer = json!({
-                    "id": id, "records": records, "read": read(held.state.as_ref()),
-                    "sources": {"google": state},
-                });
+                let answer = listed(&id, &records, held.state.as_ref());
                 let _ = told.send(answer.to_string());
                 Value::Null
             }
