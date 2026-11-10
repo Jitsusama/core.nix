@@ -19,6 +19,7 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import time
 from datetime import timedelta
@@ -38,6 +39,8 @@ READ = timedelta(seconds=5)
 # How long a terminal's show counts as seeing its rows (Launcher.qml's terminalSeeing), and a
 # second past it. Nothing says the window closed, so the case waits it out.
 SEEING_ENDS = timedelta(seconds=4)
+# How long before its line a chord is said to have run, well past any opening's own time here.
+CHORD_AGO = timedelta(seconds=2)
 
 
 @pytest.fixture(scope="module")
@@ -1818,6 +1821,29 @@ def test_a_held_arrow_makes_one_drawer_once_it_rests(shell: Shell) -> None:
         shell.close_launcher()
         for window in windows:
             shell.close(window)
+
+
+def test_an_opening_is_timed_from_the_chord_that_asked_for_it(shell: Shell) -> None:
+    """An opening is timed from the chord that asked for it, as launcher-say says it ran.
+
+    Joel feels the time from his press, and a shell busy with other work hears the ask late,
+    which timing from the ask can't show (WCJQSG, 2026-11-10: "to its frame" isn't what he
+    feels; he feels how long until it's usable). So a chord said to have run a while ago
+    makes an opening at least that long from it.
+    """
+    pressed = time.time() - CHORD_AGO.total_seconds()
+    with socket.socket(socket.AF_UNIX) as said:
+        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+        said.sendall(f"toggle @{pressed:.6f}\n".encode())
+    shell.launcher_ready()
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    felt = -1
+    while felt < 0 and time.monotonic() < deadline:
+        openings = json.loads(shell.as_account(shell.ipc("openings")))
+        felt = openings[-1].get("felt", -1) if openings else -1
+        time.sleep(launcher_on_niri.POLL)
+    ago = CHORD_AGO.total_seconds() * 1000
+    assert felt >= ago, f"the opening was timed {felt} ms from a chord {ago:.0f} ms before it"
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

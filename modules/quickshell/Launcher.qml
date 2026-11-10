@@ -6358,7 +6358,13 @@ Scope {
                 onRead: line => {
                     caller.connected = false;
                     root.askedToOpen();
-                    const words = line.trim().split(/\s+/);
+                    const said = line.trim().split(/\s+/);
+                    // launcher-say ends its line with when the chord ran it
+                    // (chordAt), which a line from anything else may leave out.
+                    const chord = /^@[0-9.]+$/.test(said[said.length - 1] ?? "") ? said.pop()
+                        : "";
+                    root.chordHeard(chord);
+                    const words = said;
                     if (words[0] === "toggle")
                         root.open = !root.open;
                     else if (words[0] === "collection")
@@ -7705,12 +7711,32 @@ Scope {
         if (!open)
             openAsked = KeyTimes.now();
     }
+
+    // When the chord that asked for this opening ran launcher-say, on the
+    // wall clock in ms, and how long the shell took to hear it: Joel feels
+    // the time from his chord, and a shell busy with other work hears it
+    // late, which the time from hearing it can't show (WCJQSG, 2026-11-10:
+    // "to its frame" isn't what he feels; he feels how long until it's
+    // usable). -1 for an ask that didn't say, as qs ipc's don't.
+    property real chordAt: -1
+    property real chordHeardAfter: -1
+    function chordHeard(word) {
+        if (open || word === "") {
+            chordAt = -1;
+            return;
+        }
+        chordAt = Number(word.slice(1)) * 1000;
+        chordHeardAfter = Date.now() - chordAt;
+    }
     function openDrawn() {
         const asked = openAsked;
         openAsked = -1;
         if (!open || asked < 0)
             return;
         const took = Math.round(KeyTimes.now() - asked);
+        const felt = chordAt < 0 ? -1 : Math.round(Date.now() - chordAt);
+        const heard = Math.round(chordHeardAfter);
+        chordAt = -1;
         const parts = Pacing.openingParts(openParts);
         const worked = Math.round(openWorked);
         const first = openingsDrawn === 0;
@@ -7722,10 +7748,11 @@ Scope {
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
         openingsTimed = openingsTimed.concat([{ took, worked, parts: openParts, rows, made: most,
-            verbs: openVerbsWeighed, first }]).slice(-20);
+            verbs: openVerbsWeighed, first, felt }]).slice(-20);
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), ${rows} rows made (${most})`
-            + (first ? ", the first since the shell started" : ""));
+            + (first ? ", the first since the shell started" : "")
+            + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
     }
     function madeSince(when) {
         madeFrom = { rows: tallies(), texts: Fuzzy.keptSoFar(), changes: Object.assign({}, changesIn),
