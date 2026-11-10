@@ -2163,7 +2163,8 @@
     People with Tuple as its source, read from the people daemon, lists favourites and those called
     lately, finds anyone as they stand while holding only those listed and found, calls, joins and
     favours them, steps in before calling, lists a source's page for them after the ways to reach
-    them with its facts in the drawer and the time where they are, and never asks Tuple itself
+    them with its facts in the drawer and the time where they are, knows who an address is with no
+    row made, and never asks Tuple itself
   '';
   the-launcher-finds-the-quests = ''
     the launcher reads the open and ended quests the node serves, each with its own kind rather
