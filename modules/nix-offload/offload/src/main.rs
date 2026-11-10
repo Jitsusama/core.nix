@@ -1408,10 +1408,13 @@ impl Sent<'_> {
                     changed::evaluating_longest(),
                 )
             };
+            // Held only while it evaluates; what it names builds elsewhere.
+            let turn = changed::turn(scratch, &evaluator.host);
             let asked = match ask(&evaluating) {
                 Ok((USAGE, _)) => ask(older),
                 asked => asked,
             };
+            drop(turn);
             let (status, printed) = match asked {
                 Ok((status, _)) if status == there::UNREACHED => continue,
                 Ok(evaluated) => evaluated,

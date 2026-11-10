@@ -14,7 +14,10 @@ use std::process::{Command, Output};
 /// what the `says` file beside it holds and, on stderr, what the
 /// `complains` file holds, and exits as the `status` file beside it says.
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
-/// is refused with 64, as a changed-checks from before it was refuses it.
+/// is refused with 64, as a changed-checks from before it was refuses it,
+/// and once it writes `evaluates-for`, such a command takes that many
+/// seconds, adding how many evaluate on its host at once to
+/// `evaluating-at-once-<host>` as it starts.
 /// A host an `unreached-<host>` file names is never reached, exiting 255,
 /// and one a `busy-<host>` file names says it's busy, 76, to a run marked
 /// to move on rather than wait.
@@ -45,7 +48,14 @@ if [ -f "$here/busy-$1" ]; then
 fi
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64
-    [ -f "$here/evaluates-forever" ] && exec sleep 120 ;;
+    [ -f "$here/evaluates-forever" ] && exec sleep 120
+    if [ -f "$here/evaluates-for" ]; then
+      mkdir -p "$here/evaluating-$1"
+      : > "$here/evaluating-$1/$$"
+      ls "$here/evaluating-$1" | wc -l >> "$here/evaluating-at-once-$1"
+      sleep "$(cat "$here/evaluates-for")"
+      rm -f "$here/evaluating-$1/$$"
+    fi ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
   *--dry-run*) cat "$here/plans" 2>/dev/null; exit 0 ;;
   *"&& echo"*) cat > "$here/fetched"
@@ -2606,6 +2616,44 @@ fn an_evaluator_that_names_nothing_is_left_on_its_clock() {
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains("far named nothing within 5 seconds"),
         "{ran:?}"
+    );
+}
+
+#[test]
+fn an_evaluator_evaluates_one_run_at_a_time() {
+    // On 8 November six runs sat on one evaluator at once for up to three
+    // hours, its Nix saying its database was busy.
+    let changed = Changed::new();
+    fs::remove_file(changed.offload.join("store")).unwrap();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = answering.local_addr().unwrap();
+    fs::create_dir_all(changed.folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        changed.folder.path().join("nix-offload/evaluators"),
+        format!("{address} far o\n"),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("evaluates-for"), "2").unwrap();
+    let ran: Vec<Output> = std::thread::scope(|scope| {
+        let runs: Vec<_> = (0..2)
+            .map(|_| scope.spawn(|| changed.run(&["--name-only"]).0))
+            .collect();
+        runs.into_iter().map(|run| run.join().unwrap()).collect()
+    });
+    for run in &ran {
+        assert_eq!(run.status.code(), Some(0), "{run:?}");
+        assert!(
+            String::from_utf8_lossy(&run.stdout).contains("changed  a"),
+            "each is evaluated: {run:?}"
+        );
+    }
+    let at_once = fs::read_to_string(changed.bin.join("evaluating-at-once-far")).unwrap();
+    assert_eq!(at_once, "1\n1\n", "the second waited for the first");
+    assert!(
+        ran.iter()
+            .any(|run| String::from_utf8_lossy(&run.stderr).contains("waits its turn")),
+        "the one waiting says so: {ran:?}"
     );
 }
 

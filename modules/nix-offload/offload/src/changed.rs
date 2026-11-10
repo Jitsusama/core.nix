@@ -19,7 +19,8 @@
 //! repository's owner, named in `nix-offload/evaluators` under XDG's
 //! config folder, which only
 //! evaluates, and the checks it names are built by `there` as any build
-//! is. One that names nothing within [`EVALUATING_LONGEST`] is left for
+//! is. Each takes one run at a time, the rest waiting their [`turn`],
+//! and one that names nothing within [`EVALUATING_LONGEST`] is left for
 //! the next. With none, it exits [`UNBUILT`] while a lender runs, so nothing is
 //! evaluated here unasked, and otherwise [`NOT_TAKEN`], and changed-checks
 //! runs here.
@@ -32,6 +33,7 @@
 
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -333,6 +335,43 @@ pub fn in_turn<T>(lenders: [T; 2], run: u32) -> [T; 2] {
     } else {
         [second, first]
     }
+}
+
+/// Waits for `host`'s turn to evaluate, had while what this gives is
+/// held, so an evaluator takes one run at a time and the rest wait here:
+/// on 8 November six runs at once sat on one for up to three hours, its
+/// Nix saying its database was busy. The turn is kept here rather than on
+/// the evaluator, so its clock counts only the evaluating, never the wait.
+/// A turn that can't be waited for is said, and the run goes on without.
+pub fn turn(scratch: &Path, host: &str) -> Option<fs::File> {
+    waited_turn(scratch, host)
+        .inspect_err(|error| eprintln!("nix-offload: couldn't wait for {host}'s turn: {error}"))
+        .ok()
+}
+
+fn waited_turn(scratch: &Path, host: &str) -> io::Result<fs::File> {
+    fs::create_dir_all(scratch)?;
+    let held = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(scratch.join(format!("evaluating-{host}")))?;
+    let locked = |how| {
+        // SAFETY: flock only locks the file this holds open.
+        if unsafe { libc::flock(held.as_raw_fd(), how) } == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    };
+    match locked(libc::LOCK_EX | libc::LOCK_NB) {
+        Err(error) if error.raw_os_error() == Some(libc::EWOULDBLOCK) => {
+            eprintln!("nix-offload: {host} evaluates another run, so this waits its turn");
+            locked(libc::LOCK_EX)?;
+        }
+        locked => locked?,
+    }
+    Ok(held)
 }
 
 /// Runs `command` on `host` by ssh, sending `bundle` on its standard
