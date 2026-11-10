@@ -38,6 +38,15 @@ pub trait Disk {
 /// Reclaims one candidate, judging it once more first.
 pub trait Reclaimer {
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome;
+
+    /// Whether a stop waits, which ends the pass before its next
+    /// candidate. Once one waits the pacer stops resting, and on 10
+    /// November a pass of thousands of cache files went on unpaced until
+    /// systemd killed the guard 90 s after its stop, its desktop shell gone
+    /// with it.
+    fn stopping(&self) -> bool {
+        crate::commands::stop_waiting()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +76,8 @@ pub enum End {
     Reached,
     Exhausted,
     Stalled,
+    /// A stop came, and what was left waits for the next start.
+    Stopped,
     Failed(String),
 }
 
@@ -213,6 +224,10 @@ pub fn pass(
             // it may have been enough.
             if candidate.class.command() && !batch.is_empty() {
                 break;
+            }
+            if reclaimer.stopping() {
+                report.end = End::Stopped;
+                return report;
             }
             taken[index] = true;
             let outcome = reclaimer.reclaim(candidate);
