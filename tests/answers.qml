@@ -2770,9 +2770,6 @@ QtObject {
             [["charge_control_start_threshold", "55"], ["charge_control_end_threshold", "60"]]);
         machine("a limit with no start", Power.limitWrites(null, 80, 90, 5),
             [["charge_control_end_threshold", "90"]]);
-        machine("the room's lux", Power.lux("20000", "0.001000000", "0"), 20);
-        machine("a sensor with no scale", Power.lux("17", "", ""), 17);
-        machine("a sensor not read", Power.lux("", "0.001", "0"), null);
         machine("a dark room", Power.roomLevel(0), 0);
         machine("daylight", Power.roomLevel(10000), 1);
         machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,

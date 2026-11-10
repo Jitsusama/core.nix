@@ -3069,6 +3069,7 @@ onLinux {
       cp ${./launcher/Power.js} launcher/Power.js
       cp ${./launcher/ScreenAnswers.js} launcher/ScreenAnswers.js
       cp ${./launcher/Screens.js} launcher/Screens.js
+      cp ${./launcher/Seen.js} launcher/Seen.js
       cp ${./launcher/Warmth.js} launcher/Warmth.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json

@@ -29,9 +29,9 @@
 // Joel's pick; then, on the built-in screen, the Room light its sensor
 // hears. "brightness" asks it, and "brightness 40" sets it on Return. The
 // backlight and the room's light are the machine daemon's (modules/machine,
-// light.rs), read once a second while the launcher is open and told here
-// as they move, so the shell reads no file for them, and the sensor's
-// slow count is the daemon's to wait on. The screen the backlight's device
+// light.rs), read once a second while they can be seen and told here as
+// they move, so the shell reads no file for them, and the sensor's slow
+// count is the daemon's to wait on, on a thread of its own. The screen the backlight's device
 // names as its connector holds Brightness, and is never said, since its
 // drawer's eyebrow already names it.
 //
@@ -56,6 +56,7 @@ import "Plate.js" as Plate
 import "Power.js" as Power
 import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
+import "Seen.js" as Seen
 import "Warmth.js" as Warmth
 
 Provider {
@@ -230,35 +231,39 @@ Provider {
         const light = backlit(output) ? provider.light : null;
         if (light === null)
             return [];
-        const rows = [Object.assign(setting(output, "brightness", `${light.share}%`, "brightness",
+        const rows = [Object.assign(setting(output, "brightness", lightRead ? `${light.share}%`
+            : partSaid("", "unread"), "brightness",
             // Each by its value, as every choice is (VKCF3Z, 2026-11-09),
             // :set brightness= its command.
             levels.map(each => choice({
                 key: `brightness-${each}`,
                 name: Words.name("displays:brightness:level", "", { n: each }),
                 mark: "brightness",
-                chosen: light.share === each,
+                chosen: lightRead && light.share === each,
                 run: () => provider.brighten(each),
                 words: "displays:brightness:level",
                 fill: { n: each }
             }))), {
-            graph: level(light.now, light.most),
+            graph: level(lightRead ? light.now : 0, light.most),
             // With the lid shut nothing hears the room, and a monitor has
             // no steps of the panel's, so it only says what sets it.
             note: inTheRoom(output)
-                ? partSaid("brightness", "followsRoom").replace("{now}", grouped(light.now))
-                    .replace("{most}", grouped(light.most))
+                ? partSaid("brightness", lightRead ? "followsRoom" : "followsRoomUnread")
+                    .replace("{now}", grouped(light.now)).replace("{most}", grouped(light.most))
                 : partSaid("brightness", "everyFollows")
         })];
-        if (inTheRoom(output) && room !== null)
+        // The row stands from the sensor, so it keeps its place while what
+        // the sensor hears is still being read.
+        const heard = lightRead ? room : null;
+        if (inTheRoom(output) && roomSensor !== null)
             rows.push(copyRow({
                 key: `displays:${output.name}:room`,
                 name: partName("room"),
-                side: lux(room),
-                copy: lux(room),
+                side: heard === null ? partSaid("", "unread") : lux(heard),
+                copy: heard === null ? "" : lux(heard),
                 glyph: "",
                 hue: "machine",
-                graph: level(Power.roomLevel(room), 1),
+                graph: level(heard === null ? 0 : Power.roomLevel(heard), 1),
                 note: partSaid("room", "hears")
             }));
         // Warmth sits right after Brightness, found by its key, so a row
@@ -415,7 +420,8 @@ Provider {
             stays: true,
             run: () => provider.brighten(kept),
             rows: [],
-            note: partSaid("", "now").replace("{share}", light.share)
+            note: lightRead ? partSaid("", "now").replace("{share}", light.share)
+                : partSaid("", "unread")
         };
     }
 
@@ -426,17 +432,15 @@ Provider {
         && (launcher.held ?? []).length === 0 && launcher.answer?.live === provider
 
     // The machine daemon's backlights and light sensors, read once a second
-    // while the launcher is open, from the moment it opens, since the
-    // Brightness and Room Light answers are found through a screen's rows
-    // too, or while a terminal's look walked into Screens; none is held
-    // while the daemon isn't answering, so no old level is said as now.
+    // while they can be seen (lightsSeen); none is held while the daemon
+    // isn't answering, and what an earlier watch left is said as not read
+    // yet (lightRead), so no old level is said as now.
     Daemon {
         id: lights
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: ["backlight", "light"]
-        live: provider.launcher !== null
-            && (provider.launcher.open || provider.terminalLooks)
+        live: provider.lightsSeen
         keptThroughGap: false
         answersWhole: true
     }
@@ -448,6 +452,10 @@ Provider {
     // or null until it's said one.
     property var light: null
     onLightChanged: changed()
+    // Whether what's held of the lights was told for this watch, so says
+    // the level as it is now; until then the level held from an earlier
+    // watch is said as not read yet, in the same rows.
+    readonly property bool lightRead: lights.answeredThisWatch
     property var roomSensor: null
     onRoomSensorChanged: changed()
     readonly property var room: roomSensor?.lux ?? null
@@ -471,13 +479,13 @@ Provider {
         const records = Object.values(lights.held);
         const now = Backlight.lit(records);
         const sensed = Backlight.sensor(records);
-        const moved = JSON.stringify(now) !== JSON.stringify(light)
-            || JSON.stringify(sensed) !== JSON.stringify(roomSensor);
-        if (JSON.stringify(now) !== JSON.stringify(light))
+        const lit = JSON.stringify(now) !== JSON.stringify(light);
+        const sensing = JSON.stringify(sensed) !== JSON.stringify(roomSensor);
+        if (lit)
             light = now;
-        if (JSON.stringify(sensed) !== JSON.stringify(roomSensor))
+        if (sensing)
             roomSensor = sensed;
-        if (moved && lightShown)
+        if ((lit || sensing) && lightShown)
             answered();
     }
 
@@ -489,6 +497,16 @@ Provider {
     // A terminal's look waits for the daemon's whole answer to its watch,
     // as the launcher shows the light once it opens (Provider.stillReading).
     stillReading: terminalLooks && !(launcher?.open ?? false) && !lights.answeredThisWatch
+        && lights.state !== "not answering"
+
+    // Whether the lights can be seen, so are watched: Screens' answer, a
+    // screen stepped into or found, a place holding Screens, words typed
+    // asking the Brightness or the Room light, or a terminal's look
+    // (Seen.js), as Heat is read; not every page the launcher opens on.
+    readonly property bool lightsSeen: Seen.seen(launcher, provider, ["displays"],
+        typed => brightnessTyped.test(typed.trim().toLowerCase())
+            || ["brightness", "room"].includes(partsAsked[asks(typed)]))
+        || terminalLooks
 
     // Its maker and model, leaving out a model that's only a number.
     function named(output) {
@@ -697,11 +715,13 @@ Provider {
                 label: partName("brightness"),
                 // A monitor following the panel has none of its steps,
                 // and a hundred steps are its share again.
-                value: inTheRoom(output) && light.most !== 100 ? Plate.runs([`${light.share}%`,
-                    partSaid("", "steps").replace("{now}", grouped(light.now))
-                        .replace("{most}", grouped(light.most))])
+                value: !lightRead ? partSaid("", "unread")
+                    : inTheRoom(output) && light.most !== 100 ? Plate.runs([`${light.share}%`,
+                        partSaid("", "steps").replace("{now}", grouped(light.now))
+                            .replace("{most}", grouped(light.most))])
                     : `${light.share}%`,
-                figure: { shape: "stroke", values: [light.now / light.most], warn: false }
+                figure: { shape: "stroke", values: [lightRead ? light.now / light.most : 0],
+                    warn: false }
             });
             // What the kernel says of the steps, only for the panel they
             // are, after the share they make (VKCF3Z, 2026-11-09).
@@ -711,13 +731,14 @@ Provider {
             // level does, and is asked only for the screen it lights; or
             // that no light is heard, where the daemon follows nothing.
             const said = (key, values) => Backlight.fill(partSaid("", key), values);
-            const heard = inTheRoom(output) ? Backlight.room(settled, room, said,
+            const heard = inTheRoom(output) ? Backlight.room(settled, lightRead ? room : null, said,
                 each => lux(each)) : "";
             if (heard !== "")
                 facts.push({ label: partName("room"), value: heard });
             // What the sensor counts, after the lux it makes of them.
             if (inTheRoom(output) && roomSensor !== null)
-                facts.push(...Backlight.sensorFacts(roomSensor, partName, told, grouped));
+                facts.push(...Backlight.sensorFacts(lightRead ? roomSensor
+                    : Object.assign({}, roomSensor, { raw: null }), partName, told, grouped));
             // What sets the level, the Warmth, then the curve, which moves
             // only with a pick, so goes last of the light (VKCF3Z, 2026-11-08).
             const follows = inTheRoom(output) ? Backlight.follows(settled, said) : "";
@@ -742,7 +763,7 @@ Provider {
             if (inTheRoom(output))
                 facts.push({ label: partName("device"), value: light.device, identifies: true });
             if (inTheRoom(output) && roomSensor !== null)
-                facts.push({ label: partName("sensor"), value: roomSensor.name,
+                facts.push({ label: partName("sensor"), value: roomSensor.device,
                     identifies: true });
         }
         const edid = Plate.facts(factRows(output));
@@ -1095,7 +1116,7 @@ Provider {
             // Until the daemon's first answer comes, a light's answer is
             // still being asked, so Return waits for it; while it shows,
             // it's asked again as the light moves.
-            asking: light && !lights.answeredThisWatch,
+            asking: light && !lights.answeredThisWatch && lights.state !== "not answering",
             live: light ? provider : null,
             // A switch says how it stands in full, as its note does.
             headline: part.said ?? part.side,

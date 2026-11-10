@@ -179,8 +179,8 @@ function lit(records) {
 }
 
 // The room's light sensor, from the machine daemon's records: the lux it
-// hears, its raw count, the lux a count is, its offset, its name and its
-// device; or null with none.
+// hears, its raw count, the lux a count is, its offset and its device; or
+// null with none. Its name is always als, the only one light.rs reads.
 function sensor(records) {
     const found = first(records, "light", () => true);
     if (found === null) {
@@ -191,7 +191,6 @@ function sensor(records) {
         raw: Number.isFinite(found.raw) ? found.raw : null,
         perCount: found.scale,
         offset: found.offset ?? 0,
-        name: found.name,
         device: found.device
     };
 }

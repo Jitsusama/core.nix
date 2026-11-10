@@ -8361,7 +8361,8 @@
         "turnOn": "turn on",
         "scaleAt": "scale {scale}",
         "setTo": "set the screen to {share}%",
-        "now": "now {share}%"
+        "now": "now {share}%",
+        "unread": "not read yet"
       }
     },
     {
@@ -8374,6 +8375,7 @@
       ],
       "said": {
         "followsRoom": "{now} of {most} steps; it follows the room, and the keys set it",
+        "followsRoomUnread": "{most} steps; it follows the room, and the keys set it",
         "everyFollows": "every screen follows it, and the keys set it"
       }
     },

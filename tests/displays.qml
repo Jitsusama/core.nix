@@ -23,7 +23,14 @@ ShellRoot {
 
         property bool open: false
         readonly property var sources: []
-        readonly property var terminalSees: ({ walked: [] })
+        readonly property var terminalSees: ({ walked: [], listed: [] })
+        // What Seen.js reads of the open launcher: nothing answered,
+        // stepped into, found or placed, so the lights stay unwatched.
+        readonly property var answer: null
+        readonly property var held: []
+        readonly property var matches: []
+        readonly property var placed: []
+        readonly property string typed: ""
     }
 
     Launcher.Displays {

@@ -171,16 +171,21 @@ QtObject {
             said(Backlight.kernelFacts(lit, named, told, count)));
         const moved = Backlight.lit([Object.assign({}, panel,
             { actual_brightness: 1200, scale: null, type: "platform" })]);
-        check("steps read back otherwise are said, grouped; a stepping unsaid isn't",
+        check("steps read back otherwise are said, grouped; a driver with no word isn't",
             said(Backlight.kernelFacts(moved, named, told, count)) === "reads=1,200",
             said(Backlight.kernelFacts(moved, named, told, count)));
+        const platform = Object.assign({ "driven-platform": "a platform driver" }, told);
+        check("a platform driver is said as what drives it",
+            said(Backlight.kernelFacts(moved, named, platform, count))
+                === "reads=1,200; driven-by=a platform driver",
+            said(Backlight.kernelFacts(moved, named, platform, count)));
         check("no backlight that says its most is none",
             Backlight.lit([Object.assign({}, panel, { max_brightness: 0 }), sensor]) === null
                 && Backlight.lit([]) === null,
             JSON.stringify(Backlight.lit([Object.assign({}, panel, { max_brightness: 0 })])));
         const room = Backlight.sensor([panel, sensor]);
-        check("a sensor is the lux it hears, its count and its name",
-            room.lux === 123.4 && room.name === "als"
+        check("a sensor is the lux it hears, its count and its device",
+            room.lux === 123.4 && room.device === "iio:device0"
                 && said(Backlight.sensorFacts(room, named, told, count))
                 === "raw=1,234; per-count=0.1 lx",
             said(Backlight.sensorFacts(room, named, told, count)));

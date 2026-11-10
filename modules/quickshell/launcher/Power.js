@@ -443,23 +443,6 @@ function limitWrites(start, stop, wanted, gap) {
     return wanted >= stop ? [end, begin] : [begin, end];
 }
 
-// A figure a sysfs file gives, or `otherwise` when it gives none.
-function figure(text, otherwise) {
-    const said = String(text ?? "").trim();
-    const value = Number(said);
-    return said === "" || Number.isNaN(value) ? otherwise : value;
-}
-
-// A light sensor's lux, from its raw reading, scale and offset as IIO
-// gives them; a missing scale is one and a missing offset none.
-function lux(raw, scale, offset) {
-    const counted = figure(raw, null);
-    if (counted === null) {
-        return null;
-    }
-    return (counted + figure(offset, 0)) * figure(scale, 1);
-}
-
 // The brightest a room is drawn as: daylight at a window.
 const DAYLIGHT = 10_000;
 
