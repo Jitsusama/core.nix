@@ -13,6 +13,24 @@
   ...
 }:
 let
+  # A runtime's proof as the harness's host-prove writes it, written without
+  # building anything, so reading it back needs no build at evaluation.
+  proofOf =
+    fields:
+    builtins.toFile "pi-host-proof.json" (
+      builtins.toJSON (
+        {
+          kind = "pi-host-runtime-proof";
+          version = 1;
+          harness = "0000000000000000000000000000000000000000";
+          files = 14;
+          cases = 71;
+          provenAt = "2026-11-10T11:00:00.000Z";
+        }
+        // fields
+      )
+    );
+
   # pi as a host runs it, built from pi's own source with every host patch,
   # applied exactly, never fuzzed, so a pi that moved under them fails here
   # rather than in a host. Every pi an account starts stays unpatched: only
@@ -394,16 +412,17 @@ in
     let
       pi = "${pkgs.emptyDirectory}/pi";
       node = "${pkgs.emptyDirectory}/node";
+      proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
       hosts = {
         one = {
-          inherit pi node;
+          inherit pi node proof;
           environment = {
             PROXY_ORIGIN = "https://proxy.example.com";
             GREETING = ''say "hi" there'';
           };
         };
         two = {
-          inherit pi node;
+          inherit pi node proof;
           path = [
             "/first/bin"
             "/second/bin"
@@ -438,6 +457,7 @@ in
         && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
         && lib.elem ''"MYCELIUM_REALM=one"'' environment
         && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
+        && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
         # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
         && lib.elem ''"GREETING=say \"hi\" there"'' environment;
@@ -467,6 +487,56 @@ in
           ]
         && hostsIn (account workstation).systemd.user.services == [ ]
         && hostsIn mac.systemd.user.services == [ ]
+        && lib.all (check: check.assertion) (naming bareNixos self.nixosModules.workstation).assertions
+      );
+
+  # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
+  # on the runtime it is in: a proof of another runtime, of one whose name
+  # merely starts the same, or not a proof at all fails evaluation, naming the
+  # realm and how to prove it.
+  pi-hosts-refuse-an-unproven-runtime =
+    let
+      runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
+      pi = "${runtime}/lib/node_modules/pi-monorepo";
+      node = "${pkgs.emptyDirectory}/node";
+      realm = proof: { inherit pi node proof; };
+      refusals = lib.concatMapStrings (check: check.message + "\n") (
+        lib.filter (check: !check.assertion)
+          (account (bareNixos [
+            self.nixosModules.workstation
+            {
+              home-manager.users.someone.jitsusama.pi.hosts = {
+                proven = realm (proofOf {
+                  inherit runtime;
+                });
+                elsewhere = realm (proofOf {
+                  runtime = "/nix/store/11111111111111111111111111111111-pi-host-runtime-1.5.1";
+                });
+                prefixed = realm (proofOf {
+                  runtime = lib.removeSuffix "-1.5.0" runtime;
+                });
+                stranger = realm (proofOf {
+                  inherit runtime;
+                  kind = "something-else";
+                });
+                later = realm (proofOf {
+                  inherit runtime;
+                  version = 2;
+                });
+              };
+            }
+          ])).assertions
+      );
+    in
+    holds "pi-hosts-refuse-an-unproven-runtime"
+      "A realm's pi was taken without a proof of its own runtime, or the refusal didn't name the realm and how to prove it."
+      (
+        !lib.hasInfix "hosts.proven." refusals
+        && lib.hasInfix "hosts.elsewhere.proof proves /nix/store/1111" refusals
+        && lib.hasInfix "node scripts/host-prove.ts" refusals
+        && lib.hasInfix "hosts.prefixed.proof proves" refusals
+        && lib.hasInfix "hosts.stranger.proof isn't a pi-host-runtime-proof" refusals
+        && lib.hasInfix "hosts.later.proof is version 2, not 1" refusals
       );
 
   # pi-ask's digest says what's true on the machine as each question starts,

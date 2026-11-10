@@ -6,6 +6,13 @@
 # host's patches (checks.nix, pi-hosted-keeps-turns-its-own), and every pi
 # an account starts by hand stays unpatched. A machine that names no realm
 # gets no host. Linux only, for now.
+#
+# No pi reaches a host unproven. The harness's scripts/host-prove.ts writes a
+# runtime's proof once `pnpm test:host` passes on it with no case skipped,
+# and a realm names that proof beside its pi. A proof that doesn't name the
+# runtime the pi is in fails evaluation, so a bump without its proof can't
+# build a generation on any machine, and a check that evaluates one refuses
+# it before it merges. The host program checks the proof again as it starts.
 {
   config,
   lib,
@@ -21,6 +28,23 @@ let
   entry = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-host.ts";
 
   homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
+
+  # Why a realm's proof doesn't prove its pi, or null when it does. The pi is
+  # a folder inside the runtime the proof names, so the runtime is compared
+  # with a slash after it, and one whose name merely starts the same fails.
+  proofRefusal =
+    realm: host:
+    let
+      proof = builtins.fromJSON (builtins.readFile host.proof);
+    in
+    if (proof.kind or null) != "pi-host-runtime-proof" then
+      "jitsusama.pi.hosts.${realm}.proof isn't a pi-host-runtime-proof"
+    else if (proof.version or null) != 1 then
+      "jitsusama.pi.hosts.${realm}.proof is version ${toString (proof.version or "none")}, not 1"
+    else if !(lib.hasPrefix "${proof.runtime or ""}/" host.pi) then
+      "jitsusama.pi.hosts.${realm}.proof proves ${proof.runtime or "nothing"}, not the runtime ${host.pi} is in; prove it with the harness's node scripts/host-prove.ts"
+    else
+      null;
 
   kinds = {
     attended = "the pi conversations Joel watches";
@@ -76,6 +100,8 @@ let
             # pi reads its own files from here, and a subagent a hosted
             # conversation starts runs this pi too.
             PI_PACKAGE_DIR = host.pi;
+            # The host checks it against its pi as it starts.
+            PI_HOST_PROOF = "${host.proof}";
           }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
         );
@@ -110,6 +136,14 @@ in
             description = ''
               The package directory of a pi built with the host's patches, where
               its dist and node_modules are. The host refuses a pi without them.
+            '';
+          };
+          proof = lib.mkOption {
+            type = lib.types.path;
+            description = ''
+              The proof the harness's scripts/host-prove.ts wrote once `pnpm test:host`
+              passed on the runtime `pi` is in, with no case skipped. Evaluation fails
+              when it names another runtime.
             '';
           };
           node = lib.mkOption {
@@ -152,6 +186,17 @@ in
       with an attended and a background host started with the account's session.
     '';
   };
+
+  config.assertions = lib.mapAttrsToList (
+    realm: host:
+    let
+      refused = proofRefusal realm host;
+    in
+    {
+      assertion = refused == null;
+      message = toString refused;
+    }
+  ) cfg;
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (
