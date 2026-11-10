@@ -733,13 +733,16 @@ def storm(desktop: Desktop) -> Iterator[None]:
         "niri msg action spawn -- env -u XDG_ACTIVATION_TOKEN"
         f" {desktop.values['window_storm']} {STORMING} {STORM}"
     )
-    stormy = 'niri msg --json windows | grep -o \'"title":"storm \' | wc -l'
-    listed = f"test $({stormy}) -eq {STORMING}"
-    machine.wait_until_succeeds(desktop.in_session(listed), timeout=REACHING)
+    # Stopped however the wait for its windows ends, so a storm that's slow
+    # to list never retitles through the rest of the module.
     try:
+        stormy = 'niri msg --json windows | grep -o \'"title":"storm \' | wc -l'
+        listed = f"test $({stormy}) -eq {STORMING}"
+        machine.wait_until_succeeds(desktop.in_session(listed), timeout=REACHING)
         yield
     finally:
-        desktop.as_account("pkill -f window-storm")
+        # Bracketed, so the pattern never matches the shell running it.
+        desktop.as_account("pkill -f 'window-stor[m]'")
         gone = '! niri msg --json windows | grep -q \'"title":"storm \''
         machine.wait_until_succeeds(desktop.in_session(gone), timeout=REACHING)
 

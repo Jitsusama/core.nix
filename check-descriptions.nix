@@ -2274,14 +2274,15 @@
     a place's row says nothing after its name; at its right it says how it stands where it says,
     else its word for none while it holds nothing, else how many it holds, and nothing for a place
     that only groups others; its drawer names what it holds, in its own order; and kept for the
-    next opening, home's rows stand in their order by their names, each saying how it stands, and
-    its note, as being read
+    next opening and still unfilled a second after it, home's rows stand in their order by their
+    names, each saying how it stands as being read, its note as it was
   '';
   the-launcher-opens-on-what-it-kept-on-niri = ''
-    on niri, an opening draws home as the closed launcher kept it, though it was left with a word
-    typed, making no row before its frame and each row saying how it stands as being read; filled
-    in, its rows stand where they stood with the cursor on the first, none still being read; and
-    keys typed the moment it holds them are all found
+    on niri, an opening draws home as the closed launcher left it, each row saying what it said and
+    no row made before its frame; left with a word typed, home is kept all the same, and its rows
+    stand where they stood once it settles; moved down as it opens, the cursor stays on that row;
+    no frame from the first to the settled one empties a row and fills it again or puts a shown
+    value back as being read; and keys typed the moment it holds them are all found
   '';
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
@@ -3154,10 +3155,10 @@
     and the first opening after the shell starts again, People listing 500 as Joel's lists
     hundreds, reaches its frame within twice its frozen time and 50 ms more, and the opening
     after it weighs none of the words file's verbs again; and through 40 windows retitled 100
-    times a second, every core busy, nineteen in twenty openings are ready to draw their first
+    times a second, every core busy, each of twenty openings is ready to draw its first
     frame within 50 ms of the ask, its own work, the settling after it and the wait for the
     frame, drawn from what the closed launcher kept and filled in without moving a row or the
-    cursor, and their drawing takes within twice its time with the load frozen and 50 ms more
+    cursor, and its drawing takes within twice its time with the load frozen and 50 ms more
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and

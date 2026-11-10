@@ -362,8 +362,8 @@ onLinux {
     ];
   };
 
-  # An opening draws home as the closed launcher kept it, each row saying
-  # how it stands as being read, then fills it in where its rows stand; and
+  # An opening draws home as the closed launcher kept it, each row as it
+  # stood, then fills it in where its rows stand with nothing flashing; and
   # keys typed as it opens all land (tests/opening-on-niri-test.py).
   the-launcher-opens-on-what-it-kept-on-niri = launcherOnNiri {
     name = "the-launcher-opens-on-what-it-kept-on-niri";
@@ -1066,7 +1066,8 @@ onLinux {
   # 2a429f67, on Joel's 2026-11-08 "i don't like how the title and values on
   # the home screen differ from every other sub-menu"): tests/place-row.qml
   # holds launcher/PlaceRow.js, which makes it in both, in Qt's own engine,
-  # and home as it's kept for the next opening, each reading as being read.
+  # and home still unfilled a second after an opening, each reading as being
+  # read.
   a-place-reads-alike-everywhere =
     let
       qt = pkgs.qt6.qtdeclarative;
