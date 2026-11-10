@@ -758,7 +758,8 @@ mod tests {
 
     #[test]
     fn curls_lines_are_added_up() {
-        assert!((total("25000000\n25000000\n12\n") - 50_000_012.0).abs() < 0.5);
+        let added = total("25000000\n25000000\n12\n");
+        assert!((added - 50_000_012.0).abs() < 0.5, "added up to {added}");
         assert!(total("").abs() < f64::EPSILON, "nothing added to something");
     }
 
