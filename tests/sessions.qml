@@ -117,6 +117,8 @@ ShellRoot {
                 forgotten();
             else if (stage === "differing")
                 differing();
+            else if (stage === "resting")
+                resting();
             else if (stage === "ended")
                 ended();
             else if (stage === "lost")
@@ -410,7 +412,6 @@ ShellRoot {
         // node said of it: running here, now in kitty 600's first window,
         // which nothing named.
         stage = "differing";
-        retoldBefore = Object.assign({}, retold);
         tell({
             changed: [{
                 key: "session:s-NOWIN6",
@@ -431,8 +432,24 @@ ShellRoot {
         // named them, is found by kitty's list: its first is niri's first.
         expect("of a kitty's several windows, one unnamed by kitty's own list",
             unseen.window.id === 20, unseen.window.id);
-        // Only a running session moved, so what reads the parked and the
-        // closed isn't told they did.
+        // Then it rests, as a session's own work moves it, its window
+        // the same.
+        stage = "resting";
+        retoldBefore = Object.assign({}, retold);
+        tell({
+            changed: [{
+                key: "session:s-NOWIN6",
+                presence: { session: "s-NOWIN6", addresses: ["NOWIN6"], busy: false,
+                    terminal: root.terminal("unix:@kitty-600", "1") }
+            }]
+        });
+    }
+
+    // Only a running session moved, so what reads the parked and the
+    // closed isn't told they did.
+    function resting() {
+        if (find("NOWIN6")?.presence.busy !== false)
+            return;
         expect("a running session moving alone tells no parked or closed one",
             retold.parked === retoldBefore.parked && retold.closed === retoldBefore.closed,
             `parked told ${retold.parked - retoldBefore.parked}, closed `
