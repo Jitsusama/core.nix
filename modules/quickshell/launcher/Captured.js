@@ -77,7 +77,7 @@ function shownFrom(line) {
         const said = JSON.parse(line);
         return typeof said === "object" && said !== null && !Array.isArray(said) && !said.error
             ? said : null;
-    } catch (error) {
+    } catch (_malformed) {
         return null;
     }
 }
