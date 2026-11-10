@@ -1,6 +1,7 @@
 // What Programs says of each password manager's program (Passwords.qml's
 // programActs and programFacts): its entries grouped by vault, and what
-// its drawer says it holds. Kept apart from Passwords.js,
+// its drawer says it holds; and which of the rows its entries were made
+// into are kept as it lists them again. Kept apart from Passwords.js,
 // which says each entry, so each stays a size a reader holds whole; the
 // the-passwords-show-every-figure-but-the-secret check runs it in Qt's own
 // engine (tests/passwords.qml).
@@ -52,6 +53,25 @@ function held(records, said) {
 function holding(count, said) {
     const words = String((count === 1 ? said.entry : said.entries) ?? "");
     return words.replace("{count}", Numbers.format(count, 0));
+}
+
+// Each entry's row, the one made before while its record says the same,
+// else made again by `made`, with what to keep for the next listing:
+// { rows, kept }, `kept` by key and given back as `before`. The daemon
+// gives every record it lists as a new object, unchanged or not, and a
+// step into Passwords asks it to list them all, so rows kept only while
+// their record was the same object were each made again just after the
+// step was drawn (2026-11-10).
+function rowsKept(records, before, made) {
+    const kept = {};
+    const rows = records.map(record => {
+        const was = before[record.key];
+        const said = was?.record === record ? was.said : JSON.stringify(record);
+        const row = was && was.said === said ? was.row : made(record);
+        kept[record.key] = { record, said, row };
+        return row;
+    });
+    return { rows, kept };
 }
 
 // What a manager's note in Programs says while it can't read: why, as
