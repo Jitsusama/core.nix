@@ -137,7 +137,8 @@
   '';
   a-row-kept-is-never-drawn-again = ''
     the launcher's list keeps a row listed before and now wherever it moves, a key listed twice as
-    two rows, and draws afresh only a row new to the list, the same rows taking no step
+    two rows, and draws afresh only a row new to the list, the same rows taking no step and a row
+    falling or rising any way taking one
   '';
   a-sender-keeps-to-its-level = ''
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
@@ -2122,7 +2123,8 @@
     types at once once for its newest letters, a Return among them acting on the row those
     letters found, steps into For You's looks by :filter look and back out by -, glides the
     selection to its row by the arrows only and draws it on its row as
-    rows above it change, reads on a long name while it's selected, tells the meaning daemon the
+    rows above it change, draws again no row a narrowing letter kept and, for a first letter, only
+    the rows in view and one past them, reads on a long name while it's selected, tells the meaning daemon the
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
     WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network

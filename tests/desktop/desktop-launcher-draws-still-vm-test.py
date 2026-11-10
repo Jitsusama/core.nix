@@ -755,10 +755,10 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
         cost = worked() - before
         now = laid_out(desktop)
         # Qt's ListView builds rows a cache's height past the view as well as
-        # those shown: 15 where 8 are shown, on main (2026-11-09). A step
-        # into a fresh place builds every row in reach, so it draws exactly
-        # this many and the bound is met with nothing to spare; a row more is
-        # one built out of reach, which is what it's there to catch.
+        # those shown, a row each way here (Launcher.qml's cacheBuffer). A
+        # step into a fresh place builds every row in reach, so it draws
+        # exactly this many and the bound is met with nothing to spare; a row
+        # more is one built out of reach, which is what it's there to catch.
         reach = math.ceil((now["inside"]["height"] + now["ahead"]) / now["rowTall"])
         # The launcher times a step to its frame as it does a key, and says
         # it once it's felt (Trials.js).

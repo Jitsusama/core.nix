@@ -57,6 +57,54 @@ QtObject {
         }
         Expect.same("the same rows take no step at all", RowsKept.steps(["a", "b"], ["a", "b"]),
             []);
+        // [what, the rows held, the rows listed now, the steps]
+        const moves = [
+            ["a row falling to the end is one move", "a b c d e", "b c d e a",
+                [{ move: 0, to: 4 }]],
+            ["a row rising to the top is one move", "a b c d e", "e a b c d",
+                [{ move: 4, to: 0 }]],
+            ["a row falling partway is one move", "a b c d e", "b c d a e",
+                [{ move: 0, to: 3 }]],
+            ["rows falling past each other move once each", "a b c d e", "c d e b a",
+                [{ move: 0, to: 4 }, { move: 0, to: 3 }]]
+        ];
+        for (const [what, was, now, steps] of moves) {
+            Expect.same(what, RowsKept.steps(was.split(" "), now.split(" ")), steps);
+        }
+        const many = "a b c d e f g h".split(" ");
+        const swapped = ["h", ...many.slice(1, 7), "a"];
+        Expect.same("two rows swapping ends move no row between",
+            RowsKept.steps(many, swapped).length, 2);
+        Expect.same("and end where they're listed", done(many, swapped),
+            { rows: swapped.join(" "), drawn: "" });
+
+        // Lists drawn from a seeded sequence (Park and Miller's), the same
+        // every run, each ending where it's listed and drawing only the
+        // rows it didn't hold.
+        let seed = 7;
+        const next = most => {
+            seed = (seed * 48271) % 2147483647;
+            return seed % most;
+        };
+        const keys = "a b c d e f g h i j".split(" ");
+        const pickedFrom = () => Array.from({ length: next(9) }, () => keys[next(keys.length)]);
+        for (let each = 0; each < 500; each += 1) {
+            const was = pickedFrom();
+            const now = pickedFrom();
+            const ended = done(was, now);
+            const held = was.slice();
+            const fresh = now.filter(key => {
+                const at = held.indexOf(key);
+                if (at >= 0) {
+                    held.splice(at, 1);
+                }
+                return at < 0;
+            });
+            Expect.same(`${was.join("")} to ${now.join("")} ends where it's listed`,
+                ended.rows, now.join(" "));
+            Expect.same(`${was.join("")} to ${now.join("")} draws only rows it didn't hold`,
+                ended.drawn.split(" ").filter(key => key !== "").sort(), fresh.sort());
+        }
 
         Qt.exit(0);
     }

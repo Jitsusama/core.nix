@@ -13,6 +13,7 @@ from __future__ import annotations
 import errno
 import itertools
 import json
+import math
 import os
 import re
 import shlex
@@ -914,6 +915,29 @@ def test_a_letter_narrowing_the_rows_draws_none_it_kept(shell: Shell) -> None:
     assert drawn <= len(new), (
         f"{drawn} rows drawn afresh where {len(new)} are new ({new}); kept {kept}"
     )
+
+
+def test_a_first_letter_draws_only_the_rows_in_view(shell: Shell) -> None:
+    """A first letter draws the rows in view and a row past them, not a cache's height more.
+
+    Qt's ListView builds rows a cache's height past its view as well as those shown, and a
+    first letter or a step into a place lists rows wholly new, so each drew 15 rows where 8
+    are shown, about half of what its showing spent after its search (2026-11-10).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = laid_out(shell)
+    shell.type_in("s")
+    shell.launcher_until(lambda shown: shown["typed"] == "s")
+    after = laid_out(shell)
+    shell.close_launcher()
+    shown = math.ceil(after["inside"]["height"] / after["rowTall"])
+    # Else the rows end within the old cache too, and this proves nothing.
+    assert int(after["listed"]) > 2 * shown, (after["listed"], shown)
+    drawn = int(after["drawn"]) - int(before["drawn"])
+    # The rows shown, one cut by the view's foot among them, and one past it: the list stands
+    # at its top, so no row is built above it.
+    assert drawn <= shown + 1, f"{drawn} rows drawn for a first letter where {shown} are shown"
 
 
 def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell) -> None:
