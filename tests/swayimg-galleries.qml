@@ -9,7 +9,8 @@
 // still there, or on the folder where none is, and not offered once it's
 // counted holding none; the screenshots' gallery leading while it holds
 // any, else the newest folder's, else nothing; what a gallery's row says
-// beside it; and what the drawer says of the screenshots.
+// beside it; what each gallery's drawer shows; and what the drawer says
+// of the screenshots.
 import QtQuick
 import "FileFacts.js" as FileFacts
 import "launcher/Swayimg.js" as Swayimg
@@ -74,43 +75,58 @@ QtObject {
             [{ folder: "/", pictures: ["/a.png"] }]);
         expect("nothing in Recent is no folder", Swayimg.folders([], []), []);
 
-        expect("the folders are read a file a line, none inside them and none hidden",
+        expect("the folders are read a file a line, when it changed and its path,"
+            + " none inside them and none hidden",
             Swayimg.listing(["/home/joel/Downloads", "/home/joel"]),
             ["find", "/home/joel/Downloads", "/home/joel", "-maxdepth", "1", "-type", "f",
-                "-not", "-name", ".*", "-printf", "%p\\n"]);
+                "-not", "-name", ".*", "-printf", "%T@\\t%p\\n"]);
 
+        // Each file as the listing prints it: when it last changed, in
+        // seconds, then its path.
+        const changed = (seconds, path) => `${seconds}\t${path}`;
         const within = ["/home/joel/Downloads", "/home/joel", "/home/joel/Empty"];
-        const listed = Swayimg.read(["/home/joel/Downloads/dog.webp",
-            "/home/joel/Downloads/notes.txt", "/home/joel/Downloads/DRAWING.SVG",
-            "/home/joel/Downloads/raw.jpeg", "/home/joel/tidepool.jpg",
-            "/home/joel/Empty/readme.md", "/elsewhere/stray.png"], within);
+        const listed = Swayimg.read([changed("1794070100.25", "/home/joel/Downloads/dog.webp"),
+            changed("1794070900", "/home/joel/Downloads/notes.txt"),
+            changed("1794070300.5", "/home/joel/Downloads/DRAWING.SVG"),
+            changed("1794070200", "/home/joel/Downloads/raw.jpeg"),
+            changed("1794060000", "/home/joel/tidepool.jpg"),
+            changed("1794070000", "/home/joel/Empty/readme.md"),
+            changed("1794070000", "/elsewhere/stray.png")], within);
         expect("only pictures count, of only the folders read, a folder with none none",
             listed.counts, { "/home/joel/Downloads": 3, "/home/joel": 1, "/home/joel/Empty": 0 });
         expect("the pictures there are known by path", Object.keys(listed.there).sort(),
             ["/home/joel/Downloads/DRAWING.SVG", "/home/joel/Downloads/dog.webp",
                 "/home/joel/Downloads/raw.jpeg", "/home/joel/tidepool.jpg"]);
+        const drawing = { path: "/home/joel/Downloads/DRAWING.SVG", at: 1794070300500 };
+        const pool = { path: "/home/joel/tidepool.jpg", at: 1794060000000 };
+        expect("each folder's newest picture, of pictures alone", listed.newest,
+            { "/home/joel/Downloads": drawing, "/home/joel": pool });
 
         expect("before a read, each opens on Recent's newest there, uncounted",
             Swayimg.galleries(recent, null, [shots]), [
                 { folder: "/home/joel/Downloads", count: null,
-                    target: "/home/joel/Downloads/cat.png" },
-                { folder: "/home/joel", count: null, target: "/home/joel/tidepool.jpg" }
+                    target: "/home/joel/Downloads/cat.png", newest: null },
+                { folder: "/home/joel", count: null, target: "/home/joel/tidepool.jpg",
+                    newest: null }
             ]);
         expect("once read, each says how many, opening on the newest of Recent's still there",
             Swayimg.galleries(recent, listed, [shots]), [
                 { folder: "/home/joel/Downloads", count: 3,
-                    target: "/home/joel/Downloads/dog.webp" },
-                { folder: "/home/joel", count: 1, target: "/home/joel/tidepool.jpg" }
+                    target: "/home/joel/Downloads/dog.webp", newest: drawing },
+                { folder: "/home/joel", count: 1, target: "/home/joel/tidepool.jpg",
+                    newest: pool }
             ]);
         expect("a folder whose pictures from Recent are all gone opens on its newest",
             Swayimg.galleries(["/home/joel/Downloads/gone.png"], listed, []),
-            [{ folder: "/home/joel/Downloads", count: 3, target: "/home/joel/Downloads" }]);
+            [{ folder: "/home/joel/Downloads", count: 3, target: "/home/joel/Downloads",
+                newest: drawing }]);
         expect("a folder counted holding none isn't offered, nor one that's gone",
             Swayimg.galleries(["/home/joel/Empty/a.png", "/home/joel/Gone/b.png"],
                 Swayimg.read([], ["/home/joel/Empty", "/home/joel/Gone"]), []), []);
         expect("a folder Recent gained since the read stands uncounted",
             Swayimg.galleries(["/home/joel/New/a.png"], listed, []),
-            [{ folder: "/home/joel/New", count: null, target: "/home/joel/New/a.png" }]);
+            [{ folder: "/home/joel/New", count: null, target: "/home/joel/New/a.png",
+                newest: null }]);
 
         expect("a gallery being counted says so", Swayimg.side(null, "~", pictures),
             "\u2026 \u00b7 ~");
@@ -146,6 +162,36 @@ QtObject {
                 { id: "swayimg:screenshots:count", value: "214" }
             ]);
         expect("and nothing while there are none", Swayimg.held(null, 0, now, words), []);
+
+        // Each gallery's drawer, a folder's plate with its newest picture.
+        const plated = { file: words, labelled: id => of(id).name };
+        const lately = { path: "/home/joel/Pictures/lighthouse.png", at: now - 3 * 60_000 };
+        const folder = Swayimg.plate({ where: "~", name: "Pictures", count: 3,
+            newest: lately, target: "/home/joel/Pictures/tide.png", taken: false }, now, plated);
+        expect("a folder's gallery says where its folder is, then its kind",
+            [folder.eyebrow, folder.eyebrowNames, folder.title],
+            ["in ~ \u00b7 Folder", true, "Pictures"]);
+        expect("its newest picture previewed, as a file's drawer previews one", folder.preview,
+            { picture: "/home/joel/Pictures/lighthouse.png", across: 0, down: 0 });
+        expect("its newest's name, when it was added, and how many", folder.facts, [
+            { label: "Newest", value: "lighthouse.png" },
+            { label: "Added", value: kept("3_min ago") },
+            { label: "Pictures", value: "3" }
+        ]);
+        const screenshots = Swayimg.plate({ where: "~/Pictures", name: "Screenshots",
+            count: 214, newest, taken: true }, now, plated);
+        expect("the screenshots' says when its newest was taken",
+            [screenshots.eyebrow, screenshots.facts.map(fact => fact.label),
+                screenshots.preview?.picture],
+            ["in ~/Pictures \u00b7 Folder", ["Newest", "Taken", "Pictures"], `${shots}/shot.png`]);
+        const unread = Swayimg.plate({ where: "~", name: "Downloads", count: null,
+            newest: null, target: "/home/joel/Downloads/cat.png", taken: false }, now, plated);
+        expect("before its folder is read, what it opens on, and nothing more said",
+            [unread.preview?.picture, unread.facts],
+            ["/home/joel/Downloads/cat.png", []]);
+        expect("a picture the shell can't draw isn't previewed", Swayimg.plate({ where: "~",
+            name: "Downloads", count: 3, newest: drawing, taken: false }, now, plated).preview,
+            undefined);
         expect("each fact is named in the launcher's words",
             ["swayimg:screenshots:newest", "swayimg:screenshots:count"].map(id => of(id).name),
             ["Newest Screenshot", "Screenshots"]);

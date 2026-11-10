@@ -894,12 +894,17 @@ def test_swayimg_typed_lists_the_picture_it_shows_under_it_and_return_steps_in(
             )
         )
         # It says how many pictures the folder holds, once they're counted,
-        # and Return opens its gallery on the picture, newest first.
+        # its drawer the folder's plate, previewing its newest picture, the
+        # one just shown, and Return opens its gallery on the picture, newest
+        # first.
         desktop.down_to(home)
         desktop.launcher_until(
             lambda shown: (
                 re.fullmatch(r"\d+[\xa0 ]pictures?", (shown["selected"] or {}).get("side", ""))
                 is not None
+                and (shown.get("drawer") or {}).get("out") is True
+                and shown["drawer"]["facts"] == ["Newest", "Added", "Pictures"]
+                and (shown["drawer"]["preview"] or {}).get("picture") == looked
             )
         )
         machine.send_key("ret")
