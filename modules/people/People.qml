@@ -419,8 +419,16 @@ Provider {
     // that can't step in. Asked of any provider holding `personOf`, so a
     // machine without People lists no one.
     function personOf(email) {
-        const person = byEmail[String(email ?? "").trim().toLowerCase()];
+        const person = whoIs(email);
         return person ? made(person, standOf(person)) : null;
+    }
+
+    // Who an address is, as People knows them, { key, name, emails, ... },
+    // with no row made: for a count of a meeting's guests or a call's name
+    // (Calendar.qml, Transcripts.qml), which made each one's whole row; null
+    // when no source knows them.
+    function whoIs(email) {
+        return byEmail[String(email ?? "").trim().toLowerCase()] ?? null;
     }
 
     // Their next meeting, drawn as a meeting is everywhere, the soonest any
