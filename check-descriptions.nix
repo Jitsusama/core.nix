@@ -432,6 +432,13 @@
   daemon-client-passes-clippy = ''
     clippy finds nothing in daemon-client, the daemon and client the daemons' tests share
   '';
+  daemon-serve-passes-clippy = ''
+    clippy finds nothing in daemon-serve, the serving side the daemons share
+  '';
+  daemon-serve-tells-each-watch-what-moved = ''
+    a daemon's watch is answered whole, then told only what moved in what it watches, by kind,
+    key or place, and the daemon answers its own asks
+  '';
   darwin-role-twice-is-once = ''
     importing a nix-darwin role twice leaves the machine unchanged
   '';

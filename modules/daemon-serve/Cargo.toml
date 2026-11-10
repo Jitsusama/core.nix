@@ -1,0 +1,19 @@
+# daemon-serve: the serving side of the launcher's daemon interface, a
+# library each daemon serving the shell names by path, so one copy of
+# the socket, its watches and its changes serves them all (src/lib.rs
+# says how).
+[package]
+name = "daemon-serve"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1.0"
+
+[dev-dependencies]
+daemon-client = { path = "../daemon-client" }
