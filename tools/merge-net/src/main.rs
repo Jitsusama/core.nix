@@ -394,11 +394,17 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         Some(ready::names_gone(&branch, &main_side))
     };
     let records = ready::recent_records();
-    // Should git fail to say what they touched, every record is read, as
-    // slow as before but no less right.
-    let candidates = touched_by(&records).map_or(records.clone(), |touched| {
-        ready::likely(&records, &touched, &files)
+    // Only records carrying one of the change's own subjects go on to the
+    // costlier reads. Should git fail to say either, every record is read,
+    // as slow as before but no less right.
+    let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
+    let records = logged(&records, &["--format=%H%x01%s"]).map_or(records.clone(), |said| {
+        ready::titled(&records, &said, &subjects)
     });
+    let candidates = logged(&records, &["--format=%x01%H", "--name-only"])
+        .map_or(records.clone(), |touched| {
+            ready::likely(&records, &touched, &files)
+        });
     let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
@@ -604,19 +610,13 @@ fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// What each of `commits` changed in its own commit, as `git log
-/// --name-only` prints it for `ready::likely`, from one git for them all.
-/// A commit this clone lacks is left out.
-fn touched_by(commits: &[String]) -> Option<String> {
+/// What `git log` says of each of `commits`, in `format`, from one git for
+/// them all: its subject for `ready::titled`, or what it changed in its own
+/// commit for `ready::likely`. A commit this clone lacks is left out.
+fn logged(commits: &[String], format: &[&str]) -> Option<String> {
     let mut log = Command::new("git")
-        .args([
-            "log",
-            "--no-walk=unsorted",
-            "--ignore-missing",
-            "--stdin",
-            "--format=%x01%H",
-            "--name-only",
-        ])
+        .args(["log", "--no-walk=unsorted", "--ignore-missing", "--stdin"])
+        .args(format)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()

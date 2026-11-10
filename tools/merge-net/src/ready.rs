@@ -128,6 +128,27 @@ pub fn when_same<T>(
     then(base)
 }
 
+/// Of `candidates`, those whose commit carries the subject of one of the
+/// change's own commits, `subjects`, read from `said`, lines of a commit
+/// and its subject split by `\x01`: a rebase keeps a commit's message, so
+/// an earlier run of the same change is among them. Read
+/// from the commits alone, it costs a fraction of a second, where the
+/// files each touched, read from their trees, took 52 s of a `ready` past
+/// five minutes under the disk's load on 10 November.
+pub fn titled(candidates: &[String], said: &str, subjects: &[String]) -> Vec<String> {
+    let kept: std::collections::HashSet<&str> = said
+        .lines()
+        .filter_map(|line| line.split_once('\x01'))
+        .filter(|(_, subject)| subjects.iter().any(|own| own == subject))
+        .map(|(id, _)| id)
+        .collect();
+    candidates
+        .iter()
+        .filter(|candidate| kept.contains(candidate.as_str()))
+        .cloned()
+        .collect()
+}
+
 /// The candidates, in their order, whose own newest commit changed one of
 /// `files`, the files the head's change makes, as `touched` says: `git log
 /// --name-only` over every candidate at once, each commit's files below a
@@ -679,6 +700,22 @@ mod tests {
                 &checked
             ),
             "another Nix file was read as checks"
+        );
+    }
+
+    #[test]
+    fn only_runs_carrying_one_of_the_changes_subjects_are_read() {
+        let candidates = vec![
+            "a".to_owned(),
+            "b".to_owned(),
+            "c".to_owned(),
+            "d".to_owned(),
+        ];
+        let said = "a\x01fix(x): mend it\nb\x01feat(y): other work\nc\x01Merge e into f\n";
+        assert_eq!(
+            titled(&candidates, said, &["fix(x): mend it".to_owned()]),
+            vec!["a".to_owned()],
+            "only its own commit; d was never said"
         );
     }
 
