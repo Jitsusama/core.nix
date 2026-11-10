@@ -163,13 +163,26 @@ enum Which {
 }
 
 /// What the shell asks for, or the paste keys, once the launcher has let
-/// go of them.
+/// go of them: how long that took after the ask, and when it did.
 #[derive(Debug, PartialEq)]
 enum Asked {
     Clear,
     Copy(Which),
     Paste(Which, Keys),
-    Press(Keys),
+    Press(Keys, Duration, Instant),
+}
+
+/// What a paste says of its time, in the journal: how long the launcher
+/// took to let go of the keys after the ask, which is the shell's frame,
+/// and how long the keys took to be pressed after that, which is ours.
+fn pasted(letting_go: Duration, pressing: Duration) -> String {
+    let ms = |took: Duration| took.as_secs_f64() * 1000.0;
+    format!(
+        "Pasted: the launcher let go of the keys {:.1} ms after the ask, and they were \
+         pressed {:.1} ms after that.",
+        ms(letting_go),
+        ms(pressing)
+    )
 }
 
 /// A line from the shell, as what it asks, or none for one it doesn't
@@ -748,6 +761,7 @@ impl State {
     /// side, for the launcher to let go of the keys, and asks for the paste
     /// keys to be pressed once it has.
     fn paste(&mut self, which: Which, keys: Keys, handle: &QueueHandle<Self>) {
+        let asked = Instant::now();
         if !self.offer(which, handle) {
             return;
         }
@@ -760,7 +774,11 @@ impl State {
                 eprintln!("The launcher never let go of the keys, so nothing was pasted.");
                 return;
             }
-            if pressing.send(Asked::Press(keys)).is_ok() {
+            let let_go = Instant::now();
+            if pressing
+                .send(Asked::Press(keys, let_go - asked, let_go))
+                .is_ok()
+            {
                 let _ = waking.write_all(b"!");
             }
         });
@@ -1175,7 +1193,10 @@ fn run() -> Result<(), String> {
                     state.offer(which, &handle);
                 }
                 Asked::Paste(which, keys) => state.paste(which, keys, &handle),
-                Asked::Press(keys) => state.press(keys),
+                Asked::Press(keys, letting_go, let_go) => {
+                    state.press(keys);
+                    eprintln!("{}", pasted(letting_go, let_go.elapsed()));
+                }
                 Asked::Clear => {}
             }
         }
@@ -1538,6 +1559,15 @@ mod tests {
         ] {
             assert_eq!(asked(line), None, "{line}");
         }
+    }
+
+    #[test]
+    fn a_paste_says_how_long_the_launcher_and_the_keys_took() {
+        assert_eq!(
+            pasted(Duration::from_micros(114_040), Duration::from_micros(8_060)),
+            "Pasted: the launcher let go of the keys 114.0 ms after the ask, and they were \
+             pressed 8.1 ms after that."
+        );
     }
 
     #[test]

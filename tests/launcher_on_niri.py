@@ -94,7 +94,7 @@ class Shell:
             socket = Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"
             with (self.log.parent / "clipboard-history.log").open("wb") as log:
                 self.daemons.append(
-                    subprocess.Popen(  # noqa: S603
+                    subprocess.Popen(  # noqa: S603, the program the check gives
                         [os.environ["CLIPBOARD"], "--socket", str(socket)],
                         stdout=log,
                         stderr=subprocess.STDOUT,
@@ -461,3 +461,13 @@ def started() -> Shell:
     shell = Shell(Path(os.environ["SHELL_FOLDER"]).resolve(), Path(os.environ["LOGS"]))
     shell.start()
     return shell
+
+
+@contextlib.contextmanager
+def running() -> Iterator[Shell]:
+    """Give the shell, started, and stop it once done with, as a test file's fixture does."""
+    shell = started()
+    try:
+        yield shell
+    finally:
+        shell.stop()

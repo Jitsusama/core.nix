@@ -2154,9 +2154,10 @@
     window Joel types in
   '';
   a-paste-lands-while-the-shell-is-busy-on-niri = ''
-    on niri, Return on a copy in the launcher pastes it into the terminal under within 50 ms,
-    though the shell is held stopped the moment it has asked, since the clipboard's history
-    serves the copy and presses the paste keys through a virtual keyboard
+    on niri, Return on a copy in the launcher pastes it into the terminal under within 500 ms,
+    though the shell is held stopped the moment it has asked and let go of the keys, since the
+    clipboard's history serves the copy and presses the paste keys through a virtual keyboard,
+    within 20 ms of the launcher letting go
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
