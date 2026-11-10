@@ -18,6 +18,8 @@ ShellRoot {
     // The file's lines as last read, and those it held before a close.
     property var lines: []
     property var before: []
+    // The Trials the loader made, as itself.
+    readonly property Trials made: trials.item as Trials
 
     function fail(message) {
         console.warn(`FAIL ${message}`);
@@ -32,9 +34,9 @@ ShellRoot {
     // An opening with a letter typed and nothing picked, closed.
     function openAndClose() {
         before = read();
-        trials.item.opened();
-        trials.item.pressed("letters");
-        trials.item.closed();
+        root.made.opened();
+        root.made.pressed("letters");
+        root.made.closed();
     }
 
     // Five openings in the list the shell kept before lines, of which the
@@ -79,8 +81,9 @@ ShellRoot {
             const ats = root.lines.map(line => JSON.parse(line).at)
                 .map(at => at <= 5 ? at : "new").join(" ");
             if (root.stage === "carrying" && ats === "3 4 5") {
-                if (trials.item.trials !== undefined)
-                    return root.fail(`the shell holds the openings: ${trials.item.trials}`);
+                // Read by name, since Trials has no such list to say.
+                if (root.made["trials"] !== undefined)
+                    return root.fail(`the shell holds the openings: ${root.made["trials"]}`);
                 root.stage = "closing";
                 root.openAndClose();
             } else if (root.stage === "closing" && root.lines.length === 4) {
