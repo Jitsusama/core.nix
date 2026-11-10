@@ -1979,7 +1979,8 @@ onLinux {
   # location is Location.qml's own, reading whereabouts itself over its
   # socket: here is the one it kept from before it started, written here,
   # GeoClue isn't there to say another, and the clock's zone is a link
-  # that names another than the place's.
+  # that names another than the place's. For You's looks are given as
+  # their files' texts, kept only while each reads the same.
   the-launcher-shows-the-moment-in-now =
     let
       facts = singleton "Facts.qml" ''

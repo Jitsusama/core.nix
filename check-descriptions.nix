@@ -2339,7 +2339,8 @@
     version Now draws, the location, saying its town and when the place keeps another zone than
     the clock, the weather, placed the same way, read as the launcher opens and kept while it's
     asked again, then the calendar's own row for the next meeting, and Now counts nothing while
-    only they are there; the location and the clock's zone are whereabouts' own, over its socket
+    only they are there; the location and the clock's zone are whereabouts' own, over its socket;
+    and For You, asked again, makes none of its looks again, only one whose file changed
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a

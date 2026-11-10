@@ -11,6 +11,8 @@
 // weather is read once the launcher opens and again when it hears from
 // Open-Meteo, keeping what it knew while it asks again; the meeting is the
 // calendar's own row; and Now counts nothing while only they are there.
+// For You, asked again what it holds, makes none of its looks again, and
+// only the one whose file changed once one does.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -344,5 +346,38 @@ ShellRoot {
             JSON.stringify([now.waitsNow, ForYouHolds.count, now.homeSays()]));
         Notices.live = {};
         Notices.history = [];
+
+        // For You is asked what it holds as it's stepped into and again as
+        // anything in Now changes while it's held, and each look it lists is
+        // kept while its file reads the same: made anew each time, 105 of
+        // them made 2,535 rows in one opening on Joel's shell (2026-11-09).
+        const lookAt = (id, title) => JSON.stringify({ v: 1, id: id, kind: "page",
+            at: "2026-11-09T12:00:00Z", target: "https://example.com", title: title,
+            why: "Because.", state: "waiting" });
+        now.lookTexts = { "a.json": lookAt("a", "Read A"), "b.json": lookAt("b", "Read B"),
+            "c.json": lookAt("c", "Read C") };
+        const looked = () => now.waiting.verbs().find(row => row.key
+            === "on:waitingOnYou:kind:look")?.verbs() ?? [];
+        const first = looked();
+        expect("For You lists the looks to look at",
+            JSON.stringify(first.map(row => row.name))
+                === JSON.stringify(["Read A", "Read B", "Read C"]),
+            JSON.stringify(first.map(row => row.name)));
+        const madeBefore = now.tally.rows;
+        const again = looked();
+        expect("asked again, it makes none of its looks again",
+            again.every((row, at) => row === first[at]),
+            JSON.stringify(again.map((row, at) => row === first[at])));
+        const madeAgain = now.tally.rows - madeBefore;
+        now.lookTexts = Object.assign({}, now.lookTexts, { "b.json": lookAt("b", "Read B Now") });
+        const changed = looked();
+        expect("a look whose file changed is made again, and only it",
+            changed[0] === first[0] && changed[1] !== first[1] && changed[1].name
+                === "Read B Now" && changed[2] === first[2],
+            JSON.stringify(changed.map((row, at) => [row.name, row === first[at]])));
+        expect("and asking makes no more than it did for one look fewer",
+            now.tally.rows - madeBefore - madeAgain === madeAgain + 1,
+            JSON.stringify([madeAgain, now.tally.rows - madeBefore - madeAgain]));
+        now.lookTexts = {};
     }
 }
