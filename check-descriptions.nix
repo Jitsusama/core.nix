@@ -3234,6 +3234,12 @@
     kitty's Recent, and a buffer of a Neovim in kitty from Neovim's page, which lists every file
     each one holds, while the launcher's home keeps its shape
   '';
+  vm-desktop-outlives-a-switch = ''
+    a switch of the home from the sessions' kitty as it was, with no switch method, onto the one
+    kept through a switch, with a changed command line, leaves the same kitty running with the
+    same sessions' windows in it, and a switch changing the shell beside a unit 30 s slow to stop
+    restarts the shell once that stop is done, with a new shell under 5 s after the old one
+  '';
   vm-desktop-reopens-under-orchestrators = ''
     sessions come back, or start, on their orchestrator's workspace by themselves: what
     restore.json kept of two orchestrations goes where the shell kept each window, two stacked in
@@ -3245,11 +3251,6 @@
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the
     keys and the pointer, bring what they're about forward, and sit inside the window under them,
     and the launcher's drawer of one takes the keys, which move through it as Vim's do
-  '';
-  vm-desktop-sessions-outlive-a-switch = ''
-    a switch of the home from the sessions' kitty as it was, with no switch method, onto the one
-    kept through a switch, with a changed command line, leaves the same kitty running with the
-    same sessions' windows in it
   '';
   vm-desktop-shows-then-rests = ''
     the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
