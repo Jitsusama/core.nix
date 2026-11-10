@@ -409,12 +409,25 @@ Provider {
     // Each notice's row, each with its age as of when it's shown, made
     // again only once something reads them after the history changed, so
     // the thousand kept (Notices.qml, VKCF3Z 2026-11-09) cost nothing while
-    // notices come and go with the launcher closed.
+    // notices come and go with the launcher closed. Even then only a
+    // notice that changed is made again, the history keeping every other
+    // as it was (Notices.qml): every one was made anew at any change, 488
+    // as Joel stepped into For You's Desktop (2026-11-10). A row is kept
+    // by what Return on it does too, which follows whether its sender's
+    // notice is still open and whether a window of it is.
     property var rowsMade: []
     property bool rowsStale: true
+    readonly property var rowsKept: keeper()
     function all() {
         if (rowsStale) {
-            rowsMade = Notices.history.map(notice => made(notice));
+            keepingBegun(rowsKept);
+            rowsMade = Notices.history.map(notice => {
+                const from = source(notice.app);
+                const goes = `${notice.id}:${opens(notice) !== null}`
+                    + `:${!!from.window}:${!!from.entry}`;
+                return keptOr(rowsKept, goes, notice, () => made(notice));
+            });
+            keptOnly(rowsKept);
             rowsStale = false;
         }
         return rowsMade;
