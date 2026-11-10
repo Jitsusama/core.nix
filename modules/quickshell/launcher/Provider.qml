@@ -241,6 +241,8 @@ Scope {
 
     // A row kept from the making before while what it's made from says the
     // same, `from` being all of that as text, or else made anew by `make`.
+    // A keeper whose `from` is values rather than text passes `same`, how
+    // two of them are told alike, such as PiSource.js's alike.
     // So a change remakes only the rows it changed, as Quests keeps its
     // own, rather than every row at every change. A keeper is a plain
     // object, `{ rows: {}, next: null }` (keeper()), held by a property
@@ -251,9 +253,10 @@ Scope {
     function keeper() {
         return { rows: {}, next: null };
     }
-    function keptOr(keeping, key, from, make) {
+    function keptOr(keeping, key, from, make, same) {
         const before = keeping.rows[key];
-        const kept = before && before.from === from ? before : { from: from, row: make() };
+        const alike = before && (same ? same(before.from, from) : before.from === from);
+        const kept = alike ? before : { from: from, row: make() };
         (keeping.next ?? keeping.rows)[key] = kept;
         return kept.row;
     }

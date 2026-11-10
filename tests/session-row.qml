@@ -16,6 +16,7 @@ import "SessionMade.js" as SessionMade
 import "SessionRow.js" as SessionRow
 import "Landed.js" as Landed
 import "Reading.js" as Reading
+import "PiSource.js" as Pi
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -659,7 +660,8 @@ QtObject {
     // Agents keeps a session's row while what it's made from reads the same,
     // and its acts go where the row was made to: so anything Go To reads,
     // a kitty window, a held id or attach words, makes it anew, or Switch
-    // would go to the old window (Y2YBTS's review of #2521).
+    // would go to the old window (Y2YBTS's review of #2521). Told alike as
+    // Agents tells them, with PiSource.js's alike.
     function madeFrom(failures) {
         const session = {
             address: "A1", title: "Reef", folder: "~/src", machine: "here", here: true,
@@ -679,7 +681,8 @@ QtObject {
             "how it stands": [{}, ["listening", "$2"]]
         };
         for (const [what, [fields, beside]] of Object.entries(changed)) {
-            const same = SessionMade.madeFrom(Object.assign({}, session, fields), beside) === from;
+            const same = Pi.alike(SessionMade.madeFrom(Object.assign({}, session, fields), beside),
+                from);
             if (same !== (what === "the same session"))
                 failures.push(`a session's row with ${what} is ${same ? "kept" : "made anew"}`);
         }

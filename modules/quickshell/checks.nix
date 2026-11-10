@@ -1303,6 +1303,7 @@ onLinux {
       cp ${./launcher/Holders.js} Holders.js
       cp ${./launcher/SessionRow.js} SessionRow.js
       cp ${./launcher/SessionMade.js} SessionMade.js
+      cp ${./PiSource.js} PiSource.js
       cp ${./launcher/Order.js} Order.js
       cp ${./launcher/Landed.js} Landed.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js
