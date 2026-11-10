@@ -197,6 +197,12 @@ ShellRoot {
                 rewritten.every((row, at) => (row === all[at]) === (at !== 5))
                     && rewritten[5].side === "waits for memory",
                 JSON.stringify(rewritten.map((row, at) => [row.side, row === all[at]])));
+            Sessions.running = [];
+            Niri.acted = null;
+            moved[0].run();
+            expect("its session gone, a row kept from before goes to no window",
+                Niri.acted === null, JSON.stringify(Niri.acted));
+            expect("and the job's row is made again", queue.everything()[0] !== moved[0], "");
 
             Jobs.said = null;
             expect("a queue that stopped saying says so",

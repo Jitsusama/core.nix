@@ -199,7 +199,8 @@ Provider {
             job.quest ? questRow(job.quest)?.name ?? "" : "", running ? minute : "",
             running ? held[job.slice] ?? "" : ""].join("\u0001");
     }
-    // Plain, so keeping notifies nothing (Provider.qml's keeper).
+    // The rows kept by job, held plain so that keeping one notifies nothing
+    // (Provider.qml's keeper).
     readonly property var keptJobs: keeper()
 
     function listed() {
