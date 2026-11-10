@@ -636,6 +636,11 @@
   firmware-settings-passes-clippy = ''
     clippy finds nothing in firmware-settings or its tests
   '';
+  for-you-weighs-again-only-for-news = ''
+    For You weighs what waits on Joel again only when the node says something new of it: each
+    kind told again with only when it was heard moved weighs nothing again, no item or verdict
+    holds when it was heard, and a quest that ends takes its item away
+  '';
   for-you-weighs-what-needs-joel = ''
     For You weighs what needs Joel by what it blocks, what's due, what he can do now, its kind
     and how long it has waited, the heaviest first and ties as they came, says each row's

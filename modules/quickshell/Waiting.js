@@ -13,6 +13,7 @@
 // types, so the `needs-you-is-true` check runs it in Qt's own engine
 // (tests/waiting-on-you.qml).
 .pragma library
+.import "PiSource.js" as Pi
 
 // A quest's status that means it's over, so nothing of it waits.
 const ENDED = ["concluded", "retired"];
@@ -34,6 +35,35 @@ function addressOf(quest) {
     return (quest.split("-").pop() ?? quest).toUpperCase();
 }
 
+// A record as For You reads it: without when the node last heard it,
+// which moves for every record each time a file is written again, and
+// which nothing here says. So a list told again unchanged reads the same
+// (kept), and no row can show a time that a kept record left behind.
+function unheard(record) {
+    const copy = {};
+    for (const field of Object.keys(record)) {
+        if (field !== "heard") {
+            copy[field] = record[field];
+        }
+    }
+    return copy;
+}
+
+// What `now` says, or what `was` keeps under `name` where that says the
+// same, kept in its place. The node tells each kind again whole whenever
+// a file of it is written, every record's `heard` moved and nothing else,
+// and each time every binding below For You weighed and made its rows
+// again, about 600 ms of the shell's main thread with the launcher shut
+// (2026-11-10). A binding that gives back the same value notifies
+// nothing, so what reads it is left as it was. `was` is a plain object,
+// so keeping in it notifies nothing either.
+function kept(was, name, now) {
+    if (!Pi.alike(was[name], now)) {
+        was[name] = now;
+    }
+    return was[name];
+}
+
 // Each item the node serves, from its `waiting` records by key, with its
 // quest, the file's unless the item names its own, and who keeps it; one
 // with no title says nothing. They're in the order their owners raised
@@ -50,7 +80,8 @@ function served(held) {
         const file = rest.slice(0, rest.indexOf(":"));
         const quest = typeof raw.quest === "string" ? raw.quest : file;
         listed.push({ file, raised: typeof raw.raisedAt === "string" ? raw.raisedAt : "",
-            at: listed.length, item: Object.assign({}, raw, { quest, from: addressOf(file) }) });
+            at: listed.length,
+            item: Object.assign(unheard(raw), { quest, from: addressOf(file) }) });
     }
     return listed.sort((one, other) => one.file.localeCompare(other.file)
         || one.raised.localeCompare(other.raised) || one.at - other.at).map(one => one.item);
@@ -62,7 +93,7 @@ function verdictsOf(held) {
     const items = {};
     for (const key of Object.keys(held ?? {})) {
         if (key.startsWith(VERDICT)) {
-            items[key.slice(VERDICT.length)] = held[key];
+            items[key.slice(VERDICT.length)] = unheard(held[key]);
         }
     }
     return { items };
