@@ -9,6 +9,8 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The serving side every daemon of the shell shares (../daemon-serve).
+daemon-serve = { path = "../daemon-serve" }
 # Files another program writes whole and renames into place, heard as each
 # lands rather than read again on a clock (src/file.rs).
 inotify = { version = "0.11", default-features = false }
