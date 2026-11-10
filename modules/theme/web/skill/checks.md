@@ -25,12 +25,16 @@ through axe-core and its own console.
    wrong: the favicon, the head's names, the mark, one title, the key line,
    the Keys list (on the page, or opened by ? and shut by Escape with focus
    back where it was), the switch, the skip link, the twin, a figure for
-   each part that explains, and the writing's guard (no emdash, no Unicode ellipsis,
-   Canadian spelling, nothing private). It passes on an empty list. A part
-   with nothing to picture gets `data-figure="why"` on its section, the
-   reason in words; never one to quiet the probe. A proper name (a person,
-   a product, a quoted title) is marked `translate="no"`, which the guard
-   skips as screen readers and translators do; never a word of our own.
+   each part that explains, and the writing's guard (no emdash, no Unicode
+   ellipsis, Canadian spelling, nothing private). It passes on an empty
+   list. A part with nothing to picture gets `data-figure="why"` on its
+   section, the reason in words; never one to quiet the probe. A proper
+   name (a person, a product, a quoted title) is marked `translate="no"`,
+   which the guard skips as screen readers and translators do. A person's
+   own words, shown as they typed them (a description, a comment, a
+   gist), sit in an element marked `data-said-by="who"`, which the guard
+   skips too, since they are never rewritten; a bare `blockquote` or `q`
+   is still guarded. Neither is ever for a word of our own.
 2. **Accessibility, at WCAG 2.2 AA, measured.** `browser_check` with `kind:
    "accessibility"` and `level: "AA"` at 320, 768 and 1440 px, in both looks
    (`browser_go` emulate `colorScheme`), every fold open: no failure, and
