@@ -2126,7 +2126,6 @@ Singleton {
     // every session, which with a hundred sessions made a hundred lists a
     // change.
     readonly property var niriWindows: {
-        void Niri.revision;
         const opened = {};
         for (const window of Object.values(Niri.windows)) {
             if (!(String(window.opened) in opened))
