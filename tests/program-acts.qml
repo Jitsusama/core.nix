@@ -26,13 +26,15 @@
 // Recent, dated, its size and when beside it and its drawer saying where
 // it is then its kind, a picture previewed, and where it came from, and
 // Open the Latest Download is listed and found from the
-// top, opening the newest as the desktop opens a file. And what each
+// top, opening the newest as the desktop opens a file, standing in its
+// place saying an ellipsis until the first reading answers. And what each
 // Neovim holds, as a stand-in open-now says it: each file open once,
 // the Neovim looked at last first, said modified and by its tab before its
 // folder, Return going to its buffer through open-now and to its window
-// through niri; and the program's drawer counting them, while the acts
-// found from the top ask open-now nothing and make no file's row. It
-// exits 0 once every case holds, and otherwise 1, saying which didn't.
+// through niri, each file's drawer saying where it is and its buffer;
+// and the program's drawer counting them, while the acts found from the
+// top ask open-now nothing and make no file's row. It exits 0 once every
+// case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -207,6 +209,16 @@ ShellRoot {
                 + " | shown \u00b7 ~/src/beta", sides);
         expect("Go To, then Copy the Path, and no Close It", names(open[0].verbs())
             === "Go To, Copy the Path", names(open[0].verbs()));
+        // Its drawer says where it is, its name, and what only Neovim knows:
+        // its buffer, and when it was last in a window. With no file-preview
+        // given, nothing reads the file, so it says no kind or lines.
+        const plate = open[0].drawer();
+        const labels = plate.facts.map(fact => fact.label).join(", ");
+        expect("a file's drawer, where then its name", plate.eyebrow === "in ~/src/alpha/docs"
+            && plate.title === "notes.md" && plate.preview === undefined,
+            JSON.stringify(plate));
+        expect("then its buffer and when it was last in a window", labels === "Buffer, Last Used"
+            && plate.facts[0].value === "2", JSON.stringify(plate.facts));
         open[0].run();
         expect("its buffer gone to through open-now", spawned() === JSON.stringify([
             Quickshell.env("OPEN_NOW"), "neovim", "go", "41:7", "/run/n1", "2"]), spawned());
@@ -263,9 +275,11 @@ ShellRoot {
                         zathura.foundActs, gimp.foundActs).map(one => one.key))
                         === JSON.stringify(["verb:nvim:find", "verb:chrome:repository"]),
                     JSON.stringify(neovim.foundActs.concat(chrome.foundActs)));
+                // Open the Latest Download waits in its place, Chrome not yet
+                // stepped into, and is found from the top only once read.
                 expect("and inside their programs", keys(neovim.programActs("nvim")
                     .concat(chrome.programActs("google-chrome"))).join(", ")
-                    === "verb:nvim:find, verb:chrome:repository", "");
+                    === "verb:nvim:find, verb:chrome:repository, verb:chrome:download", "");
                 expect("another program given none", neovim.programActs("kitty").length === 0
                     && chrome.programActs("nvim").length === 0, "");
                 root.copy(["text/plain"], `${code}:12:5\n`);
@@ -371,7 +385,8 @@ ShellRoot {
             then: () => {
                 const acts = chrome.programActs("google-chrome");
                 expect("Chrome's acts in order", keys(acts).join(", ")
-                    === "verb:chrome:repository, verb:chrome:link", keys(acts).join(", "));
+                    === "verb:chrome:repository, verb:chrome:link, verb:chrome:download",
+                    keys(acts).join(", "));
                 expect("its address said",
                     acts[1].side === "github.com/Jitsusama/core.nix/pull/12", acts[1].side);
                 acts[1].run();
@@ -380,7 +395,7 @@ ShellRoot {
                 expect("found from the top", chrome.foundActs.length === 2, "");
                 root.copy(["text/plain"], "see https://github.com/Jitsusama");
                 expect("no act for a link among words",
-                    chrome.programActs("google-chrome").length === 1, "");
+                    chrome.programActs("google-chrome").length === 2, "");
                 root.copy(["image/png", "image/jpeg"], "");
                 copies.all = [{ picture: "/run/clipboard/7.jpg", across: 1920, down: 1080,
                     about: "JPEG \u00b7 1.2 MB" }];
@@ -475,13 +490,18 @@ ShellRoot {
             what: "the repositories read again as the launcher opens",
             until: () => Launcher.Repositories.listed.length === 0,
             then: () => {
+                const waiting = chrome.programActs("google-chrome");
                 expect("neither act listed once none is there", keys(neovim.programActs("nvim")
-                    .concat(chrome.programActs("google-chrome"))).join(", ") === ""
+                    .concat(waiting)).join(", ") === "verb:chrome:download"
                     && neovim.foundActs.length === 0 && chrome.foundActs.length === 0,
                     JSON.stringify(neovim.foundActs.concat(chrome.foundActs)));
                 expect("no download read before Chrome is stepped into",
                     chrome.downloads.length === 0 && chrome.recentOf("google-chrome").length === 0,
                     JSON.stringify(chrome.downloads));
+                // So it's in its place from the first frame, never joining the
+                // page's end once read.
+                expect("Open the Latest Download waits in its place until a reading answers",
+                    waiting[0].side === "\u2026", waiting[0].side);
                 theLauncher.held = [{ row: { key: "program:google-chrome" } }];
             }
         }, {

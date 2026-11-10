@@ -2059,10 +2059,12 @@
     stepped into, are file rows in its Recent, dated, their size and when beside them, and in
     each one's drawer where it is then its kind, a picture previewed, and where it came from, with
     Open the Latest Download listed and found from the top
-    only while there's one, opening it as the desktop opens a file; and Neovim lists every file
+    only while there's one, opening it as the desktop opens a file, and standing in its place
+    saying an ellipsis until the first reading answers; and Neovim lists every file
     each Neovim has open once, the one looked at last first, said modified and by its tab, going
-    to its buffer through open-now, and counts them in its drawer, while its acts found from the
-    top ask open-now nothing and make no open file's row
+    to its buffer through open-now, each file's drawer saying where it is, when it was last in a
+    window and its buffer, and counts them in its drawer, while its acts found from the top ask
+    open-now nothing and make no open file's row
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
@@ -3130,9 +3132,10 @@
   '';
   vm-desktop-looks-programs = ''
     on the laptop's screen at 1.5 and at 2, Drive's places and Recent, Spotify and its podcasts,
-    what mpv stopped, Tuple's Recent, the VMs, kitty's repositories and machines, btop's drawer
-    saying it runs in a terminal, Shortcuts over
-    Mail and a Docs tab, Passwords, an entry and its copy in the margin, and 1Password's program
+    what mpv stopped, GIMP's acts and Recent, Neovim's files open in two kitty windows, Chrome's
+    tab and latest download, Tuple's Recent, the VMs, kitty's repositories and machines, btop's
+    drawer saying it runs in a terminal, Shortcuts over Mail and a Docs tab, Passwords, an entry
+    and its copy in the margin, and 1Password's program
     holding Check Every Password after its vaults, each drawn for a person to judge
   '';
   vm-desktop-minds-the-margin = ''

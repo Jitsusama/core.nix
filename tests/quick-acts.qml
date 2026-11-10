@@ -15,8 +15,10 @@
 // the kitty used last or a new one (NeovimOpening.js); what
 // each Neovim says it holds, read whole lines alone, every file once from
 // the Neovim looked at last and the file used last in it, said modified
-// and by its tab, hidden or shown, the command going to its buffer, the
-// and the program's drawer's counts (Neovim.js); and Chrome's downloads read from the lines
+// and by its tab, hidden or shown, what only Neovim says in a file's
+// drawer, its buffer and when it was last in a window where it said, the
+// command going to its buffer, and the program's drawer's counts
+// (Neovim.js); and Chrome's downloads read from the lines
 // chrome-recent-sites prints, those without a path or a size left out and
 // one with no time undated, the latest the first, said by the host it came
 // from and opened as the desktop opens a file (ChromeDownloads.js). The
@@ -73,6 +75,15 @@ QtObject {
             open.map(one => Neovim.side(one, said)),
             ["modified \u00b7 tab 2", "modified \u00b7 tab 1 \u00b7 in 2 windows", "hidden",
                 "tabs 1, 2", "shown"]);
+        // Neovim says when in seconds, the launcher in milliseconds; a
+        // buffer never in a window says no time.
+        const when = at => `at ${at}`;
+        check("a file's buffer and when it was last in a window",
+            Neovim.plateFacts(open[0], when),
+            [{ id: "nvim:buffer", value: "2" }, { id: "nvim:used", value: "at 200000" }]);
+        check("no time where Neovim never had it in a window",
+            Neovim.plateFacts(Object.assign({}, open[0], { at: 0 }), when),
+            [{ id: "nvim:buffer", value: "2" }]);
         check("going to its buffer through its kitty window",
             Neovim.going("/bin/open-now", open[0]),
             ["/bin/open-now", "neovim", "go", "41:7", "/run/a", "2"]);

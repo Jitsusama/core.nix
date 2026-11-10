@@ -1,9 +1,9 @@
 // What Programs › Neovim makes of what each Neovim holds
 // (NeovimProgram.qml): `open-now neovim`'s lines read, every file open
-// once, what each one's row says, the command going to it, and what the
-// program's drawer says. Kept apart from Quickshell's types, so the
-// `the-launcher-acts-only-on-what-it-can` check runs it in Qt's own engine
-// (tests/quick-acts.qml).
+// once, what each one's row says, what only Neovim says in its drawer, the
+// command going to it, and what the program's drawer says. Kept apart
+// from Quickshell's types, so the `the-launcher-acts-only-on-what-it-can`
+// check runs it in Qt's own engine (tests/quick-acts.qml).
 .pragma library
 
 // Between the parts of a side, as every side joins them.
@@ -13,6 +13,9 @@ const BETWEEN = " \u00b7 ";
 // open-now to bring the Neovim forward inside kitty, where its server
 // listens, and what it holds as JSON.
 const FIELDS = 4;
+
+// Neovim says when in seconds, and the launcher in milliseconds.
+const MILLISECONDS = 1000;
 
 // What `open-now neovim` printed, a Neovim a line, each { window, go,
 // server, held }, `held` its process, folder, tabs and files as
@@ -47,10 +50,11 @@ function heard(text) {
 // Every file the Neovims hold, each once, from the Neovim looked at last,
 // by `focused(window)`, its niri window's focus time, and in it the file
 // used last first, so Return lands where Joel was. Each { path, buffer,
-// modified, tabs, tabCount, neovim, windows }: `tabs` the numbers of the
-// tabs showing it, none while it's hidden, `tabCount` how many tabs its
-// Neovim has, and `windows` how many Neovims hold it, modified where any
-// of them has it modified, since that's what waits on Joel.
+// modified, tabs, tabCount, at, neovim, windows }: `tabs` the numbers of
+// the tabs showing it, none while it's hidden, `tabCount` how many tabs its
+// Neovim has, `at` when that Neovim last had it in a window, in seconds, 0
+// for never, and `windows` how many Neovims hold it, modified where any of
+// them has it modified, since that's what waits on Joel.
 function open(neovims, focused) {
     const ordered = neovims.slice().sort((a, b) => focused(b.window) - focused(a.window));
     const byPath = new Map();
@@ -70,6 +74,7 @@ function open(neovims, focused) {
                 modified: file.modified === true,
                 tabs: file.tabs ?? [],
                 tabCount: neovim.held.tabs ?? 1,
+                at: file.at ?? 0,
                 neovim,
                 windows: 1
             };
@@ -105,6 +110,19 @@ function side(one, said) {
         where(one, said),
         one.windows > 1 ? (said.windows ?? "").replace("{count}", String(one.windows)) : ""
     ].filter(part => part !== "").join(BETWEEN);
+}
+
+// What a file's drawer says that only its Neovim knows, after what's said
+// of the file itself (NeovimProgram.qml's plate): its buffer's number, as
+// :ls lists it and :b takes it, and when it was last in a window, said by
+// `when(milliseconds)`, only where Neovim has said. Each { id, value }, by
+// the launcher's words. Whether it's modified and where it shows are its
+// row's side, so neither is said again.
+function plateFacts(one, when) {
+    return [
+        ["nvim:buffer", Number.isInteger(one.buffer) ? String(one.buffer) : ""],
+        ["nvim:used", one.at > 0 ? when(one.at * MILLISECONDS) : ""]
+    ].filter(fact => fact[1] !== "").map(fact => ({ id: fact[0], value: fact[1] }));
 }
 
 // The command bringing a file forward: its Neovim's kitty window inside

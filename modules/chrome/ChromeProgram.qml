@@ -25,6 +25,10 @@
 // then its kind, shows a picture, and says where it came from. Open the
 // Latest Download comes last, there only while the last reading found
 // one, its name beside it, and found from the top by its name then too.
+// Until the first reading since the shell started has answered, it
+// stands in its place saying an ellipsis, as Recent does while it waits,
+// so it never joins the end of a page already drawn, after Quit; a
+// reading that finds none takes it away.
 pragma ComponentBehavior: Bound
 
 import qs
@@ -55,6 +59,10 @@ Provider {
     // { path, size, at, from }, and the newest of them, or null.
     property var downloads: []
     readonly property var latest: Downloads.latest(downloads)
+    // Whether any reading has answered since the shell started, and so
+    // whether Open the Latest Download waits in its place for one.
+    property bool downloadsRead: false
+    readonly property bool latestWaits: !downloadsRead && (settings.downloads ?? []).length > 0
     // So Programs › Chrome, held while any comes or goes, draws it.
     onLinkChanged: changed()
     onOnGitHubChanged: changed()
@@ -94,6 +102,7 @@ Provider {
             onStreamFinished: {
                 provider.downloads = Downloads.listed(listed.text.split("\n")
                     .filter(line => line !== ""));
+                provider.downloadsRead = true;
                 provider.changed();
             }
         }
@@ -128,8 +137,9 @@ Provider {
     function programActs(asked) {
         if (asked !== program)
             return [];
+        const downloaded = latest !== null || latestWaits;
         return (onGitHub ? [repositories()] : []).concat(link !== "" ? [copied()] : [],
-            latest !== null ? [newest()] : []);
+            downloaded ? [newest()] : []);
     }
 
     function recentOf(asked) {
@@ -177,7 +187,8 @@ Provider {
         });
     }
 
-    // Open the Latest Download, saying its name.
+    // Open the Latest Download, saying its name, or an ellipsis while the
+    // first reading hasn't answered.
     function newest() {
         const key = "verb:chrome:download";
         return thing({
@@ -186,7 +197,7 @@ Provider {
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "action",
-            side: Files.named(latest.path),
+            side: latest === null ? "\u2026" : Files.named(latest.path),
             // What's newest when it runs, which a row found from the top,
             // made as the act came, may not have changed with.
             run: () => {
