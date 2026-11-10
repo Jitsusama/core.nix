@@ -59,21 +59,24 @@ let
   # its downloads, as the chrome module's recents and its own provider give
   # them: a desktop entry that starts nothing, and its three lists read from
   # files the test writes, in chrome-recent-sites' form, since no browser
-  # runs here. Opens-files opens its latest download, and looks-programs
-  # shoots its page.
+  # runs here. Opens-files opens its latest download, looks-programs
+  # shoots its page, and keeps-pace steps into it under load.
   bringsChrome = builtins.elem area [
     "opens-files"
     "looks-programs"
+    "keeps-pace"
   ];
   # The areas whose machine brings Neovim, as a workstation does, so
   # Programs › Neovim lists the files each Neovim in a kitty window holds:
-  # opens-files goes to one, and looks-programs shoots the page. Only
-  # there, since its plugins and grammars are much of the account's build,
-  # and no other area reads what it holds; the two build the one package,
-  # so the second costs no build of its own.
+  # opens-files goes to one, looks-programs shoots the page, and
+  # keeps-pace steps into it under load. Only there, since its plugins and
+  # grammars are much of the account's build, and no other area reads what
+  # it holds; they build the one package, so each after the first costs no
+  # build of its own.
   bringsNeovim = builtins.elem area [
     "opens-files"
     "looks-programs"
+    "keeps-pace"
   ];
   # The areas whose launcher lists VMs, as a workstation's does
   # (modules/libvirt/home.nix): what the machine has to open and set, and
@@ -256,12 +259,14 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-slack.py);
 
-  # The areas that walk Passwords, and looks-programs, which shoots it,
-  # whose 1Password's manager asks a stand-in for 1Password's command, op,
-  # since no 1Password account signs in here (desktop/op-stand-in.sh).
+  # The areas that walk Passwords, looks-programs, which shoots it, and
+  # keeps-pace, which steps into it under load, whose 1Password's manager
+  # asks a stand-in for 1Password's command, op, since no 1Password account
+  # signs in here (desktop/op-stand-in.sh).
   walksPasswords = builtins.elem area [
     "launcher-goes-places"
     "looks-programs"
+    "keeps-pace"
   ];
   standInOp = pkgs.writeShellScript "op" ''
     PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/op-stand-in.sh} "$@"
