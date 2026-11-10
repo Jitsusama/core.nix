@@ -905,6 +905,18 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
             == {"label": "Email", "value": "ada@example.com"}
         )
     )
+    # Ctrl+] on her goes into her through People, where she lives, as on
+    # any row holding parts, though People says itself at home.
+    desktop.follow()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["people", "Ada Lovelace"] and shown["rows"][:1] == ["Write a Mail"]
+        )
+    )
+    desktop.step_out()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
+    )
     # Return steps in, never reaching her by itself: Write a Mail first,
     # then her next meeting drawn as a meeting, her mail waiting on Joel,
     # her Recent, and her address to copy last.
