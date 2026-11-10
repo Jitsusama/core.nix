@@ -7,7 +7,7 @@
 # gone. A session can die, park or lose its model; a timer keeps going.
 #
 # It reads core's merges from a bare clone of its own in the same folder,
-# fetched each tick, the switches from update-to-main's follower's journal,
+# fetched each tick, the switches from update-to-main's journal, whoever asked,
 # the runs from nix-offload's record, and the net's round from its state,
 # so it needs no builder and holds nothing between ticks.
 #

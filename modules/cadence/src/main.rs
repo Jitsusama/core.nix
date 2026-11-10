@@ -1,7 +1,7 @@
 //! cadence watches the delivery cycle from outside every session, so it
 //! stays watched when the session keeping it fast dies, parks or loses its
 //! model. Each `cadence tick`, run by a timer, reads the cycle's raw
-//! records (core's merges, the switches update-to-main's follower made,
+//! records (core's merges, every switch update-to-main made,
 //! the runs nix-offload sent, the net's round, the machine's pressure and
 //! memory), writes the last hour's card to `card.txt` in its state folder,
 //! and asks the watcher, by its mesh address, a question for each target
@@ -325,12 +325,18 @@ fn gather(
     now: i64,
 ) -> io::Result<Snapshot> {
     let core = Core::fetched(folder)?;
-    let follower = records::parse_follower(&journal(&[
+    let since = format!("--since=@{}", now - DAY);
+    let mut follower = records::parse_follower(&journal(&[
         "--user",
         "-u",
         "update-to-main-follows",
-        &format!("--since=@{}", now - DAY),
+        &since,
     ]));
+    follower.saw(records::parse_looks(&journal(&[
+        "-u",
+        "update-to-main.service",
+        &since,
+    ])));
     let landings = core.landings(now - DAY, &follower)?;
     let net = state_home.join("net");
     let round = core.round(&fs::read_to_string(net.join("state.json")).unwrap_or_default());
