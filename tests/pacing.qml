@@ -5,8 +5,10 @@
 // `qml -platform offscreen pacing.qml`, with launcher/Wanted.js. A burst of
 // changes is taken a pace apart, and never two refreshes closer than that,
 // however the first was asked for; a source's rows are wanted only where
-// they're shown or searched, so a change nobody sees asks none; and a key's
-// act is said shown by the first frame begun after its refresh.
+// they're shown or searched, so a change nobody sees asks none; a key's
+// act is said shown by the first frame begun after its refresh; and an
+// opening says its parts slowest first, and weighs the foot's verbs only
+// once the words or the face have changed.
 import QtQuick
 import "Pacing.js" as Pacing
 import "Wanted.js" as Wanted
@@ -25,6 +27,40 @@ QtObject {
     function check(failures, what, got, want) {
         if (got !== want)
             failures.push(`${what}: got ${got}, wanted ${want}`);
+    }
+
+    // An opening says what its own work went on, slowest first, so the
+    // line Joel's slow opening left names its cause (2026-11-10).
+    function opening(failures) {
+        check(failures, "the parts are said slowest first",
+            Pacing.openingParts({ joining: 14.2, finding: 30.6, foot: 3 }),
+            "finding 31, joining 14, foot 3");
+        check(failures, "a part under a millisecond is left out",
+            Pacing.openingParts({ joining: 5, before: 0.4 }), "joining 5");
+        check(failures, "parts as long are said by name",
+            Pacing.openingParts({ verbs: 2, foot: 2 }), "foot 2, verbs 2");
+        check(failures, "an opening with none says so", Pacing.openingParts({ before: 0 }),
+            "none over a millisecond");
+
+        // Each opening walked every thing's verbs to weigh the foot's room.
+        let weighings = 0;
+        const weigh = words => {
+            weighings += 1;
+            return words.widest;
+        };
+        const words = { widest: "connect" };
+        const face = {};
+        const first = Pacing.verbRoom(null, words, face, weigh);
+        check(failures, "the first opening weighs the verbs", first.widest, "connect");
+        const again = Pacing.verbRoom(first, words, face, weigh);
+        check(failures, "the next keeps what it weighed", again, first);
+        check(failures, "so the verbs were weighed once", weighings, 1);
+        const reread = { widest: "brighten" };
+        check(failures, "words read again are weighed again",
+            Pacing.verbRoom(again, reread, face, weigh).widest, "brighten");
+        check(failures, "and so are they in another face",
+            Pacing.verbRoom(again, words, {}, weigh) === again, false);
+        check(failures, "each weighed once more", weighings, 3);
     }
 
     // Agents says how its sessions stand at home, and People is named
@@ -156,6 +192,7 @@ QtObject {
 
         framing(failures);
         wanting(failures);
+        opening(failures);
 
         for (const failure of failures)
             console.warn(failure);

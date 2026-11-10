@@ -1152,7 +1152,8 @@ onLinux {
   # An open launcher takes a burst of its sources' changes a pace apart, and
   # never two refreshes closer than that however the first was asked for, and
   # a source's rows are wanted only where they're shown or searched, and a
-  # key's act is said shown by the first frame begun after its refresh, as
+  # key's act is said shown by the first frame begun after its refresh, and
+  # an opening weighs the foot's verbs only once its words or face change, as
   # tests/pacing.qml holds launcher/Pacing.js and launcher/Wanted.js to it in
   # Qt's own engine.
   the-launcher-paces-its-refreshes =
@@ -1161,6 +1162,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../../tests/pacing.qml} pacing.qml
+      cp ${./launcher/Order.js} Order.js
       cp ${./launcher/Pacing.js} Pacing.js
       cp ${./launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

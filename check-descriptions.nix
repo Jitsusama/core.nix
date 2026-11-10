@@ -2288,7 +2288,9 @@
     refreshes begin closer than the pace; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, so a change nobody sees builds none; and a
     key's act is said shown by the first frame begun after its refresh, which another act
-    refreshed while that frame is drawn never holds back
+    refreshed while that frame is drawn never holds back; and an opening says what its own work
+    went on slowest first, and weighs the foot's room for Return's verbs again only once the
+    words file or the face has changed
   '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
@@ -3129,7 +3131,8 @@
     Programs, Chrome's, the reader's, Inkscape's and Neovim's pages, Chrome's Recent and
     Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more;
     and the first opening after the shell starts again, People listing 500 as Joel's lists
-    hundreds, reaches its frame within twice its frozen time and 50 ms more
+    hundreds, reaches its frame within twice its frozen time and 50 ms more, and the opening
+    after it weighs none of the words file's verbs again
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
