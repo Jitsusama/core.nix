@@ -70,6 +70,10 @@ let
         # takes back what it held.
         Restart = "on-failure";
         RestartSec = "5s";
+        # The host exits 78 when what it was given is refused (its kind, its
+        # realm, a pi missing a host patch), which another start would only
+        # refuse again, so it waits for a fix rather than retrying forever.
+        RestartPreventExitStatus = "78";
         # Parking ends each turn in flight, the tools it runs with it; what is
         # still running after that is ended with it.
         KillMode = "mixed";

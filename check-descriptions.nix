@@ -1478,8 +1478,9 @@
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, ready
-    once it says so, in agents.slice with its realm's environment and left running through a
-    switch, and a machine naming none, or a Mac, gets none
+    once it says so, in agents.slice with its realm's environment, left stopped after refusing
+    what it was given and left running through a switch, and a machine naming none, or a Mac,
+    gets none
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the
