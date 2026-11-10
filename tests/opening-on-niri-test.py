@@ -92,8 +92,14 @@ def test_home_kept_says_each_reading_is_being_read_and_fills_in_where_it_stood(
 
 
 def test_keys_typed_as_it_opens_land_and_are_found(shell: Shell) -> None:
-    """Keys typed straight after the chord, before its first frame is drawn, are all found."""
+    """Keys typed the moment an opening holds them all land, and what they spell is found.
+
+    A key that comes before the kept card's first frame is drawn fills it in first (filled),
+    so it acts on home as it stands now. Keys typed before niri gives the card the keys reach
+    the window that had them, as they would on any opening, so they're typed once it holds them.
+    """
     shell.as_account(shell.ipc("toggle"))
+    shell.launcher_until(lambda shown: shown["keys"])
     shell.send_chars("comp")
     shell.launcher_until(lambda shown: shown["open"] and shown["typed"] == "comp")
     rows = shell.showing()["rows"]

@@ -2301,7 +2301,7 @@
     on niri, an opening draws home as the closed launcher kept it, though it was left with a word
     typed, making no row before its frame and each row saying how it stands as being read; filled
     in, its rows stand where they stood with the cursor on the first, none still being read; and
-    keys typed straight after the chord are all found
+    keys typed the moment it holds them are all found
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told

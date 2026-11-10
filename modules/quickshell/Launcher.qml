@@ -93,7 +93,9 @@ Scope {
     // it before it could draw; on Joel's laptop one took 6,184 ms
     // (2026-11-10).
     property bool opening: false
-    // Shown at all: open, or drawing its first frame from what it kept.
+    // Shown at all: open, or drawing its first frame from what it kept. For
+    // bindings only: a handler of open's change can run before this has
+    // followed it, so functions ask open || opening themselves.
     readonly property bool cardUp: open || opening
 
     // Wide enough for a long action and its chord at the large size, or
@@ -5511,7 +5513,7 @@ Scope {
     property var afterFrames: []
     property var afterFramesDrawing: []
     function afterFrame(then) {
-        if (!cardUp) {
+        if (!open && !opening) {
             then();
             return;
         }
@@ -7495,7 +7497,7 @@ Scope {
     // with no window focused, so the launcher stays open under it. Called
     // as the keys or niri's focused window change, in either order.
     function keysMoved(): void {
-        if (!cardUp)
+        if (!open && !opening)
             return;
         if (prompt.Window.active) {
             keysHeld = true;
@@ -7754,7 +7756,7 @@ Scope {
     property var openingsTimed: []
     property int openingsDrawn: 0
     function askedToOpen() {
-        if (!cardUp) {
+        if (!open && !opening) {
             openAsked = KeyTimes.now();
             openSettled = -1;
             openBegun = -1;
@@ -7861,7 +7863,7 @@ Scope {
     // draws it with nothing made and nothing woken. Every row is read
     // again as that opening fills in, landing where it stands.
     function keepHome() {
-        if (cardUp || parting !== "")
+        if (open || opening || parting !== "")
             return;
         const home = held.length === 0 && typed === "" && matches.length > 0 ? matches
             : homeKept;
@@ -7917,7 +7919,7 @@ Scope {
     function openDrawn() {
         const asked = openAsked;
         openAsked = -1;
-        if (!cardUp || asked < 0)
+        if ((!open && !opening) || asked < 0)
             return;
         const drawn = KeyTimes.now();
         const took = Math.round(drawn - asked);
