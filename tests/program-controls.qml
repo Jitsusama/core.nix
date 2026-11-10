@@ -121,6 +121,11 @@ ShellRoot {
             ];
         }
 
+        // As a provider's own (Provider.qml), every act it gives.
+        function foundActsOf(program) {
+            return programActs(program);
+        }
+
         function recentOf(program) {
             return program === "tester" ? [{ key: "gdoc:plan", name: "Plan Doc", at: 200000 }]
                 : program === "pair" ? [{ key: "gdoc:notes", name: "Pair Notes" }] : [];

@@ -30,8 +30,9 @@
 // Neovim holds, as a stand-in open-now says it: each file open once,
 // the Neovim looked at last first, said modified and by its tab before its
 // folder, Return going to its buffer through open-now and to its window
-// through niri; and the program's drawer counting them. It exits 0 once every case holds, and otherwise 1, saying which
-// didn't.
+// through niri; and the program's drawer counting them, while the acts
+// found from the top ask open-now nothing and make no file's row. It
+// exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io

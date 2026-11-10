@@ -672,6 +672,16 @@ Scope {
     // does, aren't listed (Applications.qml).
     property var foundActs: []
 
+    // The acts foundActs names, as rows, for a program. Programs asks it
+    // inside a binding, so it may read only what the rows say and write
+    // nothing; by default it's every act the program is given
+    // (programActs), and a provider whose programActs asks or makes more,
+    // as Neovim's asks open-now and makes each open file's row, gives the
+    // listed ones alone.
+    function foundActsOf(program) {
+        return typeof provider.programActs === "function" ? provider.programActs(program) : [];
+    }
+
     // The programs this provider gives acts to (programActs) whose desktop
     // entries hide themselves, as Tuple's does, having no window to open:
     // Programs lists them all the same, each stepping in on Return rather
