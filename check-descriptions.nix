@@ -1751,10 +1751,9 @@
   sessions-sit-beside-the-programs = ''
     agents' sessions have a slice beside Joel's programs at their weight, and the sorter watches both
   '';
-  shared-work-yields-to-joel-before-jobs = ''
-    work other sessions wait on has a slice beside jobs at a disk target looser than Joel's
-    programs' and the sessions', below Joel's programs on the processor, with a memory ceiling,
-    named in SHARED_SLICE
+  shared-work-ranks-with-the-sessions = ''
+    work other sessions wait on has a slice beside jobs at the sessions' disk target, below Joel's
+    programs on the processor, with a memory ceiling, named in SHARED_SLICE
   '';
   shaper-finds-the-rate = ''
     the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what

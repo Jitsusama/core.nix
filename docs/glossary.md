@@ -346,7 +346,7 @@ off.
 | compile cache | sccache's store of compiled crates, keyed by their inputs, which every worktree's cargo build reads before compiling one | build cache | `sccache`, `~/.cache/sccache` |
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
-| shared work | a job other sessions wait on, such as a push holding one of a repository's walk slots, run beside jobs at a disk target of its own, looser than the sessions' and Joel's programs' | | `shared.slice`, `SHARED_SLICE` |
+| shared work | a job other sessions wait on, such as a push holding one of a repository's walk slots, run beside jobs at the sessions' own disk target | | `shared.slice`, `SHARED_SLICE` |
 | backlog | the requests waiting on a disk at once, on average and at most, apart from the machine's queue | | the disk's queue depth |
 | speed | how fast a disk reads and writes now, in data and in requests a second, as the network's speed is for the connection | | the disk's `stat` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |

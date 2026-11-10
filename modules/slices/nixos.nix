@@ -126,9 +126,6 @@ let
   # disk keeps its targets.
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
-  # A target looser than the others', so work held to it yields whenever
-  # theirs is missed, and still holds back what has none.
-  sharedLatency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 5ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
   diskOrder = pkgs.writeShellApplication {
     name = "disk-order";
@@ -360,14 +357,9 @@ in
     # app's or a session's work misses theirs: on 5 November pushes holding
     # one of a repository's few walk slots sat about an hour waiting in
     # the kernel's latency throttle, while twelve walks queued behind them
-    # waited 80 hours that day. Here a push ranks ahead of jobs, at a
-    # target of its own, while giving way to Joel's programs and the
-    # sessions, at theirs. At the same target as theirs it never did: on
-    # 10 November an agent's fetch read up to 1.2 GB/s beside them, and
-    # 4 KiB reads from app.slice took a median 12.8 ms in the busy rounds,
-    # against
-    # 8.4 ms once its target was 5 ms, while the fetches read as fast as
-    # before. On the processor it still yields
+    # waited 80 hours that day. Here a push ranks with the sessions waiting
+    # on it, at their disk target, so the two never hold each other back,
+    # while jobs still gives way to both. On the processor it still yields
     # to what Joel uses, at a tenth of an app's weight, and past its
     # ceiling it swaps its own memory, as jobs does. Whoever starts such
     # work puts it here, with `systemd-run --user --scope --slice=`. A dash
@@ -377,7 +369,7 @@ in
       IOWeight = 10;
       MemoryHigh = "15%";
     }
-    // sharedLatency;
+    // latency;
 
     # Each measured disk is shared by weight from the moment it appears, and
     # stopping its unit hands it back to first come, first served. Boot wants
