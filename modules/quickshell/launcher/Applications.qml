@@ -47,8 +47,10 @@ import Quickshell
 import Quickshell.Io
 import qs
 import QtQuick
+import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "BrowserWindows.js" as BrowserWindows
+import "Captured.js" as Captured
 import "Media.js" as Media
 import "Order.js" as Order
 import "Program.js" as Program
@@ -925,9 +927,12 @@ Provider {
             return one.row.made;
         const source = provider.sourceOf(entry);
         const line = one.row.line;
-        return keptOr(provider.recentKeeper(entry), line, line, () => source?.kind === "site"
-            ? provider.visited(entry, line)
-            : provider.lately(entry, source?.list ? source : null, line));
+        // Kept while it says the same when, too, so a file used again, or
+        // an hour on, never keeps saying "just now".
+        const when = Number.isFinite(one.at) ? provider.usedWhen(one.at) : "";
+        return keptOr(provider.recentKeeper(entry), line, `${line}\t${when}`,
+            () => source?.kind === "site" ? provider.visited(entry, line)
+                : provider.lately(entry, source?.list ? source : null, line, one.at));
     }
 
     // Each program's keeper of its Recent's rows, by its desktop entry's
@@ -1115,8 +1120,13 @@ Provider {
     // file's and folder's is (Files.qml), with one act of Recent's own
     // first: a file opens in the program, and a folder, as kitty's are,
     // gets a new window there. Not named opened, which is the hook the
-    // launcher calls as Programs is stepped into (Provider.qml).
-    function lately(entry, source, path) {
+    // launcher calls as Programs is stepped into (Provider.qml). A file
+    // is said as a download is (ChromeProgram.qml): when it was last used
+    // (`at`), where its source said, at its right, before its folder but
+    // the home's, which a lone "~" says nothing of (VKCF3Z, 2026-11-09);
+    // a picture's mark or a video's, as Capture's wear them; and a drawer
+    // saying where it is and what kind, its name, and a picture as it is.
+    function lately(entry, source, path, at) {
         const kind = source?.kind === "folder" ? "folder" : "file";
         const key = kind === "folder" ? "verb:path:folder:window" : "verb:path:file:open";
         const act = thing({
@@ -1137,8 +1147,45 @@ Provider {
                     .replace("{pid}", String(window?.pid ?? ""))));
             }
         });
-        return kind === "folder" ? Files.folder(path, thing, [act]) : Files.file(path, thing, [act]);
+        if (kind === "folder")
+            return Files.folder(path, thing, [act]);
+        return provider.saidWhole(Files.file(path, thing, [act]), path, at);
     }
+
+    // What a file's row says beside what every file's does, as lately
+    // gives it, its drawer made only as it's opened.
+    function saidWhole(row, path, at) {
+        if (Number.isFinite(at)) {
+            row.side = [provider.usedWhen(at), Files.beside(path)]
+                .filter(part => part !== "").join(" \u00b7 ");
+            row.at = at;
+        }
+        const mark = Captured.mark(path);
+        if (mark !== "")
+            row.glyph = Theme.glyph[mark];
+        row.drawer = () => {
+            const drawer = Object.assign(FileFacts.placed(Files.within(path),
+                FileFacts.kindByName(row.name, provider.fileWords), provider.fileWords), {
+                title: row.name,
+                facts: []
+            });
+            const preview = FileFacts.pictured(path);
+            if (preview)
+                drawer.preview = preview;
+            return drawer;
+        };
+        return row;
+    }
+
+    // When a file was last used, as its row says it, by now.
+    function usedWhen(at) {
+        return FileFacts.when(at, Date.now(), provider.fileWords);
+    }
+
+    // What a file's row and drawer say, in the launcher's words, and days
+    // and months as the locale names them, as the file chooser says them.
+    readonly property var fileWords: FileFacts.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
 
     // One site a program visited lately, a line of its source's: the page's
     // address, a tab and its title. Keyed by the page, as a site is wherever

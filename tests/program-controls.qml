@@ -267,7 +267,7 @@ ShellRoot {
                 && ["tester", "quiet", "radio", "browser", "pair", "org.example.viewer"]
                     .every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
-                && applications.recents.of("tester").length === 2
+                && applications.recents.of("tester").length === 3
                 && applications.recents.of("radio").length === 1)
             Qt.callLater(root.cases);
     }
@@ -614,9 +614,9 @@ ShellRoot {
             same("a picture wears a picture's mark, and any other file a file's",
                 `${shot.glyph === Theme.glyph.picture} ${notes.glyph === Words.glyph("path:file")}`,
                 "true true");
-            const drawn = typeof shot.drawer === "function" ? shot.drawer() : shot.drawer;
+            const plate = typeof shot.drawer === "function" ? shot.drawer() : shot.drawer;
             same("its drawer says where it is and what kind, its name, and shows the picture",
-                `${drawn?.eyebrow} | ${drawn?.title} | ${drawn?.preview?.picture}`,
+                `${plate?.eyebrow} | ${plate?.title} | ${plate?.preview?.picture}`,
                 `in ~/Pictures \u00b7 PNG | shot.png | ${root.home}/Pictures/shot.png`);
             same("one not a picture shows none",
                 (typeof notes.drawer === "function" ? notes.drawer() : notes.drawer)?.preview,

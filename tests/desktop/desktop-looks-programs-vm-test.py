@@ -571,7 +571,8 @@ def test_gimps_page_and_its_recent_are_shot_at_each_scale(
     """Shoot GIMP's page holding every act, and its Recent led by the picture edited last.
 
     A picture is copied and a screenshot taken, so New Image From the Copied Picture and Edit
-    the Newest Screenshot both stand there, beside its Recent.
+    the Newest Screenshot both stand there, beside its Recent, whose newest picture is shot
+    with its drawer out showing it.
     """
     acts = {"New Image From the Copied Picture", "Edit the Newest Screenshot", "Recent"}
     for scale in at_each_scale:
@@ -583,7 +584,7 @@ def test_gimps_page_and_its_recent_are_shot_at_each_scale(
         desktop.shoot(f"launcher-gimp-at-{at}")
         desktop.type_in("recent", selecting="Recent")
         desktop.follow()
-        desktop.launcher_until(partial(named, EDITS[-1]))
+        desktop.launcher_until(partial(previewed, EDITS[-1]))
         desktop.shoot(f"launcher-gimp-recent-at-{at}")
         desktop.close_launcher()
 
