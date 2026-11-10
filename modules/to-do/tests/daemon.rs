@@ -3,6 +3,7 @@
 //! to-do, and a to-do leaves its file; a check that hangs holding up no
 //! other; a done to-do staying done through a failing check and a
 //! restart; a check run only for an owner outside every sandbox; a
+//! check no longer run leaving the daemon idle; a
 //! check finding what the session's PATH holds; and over its socket, each
 //! to-do, look and word of Joel's told to a watch as it changes.
 
@@ -395,6 +396,43 @@ fn a_check_runs_only_for_an_owner_said_to_be_outside_every_sandbox() {
     assert_eq!(refused("unsaid"), "sandbox unsaid");
     assert_eq!(state(&found, "QEST-7:strict"), Some("waiting"));
     assert!(!ran.exists(), "a refused check never ran");
+}
+
+/// The processor time `pid` has taken, user and system, in clock ticks.
+fn ticks(pid: u32) -> u64 {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+    // Its name is in brackets and may hold spaces, so the fields are
+    // counted from after it: utime and stime are the 14th and 15th.
+    let (_, after) = stat.rsplit_once(')').unwrap();
+    let fields: Vec<&str> = after.split_whitespace().collect();
+    fields[11].parse::<u64>().unwrap() + fields[12].parse::<u64>().unwrap()
+}
+
+#[test]
+fn a_check_no_longer_run_leaves_the_daemon_idle() {
+    let dir = tempfile::tempdir().unwrap();
+    let running = start(dir.path());
+    let item = |ready: bool| {
+        format!(
+            r#"{{"id":"ready","title":"R","ready":{ready},"doneWhen":{{"by":"person"}},
+                "readyWhen":{{"check":"exit 1"}}}}"#
+        )
+    };
+    to_dos(dir.path(), "QEST-8", &item(false));
+    until(&running, |v| v["items"]["QEST-8:ready"]["how"]["ran"] == 1);
+    // Its owner says it's ready, so its check is never run again, and a
+    // sign-in hurries every check there is.
+    to_dos(dir.path(), "QEST-8", &item(true));
+    until(&running, |v| v["items"].get("QEST-8:ready").is_none());
+    fs::write(dir.path().join("signins/github"), "signed in").unwrap();
+    thread::sleep(Duration::from_millis(200));
+    let pid = running.child.id();
+    let before = ticks(pid);
+    thread::sleep(Duration::from_secs(1));
+    let took = ticks(pid) - before;
+    // A daemon waiting on nothing takes none of a second; one waking for
+    // a check it never runs takes all of it.
+    assert!(took < 20, "the daemon took {took} ticks of a second's 100");
 }
 
 #[test]
