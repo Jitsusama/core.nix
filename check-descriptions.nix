@@ -397,8 +397,15 @@
     Claude Code's theme has the account's text colour and only hex colours, and the mix its tints
     come from is exact
   '';
+  a-chord-reads-only-its-own-program = ''
+    launcher-say, which niri runs on each of the launcher's chords, is linked statically and asks
+    the loader for no library, so a chord reads one file, the one held in memory
+  '';
   clipboard-history-passes-clippy = ''
     clippy finds nothing in the clipboard history or its tests
+  '';
+  launcher-say-passes-clippy = ''
+    clippy finds nothing in launcher-say, which says a chord to the launcher, or its tests
   '';
   clock-follows-passes-clippy = ''
     clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,

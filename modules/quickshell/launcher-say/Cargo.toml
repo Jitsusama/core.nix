@@ -1,0 +1,18 @@
+# What a key says to the launcher, run by niri on each of its chords: one
+# small program that writes a line to the launcher's socket and ends
+# (src/main.rs says why it isn't a script).
+[package]
+name = "launcher-say"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[profile.release]
+# Small, so the pages a chord needs are few; the program does almost
+# nothing, so speed of its code doesn't matter.
+opt-level = "s"
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = true
