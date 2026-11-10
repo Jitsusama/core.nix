@@ -5468,6 +5468,7 @@ Scope {
     // timed: its frame would be whatever came next.
     function arrowed(to, arrow) {
         trials.pressed("arrows");
+        console.info(`diag arrowed ${arrow} ${current} to ${to} of ${matches.length}`);
         if (to === current)
             return;
         const began = Date.now();

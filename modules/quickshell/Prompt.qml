@@ -516,6 +516,7 @@ Item {
 
     function modalKey(event: KeyEvent) {
         const key = named(event);
+        console.info(`diag key ${key} repeat ${event.isAutoRepeat} at ${KeyTimes.now()}`);
         keyMoved = false;
         keyTaken = key;
         keysTaken += 1;
