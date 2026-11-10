@@ -2320,6 +2320,8 @@ mod tests {
                 ("e", "vm-a"),
                 ("f", "vm-a"),
                 ("f", "vm-a"),
+                ("g", "vm-a"),
+                ("g", "vm-a"),
                 ("h", "vm-a"),
                 ("h", "vm-a"),
                 ("n", "vm-a"),
@@ -2636,7 +2638,7 @@ mod tests {
         }
         .exits("n", "vm-b", &[1, 1]);
         let listed = std::sync::atomic::AtomicBool::new(false);
-        let breaking = Breaking::new(&world, &state, "s", "n", |_: &str| {
+        let breaking = Breaking::new(&world, &state, "s", "h", |_: &str| {
             listed.load(std::sync::atomic::Ordering::SeqCst)
         });
         *lock(&breaking.searching) = SEARCHES;
