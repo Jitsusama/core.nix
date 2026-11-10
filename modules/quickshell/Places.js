@@ -476,6 +476,8 @@ function viewerPlace(place, workspaces) {
         return own.is_focused ? null : { workspace: own.id, column: place.column };
     }
     const focused = all.find(one => one.is_focused);
+    // With no focused workspace known, there's no screen of Joel's to prefer, so the spare
+    // can be an empty workspace on any screen; it's still never one he is on.
     const [spare] = all
         .filter(one => one.active_window_id === null && !one.is_focused
             && (focused === undefined || one.output === focused.output))
