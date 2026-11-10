@@ -273,7 +273,9 @@ Floating {
     // than any before makes rows: they were made afresh for every fact
     // each time the facts changed, and the first program's three took
     // 5 ms of a 19 ms step into Programs at rest, made again on every
-    // step since home's drawer holds none (nested niri, 2026-11-10).
+    // step since home's drawer holds none (nested niri, 2026-11-10). So
+    // the rows kept grow to the most facts any drawer has shown, a few
+    // rows, and never shrink.
     onFactsChanged: drawer.keptTo(factsKept, facts.length)
     // How many fact rows it has made, for the check that moving between
     // things and back into a place makes none.
