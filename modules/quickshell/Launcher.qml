@@ -6194,7 +6194,9 @@ Scope {
     // is done, and that handler reports what the foot says.
     function footCatchUp() {
         standing.facts = standing.factsNow;
-        foot.said = foot.saidNow;
+        foot.said = foot.saidNow.footer;
+        foot.saidStands = foot.saidNow.stands;
+        foot.saidNote = foot.saidNow.note;
         foot.told = foot.toldNow;
     }
     function leaveSaying(word) {
@@ -6897,6 +6899,11 @@ Scope {
             },
             kind: root.kind,
             footer: foot.said,
+            // What the cursor row says at its right, and its note as it's
+            // drawn after its name, fitted, so a test can hold each where
+            // it's said.
+            stands: foot.saidStands,
+            noted: list.itemAtIndex(root.current)?.drawnRow.noteWhole ?? "",
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
@@ -8745,7 +8752,11 @@ Scope {
                                     // What the cursor row has to say of how
                                     // it stands, on the row, where the head
                                     // said it before (VKCF3Z, 2026-11-06).
-                                    say: selected ? foot.said : ""
+                                    say: selected ? foot.saidStands : ""
+                                    // Its note, after its name and what it
+                                    // holds, giving way first (VKCF3Z,
+                                    // 2026-11-09 [6918348b]).
+                                    note: selected ? foot.saidNote : ""
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
                                     // Gone since it was shown, it stays dimmed
                                     // in its place until a key (Steady.js).
@@ -8864,7 +8875,21 @@ Scope {
                         Binding {
                             target: foot
                             property: "said"
-                            value: foot.saidNow
+                            value: foot.saidNow.footer
+                            when: root.cardSeen
+                            restoreMode: Binding.RestoreNone
+                        }
+                        Binding {
+                            target: foot
+                            property: "saidStands"
+                            value: foot.saidNow.stands
+                            when: root.cardSeen
+                            restoreMode: Binding.RestoreNone
+                        }
+                        Binding {
+                            target: foot
+                            property: "saidNote"
+                            value: foot.saidNow.note
                             when: root.cardSeen
                             restoreMode: Binding.RestoreNone
                         }
@@ -8925,26 +8950,30 @@ Scope {
                             - (prompt.mode === "find" ? 0 : modeWord.room)
 
                         // As the card last showed it, while it's closed.
+                        // Strings, so a pass that says the same signals
+                        // nothing: what the report's footer names, what
+                        // the cursor row says at its right, and its note.
                         property string said: ""
-                        // An answer's footer says where it came from.
-                        readonly property string saidNow: {
-                            if (!choice)
-                                return "";
-                            if (choice.state)
-                                return choice.state();
-                            const once = root.onceCalled(choice);
-                            if (once !== "")
-                                return once;
-                            // A row whose drawer says its note says it
-                            // once, there, while the drawer is out.
-                            if ((choice.note ?? "") !== "")
-                                return choice.noteInDrawer && drawerCard.out ? "" : choice.note;
-                            if (choice.plain && root.answer)
-                                return root.answer.missed === true ? "" : root.answer.note ?? "";
-                            if (root.held.length > 0)
-                                return root.held[0].row.context ?? "";
-                            return "";
-                        }
+                        property string saidStands: ""
+                        property string saidNote: ""
+                        // What the cursor row says beyond its name and its
+                        // side: its note, after its name, and how it stands
+                        // or where it came from, at its right
+                        // (Reading.cursorSays). A row whose drawer says its
+                        // note says it once, there, while the drawer is out;
+                        // an answer's row says where the answer came from.
+                        // The name it was once called by and a held thing's
+                        // context are asked for only where nothing before
+                        // them is said.
+                        readonly property var saidNow: !choice ? Reading.cursorSays({})
+                            : Reading.cursorSays({
+                                state: choice.state ? choice.state() : undefined,
+                                once: () => root.onceCalled(choice),
+                                note: choice.note ?? "",
+                                noteInDrawer: !!choice.noteInDrawer && drawerCard.out,
+                                answer: choice.plain ? root.answer : null,
+                                context: () => root.held[0]?.row.context ?? ""
+                            })
 
                         width: parent.width
                         // Its baseline on the rows' rhythm, and the frame's

@@ -105,6 +105,12 @@ Rectangle {
     // name never gives way to it: it has what the name and its words
     // leave, and a long one is cut from its end.
     property string say
+    // The cursor row's note, as Wi-Fi's "a password": after its name and
+    // what it holds, in their face and muted, never at the right, which
+    // says how it stands and never gives way to it. It has what the name,
+    // its words and the say leave, giving way first by whole items from
+    // its end (VKCF3Z, 2026-11-09 [6918348b]).
+    property string note
     // A word after the name, muted: "here" beside a workspace.
     property string count
     // Whether its side is its need, as a player's "paused \u00b7 0:00 of
@@ -367,6 +373,44 @@ Rectangle {
         font.family: Theme.level.words.family
         font.pointSize: Theme.level.words.pointSize
         font.variableAxes: Theme.level.words.variableAxes
+    }
+
+    // The note after the detail, across a dot as the detail's items are,
+    // or after the name where there's none, as the detail would stand. It
+    // ends a groups' rung short of the say, or of a graph, or of the ink
+    // said at the right, not of its column, which the list's widest side
+    // sets; or on the inset where nothing's said there.
+    readonly property real noteFrom: countText.visible ? countText.x + countText.width
+        : nameBox.x + nameBox.width + Theme.space.rung.apart
+    readonly property string noteApart: countText.visible ? " \u00b7 " : ""
+    readonly property real noteEnd: sayText.visible ? sayText.x - Theme.space.rung.groups
+        : graphed ? drawing.x - Theme.space.rung.groups
+        : atRight.inked === 0 ? atRight.x + atRight.width
+        : atRight.x + atRight.width - atRight.inked - Theme.space.rung.groups
+    // None where the name, or what the row holds, gave way: those are cut
+    // at the column, and the note gives way first, so it never takes the
+    // room past it that they were refused (Y2YBTS, 2026-11-09).
+    readonly property bool detailCut: row.detailed
+        && (countText.whole !== row.detailUncut || countText.truncated)
+    readonly property string noteWhole: {
+        if (row.note === "" || row.nameCut || row.detailCut)
+            return "";
+        void wordsFace.font;
+        const width = words => Math.ceil(wordsFace.advanceWidth(words)) + 1;
+        const room = row.noteEnd - row.noteFrom
+            - (row.noteApart === "" ? 0 : wordsFace.advanceWidth(row.noteApart));
+        return Reading.noteFitted(row.note, room, width);
+    }
+
+    Text {
+        id: noteText
+        x: row.noteFrom
+        anchors.baseline: monoLine.baseline
+        visible: row.noteWhole !== ""
+        textFormat: Text.PlainText
+        text: row.noteApart + row.noteWhole
+        color: countText.color
+        font: countText.font
     }
 
     // The note's face, to fit a note of items, or of names, to its room.

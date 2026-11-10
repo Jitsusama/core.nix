@@ -2551,7 +2551,12 @@ hairline, the rows, a hairline, the status line.
   cursor row alone says what nothing else draws, a toggle's state, a
   piece's context ("full in 40 min") or where an answer came from: at the
   far end in Note, before its side across a dot, cut from its end and
-  never narrowing the name, and whole in the drawer. A held notice's card
+  never narrowing the name, and whole in the drawer. Its note follows
+  its name, after what it holds across a dot, in Words and muted, never
+  at the right (Wi-Fi's "Lantern" then "a password", "connected" at
+  its right). It has the room the rest leave and gives way first, by whole
+  items from its end, so the right never gives way to it (VKCF3Z,
+  2026-11-09). A held notice's card
   opens under its line, typed as the drawer's plate is.
 - **A path** gives way from its middle: a middle step shortens to its last
   folder ("…/more"), then to "…", while the ask and the last step stay

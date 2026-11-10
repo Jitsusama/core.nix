@@ -303,6 +303,66 @@ QtObject {
         expect("a noun's kind at its edge", kind === "window", kind);
         const landed = Reading.rightSays("\u21b5 turn off", "", "on");
         expect("a landing wins while it shows", landed === "\u21b5 turn off", landed);
+        // The cursor row's note follows its name, and its right says how it
+        // stands, never the note (VKCF3Z, 2026-11-09 [6918348b]).
+        const says = (row, stands, note, footer) => {
+            const said = Reading.cursorSays(row);
+            return said.stands === stands && said.note === note && said.footer === footer;
+        };
+        expect("a note follows the name, leaving the right",
+            says({ note: "a password" }, "", "a password", "a password"),
+            Reading.cursorSays({ note: "a password" }));
+        expect("a state stays at the right, its note after the name",
+            says({ state: "paused", note: "a password" }, "paused", "a password", "paused"),
+            Reading.cursorSays({ state: "paused", note: "a password" }));
+        const onceCalled = () => "Once called Caffeinate.";
+        expect("the name it was once called by stays at the right",
+            says({ once: onceCalled, note: "on" }, "Once called Caffeinate.",
+                "on", "Once called Caffeinate."),
+            Reading.cursorSays({ once: onceCalled, note: "on" }));
+        const askedOf = [];
+        Reading.cursorSays({ state: "on", once: () => askedOf.push("once"),
+            context: () => askedOf.push("context") });
+        Reading.cursorSays({ note: "on", context: () => askedOf.push("context") });
+        expect("what a row says before them leaves its old name and context unasked",
+            askedOf.length === 0, askedOf);
+        expect("a state that says its note again is that note, after the name",
+            says({ state: "saved", note: "saved" }, "", "saved", "saved"),
+            Reading.cursorSays({ state: "saved", note: "saved" }));
+        expect("and while its drawer says it, the row says it nowhere",
+            says({ state: "saved", note: "saved", noteInDrawer: true }, "", "", ""),
+            Reading.cursorSays({ state: "saved", note: "saved", noteInDrawer: true }));
+        expect("a note its drawer says is said there alone",
+            says({ note: "a password", noteInDrawer: true }, "", "", ""),
+            Reading.cursorSays({ note: "a password", noteInDrawer: true }));
+        const inWifi = () => "in Wi-Fi";
+        const weather = { note: "from the weather" };
+        expect("a row with no note says where its answer came from at the right",
+            says({ answer: weather, context: inWifi }, "from the weather", "",
+                "from the weather"),
+            Reading.cursorSays({ answer: weather, context: inWifi }));
+        const missedAnswer = { note: "from the weather", missed: true };
+        expect("an answer that missed says nothing of where it came from",
+            says({ answer: missedAnswer, context: inWifi }, "", "", ""),
+            Reading.cursorSays({ answer: missedAnswer, context: inWifi }));
+        expect("a held thing's row says where it is at the right",
+            says({ context: inWifi }, "in Wi-Fi", "", "in Wi-Fi"),
+            Reading.cursorSays({ context: inWifi }));
+        expect("a row with a note says no held thing's context",
+            says({ note: "a password", context: inWifi }, "", "a password", "a password"),
+            Reading.cursorSays({ note: "a password", context: inWifi }));
+        expect("a row with nothing to say says nothing", says({}, "", "", ""),
+            Reading.cursorSays({}));
+        // A note gives way by whole items from its end, or by whole words,
+        // never to an ellipsis.
+        const tenEach = words => words.length * 10;
+        const noteItems = Reading.noteFitted("4 of 4 bars \u00b7 a password", 120, tenEach);
+        expect("a note gives way by whole items", noteItems === "4 of 4 bars", noteItems);
+        const noteWords = Reading.noteFitted("saved on this machine", 140, tenEach);
+        expect("a note of one item gives way by whole words", noteWords === "saved on this",
+            noteWords);
+        const noNote = Reading.noteFitted("a password", 5, tenEach);
+        expect("a note whose first word won't fit isn't said", noNote === "", noNote);
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

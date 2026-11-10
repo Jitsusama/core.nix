@@ -396,11 +396,13 @@ Provider {
             hue: "machine",
             side: Passwords.side(record),
             note: note,
+            // Its note, after its name, the drawer's Website says while
+            // it's out, so it's said once.
+            noteInDrawer: true,
             favourite: record.favourite === true,
             verbs: () => provider.inside(key),
-            // The foot says how a copy of it stands, else its note, which
-            // the drawer's Website says while it's out, so it's said once.
-            state: () => provider.footFor(key, provider.launcher?.drawerOut ? "" : note),
+            // How a copy of it stands, at its right, else only its note.
+            state: () => provider.footFor(key, note),
             // What y takes: its username, which is no secret.
             operands: () => named === "" ? [] : [copyOperand("fact:passwords:username", named)]
         });

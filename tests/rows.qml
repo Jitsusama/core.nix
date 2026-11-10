@@ -315,6 +315,16 @@ ShellRoot {
             // A say with room for some of its words, beside a short name.
             Choice { id: sayingSome; width: root.panel; name: "Battery"; side: "79%"
                 say: `${root.sentence} ${root.long}`; glyph: "$"; selected: true }
+            // The cursor row's note after its name, beside a side the list's
+            // widest leaves a wide column for: it runs to the side's ink, as
+            // a say would, not to the column's edge (VKCF3Z, 2026-11-09).
+            Choice { id: noting; width: root.panel; name: "WARP"; side: "not answering"
+                sides: 60; note: root.sentence; glyph: "$"; selected: true }
+            // And beside a name cut at that column, none: the note gives way
+            // first, so it never takes the room the name was refused.
+            Choice { id: notingLong; width: root.panel; name: root.long + root.long
+                side: "not answering"; sides: 60; note: "a password"; glyph: "$"
+                selected: true }
             // An agent's side of items, on the cursor row and off it: its
             // words in the row's ink, the dots between them muted.
             Choice { id: itemsChosen; width: root.panel; name: "A Quest"; glyph: "$"
@@ -739,6 +749,36 @@ ShellRoot {
                 && resting.text === "working \u00b7 $4.20"
                 && String(resting.color) === String(Theme.muted),
             resting === null ? "none" : `${resting.text} in ${resting.color}`);
+    }
+
+    // The note's face, as a row's words are set, to measure a word by.
+    TextMetrics {
+        id: wordsProbe
+        font.family: Theme.level.words.family
+        font.pointSize: Theme.level.words.pointSize
+        font.variableAxes: Theme.level.words.variableAxes
+    }
+
+    function noteHolds() {
+        const texts = drawn(noting, []).sort((a, b) => a.from - b.from);
+        const name = texts.find(t => t.text === "WARP");
+        const side = texts.find(t => t.text === "not answering");
+        const note = texts.find(t => t.text.length > 1 && root.sentence.startsWith(t.text));
+        const words = root.sentence.split(" ");
+        const kept = note === undefined ? 0 : note.text.split(" ").length;
+        wordsProbe.text = ` ${words[kept]}`;
+        const end = side === undefined ? NaN : side.from - Theme.space.rung.groups;
+        expect("a note follows its name and runs to the side's ink, giving way by words",
+            name !== undefined && note !== undefined && side !== undefined
+                && note.from > name.to && note.from - name.to <= 2 * Theme.space.rung.apart
+                && !note.truncated && !note.text.endsWith("\u2026")
+                && note.to <= end + 1 && note.to + wordsProbe.advanceWidth > end - 1,
+            `${said(texts)}, ending by ${end}`);
+        const longTexts = drawn(notingLong, []);
+        expect("a name cut at the column has no note beside it",
+            notingLong.nameCut && notingLong.noteWhole === ""
+                && longTexts.every(t => !t.text.includes("a password")),
+            said(longTexts));
     }
 
     function sayHolds() {
@@ -1214,6 +1254,7 @@ ShellRoot {
             root.marksHold();
             root.countBeforeChord();
             root.sayHolds();
+            root.noteHolds();
             root.sideItemsHold();
             root.headMarkHolds();
             turns.begin();

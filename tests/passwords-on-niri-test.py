@@ -208,6 +208,14 @@ def test_an_entrys_return_copies_its_password_and_the_foot_says_when_it_clears(
     assert row["name"] == "GitHub", row
     assert (row["side"], row["note"]) == ("ada", "github.com"), row
     assert row["verb"] == "copy", row
+    # Rested on, its drawer comes out and its Website says its note, so the row says it
+    # nowhere else, and its right nothing while nothing's happening to it.
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"]
+            and (shown["noted"], shown["stands"], shown["footer"]) == ("", "", "")
+        )
+    )
     # Rested on, it's read in full first, so the copy has nothing more to read.
     shell.launcher_until(
         lambda shown: "One-Time Code" in str((shown["selected"] or {}).get("drawer") or {})
@@ -283,8 +291,15 @@ def test_open_the_website_hands_chrome_the_website_as_the_launcher_goes(shell: S
     shell.step_in("ctrl-bracketright")
     shell.launcher_until(lambda shown: WEBSITE in shown["rows"])
     shell.down_to(WEBSITE)
-    # The launcher never fills it, and its foot says so.
-    shell.launcher_until(lambda shown: shown["footer"] == "1Password offers to fill it on the page")
+    # The launcher never fills it, and the row says so at its right, where it says how it
+    # stands, with no note after its name.
+    shell.launcher_until(
+        lambda shown: (
+            shown["footer"] == "1Password offers to fill it on the page"
+            and shown["stands"] == shown["footer"]
+            and shown["noted"] == ""
+        )
+    )
     shell.send_key("ret")
     shell.launcher_until(lambda shown: not shown["open"])
     shell.launcher_until(

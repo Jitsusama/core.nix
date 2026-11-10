@@ -75,6 +75,56 @@ function rightSays(landed, kind, stands) {
     return kind !== "" ? kind : stands;
 }
 
+// What the cursor row says beyond its name and its side, from what it
+// has to say: `state`, its toggle's state where it has one (undefined
+// where it hasn't); `once`, asked for the name it was once called by, if
+// found by that; `note`, its own note, and `noteInDrawer`, whether its
+// drawer says that note now; `answer`, the answer it's part of, which
+// says where it came from unless it `missed` (null where it's no
+// answer's); and `context`, asked for where a held thing is. `once` and
+// `context` are asked only where nothing before them is said. Its note
+// follows its name, muted (`note`), never at the right, which says how it
+// stands (`stands`), state first, and never gives way to the note
+// (VKCF3Z, 2026-11-09 [6918348b]: Wi-Fi reads "Lantern" then "a
+// password", with "connected" at its right). A state that only says its
+// note again, as a row's does while nothing's happening to it (a network
+// joining, a copy clearing), is that note, said once after the name. A
+// row with a note says no answer's or held thing's context, as it never
+// has. `footer` is what the foot's report has always named the cursor
+// row's words: the one of them it said before the note moved.
+function cursorSays(row) {
+    const note = row.note ?? "";
+    const said = row.noteInDrawer === true ? "" : note;
+    if (row.state !== undefined && (note === "" || row.state !== note)) {
+        return { stands: row.state, note: said, footer: row.state };
+    }
+    const once = row.once ? row.once() : "";
+    if (once !== "") {
+        return { stands: once, note: said, footer: once };
+    }
+    if (note !== "") {
+        return { stands: "", note: said, footer: said };
+    }
+    const stands = answerSays(row.answer ?? null, row.context);
+    return { stands, note: "", footer: stands };
+}
+
+// Where an answer came from, unless it missed, or where a held thing is.
+function answerSays(answer, context) {
+    if (answer !== null) {
+        return answer.missed === true ? "" : answer.note ?? "";
+    }
+    return context ? context() : "";
+}
+
+// A note as it fits `room` after its row's name: given way by whole items
+// from its end, and a note of one item by whole words, never with an
+// ellipsis, which no note wears; "" where not even its first word fits.
+function noteFitted(note, room, width) {
+    return note.includes(ITEMS_APART) ? wholeItemsFromEnd(note, room, width)
+        : wordsFromEnd(note, room, width);
+}
+
 // The items `wholeItems` keeps, each as it's said, in their own order.
 // An item that `stays` is never given way whole, as Now's minutes and how
 // many more wait never are (VKCF3Z, bd5cb965).
