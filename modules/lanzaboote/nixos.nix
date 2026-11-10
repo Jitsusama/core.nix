@@ -146,7 +146,10 @@ let
   '';
 in
 {
-  imports = [ lanzaboote.nixosModules.lanzaboote ];
+  imports = [
+    lanzaboote.nixosModules.lanzaboote
+    ./module-keys.nix
+  ];
 
   options.jitsusama.lanzaboote.nvpcrs = lib.mkOption {
     type = lib.types.bool;

@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 # A JSON object as bootctl gives it, whose fields the test reads as it finds them.
 type Json = dict[str, Any]
 
+# The taint flag the kernel sets the first time it loads a module it can't check the signature
+# of, E in its list of flags.
+UNCHECKED_MODULE = 1 << 13
+
 DISK = "/dev/disk/by-partlabel/system"
 # How long a unit may take to settle after the boot that starts it.
 SETTLE = timedelta(seconds=60)
@@ -217,6 +221,18 @@ def test_real_system_boots_without_an_ordering_cycle(real: QemuMachine) -> None:
     policy.
     """
     real.fail("journalctl -b -o cat | grep -F 'ordering cycle'")
+
+
+def test_real_system_checks_each_module_it_loads(real: QemuMachine) -> None:
+    """The real system checks each module it loads against the module's signature.
+
+    Its kernel carries the certificates of the keys its modules are signed with
+    (modules/lanzaboote/module-keys.nix); without them it loads every module unchecked.
+    """
+    loaded = real.succeed("cat /proc/modules").splitlines()
+    assert loaded, "no module was loaded, so none was checked"
+    tainted = int(real.succeed("cat /proc/sys/kernel/tainted"))
+    assert not tainted & UNCHECKED_MODULE, f"a module was loaded unchecked: tainted {tainted}"
 
 
 def test_measured_boot_policy_covers_pcrs_0_4_and_7(real: QemuMachine) -> None:
