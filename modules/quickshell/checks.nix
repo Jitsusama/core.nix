@@ -3308,7 +3308,8 @@ onLinux {
       # Three windows of the same title, one of kitty 500's and two of 600's,
       # the second opened as pi-session.7 and laid out in workspace 3's
       # second column, each with the app id it opened with kept, as Niri.qml
-      # keeps it.
+      # keeps it; the windows daemon tells of the same three
+      # (tests/sessions.qml).
       niri = singleton "Niri.qml" ''
         property var windows: ({
           "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse", opened: "kitty" },
@@ -3317,7 +3318,6 @@ onLinux {
             workspace_id: 3, layout: { pos_in_scrolling_layout: [2, 1] } }
         })
         property int revision: 0
-        property int used: 0
         property var current: null
         property var acted: null
         property var spawned: []
@@ -3353,6 +3353,7 @@ onLinux {
       ${lib.getExe pkgs.bash} ${./tests/stand-ins/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./SessionWindows.js} SessionWindows.js
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
@@ -3420,6 +3421,7 @@ onLinux {
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${./tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./SessionWindows.js} SessionWindows.js
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml

@@ -53,14 +53,14 @@ Singleton {
     // by a window's is_focused, yet those were nearly half of what niri said
     // as Joel worked (17 of 36 events in a minute, 2026-11-10), and each
     // made every list again, Sessions' every session among them. A window
-    // used, which niri says a moment after the keys stay in it, changes
-    // only `used`, read by what puts the window used last first: each move
-    // of the keys says it once, and it too made every list again.
+    // used, which niri says a moment after the keys stay in it, is kept in
+    // place and said to nothing: what puts the window used last first reads
+    // it from the windows daemon (modules/windows), and what reads it here
+    // reads it when it's asked, as Forward.js does.
     property var windows: ({})
     property var workspaces: ({})
     property var focused: null
     property int revision: 0
-    property int used: 0
 
     // The window the keys were in, by id. niri says no window has focus
     // while a layer such as the launcher has the keys, so it's the focused
@@ -186,7 +186,6 @@ Singleton {
             const change = event.WindowFocusTimestampChanged;
             if (windows[change.id])
                 windows[change.id].focus_timestamp = change.focus_timestamp;
-            used++;
         } else if (event.WindowUrgencyChanged) {
             const change = event.WindowUrgencyChanged;
             if (windows[change.id])

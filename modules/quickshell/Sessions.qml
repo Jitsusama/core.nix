@@ -21,7 +21,9 @@ pragma Singleton
 // told it by whoever opened the window), or for a window opened without
 // one, through the kitty its record names (`terminal`, or the kitty its
 // process was started in), which says which of its windows the session is
-// in, while niri lists kitty's windows by its process (windowOf). Its
+// in, while niri lists kitty's windows by its process (windowOf). niri's
+// windows come ready from the windows daemon (modules/windows), so a
+// retitle, or the keys moving, makes no list here again. Its
 // quest's whole title and its folder are as its
 // record says them (`questInfo` and `cwd`, which the harness publishes),
 // or for a record from before it did, as its window's label cuts them;
@@ -32,6 +34,7 @@ import Quickshell.Io
 import QtQuick
 import "PiSource.js" as Pi
 import "Places.js" as Places
+import "SessionWindows.js" as SessionWindows
 import "Waiting.js" as Waiting
 
 Singleton {
@@ -51,13 +54,8 @@ Singleton {
     // first, the one whose window was used last first, then those with
     // none; then those elsewhere, the one that changed last first.
     readonly property var running: {
-        // A window used moves only `used`, not niri's windows, so the order
-        // follows it while niriWindows isn't made again.
-        void Niri.used;
-        const when = window => {
-            const stamp = window ? window.focus_timestamp : null;
-            return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
-        };
+        // When a window was last used, in milliseconds, as its record says.
+        const when = window => window?.order ?? 0;
         const windows = niriWindows;
         return live.map(record => shown(record, windows.pids, windows.opened))
             .sort((a, b) => Number(b.here) - Number(a.here)
@@ -664,8 +662,9 @@ Singleton {
             .filter(address => address !== "");
         running.forEach(session => {
             const id = session.presence.session;
-            const at = session.window?.layout?.pos_in_scrolling_layout;
-            const workspace = session.window ? Niri.workspace(session.window.workspace_id) : null;
+            const at = typeof session.window?.column === "number"
+                ? [session.window.column, session.window.down] : null;
+            const workspace = session.window ? Niri.workspace(session.window.workspace) : null;
             const leads = (session.presence.addresses ?? [session.address])
                 .some(address => leaders.includes(String(address).toUpperCase()));
             if (session.here && typeof id === "string" && at && workspace)
@@ -903,8 +902,8 @@ Singleton {
     // Where a session sits, as underOrchestrator reads it: its workspace's
     // id, its column and its quest's title, as its window names it.
     function standing(session) {
-        return { workspace: session.window.workspace_id,
-            column: session.window.layout?.pos_in_scrolling_layout?.[0] ?? 0,
+        return { workspace: session.window.workspace,
+            column: session.window.column ?? 0,
             title: root.named(session.presence).title };
     }
     // Where a session reopened or handed over opens, { workspace, column }
@@ -945,7 +944,7 @@ Singleton {
         const asked = { from: one.from ?? "", quest: one.quest ?? "",
             orchestratedBy: one.orchestratedBy ?? "" };
         const kin = root.kinOf(others, asked);
-        if (!kin?.window || !Niri.workspace(kin.window.workspace_id))
+        if (!kin?.window || !Niri.workspace(kin.window.workspace))
             return null;
         // Under its orchestrator, at its place in title order there.
         const by = root.orchestratorOf(others, asked);
@@ -954,7 +953,7 @@ Singleton {
                 && session.presence.orchestratedBy === by).map(root.standing);
             return Places.underOrchestrator(one.title ?? "", root.standing(kin), under);
         }
-        return { workspace: kin.window.workspace_id, column: null };
+        return { workspace: kin.window.workspace, column: null };
     }
     function placeQuietly(id, waiting) {
         const window = Niri.windows[id];
@@ -974,7 +973,7 @@ Singleton {
         const kin = root.kinOf(others, waiting);
         if (kin && kin.window === null)
             return "waiting";
-        const into = kin?.window.workspace_id ?? window.workspace_id;
+        const into = kin?.window.workspace ?? window.workspace_id;
         if (into === window.workspace_id)
             return "held";
         Niri.act({ MoveWindowToWorkspace: { window_id: id, reference: { Id: into },
@@ -2188,34 +2187,52 @@ Singleton {
         ask();
     }
 
-    // niri's windows by the process drawing them, each kitty's oldest first,
-    // and by the app id each was opened with, the first niri lists of each,
-    // for `running`. They're made once for each change to niri's windows,
-    // rather than again for every change to a session and looked through for
-    // every session, which with a hundred sessions made a hundred lists a
-    // change.
-    readonly property var niriWindows: {
-        void Niri.revision;
-        const opened = {};
-        for (const window of Object.values(Niri.windows)) {
-            if (!(String(window.opened) in opened))
-                opened[String(window.opened)] = window;
-        }
-        return { pids: kittyWindows(), opened: opened };
+    // niri's windows as the windows daemon serves them, each its record
+    // (SessionWindows.js says which fields Sessions reads), kept through a
+    // gap in the daemon, as what it last said still stands.
+    Daemon {
+        id: windowsDaemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
+        kind: "window"
+        answersWhole: true
+        onHeard: (changed, gone) => root.windowsHeard(changed, gone)
     }
+    readonly property var windowsFrom: windowsDaemon
 
     // niri's windows by the process drawing them, each kitty's oldest first,
-    // read afresh for what a change to niri's windows runs before
-    // `niriWindows` has followed it.
-    function kittyWindows() {
-        const by = {};
-        for (const window of Object.values(Niri.windows)) {
-            if (window.pid)
-                (by[window.pid] = by[window.pid] ?? []).push(window);
+    // and by the app id each was opened with, the oldest of each, for
+    // `running`. They're made again only when a window comes, goes, moves
+    // or is used, rather than for every change to a session and looked
+    // through for every session, which with a hundred sessions made a
+    // hundred lists a change; a retitle, or the keys leaving a window,
+    // makes nothing again.
+    property var niriWindows: ({ pids: {}, opened: {} })
+    // The records `niriWindows` was made from, by key.
+    property var windowsKept: ({})
+    function windowsHeard(changed, gone) {
+        let came = gone.length > 0;
+        let moved = came;
+        for (const key of changed) {
+            const record = windowsDaemon.held[key];
+            came = came || !(key in windowsKept);
+            moved = moved || SessionWindows.moved(windowsKept[key], record);
         }
-        for (const pid in by)
-            by[pid].sort((a, b) => a.id - b.id);
-        return by;
+        if (!moved)
+            return;
+        windowsKept = Object.assign({}, windowsDaemon.held);
+        niriWindows = SessionWindows.indexed(Object.values(windowsKept));
+        // A window that comes or goes can be a session's ending, or a
+        // kitty's windows changing.
+        if (came) {
+            relive();
+            ask();
+        }
+    }
+
+    // niri's windows by the process drawing them, each kitty's oldest first.
+    function kittyWindows() {
+        return niriWindows.pids;
     }
 
     // A session's niri window: the one niri lists by the app id its window
@@ -2229,14 +2246,14 @@ Singleton {
     // goes wrong as windows come and go, so it's only for windows with no
     // app id, and goes once every session's window has one. Without the
     // windows by app id, as for a parked or closed session, whose lists
-    // needn't be made again each time niri's focus moves, niri's are looked
-    // through.
+    // needn't be made again each time niri's focus moves, the windows
+    // daemon's are looked through.
     function windowOf(record, kitties, opened) {
         const named = record.opened || viewerOf(record.presence);
         if (named !== "" && opened)
             return opened[String(named)] ?? null;
         if (named !== "")
-            return Object.values(Niri.windows).find(window => window.opened === named) ?? null;
+            return Object.values(windowsKept).find(window => window.opened === named) ?? null;
         const kitty = record.kitty;
         const pid = kitty ? (kittySocket.exec(kitty.socket) ?? [])[1] : undefined;
         const windows = pid ? kitties[pid] ?? [] : [];
@@ -2313,21 +2330,6 @@ Singleton {
         const next = Object.assign({}, ranks);
         next[socket] = { windows: shown.length, of: of };
         ranks = next;
-    }
-
-    // A window that comes or goes can be a session's ending, or a kitty's
-    // windows changing.
-    property string windowsSeen: ""
-    Connections {
-        target: Niri
-        function onRevisionChanged() {
-            const seen = Object.keys(Niri.windows).join(" ");
-            if (seen === root.windowsSeen)
-                return;
-            root.windowsSeen = seen;
-            root.relive();
-            root.ask();
-        }
     }
 
     // The machine's mycelium node, for the realm the machine is in, as pi's

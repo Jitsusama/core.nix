@@ -1,7 +1,8 @@
 pragma ComponentBehavior: Bound
 // Drives a session handed over while the screen is locked, beside its
 // sender in the sessions' kitty (modules/quickshell/Sessions.qml), with
-// the machine's node and niri stood in, the node telling of the sender's
+// the machine's node and niri stood in, and the windows daemon told as its
+// watch is, the node telling of the sender's
 // session, held in kitty 600, which draws two windows, before it has said
 // which of them the sender is in. The handed-over session's window opens
 // with the app id the shell gave it, and the lock is let go while the
@@ -57,7 +58,21 @@ ShellRoot {
         }
     }
 
-    Component.onCompleted: Qt.callLater(check)
+    // The windows as the windows daemon serves them (modules/windows), told
+    // to Sessions' watch as the daemon tells it: the two niri's stand-in
+    // lists (checks.nix), and later the one handed over.
+    function windowRecord(id, opened, workspace) {
+        return { key: `window:${id}`, id, pid: 600, opened, workspace, column: null, down: null,
+            order: 0 };
+    }
+    function windowsTell(said) {
+        Sessions.windowsFrom.said(JSON.stringify(Object.assign({ id: "all" }, said)));
+    }
+    Component.onCompleted: {
+        windowsTell({ records: [windowRecord(20, "kitty", 2),
+            windowRecord(21, "pi-session.3", 2)] });
+        Qt.callLater(check);
+    }
 
     function check() {
         try {
@@ -102,6 +117,7 @@ ShellRoot {
         const window = { id: 22, pid: 600, workspace_id: 1, session: true, opened: classed };
         Niri.windows = Object.assign({}, Niri.windows, { "22": window });
         Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(22, classed, 1)] });
         Niri.windowOpenedOrChanged(window);
         stage = "letGo";
         Sessions.behindTheLock = false;

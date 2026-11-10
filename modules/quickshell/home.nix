@@ -214,6 +214,7 @@ let
     "PiSource.qml"
     "PiSource.js"
     "Sessions.qml"
+    "SessionWindows.js"
     "Places.js"
     "Location.qml"
     "WaitingOnYou.qml"

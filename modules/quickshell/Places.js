@@ -413,17 +413,16 @@ function reopenNote(said, booted, offered) {
     return ways.map(counted).join(", ");
 }
 
-// Where a session's niri `window` sits, kept `at` a time in milliseconds,
-// so its viewer opens there once pi's host runs it (viewersDue): its
-// workspace, and its column where it has one, as a floating window has
-// none. A session with no window, or one niri hasn't laid out, keeps
-// nothing.
+// Where a session's `window` sits, as the windows daemon's record of it
+// says, kept `at` a time in milliseconds, so its viewer opens there once
+// pi's host runs it (viewersDue): its workspace, and its column where it
+// has one, as a floating window has none. A session with no window, or
+// one niri hasn't laid out, keeps nothing.
 function placeOf(window, at) {
-    if (!window || window.workspace_id === null || window.workspace_id === undefined) {
+    if (!window || window.workspace === null || window.workspace === undefined) {
         return null;
     }
-    const column = window.layout?.pos_in_scrolling_layout?.[0];
-    return { workspace: window.workspace_id, column: column ?? null, at };
+    return { workspace: window.workspace, column: window.column ?? null, at };
 }
 
 // How long a kept place waits for its session to run hosted: a day, past

@@ -2,7 +2,7 @@
 // itself, telling it niri's events as its stream would. The keys moving,
 // to another window or to a workspace's other window while a layer holds
 // them, move `focused` and `current` and make no list again (`revision`);
-// a window used moves `used` alone, for what puts the one used last first;
+// a window used is kept, and makes no list again either;
 // and a window retitled, opened or closed still makes them again. It exits
 // 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
@@ -52,11 +52,9 @@ ShellRoot {
         Expect.same("the active window changing under a layer", Niri.current, 2);
         Expect.same("a list made again as the active window changed", Niri.revision, listed);
 
-        const usedBefore = Niri.used;
         Niri.hear({ WindowFocusTimestampChanged: { id: 2,
             focus_timestamp: { secs: 300, nanos: 0 } } });
         Expect.same("a list made again as a window was used", Niri.revision, listed);
-        Expect.same("a window used says so", Niri.used, usedBefore + 1);
         Expect.same("its use kept", Niri.windows[2].focus_timestamp.secs, 300);
         Niri.hear({ WindowOpenedOrChanged: { window: window(2, "Letters", false, 300) } });
         Expect.expect("a window retitled is listed again", Niri.revision > listed,
