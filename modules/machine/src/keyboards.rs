@@ -119,7 +119,9 @@ fn usb_device(device: &Value) -> String {
             !port.is_empty()
                 && port.bytes().all(|byte| byte.is_ascii_digit())
                 && !path.is_empty()
-                && path.bytes().all(|byte| byte.is_ascii_digit() || byte == b'.')
+                && path
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || byte == b'.')
         })
     };
     steps
@@ -160,7 +162,9 @@ fn keyboards(text: &str) -> Vec<Value> {
 
 /// The keyboards connected now, in the kernel's order.
 pub fn connected(root: &Root) -> Value {
-    let listed = root.read(DEVICES).map_or_else(Vec::new, |text| keyboards(&text));
+    let listed = root
+        .read(DEVICES)
+        .map_or_else(Vec::new, |text| keyboards(&text));
     json!({"key": "keyboards:connected", "kind": "keyboards", "listed": listed})
 }
 
@@ -250,7 +254,10 @@ B: LED=1f
             .collect();
         assert_eq!(
             names,
-            ["AT Translated Set 2 keyboard", "ZSA Technology Labs ErgoDox EZ"]
+            [
+                "AT Translated Set 2 keyboard",
+                "ZSA Technology Labs ErgoDox EZ"
+            ]
         );
         assert_eq!(listed[1]["bus"], "0003");
         assert_eq!(listed[1]["vendor"], "3297");
@@ -261,24 +268,30 @@ B: LED=1f
             usb_device(&listed[1]),
             "/sys/devices/pci0000:00/0000:00:14.0/usb1/1-2"
         );
-        assert_eq!(usb_device(&listed[0]), "", "a board off USB has no USB device");
+        assert_eq!(
+            usb_device(&listed[0]),
+            "",
+            "a board off USB has no USB device"
+        );
     }
 
     #[test]
     fn whats_connected_and_caps_lock_are_read_from_their_files() {
         let (root, folder) = rooted("connected");
-        assert_eq!(connected(&root)["listed"], json!([]), "no list, no keyboards");
+        assert_eq!(
+            connected(&root)["listed"],
+            json!([]),
+            "no list, no keyboards"
+        );
         assert_eq!(capslock(&root)["on"], false, "no watcher, never on");
         std::fs::write(folder.join("proc/bus/input/devices"), LISTED).expect("it's written");
         std::fs::write(folder.join("run/keyboard-lights/capslock"), "1\n").expect("it's written");
-        assert_eq!(
-            connected(&root)["listed"]
-                .as_array()
-                .map(Vec::len),
-            Some(2)
-        );
+        assert_eq!(connected(&root)["listed"].as_array().map(Vec::len), Some(2));
         assert_eq!(capslock(&root)["on"], true);
-        assert!(names("keyboards") && names("capslock"), "the watcher's files are its");
+        assert!(
+            names("keyboards") && names("capslock"),
+            "the watcher's files are its"
+        );
         assert!(!names("keyboards.new"), "a list being written is none yet");
         let _ = std::fs::remove_dir_all(folder);
     }
@@ -297,9 +310,16 @@ B: LED=1f
             Some(json!({"key": "layer:keyboard", "kind": "layer", "name": "Numb", "locked": true}))
         );
         std::fs::write(&written, "Punk\n").expect("it's written");
-        assert_eq!(layer(&root, Some(file)).map(|layer| layer["locked"].clone()), Some(json!(false)));
+        assert_eq!(
+            layer(&root, Some(file)).map(|layer| layer["locked"].clone()),
+            Some(json!(false))
+        );
         std::fs::write(&written, "-\n").expect("it's written");
-        assert_eq!(layer(&root, Some(file)), None, "no board plugged in, no layer");
+        assert_eq!(
+            layer(&root, Some(file)),
+            None,
+            "no board plugged in, no layer"
+        );
         let _ = std::fs::remove_dir_all(folder);
     }
 }

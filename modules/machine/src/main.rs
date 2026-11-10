@@ -102,7 +102,14 @@ const LEEWAY: Duration = Duration::from_millis(50);
 /// the second.
 const STEERED: [&str; 2] = ["brightness", "warmth"];
 const KEYBOARDS: [&str; 2] = ["keyboards", "capslock"];
-const HEARD: [&str; 6] = ["brightness", "warmth", "camera", "keyboards", "capslock", "layer"];
+const HEARD: [&str; 6] = [
+    "brightness",
+    "warmth",
+    "camera",
+    "keyboards",
+    "capslock",
+    "layer",
+];
 /// How often a watch on files heard looks to see whether it's still
 /// wanted, once every folder is watched.
 const RESTING: Duration = Duration::from_secs(60);

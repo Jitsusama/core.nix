@@ -991,7 +991,10 @@ fn the_keyboards_caps_lock_and_a_boards_layer_are_told_as_their_watchers_write()
     assert_eq!(client.changed("capslock:keyboard")["on"], true);
     std::fs::write(runtime.join("keyboard-layer"), "Numb locked\n").unwrap();
     let layer = client.changed("layer:keyboard");
-    assert_eq!((&layer["name"], &layer["locked"]), (&json!("Numb"), &json!(true)));
+    assert_eq!(
+        (&layer["name"], &layer["locked"]),
+        (&json!("Numb"), &json!(true))
+    );
     // Unplugged, the board's watcher says "-", and there's no layer.
     std::fs::write(runtime.join("keyboard-layer"), "-\n").unwrap();
     assert_eq!(client.gone(), [json!("layer:keyboard")]);
