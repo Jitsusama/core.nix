@@ -991,7 +991,7 @@ Provider {
         const home = Sessions.home;
         const homely = folder => folder === home || folder.startsWith(`${home}/`)
             ? `~${folder.slice(home.length)}` : folder;
-        // Here, never by the reboot's list (reopenThemAll), so it opens
+        // Here, never where a boot kept it (reopenThemAll), so it opens
         // alone in the folder its record ran in, as one of Sessions to
         // Reopen does.
         const reopen = one => Sessions.reopen(Object.assign({}, one,

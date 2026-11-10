@@ -228,19 +228,19 @@ def test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they
             booted.outputs_say(screen, there=True)
 
 
-def test_reopen_them_all_after_a_reboot_reopens_only_what_its_list_names(
+def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sat(
     booted: Screens,
 ) -> None:
-    """Reopen Them All after a reboot reopens the reboot's list, each where it sat, and no more.
+    """Reopen Them All after a reboot reopens what restore.json kept, each where it sat, once.
 
-    The shell starting reopens nothing, the reboot's list included: Joel reopens them when he
-    asks (2026-11-07, "no, i never wanted them automatic"). Then the list is all Reopen
-    Them All brings back, never what a boot's end left in restore.json: at 09:08 that day a
-    switch restarting the shell reopened 36 sessions a boot four days old had left. A window
-    Joel opens as he signs in, as his browser alone on the first at 10:33, shares no workspace
-    with a session, and the sessions keep who sits with whom. Since 2026-11-09 they go back by
-    identity, never by a workspace's number (Joel: one placer puts every window back by
-    identity), so they go on the workspaces after his.
+    The shell starting reopens nothing: Joel reopens them when he asks (2026-11-07, "no, i
+    never wanted them automatic"), and at 09:08 that day a switch restarting the shell had
+    reopened 36 sessions. restore.json alone says what the boot left, as the harness writes it
+    whatever ends a boot, so a reboot nobody listed by hand is offered the same (2026-11-09).
+    A window Joel opens as he signs in, as his browser alone on the first at 10:33 on 11-07,
+    shares no workspace with a session, and the sessions keep who sits with whom. Since
+    2026-11-09 they go back by identity, never by a workspace's number (Joel: one placer puts
+    every window back by identity), so they go on the workspaces after his.
     """
     machine = booted.machine
     where = {
@@ -291,25 +291,9 @@ def test_reopen_them_all_after_a_reboot_reopens_only_what_its_list_names(
         [space] = [spaces[one["workspace_id"]] for one in windows if one["title"] == "Lantern"]
         return space["output"], space["idx"]
 
-    # restore.json holds the listed and one a boot's end left besides.
-    boot = booted.hand_over({**where, "01c7-stale": kept_on("Virtual-1", 2, 1)})
+    # restore.json holds what the boot before left, and the shell kept where each sat.
+    boot = booted.hand_over(where)
     try:
-        # A restart with only what a boot's end left reopens nothing.
-        machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
-        assert counted() == {}, counted()
-        # The reboot's list, taken a minute before this boot began.
-        now, up = machine.succeed("date +%s; cut -d. -f1 /proc/uptime").split()
-        taken = dt.datetime.fromtimestamp(int(now) - int(up) - 60, dt.UTC)
-        listed = {
-            "v": 1,
-            "boot": "a-boot-before",
-            "taken": taken.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "sessions": [
-                {"id": one, "cwd": f"/home/{booted.account}", "title": one, **at}
-                for one, at in where.items()
-            ],
-        }
-        booted.keep("~/.local/state/pi/reboot-reopen.json", listed)
         # Joel's own window, opened as he signs in, where two of them sat.
         machine.succeed(booted.in_niri("niri msg action focus-monitor Virtual-2"))
         machine.succeed(booted.in_niri("niri msg action focus-workspace 1"))
@@ -322,7 +306,7 @@ def test_reopen_them_all_after_a_reboot_reopens_only_what_its_list_names(
         machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
         assert counted() == {}, counted()
         # Reopen Them All, as Joel's press runs it from Agents (Now holds
-        # the same row), reopens the list alone.
+        # the same row), reopens them, each where it sat.
         reopen_all = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
         catalogue = json.loads(machine.succeed(booted.in_niri("qs ipc call launcher list")))
         assert reopen_all in [e["id"] for e in catalogue], "no Reopen Them All in Agents"
@@ -332,12 +316,11 @@ def test_reopen_them_all_after_a_reboot_reopens_only_what_its_list_names(
         while not home(now_sat := booted.sessions_sat("01c7-")):
             assert time.monotonic() < deadline, f"not reopened where they sat: {now_sat}"
             time.sleep(1)
-        # Started again, the shell reopens none twice, and never the one left.
+        # Started again, the shell reopens none twice.
         machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
         assert counted() == dict.fromkeys(where, "1"), counted()
     finally:
         booted.handed_back(boot)
-        machine.succeed(booted.in_niri("rm -f ~/.local/state/pi/reboot-reopen.json"))
         machine.succeed(booted.in_niri("pkill -f '[k]itty --title Lantern' || true"))
 
 

@@ -212,52 +212,15 @@ QtObject {
         expect("one given a workspace of its own opens at none", Places.opensAt(made, beside),
             null);
 
-        // A reboot's list, taken a minute before this boot began.
-        const began = Date.parse("2026-11-07T17:00:00Z");
-        const listed = (fields) => JSON.stringify(Object.assign({ v: 1, boot: "the-last",
-            taken: "2026-11-07T16:59:00Z", sessions: [
-                { id: "01-boss", cwd: "/home/j/boss", title: "Boss", output: "eDP-1",
-                    workspace: 2, column: 1 },
-                { id: "01-loose", cwd: "/home/j/loose", title: "Loose", orchestrates: "REEF01" },
-                { id: "01; rm -rf ~", cwd: "/tmp" },
-                { id: "01-nowhere", title: "Nowhere" }
-            ] }, fields));
-        const ids = list => list.sessions.map(one => one.id);
-        expect("a reboot's list names each whole one, with its place where it has one",
-            Places.rebootList(listed({}), "this-one", began).sessions, [
-                { id: "01-boss", cwd: "/home/j/boss", title: "Boss",
-                    at: { output: "eDP-1", workspace: 2, column: 1, tile: 1 }, orchestrates: "" },
-                { id: "01-loose", cwd: "/home/j/loose", title: "Loose", at: null,
-                    orchestrates: "REEF01" }
-            ]);
-        // Two windows stacked in one column are each kept at their own
-        // tile, as the list says it or else in the order it lists them, so
-        // neither is moved onto the other's place: after the 21:24 boot on
-        // 2026-11-08 two kept at one column, both at tile 1, swapped 25
-        // times.
-        const stacked = JSON.stringify({ v: 1, boot: "the-last",
-            taken: "2026-11-07T16:59:00Z", sessions: [
-                { id: "01-top", cwd: "/tmp", output: "eDP-1", workspace: 3, column: 3 },
-                { id: "01-under", cwd: "/tmp", output: "eDP-1", workspace: 3, column: 3 },
-                { id: "01-said", cwd: "/tmp", output: "eDP-1", workspace: 4, column: 1,
-                    tile: 2 },
-                { id: "01-next", cwd: "/tmp", output: "eDP-1", workspace: 3, column: 4 }
-            ] });
-        expect("two in one column at a tile each, a tile the list says kept",
-            Places.rebootList(stacked, "this-one", began).sessions.map(one => one.at.tile),
-            [1, 2, 2, 1]);
         // A session its orchestrator hands over goes where it sat this boot,
-        // else where the reboot's list says, else where the restored boot
-        // kept it.
+        // else where the restored boot kept it.
         const here = { output: "eDP-1", workspace: 1, column: 2, tile: 1 };
-        const listedAt = { output: "eDP-1", workspace: 3, column: 3, tile: 2 };
         const restoredAt = { output: "DP-4", workspace: 5, column: 1, tile: 1 };
-        const keptPlaces = { now: { "01-a": here }, reboot: { "01-a": listedAt,
-            "01-b": listedAt }, restored: { "01-a": restoredAt, "01-b": restoredAt,
-            "01-c": restoredAt } };
-        expect("handed over: this boot's, the reboot's list, the restored boot's, none",
-            ["01-a", "01-b", "01-c", "01-d"].map(id => Places.keptFor(id, keptPlaces)),
-            [here, listedAt, restoredAt, null]);
+        const keptPlaces = { now: { "01-a": here },
+            restored: { "01-a": restoredAt, "01-b": restoredAt } };
+        expect("handed over: this boot's, the restored boot's, none",
+            ["01-a", "01-b", "01-c"].map(id => Places.keptFor(id, keptPlaces)),
+            [here, restoredAt, null]);
         // A session started under an orchestrator opens on the orchestrator's
         // workspace, in title order after it, wherever the session that
         // started it sits; one under it elsewhere doesn't count.
@@ -278,48 +241,33 @@ QtObject {
         expect("handed over again while queued or begun, it isn't asked twice",
             Places.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
                 ["q4"]).map(entry => entry.one.id), ["q1", "q2", "q3"]);
-        // Those that orchestrate are begun first, so the sessions they lead
-        // have them back to answer to; the rest keep their order.
-        const queued = (id, orchestrates) => ({ one: { id, orchestrates } });
+        // Those whose kept place says they led others are begun first, so
+        // the sessions they lead have them back to answer to; the rest,
+        // those kept nowhere among them, keep their order.
+        const queued = (id, leads) => ({ one: { id },
+            kept: leads === undefined ? null : Object.assign({ leads }, here) });
         expect("orchestrators first, each part in its order",
-            Places.leadersFirst([queued("a", ""), queued("b", "REEF01"), queued("c", ""),
-                queued("d", "HARB02"), queued("e")]).map(entry => entry.one.id),
+            Places.leadersFirst([queued("a", false), queued("b", true), queued("c"),
+                queued("d", true), queued("e", false)]).map(entry => entry.one.id),
             ["b", "d", "a", "c", "e"]);
-        expect("it says the boot it was taken in",
-            Places.rebootList(listed({}), "this-one", began).boot, "the-last");
-        expect("a list this boot took names none, so a shell restart offers nothing",
-            ids(Places.rebootList(listed({ boot: "this-one" }), "this-one", began)), []);
-        expect("nor one taken more than an hour before this boot began",
-            ids(Places.rebootList(listed({ taken: "2026-11-07T15:59:00Z" }), "this-one",
-                began)), []);
-        expect("nor one taken after it began",
-            ids(Places.rebootList(listed({ taken: "2026-11-07T17:01:00Z" }), "this-one",
-                began)), []);
-        expect("nor one with no boot, nor what isn't a list",
-            [ids(Places.rebootList(listed({ boot: "" }), "this-one", began)),
-                ids(Places.rebootList("{", "this-one", began))], [[], []]);
 
         // What Sessions to Reopen offers of the last boot, which nothing
-        // reopens until Joel asks: the reboot's list while it names any,
-        // each until it's back here, else what restore.json kept.
-        const rebooted = Places.rebootList(listed({}), "this-one", began);
-        const unlisted = Places.rebootList("{", "this-one", began);
+        // reopens until Joel asks: what restore.json kept, the parked among
+        // it, until each is back here.
+        const ids = list => list.sessions.map(one => one.id);
         const restored = { boot: "the-last", sessions: [{ id: "01-kept", cwd: "/tmp" },
+            { id: "01-asleep", cwd: "/tmp", parked: true },
             { id: "01-ferried", cwd: "/tmp", carried: { from: "far", at: "" } }] };
-        const offered = (list, putOff, back) => {
-            const last = Places.lastBoot(list, restored, { boot: "this-one", putOff, back });
+        const offered = (putOff, back) => {
+            const last = Places.lastBoot(restored, { boot: "this-one", putOff, back });
             return [last.boot, ids(last)];
         };
-        expect("the reboot's list, over what restore.json kept",
-            offered(rebooted, "", []), ["the-last", ["01-boss", "01-loose"]]);
-        expect("each of the list until it's back here",
-            offered(rebooted, "", ["01-boss"]), ["the-last", ["01-loose"]]);
-        expect("with no list, what restore.json kept but the carried",
-            offered(unlisted, "", []), ["the-last", ["01-kept"]]);
-        expect("nothing of a boot Joel put off",
-            [offered(rebooted, "the-last", [])[1], offered(unlisted, "the-last", [])[1]],
-            [[], []]);
-        expect("nothing of this boot's own", ids(Places.lastBoot(unlisted,
+        expect("what restore.json kept, the parked too, but the carried",
+            offered("", []), ["the-last", ["01-kept", "01-asleep"]]);
+        expect("each until it's back here",
+            offered("", ["01-kept"]), ["the-last", ["01-asleep"]]);
+        expect("nothing of a boot Joel put off", offered("the-last", [])[1], []);
+        expect("nothing of this boot's own", ids(Places.lastBoot(
             { boot: "this-one", sessions: restored.sessions },
             { boot: "this-one", putOff: "", back: [] })), []);
 

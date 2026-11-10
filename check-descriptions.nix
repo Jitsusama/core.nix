@@ -3147,10 +3147,11 @@
     each one holds, while the launcher's home keeps its shape
   '';
   vm-desktop-reopens-under-orchestrators = ''
-    sessions come back, or start, on their orchestrator's workspace by themselves: a reboot's list
-    of two orchestrations puts each window where it sat, two stacked in one column and those an
-    one its orchestrator hands over again begun once, and one started for another's tree opens with it,
-    in title order after its orchestrator, with Joel's window keeping the keys
+    sessions come back, or start, on their orchestrator's workspace by themselves: what
+    restore.json kept of two orchestrations goes where the shell kept each window, two stacked in
+    one column too, and one its orchestrator hands over again is begun once, and one started for
+    another's tree opens with it, in title order after its orchestrator, with Joel's window
+    keeping the keys
   '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the

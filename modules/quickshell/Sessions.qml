@@ -444,9 +444,15 @@ Singleton {
         printErrors: false
     }
 
-    // The last boot's sessions not back here, and which boot that was: the
-    // reboot's list while it names any, else restore.json's (Places.js).
-    readonly property var lastBootOffered: Places.lastBoot(rebootListed, restoring, {
+    // The last boot's sessions not back here, and which boot that was, as
+    // restore.json says (Places.js). After a boot they wait for Joel:
+    // Reopen Them All, or :reopen, brings them back in one act, each where
+    // the shell kept it, and nothing reopens them before he asks. The shell
+    // once reopened them by itself as it first saw niri, which he never
+    // wanted (Joel, 2026-11-07 20:2x: "no, i never wanted them automatic,
+    // you decided that by yourself"); on 11-01 he had chosen to reopen
+    // them by hand.
+    readonly property var lastBootOffered: Places.lastBoot(restoring, {
         boot: bootId,
         putOff: putOff,
         back: running.concat(parked).filter(session => session.here)
@@ -486,7 +492,7 @@ Singleton {
         printErrors: false
     }
     function forgetReopen(lost) {
-        const named = restoring.sessions.concat(rebootListed.sessions).map(one => one.id);
+        const named = restoring.sessions.map(one => one.id);
         forgotten = forgotten.filter(id => named.includes(id)).concat([lost.id]);
         forgottenFile.setText(JSON.stringify({ ids: forgotten }));
     }
@@ -567,32 +573,6 @@ Singleton {
         putOffFile.setText(JSON.stringify({ boot: putOff }));
     }
 
-    // The sessions live as a reboot's hold went out, each where it sat,
-    // which the reboot's hold lists just before it. After the boot they
-    // wait for Joel: Reopen Them All, or :reopen, brings them back in one
-    // act, each where the list says it sat, and nothing reopens them
-    // before he asks. The shell once reopened them by itself as it first
-    // saw niri, which he never wanted (Joel, 2026-11-07 20:2x: "no, i never
-    // wanted them automatic, you decided that by yourself"); on 11-01 he
-    // had chosen to reopen them by hand. Places.js names only a list
-    // another boot took shortly before this one began, so the sessions a
-    // boot days old left are never offered as the reboot's (P9R1KI
-    // [deedb390]: at 09:08 that day a restart reopened 36 of those).
-    FileView {
-        id: rebootFile
-        path: `${Quickshell.env("XDG_STATE_HOME") || `${root.home}/.local/state`}/pi/reboot-reopen.json`
-        blockLoading: true
-        printErrors: false
-    }
-    readonly property var rebootListed: Places.rebootList(rebootFile.text(), bootId, bootedAt)
-    // Where the reboot's list says each of its sessions sat, by id.
-    readonly property var rebootPlaces: {
-        const places = {};
-        for (const one of rebootListed.sessions)
-            places[one.id] = one.at;
-        return places;
-    }
-
     // Where each session's window sits, kept so Reopen Them All puts every
     // one back on its workspace in its order after a cold boot (Joel,
     // 2026-10-29, after a restore: "every session is all over the place on
@@ -651,16 +631,24 @@ Singleton {
             return restoring.boot;
         return Object.keys(arrangement).find(boot => boot !== bootId) ?? "";
     }
+    // Each kept place says whether its session `leads`, orchestrating one
+    // of the others as it was kept, so Reopen Them All begins it first
+    // (Places.js's leadersFirst).
     function arrangedNow() {
         const now = {};
+        const leaders = running.concat(parked)
+            .map(session => String(session.presence?.orchestratedBy ?? "").toUpperCase())
+            .filter(address => address !== "");
         running.forEach(session => {
             const id = session.presence.session;
             const at = session.window?.layout?.pos_in_scrolling_layout;
             const workspace = session.window ? Niri.workspace(session.window.workspace_id) : null;
+            const leads = (session.presence.addresses ?? [session.address])
+                .some(address => leaders.includes(String(address).toUpperCase()));
             if (session.here && typeof id === "string" && at && workspace)
                 now[id] = { screen: screens[workspace.output] ?? "",
                     output: workspace.output ?? "", workspace: workspace.idx,
-                    column: at[0], tile: at[1] };
+                    column: at[0], tile: at[1], leads };
         });
         return now;
     }
@@ -1351,7 +1339,7 @@ Singleton {
         console.info(`sessions: reopening ${given.length} handed over`);
         reopenAll(given, (one, cwd) => console.info(`sessions: ${one.id} not reopened, `
             + `since its folder, ${cwd}, is gone`),
-            id => Places.keptFor(id, { now: arrangement[bootId], reboot: rebootPlaces,
+            id => Places.keptFor(id, { now: arrangement[bootId],
                 restored: arrangement[restoring.boot] }));
         return given.length === listed.length ? "taken"
             : `taken ${given.length} of ${listed.length}`;
@@ -1516,15 +1504,13 @@ Singleton {
     // after a session that shared Chrome's workspace came back alone, and
     // Joel moved it by hand). Only Reopen Them All puts them back, since a
     // kept place means something only once the sessions are back.
-    // `keptAt`, when given, says where each sat, as a reboot's list does.
+    // `keptAt`, when given, says where each sat, else where the shell kept
+    // it in the boot being restored.
     function reopenThemAll(lost, gone, keptAt) {
         const boot = root.arrangedBefore();
         const kept = Array.isArray(arrangedOthers[boot]) ? arrangedOthers[boot] : [];
         puttingBack = kept.length > 0 ? { boot, kept, used: [], back: [], seen: [] } : null;
-        // Where the reboot's list says one sat, else where the shell kept it.
-        const sat = keptAt ?? (id => rebootPlaces[id]
-            ?? arrangement[rebootListed.sessions.length > 0 ? boot : restoring.boot]?.[id] ?? null);
-        root.reopenAll(lost, gone, sat, carryOn);
+        root.reopenAll(lost, gone, keptAt, carryOn);
     }
     // Each window but kitty's, as it first shows tiled this boot, matched to
     // one kept by its program and title (Places.js's matchOther) and moved
@@ -2056,11 +2042,9 @@ Singleton {
         };
     }
 
-    // This boot, which a record's owner names the boot it began in, and
-    // when it began, in milliseconds since the epoch, as pi's source reads
-    // them.
+    // This boot, which a record's owner names the boot it began in, as
+    // pi's source reads it.
     readonly property string bootId: PiSource.bootId
-    readonly property real bootedAt: PiSource.bootedAt
 
     // The kitty window a session runs in, { socket, window }, or null: as
     // the node says a held one's is, or as its record's terminal says. One

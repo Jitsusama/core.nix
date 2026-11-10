@@ -1,8 +1,9 @@
 """The desktop test's reopens-under-orchestrators area.
 
-Here sessions come back, or start, on their orchestrator's workspace by themselves: a reboot's
-list of two orchestrations puts each window where it sat, two stacked in one column included,
-and begins none again when its orchestrator hands it over too; a list kept on workspaces whose
+Here sessions come back, or start, on their orchestrator's workspace by themselves: what
+restore.json kept of two orchestrations goes back where the shell kept each window, two stacked
+in one column included, orchestrators first, and none is begun again when its orchestrator
+hands it over too; places kept on workspaces whose
 numbers have since gone or been taken by Joel's own puts each orchestration alone on a
 workspace of its own, moving nothing on screen; and a session one starts for another's tree
 opens with that tree, wherever Joel moved it, in title order after its orchestrator. Joel, after the
@@ -99,30 +100,72 @@ def presents(desktop: Desktop, session: str, address: str, said: dict[str, Any])
     )
 
 
+def kept_before(desktop: Desktop, places: dict[str, dict[str, Any]]) -> None:
+    """Keep these sessions as the boot before left them, and start the shell anew to read them.
+
+    restore.json says what that boot left, as the harness writes it, and the shell's own
+    arrangement where each sat and whether it led others. The shell is stopped while they're
+    written, so its own keeping can't write over them, then started, as after a boot.
+    """
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("ls -d ~/.local/state/quickshell/by-shell/*"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    shell = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    desktop.as_account("systemctl --user stop quickshell")
+    kept(
+        desktop,
+        "~/.local/state/pi/restore.json",
+        {
+            "v": 1,
+            "boot": "a-boot-before",
+            "sessions": [
+                {"id": one, "cwd": "/home/jitsusama/reef", "title": one} for one in places
+            ],
+        },
+    )
+    kept(
+        desktop,
+        f"{shell}/session-arrangement.json",
+        {"v": 1, "boots": {"a-boot-before": places}},
+    )
+    desktop.as_account("systemctl --user start quickshell")
+
+
+def nothing_kept(desktop: Desktop) -> None:
+    """Leave restore.json saying this boot lost nothing, so no later test has any to reopen."""
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+
+
 def test_two_orchestrations_come_back_each_where_it_sat(desktop: Desktop) -> None:
-    """A reboot's list of two orchestrations puts every window back where it sat.
+    """What restore.json kept of two orchestrations goes back where the shell kept each window.
 
     After the 21:24 reboot two windows stacked in one column each went after the other's place
-    25 times, since the list said no tile; and the sessions an orchestrator brought back itself
-    went wherever niri put them, since a hand-over never read the list.
+    25 times; and the sessions an orchestrator brought back itself went wherever niri put them,
+    since a hand-over never read where they were kept.
     """
     output = json.loads(desktop.as_account("niri msg --json focused-output"))["name"]
 
-    def at(workspace: int, column: int, tile: int | None = None) -> dict[str, Any]:
-        """Give a place as the reboot's list says one, its tile only when said."""
-        said = {"output": output, "workspace": workspace, "column": column}
-        return said if tile is None else {**said, "tile": tile}
+    def at(workspace: int, column: int, tile: int = 1, *, leads: bool = False) -> dict[str, Any]:
+        """Give a place as the shell keeps one, saying whether its session led others."""
+        return {
+            "output": output,
+            "workspace": workspace,
+            "column": column,
+            "tile": tile,
+            "leads": leads,
+        }
 
-    # The second of the stacked pair says no tile, as the harness's list doesn't yet, so it
-    # takes the next in its column, in the order listed.
     listed = {
-        "01d1-lead-a": {**at(1, 1), "orchestrates": "LEADAA"},
+        "01d1-lead-a": at(1, 1, leads=True),
         "01d1-a-one": at(1, 2, 1),
-        "01d1-a-two": at(1, 2),
-        "01d1-lead-b": {**at(2, 1), "orchestrates": "LEADBB"},
+        "01d1-a-two": at(1, 2, 2),
+        "01d1-lead-b": at(2, 1, leads=True),
         "01d1-b-one": at(2, 2),
         "01d1-b-two": at(2, 3),
     }
+    addresses = {"01d1-lead-a": "LEADAA", "01d1-lead-b": "LEADBB"}
     wanted = {
         "01d1-lead-a": (1, 1, 1),
         "01d1-a-one": (1, 2, 1),
@@ -132,25 +175,9 @@ def test_two_orchestrations_come_back_each_where_it_sat(desktop: Desktop) -> Non
         "01d1-b-two": (2, 3, 1),
     }
     desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/reef")
-    now, up = desktop.machine.succeed("date +%s; cut -d. -f1 /proc/uptime").split()
-    taken = dt.datetime.fromtimestamp(int(now) - int(up) - 60, dt.UTC)
-    kept(
-        desktop,
-        "~/.local/state/pi/reboot-reopen.json",
-        {
-            "v": 1,
-            "boot": "a-boot-before",
-            "taken": taken.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "sessions": [
-                {"id": one, "cwd": "/home/jitsusama/reef", "title": one, **place}
-                for one, place in listed.items()
-            ],
-        },
-    )
     reopen_all = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
     try:
-        # The shell reads the reboot's list as it starts, as after a boot.
-        desktop.as_account("systemctl --user restart quickshell")
+        kept_before(desktop, listed)
         desktop.machine.wait_until_succeeds(
             desktop.in_session(f"qs ipc call launcher list | grep -qF {shlex.quote(reopen_all)}"),
             timeout=dt.timedelta(seconds=120),
@@ -165,15 +192,20 @@ def test_two_orchestrations_come_back_each_where_it_sat(desktop: Desktop) -> Non
         # Reopen Them All's queue. Here each says its record once it's begun, as pi does, and
         # LEADBB, once every window is back, hands its two over again, as an orchestrator
         # restoring its own does: neither is begun twice, since each runs here.
+        # Each is said before the places are judged, so one whose window first shows on the
+        # poll that finds every place right still says its record before the hand-over.
         said: set[str] = set()
         deadline = time.monotonic() + BACK
-        while (back := sitting(desktop, "01d1-")) != wanted:
-            assert time.monotonic() < deadline, f"not each where it sat: {back}"
+        while True:
+            back = sitting(desktop, "01d1-")
             for one in set(back) - said:
-                lead = listed[one].get("orchestrates")
+                lead = addresses.get(one)
                 address = lead or f"RO{len(said):04}"
                 presents(desktop, one, address, {"orchestrates": lead} if lead else {})
                 said.add(one)
+            if back == wanted:
+                break
+            assert time.monotonic() < deadline, f"not each where it sat: {back}"
             time.sleep(0.2)
         since = desktop.mark()
         handing(
@@ -193,8 +225,9 @@ def test_two_orchestrations_come_back_each_where_it_sat(desktop: Desktop) -> Non
     finally:
         # Reopen Them All ran from the launcher, so one failing with it open fails alone.
         desktop.launcher_left_closed()
+        nothing_kept(desktop)
         desktop.as_account(
-            "rm -f $XDG_RUNTIME_DIR/pi-stays ~/.local/state/pi/reboot-reopen.json"
+            "rm -f $XDG_RUNTIME_DIR/pi-stays"
             f" $XDG_RUNTIME_DIR/pi-owner-01d1-* {PI_PRESENCE}/leadaa.json {PI_PRESENCE}/leadbb.json"
             f" {PI_PRESENCE}/ro0*.json; pkill -f 'sleep 60[0]'; true"
         )
@@ -239,15 +272,21 @@ def test_a_list_kept_on_numbers_since_taken_comes_back_alone_moving_nothing(
     spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
     empty = max(one["idx"] for one in spaces if one["output"] == output)
 
-    def at(workspace: int, column: int) -> dict[str, Any]:
-        """Give a place as the reboot's list says one."""
-        return {"output": output, "workspace": workspace, "column": column, "tile": 1}
+    def at(workspace: int, column: int, *, leads: bool = False) -> dict[str, Any]:
+        """Give a place as the shell keeps one, saying whether its session led others."""
+        return {
+            "output": output,
+            "workspace": workspace,
+            "column": column,
+            "tile": 1,
+            "leads": leads,
+        }
 
     # Kept on 2 and 4: 2 is Mail's now, and 3 is gone.
     listed = {
-        "01d3-lead-a": {**at(2, 1), "orchestrates": "LEADAA"},
+        "01d3-lead-a": at(2, 1, leads=True),
         "01d3-a-one": at(2, 2),
-        "01d3-lead-b": {**at(4, 1), "orchestrates": "LEADBB"},
+        "01d3-lead-b": at(4, 1, leads=True),
         "01d3-b-one": at(4, 2),
     }
     wanted = {
@@ -256,25 +295,10 @@ def test_a_list_kept_on_numbers_since_taken_comes_back_alone_moving_nothing(
         "01d3-lead-b": (empty + 1, 1, 1),
         "01d3-b-one": (empty + 1, 2, 1),
     }
-    now, up = desktop.machine.succeed("date +%s; cut -d. -f1 /proc/uptime").split()
-    taken = dt.datetime.fromtimestamp(int(now) - int(up) - 60, dt.UTC)
-    kept(
-        desktop,
-        "~/.local/state/pi/reboot-reopen.json",
-        {
-            "v": 1,
-            "boot": "a-boot-before",
-            "taken": taken.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "sessions": [
-                {"id": one, "cwd": "/home/jitsusama/reef", "title": one, **place}
-                for one, place in listed.items()
-            ],
-        },
-    )
     reopen_all = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
     try:
         since = desktop.mark()
-        desktop.as_account("systemctl --user restart quickshell")
+        kept_before(desktop, listed)
         desktop.machine.wait_until_succeeds(
             desktop.in_session(f"qs ipc call launcher list | grep -qF {shlex.quote(reopen_all)}"),
             timeout=dt.timedelta(seconds=120),
@@ -308,8 +332,9 @@ def test_a_list_kept_on_numbers_since_taken_comes_back_alone_moving_nothing(
         assert mine == joels, (mine, joels)
     finally:
         desktop.launcher_left_closed()
+        nothing_kept(desktop)
         desktop.as_account(
-            "rm -f $XDG_RUNTIME_DIR/pi-stays ~/.local/state/pi/reboot-reopen.json"
+            "rm -f $XDG_RUNTIME_DIR/pi-stays"
             " $XDG_RUNTIME_DIR/pi-owner-01d3-*; pkill -f 'sleep 60[0]'; true"
         )
         desktop.as_account("rm -rf ~/reef")
