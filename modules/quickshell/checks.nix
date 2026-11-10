@@ -1366,13 +1366,12 @@ onLinux {
       { nativeBuildInputs = [ pkgs.procps ]; }
       ''
         export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-        mkdir launcher
+        export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
+        mkdir -m 700 launcher $XDG_RUNTIME_DIR
         cp ${./Trials.qml} Trials.qml
         cp ${./launcher/Trials.js} launcher/Trials.js
         cp ${../../tests/trials-kept.qml} shell.qml
         cp ${../../tests/lib/Expect.js} Expect.js
-        export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
-        mkdir -m 700 $XDG_RUNTIME_DIR
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml
         touch $out
