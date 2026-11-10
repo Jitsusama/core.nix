@@ -1627,6 +1627,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::sync::Condvar;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     /// The exit the stand-in gives for a run stopped before it ended.
@@ -1923,9 +1924,16 @@ mod tests {
         fn wait(&self, _: u64) {}
     }
 
+    /// A state of the test's own. The tests run side by side, so a number
+    /// counted for each keeps two that chose the same name from emptying
+    /// each other's folder.
     fn state(name: &str) -> State {
-        let root =
-            std::env::temp_dir().join(format!("merge-net-watch-{name}-{}", std::process::id()));
+        static MADE: AtomicUsize = AtomicUsize::new(0);
+        let made = MADE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "merge-net-watch-{name}-{}-{made}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&root);
         let state = State { root };
         state.make().unwrap();
@@ -2863,7 +2871,7 @@ mod tests {
 
     #[test]
     fn a_search_cut_short_by_a_restart_is_taken_up_again() {
-        let state = state("taken-up");
+        let state = state("search-taken-up");
         state.set_heads("h", "h").unwrap();
         state
             .keep_settling(
