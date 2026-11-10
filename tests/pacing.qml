@@ -63,6 +63,28 @@ QtObject {
         check(failures, "each weighed once more", weighings, 3);
     }
 
+    // An opening is usable once the shell's thread answers its ticks on
+    // time for a while, not at its first frame: Joel's 15:08 openings
+    // logged 437 ms to their frame and showed him the launcher 7 s after
+    // his chord (Joel, 2026-11-10).
+    function felt(failures) {
+        const pace = { every: 16, within: 17, calmFor: 100 };
+        const tick = (from, times) => times.reduce((felt, at) => Pacing.feltTicked(felt, at,
+            pace), from);
+        const calm = tick(Pacing.feltBegun(0), [16, 32, 48, 64, 80, 96, 112]);
+        check(failures, "a thread free from its first frame is usable from it", calm.usable, 0);
+        const pegged = tick(Pacing.feltBegun(0), [16, 1500, 1516, 1532, 1548, 1564, 1580]);
+        check(failures, "a thread held after its frame isn't usable before 100 ms on time",
+            pegged.usable, -1);
+        const freed = tick(pegged, [1596, 1612]);
+        check(failures, "it's usable from when it came free", freed.usable, 1500);
+        check(failures, "and its longest stall is said", freed.stall, 1484);
+        const jittered = tick(Pacing.feltBegun(0), [30, 46, 62, 78, 94, 110]);
+        check(failures, "a tick a frame late isn't a stall", jittered.usable, 0);
+        check(failures, "once usable, a later stall changes nothing",
+            tick(freed, [5000]).usable, 1500);
+    }
+
     // Agents says how its sessions stand at home, and People is named
     // there by who it lists (Joel, 2026-11-08: "weird lag can happen").
     function wanting(failures) {
@@ -193,6 +215,7 @@ QtObject {
         framing(failures);
         wanting(failures);
         opening(failures);
+        felt(failures);
 
         for (const failure of failures)
             console.warn(failure);
