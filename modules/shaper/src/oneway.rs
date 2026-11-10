@@ -292,13 +292,13 @@ impl Way {
                     self.next_probe = at + PROBE_EVERY_S;
                 }
             }
-            Some(_) => {}
             None if at >= self.next_probe && ours.waiting => {
                 self.rate = plateau * PROBE_UP;
                 self.probing_until = Some(at + PROBE_S);
                 self.elsewhere = None;
             }
-            None => {}
+            // A probe under way, or none due yet.
+            Some(_) | None => {}
         }
         true
     }
@@ -385,7 +385,13 @@ impl Way {
             .late_since
             .is_some_and(|since| at - since >= STANDING_S);
         let flowing = carried > FLOWING_KBIT;
-        if standing && flowing && at - self.last_cut >= BETWEEN_CUTS_S {
+        // A queue standing while nothing of ours waits to go, and the link
+        // carries well under our rate, is the rest of the house's: cutting
+        // frees nothing of it and starves this machine, so the rate holds.
+        // A line that fell under our rate leaves our sockets waiting, and
+        // is cut to as before.
+        let theirs = ours.is_some_and(|ours| !ours.waiting) && carried < self.rate * FULL;
+        if standing && flowing && !theirs && at - self.last_cut >= BETWEEN_CUTS_S {
             // A queue the probes see is first come, first served, and the
             // delay says where it is better than any plateau.
             self.plateau = None;
@@ -1198,6 +1204,38 @@ mod tests {
             ..quiet(2_000.0, 300.0)(0.0)
         });
         assert_eq!(limits.up, None);
+    }
+
+    /// The upload held under a flow-queued router at 12 Mbit/s, then a
+    /// queue standing while it carries 3 Mbit/s, with data of ours waiting
+    /// or not: the rate it holds after ten seconds of it.
+    fn under_a_queue_carrying_little(waiting: bool) -> Option<u64> {
+        let mut c = Controller::new(None, None);
+        flow_queued(&mut c, 0.0, 20.0, |_| 12_000.0);
+        run(&mut c, 20.0, 30.0, |_| Seen {
+            up_delay_ms: Some(60.0),
+            up_ours: Some(Ours {
+                queued: false,
+                waiting,
+            }),
+            ..quiet(3_000.0, 300.0)(0.0)
+        })
+        .up
+    }
+
+    #[test]
+    fn a_queue_the_house_raised_while_nothing_of_ours_waits_isnt_cut() {
+        let held = under_a_queue_carrying_little(false);
+        assert!(near(held, 11_400.0), "cut for the house's queue: {held:?}");
+    }
+
+    #[test]
+    fn a_queue_standing_while_ours_waits_is_cut() {
+        let held = under_a_queue_carrying_little(true);
+        assert!(
+            held.is_some_and(|l| l < 11_000),
+            "held over a queue of ours: {held:?}"
+        );
     }
 
     #[test]
