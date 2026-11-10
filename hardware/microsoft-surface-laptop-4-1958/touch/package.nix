@@ -22,9 +22,10 @@ stdenv.mkDerivation {
   sourceRoot = "source/driver";
 
   patches = [
-    # The panel sends a 4,302-byte heat map about 95 times a second, touched
-    # or not, and its controller's FIFO was read a byte at a time: 7.6 ms of
-    # a core for each, about 70% of one while the lid is open.
+    # The panel sends a 4,302-byte heat map about 100 times a second while
+    # touched, and on some starts untouched too, and its controller's FIFO
+    # was read a byte at a time: 7.6 ms of a core for each, about 70% of
+    # one. Read four bytes at a time, each takes 4.4 ms.
     ./fifo-reads-four-bytes.patch
     # After a second with no contact the panel rests, looking for three
     # frames after each 100 ms, about a quarter of the heat maps it sent.
