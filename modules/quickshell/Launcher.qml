@@ -7161,6 +7161,14 @@ Scope {
     // `showingTurn` and asking for the turn's end, so the rest move
     // unheard, and at the turn's end `showingTurn` moves and it's made
     // whole, once.
+    //
+    // That turn's end waits for the frame begun after it is drawn, and
+    // for the turn after that frame's own handlers, so making it never
+    // holds back the frame a key or step is timed to: made as the turn
+    // ended, it was 2 to 11 ms of each step into a program's place under
+    // load, between its handler and its frame (keeps-pace's scene graph
+    // timings, 2026-11-10), time Joel's shell never spends. What it says
+    // is still a whole turn's, since nothing is made partway.
     property int showingTurn: 0
     readonly property var showingMade: ({ turn: -1, said: "" })
     readonly property string shown: {
@@ -7168,7 +7176,7 @@ Scope {
         if (!Options.reports)
             return "";
         if (showingMade.turn === turn) {
-            Qt.callLater(showingTurnEnds);
+            Qt.callLater(showingTurnDue);
             return showingMade.said;
         }
         showingMade.turn = turn;
@@ -7176,6 +7184,9 @@ Scope {
         return showingMade.said;
     }
     property string shownSaid: ""
+    function showingTurnDue() {
+        afterFrame(() => Qt.callLater(showingTurnEnds));
+    }
     function showingTurnEnds() {
         showingTurn += 1;
         sayShown();
