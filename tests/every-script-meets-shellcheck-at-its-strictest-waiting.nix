@@ -14,7 +14,7 @@
   "modules/bluetooth-disk-prompt/seal-test.sh" = 3;
   "modules/btrfs/tests/btrfs-reclaims-its-chunks.sh" = 4;
   "modules/camera/camera.sh" = 2;
-  "modules/cargo/builds.sh" = 6;
+  "modules/cargo/builds.sh" = 5;
   "modules/chrony/network-servers.sh" = 4;
   "modules/console/setup.sh" = 1;
   "modules/console/stopped.sh" = 13;
