@@ -250,49 +250,80 @@ QtObject {
         holds("Ctrl+W takes the word before the caret", [Commands.wordStart("set volume", 10),
             Commands.wordStart("set volume+=", 12), Commands.wordStart("q  ", 3)], [4, 10, 0]);
 
-        // Each key's work is a fraction of the 4 ms a key has, here over a
-        // menu of 400 commands, timed as the fastest of twenty batches of
-        // fifty, since a check shares its machine: a slower batch is its
-        // other work or the collector, not the line's own cost. The menu is
-        // listed once, as : opens it, which is that key's work with the
-        // narrowing that follows; every key after narrows and reads it, held
-        // to half its 4 ms, since the line has more to draw than this. Both
-        // summed to half once, which a busy builder broke by a tenth of a
-        // millisecond, the colon's listing counted against keys that never
-        // list.
+        // Each key's work over a menu of 400 commands, held to a few times
+        // the least that work could be: listing it against copying each
+        // command into a line with its title lowered and a set of names
+        // seen, and narrowing and reading it against one pass that sorts
+        // the lines by start and word and finds one by name. A key's 4 ms
+        // can't be held in milliseconds on a shared builder, where the same
+        // listing took from 1.5 to 3.6 ms; its cost against a floor timed in
+        // turn with it, in the same batch, meets the same moment's load, and
+        // stayed within twice the floor at load averages of 40 to 95. What
+        // it catches is the line doing several times the least it could:
+        // a pattern made for each word of each title as it's listed came to
+        // about three times the copy, and a seen-check by search ran past
+        // the check's minute.
+        const most = 3;
         const many = [];
         for (let at = 0; at < 400; at++)
             many.push({ command: `cmd${at}`, short: `cmd${at}`, title: `Command ${at}`, key: "",
                 run: () => {} });
-        const timed = work => {
-            let fastest = Infinity;
+        // The floor and the work, timed in turn in each of twenty batches,
+        // each by the fastest batch, since a slower one is the builder's
+        // other work or the collector, not the line's own cost.
+        const against = (floor, work, size) => {
+            let least = Infinity;
+            let took = Infinity;
             for (let batch = 0; batch < 20; batch++) {
-                const began = Date.now();
-                for (let at = 0; at < 50; at++)
+                let began = Date.now();
+                for (let at = 0; at < size; at++)
+                    floor();
+                least = Math.min(least, (Date.now() - began) / size);
+                began = Date.now();
+                for (let at = 0; at < size; at++)
                     work();
-                fastest = Math.min(fastest, (Date.now() - began) / 50);
+                took = Math.min(took, (Date.now() - began) / size);
             }
-            return fastest;
+            return { least, took };
         };
-        // Measured up to three times and held by the least, as the shell's
-        // own cost is the floor under a builder's noise: the fastest of
-        // twenty batches still went past once, at main's 2101c92b6, and
-        // passed straight after (the net, 2026-11-09).
+        const copied = () => {
+            const seen = new Set();
+            const menu = [];
+            for (const own of many) {
+                if (seen.has(own.command))
+                    continue;
+                seen.add(own.command);
+                menu.push({ command: own.command, short: own.short, title: own.title,
+                    key: own.key, own, lowered: ` ${own.title.toLowerCase()}` });
+            }
+            return menu;
+        };
         const big = menuOf(network(), many);
-        let listing = Infinity;
-        let keyed = Infinity;
-        for (let round = 0; round < 3 && listing + keyed >= 4; round++) {
-            listing = Math.min(listing, timed(() => menuOf(network(), many)));
-            keyed = Math.min(keyed, timed(() => {
-                Commands.narrowed(big, "cmd3");
-                Commands.ran("cmd399", big);
-            }));
-        }
-        console.log(`400 commands listed in ${listing.toFixed(3)} ms, narrowed and read in`
-            + ` ${keyed.toFixed(3)} ms`);
-        holds("400 commands listed and narrowed within the colon's 4 ms", listing + keyed < 4,
-            true);
-        holds("and narrowed and read in half a key's 4 ms", keyed < 2, true);
+        const sorted = () => {
+            const starting = [];
+            const worded = [];
+            for (const entry of big) {
+                if (entry.command.startsWith("cmd3"))
+                    starting.push(entry);
+                else if (entry.lowered.includes(" cmd3"))
+                    worded.push(entry);
+            }
+            return [starting.concat(worded), big.filter(one => one.command === "cmd399")];
+        };
+        // Narrowing is a tenth of listing, so it's timed over batches of a
+        // hundred, for a floor the clock's millisecond can tell.
+        const listing = against(copied, () => menuOf(network(), many), 50);
+        const keyed = against(sorted, () => {
+            Commands.narrowed(big, "cmd3");
+            Commands.ran("cmd399", big);
+        }, 100);
+        console.log(`400 commands listed in ${listing.took.toFixed(3)} ms against a copy's`
+            + ` ${listing.least.toFixed(3)} ms, narrowed and read in ${keyed.took.toFixed(3)} ms`
+            + ` against a pass's ${keyed.least.toFixed(3)} ms`);
+        holds(`400 commands listed within ${most} times a copy of them`,
+            listing.took < most * listing.least, true);
+        holds(`and narrowed and read within ${most} times a pass over them`,
+            keyed.took < most * keyed.least, true);
 
         // :set, read as Vim reads its words (:help :set): each an option
         // on, off, the other way, set, moved by so much, or shown.
