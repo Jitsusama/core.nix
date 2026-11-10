@@ -142,13 +142,17 @@ STARTED = timedelta(seconds=8)
 # A storm of windows changing, as Joel's crowd of agents' windows makes: STORMING windows, each
 # a session's, retitled STORM times a second between them, which niri tells the shell of one
 # event at a time. The launcher is opened OPENINGS times through it, every core busy, and each
-# opening reaches its frame within OPENED_WITHIN ms, at the tail as at the middle: Joel's took
-# 6,184 ms to its frame for 107 ms of its own work on 2026-11-10.
+# opening is ready to draw within OPENED_WITHIN ms, at the tail as at the middle: Joel's took
+# 6,184 ms to its frame for 107 ms of its own work on 2026-11-10. Ready to draw is its own work,
+# the shell settling after it and the wait for the next frame to begin; the drawing itself is
+# llvmpipe's here, not the laptop's GPU, so it's held to its time with the load frozen, over
+# FROZEN openings, and a whole frame within OPENED_WITHIN is judged from Joel's own journal.
 STORMING = 40
 STORM = 100
 OPENINGS = 20
 OPENED_WITHIN = 50
 OPENED_TAIL = 0.99
+FROZEN = 8
 
 
 @pytest.fixture(scope="module")
@@ -744,26 +748,71 @@ def storm(desktop: Desktop) -> Iterator[None]:
         machine.wait_until_succeeds(desktop.in_session(gone), timeout=REACHING)
 
 
+def opened_from_kept(desktop: Desktop) -> Json:
+    """Open the launcher once the last close has kept home, and give that opening as timed."""
+    retry(lambda _: bool(desktop.showing()["kept"]), timeout=REACHING)
+    opening = opened_timed(desktop)
+    assert opening["kept"], f"an opening wasn't drawn from what was kept: {opening}"
+    assert "filled" in opening, f"an opening drawn from what was kept wasn't filled: {opening}"
+    return opening
+
+
+def ready(opening: Json) -> int:
+    """Give how long an opening took until its frame began to be drawn: worked, settled, waited."""
+    after = opening["after"]
+    return int(opening["worked"] + after["settling"] + after["waiting"])
+
+
 @pytest.mark.usefixtures("loaded", "storm")
-def test_each_opening_reaches_its_frame_soon_through_a_storm_of_windows_changing(
+def test_each_opening_is_soon_ready_to_draw_through_a_storm_of_windows_changing(
     desktop: Desktop,
 ) -> None:
-    """Each opening reaches its frame soon through a storm of windows changing, every core busy.
+    """Each opening is soon ready to draw through a storm of windows changing, every core busy.
 
     Joel's crowd of agents' windows retitle themselves all day, and an opening that waited on
-    the shell making every list again for each change took seconds to show (2026-11-10).
+    the shell making every list again for each change took seconds to show (2026-11-10). So a
+    closed launcher keeps home, and an opening draws that before the rest of the shell wakes to
+    fill it in, where its rows stand. Its drawing is held to its drawing with the load frozen.
     """
-    took: list[int] = []
+    timing = Timing(desktop)
+    # The first opening after the shell starts makes every row, with nothing kept yet.
+    opened_timed(desktop)
+    each: dict[bool, list[Json]] = {True: [], False: []}
     try:
-        for _ in range(OPENINGS):
-            opening = opened_timed(desktop)
-            print(f"through the storm, an opening {opening}")
-            took.append(opening["took"])
+        for loaded, times in ((True, OPENINGS), (False, FROZEN)):
+            if loaded != timing.loading:
+                timing.load(on=loaded)
+            for _ in range(times):
+                opening = opened_from_kept(desktop)
+                print(
+                    f"through the storm, {'under load' if loaded else 'with the load frozen'},"
+                    f" an opening ready to draw in {ready(opening)} ms: {opening}"
+                )
+                each[loaded].append(opening)
     finally:
+        if not timing.loading:
+            timing.load(on=True)
         desktop.launcher_left_closed()
-    tail = sorted(took)[math.ceil(OPENED_TAIL * len(took)) - 1]
+
+    def middle(times: list[int]) -> int:
+        return sorted(times)[(len(times) - 1) // 2]
+
+    def standing(rows: Json) -> tuple[object, object]:
+        return rows["keys"], rows["at"]
+
+    moved = [
+        one for one in each[True] + each[False] if standing(one["shown"]) != standing(one["filled"])
+    ]
+    assert not moved, f"filled in, an opening's rows or cursor moved: {moved}"
+    readied = sorted(ready(one) for one in each[True])
+    tail = readied[math.ceil(OPENED_TAIL * len(readied)) - 1]
     assert tail <= OPENED_WITHIN, (
-        f"an opening through the storm took {tail} ms to its frame at the tail: {sorted(took)}"
+        f"an opening through the storm took {tail} ms to be ready to draw at the tail: {readied}"
+    )
+    drawing = {loaded: [one["after"]["drawing"] for one in each[loaded]] for loaded in each}
+    assert middle(drawing[True]) <= SLOWER_MOST * middle(drawing[False]) + STEPPED_MORE, (
+        f"the load slowed drawing an opening through the storm: {drawing[True]} ms against "
+        f"{drawing[False]} ms frozen"
     )
 
 

@@ -2293,7 +2293,15 @@
   a-place-reads-alike-everywhere = ''
     a place's row says nothing after its name; at its right it says how it stands where it says,
     else its word for none while it holds nothing, else how many it holds, and nothing for a place
-    that only groups others; and its drawer names what it holds, in its own order
+    that only groups others; its drawer names what it holds, in its own order; and kept for the
+    next opening, home's rows stand in their order by their names, each saying how it stands, and
+    its note, as being read
+  '';
+  the-launcher-opens-on-what-it-kept-on-niri = ''
+    on niri, an opening draws home as the closed launcher kept it, though it was left with a word
+    typed, making no row before its frame and each row saying how it stands as being read; filled
+    in, its rows stand where they stood with the cursor on the first, none still being read; and
+    keys typed straight after the chord are all found
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
@@ -3187,7 +3195,11 @@
     Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more;
     and the first opening after the shell starts again, People listing 500 as Joel's lists
     hundreds, reaches its frame within twice its frozen time and 50 ms more, and the opening
-    after it weighs none of the words file's verbs again
+    after it weighs none of the words file's verbs again; and through 40 windows retitled 100
+    times a second, every core busy, nineteen in twenty openings are ready to draw their first
+    frame within 50 ms of the ask, its own work, the settling after it and the wait for the
+    frame, drawn from what the closed launcher kept and filled in without moving a row or the
+    cursor, and their drawing takes within twice its time with the load frozen and 50 ms more
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
