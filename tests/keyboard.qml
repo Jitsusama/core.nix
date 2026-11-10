@@ -12,9 +12,10 @@
 // Then the board is unplugged, leaving the kernel's list of input devices
 // as keyboard-lights says, as the machine daemon tells them under its root
 // (ConnectedKeyboards.qml), though its watcher still says its layer: the
-// open layout turns to the laptop's own in place, and every key, act and choice of the board goes, as does its row among
-// the keyboards, until it's plugged back in. It exits 0 once every case
-// holds, and otherwise 1, saying which case didn't.
+// open layout turns to the laptop's own in place, and every key, act and
+// choice of the board goes, as does its row among the keyboards, until it's
+// plugged back in. It exits 0 once every case holds, and otherwise 1,
+// saying which case didn't.
 import qs
 import Quickshell
 import Quickshell.Io
