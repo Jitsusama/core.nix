@@ -170,7 +170,12 @@ enum Asked {
     Copy(Which),
     Paste(Which, Keys),
     Press(Keys, Duration, Instant),
+    Unpasted,
 }
+
+/// What the shell is told when a paste it asked for never lands, so the
+/// place it pasted from can say so rather than leave it to the journal.
+const UNPASTED: &str = "{\"unpasted\":true}\n";
 
 /// What a paste says of its time, in the journal: how long the launcher
 /// took to let go of the keys after the ask, which is the shell's frame,
@@ -240,10 +245,13 @@ fn asked_niri(socket: &Path) -> Option<bool> {
 }
 
 /// Waits until niri says the launcher has let go of the keys, or with no
-/// niri to ask, a moment. Answers whether they're free to press. Once
-/// is enough: niri gives the keys to the window as it ends the turn that
-/// answered, before it reads the keys pressed after the answer, and asking
-/// again waited behind niri drawing, 89 ms on a builder (2026-11-10).
+/// niri to ask, a moment. Answers whether they're free to press. niri is
+/// asked afresh each millisecond, a connection each time, since it answers
+/// one question a connection, and the keys are pressed on the first answer
+/// that says they're free rather than on a second confirming it: niri
+/// gives the keys to the window as it ends the turn that answered, before
+/// it reads the keys pressed after the answer, and a second ask waited
+/// behind niri drawing, 89 ms on a builder (2026-11-10).
 fn keys_let_go(niri: Option<&Path>) -> bool {
     let Some(niri) = niri else {
         thread::sleep(UNASKED);
@@ -763,39 +771,48 @@ impl State {
     fn paste(&mut self, which: Which, keys: Keys, handle: &QueueHandle<Self>) {
         let asked = Instant::now();
         if !self.offer(which, handle) {
+            eprintln!("That copy isn't kept, so nothing was pasted.");
+            self.unpasted();
             return;
         }
         let (Ok(mut waking), niri) = (self.waking.try_clone(), self.niri.clone()) else {
+            self.unpasted();
             return;
         };
         let pressing = self.pressing.clone();
         thread::spawn(move || {
-            if !keys_let_go(niri.as_deref()) {
+            let said = if keys_let_go(niri.as_deref()) {
+                let let_go = Instant::now();
+                Asked::Press(keys, let_go - asked, let_go)
+            } else {
                 eprintln!("The launcher never let go of the keys, so nothing was pasted.");
-                return;
-            }
-            let let_go = Instant::now();
-            if pressing
-                .send(Asked::Press(keys, let_go - asked, let_go))
-                .is_ok()
-            {
+                Asked::Unpasted
+            };
+            if pressing.send(said).is_ok() {
                 let _ = waking.write_all(b"!");
             }
         });
     }
 
+    /// Tells the shell a paste it asked for never landed.
+    fn unpasted(&self) {
+        self.history.lock().unwrap().tell(UNPASTED);
+    }
+
     /// Presses the paste keys through the virtual keyboard: its modifiers
-    /// held, V pressed and let go, then the modifiers let go.
-    fn press(&self, keys: Keys) {
+    /// held, V pressed and let go, then the modifiers let go. Answers
+    /// whether there was a keyboard to press them on.
+    fn press(&self, keys: Keys) -> bool {
         let Some(keyboard) = &self.keyboard else {
             eprintln!("The compositor has no virtual keyboard, so nothing was pasted.");
-            return;
+            return false;
         };
         let time = u32::try_from(self.started.elapsed().as_millis()).unwrap_or(u32::MAX);
         keyboard.modifiers(keys.modifiers(), 0, 0, 0);
         keyboard.key(time, V, 1);
         keyboard.key(time, V, 0);
         keyboard.modifiers(0, 0, 0, 0);
+        true
     }
 }
 
@@ -1194,9 +1211,13 @@ fn run() -> Result<(), String> {
                 }
                 Asked::Paste(which, keys) => state.paste(which, keys, &handle),
                 Asked::Press(keys, letting_go, let_go) => {
-                    state.press(keys);
-                    eprintln!("{}", pasted(letting_go, let_go.elapsed()));
+                    if state.press(keys) {
+                        eprintln!("{}", pasted(letting_go, let_go.elapsed()));
+                    } else {
+                        state.unpasted();
+                    }
                 }
+                Asked::Unpasted => state.unpasted(),
                 Asked::Clear => {}
             }
         }
@@ -1615,6 +1636,17 @@ mod tests {
         let mut kept = history(10);
         assert!(!kept.add(copy(1, " \n\t")));
         assert!(kept.copies.is_empty());
+    }
+
+    #[test]
+    fn a_paste_that_never_lands_is_told_to_every_shell() {
+        let mut history = history(5);
+        let (shell, mut heard) = UnixStream::pair().unwrap();
+        history.clients.push(shell);
+        history.tell(UNPASTED);
+        let mut line = [0; UNPASTED.len()];
+        heard.read_exact(&mut line).unwrap();
+        assert_eq!(&line, b"{\"unpasted\":true}\n");
     }
 
     #[test]
