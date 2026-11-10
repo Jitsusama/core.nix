@@ -77,6 +77,16 @@ QtObject {
         Expect.same("nor any, before the desktop is said",
             HeldWindows.spacesFrom({ "workspace:1": space(1, "eDP-1") }, 1), []);
 
+        // A workspace's side says each program once, counted when it has
+        // more than one window there, in the words given.
+        const words = { empty: "empty", counted: "{program} \u00d7{count}" };
+        Expect.same("a program with three windows is said once, counted",
+            HeldWindows.insideSaid([{ program: "kitty", count: 3 },
+                { program: "Google Chrome", count: 1 }], words),
+            "kitty \u00d73, Google Chrome");
+        Expect.same("and a workspace with none says it's empty",
+            HeldWindows.insideSaid([], words), "empty");
+
         // Applications draws a program's count and Go To again only when
         // its windows came, went or another was used last.
         const one = { id: 1, title: "a" };

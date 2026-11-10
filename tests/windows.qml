@@ -139,7 +139,9 @@ ShellRoot {
             // doesn't watch workspaces, so only Windows is told.
             const madeBefore = windows.tally.rows;
             windows.windowsDaemon.said(JSON.stringify({ changed: [
-                space(1, { inside: ["tester", "tester"] }), space(2, { inside: ["tester"] }),
+                space(1, { inside: [{ program: "tester", count: 2 }] }),
+                space(2, { inside: [{ program: "tester", count: 2 },
+                    { program: "foot", count: 1 }] }),
                 space(3, { new: true }), space(4, { output: "HDMI-A-1" }),
                 Object.assign(desktop(logbook),
                     { spaces: { "eDP-1": [1, 2, 3], "HDMI-A-1": [4] } })] }));
@@ -147,7 +149,7 @@ ShellRoot {
             const offered = windows.workspacesFor(windows.held.windows["window:11"]);
             Expect.same("Move to Workspace offers the others on its screen, saying what's on each",
                 offered.map(row => `${row.name}: ${row.side}`).join("; "),
-                "Workspace 2: tester; A new workspace: ");
+                "Workspace 2: tester \u00d72, foot; A new workspace: ");
             Expect.same("and hearing the workspaces makes no window's row", madeHearing, 0);
 
             // Super+Tab, Return on Draft: the keys move as the launcher

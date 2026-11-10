@@ -496,18 +496,18 @@ Provider {
             const action = Shortcuts.actions.find(a => a.does === does);
             return action ? action.chord.map(key => key.text).join("+") : "";
         };
+        const words = Words.of("windows").said;
         return HeldWindows.spacesFrom(said, window.workspace_id).map(space => {
             const chord = window.id === current ? chordTo(space.idx) : "";
             return thing({
                 key: `workspace:${space.idx}`,
                 verb: "move",
                 name: space.new ? "A new workspace" : space.name ?? `Workspace ${space.idx}`,
-                count: space.focused ? "here" : "",
+                count: space.focused ? words.here : "",
                 glyph: space.new ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
                 hue: "machine",
-                side: space.new ? ""
-                    : space.inside.length === 0 ? "empty" : space.inside.join(", "),
-                note: chord === "" ? "" : `next time ${chord}`,
+                side: space.new ? "" : HeldWindows.insideSaid(space.inside, words),
+                note: chord === "" ? "" : words.nextTime.replace("{chord}", chord),
                 run: () => Niri.act({
                     MoveWindowToWorkspace: {
                         window_id: window.id,

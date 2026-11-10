@@ -291,18 +291,23 @@ impl Desktop {
         records
     }
 
-    /// Each workspace's record, with the programs on it (`inside`, by
-    /// their windows' ids), and each screen's workspaces in niri's order,
-    /// so a row offering one says what's on it and the shell offers them
-    /// in order, without walking every window or sorting.
+    /// Each workspace's record, with the programs on it (`inside`, each
+    /// once with how many of its windows, in the order of their first),
+    /// and each screen's workspaces in niri's order, so a row offering
+    /// one says what's on it and the shell offers them in order, without
+    /// walking every window, counting or sorting.
     fn workspace_records<'p>(
         &self,
         inside: impl Iterator<Item = (u64, &'p str)>,
         records: &mut Vec<Value>,
     ) -> BTreeMap<&str, Vec<Value>> {
-        let mut on_each: HashMap<u64, Vec<&'p str>> = HashMap::new();
+        let mut on_each: HashMap<u64, Vec<(&'p str, u64)>> = HashMap::new();
         for (workspace, program) in inside {
-            on_each.entry(workspace).or_default().push(program);
+            let on = on_each.entry(workspace).or_default();
+            match on.iter_mut().find(|(seen, _)| *seen == program) {
+                Some((_, count)) => *count += 1,
+                None => on.push((program, 1)),
+            }
         }
         let mut spaces: BTreeMap<&str, Vec<&Value>> = BTreeMap::new();
         for w in self.workspaces.values() {
@@ -316,7 +321,12 @@ impl Desktop {
         }
         records.extend(self.workspaces.values().map(|w| {
             let id = id_of(&w["id"]).unwrap_or(0);
-            let programs = on_each.get(&id).cloned().unwrap_or_default();
+            let programs: Vec<Value> = on_each
+                .get(&id)
+                .into_iter()
+                .flatten()
+                .map(|(program, count)| json!({ "program": program, "count": count }))
+                .collect();
             // niri keeps an empty workspace last on each screen, which is
             // how a new one is made.
             let last = spaces
@@ -626,14 +636,20 @@ mod tests {
         {"id":3,"idx":3,"name":null,"output":"eDP-1","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null},
         {"id":4,"idx":1,"name":null,"output":"HDMI-A-1","is_urgent":false,"is_active":true,"is_focused":false,"active_window_id":null}]}}"#,
         );
+        // A second Chrome on workspace 2, so its program is counted once
+        // with both windows rather than said twice.
+        hear(
+            &mut desktop,
+            r#"{"WindowOpenedOrChanged":{"window":{"id":14,"title":"Calendar - Google Chrome","app_id":"google-chrome","pid":101,"workspace_id":2,"is_focused":false,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[2,1],"tile_size":[640,800]},"focus_timestamp":null}}}"#,
+        );
         let said = records(&desktop);
         assert_eq!(
             said["workspace:1"]["inside"],
-            json!(["kitty", "Google Chrome"])
+            json!([{"program": "kitty", "count": 1}, {"program": "Google Chrome", "count": 1}])
         );
         assert_eq!(
             said["workspace:2"]["inside"],
-            json!(["Google Chrome", "foot"])
+            json!([{"program": "Google Chrome", "count": 2}, {"program": "foot", "count": 1}])
         );
         assert_eq!(said["workspace:2"]["name"], "mail");
         assert_eq!(said["workspace:3"]["inside"], json!([]));
