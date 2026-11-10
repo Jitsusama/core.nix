@@ -6725,9 +6725,41 @@ Scope {
         id: drawerFollowing
         interval: root.drawerFollows
         onTriggered: {
+            const began = Date.now();
+            const was = root.drawerShows;
             root.drawerRow = root.selected;
+            root.drawerAsked = Date.now() - began;
+            // A drawer already out is made again for the row at once.
+            if (root.drawerShows !== was)
+                root.drawerMade(began, root.drawerAsked);
             Report.say(`drawer follows ${root.selected?.key ?? ""}`);
         }
+    }
+    // How long working out the drawer's row's drawer took when it was last
+    // followed, which a drawer that comes out after resting made first.
+    property int drawerAsked: 0
+    // The drawer last drawn and timed, by its row's key, and how many have
+    // been, for the check that times each place's drawer under load; the
+    // journal says only those slow enough to feel. It's set anew, once a
+    // drawer, so what the launcher shows is said again with it.
+    property var drawerTimedLast: ({ key: "", took: 0, making: 0, count: 0 })
+    // Times a drawer from the work begun for it, `making` ms of it the
+    // launcher's own, to the first frame begun after, as a key is timed,
+    // beside the keys' lines in the journal (Trials.qml's drawerTimed). It's
+    // made off the key's path, so the keys' own times never held it. One
+    // whose launcher closes before its frame isn't timed, its frame never
+    // coming.
+    function drawerMade(began, making) {
+        if (!open)
+            return;
+        const key = drawerRow?.key ?? "";
+        afterFrame(() => {
+            if (!root.open)
+                return;
+            const took = Date.now() - began;
+            root.drawerTimedLast = { key, took, making, count: root.drawerTimedLast.count + 1 };
+            trials.drawerTimed(key, took, making);
+        });
     }
     property bool drawerOut: false
     property var drawerShows: null
@@ -6752,9 +6784,14 @@ Scope {
             && JSON.stringify(shows) === JSON.stringify(wanted);
     }
     function drawerSettled() {
+        const began = Date.now();
         drawerOut = drawerWanted !== null;
-        if (drawerOut)
-            drawerShows = drawerWanted;
+        if (!drawerOut)
+            return;
+        drawerShows = drawerWanted;
+        // Timed with what working out its row's drawer took as it was
+        // followed, but not the rest between, which is the drawer's pace.
+        drawerMade(began - drawerAsked, Date.now() - began + drawerAsked);
     }
     // How long the selection rests before the drawer comes or goes.
     Timer {
@@ -7090,6 +7127,11 @@ Scope {
             // where it and the card sit.
             drawer: {
                 out: root.drawerOut,
+                // The row it follows, whether that row has one, and the row
+                // whose drawer was last drawn and timed.
+                row: root.drawerRow?.key ?? "",
+                wanted: root.drawerWanted !== null,
+                timed: root.drawerTimedLast,
                 // Whether there's no room for it beside the card, and
                 // whether it's drawn.
                 over: root.drawerOver,

@@ -64,6 +64,16 @@ Scope {
                     + `${parts.before ? `, before ${parts.before}` : ""})` : ""));
     }
 
+    // A drawer's time from the work begun for it to the frame that drew it,
+    // `making` ms of it the launcher's own, said in the journal as a slow
+    // key is, by the row it's for, so how soon each place's drawer comes can
+    // be read from Joel's own use (2026-11-10: "as fast as thought").
+    function drawerTimed(key, drawn, making) {
+        if (Trials.felt(drawn))
+            console.info(`launcher: drawer for "${key}" took ${drawn} ms to its frame,`
+                + ` ${making} ms making`);
+    }
+
     // The answers' time, as the answers asked, the rows placed and the list
     // shown, when the key said them.
     function composed(parts) {
