@@ -65,7 +65,9 @@ def lending(
     machine.wait_for_unit("nix-offload-lines.service")
     token = f"{LENDER}/cloud-token"
     write(machine, token, "a token")
-    as_lender(machine, f"chgrp nix-offload-lines {token} && chmod 0640 {token}")
+    # As the lender leaves it: its own, and read by the service's account through an ACL, since
+    # the lender's account is in none of the service's groups.
+    as_lender(machine, f"chmod 0600 {token} && setfacl -m u:nix-offload-lines:r {token}")
     write(machine, f"{LENDER}/instance", "a-builder-1 a-zone\n")
     forged = lent.rsplit(" ", 1)[0] + " " + carried("AAAAforged")
     write(machine, f"{LENDER}/machines", f"{lent}\n{forged}\n")
@@ -83,6 +85,12 @@ def test_root_is_given_only_the_lines_it_trusts(
         f"grep -qxF {shlex.quote(standing)} {ROOTS}/machines-with-standing", timeout=COPYING
     )
     assert lending.succeed(f"cat {ROOTS}/machines-with-standing") == f"{standing}\n"
+
+
+def test_the_lenders_account_is_in_none_of_the_services_groups(lending: BaseMachine) -> None:
+    """The lender's account hands the token over by an ACL, so needs no group of the service's."""
+    groups = lending.succeed("id -nG someone").split()
+    assert "nix-offload-lines" not in groups, groups
 
 
 def test_the_lenders_account_cannot_write_roots_lines(lending: BaseMachine) -> None:
