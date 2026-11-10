@@ -139,7 +139,7 @@ Singleton {
     readonly property var ending: sorting.ending
     signal sorted()
     // Whether the launcher shows them (shell.qml). While it doesn't, a
-    // change only to what it alone shows (Pi.told) is held back, and taken
+    // change only to what it alone shows (Pi.telling) is held back, and taken
     // once it shows them again: just after, so opening isn't slowed by it,
     // since what it first shows, how each session stands, was never held.
     property bool showing: false
@@ -148,7 +148,7 @@ Singleton {
             Qt.callLater(resort);
     }
     property bool heldBack: false
-    // What was last sorted, as Pi.told said it, and whether it was shown.
+    // What was last sorted, as Pi.telling said it, and whether it was shown.
     property string sortedSaid: ""
     property bool saidShown: false
     function resort() {
@@ -158,7 +158,7 @@ Singleton {
             bootedAt: bootedAt,
             markers: parkedMarkers()
         });
-        const said = Pi.told(next, showing);
+        const said = Pi.telling(next, showing);
         sorts.heard += 1;
         if (said === sortedSaid && saidShown === showing) {
             heldBack = !showing;

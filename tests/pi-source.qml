@@ -121,15 +121,19 @@ QtObject {
             stepDetail: { kind: "tool", name: "edit", detail: "PiSource.js" },
             usage: { last: { "gen_ai.usage.input_tokens": 9 } }
         });
+        // One elsewhere working on moves its record's own time with its step.
+        const awayAt = working["session:s-away"];
+        awayAt.at = "2026-11-08T01:00:09Z";
+        awayAt.presence = Object.assign({}, awayAt.presence, { step: "read" });
         const moved = Pi.sorted(working, place);
         expect("with the launcher shut, a step moving alone tells nothing new",
-            Pi.told(moved, false) === Pi.told(sorted, false), Pi.told(moved, false));
+            Pi.telling(moved, false) === Pi.telling(sorted, false), Pi.telling(moved, false));
         expect("with the launcher showing it, a step moving tells it",
-            Pi.told(moved, true) !== Pi.told(sorted, true), Pi.told(moved, true));
+            Pi.telling(moved, true) !== Pi.telling(sorted, true), Pi.telling(moved, true));
         busyAt.presence = Object.assign({}, busyAt.presence, { busy: false });
         expect("with the launcher shut, a session's standing moving still tells it",
-            Pi.told(Pi.sorted(working, place), false) !== Pi.told(sorted, false),
-            Pi.told(Pi.sorted(working, place), false));
+            Pi.telling(Pi.sorted(working, place), false) !== Pi.telling(sorted, false),
+            Pi.telling(Pi.sorted(working, place), false));
         expect("what's told never changes what's held",
             Pi.sorted(working, place).live.find(one => one.file === "s-busy")
                 .presence.stepDetail.name === "edit", "its step was taken out");
