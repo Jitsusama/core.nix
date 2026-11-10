@@ -81,6 +81,15 @@ in
             type = lib.types.str;
             description = "Its name as Joel reads it.";
           };
+          windows = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            description = ''
+              The app ids its program's windows carry, so one that opens as
+              it asks Joel something, such as to unlock, closes the launcher
+              and takes the keys rather than coming up beneath it.
+            '';
+          };
           shows = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
@@ -148,6 +157,7 @@ in
           name
           program
           called
+          windows
           ;
         shows = if manager.shows == null then "" else manager.shows;
         fills = if manager.fills == null then "" else manager.fills;
