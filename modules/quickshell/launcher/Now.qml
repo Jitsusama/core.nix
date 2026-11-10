@@ -184,6 +184,17 @@ Provider {
         const placed = id => provider.launcher?.resolved?.(id) ?? null;
         timeRow = placed("time");
         dateRow = placed("today");
+        timeStale = false;
+    }
+
+    // Whether a minute turned while Now's rows weren't wanted, so it's read
+    // as they are again. Placing the time and the date makes Time's and
+    // Today's rows, so an opening, which retimes already, retimes once.
+    property bool timeStale: false
+
+    function retimeIfStale() {
+        if (timeStale)
+            retime();
     }
 
     Connections {
@@ -192,16 +203,16 @@ Provider {
         function onDateChanged() {
             if (provider.wanted)
                 Qt.callLater(provider.retime);
+            else
+                provider.timeStale = true;
         }
     }
 
     Component.onCompleted: Qt.callLater(retime)
     onLauncherChanged: Qt.callLater(retime)
-    // The minute that turned while they weren't wanted is read as they
-    // are, since placing the time and the date makes their rows.
     onWantedChanged: {
         if (wanted)
-            retime();
+            Qt.callLater(retimeIfStale);
     }
 
     Connections {

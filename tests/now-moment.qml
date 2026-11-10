@@ -596,7 +596,13 @@ ShellRoot {
         expect("and the tray and home's row count what waits",
             ForYouHolds.count === 2 && now.homeSays() === "Session C needs you \u00b7 1 more",
             JSON.stringify([ForYouHolds.count, now.homeSays()]));
+        const placedShut = theLauncher.placed;
         theLauncher.wanting = true;
+        now.retimeIfStale();
+        // Placing the time makes Time's and Today's rows, and an opening
+        // retimes already, so with no minute turned, wanted again doesn't.
+        expect("wanted again with no minute turned, the time isn't placed again",
+            theLauncher.placed === placedShut, theLauncher.placed - placedShut);
         const made = now.tally.rows;
         expect("wanted again, they're made as they stand",
             made > before && castRow()?.side === "to the speaker"
