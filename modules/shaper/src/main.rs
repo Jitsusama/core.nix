@@ -503,9 +503,10 @@ fn run(options: &Options) -> ExitCode {
     let mut last_resent: Option<(u64, Instant)> = None;
     let mut heard: BTreeMap<String, Heard> = BTreeMap::new();
     let mut primary: Option<String> = None;
-    let mut live = options
-        .one_way
-        .then(|| live::Live::new(&options.record, SystemTime::now()));
+    let mut live = options.one_way.then(|| {
+        let learned = options.state.join("learned.json");
+        live::Live::new(&options.record, SystemTime::now(), &learned)
+    });
     loop {
         let now = Instant::now();
         let t = (now - began).as_secs_f64();

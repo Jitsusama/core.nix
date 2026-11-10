@@ -35,7 +35,14 @@
 //! five seconds running with no queue, so a queue met while it carried a
 //! sliver can't teach it that the connection carries less than it already
 //! has.
+//!
+//! What a direction learned of its connection, its base and the plateau a
+//! router that queues flow by flow showed it, outlasts the stay: a network
+//! met again starts from it, so the first upload after a restart or a
+//! rejoin is held under that router at once rather than after it has been
+//! found again.
 
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 /// A direction's own delay past this, standing, is a queue.
@@ -179,6 +186,37 @@ impl Ours {
     }
 }
 
+/// What a direction learned of its connection that outlasts a stay, in
+/// kbit/s: its base, and the plateau a router that queues flow by flow
+/// showed it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Learned {
+    pub base: Option<f64>,
+    pub plateau: Option<f64>,
+}
+
+impl Learned {
+    /// What this says, and what `older` said where this says nothing: a
+    /// stay that learned no plateau, a replayed one among them, forgets
+    /// none.
+    pub fn over(self, older: Learned) -> Learned {
+        Learned {
+            base: self.base.or(older.base),
+            plateau: self.plateau.or(older.plateau),
+        }
+    }
+
+    /// Whether either rate moved by more than a twentieth from `from`, or
+    /// came or went.
+    pub fn moved(self, from: Learned) -> bool {
+        let far = |a: Option<f64>, b: Option<f64>| match (a, b) {
+            (Some(a), Some(b)) => (a - b).abs() * 20.0 > a.max(b),
+            (a, b) => a.is_some() != b.is_some(),
+        };
+        far(self.base, from.base) || far(self.plateau, from.plateau)
+    }
+}
+
 /// One direction's rate.
 #[derive(Clone, Debug)]
 pub struct Way {
@@ -243,6 +281,26 @@ impl Way {
             plateau: None,
             next_probe: 0.0,
             probing_until: None,
+        }
+    }
+
+    /// A direction starting from what it learned before: at its base, and
+    /// with a plateau, held under it and looking for more room as soon as
+    /// data waits, so a plateau gone stale either way is soon set right.
+    pub fn from_learned(learned: Learned) -> Way {
+        let mut way = Way::new(learned.base);
+        if let Some(plateau) = learned.plateau {
+            way.plateau = Some(plateau);
+            way.rate = way.rate.min((plateau * HOLD).max(LEAST_KBIT));
+        }
+        way
+    }
+
+    /// What this direction has learned that outlasts the stay.
+    pub fn learned(&self) -> Learned {
+        Learned {
+            base: self.base,
+            plateau: self.plateau,
         }
     }
 
@@ -581,6 +639,16 @@ impl Controller {
         }
     }
 
+    /// A controller for a network met before, from what each direction
+    /// learned of it.
+    pub fn from_learned(up: Learned, down: Learned) -> Controller {
+        Controller {
+            up: Way::from_learned(up),
+            down: Way::from_learned(down),
+            ..Controller::new(None, None)
+        }
+    }
+
     /// Whether the guard has given up, for `GIVEN_UP_S`.
     pub fn given_up(&self) -> bool {
         self.returns >= GUARD_RETURNS
@@ -687,6 +755,49 @@ impl crate::replay::Controller for Controller {
 mod tests {
     use super::*;
     use crate::replay::{self, Base, Stay};
+
+    #[test]
+    fn a_plateau_learned_before_holds_under_the_router_at_once() {
+        let at = |held: &[(f64, Option<u64>)], s: f64| {
+            held.iter().find(|&&(at, _)| at >= s).and_then(|&(_, l)| l)
+        };
+        let learned = Learned {
+            base: None,
+            plateau: Some(12_000.0),
+        };
+        let mut met = Controller::from_learned(learned, Learned::default());
+        let held = flow_queued(&mut met, 0.0, 5.0, |_| 12_000.0);
+        assert!(near(at(&held, 4.0), 11_400.0), "{:?}", at(&held, 4.0));
+        let mut cold = Controller::new(None, None);
+        let held = flow_queued(&mut cold, 0.0, 5.0, |_| 12_000.0);
+        assert!(
+            !near(at(&held, 4.0), 11_400.0),
+            "a network never met found its plateau as soon, so this shows nothing"
+        );
+    }
+
+    #[test]
+    fn what_a_direction_learned_outlasts_a_stay_that_learned_less() {
+        let old = Learned {
+            base: Some(10_000.0),
+            plateau: Some(12_000.0),
+        };
+        let replayed = Learned {
+            base: Some(10_200.0),
+            plateau: None,
+        };
+        let kept = replayed.over(old);
+        assert_eq!(kept.plateau, Some(12_000.0));
+        assert_eq!(kept.base, Some(10_200.0));
+        assert!(
+            !kept.moved(old),
+            "a base a fiftieth off was taken for a move"
+        );
+        assert!(
+            Learned::default().moved(old),
+            "forgetting both wasn't a move"
+        );
+    }
 
     #[test]
     fn a_vpn_s_queue_is_ours_and_said_to_be_its() {
