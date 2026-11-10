@@ -1525,6 +1525,11 @@
     what it was given and left running through a switch, and a machine naming none, or a Mac,
     gets none
   '';
+  pi-hosts-refuse-an-unproven-runtime = ''
+    a realm's pi reaches its hosts only with the proof that pnpm test:host passed on the runtime
+    it is in; a proof of another runtime, or one that isn't a proof, fails evaluation, naming the
+    realm and how to prove it
+  '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the
     shell's want sound rings loud, both under the theme message's pitch
