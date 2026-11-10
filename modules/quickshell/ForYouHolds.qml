@@ -35,10 +35,14 @@ Singleton {
         answersWhole: true
     }
     // The looks that wait, as the stream says them, weighed as For You
-    // weighs the folder's, or Now's while the daemon hasn't answered.
+    // weighs the folder's, or Now's while the daemon hasn't answered. A
+    // daemon that stopped answering keeps what it last held, so that's
+    // set aside for Now's reading rather than counted as current: the tray
+    // fails to the folder, never to stale looks (Y2YBTS, as in #2707).
+    readonly property bool streamed: toDo.answered && toDo.state !== "not answering"
     readonly property var waitingLooks: {
         void toDo.revision;
-        return toDo.answered ? ForYou.looks(Holding.lookFiles(toDo.held)).waiting : looks;
+        return streamed ? ForYou.looks(Holding.lookFiles(toDo.held)).waiting : looks;
     }
 
     readonly property var holds: Holding.held({
