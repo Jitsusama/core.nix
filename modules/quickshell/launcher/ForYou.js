@@ -430,23 +430,25 @@ function look(text) {
 // Joel's 166 files, and parsing all of them again took about 9 ms of it
 // (2026-11-10). A file no longer given goes from `kept`.
 function looks(files, kept) {
-    const given = {};
+    const named = {};
     const read = (files ?? []).filter(one => !String(one.file ?? "").endsWith(".writing"))
         .map(one => {
             const file = String(one.file ?? "");
-            given[file] = true;
+            named[file] = true;
             const was = kept?.[file];
             if (was !== undefined && was.text === one.text) {
                 return was.look;
             }
             const each = look(one.text);
-            const made = each === null ? null : Object.assign(each, { file: file });
+            const made = each === null ? null : Object.assign(each, { file });
             if (kept) {
                 kept[file] = { text: one.text, look: made };
             }
             return made;
         }).filter(one => one !== null);
-    Object.keys(kept ?? {}).filter(file => !given[file]).forEach(file => delete kept[file]);
+    for (const file of Object.keys(kept ?? {}).filter(one => !named[one])) {
+        delete kept[file];
+    }
     return {
         waiting: Order.sorted(read.filter(one => one.state === "waiting"),
             Order.smaller(one => one.since)),
