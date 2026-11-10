@@ -2638,11 +2638,20 @@ Scope {
     // A key as the foot names it: the first the table gives an act in a
     // mode, normal unless said, drawn as the key list draws it, so a hint
     // names the key that does what it says.
+    // Found once an act and mode, since the table never changes and the
+    // foot asks it for every listed row as the rows change (2026-11-10).
     function hintKey(act, mode) {
+        const asked = `${act}\u241f${mode ?? "normal"}`;
+        const known = hintKeys[asked];
+        if (known !== undefined)
+            return known;
         const row = QueryKeys.table.find(one => one.act === act
             && QueryKeys.inMode(one, mode ?? "normal"));
-        return row ? ListedKeys.sequenceFace(row.keys[0]) : "";
+        const key = row ? ListedKeys.sequenceFace(row.keys[0]) : "";
+        hintKeys[asked] = key;
+        return key;
     }
+    readonly property var hintKeys: ({})
 
     // d and y where the row has an ending or a copy that its Return isn't,
     // d by the ending's own verb, as docs/design.md's foot says "d

@@ -38,12 +38,27 @@ Row {
     // How wide a key and its word are drawn, for a line holding a place
     // for them before they show: the keys a tie apart, then the word a
     // mark on.
+    // Each is measured once until the face changes: the launcher's foot
+    // weighs every listed row's keys as the rows change, the same few
+    // keys and words each time, and measuring them in the font again
+    // was a tenth of a step into Desktop under load (2026-11-10).
     function advance(key: string, word: string): real {
+        const tie = Theme.space.rung.tie;
+        const mark = Theme.space.rung.mark;
+        const asked = `${key}\u241f${word ?? ""}\u241f${tie}\u241f${mark}`;
+        const known = measured[asked];
+        if (known !== undefined)
+            return known;
         const parts = partsOf(key);
-        return parts.reduce((sum, part) => sum + face.advanceWidth(part), 0)
-            + Math.max(0, parts.length - 1) * Theme.space.rung.tie
-            + ((word ?? "") === "" ? 0 : Theme.space.rung.mark + face.advanceWidth(word));
+        const wide = parts.reduce((sum, part) => sum + face.advanceWidth(part), 0)
+            + Math.max(0, parts.length - 1) * tie
+            + ((word ?? "") === "" ? 0 : mark + face.advanceWidth(word));
+        measured[asked] = wide;
+        return wide;
     }
+    // What advance has measured in this face, by key and word: a plain
+    // object, so remembering one notifies nothing.
+    property var measured: ({})
 
     // What a key is drawn as, each a tie from the next: the keys pressed
     // one after another, and in a chord its keys with each + on its own
@@ -80,6 +95,8 @@ Row {
 
     FontMetrics {
         id: face
+        // Another face measures every key afresh.
+        onFontChanged: hints.measured = {}
         font.family: hints.level.family
         font.pointSize: hints.level.pointSize
         font.weight: hints.level.weight
