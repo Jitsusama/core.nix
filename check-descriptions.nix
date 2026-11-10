@@ -2391,7 +2391,9 @@
     only they are there; the location and the clock's zone are whereabouts' own, over its socket;
     and For You, asked again, makes none of its looks again, only one whose file changed; and a
     piece of what's on that moved is the only one whose row and acts are made again, a kept one
-    running its piece's act as it is now
+    running its piece's act as it is now; and For You's Desktop holds the notices unread as the
+    notices' own rows, and its History those read, stepping in again after one is read making
+    only that one's row again
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a

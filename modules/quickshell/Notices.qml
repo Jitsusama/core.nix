@@ -394,10 +394,15 @@ Singleton {
                 : notice);
     }
 
-    // Everything kept has been seen, though not necessarily read.
+    // Everything kept has been seen, though not necessarily read. Only one
+    // missed changes, so the rest stay as they were and the launcher's
+    // rows of them are kept (launcher/PastNotices.qml): the launcher opening
+    // with one missed made every notice's row again, 488 on Joel's shell
+    // (2026-11-10).
     function seen() {
         if (missed > 0)
-            history = history.map(notice => Object.assign({}, notice, { missed: false }));
+            history = history.map(notice => notice.missed
+                ? Object.assign({}, notice, { missed: false }) : notice);
     }
 
     // The history on disk. What's read back joins anything that arrived
