@@ -5425,16 +5425,13 @@ Scope {
             keysBegun.push(key.begun);
         }
         keysTimed += drawnKeys.length;
-        if (keysFramed.length > keysKept)
-            keysFramed.splice(0, keysFramed.length - keysKept);
-        if (keysBegun.length > keysKept)
-            keysBegun.splice(0, keysBegun.length - keysKept);
-        if (keysHeard.length > keysKept)
-            keysHeard.splice(0, keysHeard.length - keysKept);
-        if (keysDone.length > keysKept)
-            keysDone.splice(0, keysDone.length - keysKept);
-        if (keysPressed.length > keysKept)
-            keysPressed.splice(0, keysPressed.length - keysKept);
+        // The oldest go from all five at once, so each place still holds
+        // one key though keys typed as this frame was drawn wait on.
+        const over = keysFramed.length - keysKept;
+        if (over > 0) {
+            for (const kept of [keysFramed, keysBegun, keysHeard, keysDone, keysPressed])
+                kept.splice(0, over);
+        }
     }
 
     // What waits for the launcher's next frame, as a daemon's watch begun

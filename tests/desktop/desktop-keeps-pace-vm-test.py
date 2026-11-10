@@ -185,6 +185,15 @@ def framed(desktop: Desktop) -> Json:
     return cast("Json", json.loads(desktop.as_account("qs ipc call launcher framed")))
 
 
+def timed_early(keys: Json, timed: int) -> list[tuple[float, float]]:
+    """Give each key timed since `timed` whose frame began before its handler was done."""
+    count = min(keys["timed"] - timed, len(keys["frames"]))
+    if count <= 0:
+        return []
+    done, begun = keys["done"][-count:], keys["begun"][-count:]
+    return [(at, began) for at, began in zip(done, begun, strict=True) if began < at]
+
+
 class Timing:
     """Keys pressed on the stand-in keyboard at a steady pace, each timed to its first frame.
 
@@ -466,6 +475,10 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     # Each place's slowest step under load as the launcher said it, whose
     # parts say where its time went.
     slowest: dict[str, tuple[int, str]] = {}
+    # Keys timed by a frame begun before their handler was done, as a step just after Escape
+    # was by Escape's frame: said 33 to 51 ms, its own frame 117 to 158 ms after the key
+    # (2026-11-10).
+    early: list[tuple[float, float]] = []
     try:
         stepped_round(desktop)
         for turn in range(ROUNDS):
@@ -473,7 +486,9 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
             if loaded != timing.loading:
                 timing.load(on=loaded)
             since = desktop.mark()
+            timed = framed(desktop)["timed"]
             stepped_round(desktop)
+            early.extend(timed_early(framed(desktop), timed))
             for place, took, search, line in steps_said(desktop, since):
                 (under if loaded else free).setdefault(place, []).append(took)
                 if loaded:
@@ -499,6 +514,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
         ):
             slowed.append(place)
     assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
+    assert not early, f"keys done at and timed by frames begun before: {early}"
     assert not slowed, f"the load slowed stepping into {slowed}: {under} against {free}"
 
 

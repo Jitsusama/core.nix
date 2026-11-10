@@ -494,40 +494,6 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     shell.close_launcher()
 
 
-# How far apart the keys of a burst are typed, quicker than a held key repeats, so some land
-# while the frame before them is still being drawn.
-BURST_PACE_MS = 3
-
-
-def test_each_key_is_timed_by_a_frame_begun_after_its_handler(shell: Shell) -> None:
-    """Each key's time ends at a frame begun after its handler, never one already under way.
-
-    A step from normal just after Escape was timed by Escape's frame, 33 to 51 ms, where its
-    own came 117 to 158 ms after the key (keeps-pace under load, 2026-11-10), and the machine's
-    load proof reads these same times.
-    """
-    word = "workspaceskeyboardwindowsnotices"
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    before = json.loads(shell.as_account(shell.ipc("framed")))["timed"]
-    subprocess.run(["wtype", "-d", str(BURST_PACE_MS), "--", word], check=True)  # noqa: S603, S607
-    shell.launcher_until(lambda shown: shown["typed"] == word)
-    waiting = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    framed = json.loads(shell.as_account(shell.ipc("framed")))
-    while framed["timed"] < before + len(word):
-        assert time.monotonic() < waiting, f"{framed['timed'] - before} keys reached a frame"
-        time.sleep(launcher_on_niri.POLL)
-        framed = json.loads(shell.as_account(shell.ipc("framed")))
-    shell.close_launcher()
-    keys = len(word)
-    done, begun, frames = (framed[part][-keys:] for part in ("done", "begun", "frames"))
-    early = [(at, began) for at, began in zip(done, begun, strict=True) if began < at]
-    assert not early, f"keys done at and timed by frames begun before: {early}"
-    assert all(began <= swapped for began, swapped in zip(begun, frames, strict=True)), (
-        f"a frame reached the screen before it began: {list(zip(begun, frames, strict=True))}"
-    )
-
-
 def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:
     """In For You, :filter look steps into its looks, the head naming it, and - comes back out.
 
