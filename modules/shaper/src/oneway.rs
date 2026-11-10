@@ -100,6 +100,25 @@ const GUARD_WINDOW_S: f64 = 60.0;
 /// A delay standing this long, cuts and all, isn't this machine's queue.
 const FUTILE_S: f64 = 30.0;
 const GUARD_RETURNS: usize = 3;
+/// How long data must wait to go while our CAKE holds nothing and the link
+/// carries under its rate before the queue is taken to be another's.
+const ELSEWHERE_S: f64 = 2.0;
+/// Under this share of its rate, a link with data waiting and our CAKE
+/// holding nothing is held back by something past it.
+const UNDER: f64 = 0.98;
+/// A queue held elsewhere is taken back only while the link carries at
+/// least this share of the most it has carried: carrying less, what holds
+/// it back is one slow server, or other machines' share of the router, and
+/// cutting to it would hold everything else down with it.
+const REACHED: f64 = 0.7;
+/// What share of what got through, the plateau, a direction is held to
+/// once it has found the queue elsewhere.
+const HOLD: f64 = 0.95;
+/// How often a held direction looks for more room, how far over its
+/// plateau, and for how long.
+const PROBE_EVERY_S: f64 = 60.0;
+const PROBE_UP: f64 = 1.1;
+const PROBE_S: f64 = 3.0;
 
 /// What each direction is held to, in kbit/s; None is no limit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +138,22 @@ pub struct Seen {
     pub gateway_ms: Option<f64>,
     pub up_kbit: f64,
     pub down_kbit: f64,
+    /// Whose the upload's queue is, when the live shaper can tell; a
+    /// replay of the recorder's lines can't.
+    pub up_ours: Option<Ours>,
+}
+
+/// What the shaper sees of its own side of a direction: whether its CAKE
+/// holds a queue, whether connections on the link have data waiting to
+/// go, and what TCP sent again.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Ours {
+    pub queued: bool,
+    pub waiting: bool,
+    /// What TCP sent again over the last second, in kbit/s. A router held
+    /// past what it carries drops the rest flow by flow, and what it
+    /// dropped crosses our link twice, so it's no part of the line.
+    pub resent: u64,
 }
 
 /// One direction's rate.
@@ -145,6 +180,19 @@ pub struct Way {
     /// Each moment of the last `FUTILE_S`, and whether its queue stood
     /// while it carried a sliver of its connection.
     crowded: VecDeque<(f64, bool)>,
+    /// What it carried each moment of the last `PROVEN_S`, and the most it
+    /// carried for that long, queue or not, in this stay.
+    carrying: VecDeque<(f64, f64)>,
+    reached: f64,
+    /// Since when data has waited with our CAKE holding nothing, and what
+    /// got through each moment of it.
+    elsewhere: Option<(f64, f64, u32)>,
+    /// What got through when the queue was last found past our CAKE, which
+    /// the rate is held under, and when it next looks for more room, or
+    /// until when it is looking.
+    plateau: Option<f64>,
+    next_probe: f64,
+    probing_until: Option<f64>,
 }
 
 impl Way {
@@ -166,7 +214,108 @@ impl Way {
             clear_since: None,
             proven: 0.0,
             crowded: VecDeque::new(),
+            carrying: VecDeque::new(),
+            reached: 0.0,
+            elsewhere: None,
+            plateau: None,
+            next_probe: 0.0,
+            probing_until: None,
         }
+    }
+
+    /// Keep the most it carried for `PROVEN_S` running, queue or not.
+    fn reach(&mut self, at: f64, carried: f64) {
+        self.carrying.push_back((at, carried));
+        while self
+            .carrying
+            .front()
+            .is_some_and(|&(t, _)| at - t > PROVEN_S)
+        {
+            self.carrying.pop_front();
+        }
+        if self
+            .carrying
+            .front()
+            .is_some_and(|&(t, _)| at - t >= PROVEN_S - 0.05)
+        {
+            let least = self
+                .carrying
+                .iter()
+                .map(|&(_, c)| c)
+                .fold(f64::INFINITY, f64::min);
+            self.reached = self.reached.max(least);
+        }
+    }
+
+    /// Follows a queue our probes can't see: a router that queues flow by
+    /// flow, as the eero does, delays no probe however full the link is,
+    /// and shares what it carries out by flow, so Joel's upload gets one
+    /// share among every agent's. With data waiting, our CAKE holding
+    /// nothing and the link carrying under its rate, the queue is past
+    /// CAKE: the rate goes a little under what got through, so the queue
+    /// is CAKE's again and its tins say who goes first. Held there, it
+    /// looks a little higher now and then, and keeps what the link carries
+    /// while CAKE still holds a queue, and cut for a queue the probes saw,
+    /// climbs back to where it held. Answers whether it set the rate.
+    fn own(&mut self, at: f64, dt: f64, ours: Ours, carried: f64) -> bool {
+        // What got through the router once: a router dropping what it
+        // can't carry has our link carry more than its line.
+        let through = (carried - crate::rate::float(ours.resent)).max(0.0);
+        let elsewhere = ours.waiting
+            && !ours.queued
+            && through > FLOWING_KBIT
+            && through < self.rate * UNDER
+            && self.reached > 0.0
+            && through >= self.reached * REACHED;
+        if elsewhere {
+            let (since, sum, n) = self.elsewhere.get_or_insert((at, 0.0, 0));
+            *sum += through;
+            *n += 1;
+            if at - *since >= ELSEWHERE_S - 0.05 {
+                let plateau = *sum / f64::from(*n);
+                self.elsewhere = None;
+                self.plateau = Some(plateau);
+                self.rate = (plateau * HOLD).max(LEAST_KBIT);
+                self.probing_until = None;
+                self.next_probe = at + PROBE_EVERY_S;
+                return true;
+            }
+        } else {
+            self.elsewhere = None;
+        }
+        let Some(plateau) = self.plateau else {
+            return false;
+        };
+        match self.probing_until {
+            Some(until) if at >= until => {
+                self.probing_until = None;
+                if ours.queued && through >= self.rate * UNDER {
+                    // The link carried the higher rate with CAKE still
+                    // holding a queue, so there is room past it: keep it,
+                    // and look higher at once.
+                    self.plateau = Some(through);
+                    self.next_probe = at;
+                } else {
+                    self.rate = plateau * HOLD;
+                    self.next_probe = at + PROBE_EVERY_S;
+                }
+            }
+            None if at >= self.next_probe && ours.waiting => {
+                self.rate = plateau * PROBE_UP;
+                self.probing_until = Some(at + PROBE_S);
+                self.elsewhere = None;
+            }
+            // The queue the probes saw has gone, and what the link carried
+            // before it still stands for the line: climbing past it would
+            // fill the router's hidden queue again, so it climbs back to
+            // where it held, gently, as near a queue it met, and no further.
+            None if self.rate < plateau * HOLD => {
+                self.rate = (self.rate * CLIMB.powf(dt)).min(plateau * HOLD);
+            }
+            // A probe under way, or none due yet.
+            Some(_) | None => {}
+        }
+        true
     }
 
     /// What the connection is known to carry: its base, or what it was
@@ -223,12 +372,13 @@ impl Way {
 
     /// Take in a moment: this direction's own delay, with the air and the
     /// other direction's path taken off, and what it carried.
-    pub fn step(&mut self, at: f64, delay_ms: f64, carried: f64) {
+    pub fn step(&mut self, at: f64, delay_ms: f64, carried: f64, ours: Option<Ours>) {
         // A gap, while the connection was left unlimited or asleep, is one
         // moment, not a climb all through it.
         let dt = self.last_at.map_or(0.0, |last| (at - last).clamp(0.0, 1.0));
         self.last_at = Some(at);
         self.prove(at, delay_ms, carried);
+        self.reach(at, carried);
         let crowded = delay_ms > LATE_MS
             && self
                 .connection()
@@ -250,8 +400,23 @@ impl Way {
             .late_since
             .is_some_and(|since| at - since >= STANDING_S);
         let flowing = carried > FLOWING_KBIT;
-        if standing && flowing && at - self.last_cut >= BETWEEN_CUTS_S {
+        // A queue standing while nothing of ours waits to go, and the link
+        // carries well under our rate, is the rest of the house's: cutting
+        // frees nothing of it and starves this machine, so the rate holds.
+        // A line that fell under our rate leaves our sockets waiting, and
+        // is cut to as before.
+        let theirs = ours.is_some_and(|ours| !ours.waiting) && carried < self.rate * FULL;
+        if standing && flowing && !theirs && at - self.last_cut >= BETWEEN_CUTS_S {
+            // A queue the probes see is first come, first served, and the
+            // delay says where it is better than any plateau, which is
+            // kept only as where to climb back to once it has gone.
+            self.probing_until = None;
+            self.elsewhere = None;
             self.cut(at, delay_ms, carried);
+        } else if let Some(ours) = ours
+            && !standing
+            && self.own(at, dt, ours, carried)
+        {
         } else if carried >= self.rate * FULL && delay_ms <= LATE_MS {
             // As TCP's slow start does: far from any queue it has met, a
             // rate climbs fast, since nothing says the connection is near,
@@ -338,6 +503,9 @@ impl Way {
 
     fn reset(&mut self) {
         self.rate = self.connection().unwrap_or(f64::INFINITY);
+        self.plateau = None;
+        self.probing_until = None;
+        self.elsewhere = None;
         self.under_half_since = None;
         self.late_since = None;
         self.crowded.clear();
@@ -432,12 +600,15 @@ impl Controller {
         let idle_down = self.down.idle(seen.down_kbit);
         if let Some(delay) = up {
             let beside = if idle_down { down.unwrap_or(0.0) } else { 0.0 };
-            self.up.step(at, (delay - beside).max(0.0), seen.up_kbit);
+            self.up
+                .step(at, (delay - beside).max(0.0), seen.up_kbit, seen.up_ours);
         }
         if let Some(delay) = down {
             let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
+            // The download's queue at home is the cable's, first come,
+            // first served, which the delay finds.
             self.down
-                .step(at, (delay - beside).max(0.0), seen.down_kbit);
+                .step(at, (delay - beside).max(0.0), seen.down_kbit, None);
         }
         for way in [&mut self.up, &mut self.down] {
             if way.misbehaving(at) {
@@ -472,6 +643,7 @@ impl crate::replay::Controller for Controller {
             gateway_ms: s.gateway_ms,
             up_kbit: s.up_kbit,
             down_kbit: s.down_kbit,
+            up_ours: s.up_ours,
         });
         crate::replay::Rates {
             up: limits.up,
@@ -494,6 +666,7 @@ mod tests {
             up_delay_ms: Some(0.0),
             down_delay_ms: Some(down_ms),
             gateway_ms: Some(3.0),
+            up_ours: None,
         };
         // Two seconds full with a queue standing, as a cut drains it, then
         // five minutes idle.
@@ -540,6 +713,7 @@ mod tests {
             up_delay_ms: Some(0.0),
             down_delay_ms: Some(down_ms),
             gateway_ms: Some(3.0),
+            up_ours: None,
         };
         let seconds = (0..60)
             .map(|t| second(t, 1.0, 100_000.0))
@@ -718,7 +892,7 @@ mod tests {
         way.rate = 150_000.0;
         let mut at = 0.0;
         while at < 20.0 {
-            way.step(at, 1.0, 0.0);
+            way.step(at, 1.0, 0.0, None);
             at += 0.1;
         }
         let rate = way.limit().expect("held");
@@ -727,7 +901,7 @@ mod tests {
             "1% a second toward base: {rate}"
         );
         while at < 60.0 {
-            way.step(at, 1.0, 0.0);
+            way.step(at, 1.0, 0.0, None);
             at += 0.1;
         }
         assert_eq!(way.limit(), Some(100_000));
@@ -937,5 +1111,228 @@ mod tests {
                 down: None
             }
         );
+    }
+
+    /// An upload behind a router that queues by flow, as the eero does,
+    /// from `from` to `to`: the router carries `line(at)` and its queue,
+    /// shared flow by flow, delays no probe. Held under the line, the
+    /// queue is our CAKE's and the link carries the rate; held over it, the
+    /// link carries the line and our CAKE holds nothing.
+    fn flow_queued(
+        c: &mut Controller,
+        from: f64,
+        to: f64,
+        line: impl Fn(f64) -> f64,
+    ) -> Vec<(f64, Option<u64>)> {
+        let mut held = Vec::new();
+        let mut at = from;
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let line = line(at);
+            let limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(line),
+                up_ours: Some(Ours {
+                    queued: rate < line,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            held.push((at, limits.up));
+            at += 0.1;
+        }
+        held
+    }
+
+    fn near(limit: Option<u64>, kbit: f64) -> bool {
+        limit.is_some_and(|l| (crate::rate::float(l) - kbit).abs() <= kbit * 0.02)
+    }
+
+    #[test]
+    fn a_queue_a_flow_queued_router_hides_is_taken_back_under_it() {
+        let mut c = Controller::new(None, None);
+        let limits = run_flow_queued(&mut c, 0.0, 10.0, 12_000.0);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    fn run_flow_queued(c: &mut Controller, from: f64, to: f64, line: f64) -> Option<u64> {
+        flow_queued(c, from, to, |_| line)
+            .last()
+            .and_then(|&(_, l)| l)
+    }
+
+    #[test]
+    fn under_the_router_the_rate_holds_and_a_probe_over_it_comes_back() {
+        let mut c = Controller::new(None, None);
+        let held = flow_queued(&mut c, 0.0, 120.0, |_| 12_000.0);
+        let over: Vec<f64> = held
+            .iter()
+            .filter(|&&(at, l)| at > 10.0 && !near(l, 11_400.0))
+            .map(|&(at, _)| at)
+            .collect();
+        // A probe each minute, over in a few seconds.
+        assert!(!over.is_empty(), "it never looked for more room");
+        assert!(over.len() <= 2 * 60, "over the router too long: {over:?}");
+        let last = held.last().and_then(|&(_, l)| l);
+        assert!(
+            near(last, 11_400.0),
+            "didn't come back under the router: {last:?}"
+        );
+    }
+
+    #[test]
+    fn a_probe_that_finds_more_room_climbs_to_it() {
+        let mut c = Controller::new(None, None);
+        let held = flow_queued(&mut c, 0.0, 150.0, |at| {
+            if at < 30.0 { 12_000.0 } else { 20_000.0 }
+        });
+        assert!(
+            near(held.last().and_then(|&(_, l)| l), 19_000.0),
+            "{:?}",
+            held.last()
+        );
+    }
+
+    #[test]
+    fn a_line_falling_under_what_it_held_is_followed_down() {
+        let mut c = Controller::new(None, None);
+        let held = flow_queued(&mut c, 0.0, 40.0, |at| {
+            if at < 30.0 { 12_000.0 } else { 9_000.0 }
+        });
+        assert!(
+            near(held.last().and_then(|&(_, l)| l), 8_550.0),
+            "{:?}",
+            held.last()
+        );
+    }
+
+    #[test]
+    fn what_a_router_drops_and_tcp_sends_again_isnt_the_line() {
+        // A router sharing 12 Mbit/s flow by flow drops what it can't
+        // carry, and TCP sends it again: held over the line, the link
+        // carries a quarter more than the line, and that quarter is sent
+        // twice.
+        let mut c = Controller::new(None, None);
+        let mut at = 0.0;
+        let mut last = None;
+        while at < 20.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let line = 12_000.0;
+            let carried = rate.min(line * 1.25);
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a few thousand kbit/s, never negative"
+            )]
+            let resent = (carried - line).max(0.0) as u64;
+            last = c
+                .step(&Seen {
+                    at_s: at,
+                    up_kbit: carried,
+                    up_ours: Some(Ours {
+                        queued: rate < line,
+                        waiting: true,
+                        resent,
+                    }),
+                    ..quiet(0.0, 300.0)(at)
+                })
+                .up;
+            at += 0.1;
+        }
+        assert!(
+            near(last, 11_400.0),
+            "held over the router's line: {last:?}"
+        );
+    }
+
+    #[test]
+    fn a_delay_cut_while_held_climbs_back_to_the_hold_and_no_further() {
+        let mut c = Controller::new(None, None);
+        flow_queued(&mut c, 0.0, 20.0, |_| 12_000.0);
+        // Two seconds of a queue the probes see, as the air raises one.
+        run(&mut c, 20.0, 22.0, |_| Seen {
+            up_delay_ms: Some(60.0),
+            up_ours: Some(Ours {
+                queued: false,
+                waiting: true,
+                ..Ours::default()
+            }),
+            ..quiet(12_000.0, 300.0)(0.0)
+        });
+        let held = flow_queued(&mut c, 22.0, 50.0, |_| 12_000.0);
+        let most = held.iter().filter_map(|&(_, l)| l).max();
+        assert!(
+            most.is_some_and(|m| crate::rate::float(m) <= 11_400.0 * 1.02),
+            "climbed past the router's line again: {most:?}"
+        );
+        let last = held.last().and_then(|&(_, l)| l);
+        assert!(
+            near(last, 11_400.0),
+            "didn't come back to the hold: {last:?}"
+        );
+    }
+
+    #[test]
+    fn one_slow_far_server_doesnt_hold_the_upload_down() {
+        let mut c = Controller::new(None, None);
+        // The connection carried 12 Mbit/s once, with nothing waiting;
+        // then a single upload to a server that takes 2.
+        run(&mut c, 0.0, 10.0, |_| Seen {
+            up_ours: Some(Ours::default()),
+            ..quiet(12_000.0, 300.0)(0.0)
+        });
+        let limits = run(&mut c, 10.0, 30.0, |_| Seen {
+            up_ours: Some(Ours {
+                queued: false,
+                waiting: true,
+                ..Ours::default()
+            }),
+            ..quiet(2_000.0, 300.0)(0.0)
+        });
+        assert_eq!(limits.up, None);
+    }
+
+    /// The upload held under a flow-queued router at 12 Mbit/s, then a
+    /// queue standing while it carries 3 Mbit/s, with data of ours waiting
+    /// or not: the rate it holds after ten seconds of it.
+    fn under_a_queue_carrying_little(waiting: bool) -> Option<u64> {
+        let mut c = Controller::new(None, None);
+        flow_queued(&mut c, 0.0, 20.0, |_| 12_000.0);
+        run(&mut c, 20.0, 30.0, |_| Seen {
+            up_delay_ms: Some(60.0),
+            up_ours: Some(Ours {
+                queued: false,
+                waiting,
+                ..Ours::default()
+            }),
+            ..quiet(3_000.0, 300.0)(0.0)
+        })
+        .up
+    }
+
+    #[test]
+    fn a_queue_the_house_raised_while_nothing_of_ours_waits_isnt_cut() {
+        let held = under_a_queue_carrying_little(false);
+        assert!(near(held, 11_400.0), "cut for the house's queue: {held:?}");
+    }
+
+    #[test]
+    fn a_queue_standing_while_ours_waits_is_cut() {
+        let held = under_a_queue_carrying_little(true);
+        assert!(
+            held.is_some_and(|l| l < 11_000),
+            "held over a queue of ours: {held:?}"
+        );
+    }
+
+    #[test]
+    fn nothing_waiting_is_no_hidden_queue() {
+        let mut c = Controller::new(None, None);
+        let limits = run(&mut c, 0.0, 30.0, |_| Seen {
+            up_ours: Some(Ours::default()),
+            ..quiet(12_000.0, 300.0)(0.0)
+        });
+        assert_eq!(limits.up, None);
     }
 }

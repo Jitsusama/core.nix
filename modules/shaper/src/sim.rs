@@ -12,7 +12,7 @@
 //! least 75% of what the connection could carry each way; and no direction
 //! held under half of that more than 30 s longer than unshaped holds it.
 
-use crate::oneway::{Controller, Seen};
+use crate::oneway::{Controller, Ours, Seen};
 use crate::rate::float;
 
 const DT: f64 = 0.2;
@@ -236,6 +236,7 @@ fn run(scenario: &Scenario, bases: Option<[Option<f64>; 2]>, rough: bool) -> Sco
                 gateway_ms: Some(gateway),
                 up_kbit: carried[0],
                 down_kbit: carried[1],
+                up_ours: None,
             });
             held = [limits.up, limits.down].map(|l| l.map_or(GREEDY, float));
         }
@@ -434,6 +435,81 @@ fn the_controller_holds_the_bar_on_every_connection_modelled() {
         }
     }
     assert!(missed.is_empty(), "{}", missed.join("\n"));
+}
+
+/// Ten minutes of an upload behind a router that queues flow by flow, as
+/// the eero does: Joel's one upload, from the second half minute, beside
+/// 32 agents' that never stop, the line swinging between what the eero's
+/// speed tests read, 11.5 to 12.6 Mbit/s, and another machine's 8 flows
+/// for two minutes in the middle. The router shares what it carries
+/// equally among the flows that reach it and delays no probe, so held over
+/// this machine's share our CAKE holds nothing and Joel gets one share of
+/// 33; held under it, CAKE's tins put him first, bulk keeping a sixteenth.
+/// Answers what share of the line Joel's upload got, and what share this
+/// machine's share of the line was used.
+fn flow_queued(shaped: bool) -> (f64, f64) {
+    const OURS: f64 = 33.0;
+    let line = |at: f64| 12_050.0 + 550.0 * (at / 47.0).sin();
+    let others = |at: f64| {
+        if (300.0..420.0).contains(&at) {
+            8.0
+        } else {
+            0.0
+        }
+    };
+    let mut controller = Controller::new(None, None);
+    let mut noise = Draws(5);
+    let mut rate = f64::INFINITY;
+    let (mut joel, mut joel_could, mut used, mut could) = (0.0, 0.0, 0.0, 0.0);
+    let mut at = 0.0;
+    while at < 600.0 {
+        let share = line(at) * OURS / (OURS + others(at));
+        let queued = rate < share;
+        let carried = rate.min(share);
+        let joel_now = if queued {
+            carried * 15.0 / 16.0
+        } else {
+            carried / OURS
+        };
+        if at >= 60.0 {
+            joel += joel_now * DT;
+            joel_could += share * DT;
+            used += carried * DT;
+            could += share * DT;
+        }
+        if shaped {
+            let limits = controller.step(&Seen {
+                at_s: at,
+                up_delay_ms: Some(2.0 + 3.0 * noise.next()),
+                down_delay_ms: Some(1.0),
+                gateway_ms: Some(3.0 + noise.next()),
+                up_kbit: carried,
+                down_kbit: 300.0,
+                up_ours: Some(Ours {
+                    queued,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+            });
+            rate = limits.up.map_or(f64::INFINITY, float);
+        }
+        at += DT;
+    }
+    (joel / joel_could, used / could)
+}
+
+#[test]
+fn behind_a_flow_queued_router_joels_upload_gets_most_of_the_line() {
+    let (joel, used) = flow_queued(true);
+    assert!(
+        joel >= 0.75,
+        "Joel's upload got {:.0}% of the line",
+        joel * 100.0
+    );
+    assert!(used >= 0.9, "the line was {:.0}% used", used * 100.0);
+    // Unshaped, the router gives him one share of 33.
+    let (unshaped, _) = flow_queued(false);
+    assert!(unshaped < 0.05, "unshaped, he got {:.0}%", unshaped * 100.0);
 }
 
 #[test]

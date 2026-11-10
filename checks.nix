@@ -541,6 +541,9 @@ let
     # Whether the shaper finds a connection's rate, and keeps a ping near its
     # own delay under a full upload, shows only with a real queue filling.
     vm-the-connection-stays-quick = import ./tests/shaper-rate.nix { inherit self pkgs; };
+    # Whether the shaper takes back a queue a router hides by sharing it flow
+    # by flow shows only with real TCP filling a real fq_codel.
+    vm-a-hidden-queue-is-taken-back = import ./tests/shaper-owned.nix { inherit self pkgs; };
     # Whether a check's VM goes ahead of the builds shows only with a build
     # user's process in the daemon's own cgroup and the service's real rights.
     vm-checks-go-first = import ./tests/vm-first.nix { inherit self pkgs; };

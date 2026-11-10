@@ -142,6 +142,12 @@ chain postrouting {
   type filter hook postrouting priority mangle; policy accept;
   oifname != @uplinks return
   ct mark and 0x08000000 != 0 meta priority set 1:1 return
+  # Over Wi-Fi the radio picks its queue from DSCP and never from the
+  # priority, so bulk that says nothing for itself goes out as CS1, which
+  # it sends as background, behind Joel's own. A mark a program set is its
+  # own and kept.
+  ct mark and 0x07000000 == 0x01000000 ip dscp cs0 ip dscp set cs1
+  ct mark and 0x07000000 == 0x01000000 ip6 dscp cs0 ip6 dscp set cs1
   meta mark @vpnbulk meta priority set 2:1 return
   ct mark and 0x07000000 == 0x01000000 meta priority set 2:1 return
   ct mark and 0x07000000 == 0x02000000 meta priority set 2:2 return

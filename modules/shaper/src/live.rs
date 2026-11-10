@@ -4,9 +4,10 @@
 //! as a replay does (src/replay.rs), and steps the controller on each, so
 //! the rates that shape a link are the ones a replay of its lines scores.
 
-use crate::oneway;
+use crate::oneway::{self, Ours};
 use crate::record::day_file;
 use crate::replay::{Controller as _, Rates, Reading, Sample, parse};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -27,6 +28,8 @@ pub struct Follow {
     rates: Rates,
     /// When the latest line was written, in ms since 1970.
     last_ms: u64,
+    /// Whose each link's upload queue was, as the shaper last saw it.
+    ours: BTreeMap<String, Ours>,
 }
 
 impl Follow {
@@ -37,7 +40,13 @@ impl Follow {
             controller: oneway::Controller::new(None, None),
             rates: Rates::default(),
             last_ms: 0,
+            ours: BTreeMap::new(),
         }
+    }
+
+    /// Takes whose a link's upload queue is now, for the seconds to come.
+    pub fn see(&mut self, link: &str, ours: Ours) {
+        self.ours.insert(link.to_string(), ours);
     }
 
     /// Takes one line's sample. A recording begun anew is a new stay, met
@@ -56,7 +65,13 @@ impl Follow {
             }
         }
         self.reading.take(sample);
-        for second in self.reading.drain() {
+        let ours = self
+            .link
+            .as_ref()
+            .and_then(|link| self.ours.get(link))
+            .copied();
+        for mut second in self.reading.drain() {
+            second.up_ours = ours;
             self.rates = self.controller.second(&second);
         }
     }
@@ -93,6 +108,11 @@ impl Live {
             partial: Vec::new(),
             follow: Follow::new(),
         }
+    }
+
+    /// Takes whose a link's upload queue is now.
+    pub fn see(&mut self, link: &str, ours: Ours) {
+        self.follow.see(link, ours);
     }
 
     /// Reads what the recorder wrote since, and answers the link it
@@ -210,6 +230,39 @@ mod tests {
         );
         let follow = followed(&lines);
         assert_eq!(follow.now(NOV3 + 6_000).map(|(_, r)| r), Some(replayed));
+    }
+
+    #[test]
+    fn a_queue_past_cake_that_the_probes_cant_see_is_taken_back_live() {
+        // Ten seconds of a 12 Mbit/s upload whose delay never rises, as
+        // behind a router that queues flow by flow, with data waiting and
+        // our CAKE holding nothing.
+        let mut lines = vec![pool(NOV3, Some("home"))];
+        for i in 0..100_u64 {
+            let at = NOV3 + 100 * (i + 1);
+            lines.push(
+                json!({"at": at, "reflector": "9.9.9.9", "operator": "Quad9", "out": 10.0,
+                       "back": 10.0, "rtt": 20.0, "rx": 1_000 * i, "tx": 150_000 * (i + 1)})
+                .to_string(),
+            );
+        }
+        let mut follow = Follow::new();
+        follow.see(
+            "wlan0",
+            Ours {
+                queued: false,
+                waiting: true,
+                ..Ours::default()
+            },
+        );
+        for line in &lines {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        let (_, rates) = follow.now(NOV3 + 10_000).expect("a link");
+        assert!(
+            rates.up.is_some_and(|up| (11_000..12_000).contains(&up)),
+            "held under the router: {rates:?}"
+        );
     }
 
     #[test]
