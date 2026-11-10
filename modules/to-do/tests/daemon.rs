@@ -278,8 +278,9 @@ fn a_check_that_hangs_holds_up_no_other() {
 fn a_slow_fetch_of_cores_history_holds_up_no_check() {
     let dir = tempfile::tempdir().unwrap();
     // The stand-in follower's journal says the machine runs a core the
-    // clone hasn't got, and the stand-in git notes it was asked, then
-    // takes longer than the test waits, as a slow network would.
+    // clone hasn't got. The stand-in git notes a clone or a fetch was
+    // asked, then takes longer than the test waits, as a slow network
+    // would; reading a clone it hasn't got finds nothing at once.
     let journalctl = dir.path().join("journalctl");
     runnable(
         &journalctl,
@@ -294,7 +295,7 @@ fn a_slow_fetch_of_cores_history_holds_up_no_check() {
     runnable(
         &git,
         &format!(
-            "#!{}\ntouch {}\nexec sleep 15\n",
+            "#!{}\ncase \"$*\" in\n*clone*|*fetch*) touch {}; exec sleep 15 ;;\nesac\nexit 1\n",
             shell().display(),
             asked.display()
         ),
