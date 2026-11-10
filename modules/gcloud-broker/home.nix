@@ -26,7 +26,9 @@ let
 in
 {
   options.jitsusama.gcloud-broker.serviceAccount = lib.mkOption {
-    type = lib.types.nullOr (lib.types.strMatching "[a-z0-9-]+@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com");
+    type = lib.types.nullOr (
+      lib.types.strMatching "[a-z0-9-]+@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com"
+    );
     default = null;
     example = "agents@a-lab.iam.gserviceaccount.com";
     description = ''
