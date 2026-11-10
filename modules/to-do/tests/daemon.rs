@@ -425,9 +425,12 @@ fn a_check_no_longer_run_leaves_the_daemon_idle() {
     to_dos(dir.path(), "QEST-8", &item(true));
     until(&running, |v| v["items"].get("QEST-8:ready").is_none());
     fs::write(dir.path().join("signins/github"), "signed in").unwrap();
+    // The daemon hears the sign-in and hurries its checks, the stranded
+    // one included, which is the moment it would begin spinning.
     thread::sleep(Duration::from_millis(200));
     let pid = running.child.id();
     let before = ticks(pid);
+    // The second its processor time is measured over: idle takes none.
     thread::sleep(Duration::from_secs(1));
     let took = ticks(pid) - before;
     // A daemon waiting on nothing takes none of a second; one waking for
