@@ -466,7 +466,10 @@ mod tests {
                 "{shown}"
             );
         }
-        assert!(derivations(&now)["/nix/store/b.drv"].outputs.is_empty());
+        assert_eq!(
+            derivations(&now)["/nix/store/b.drv"].outputs,
+            BTreeMap::new()
+        );
         assert_eq!(
             derivations(&now)["/nix/store/c.drv"].outputs,
             BTreeMap::from([("out".to_owned(), "/nix/store/c".to_owned())])
