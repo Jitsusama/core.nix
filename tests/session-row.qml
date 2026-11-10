@@ -551,6 +551,22 @@ QtObject {
             { side: "yesterday", fact: "Saturday 7 November, 09:00" }, { side: "", fact: "" }];
         if (JSON.stringify(whens) !== JSON.stringify(whensWant))
             failures.push(`when it landed: ${JSON.stringify(whens)}`);
+        // Its row's side is worked out once for each moment a day, since
+        // Landed lists over a thousand landings at every opening, and anew
+        // once the day turns, when today's may read as yesterday.
+        let worked = 0;
+        const counted = Object.assign({}, landedSaid, { day: at => {
+            worked += 1;
+            return landedSaid.day(at);
+        } });
+        const landedSides = { day: "", sides: {} };
+        const sided = ["2026-11-07T11:19:00Z", "2026-11-07T11:19:00Z", "2026-11-06T09:00:00Z", ""]
+            .map(at => Landed.landedSide(landedSides, at, "2026-11-07", counted)).join(" | ");
+        if (sided !== "11:19 | 11:19 | yesterday | " || worked !== 2)
+            failures.push(`a landing's side, worked ${worked} times: "${sided}"`);
+        Landed.landedSide(landedSides, "2026-11-07T11:19:00Z", "2026-11-08", counted);
+        if (worked !== 3)
+            failures.push(`a landing's side kept past its day: worked ${worked} times`);
 
         // Agents' Recent: those closed this boot, keyed by id at when they
         // ended, and never one Agents shows already: a closed orchestrator
