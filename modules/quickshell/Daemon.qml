@@ -10,6 +10,16 @@ pragma ComponentBehavior: Bound
 // Nothing is started per question: a step-in is a `get` on the same
 // connection, answered by id.
 //
+// `heard` names the keys each message changed and the keys it let go,
+// so a source keeps what it makes from them by key, in a plain object,
+// and remakes only those, never re-walking `held`. A daemon that sends
+// ready rows says each as a record in one envelope: its `key`, an
+// `order` the shell places it by without sorting the rest, and the
+// fields its delegate draws, worded from words.json as handed to the
+// daemon. Whatever reads the clock, as "4 min ago" does, travels as a
+// time and is worded here, so no row is rewritten only because time
+// passed. The machine daemon's rows (modules/machine) are the first.
+//
 // A daemon that's down is said, never waited on: `state` is "starting"
 // until it first answers, then the daemon's own word, or "not answering"
 // while its socket is gone. A socket that refuses is tried again every
@@ -127,8 +137,11 @@ Scope {
     // Each of its sources by name, with the daemon's word for it.
     property var sources: ({})
 
-    // Said with the keys a change touched, once a change.
-    signal heard(var keys)
+    // Said once a message, after `held` takes it: the keys it said anew
+    // and the keys it let go. A whole answer says every key it holds,
+    // and the keys it dropped as gone. A signal rather than a property,
+    // so nothing binds to it and re-walks what's held.
+    signal heard(var changed, var gone)
     // Said with every line the daemon says, once it's taken, so a domain
     // hears what a daemon tells beyond its records, as the passwords
     // daemon tells a watch what its last check found.
@@ -213,31 +226,32 @@ Scope {
     // as a record saying `gone`, as the people daemon tells of someone no
     // source knows any more.
     function took(records, gone, changes) {
-        const keys = [];
+        const changed = [];
+        const dropped = [];
         for (const record of records ?? []) {
             if (typeof record?.key !== "string")
                 continue;
             if (record.gone === true) {
                 if (record.key in held) {
                     delete held[record.key];
-                    keys.push(record.key);
+                    dropped.push(record.key);
                 }
                 continue;
             }
             held[record.key] = changes && changesDiffer && record.key in held
                 ? mended(held[record.key], record) : record;
-            keys.push(record.key);
+            changed.push(record.key);
         }
         for (const key of gone ?? []) {
             if (key in held) {
                 delete held[key];
-                keys.push(key);
+                dropped.push(key);
             }
         }
-        if (keys.length === 0)
+        if (changed.length === 0 && dropped.length === 0)
             return;
         revision += 1;
-        heard(keys);
+        heard(changed, dropped);
     }
 
     // A record held with a change laid over it: a new object, so a reader
