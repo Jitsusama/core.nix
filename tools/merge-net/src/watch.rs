@@ -1541,9 +1541,6 @@ mod tests {
         quarantined: Vec<String>,
         /// Tests main's newest head lists as quarantined besides those.
         listed_since: Vec<String>,
-        /// Tests main's newest head lists too once a search has reverted a
-        /// merge.
-        listed_once_reverted: Vec<String>,
         /// What every fetch of main fails with, as before the network is
         /// up, so only its head as last fetched is known.
         fetch_fails: Option<String>,
@@ -1558,10 +1555,6 @@ mod tests {
         /// has run one at an older merge, or after a while without, when
         /// it's put in `waited_out`.
         newest_waits_for_search: bool,
-        /// Checks whose each run at the round's last merge ends only once a
-        /// search has run one at an older merge, or after a while without,
-        /// when it's put in `waited_out`.
-        waits_for_search: Vec<String>,
         /// Commits whose each run waits for a second run there to start,
         /// or after a while without, when it's put in `waited_out`.
         pairs: Vec<String>,
@@ -1685,16 +1678,6 @@ mod tests {
                 };
                 self.wait_while(searched, check);
             }
-            if self.merges.last().is_some_and(|last| last == commit)
-                && self.waits_for_search.iter().any(|waits| waits == check)
-            {
-                let unsearched = |built: &mut Vec<(String, String)>| {
-                    !built
-                        .iter()
-                        .any(|(at, _)| self.merges[..self.merges.len() - 1].contains(at))
-                };
-                self.wait_while(unsearched, check);
-            }
             if commit == self.head && self.together_at_newest.iter().any(|one| one == check) {
                 let apart = |built: &mut Vec<(String, String)>| {
                     !self
@@ -1705,7 +1688,7 @@ mod tests {
                 self.wait_while(apart, check);
             }
             let older = |at: &str| self.merges[..self.merges.len() - 1].iter().any(|m| m == at);
-            if older(commit) && self.searched_together.iter().any(|one| one == check) {
+            if self.searched_together.iter().any(|one| one == check) && older(commit) {
                 let apart = |built: &mut Vec<(String, String)>| {
                     !self
                         .searched_together
@@ -1748,9 +1731,6 @@ mod tests {
             let mut listed = self.quarantined.clone();
             if commit == self.head {
                 listed.extend(self.listed_since.iter().cloned());
-                if !self.reverted.lock().unwrap().is_empty() {
-                    listed.extend(self.listed_once_reverted.iter().cloned());
-                }
             }
             listed
         }
@@ -2328,10 +2308,16 @@ mod tests {
         assert_eq!(
             built,
             [
+                ("a", "vm-a"),
+                ("a", "vm-a"),
                 ("b", "vm-a"),
                 ("b", "vm-a"),
+                ("c", "vm-a"),
+                ("c", "vm-a"),
                 ("d", "vm-a"),
                 ("d", "vm-a"),
+                ("e", "vm-a"),
+                ("e", "vm-a"),
                 ("f", "vm-a"),
                 ("f", "vm-a"),
                 ("h", "vm-a"),
@@ -2645,31 +2631,32 @@ mod tests {
         let world = Stand {
             head: "n".into(),
             merges: names("a b h"),
-            changed: changed("vm-a vm-b"),
-            listed_once_reverted: names("vm-a vm-b"),
-            waits_for_search: names("vm-b"),
+            changed: changed("vm-b"),
             ..Stand::default()
         }
-        .exits("h", "vm-a", &[1])
-        .exits("h", "vm-b", &[1])
-        .exits("n", "vm-a", &[1])
-        .exits("n", "vm-b", &[1]);
-        round(&world, &state, "s").unwrap();
-        let searched: std::collections::BTreeSet<String> = world
-            .built()
-            .into_iter()
-            .filter(|(at, _)| at == "a" || at == "b")
-            .map(|(_, test)| test)
-            .collect();
-        assert_eq!(
-            searched.len(),
-            1,
-            "the test whose turn came after main listed it isn't searched: {searched:?}"
-        );
+        .exits("n", "vm-b", &[1, 1]);
+        let listed = std::sync::atomic::AtomicBool::new(false);
+        let breaking = Breaking::new(&world, &state, "s", "n", |_: &str| {
+            listed.load(std::sync::atomic::Ordering::SeqCst)
+        });
+        *lock(&breaking.searching) = SEARCHES;
+        std::thread::scope(|scope| {
+            scope.spawn(|| breaking.search("vm-b"));
+            // With no room, it asks main's newest head first, and then waits.
+            world.wait_while(|built| built.is_empty(), "main's newest head");
+            listed.store(true, std::sync::atomic::Ordering::SeqCst);
+            *lock(&breaking.searching) -= 1;
+            breaking.room.notify_one();
+        });
         assert!(
             world.waited_out.lock().unwrap().is_empty(),
-            "the second test failed while the first one's search ran"
+            "it never asked main"
         );
+        assert!(
+            world.built().iter().all(|(at, _)| at == "n"),
+            "the test whose turn came after main listed it is searched"
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -2719,10 +2706,9 @@ mod tests {
         for broken in 11..=15 {
             world = world.exits(&format!("m{broken}"), "vm-a", &[1]);
         }
-        assert_eq!(
-            round(&world, &state, "s").unwrap(),
-            Round::Failed("m15".into())
-        );
+        // Searches that share the room each try the least a step does.
+        let found = search(&world, &state, "s", "m15", "vm-a", &|| SPLITS).unwrap();
+        settle(&world, &state, "s", "m15", found.unwrap()).unwrap();
         assert_eq!(*world.reverted.lock().unwrap(), names("m11"));
         let built = world.built();
         for tried in ["m4", "m8", "m9", "m10", "m11"] {
