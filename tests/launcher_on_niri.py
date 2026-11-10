@@ -7,8 +7,9 @@ it. wtype's keys reach the surface holding the keyboard, the launcher's or the
 held notices', but never niri's binds, so what a bind runs is run instead, and
 nothing of a machine's is here: no battery, backlight, system services or
 other programs, only the machine daemon over the sandbox's own /proc when
-the check gives it as MACHINE, and the meaning daemon's stand-in when it
-gives that as MEANING. A case needing any of those stays in the
+the check gives it as MACHINE, warp holding WARP's link when it gives that
+as WARP, and the meaning daemon's stand-in when it gives that as MEANING.
+A case needing any of those stays in the
 desktop's VM tests (tests/desktop/); one that only types and reads the
 launcher comes here. The helpers keep desktop_session.Desktop's names, so a
 case moves between the two with few words changed: keys are pressed on the
@@ -82,6 +83,9 @@ class Shell:
         # The windows come from the windows daemon, hearing this niri as the account's does.
         if "WINDOWS" in os.environ:
             self.daemon("windows", os.environ["WINDOWS"])
+        # WARP's link comes from warp, asking the check's stand-in warp-cli.
+        if "WARP" in os.environ:
+            self.daemon("warp", os.environ["WARP"])
         # Meanings come from the meaning daemon's stand-in, given what a test writes that each
         # text means in meaning-means.json, since no model loads here
         # (tests/desktop/stand-in-meaning.py).
