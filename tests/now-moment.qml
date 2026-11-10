@@ -121,8 +121,15 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        // Whether a source's rows are wanted (Provider.qml's wanted), as
+        // they aren't while the launcher is shut or open elsewhere.
+        property bool wanting: true
         // Nothing is held, so no step gathers the notices.
         readonly property var held: []
+
+        function wants(source) {
+            return wanting;
+        }
         readonly property var sources: [weather, calendar, cameras, power, pastNotices, agents]
         property int placed: 0
 
@@ -555,5 +562,54 @@ ShellRoot {
         WaitingOnYou.now = [];
         Sessions.wanting = [];
         now.lookTexts = {};
+        shut(piece, toDo);
+    }
+
+    // With the launcher shut, a piece moving, a to-do coming, one for
+    // later, a session wanting Joel and here moving make none of Now's
+    // rows, nor does a pick asking every collection what it holds
+    // (Launcher.qml's knowing): what's on, the location, For You, Later
+    // and History were each made again, 199 in four minutes on Joel's
+    // shell (YQZGPC, 2026-11-10). The tray's count and home's row say it
+    // all the same. Wanted again, they're made once, as they stand.
+    function shut(piece, toDo) {
+        const tv = { entry: { mark: "casting" }, piece: piece("Casting", "to the TV", () => {}) };
+        Facts.all = [tv];
+        const castRow = () => now.everything().find(row => row.key === "on:casting");
+        expect("wanted, what's on is listed", castRow()?.side === "to the TV",
+            JSON.stringify(castRow()));
+        const place = now.location.side;
+        theLauncher.wanting = false;
+        const before = now.tally.rows;
+        Facts.all = [{ entry: tv.entry, piece: piece("Casting", "to the speaker", () => {}) }];
+        WaitingOnYou.now = [toDo("Sign In")];
+        WaitingOnYou.later = [toDo("Renew It")];
+        Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
+            session: "s-c", addresses: [], wants: { kind: "question", said: "Which?" } } }];
+        const here = Location.here;
+        Location.here = Object.assign({}, here, { place: "Saltmarsh, Westmark" });
+        const held = now.everything().concat(now.things);
+        expect("shut, what moves makes none of Now's rows",
+            now.tally.rows === before && castRow()?.side === "to the TV"
+            && now.location.side === place,
+            `${now.tally.rows - before} made, ${held.length} held`);
+        expect("and the tray and home's row count what waits",
+            ForYouHolds.count === 2 && now.homeSays() === "Session C needs you \u00b7 1 more",
+            JSON.stringify([ForYouHolds.count, now.homeSays()]));
+        theLauncher.wanting = true;
+        const made = now.tally.rows;
+        expect("wanted again, they're made as they stand",
+            made > before && castRow()?.side === "to the speaker"
+            && now.location.side === "Saltmarsh, Westmark"
+            && now.waiting.side === "2 to do" && now.laterRow?.side === "1",
+            JSON.stringify([made - before, castRow()?.side, now.location.side,
+                now.waiting.side, now.laterRow?.side]));
+        now.everything();
+        expect("and once", now.tally.rows === made, now.tally.rows - made);
+        Location.here = here;
+        Facts.all = [];
+        WaitingOnYou.now = [];
+        WaitingOnYou.later = [];
+        Sessions.wanting = [];
     }
 }

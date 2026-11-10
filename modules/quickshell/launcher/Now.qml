@@ -58,7 +58,13 @@ Provider {
         recording: "session:recording"
     })
 
-    readonly property var all: {
+    // Made only while Now's rows are wanted (Provider.qml's whileWanted),
+    // as are its location's, For You's own, Later's and History's, since
+    // a piece moving, the minute turning and anything For You counts each
+    // made them again: 199 in four minutes with the launcher shut on
+    // Joel's shell (YQZGPC, 2026-11-10). The tray's count is ForYouHolds',
+    // and home's row says what homeItems reads, so neither waits on them.
+    readonly property var all: whileWanted("all", () => {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active && above(fact) === "");
         // What waits on Joel, then this moment's rows, which are always
@@ -81,7 +87,7 @@ Provider {
         // it's counted once there and never lifted here too (VKCF3Z,
         // 2026-11-10).
         return [waiting].concat(moment, Groups.ordered(rows).map(each => each.row));
-    }
+    })
     // Said only when what the rows show has changed (Provider's
     // changedTo), since `all` is made again whenever any fact moves, and
     // each change said makes the launcher refresh (Joel, 2026-11-08: "weird
@@ -184,12 +190,19 @@ Provider {
         target: clock
 
         function onDateChanged() {
-            Qt.callLater(provider.retime);
+            if (provider.wanted)
+                Qt.callLater(provider.retime);
         }
     }
 
     Component.onCompleted: Qt.callLater(retime)
     onLauncherChanged: Qt.callLater(retime)
+    // The minute that turned while they weren't wanted is read as they
+    // are, since placing the time and the date makes their rows.
+    onWantedChanged: {
+        if (wanted)
+            retime();
+    }
 
     Connections {
         target: provider.weatherSource
@@ -239,7 +252,7 @@ Provider {
     // couldn't give it, as design.md has what's left out named on screen
     // with its reason. The source is the plate's eyebrow (VKCF3Z,
     // 2026-11-09).
-    readonly property var location: {
+    readonly property var location: whileWanted("location", () => {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
         // A place Joel set himself says so, since GeoClue no longer moves it.
@@ -325,7 +338,7 @@ Provider {
             hue: differs ? "strong" : "voice",
             glyph: Theme.glyph.location
         }, plate ? { thing: true, drawer: plate } : {}), inside);
-    }
+    })
 
     // Location's plate for here, as `location` says it.
     function plateOf(here, now, differs) {
@@ -755,7 +768,8 @@ Provider {
 
     // What can't be done yet, one row at the end of the list, so the list
     // holds only what Joel can do now; each inside says what it waits for.
-    readonly property var laterRow: WaitingOnYou.later.length === 0 ? null : member({
+    readonly property var laterRow: whileWanted("later", () => WaitingOnYou.later.length === 0
+        ? null : member({
         key: "on:waiting:later",
         verb: "more",
         stays: true,
@@ -770,7 +784,7 @@ Provider {
         verbs: () => WaitingOnYou.later.map(each => provider.item(each)),
         targets: () => WaitingOnYou.later.map(each => provider.item(each)),
         run: () => provider.launcher?.enter(provider.laterRow)
-    })
+    }))
 
     // What the agents left for Joel to look at, each a file of the looks
     // folder the harness writes, ~/.local/state/pi/agentic-harness.pi/
@@ -1055,7 +1069,8 @@ Provider {
     }
     readonly property int resolvedCount: looks.history.length + doneItems.length
         + cameDone.length + given.done.length
-    readonly property var historyRow: resolvedCount === 0 ? null : member({
+    readonly property var historyRow: whileWanted("history", () => resolvedCount === 0
+        ? null : member({
         key: "on:waiting:history",
         verb: "more",
         stays: true,
@@ -1069,7 +1084,7 @@ Provider {
         verbs: () => provider.historyRows(),
         targets: () => provider.historyRows(),
         run: () => provider.launcher?.enter(provider.historyRow)
-    })
+    }))
 
     // How many History keeps, said as what it counts, "1 kept", never a
     // bare number, and "none" while it keeps nothing, as every place says
@@ -1579,7 +1594,7 @@ Provider {
         return Object.assign({}, row, { side: side, sideItems: [], hue: "muted",
             forYou: { kind: "notice", source: one.source } });
     }
-    readonly property var waiting: member({
+    readonly property var waiting: whileWanted("waiting", () => member({
         // Not `on:waiting`, which its rows within are keyed under
         // (Marks.js's ROW_MARKS, which point both at For You's tray).
         key: "on:waitingOnYou",
@@ -1615,7 +1630,7 @@ Provider {
         targets: () => provider.waitingRows(),
         commands: () => provider.filterCommands(null),
         run: () => provider.launcher?.enter(provider.waiting)
-    })
+    }))
 
     // The words a filter's kinds and sources are said in, for its head.
     readonly property var filterSaid: Filter.saidFrom(Object.keys(Words.things),
@@ -1699,9 +1714,13 @@ Provider {
     // does, else in a provider's `things`, as Cameras does.
     // The drawer of the row a piece stands for, without what the piece's
     // own row says (Showing.besides), as `by` gives it.
+    // A place whose rows aren't wanted, as Sound's aren't while Now is
+    // held, makes the one row as it reads now (Provider.qml's rowNow).
     function borrowed(drawnBy, by) {
         const place = source(drawnBy.place);
-        const row = (place?.all ?? place?.things ?? []).find(each => each.key === drawnBy.key);
+        const now = typeof place?.rowNow === "function" ? place.rowNow(drawnBy.key) : undefined;
+        const row = now !== undefined ? now
+            : (place?.all ?? place?.things ?? []).find(each => each.key === drawnBy.key);
         // A drawer made as it's drawn, or one a row holds made, as
         // Power's parts do (Launcher.qml's drawerOf takes both).
         const drawer = typeof row?.drawer === "function" ? row.drawer() : row?.drawer ?? null;

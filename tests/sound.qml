@@ -11,7 +11,9 @@
 // sound server, so which device is in use, and which one is watched, can't
 // be stood in for here. It exits 0 once every case holds, and otherwise 1,
 // saying which case didn't.
+import qs
 import Quickshell
+import Quickshell.Services.Pipewire
 import QtQuick
 import "launcher" as Launcher
 import "launcher/Sounds.js" as Sounds
@@ -27,6 +29,49 @@ ShellRoot {
 
     Launcher.Sound {
         id: sound
+    }
+
+    // A device as the sound server holds one, an object as its nodes are.
+    component Node: QtObject {
+        property string name
+        property string nickname: ""
+        property string description: name
+        property bool isSink: true
+        property bool isStream: false
+        property int type: isSink ? PwNodeType.AudioSink : PwNodeType.AudioSource
+        property var properties: ({ "device.bus": "usb" })
+        property var audio: ({ volume: 0.5, muted: false })
+    }
+
+    Node {
+        id: deskSpeakers
+        name: "usb-desk-speakers"
+    }
+
+    Node {
+        id: deskMicrophone
+        name: "usb-desk-microphone"
+        isSink: false
+    }
+
+    // The launcher as Sound asks it, shut, and whether Sound's rows are
+    // wanted (Provider.qml's wanted).
+    QtObject {
+        id: shutLauncher
+
+        property bool open: false
+        property bool wanting: true
+        readonly property var held: []
+
+        function wants(source) {
+            return wanting;
+        }
+    }
+
+    Launcher.Sound {
+        id: shutSound
+        launcher: shutLauncher
+        serverNodes: [deskSpeakers]
     }
 
     // A device as the sound server gives one: its name, which way it goes,
@@ -121,6 +166,43 @@ ShellRoot {
             && heard.note === sound.said("level-in"), `${heard.side}, ${heard.note}`);
 
         drawers();
+        shut();
+    }
+
+    // With the launcher shut, a volume moving, a device coming and niri's
+    // workspaces said again make none of Sound's rows, nor does a pick
+    // asking every collection what it holds (Launcher.qml's knowing): each
+    // made every device's row again, 137 in four minutes on Joel's shell
+    // (YQZGPC, 2026-11-10). Home's count reads the devices themselves, and
+    // Now's Volume borrows its device's row as it reads now. Wanted again,
+    // they're made once, as they stand.
+    function shut() {
+        const names = rows => rows.map(row => row.key).join(", ");
+        expect("wanted, it lists the device there is",
+            names(shutSound.everything()) === "sound:usb-desk-speakers",
+            names(shutSound.everything()));
+        shutLauncher.wanting = false;
+        const before = shutSound.tally.rows;
+        deskSpeakers.audio = { volume: 0.3, muted: false };
+        shutSound.serverNodes = [deskSpeakers, deskMicrophone];
+        Niri.workspaces = { "1": { id: 1, output: "eDP-1" } };
+        const held = shutSound.everything();
+        expect("shut, a volume, a device and niri moving make none of its rows",
+            shutSound.tally.rows === before && names(held) === "sound:usb-desk-speakers",
+            `${shutSound.tally.rows - before} made, holding ${names(held)}`);
+        expect("and home's count says them as they are",
+            shutSound.counted() === "1 out \u00b7 1 in", shutSound.counted());
+        const now = shutSound.rowNow("sound:usb-desk-speakers");
+        expect("a device's row borrowed elsewhere is made as it reads now",
+            now?.note.includes("30%") && shutSound.tally.rows === before + 1
+            && shutSound.rowNow("sound:gone") === undefined, now?.note);
+        const made = shutSound.tally.rows;
+        shutLauncher.wanting = true;
+        const wanted = shutSound.everything();
+        expect("wanted again, they're made once, as they stand",
+            names(wanted) === "sound:usb-desk-speakers, sound:usb-desk-microphone"
+            && wanted[0].note.includes("30%") && shutSound.tally.rows - made === 2,
+            `${shutSound.tally.rows - made} made, ${names(wanted)}: ${wanted[0]?.note}`);
     }
 
     // A device's drawer says where it is and which way it goes, then what

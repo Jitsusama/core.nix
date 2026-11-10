@@ -170,9 +170,30 @@ Provider {
         return found.filter(asking).concat(rows, found.filter(given => !asking(given)));
     }
 
-    readonly property var all: said === null ? []
-        : sharing ? ordered([], said.quiet ?? []).map(build)
-        : ordered(said.now ?? [], said.findings ?? []).concat(said.more ?? []).map(build)
+    // Made only while they're wanted (Provider.qml's whileWanted), since
+    // spend-watch writes its file again every few seconds and every row
+    // was made again each time: 90 in four minutes with the launcher shut
+    // on Joel's shell (YQZGPC, 2026-11-10). Home's figure is `said.today`.
+    readonly property var all: whileWanted("all", () => listed().map(build))
+
+    // What the daemon gives to be listed, as it gives it.
+    function listed() {
+        return said === null ? []
+            : sharing ? ordered([], said.quiet ?? [])
+            : ordered(said.now ?? [], said.findings ?? []).concat(said.more ?? []);
+    }
+
+    // A row of the list as it reads now, for those who show it while these
+    // rows aren't wanted: Now's Spend and Tokens borrowing its drawer, and
+    // Agents' Budgets. Made then, of the rows the list holds; a row inside
+    // another, and every row while they're wanted, when `all` is as it
+    // reads now, is looked for where it's shown.
+    function rowNow(key) {
+        if (provider.wanted)
+            return undefined;
+        const given = listed().find(one => `spend:${one.key}` === key);
+        return given === undefined ? undefined : build(given);
+    }
 
     onSharingChanged: changed()
 
