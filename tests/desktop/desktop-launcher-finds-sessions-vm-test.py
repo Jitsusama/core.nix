@@ -817,6 +817,10 @@ def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -
     assert answer == "refused: not a list of sessions", answer
     answer = handing({"sessions": [{"id": "", "cwd": "/home/jitsusama/quay"}]})
     assert answer == "refused: no session with an id and a folder", answer
+    # The move onto pi's host asks the shell to keep a session's place, and hears whether it
+    # could; one with no window here keeps none (tests/sessions.qml holds the rest).
+    answer = desktop.as_account("qs ipc call sessions keepPlace 01b2-nowhere").strip()
+    assert answer == "no window to keep", answer
     # One whole, as `quest restore` hands it over, is taken at once.
     answer = handing({"sessions": [{"id": "01b2-quay", "cwd": "/home/jitsusama/quay"}]})
     assert answer == "taken", answer

@@ -3153,13 +3153,15 @@ onLinux {
   a-session-is-known-by-its-own-record =
     let
       # Three windows of the same title, one of kitty 500's and two of 600's,
-      # the second opened as pi-session.7, each with the app id it opened
-      # with kept, as Niri.qml keeps it.
+      # the second opened as pi-session.7 and laid out in workspace 3's
+      # second column, each with the app id it opened with kept, as Niri.qml
+      # keeps it.
       niri = singleton "Niri.qml" ''
         property var windows: ({
           "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse", opened: "kitty" },
           "20": { id: 20, pid: 600, title: "\u03c0 - Lighthouse", opened: "kitty" },
-          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse", opened: "pi-session.7" }
+          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse", opened: "pi-session.7",
+            workspace_id: 3, layout: { pos_in_scrolling_layout: [2, 1] } }
         })
         property int revision: 0
         property var current: null
