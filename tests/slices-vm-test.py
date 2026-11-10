@@ -32,6 +32,8 @@ APPS_SHARE = 0.10
 AGENTS_SHARE = 0.15
 ABOVE_SHARE = 0.15
 SESSION_FLOOR = 2560 * MIB
+# The one hard part of agents.slice's floor: what the sessions' kitty keeps for itself.
+AGENTS_FLOOR = 512 * MIB
 # The journal's soft floor, which every machine's system.slice claims.
 JOURNAL_FLOOR = 64 * MIB
 # The share of memory past which work in jobs is slowed.
@@ -228,6 +230,7 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     """Apps keep a hard share of memory, agents' sessions and system services a soft one.
 
+    Agents' sessions keep a hard floor only as large as the sessions' kitty's own.
     Every slice above both claims them too. system.slice claims what its
     services' floors add up to, at least those running now, so theirs hold.
     """
@@ -237,7 +240,7 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
         assert abs(account.floor(path) - total * share) <= MIB, path
     for path in [f"{ACCOUNT}/agents.slice", *above]:
         assert abs(account.soft_floor(path) - total * AGENTS_SHARE) <= MIB, path
-    assert account.floor(f"{ACCOUNT}/agents.slice") == 0
+    assert account.floor(f"{ACCOUNT}/agents.slice") == AGENTS_FLOOR
     assert account.floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
     assert account.floor(JOBS) == 0
     system = "/sys/fs/cgroup/system.slice"

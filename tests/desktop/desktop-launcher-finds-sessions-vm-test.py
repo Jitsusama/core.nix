@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import re
 import shlex
+import tarfile
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -33,6 +34,7 @@ from desktop_session import (
     quests_listed,
     started_apart,
 )
+from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -44,6 +46,17 @@ if TYPE_CHECKING:
 # quarter of a second, since a builder running other VM tests beside it once stamped one
 # 0.11 s late (9 November), while starts the shell didn't pace would come together.
 JOURNAL_LAG = 0.25
+# Where a spawn's frames are recorded, and what the recorder says, and the frames taken out.
+RECORDING = "/run/user/1000/spawn.mkv"
+RECORDED = "/run/user/1000/spawn.log"
+FRAMES = "/run/user/1000/spawn-frames"
+# How much lighter or darker a recorded pixel may be than the same pixel
+# still, from the encoder alone, and the share of a window's pixels past it
+# (one in this many) that is a change Joel would see.
+ENCODER_NOISE = 40
+CHANGED_SHARE = 500
+# The crowd's busy sessions, one stress-ng each.
+CROWD = 30
 # Pi's session's row, its quest's title, which Lighthouse's is while it runs.
 LIGHTHOUSE = "A quest of its own & whole"
 
@@ -840,18 +853,59 @@ def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -
 
 
 def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Desktop) -> None:
-    """A session the harness hands over while Joel types opens aside, and every key stays his."""
+    """A session the harness hands over while Joel types opens aside, and every key stays his.
+
+    He types into the session that starts it, a window of the kitty that draws every session,
+    so the new one opens beside his, in the kitty that has his keys (Joel, 2026-11-09: "when
+    new pi sessions via kitty are launched, it still steals focus for a bit, flashes my screen,
+    and often swallows part of what i am typing"). A kitty of its own, or a sender elsewhere,
+    never had his keys to give away. It opens while the sessions work, each busy in a window of
+    that kitty, as on his machine, and the window he types in never changes on his screen
+    (Joel, 2026-11-10: "we need to not have my screen flash when these are loaded either").
+    """
     machine = desktop.machine
-    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/aside && rm -f ~/typed")
+    owner = "$XDG_RUNTIME_DIR/asideqa-owner"
+    # What he types isn't echoed and the cursor is hidden, so the window he
+    # types in has nothing of its own to change: any frame of it that does
+    # is the spawn's doing.
     desktop.as_account(
-        "niri msg action spawn -- kitty --class notes --title Notes sh -c 'cat > ~/typed'"
+        f"touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/aside {PI_PRESENCE} && rm -f ~/typed"
+        f" && printf '%s\\n' '#!/bin/sh' 'echo \"$$ $KITTY_LISTEN_ON $KITTY_WINDOW_ID\" > {owner}'"
+        " 'stty -echo -icanon' 'printf \"\\33[?25l\"'"
+        " 'exec cat > ~/typed' > ~/.asideqa-pi && chmod +x ~/.asideqa-pi"
+        " && echo Notes > $XDG_RUNTIME_DIR/asideqa-title"
+        " && niri msg action spawn -- kitty -1 --instance-group pi-sessions --class notes"
+        " --title Notes ~/.asideqa-pi"
     )
-    machine.wait_until_succeeds(
-        desktop.in_session('niri msg --json windows | grep -q \'"app_id":"notes"\''),
-        timeout=dt.timedelta(seconds=60),
+    machine.wait_until_succeeds(desktop.in_session(f"test -s {owner}"), timeout=SHELL_STARTS)
+    desktop.presence_says(
+        {"session": "01c7-sender", "quest": "QEST-20261109-ASIDEQ", "addresses": ["ASIDEQA"]},
+        address="ASIDEQA",
     )
     notes = next(window for window in desktop.windows() if window["app_id"] == "notes")
+    # Thirty sessions at work on a workspace of their own, each a processor's
+    # worth in its own window's scope beside the kitty drawing them all, as
+    # Joel's 71 were on 2026-11-09. A window niri opens starts wherever niri
+    # runs, where stress-ng may not write, so it writes to /tmp; and each
+    # holds its window should stress-ng end, so a count that falls short is
+    # the work ending, not the windows.
+    stress_ng = f"{desktop.values['stress_ng']}/bin/stress-ng"
+    stress = f"{stress_ng} --temp-path /tmp --cpu 1 --timeout 900"
+    desktop.as_account(
+        "niri msg action focus-workspace 3; for i in $(seq 30); do niri msg action spawn --"
+        f" kitty -1 --instance-group pi-sessions --class crowd --hold {stress}; done"
+    )
+    machine.wait_until_succeeds(
+        desktop.in_session("[ $(niri msg --json windows | grep -o '\"crowd\"' | wc -l) -ge 30 ]"),
+        timeout=dt.timedelta(seconds=180),
+    )
+    # A window is drawn before the work in it starts, so the work is waited on too.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"[ $(pgrep -c -x stress-ng) -ge {CROWD} ]"),
+        timeout=dt.timedelta(seconds=60),
+    )
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    box = window_box(desktop, notes["id"])
     try:
         # Every focus niri gives from here on, and Joel typing numbered words
         # until told to stop, so a key that went elsewhere leaves a gap. Ten
@@ -866,8 +920,10 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
             " echo $i > ~/typing-count; done; wtype -k Return"
         )
         desktop.as_account(f"setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &")
-        # As a quest's spawn hands it over: no focus asked for.
-        handed = {"sessions": [{"id": "01c7-aside", "cwd": "/home/jitsusama/aside"}]}
+        record_the_screen(desktop)
+        # As a quest's spawn hands it over: the one that asked, no focus asked for.
+        aside = {"id": "01c7-aside", "cwd": "/home/jitsusama/aside", "from": "01c7-sender"}
+        handed = {"sessions": [{**aside, "focus": False}]}
         answer = desktop.as_account(
             f"qs ipc call sessions reopen {shlex.quote(json.dumps(handed))}"
         ).strip()
@@ -883,6 +939,7 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
             timeout=dt.timedelta(seconds=120),
         )
         desktop.as_account("touch ~/typing-done")
+        changed = frames_changed(desktop, box)
         machine.wait_until_succeeds(
             desktop.in_session("[ -s ~/typed ]"), timeout=dt.timedelta(seconds=60)
         )
@@ -891,12 +948,17 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
         windows, workspaces = focus_given(desktop)
         assert set(windows) <= {notes["id"]}, windows
         assert set(workspaces) <= {notes["workspace_id"]}, workspaces
+        assert changed == [], f"the window Joel types in changed in frames {changed}"
     finally:
         desktop.as_account(
             "touch ~/typing-done; pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
-            f" pkill -f 'sleep 60[0]'; niri msg action close-window --id {notes['id']}; true"
+            f" pkill -f 'sleep 60[0]'; niri msg action close-window --id {notes['id']};"
+            f" rm -f {PI_PRESENCE}/asideqa.json {owner}; pkill -x stress-ng;"
+            " pkill -INT -x wf-recorder; true"
         )
-        desktop.as_account("rm -rf ~/aside ~/typed ~/typing-done ~/typing-count ~/focus-events")
+        desktop.as_account(
+            "rm -rf ~/aside ~/typed ~/typing-done ~/typing-count ~/focus-events ~/.asideqa-pi"
+        )
 
 
 def test_a_session_another_restores_goes_to_its_workspace_and_leaves_joel_his_focus(
@@ -1133,6 +1195,78 @@ def focus_given(desktop: Desktop) -> tuple[list[int | None], list[int]]:
         if one.get("WorkspaceActivated", {}).get("focused")
     ]
     return windows, workspaces
+
+
+def window_box(desktop: Desktop, window: int) -> tuple[int, int, int, int]:
+    """Give where a window shows on its screen, in the screen's pixels: x, y, width, height."""
+    shown = next(one for one in desktop.windows() if one["id"] == window)
+    layout = shown["layout"]
+    output = json.loads(desktop.as_account("niri msg --json focused-output"))
+    scale = float(output["logical"]["scale"])
+    x, y = layout["tile_pos_in_workspace_view"]
+    dx, dy = layout["window_offset_in_tile"]
+    width, height = layout["window_size"]
+    return (
+        round((x + dx) * scale),
+        round((y + dy) * scale),
+        round(width * scale),
+        round(height * scale),
+    )
+
+
+def record_the_screen(desktop: Desktop) -> None:
+    """Record every frame of the focused screen from now on, for frames_changed to read."""
+    output = (
+        'niri msg --json focused-output | grep -o \'"name":"[^"]*"\' | head -1 | cut -d\'"\' -f4'
+    )
+    # Every frame, damaged or not (-D), as the looks area records a flash,
+    # so a still window is a run of equal frames rather than none.
+    desktop.as_account(
+        f'rm -f {RECORDING}; setsid -f wf-recorder -y -D --output "$({output})"'
+        f" --file {RECORDING} </dev/null >{RECORDED} 2>&1"
+    )
+    began, _ = desktop.machine.execute(
+        f"timeout 20 sh -c 'until grep -q \"selected region\" {RECORDED}; do sleep 0.1; done'"
+    )
+    assert began == 0, f"wf-recorder never began: {desktop.machine.execute(f'cat {RECORDED}')[1]}"
+
+
+def frames_changed(desktop: Desktop, box: tuple[int, int, int, int]) -> list[int]:
+    """Stop recording, and give each frame in which the box differs from the first.
+
+    A frame differs where over a five-hundredth of its pixels are lighter or darker by more
+    than the encoder's own noise. The first that does is kept in the gallery, for a person.
+    """
+    machine = desktop.machine
+    machine.succeed("pkill -INT -x wf-recorder")
+    machine.wait_until_fails("pgrep -x wf-recorder", timeout=dt.timedelta(seconds=30))
+    x, y, width, height = box
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    machine.succeed(
+        f"rm -rf {FRAMES} && mkdir -p {FRAMES} && {ffmpeg} -i {RECORDING}"
+        f" -vf crop={width}:{height}:{x}:{y},fps=30 {FRAMES}/%05d.png"
+        f" && tar -C {FRAMES} -cf {FRAMES}.tar ."
+    )
+    machine.copy_from_machine(f"{FRAMES}.tar")
+    kept = machine.out_dir / "spawn-frames.tar"
+    frames = []
+    with tarfile.open(kept) as tar:
+        for member in sorted(tar.getmembers(), key=lambda member: member.name):
+            read = tar.extractfile(member)
+            if read is not None:
+                frames.append(Image.open(read).convert("L"))
+    kept.unlink()
+    assert len(frames) > 1, f"the recording held {len(frames)} frames"
+    changed: list[int] = []
+    for at, frame in enumerate(frames):
+        apart = ImageChops.difference(frame, frames[0]).point(
+            lambda light: 255 * (light > ENCODER_NOISE)
+        )
+        if sum(apart.histogram()[255:]) * CHANGED_SHARE > frame.width * frame.height:
+            if not changed:
+                frame.save(machine.out_dir / "spawn-changed.png")
+            changed.append(at)
+    return changed
 
 
 def first_on(desktop: Desktop, titled: str) -> int | None:
