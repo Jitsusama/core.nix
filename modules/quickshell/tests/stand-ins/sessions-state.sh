@@ -17,8 +17,10 @@ echo harbour >"$state/mycelium/realm"
 # shell would read; and two windows joined to sessions another machine
 # holds, one by its words as an argv and one by a line a shell would read;
 # and three another machine carried here as it went away, two whole, the
-# older listed first, and one saying where from badly; and one that ran
-# hosted, which its host brings back itself.
+# older listed first, and one saying where from badly; one pi's host
+# here gave back, between them in time, one saying so badly and one
+# saying it was both carried and given back; and one that ran hosted, which its host
+# brings back itself.
 cat >"$state/pi/restore.json" <<'EOF'
 {"v":1,"boot":"an-earlier-boot","sessions":[
   {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},
@@ -37,7 +39,14 @@ cat >"$state/pi/restore.json" <<'EOF'
   {"id":"s-ferry","address":"FERRYQ","title":"Ferry","cwd":"/tmp","lostAt":"",
    "carried":{"from":"lighthouse","at":"2026-10-30T12:00:00Z"}},
   {"id":"s-adrift","address":"ADRIFT","title":"Adrift","cwd":"/tmp","lostAt":"",
-   "carried":"lighthouse"}
+   "carried":"lighthouse"},
+  {"id":"s-freed","address":"FREEDQ","title":"Freed","cwd":"/tmp","lostAt":"",
+   "released":{"from":"attended","at":"2026-10-30T11:00:00Z"}},
+  {"id":"s-loose","address":"LOOSEQ","title":"Loose","cwd":"/tmp","lostAt":"",
+   "released":"attended"},
+  {"id":"s-twice","address":"TWICEQ","title":"Twice","cwd":"/tmp","lostAt":"",
+   "carried":{"from":"lighthouse","at":"2026-10-30T09:00:00Z"},
+   "released":{"from":"attended","at":"2026-10-30T09:00:00Z"}}
 ]}
 EOF
 

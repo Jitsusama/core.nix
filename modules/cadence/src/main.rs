@@ -363,6 +363,18 @@ fn gather(
             now - DAY,
         ),
         cpu_avg300: records::avg300(&fs::read_to_string("/proc/pressure/cpu").unwrap_or_default()),
+        joel_cpu_avg300: records::account(
+            &fs::read_to_string("/proc/self/cgroup").unwrap_or_default(),
+        )
+        .and_then(|account| {
+            ["app.slice", "session.slice"]
+                .iter()
+                .filter_map(|slice| {
+                    let path = format!("{account}/{slice}/cpu.pressure");
+                    records::avg300(&fs::read_to_string(path).ok()?)
+                })
+                .reduce(f64::max)
+        }),
         available_gib,
         swap_gib,
         last_oom_kill: records::last_machine_oom_kill(&kernel),

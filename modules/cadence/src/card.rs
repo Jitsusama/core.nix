@@ -104,12 +104,13 @@ fn machine(out: &mut String, s: &Snapshot) {
     let _ = writeln!(out, "VM runs: {}, {ok} passed.", vm.len());
     line(out, "VM wait for a builder (target median 2)", &waits);
 
-    let cpu = s
-        .cpu_avg300
-        .map_or_else(|| "unknown".to_owned(), |c| format!("{c:.0}%"));
+    let percent = |c: Option<f64>| c.map_or_else(|| "unknown".to_owned(), |c| format!("{c:.0}%"));
     let _ = writeln!(
         out,
-        "CPU pressure over five minutes: {cpu} (target 15 from agents' work)."
+        "CPU pressure over five minutes: {} (target 15 from agents' work), {} in what \
+         Joel uses.",
+        percent(s.cpu_avg300),
+        percent(s.joel_cpu_avg300)
     );
     let _ = writeln!(
         out,
@@ -215,6 +216,7 @@ mod tests {
                 status: 0,
             }],
             cpu_avg300: Some(12.0),
+            joel_cpu_avg300: Some(1.0),
             last_oom_kill: Some(now - 9 * 3600),
             watched: true,
             watcher_alive: true,
@@ -229,7 +231,7 @@ mod tests {
             "switches: 1, last at t99400",
             "VM runs: 1, 1 passed.",
             "VM wait for a builder (target median 2): median 0.5",
-            "CPU pressure over five minutes: 12%",
+            "CPU pressure over five minutes: 12% (target 15 from agents' work), 1% in what Joel",
             "The net is caught up with main.",
             "last machine-wide out-of-memory kill 9.0 h ago",
             "is there; its last card went at none.",
