@@ -1263,14 +1263,24 @@ fn answer(
         Ask::List { id, kinds } => json!({"id": id, "records": records(shared, &kinds, None)}),
         Ask::Watch { id, kinds, keys } => {
             refresh(shared, &kinds, keys.as_deref());
-            // What it's told first is taken under the lock that holds the
-            // watch, so a read between them is either in it or told after.
+            // What it's told first is taken, and queued, under the lock
+            // that holds the watch, so a read between them is either in it
+            // or told after it. Queued once the lock was let go, a change
+            // read in between could be said first, and the whole answer
+            // after it would put back what the change moved on from.
             let mut daemon = lock(&shared.daemon);
             let snapshot = held(&daemon, &kinds, keys.as_deref());
             // A watch asked again by its id replaces the one before.
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            // One that can't be queued is hung up on, as a change would
+            // hang up on it.
+            let first = json!({"id": id, "records": snapshot});
+            if told.try_send(first.to_string()).is_err() {
+                let _ = hangup.shutdown(Shutdown::Both);
+                return None;
+            }
             daemon.watches.push(Watch {
                 connection,
                 id: id.clone(),
@@ -1280,7 +1290,7 @@ fn answer(
                 stream: Arc::clone(hangup),
             });
             shared.woken.notify_all();
-            json!({"id": id, "records": snapshot})
+            return None;
         }
         Ask::Unwatch { id } => {
             let mut daemon = lock(&shared.daemon);
