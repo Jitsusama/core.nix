@@ -1,8 +1,17 @@
 .pragma library
-// spend-watch's records, as its socket tells them (its src/interface.rs),
-// and what SpendWatch.qml makes of them. collection.json, read while the
-// socket isn't there, is cut into the same records here, so the shell
-// holds one shape whichever told it and remakes only what changed.
+// spend-watch's records, as its socket tells them (its src/records.rs),
+// and what SpendWatch.qml makes of them. collection.json and budgets.json,
+// read while the socket isn't there, are cut into the same records here,
+// so the shell holds one shape whichever told it and remakes only what
+// changed.
+
+// The kinds budgets.json is cut into; the rest are collection.json's.
+const budgetKinds = ["budget", "drew"];
+
+// Whether a key names a record of budgets.json rather than the collection.
+function ofBudgets(key) {
+    return budgetKinds.includes(kindOf(key));
+}
 
 // The kind a key names: "session" for "session:01a1...".
 function kindOf(key) {
@@ -13,6 +22,23 @@ function kindOf(key) {
 // The id a key names, after its kind: "now:today" for "row:now:today".
 function idOf(key) {
     return key.slice(key.indexOf(":") + 1);
+}
+
+// Whether two values say the same, whatever order their keys come in:
+// the daemon's serde sorts each record's keys, and the file keeps the
+// order it was written in, so a record told by one and held from the
+// other is still the same record.
+function alike(a, b) {
+    if (a === b) {
+        return true;
+    }
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null
+        || Array.isArray(a) !== Array.isArray(b)) {
+        return false;
+    }
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length
+        && keys.every(key => key in b && alike(a[key], b[key]));
 }
 
 // collection.json as records, by key, as the daemon cuts it.
@@ -52,12 +78,25 @@ function records(collection) {
     return cut;
 }
 
+// budgets.json as records, by key, as the daemon cuts it: each budget by
+// its name, and the budget each session drew on last by its id.
+function budgetRecords(standing) {
+    const cut = {};
+    for (const budget of standing?.budgets ?? []) {
+        cut[`budget:${budget.name}`] = { key: `budget:${budget.name}`, kind: "budget", budget };
+    }
+    for (const [id, budget] of Object.entries(standing?.sessions ?? {})) {
+        cut[`drew:${id}`] = { key: `drew:${id}`, kind: "drew", budget };
+    }
+    return cut;
+}
+
 // The properties a record's change touches, from what it was to what it
 // is, either null: each of a session's figures its own, so a session
 // whose spend moved and whose day didn't leaves sessionsToday as it was.
 function touched(was, now) {
     const record = now ?? was;
-    const differs = field => JSON.stringify(was?.[field]) !== JSON.stringify(now?.[field]);
+    const differs = field => !alike(was?.[field], now?.[field]);
     switch (record.kind) {
     case "session":
         return [["spent", "sessions"], ["today", "sessionsToday"], ["helpers", "helpers"]]
@@ -72,6 +111,10 @@ function touched(was, now) {
         return ["reports"];
     case "words":
         return [idOf(record.key)];
+    case "budget":
+        return ["budgets"];
+    case "drew":
+        return ["budgetOf"];
     default:
         return [];
     }
@@ -118,6 +161,10 @@ function made(held, property) {
     }
     case "reports":
         return byId("report", record => record.report);
+    case "budgets":
+        return byId("budget", record => record.budget);
+    case "budgetOf":
+        return byId("drew", record => record.budget);
     default:
         return held[`words:${property}`]?.words ?? [];
     }

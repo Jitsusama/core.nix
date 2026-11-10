@@ -2,7 +2,11 @@
 // spend-watch's socket rather than read from its file, through Quickshell
 // itself, over records cut from the collection spend-watch wrote beside
 // this, with a stand-in serving them as the daemon does. The socket's first
-// answer, saying what the file said, makes no row; a change to a session's
+// answer, saying what the collection and budgets files said with its keys
+// in another order, makes no row and leaves the budgets as they were, and
+// while the daemon is starting its figures are still being
+// read, said as its last run's, until it says it's answering; the file
+// isn't watched while the socket answers; a change to a session's
 // figure makes none of the rows and a change to one row makes that row
 // alone; and a watch that never answers is drawn from what's held while
 // it's still reading, with no row made twice. It exits 0 once every case
@@ -54,6 +58,11 @@ ShellRoot {
         path: `${root.runtime}/written/collection.json`
     }
 
+    FileView {
+        id: realBudgets
+        path: `${root.runtime}/written/budgets.json`
+    }
+
     // spend-watch's socket as its daemon serves it (its src/interface.rs):
     // each watch told its kinds whole, and then only what changed, as
     // `tell` says it. A kind in `silent` is never answered, as a daemon too
@@ -61,6 +70,36 @@ ShellRoot {
     property var served: ({})
     property var silent: []
     readonly property var watchers: ({})
+    // What hello says, as the daemon says "starting" until its first pass.
+    property string saying: "answering"
+
+    // A value with every object's keys in the other order, as serde's
+    // sorted keys are against the order the file was written in.
+    function turned(value) {
+        if (typeof value !== "object" || value === null)
+            return value;
+        if (Array.isArray(value))
+            return value.map(turned);
+        const now = {};
+        for (const key of Object.keys(value).reverse())
+            now[key] = turned(value[key]);
+        return now;
+    }
+
+    // Says the daemon is answering now, as its first pass tells each
+    // connection watching.
+    function passed() {
+        saying = "answering";
+        const told = [];
+        for (const kind of Object.keys(watchers)) {
+            const watcher = watchers[kind];
+            if (told.includes(watcher))
+                continue;
+            told.push(watcher);
+            watcher.write(`${JSON.stringify({ id: "hello", state: "answering" })}\n`);
+            watcher.flush();
+        }
+    }
 
     function recordsOf(kinds) {
         return Object.values(served).filter(record => kinds.includes(Records.kindOf(record.key)));
@@ -88,7 +127,7 @@ ShellRoot {
                     const kinds = [].concat(ask.kind ?? []);
                     let answer = { id: ask.id, unwatched: true };
                     if (ask.ask === "hello")
-                        answer = { id: ask.id, version: 1, domain: "spend", state: "answering" };
+                        answer = { id: ask.id, version: 1, domain: "spend", state: root.saying };
                     else if (ask.ask === "watch") {
                         for (const kind of kinds)
                             root.watchers[kind] = asked;
@@ -145,7 +184,8 @@ ShellRoot {
     // The check puts what spend-watch wrote where it writes it.
     function begin() {
         until("the collection read from the file",
-            () => root.collected !== "" && spend.known && SpendWatch.fromFile, stream);
+            () => root.collected !== "" && spend.known && SpendWatch.fromFile
+                && Object.keys(SpendWatch.budgets).length > 0, stream);
     }
 
     // Told by the socket rather than read from the file: what it says
@@ -154,25 +194,46 @@ ShellRoot {
     property int streamed: 0
 
     function stream() {
-        served = Records.records(JSON.parse(root.collected));
+        const records = Object.assign(Records.records(JSON.parse(root.collected)),
+            Records.budgetRecords(JSON.parse(realBudgets.text())));
+        const budgets = SpendWatch.budgets;
+        served = {};
+        for (const key of Object.keys(records))
+            served[key] = turned(records[key]);
         streamed = spend.tally.rows;
         const first = spend.everything()[0];
+        Expect.expect("the file watched while it's read", SpendWatch.watchingFile, "unwatched");
+        saying = "starting";
         daemon.active = true;
-        until("the socket answering", () => !SpendWatch.fromFile && !spend.stillReading, () => {
-            Expect.expect("the socket's answer, the same as the file's, makes no row",
+        until("the socket answering, starting", () => !SpendWatch.fromFile
+            && SpendWatch.lastRun && !SpendWatch.rowsReading && !SpendWatch.reportsReading, () => {
+            Expect.expect("the socket's answer, as the file's in another order, makes no row",
                 spend.everything()[0] === first && spend.tally.rows === streamed,
                 spend.tally.rows - streamed);
-            Expect.expect("its figures pass as current",
-                spend.answer("spend").note === "Return copies the summary",
-                spend.answer("spend").note);
-            // Counted from here, since an answer asked makes its own rows.
-            streamed = spend.tally.rows;
-            // Agents' figure, as each pass tells some session's.
-            const session = Object.keys(served).find(key => Records.kindOf(key) === "session");
-            tell(Object.assign({}, served[session], { spent: "$999" }));
-            until("a session's figure told",
-                () => SpendWatch.sessions[Records.idOf(session)] === "$999", sessionTold);
+            Expect.expect("the file unwatched while the socket answers", !SpendWatch.watchingFile,
+                "watched");
+            Expect.expect("the budgets told as the file said them", Object.keys(budgets).length > 0
+                && SpendWatch.budgets === budgets, Object.keys(SpendWatch.budgets).join(" "));
+            Expect.expect("starting, its figures are still being read, said as its last run's",
+                spend.stillReading && spend.answer("spend").note
+                === "the watch is still reading; these are its last run's figures",
+                `${spend.stillReading} ${spend.answer("spend").note}`);
+            passed();
+            until("the daemon answering", () => !spend.stillReading, current);
         });
+    }
+
+    function current() {
+        Expect.expect("its figures pass as current once it's answering",
+            spend.answer("spend").note === "Return copies the summary",
+            spend.answer("spend").note);
+        // Counted from here, since an answer asked makes its own rows.
+        streamed = spend.tally.rows;
+        // Agents' figure, as each pass tells some session's.
+        const session = Object.keys(served).find(key => Records.kindOf(key) === "session");
+        tell(Object.assign({}, served[session], { spent: "$999" }));
+        until("a session's figure told",
+            () => SpendWatch.sessions[Records.idOf(session)] === "$999", sessionTold);
     }
 
     function sessionTold() {
