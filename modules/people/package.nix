@@ -1,14 +1,17 @@
 # The people daemon, built from this directory, its tests run as it builds.
+# Its socket's tests ask it with a crate every daemon's tests share
+# (../daemon-client), so the source is cut from the modules folder holding
+# both, and built from this one.
 {
   lib,
   rustPlatform,
   systemd,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "people";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
@@ -16,8 +19,11 @@ rustPlatform.buildRustPackage {
       # The crate's own tests, and not the QML case beside them, which the
       # shell's engine runs (checks.nix).
       ./tests/daemon.rs
+      ../daemon-client/Cargo.toml
+      ../daemon-client/src
     ];
   };
+  sourceRoot = "${src.name}/people";
   cargoLock.lockFile = ./Cargo.lock;
   # A test starts the daemon as systemd does for people.socket, through
   # systemd-socket-activate, handing it the socket it answers on.

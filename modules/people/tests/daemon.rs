@@ -7,12 +7,10 @@
 //! about everyone watched; a roster is searched and watched by who it
 //! lists; and an ask or kind it doesn't know is refused.
 
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use daemon_client::{Client, Daemon, until};
 use serde_json::{Value, json};
 
 /// A source on the line protocol, in the shell the tests run in: it
@@ -94,9 +92,7 @@ done
 /// The daemon, running with these sources, and where its test keeps
 /// what each source logged.
 struct Running {
-    daemon: Child,
-    socket: PathBuf,
-    folder: PathBuf,
+    daemon: Daemon,
 }
 
 impl Running {
@@ -135,34 +131,19 @@ impl Running {
             }
             None => Command::new(people),
         };
-        let daemon = command
-            .arg(&socket)
-            .arg(&config)
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        until("the socket never came", || socket.exists());
+        command.arg(&socket).arg(&config).stderr(Stdio::null());
         Running {
-            daemon,
-            socket,
-            folder,
+            daemon: Daemon::start(&mut command, socket, folder),
         }
     }
 
     fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        Client {
-            lines: BufReader::new(stream.try_clone().unwrap()),
-            stream,
-        }
+        self.daemon.client()
     }
 
     /// What a source was asked, a line each.
     fn asked(&self, source: &str) -> Vec<String> {
-        std::fs::read_to_string(self.folder.join(format!("{source}.log")))
+        std::fs::read_to_string(self.daemon.folder().join(format!("{source}.log")))
             .unwrap_or_default()
             .lines()
             .map(str::to_owned)
@@ -170,54 +151,14 @@ impl Running {
     }
 }
 
-impl Drop for Running {
-    fn drop(&mut self) {
-        let _ = self.daemon.kill();
-        let _ = self.daemon.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
-    }
-}
-
-struct Client {
-    stream: UnixStream,
-    lines: BufReader<UnixStream>,
-}
-
-impl Client {
-    /// The answer to an ask, passing over what a watch pushed meanwhile.
-    fn ask(&mut self, asked: &Value) -> Value {
-        writeln!(self.stream, "{asked}").unwrap();
-        loop {
-            let said = self.next();
-            if said["id"] == asked["id"] {
-                return said;
-            }
+/// The next change a watch is told, passing over how its sources stand,
+/// which a source still starting may say first.
+fn next_change(client: &mut Client) -> Value {
+    loop {
+        let said = client.heard();
+        if said.get("changed").is_some() {
+            return said;
         }
-    }
-
-    fn next(&mut self) -> Value {
-        let mut line = String::new();
-        self.lines.read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap()
-    }
-
-    /// The next change a watch is told, passing over how its sources
-    /// stand, which a source still starting may say first.
-    fn changed(&mut self) -> Value {
-        loop {
-            let said = self.next();
-            if said.get("changed").is_some() {
-                return said;
-            }
-        }
-    }
-}
-
-fn until(what: &str, held: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !held() {
-        assert!(Instant::now() < deadline, "{what}");
-        std::thread::sleep(Duration::from_millis(20));
     }
 }
 
@@ -253,7 +194,7 @@ fn a_watch_asks_ahead_says_what_is_held_and_gathers_a_burst_into_one_change() {
     let mut changed = Vec::new();
     let mut messages = 0;
     while changed.len() < 3 {
-        let said = client.changed();
+        let said = next_change(&mut client);
         assert_eq!(said["id"], 1);
         changed.extend(said["changed"].as_array().unwrap().iter().cloned());
         messages += 1;
@@ -323,7 +264,7 @@ fn a_watch_hears_a_source_sign_out_as_it_says_so() {
     // The ask ahead has it say it's signed out, which the watch hears
     // without asking, as a client learns a sign-in went. The source may
     // say so before the watch is answered, so either comes first.
-    let said = [client.next(), client.next()];
+    let said = [client.heard(), client.heard()];
     let pushed = json!({"id": 2, "sources": {"slack": "signed-out"}});
     assert!(said.contains(&pushed), "{said:?}");
     assert!(
@@ -346,14 +287,14 @@ fn a_source_back_is_asked_again_about_everyone_watched(test: &str, unable: &str)
     until("Ada was never asked again after Grace", || {
         running.asked("vault") == ["?ada@example.com", "?grace@example.com", "?ada@example.com"]
     });
-    std::fs::write(running.folder.join("vault.log.in"), "").unwrap();
+    std::fs::write(running.daemon.folder().join("vault.log.in"), "").unwrap();
     // Joel steps into Eve, and the source says who she is: it's back.
     // One signed out isn't waited on, so the step-in may answer first.
     running
         .client()
         .ask(&json!({"id": 2, "ask": "get", "keys": ["person:eve@example.com"], "patience": 5000}));
     loop {
-        let changed = watching.changed();
+        let changed = next_change(&mut watching);
         let ada = changed["changed"]
             .as_array()
             .unwrap()
@@ -490,20 +431,20 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
     );
     assert_eq!(said["waiting"], json!([]));
     // Eli made a favourite is told to the watch of the listed.
-    let said = client.changed();
+    let said = next_change(&mut client);
     assert_eq!(said["id"], 5);
     assert_eq!(said["changed"][0]["key"], "person:eli@example.com");
     assert_eq!(said["changed"][0]["sources"]["tuple"]["favourite"], true);
     // Ada no longer one is told too, so it's dropped.
     client.ask(&json!({"id": 7, "ask": "get", "keys": ["person:ada@example.com"]}));
-    let said = client.changed();
+    let said = next_change(&mut client);
     assert_eq!(said["changed"][0]["key"], "person:ada@example.com");
     assert_eq!(said["changed"][0]["sources"]["tuple"]["favourite"], false);
     // Gus, never listed, goes without a word to it, and from the book.
     let mut everyone = running.client();
     everyone.ask(&json!({"id": 1, "ask": "watch"}));
     client.ask(&json!({"id": 8, "ask": "get", "keys": ["person:tuple:7"]}));
-    let said = everyone.changed();
+    let said = next_change(&mut everyone);
     assert_eq!(
         said["changed"],
         json!([{"key": "person:tuple:7", "kind": "person", "gone": true}])

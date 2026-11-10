@@ -1,9 +1,10 @@
 //! A daemon of the launcher's daemon interface, started for a test, and a
 //! client asking it over its socket, one line of JSON each way, for each
-//! daemon's tests (whereabouts's, in modules/quickshell/whereabouts/tests),
-//! which name this crate in their Cargo.toml as a dev-dependency. The
-//! helpers were copied from one daemon's tests into the next; kept here,
-//! a fix to one reaches every test that asks a daemon.
+//! daemon's tests (machine's, people's, programs', to-do's, tuple-call's
+//! and whereabouts's), which name this crate in their Cargo.toml as a
+//! dev-dependency. The helpers were copied from one daemon's tests into
+//! the next; kept here, a fix to one reaches every test that asks a
+//! daemon.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -45,14 +46,7 @@ impl Daemon {
 
     /// A client of its own, asking over the socket.
     pub fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).expect("the socket answers");
-        stream
-            .set_read_timeout(Some(PATIENCE))
-            .expect("the socket takes a timeout");
-        Client {
-            lines: BufReader::new(stream.try_clone().expect("the socket is cloned")),
-            stream,
-        }
+        Client::connect(&self.socket)
     }
 }
 
@@ -71,6 +65,20 @@ pub struct Client {
 }
 
 impl Client {
+    /// A client of the daemon serving `socket`, for a test that starts
+    /// and stops the daemon itself, as one restarting it over the same
+    /// folder does, which a `Daemon` would take away.
+    pub fn connect(socket: &Path) -> Client {
+        let stream = UnixStream::connect(socket).expect("the socket answers");
+        stream
+            .set_read_timeout(Some(PATIENCE))
+            .expect("the socket takes a timeout");
+        Client {
+            lines: BufReader::new(stream.try_clone().expect("the socket is cloned")),
+            stream,
+        }
+    }
+
     /// The answer to an ask, passing over what a watch pushed meanwhile.
     pub fn ask(&mut self, asked: &Value) -> Value {
         writeln!(self.stream, "{asked}").expect("the ask is sent");
@@ -89,6 +97,29 @@ impl Client {
             .read_line(&mut line)
             .expect("the daemon answers in time");
         serde_json::from_str(&line).expect("the daemon says JSON")
+    }
+
+    /// The next change a watch is told of the record with this key.
+    pub fn changed(&mut self, key: &str) -> Value {
+        loop {
+            let said = self.heard();
+            let found = said["changed"]
+                .as_array()
+                .and_then(|records| records.iter().find(|record| record["key"] == key));
+            if let Some(record) = found {
+                return record.clone();
+            }
+        }
+    }
+
+    /// The next change saying keys went.
+    pub fn gone(&mut self) -> Vec<Value> {
+        loop {
+            let said = self.heard();
+            if let Some(gone) = said["gone"].as_array() {
+                return gone.clone();
+            }
+        }
     }
 }
 
