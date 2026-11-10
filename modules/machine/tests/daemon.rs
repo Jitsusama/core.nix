@@ -610,6 +610,41 @@ fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
 }
 
 #[test]
+fn the_screens_light_and_the_rooms_are_said_as_they_move() {
+    let running = Running::new("light");
+    let root = running.root();
+    let write = |path: &str, text: &str| {
+        let file = root.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    };
+    write("sys/class/backlight/panel/brightness", "60\n");
+    write("sys/class/backlight/panel/max_brightness", "100\n");
+    write("sys/bus/iio/devices/iio:device0/name", "als\n");
+    write(
+        "sys/bus/iio/devices/iio:device0/in_illuminance_raw",
+        "400\n",
+    );
+    write(
+        "sys/bus/iio/devices/iio:device0/in_illuminance_scale",
+        "0.5\n",
+    );
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": ["backlight", "light"]}));
+    let records = &said["records"];
+    assert_eq!(record(records, "backlight:panel")["brightness"], json!(60));
+    // The sensor is read on its own, so the backlight's answer never
+    // waits on it; what it hears is told as soon as it's read.
+    assert_eq!(client.changed("light:iio:device0")["lux"], json!(200.0));
+    // As the brightness keys set it, the watch is told within a read.
+    write("sys/class/backlight/panel/brightness", "30\n");
+    assert_eq!(client.changed("backlight:panel")["brightness"], json!(30));
+    // And as the room darkens, within the sensor's next read.
+    write("sys/bus/iio/devices/iio:device0/in_illuminance_raw", "40\n");
+    assert_eq!(client.changed("light:iio:device0")["lux"], json!(20.0));
+}
+
+#[test]
 fn a_disk_taken_out_is_said_gone() {
     let running = Running::new("gone");
     let mut client = running.client();

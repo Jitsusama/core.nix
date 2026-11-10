@@ -1319,17 +1319,22 @@ onLinux {
   # what niri says it runs, where it sits and what it offers, and what the
   # backlight daemon says sets its level and has learned, as
   # tests/plate.qml holds launcher/Plate.js, Screens.js and Backlight.js to
-  # it in Qt's own engine, with the Numbers.js Backlight.js says lux through.
+  # it in Qt's own engine, with the Numbers.js Backlight.js says lux through
+  # and the Order.js it lists devices by.
   a-things-drawer-says-its-parts =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies, or names in a variable, a file
+    # Nix gives it, and the cases it runs are a QML file of their own
+    # (tests/plate.qml).
     pkgs.runCommandLocal "a-things-drawer-says-its-parts" { } ''
       cp ${../../tests/plate.qml} plate.qml
       cp ${./launcher/Plate.js} Plate.js
       cp ${./launcher/Screens.js} Screens.js
       cp ${./launcher/Backlight.js} Backlight.js
       cp ${./launcher/Numbers.js} Numbers.js
+      cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3051,6 +3056,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-remakes-only-the-screens-that-changed" { } ''
       mkdir -p launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -3063,6 +3069,7 @@ onLinux {
       cp ${./launcher/Power.js} launcher/Power.js
       cp ${./launcher/ScreenAnswers.js} launcher/ScreenAnswers.js
       cp ${./launcher/Screens.js} launcher/Screens.js
+      cp ${./launcher/Seen.js} launcher/Seen.js
       cp ${./launcher/Warmth.js} launcher/Warmth.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json

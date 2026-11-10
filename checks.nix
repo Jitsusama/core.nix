@@ -208,6 +208,7 @@ let
     unstand Wayland/quickshell-wayland.qmltypes QuickshellScreenInfo
     unstand Services/Mpris/quickshell-service-mpris.qmltypes UntypedObjectModel
     unstand Services/Pipewire/quickshell-service-pipewire.qmltypes UntypedObjectModel
+    unstand Services/UPower/quickshell-service-upower.qmltypes UntypedObjectModel
     unstand Services/Notifications/quickshell-service-notifications.qmltypes UntypedObjectModel
     substituteInPlace \
       $out/lib/qt-6/qml/Quickshell/Services/Notifications/quickshell-service-notifications.qmltypes \
