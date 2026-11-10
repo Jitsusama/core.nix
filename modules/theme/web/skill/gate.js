@@ -192,20 +192,22 @@
   // a drawing (an inline SVG with role="img", as craft.md draws one) or a
   // table, or says in data-figure why it has none, as a suppression says
   // why. A page with no drawing at all, only words and tables, is a page
-  // with its imagery gone.
+  // with its imagery gone, unless the page says why as a whole: a dated
+  // record kept as written, its main or its article marked data-figure.
   if (toRead) {
     const pictures = "svg[role='img'], table";
+    const said = (element) => element?.closest("[data-figure]")?.dataset.figure?.trim() ?? "";
     const headings = [...page.querySelectorAll("h2")].filter(
       (heading) => heading.closest("dialog, [role='dialog'], aside") === null,
     );
     for (const heading of new Set(headings)) {
       const part = heading.closest("section") ?? heading.parentElement;
-      const why = part.closest("[data-figure]")?.dataset.figure?.trim() ?? "";
-      if (part.querySelector(pictures) === null && why === "") {
+      if (part.querySelector(pictures) === null && said(part) === "") {
         missing.push(`a figure for "${named(heading)}", or data-figure="why" on its section`);
       }
     }
-    if (page.querySelector("svg[role='img']") === null) {
+    const whole = said(main) !== "" || said(main?.querySelector("article")) !== "";
+    if (page.querySelector("svg[role='img']") === null && !whole) {
       missing.push('a drawing: no SVG with role="img", so nothing is pictured');
     }
   }

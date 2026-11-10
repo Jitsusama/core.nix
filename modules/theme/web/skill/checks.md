@@ -29,7 +29,9 @@ through axe-core and its own console.
    screen (so run it at 320 px too), and the writing's guard (no emdash,
    no Unicode ellipsis, Canadian spelling, nothing private). It passes on
    an empty list. A part with nothing to picture gets `data-figure="why"` on its
-   section, the reason in words; never one to quiet the probe. A proper
+   section, the reason in words; never one to quiet the probe, and never a
+   drawing added only so the page has one. A dated record kept as written
+   says it once, on its `main` or its `article`. A proper
    name (a person, a product, a quoted title) is marked `translate="no"`,
    which the guard skips as screen readers and translators do. A person's
    own words, shown as they typed them (a description, a comment, a
