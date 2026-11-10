@@ -2250,22 +2250,6 @@ in
       };
       Service = {
         Slice = "agents.slice";
-        # This one process draws every session's window and reads every key
-        # Joel types into one, so it comes before the sessions it holds.
-        # Beside its 71 sessions' scopes at the default weight it had a
-        # seventy-second of the slice, and with no floor of its own 628 MB
-        # of it sat in swap against 88 MB resident while agents.slice held
-        # 25.8 GB over its 10 GB floor (2026-11-09). Opening a window then
-        # paged its drawing back in under the disk's load: Joel's typing
-        # stopped showing, every window redrew at once and keys went
-        # missing. Its scopes take its slice, not its weight or its floor,
-        # so the sessions themselves stay where they were. Its floor is
-        # hard, since a soft one was taken back 285,154 times in 40 minutes
-        # of swapping, and agents.slice keeps a hard floor the same size for
-        # it (modules/slices). It covers what it held resident and hot, not
-        # the scrollback swapped out cold.
-        CPUWeight = 1000;
-        MemoryMin = "512M";
         ExecStart = lib.concatStringsSep " " [
           "${config.home.profileDirectory}/bin/kitty"
           "-1 --instance-group pi-sessions --wait-for-single-instance-window-close"
