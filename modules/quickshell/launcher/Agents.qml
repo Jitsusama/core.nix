@@ -989,11 +989,7 @@ Provider {
             key: "agents:landed",
             name: Words.name("agents:landed"),
             side: Landed.stands(Landed.landedToday(keptLandings, Date.now()), words.said ?? {}),
-            // A place's drawer is drawn once it names what it holds, as a
-            // Recent's is (Launcher.qml's drawable); with nothing landed,
-            // it has nothing to say past its row.
-            heldNames: landings.map(one => one.what),
-            drawer: landings.length === 0 ? undefined : () => ({
+            drawer: () => ({
                 eyebrow: (Words.field.drawer ?? {}).place ?? "",
                 title: Words.name("agents:landed"),
                 body: (words.tells ?? {}).holding ?? ""
