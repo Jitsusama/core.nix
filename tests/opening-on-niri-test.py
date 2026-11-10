@@ -39,10 +39,15 @@ def shell() -> Iterator[Shell]:
 
 
 @pytest.fixture(autouse=True)
-def launcher_closed_after(shell: Shell) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
+def home_kept_after(shell: Shell) -> Iterator[None]:
+    """Close the launcher after each test, and wait until it has kept home for the next.
+
+    Home is put back a turn after the card has faded out, so the next test's opening would
+    otherwise race it, and one failing with the launcher open fails alone.
+    """
     yield
     shell.launcher_left_closed()
+    shell.launcher_until(lambda shown: shown["kept"])
 
 
 def openings(shell: Shell) -> list[Json]:
@@ -57,6 +62,7 @@ def latest(timed: list[Json]) -> int:
 
 def opened_from_kept(shell: Shell) -> Json:
     """Open the launcher as its chord does, and give that opening as it was timed and filled."""
+    shell.launcher_until(lambda shown: shown["kept"])
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
