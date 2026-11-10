@@ -9,9 +9,11 @@
 //! - `figures`: what a row says at its right, and its drawer's figures.
 //! - `summary`: how the sessions stand together.
 //! - `said`: the launcher's own words for all of it.
+//! - `watch`: what the node and the other daemons hold, heard as it moves.
 
 pub mod figures;
 pub mod said;
 pub mod standing;
 pub mod summary;
 pub mod tree;
+pub mod watch;
