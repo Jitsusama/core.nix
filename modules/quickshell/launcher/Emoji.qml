@@ -96,6 +96,7 @@ Provider {
                 enumerable: true,
                 get: () => Pasting.verb()
             });
+            Pasting.saysUnhelped(made);
             e.row = made;
         }
         return e.row;

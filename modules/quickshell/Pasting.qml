@@ -44,6 +44,23 @@ Singleton {
         return pasting.helper !== null && pasting.helper.linked;
     }
 
+    // Whether a history is kept but isn't answering, so a paste falls back
+    // on Qt and wtype, which wait on the shell's thread.
+    function unhelped() {
+        return pasting.helper !== null && !pasting.helper.linked;
+    }
+
+    // Gives a row that pastes a note saying so while the history isn't
+    // answering, so a slower paste is never a silent one; a shell keeping
+    // no history says nothing, its fallback being how it always pastes.
+    function saysUnhelped(row) {
+        Object.defineProperty(row, "note", {
+            enumerable: true,
+            get: () => unhelped() ? "the clipboard's history isn't answering" : ""
+        });
+        return row;
+    }
+
     // Copies, through the history, which names the copy by what: its
     // number, or text spelled as JSON. Without the history, copied copies
     // it instead.

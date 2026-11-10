@@ -12,10 +12,13 @@
 // its paste keys for it, nothing of it waiting on the shell (Pasting.qml,
 // which Super+E's emoji paste through too, this the helper it asks).
 // With no window there, Return only copies, as the right arrow's Copy
-// always does. Forget the
-// Clipboard, the clipboard's last row while there's something to forget
-// and found by its words from anywhere, has the helper forget every copy,
-// and what the clipboard holds with them.
+// always does. Forget the Clipboard, the clipboard's last row while
+// there's something to forget and found by its words from anywhere, has
+// the helper forget every copy, and what the clipboard holds with them.
+// While the launcher is shut, a copy heard is only kept as the helper
+// said it, and its row is made as the rows are wanted again; the rows
+// themselves move into clipboard-history next, which is to serve them
+// worded and ranked by 2026-11-12.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -32,8 +35,20 @@ Provider {
 
     collection: Words.collection("clipboard")
 
-    // Newest first.
-    property var all: []
+    // What the helper said of each copy it keeps, newest first.
+    property var records: []
+
+    // A row per record, made while the rows are wanted, and each kept
+    // while its record is the same one, so a copy heard makes one row.
+    readonly property var keeping: keeper()
+    readonly property var all: whileWanted("all", () => {
+        keepingBegun(keeping);
+        const rows = records.map(said => said.picture !== undefined
+            ? keptOr(keeping, `picture:${said.picture}`, said, () => pictured(said))
+            : keptOr(keeping, `copy:${said.id}`, said, () => made(said)));
+        keptOnly(keeping);
+        return rows;
+    })
 
     // Whether the helper is connected, to copy and paste for Pasting.qml.
     property bool linked: false
@@ -60,7 +75,7 @@ Provider {
         }
     }
 
-    things: all.length > 0 ? [forget] : []
+    things: records.length > 0 ? [forget] : []
 
     readonly property string socket:
         `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
@@ -105,6 +120,7 @@ Provider {
             // needs when the helper has gone and Qt copies it.
             now: true
         });
+        Pasting.saysUnhelped(row);
         return pastes(row, `${copy.id}`, () => {
             Quickshell.clipboardText = copy.text;
         });
@@ -186,6 +202,7 @@ Provider {
             down: copy.height ?? 0,
             about: `${kinds[copy.type] ?? "Picture"} \u00b7 ${weighed(copy.bytes)}`
         });
+        Pasting.saysUnhelped(row);
         return pastes(row, `${copy.picture}`, () => provider.tell(`copy ${copy.picture}`));
     }
 
@@ -206,22 +223,24 @@ Provider {
             return;
         }
         if (said.clear) {
-            all = [];
+            records = [];
             Report.say("forgot the copies");
             return;
         }
         // Pictures the helper let go to make room, whose files are gone.
         if (said.gone) {
-            all = all.filter(row => row.picture === undefined || !said.gone.includes(row.id));
+            records = records.filter(one => one.picture === undefined
+                || !said.gone.includes(one.picture));
             Report.say(`let go ${said.gone.length === 1 ? "a picture" : `${said.gone.length} pictures`}`);
             return;
         }
         const picture = said.picture !== undefined;
-        const kept = all.filter(row => picture ? row.id !== said.picture : row.text !== said.text);
-        const row = picture ? pictured(said) : made(said);
-        kept.unshift(row);
-        all = kept.slice(0, settings.keep ?? 200);
-        Report.say(`heard copy ${picture ? row.name : said.text.split("\n")[0]}`);
+        const kept = records.filter(one => picture ? one.picture !== said.picture
+            : one.text !== said.text);
+        kept.unshift(said);
+        records = kept.slice(0, settings.keep ?? 200);
+        const size = said.width ? ` ${said.width} \u00d7 ${said.height}` : "";
+        Report.say(`heard copy ${picture ? `Image${size}` : said.text.split("\n")[0]}`);
     }
 
     function search(typed) {
@@ -260,7 +279,7 @@ Provider {
 
     // How many copies it keeps, its Forget not among them.
     function counted() {
-        return countedAs(all.length);
+        return countedAs(records.length);
     }
 
     // A fresh connection each time, since one refused or dropped doesn't
@@ -278,7 +297,7 @@ Provider {
             onConnectionStateChanged: {
                 provider.linked = connected;
                 if (connected)
-                    provider.all = [];
+                    provider.records = [];
                 else
                     again.restart();
             }
