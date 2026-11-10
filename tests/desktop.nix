@@ -1151,10 +1151,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         "launcher-keeps-up"
       ]) (lib.mkForce "warning");
       # Diag only: log a crash's backtrace to the journal rather than storing its core.
-      systemd.coredump.extraConfig = lib.mkIf (area == "launcher-keeps-up") ''
-        Storage=none
-        ProcessSizeMax=16G
-      '';
+      systemd.coredump.settings.Coredump = lib.mkIf (area == "launcher-keeps-up") {
+        Storage = "none";
+        ProcessSizeMax = "16G";
+      };
       # The workstation's daemon collects garbage while under 10 GiB is free
       # (modules/nix-daemon), and this machine's store is 2 GiB of tmpfs over
       # the builder's, where only the system's own closure is registered. So
