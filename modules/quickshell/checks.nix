@@ -2441,6 +2441,35 @@ onLinux {
     touch $out
   '';
 
+  # The launcher's Power makes again only the Charger's rows or the
+  # battery's, as the supplies they're made from change (tests/power.qml),
+  # over a stand-in for the machine daemon.
+  power-remakes-only-what-moved = pkgs.runCommandLocal "power-remakes-only-what-moved" { } ''
+    mkdir -p launcher runtime/daemons && chmod -R 700 runtime
+    cp ${./Daemon.qml} Daemon.qml
+    cp ${./Fuzzy.js} Fuzzy.js
+    cp ${./PiSource.js} PiSource.js
+    cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+    cp ${./launcher/Provider.qml} launcher/Provider.qml
+    cp ${./launcher/Power.qml} launcher/Power.qml
+    cp ${./launcher/Asking.js} launcher/Asking.js
+    cp ${./launcher/Numbers.js} launcher/Numbers.js
+    cp ${./launcher/Power.js} launcher/Power.js
+    cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+    cp ${./launcher/Machine.js} launcher/Machine.js
+    cp ${./launcher/Order.js} launcher/Order.js
+    cp ${./launcher/Seen.js} launcher/Seen.js
+    cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+    cp ${./Words.qml} Words.qml
+    cp ${./launcher/words.json} launcher/words.json
+    cp ${../../tests/power.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts}
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # The launcher's Sound leaves out a jack with nothing plugged in and a
   # display's output with no display, and never listens to a headset's
   # microphone while the headset plays music (tests/sound.qml), deciding
