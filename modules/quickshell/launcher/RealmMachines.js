@@ -8,14 +8,12 @@
 // design is VKCF3Z's ruling of 2026-11-07 (KP0L6A's design-machines.md).
 .pragma library
 .import "Order.js" as Order
+.import "Machine.js" as Machine
 
 const PERCENT = 100;
 const SHORT_COMMIT = 7;
-const KIB = 1024;
-const GIB = KIB * KIB * KIB;
-const TIB = GIB * KIB;
-// A figure under ten is said to a tenth, as Machine's are.
-const WHOLE_FROM = 10;
+// A pressure is said to a tenth.
+const TENTHS = 10;
 const BETWEEN = " \u00b7 ";
 
 // The words Machines says, filled in: `said` is the vocabulary's own,
@@ -28,16 +26,16 @@ function filled(said, key, fills) {
     return text;
 }
 
-// Bytes as Machine says them: "24 GiB", "8.6 GiB", "1.8 TiB".
+// Bytes as Machine says them, in decimal units to three digits, worked
+// out from bytes: "1.07 GB", "915 MB" (docs/design.md: sizes are
+// decimal, never a GiB).
 function bytes(count) {
-    const [size, unit] = count >= TIB ? [count / TIB, "TiB"] : [count / GIB, "GiB"];
-    return `${size >= WHOLE_FROM ? Math.round(size) : Math.round(size * WHOLE_FROM) / WHOLE_FROM}`
-        + ` ${unit}`;
+    return Machine.bytes(count);
 }
 
 // A pressure, in percent, to a tenth: "88.8%".
 function percent(share) {
-    return `${(Math.round(Number(share) * WHOLE_FROM) / WHOLE_FROM).toFixed(1)}%`;
+    return `${(Math.round(Number(share) * TENTHS) / TENTHS).toFixed(1)}%`;
 }
 
 // Whether a node says it reaches the machine now.
@@ -68,14 +66,6 @@ function systemOf(record, named) {
     return named(`kind:${SYSTEMS.includes(record.system) ? record.system : "machine"}`);
 }
 
-// A moment as the clock says it today, "14:20", or the day before then,
-// "7 Nov".
-function moment(at, now) {
-    const when = new Date(at);
-    const today = new Date(now);
-    const sameDay = when.toDateString() === today.toDateString();
-    return sameDay ? Qt.formatTime(when, "HH:mm") : Qt.formatDate(when, "d MMM");
-}
 
 // The row's note: what it is and what it runs, "MacBook Air \u00b7 macOS
 // 26.6.2", and its realm only while two or more are linked.
@@ -112,7 +102,7 @@ function side(record, place) {
     }
     if (!reached(record)) {
         return [filled(said, "unreachable"),
-            filled(said, "since", { time: moment(record.measured_at, place.now) })].join(BETWEEN);
+            filled(said, "since", { time: when(record.measured_at, place) })].join(BETWEEN);
     }
     const counts = record.room?.takes;
     const busy = counts && counts.builds === 0 && counts.vm_tests === 0;
@@ -215,11 +205,11 @@ function takes(room, said) {
     return [one(counts.builds, "build"), one(counts.vm_tests, "vmTest")].join(", ");
 }
 
-// When its last update ended, as the launcher says a moment: "23:40"
-// today, else its day before it, "yesterday 23:40", "Friday 23:40" or
-// "7 Nov 23:40"; nothing where its node says no `at` (VKCF3Z,
-// 2026-11-09: "failed \u00b7 yesterday 23:40").
-function ended(at, place) {
+// A moment, as the launcher says one through When: "23:40" today, else
+// its day before it, "yesterday 23:40", "Friday 23:40" or "7 Nov 23:40";
+// nothing where its node says none (VKCF3Z, 2026-11-09: "failed \u00b7
+// yesterday 23:40").
+function when(at, place) {
     const time = Date.parse(String(at ?? ""));
     if (Number.isNaN(time)) {
         return "";
@@ -242,7 +232,7 @@ function update(updated, place) {
         ? filled(said, "sameCore", { commit: shortened }) : shortened;
     // Last Update wears the update's mark where its page lists it, as
     // Update It does (`mark`, the words' id it's drawn from).
-    const step = fact(named("step"), [updated.step ?? "", ended(updated.at, place)]
+    const step = fact(named("step"), [updated.step ?? "", when(updated.at, place)]
         .filter(part => part !== "").join(BETWEEN));
     return [
         fact(named("commit"), String(updated.commit ?? "").slice(0, SHORT_COMMIT)),
@@ -250,6 +240,29 @@ function update(updated, place) {
         step && Object.assign(step, { mark: "machines:step" }),
         fact(named("reboot"), updated.restart ?? "")
     ];
+}
+
+// Its disk: how much is free of its size where the node says both, "1.07
+// GB free of 4.08 GB", else its size, saying it is that, then how full
+// its guard bands it.
+function disk(record, place) {
+    const { said } = place;
+    if (!record.disk) {
+        return "";
+    }
+    const size = typeof record.disk_free === "number"
+        ? filled(said, "freeOf", { free: bytes(record.disk_free), total: bytes(record.disk) })
+        : filled(said, "sized", { total: bytes(record.disk) });
+    return [size, place.band(record.disk_band ?? "")].filter(part => part !== "").join(BETWEEN);
+}
+
+// What a processor's maker calls it, without the marks typed for lawyers
+// or the word for what it is, its clock's unit spaced as every figure's:
+// "Intel(R) Xeon(R) CPU @ 2.80GHz" is "Intel Xeon @ 2.80 GHz". Its
+// model's own digits stay as its maker wrote them.
+function processor(model) {
+    return String(model ?? "").replace(/\((R|TM|C)\)/giu, "").replace(/\bCPU\b/gu, "")
+        .replace(/(\d)([GM]Hz)\b/gu, "$1 $2").replace(/\s+/gu, " ").trim();
 }
 
 // Each probe its configuration asks, as reached or not.
@@ -294,9 +307,9 @@ function drawer(record, place) {
     const { said, named } = place;
     const { room } = record;
     const cpu = record.cpu ?? {};
-    const measured = reached(record)
-        ? place.ago(Date.parse(record.measured_at), place.now)
-        : filled(said, "asOf", { time: moment(record.measured_at, place.now) });
+    const measuredAt = when(record.measured_at, place);
+    const measured = reached(record) ? measuredAt
+        : filled(said, "asOf", { time: measuredAt });
     const accelerators = (record.accelerators ?? [])
         .map(one => `${one.driver} ${filled(said, one.kind)}`).join(", ");
     const facts = pressures(room, named).concat([
@@ -305,14 +318,13 @@ function drawer(record, place) {
                 total: bytes(record.memory) }) : ""),
         fact(named("charge"), charge(record.power, said)),
         fact(named("takes"), takes(room, said)),
-        fact(named("disk"), record.disk ? [bytes(record.disk),
-            place.band(record.disk_band ?? "")].filter(part => part !== "").join(", ") : ""),
+        fact(named("disk"), disk(record, place)),
         ...reach(record, place),
         ...update(record.updated, place),
         fact(named("measured"), measured),
-        fact(named("processor"), [cpu.model ?? "", cpu.cores
+        fact(named("processor"), [processor(cpu.model), cpu.cores
             ? filled(said, "cores", { count: cpu.cores }) : ""]
-            .filter(part => part !== "").join(", ")),
+            .filter(part => part !== "").join(BETWEEN)),
         fact(named("accelerators"), accelerators),
         fact(named("system"), [record.os ?? "", record.arch ?? ""]
             .filter(part => part !== "").join(BETWEEN)),

@@ -18,6 +18,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../When.js" as When
 import "Order.js" as Order
 import "RealmMachines.js" as Listed
 
@@ -77,6 +78,22 @@ Provider {
         void machineKind?.revision;
         const record = Object.values(machineKind?.held ?? {}).find(one => one.name === name);
         return record ?? (name === Sessions.machine ? { here: true } : null);
+    }
+
+    // What RealmMachines.js needs to say a machine as Start a Session lists
+    // it: Machines' words, now, and a moment as When says it, as Machines
+    // says one out of reach since.
+    function startPlace() {
+        const said = Words.of("machines").said ?? {};
+        return {
+            said: said,
+            now: Date.now(),
+            day: (at, now) => When.day(at, now, {
+                yesterday: said.yesterday ?? "",
+                date: (date, format) => Qt.formatDate(date, format)
+            }),
+            clock: at => Qt.formatDateTime(new Date(at), "HH:mm")
+        };
     }
 
     // A quest as its record says it, without what the node adds: its key,
@@ -343,8 +360,7 @@ Provider {
             name: one.name,
             glyph: Theme.glyph.agent,
             hue: "action",
-            note: Listed.startNote(one, machineOf(one.name),
-                { said: Words.of("machines").said ?? {}, now: Date.now() }),
+            note: Listed.startNote(one, machineOf(one.name), startPlace()),
             gone: one.cannot !== "",
             later: true,
             run: () => {

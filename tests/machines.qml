@@ -42,7 +42,8 @@ QtObject {
         "charging:charger": "{charge}% \u00b7 on the charger", build: "{count} build",
         builds: "{count} builds", vmTest: "{count} VM test", vmTests: "{count} VM tests",
         sameCore: "{commit}, as this machine's", reaches: "reached", unreaches: "not reached",
-        freeOf: "{free} free of {total}", cores: "{count} cores", on: "on {realm} \u00b7 machine",
+        freeOf: "{free} free of {total}", sized: "{total} in all", cores: "{count} cores",
+        on: "on {realm} \u00b7 machine",
         gpu: "graphics", npu: "NPU",
         "updated:done": "{name} updated to {commit}", "updated:done:bare": "{name} updated",
         "updated:unchanged": "{name} was on main already",
@@ -91,7 +92,8 @@ QtObject {
         { name: "skiff", realm: "personal", state: "ready", system: "linux",
             os: "NixOS 26.11 (Zokor)", arch: "x86_64", model: "Microsoft Corporation Surface Laptop 4",
             model_name: "Surface Laptop 4", measured_at: at(1, 58), memory: 8 * 2 ** 30,
-            disk: 128 * 2 ** 30, disk_band: "healthy", cpu: { model: "AMD Ryzen 5", cores: 12 },
+            disk: 4.08e9, disk_free: 1.07e9, disk_band: "healthy",
+            cpu: { model: "AMD Ryzen(TM) 5 4680U", cores: 12 },
             accelerators: [{ driver: "amdgpu", kind: "gpu" }],
             power: { on_battery: true, charge: 62 },
             room: { memory_available: 3.2 * 2 ** 30, over: [],
@@ -145,7 +147,7 @@ QtObject {
         const hereFacts = hereDrawn.facts.map(fact => `${fact.label}: ${fact.value}`);
         expect("this machine's drawer is every machine's",
             hereDrawn.eyebrow === "on personal \u00b7 machine" && JSON.stringify(hereFacts)
-                === JSON.stringify(["Measured: 1 min ago", "System: NixOS 26.11 (Zokor)",
+                === JSON.stringify(["Measured: 01:59", "System: NixOS 26.11 (Zokor)",
                     "Model: Dell Inc. XPS 14 DA14260"]),
             `${hereDrawn.eyebrow} ${JSON.stringify(hereFacts)}`);
 
@@ -173,12 +175,12 @@ QtObject {
         const read = drawn.facts.map(fact => `${fact.label}: ${fact.value}`);
         const expected = ["Processor Pressure: 0.1%", "Memory Pressure: 0.0%",
             "Disk Pressure: 0.1%",
-            "Memory: 3.2 GiB free of 8 GiB", "Charge: 62% \u00b7 on battery",
-            "Takes: 1 build, 1 VM test", "Disk: 128 GiB", "internet: reached",
+            "Memory: 3.44 GB free of 8.59 GB", "Charge: 62% \u00b7 on battery",
+            "Takes: 1 build, 1 VM test", "Disk: 1.07 GB free of 4.08 GB", "internet: reached",
             "office: not reached", "Commit: 7307356", "Core: a97eea7, as this machine's",
             "Last Update: done \u00b7 yesterday 23:40", "Reboot: its kernel changed",
-            "Measured: 2 min ago",
-            "Processor: AMD Ryzen 5, 12 cores", "Accelerators: amdgpu graphics",
+            "Measured: 01:58",
+            "Processor: AMD Ryzen 5 4680U \u00b7 12 cores", "Accelerators: amdgpu graphics",
             "System: NixOS 26.11 (Zokor) \u00b7 x86_64",
             "Model: Microsoft Corporation Surface Laptop 4"];
         expect("the drawer runs from what moves most to the model, never the side again",
@@ -203,6 +205,12 @@ QtObject {
             .find(fact => fact.label === "Last Update")?.value;
         expect("one whose node says no time says how it ended alone", unsaid === "done",
             unsaid);
+        const macDisk = macDrawn.find(fact => fact.label === "Disk")?.value;
+        expect("a disk whose node says nothing free says its size is all it is, then its band",
+            macDisk === "994 GB in all \u00b7 filling", macDisk);
+        const xeon = Machines.processor("Intel(R) Xeon(R) CPU @ 2.80GHz");
+        expect("a processor drops what's typed for lawyers, and spaces its clock's unit",
+            xeon === "Intel Xeon @ 2.80 GHz", xeon);
         const macFacts = macDrawn.map(fact => fact.label ?? "");
         expect("a Mac's identifier is last, and nothing unsaid is made up",
             macFacts[macFacts.length - 1] === "Model" && !macFacts.includes("Accelerators")
