@@ -858,14 +858,14 @@ Provider {
         onLoadFailed: provider.facts = ({})
     }
 
-    // What its spots are made of (Provider.spotsStamp): the screens as niri
+    // What its spots are made of (Launcher.qml's spotsFrom): the screens as niri
     // says them, which one holds the Brightness, whether the room's sensor
     // and the warmth are there, and which facts desk-facts says; never a
     // level, a lux or a warmth's figure, which move while nothing else
     // does. modules/windows' display kind takes this over, serving the
-    // screens' rows ready, by 11 November.
-    spotsStamp: JSON.stringify([outputsSaid, light === null ? false : light.connector ?? "",
-        roomSensor !== null, warmth === null ? null : warmth.seesColour === true,
+    // screens' rows ready, by 12 November.
+    property string spotsStamp: JSON.stringify([outputsSaid,
+        light === null ? false : light.connector ?? "", roomSensor !== null, warmth === null ? null : warmth.seesColour === true,
         Niri.powersOffEach, Object.keys(facts).sort().map(name => [name,
             (facts[name] ?? []).map(fact => `${fact.name}:${fact.value === ""}`)])])
 

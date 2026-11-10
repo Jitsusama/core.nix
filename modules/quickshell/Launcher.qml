@@ -820,9 +820,10 @@ Scope {
     // source had changed then (changesIn), so a closing makes again only
     // those whose source changed since. It made all of them each time:
     // Sound's 111 rows on every closing of Joel's, with no change to Sound
-    // (2026-11-03). A source that says what its spots are made of
-    // (Provider.spotsStamp) has them made again only once that changes, so
-    // a light or a signal moving remakes nothing as the launcher closes,
+    // (2026-11-03). A source that says what its spots are made of, in a
+    // `spotsStamp` of its own that a figure moving never changes, as
+    // Displays and Wi-Fi do, has them made again only once that changes,
+    // so a light or a signal moving remakes nothing as the launcher closes,
     // and their figures a minute later (spotsFreshened), if it stayed
     // closed: closings made Displays' 87 rows and Wi-Fi's 17 to 65 again
     // as Joel went back to typing (2026-11-10), each its lights or its

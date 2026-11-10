@@ -85,14 +85,6 @@ Scope {
     signal foundMore(bool fresh)
     // A collection's things changed while it might be open.
     signal changed
-    // What its spots are made of (Launcher.qml's spotsFrom), in a word that
-    // changes only when they would: its things and parts coming, going or
-    // renamed, never a figure moving. A closing remakes them only once it
-    // changes, and their figures a minute after, if the launcher stayed
-    // closed, where closings made Displays' 87 rows again once its lights
-    // had been read (2026-11-10). Left empty, any change remakes them.
-    // A stopgap: the daemon owning each collection serves its spots ready.
-    property string spotsStamp: ""
 
     // An answer worked out too late to say, as the maths' is when the
     // machine stalls past its patience, is asked again a moment later, a
