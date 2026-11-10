@@ -254,13 +254,18 @@ Provider {
         })];
         // The row stands from the sensor while what it hears is still being
         // read, so it keeps its place, and from what it heard once read.
+        // Until then it says it's being read, as every figure still read
+        // does (Catalogue.acts), and copies nothing: "not read yet" pasted
+        // is no use anywhere, so Return only closes. Said as nothing, it
+        // was a row whose Return did nothing (goes-places, 2026-11-10).
         const heard = lightRead ? room : null;
         if (inTheRoom(output) && roomSensor !== null)
             rows.push(copyRow({
                 key: `displays:${output.name}:room`,
                 name: partName("room"),
-                side: heard === null ? unreadSaid() : lux(heard),
+                side: heard === null ? unreadSaid() || "\u2026" : lux(heard),
                 copy: heard === null ? "" : lux(heard),
+                copiesNothing: heard === null,
                 glyph: "",
                 hue: "machine",
                 graph: level(heard === null ? 0 : Power.roomLevel(heard), 1),

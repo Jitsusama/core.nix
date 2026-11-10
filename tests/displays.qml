@@ -10,6 +10,7 @@ import Quickshell
 import QtQuick
 import "launcher" as Launcher
 import "Expect.js" as Expect
+import "launcher/Catalogue.js" as Catalogue
 
 ShellRoot {
     id: root
@@ -67,6 +68,20 @@ ShellRoot {
             Expect.expect("a screen that changed is drawn as it now stands", monitor !== was
                 && monitor?.verb !== was?.verb
                 && displays.tally.rows > madeBefore, displays.tally.rows - madeBefore);
+            // The panel's Room Light, its sensor known but what it hears
+            // not read yet, as a walk of the catalogue finds it with no
+            // watch running: it says it's being read, so Return has a
+            // reason to only close, and copies nothing.
+            displays.light = { connector: "eDP-1", share: 50, now: 100, most: 200 };
+            displays.roomSensor = { device: "acpi-als", lux: null, raw: null };
+            const panel = displays.shown.find(output => output.name === "eDP-1");
+            const roomLight = displays.lightRows(panel)
+                .find(row => String(row.key).endsWith(":room"));
+            Expect.expect("a Room Light still being read does something on Return",
+                !!roomLight && Catalogue.acts(roomLight),
+                JSON.stringify({ side: roomLight?.side, verb: roomLight?.verb }));
+            Expect.expect("and copies nothing while it's read", roomLight?.copies() === "",
+                roomLight?.copies());
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);
