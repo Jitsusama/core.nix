@@ -113,15 +113,16 @@ function side(one, said) {
 }
 
 // What a file's drawer says that only its Neovim knows, after what's said
-// of the file itself (NeovimProgram.qml's plate): its buffer's number, as
-// :ls lists it and :b takes it, and when it was last in a window, said by
-// `when(milliseconds)`, only where Neovim has said. Each { id, value }, by
-// the launcher's words. Whether it's modified and where it shows are its
+// of the file itself (NeovimProgram.qml's plate): when it was last in a
+// window, said by `when(milliseconds)`, only where Neovim has said, and
+// then its buffer's number, as :ls lists it and :b takes it, last since
+// it's an identifier (VKCF3Z, b9a2e7ae). Each { id, value }, by the
+// launcher's words. Whether it's modified and where it shows are its
 // row's side, so neither is said again.
 function plateFacts(one, when) {
     return [
-        ["nvim:buffer", Number.isInteger(one.buffer) ? String(one.buffer) : ""],
-        ["nvim:used", one.at > 0 ? when(one.at * MILLISECONDS) : ""]
+        ["nvim:used", one.at > 0 ? when(one.at * MILLISECONDS) : ""],
+        ["nvim:buffer", Number.isInteger(one.buffer) ? String(one.buffer) : ""]
     ].filter(fact => fact[1] !== "").map(fact => ({ id: fact[0], value: fact[1] }));
 }
 

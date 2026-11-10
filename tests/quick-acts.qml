@@ -78,9 +78,9 @@ QtObject {
         // Neovim says when in seconds, the launcher in milliseconds; a
         // buffer never in a window says no time.
         const when = at => `at ${at}`;
-        check("a file's buffer and when it was last in a window",
+        check("when a file was last in a window, then its buffer, an identifier, last",
             Neovim.plateFacts(open[0], when),
-            [{ id: "nvim:buffer", value: "2" }, { id: "nvim:used", value: "at 200000" }]);
+            [{ id: "nvim:used", value: "at 200000" }, { id: "nvim:buffer", value: "2" }]);
         check("no time where Neovim never had it in a window",
             Neovim.plateFacts(Object.assign({}, open[0], { at: 0 }), when),
             [{ id: "nvim:buffer", value: "2" }]);

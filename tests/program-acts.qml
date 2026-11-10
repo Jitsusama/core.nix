@@ -210,15 +210,16 @@ ShellRoot {
         expect("Go To, then Copy the Path, and no Close It", names(open[0].verbs())
             === "Go To, Copy the Path", names(open[0].verbs()));
         // Its drawer says where it is, its name, and what only Neovim knows:
-        // its buffer, and when it was last in a window. With no file-preview
+        // when it was last in a window, then its buffer. With no file-preview
         // given, nothing reads the file, so it says no kind or lines.
         const plate = open[0].drawer();
         const labels = plate.facts.map(fact => fact.label).join(", ");
         expect("a file's drawer, where then its name", plate.eyebrow === "in ~/src/alpha/docs"
             && plate.title === "notes.md" && plate.preview === undefined,
             JSON.stringify(plate));
-        expect("then its buffer and when it was last in a window", labels === "Buffer, Last Used"
-            && plate.facts[0].value === "2", JSON.stringify(plate.facts));
+        expect("then when it was last in a window and its buffer, last",
+            labels === "Last Used, Buffer" && plate.facts[1].value === "2",
+            JSON.stringify(plate.facts));
         open[0].run();
         expect("its buffer gone to through open-now", spawned() === JSON.stringify([
             Quickshell.env("OPEN_NOW"), "neovim", "go", "41:7", "/run/n1", "2"]), spawned());
