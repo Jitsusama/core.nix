@@ -39,6 +39,16 @@ pub const UNSENT: i32 = 75;
 /// net tries it again next round rather than leave its hold for a person.
 pub const UNCHECKED: &str = "no builder took its checks";
 
+/// How a revert fails that a pause or a hold on the machine came to stop
+/// while its checks ran, so the net tries it again the first round it
+/// may start, rather than land what someone paused it to keep off main.
+pub const PAUSED: &str = "held while its checks ran";
+
+/// Whether a revert that failed for `why` is tried again next round.
+fn tried_again(why: &str) -> bool {
+    why.starts_with(UNCHECKED) || why.starts_with(PAUSED)
+}
+
 /// How a revert fails that main's newest head made needless while its
 /// checks ran, so it's neither merged nor tried again.
 pub const DROPPED: &str = "main's newest head passes its test, so it was dropped";
@@ -778,7 +788,7 @@ fn keep_revert(
             hold["revert_commit"] = json!(merged.commit);
             hold["revert_again"] = json!(false);
         }
-        Err(why) if why.starts_with(UNCHECKED) => hold["revert_again"] = json!(true),
+        Err(why) if tried_again(why) => hold["revert_again"] = json!(true),
         Err(_) => hold["revert_again"] = json!(false),
     }
     state.set_hold(hold)
@@ -1504,7 +1514,7 @@ fn revert_and_tell(
         return Ok(());
     }
     let listed: Option<Result<Merged, String>> = match &reverted {
-        Err(why) if !why.starts_with(UNCHECKED) => Some(list_broken(world, state, found, head)),
+        Err(why) if !tried_again(why) => Some(list_broken(world, state, found, head)),
         _ => None,
     };
     state.find(&json!({
@@ -1582,6 +1592,17 @@ fn revert_wanted<'a>(
             return Ok(false);
         }
         if with == Outcome::Passed {
+            // The round reads a pause only as it starts and before each
+            // run, and a revert's checks take minutes: on 10 November the
+            // net was paused at 07:45 to let #2832 fix #2809 forward, and
+            // merged #2809's revert at 07:47 all the same.
+            if let Some(why) = world.held() {
+                state.say(&format!(
+                    "the revert of {} is wanted, but it lands nothing while held: {why}",
+                    short(&found.commit)
+                ));
+                return Err(format!("{PAUSED}: {why}"));
+            }
             return Ok(true);
         }
         state.say(&format!(
@@ -1707,6 +1728,9 @@ mod tests {
         /// The PR that last took a test off the list.
         unlisted_by: Option<u64>,
         held: Option<String>,
+        /// A pause that comes while a revert's checks run.
+        paused_while_reverting: Option<String>,
+        paused: Mutex<Option<String>>,
         /// How many reverts to come find no builder for their checks.
         unchecked_reverts: Mutex<u32>,
         /// The head main moves to while a revert's checks run.
@@ -1742,7 +1766,9 @@ mod tests {
 
     impl World for Stand {
         fn held(&self) -> Option<String> {
-            self.held.clone()
+            self.held
+                .clone()
+                .or_else(|| self.paused.lock().unwrap().clone())
         }
         fn head(&self) -> Result<String, String> {
             if let Some(error) = &self.fetch_fails {
@@ -1885,6 +1911,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .clone_from(&self.moves_while_reverting);
+            self.paused
+                .lock()
+                .unwrap()
+                .clone_from(&self.paused_while_reverting);
             let newest = self.head()?;
             if !still(&newest, &format!("{newest}+revert"))? {
                 return Err(format!("{DROPPED}, land.log"));
@@ -3203,6 +3233,45 @@ mod tests {
         assert_eq!(world.built(), vec![("h".into(), "vm-b".into())]);
         assert!(state.hold().is_some(), "the hold waits for the revert");
         assert!(world.reverted.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_revert_paused_while_its_checks_ran_lands_only_once_the_pause_is_lifted() {
+        // 10 November's case: the net was paused while it checked the
+        // revert of #2809, and merged it two minutes later.
+        let state = state("revert-paused");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            paused_while_reverting: Some("a fix forward is near".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("h+revert", "vm-a", &[0]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "the revert landed while the net was paused"
+        );
+        assert!(world.put_in_quarantine.lock().unwrap().is_empty());
+        let hold = state.hold().unwrap();
+        assert_eq!(hold["revert_again"], true, "{hold}");
+
+        // Still paused, the next round starts nothing; lifted, it lands.
+        state.set_heads("s", "s").unwrap();
+        assert_eq!(round(&world, &state, "s").unwrap(), Round::Idle);
+        assert!(world.reverted.lock().unwrap().is_empty());
+        *world.paused.lock().unwrap() = None;
+        let world = Stand {
+            paused_while_reverting: None,
+            ..world
+        };
+        round(&world, &state, "s").unwrap();
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
     }
 
     #[test]
