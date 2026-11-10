@@ -3737,6 +3737,7 @@ onLinux {
       cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
+      cp ${./Measures.js} Measures.js
       cp ${./MarkSize.js} MarkSize.js
       cp ${./Mark.qml} Mark.qml
       cp ${./Columns.js} Columns.js
@@ -3827,6 +3828,7 @@ onLinux {
       cp ${./ReadsOn.qml} ReadsOn.qml
       cp ${./Wash.qml} Wash.qml
       cp ${./Reading.js} Reading.js
+      cp ${./Measures.js} Measures.js
       cp ${./MarkSize.js} MarkSize.js
       cp ${./Mark.qml} Mark.qml
       cp ${./Columns.js} Columns.js
