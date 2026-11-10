@@ -125,10 +125,13 @@ Provider {
         return made.names;
     }
 
+    // Its rows are made here too, while the launcher is shut, since the
+    // first step into Desktop made all 1,924 for Emoji's row and took
+    // 207 ms under load (2026-11-10).
     Timer {
         interval: 2000
         running: true
-        onTriggered: provider.loaded()
+        onTriggered: provider.everything()
     }
 
     FileView {
