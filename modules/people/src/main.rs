@@ -514,6 +514,40 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
         .retain(|watch| watch.connection != connection);
 }
 
+/// Those listed, in order, as a listing asks: answered once, or watched,
+/// told whole now and after only who changed.
+fn listing(
+    shared: &Shared,
+    id: Value,
+    watch: bool,
+    connection: u64,
+    told: &Sender<String>,
+) -> Option<Value> {
+    let mut daemon = lock(shared);
+    let mut said = Told::default();
+    let records = said.changes(&daemon.book, &daemon.sources, clock());
+    if !watch {
+        return Some(json!({"id": id, "records": records}));
+    }
+    daemon
+        .watches
+        .retain(|watch| !(watch.connection == connection && watch.id == id));
+    // Told under the lock that holds the watch, as a watch of records is,
+    // so no change is said before the whole.
+    let _ = told.send(json!({"id": id, "records": records}).to_string());
+    let seen = daemon.revision;
+    daemon.watches.push(Watch {
+        connection,
+        id,
+        keys: None,
+        listed: false,
+        told: told.clone(),
+        pending: HashMap::new(),
+        listing: Some((said, seen)),
+    });
+    None
+}
+
 /// What one ask is answered with, or nothing where it's already told, as a
 /// watch's answer is.
 fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -> Option<Value> {
@@ -588,31 +622,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             });
             return None;
         }
-        Ask::Listing { id, watch } => {
-            let mut daemon = lock(shared);
-            let mut said = Told::default();
-            let records = said.changes(&daemon.book, &daemon.sources, clock());
-            if !watch {
-                return Some(json!({"id": id, "records": records}));
-            }
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            // Told under the lock that holds the watch, as a watch of
-            // records is, so no change is said before the whole.
-            let _ = told.send(json!({"id": id, "records": records}).to_string());
-            let seen = daemon.revision;
-            daemon.watches.push(Watch {
-                connection,
-                id,
-                keys: None,
-                listed: false,
-                told: told.clone(),
-                pending: HashMap::new(),
-                listing: Some((said, seen)),
-            });
-            return None;
-        }
+        Ask::Listing { id, watch } => return listing(shared, id, watch, connection, told),
         Ask::Unwatch { id } => {
             lock(shared)
                 .watches
