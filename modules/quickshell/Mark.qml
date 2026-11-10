@@ -29,7 +29,8 @@ Text {
     // Whether the face is there to draw in, asked as the mark is made, so a
     // measure taken in a face standing in for it is never kept. Not the
     // mark's own fontInfo, whose size follows what's measured.
-    readonly property bool faceHeld: Qt.fontFamilies().includes(Theme.level.figure.family)
+    readonly property bool faceHeld: MarkSize.faceHeld(Theme.level.figure.family,
+        () => Qt.fontFamilies())
     readonly property string measuring: known === null ? text : ""
     TextMetrics {
         id: markInk

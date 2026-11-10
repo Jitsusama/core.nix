@@ -40,6 +40,20 @@ function known(key) {
     return measures[key] ?? null;
 }
 
+// The faces found among `families()`, every face the shell can draw in, so
+// they're asked for only until a face is there: asking takes a quarter of a
+// millisecond offscreen, and a mark is made for every row the launcher
+// makes.
+const held = {};
+
+// Whether `family` is there to draw in.
+function faceHeld(family, families) {
+    if (held[family] !== true && families().includes(family)) {
+        held[family] = true;
+    }
+    return held[family] === true;
+}
+
 // `measure`, kept as `key`'s when `whole`: when the face drawn is the one
 // asked for, not one standing in while it loads, and the outline is traced,
 // which comes after the box. Either way it's what was measured.
