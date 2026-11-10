@@ -1,0 +1,13 @@
+# The agents daemon makes Agents' rows ready for the launcher: how each
+# pi session stands, where it sits in its orchestration and what its row
+# says, worded from the launcher's own vocabulary (src/lib.rs says how).
+[package]
+name = "agents"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
