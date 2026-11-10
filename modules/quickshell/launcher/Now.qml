@@ -207,12 +207,12 @@ Provider {
     // its name too, since Now is its home. Put It Back after the clock
     // followed it is Time's (Clocks.qml), since the zone is the clock's.
     //
-    // GeoClue's altitude, speed and heading are left out: found from the
-    // Wi-Fi networks in reach or the network's address, as it is here, it
-    // gives none of them, only its "unknown" values. The plate says so, as
-    // design.md has what's left out named on screen with its reason. Which
-    // of the two found it isn't in the record, so the row says only that
-    // it was found (VKCF3Z, 2026-11-09).
+    // GeoClue's altitude, speed and heading are on the plate where its
+    // source gives them, as GPS does; Wi-Fi and a network's address give none,
+    // and the plate's body names what's missing and the source that
+    // couldn't give it, as design.md has what's left out named on screen
+    // with its reason. The source is the plate's eyebrow (VKCF3Z,
+    // 2026-11-09).
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
@@ -287,9 +287,24 @@ Provider {
         };
         // Its plate: how it was found, then its kind, as an eyebrow says
         // where then what, and what of it the side doesn't say; with
-        // nothing found, none.
-        const plate = !here ? null : () => ({
-            eyebrow: byHand ? hereSaid.viaHand : hereSaid.via,
+        // nothing found, none. It reads here as it's drawn, since the
+        // launcher keeps a row that reads the same, and a source or GPS's
+        // measures can change while the town and its note don't.
+        const plate = !here ? null : () => plateOf(Location.here ?? here, now, differs);
+        return thingRow(Object.assign({
+            key: "on:location",
+            name: Words.name("location"),
+            side: side,
+            note: note,
+            hue: differs ? "strong" : "voice",
+            glyph: Theme.glyph.location
+        }, plate ? { thing: true, drawer: plate } : {}), inside);
+    }
+
+    // Location's plate for here, as `location` says it.
+    function plateOf(here, now, differs) {
+        return {
+            eyebrow: Here.eyebrow(here, hereSaid),
             eyebrowNames: true,
             // Its town, the place's first part, as the plate names the
             // thing it's about.
@@ -300,17 +315,9 @@ Provider {
                     value: fact.value,
                     identifies: fact.identifies === true
                 })),
-            // What GeoClue can't say of a place found from a network, and why.
-            body: byHand ? "" : Words.of("location").tells?.leftOut ?? ""
-        });
-        return thingRow(Object.assign({
-            key: "on:location",
-            name: Words.name("location"),
-            side: side,
-            note: note,
-            hue: differs ? "strong" : "voice",
-            glyph: Theme.glyph.location
-        }, plate ? { thing: true, drawer: plate } : {}), inside);
+            // What its source couldn't say of it.
+            body: Here.leftOut(here, hereSaid, Words.of("location").tells ?? {})
+        };
     }
 
     // How Location says a time, a day and how long ago, as the launcher

@@ -2086,7 +2086,7 @@ onLinux {
       ln -s /etc/zoneinfo/America/Halifax root/etc/localtime
       echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
       '"when":1790000000,"place":"Kelpwater, Westmark","zone":"America/Toronto",'\
-      '"country":"Canada"}' \
+      '"country":"Canada","source":"wifi"}' \
         > $XDG_RUNTIME_DIR/whereabouts/here.json
       ${lib.getExe whereabouts} $XDG_RUNTIME_DIR/daemons/location.sock root \
         $XDG_RUNTIME_DIR/whereabouts/here.json $TMPDIR/pin.json $TMPDIR/moved.json &

@@ -230,25 +230,24 @@ ShellRoot {
             JSON.stringify(inside.map(row => [row.name, row.side])));
         expect("its country is the one whereabouts named", inside[1].side === "Canada",
             inside[1].side);
-        // Found, since the record doesn't say whether from Wi-Fi or the
-        // network's address, and naming no daemon (VKCF3Z, 2026-11-09).
-        expect("it knows it found where it is, naming no source it can't tell",
+        // Found, naming no daemon; its source is the plate's eyebrow
+        // (VKCF3Z, 2026-11-09).
+        expect("it knows it found where it is, naming no daemon",
             inside[2].side === "found, within 26 km", inside[2].side);
-        // Its plate: how it was found, its town, then when, how near, where
+        // Its plate: what found it, its town, then when, how near, where
         // on a map to no more places than it knows, its country and its
-        // zone last as the identifier it is (VKCF3Z, 2026-11-08).
+        // zone last as the identifier it is (VKCF3Z, 2026-11-08 and 09).
         const plate = location.thing === true ? location.drawer() : null;
-        expect("its plate says it was found, titled by its town",
-            plate?.eyebrow === "found \u00b7 location" && plate?.title === "Kelpwater",
+        expect("its plate says Wi-Fi found it, titled by its town",
+            plate?.eyebrow === "via Wi-Fi \u00b7 location" && plate?.title === "Kelpwater",
             JSON.stringify(plate));
         expect("its plate's facts, from what moves most, the zone an identifier",
             JSON.stringify(plate.facts.map(fact => [fact.label, fact.identifies]))
                 === JSON.stringify([["Located", false], ["Accuracy", false],
                     ["Coordinates", false], ["Country", false], ["Zone", true]]),
             JSON.stringify(plate.facts));
-        expect("its plate names what it can't say, and why",
-            plate.body === "Neither Wi-Fi nor a network's address gives altitude, speed or "
-                + "heading.", plate.body);
+        expect("its plate names what its source can't say",
+            plate.body === "Wi-Fi gives no altitude, speed or heading.", plate.body);
         expect("a position within 26 km says a tenth of a degree",
             plate.facts[2].value === "12.3\u00b0 N \u00b7 98.8\u00b0 W"
                 && plate.facts[1].value === "within 26 km",

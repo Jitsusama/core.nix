@@ -1972,34 +1972,55 @@ def test_nows_plate_sets_its_head_and_groups_as_every_plate(
         location_plate_shown(desktop, scale)
 
 
-def location_plate_shown(desktop: Desktop, scale: str) -> None:
-    """See the Location's plate at a scale: how it was found, its town, and its figures."""
-    when = int(desktop.machine.succeed("date +%s").strip()) - 720
-    here = {
-        "v": 2,
-        "latitude": 12.3457,
-        "longitude": -98.7654,
-        "accuracy": 26000,
-        "when": when,
-        "place": "Kelpwater, Westmark",
-        "zone": "America/Toronto",
-        "country": "Canada",
-    }
-    desktop.found_at(here)
-    desktop.as_account("qs ipc call launcher collection on")
-    desktop.launcher_ready()
-    desktop.down_to("Location")
-    desktop.launcher_until(
-        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Kelpwater"
+# Location's plate as each kind of source leaves it: Wi-Fi, which gives no altitude, speed or
+# heading, and GPS, which gives all three after its coordinates (VKCF3Z, 2026-11-09). GPS's
+# fix is as wide as Wi-Fi's, so the clock follows neither and the tests after keep their zone.
+LOCATION_PLATES: tuple[tuple[str, Json, str, list[str]], ...] = (
+    ("", {"source": "wifi"}, "via Wi-Fi · location", []),
+    (
+        "gps-",
+        {"source": "gps", "altitude": 212.4, "speed": 4.26, "heading": 274.6},
+        "via GPS · location",
+        ["Altitude", "Speed", "Heading"],
+    ),
+)
+
+
+def plate_out(shown: Json, eyebrow: str) -> bool:
+    """Say whether Location's plate is out, titled by its town, with this eyebrow."""
+    drawer = shown["drawer"]
+    return bool(
+        drawer["out"] is True and drawer["title"] == "Kelpwater" and drawer["eyebrow"] == eyebrow
     )
-    drawer = plate_shown(desktop, scale)
-    assert drawer["eyebrow"] == "found · location", f"at {scale} the plate: {drawer}"
-    assert drawer["facts"] == ["Located", "Accuracy", "Coordinates", "Country", "Zone"], drawer
-    desktop.launcher_until(lambda shown: any(v is not None for v in shown["drawer"]["values"]))
-    drawer = desktop.showing()["drawer"]
-    assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
-    desktop.shoot(f"launcher-location-plate-at-{scale.replace('.', '-')}")
-    desktop.close_launcher()
+
+
+def location_plate_shown(desktop: Desktop, scale: str) -> None:
+    """See the Location's plate at a scale for each source: what found it, its town, its figures."""
+    when = int(desktop.machine.succeed("date +%s").strip()) - 720
+    for shot, found, eyebrow, measured in LOCATION_PLATES:
+        here = {
+            "v": 2,
+            "latitude": 12.3457,
+            "longitude": -98.7654,
+            "accuracy": 26000,
+            "when": when,
+            "place": "Kelpwater, Westmark",
+            "zone": "America/Toronto",
+            "country": "Canada",
+        } | found
+        desktop.found_at(here)
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.down_to("Location")
+        desktop.launcher_until(partial(plate_out, eyebrow=eyebrow))
+        drawer = plate_shown(desktop, scale)
+        facts = ["Located", "Accuracy", "Coordinates", *measured, "Country", "Zone"]
+        assert drawer["facts"] == facts, f"at {scale} the plate: {drawer}"
+        desktop.launcher_until(lambda shown: any(v is not None for v in shown["drawer"]["values"]))
+        drawer = desktop.showing()["drawer"]
+        assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
+        desktop.shoot(f"launcher-location-{shot}plate-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
     # Nowhere again, for the tests after.
     desktop.found_at(None)
 

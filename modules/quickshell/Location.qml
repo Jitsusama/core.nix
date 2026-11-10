@@ -31,8 +31,9 @@ Singleton {
 
     // Here, as the daemon says it, in the shape the weather and Now read:
     // { latitude, longitude, accuracy in metres, when in seconds, place,
-    // zone, country, hand, and altitude, speed and heading where GeoClue
-    // knows them }, place and zone null while they couldn't be asked; or
+    // zone, country, hand, altitude, speed and heading where GeoClue
+    // knows them, and the source that found it }, place and zone null
+    // while they couldn't be asked; or
     // null where it isn't known. It's bound rather than read-only, so the
     // moment's check can say here is nowhere for a case and put it back
     // (tests/now-moment.qml).
@@ -88,7 +89,9 @@ Singleton {
             hand: said.hand === true,
             altitude: known(said.altitude_m),
             speed: known(said.speed_m_s),
-            heading: known(said.heading_deg)
+            heading: known(said.heading_deg),
+            // Which of GeoClue's sources found it, by whereabouts' name.
+            source: typeof said.source === "string" ? said.source : null
         };
     }
 
