@@ -40,6 +40,7 @@
 
 mod apart;
 mod holds;
+mod lists;
 mod ready;
 mod rules;
 mod state;
@@ -458,8 +459,8 @@ fn status() -> ExitCode {
 /// check passed, saying which way it went. None when some file isn't one.
 fn lists_say(commit: &str, shared: &[String]) -> Option<ExitCode> {
     let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]).unwrap_or_default();
-    match ready::lists(shared, &ready::record(commit), &quarantine) {
-        ready::Lists::Need(need) if need.is_empty() => {
+    match lists::lists(shared, &ready::record(commit), &quarantine) {
+        lists::Lists::Need(need) if need.is_empty() => {
             println!(
                 "ready: {} sits on origin's main, and main moved only lists of its ({}), whose \
                  own checks passed there",
@@ -468,7 +469,7 @@ fn lists_say(commit: &str, shared: &[String]) -> Option<ExitCode> {
             );
             return Some(ExitCode::SUCCESS);
         }
-        ready::Lists::Need(need) => eprintln!(
+        lists::Lists::Need(need) => eprintln!(
             "merge-net: main has since moved only lists of {} ({}); build {} there, committed \
              so it's sent, and merge again",
             short(commit),
@@ -478,12 +479,12 @@ fn lists_say(commit: &str, shared: &[String]) -> Option<ExitCode> {
                 .collect::<Vec<_>>()
                 .join(" and ")
         ),
-        ready::Lists::Broken(why) => eprintln!(
+        lists::Lists::Broken(why) => eprintln!(
             "merge-net: {} at {} no longer reads as the net's list: {why}",
             world::QUARANTINE,
             short(commit)
         ),
-        ready::Lists::NotAll => return None,
+        lists::Lists::NotAll => return None,
     }
     Some(ExitCode::FAILURE)
 }
