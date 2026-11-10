@@ -1791,9 +1791,19 @@ fn kept(
         None => proof::through_daemon(&line, "nix", proof::WITHIN),
     });
     let name = &builder.name;
+    let state = keeper.health.state();
     match heard {
         Some(false) if !keeper.health.dropped() => {
             eprintln!("nix-offload: {name} failed a proof; another in a row gives it back");
+        }
+        Some(true) if state == State::Full && was != State::Full => eprintln!(
+            "nix-offload: {name} has {} GB free, under the {} GB floor, so builders with room \
+             stand in for any work",
+            keeper.health.free.unwrap_or_default() / 1_000_000_000,
+            proof::FLOOR / 1_000_000_000
+        ),
+        Some(true) if was == State::Full && state == State::Passing => {
+            eprintln!("nix-offload: {name} has room again");
         }
         Some(true) if was == State::Failing => {
             eprintln!("nix-offload: {name} passed its proof again");
