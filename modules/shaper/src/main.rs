@@ -25,6 +25,7 @@
 
 mod call;
 mod classes;
+mod cost;
 mod cpu;
 mod icmp;
 mod links;
@@ -463,6 +464,11 @@ fn uplinks() -> Vec<links::Uplink> {
 fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> classes::Local {
     let mut local = classes::Local::default();
     local.links.extend(vpns.keys().cloned());
+    local
+        .marks
+        .extend(vpns.values().filter_map(|v| v.mark.clone()));
+    local.marks.sort();
+    local.marks.dedup();
     for name in shaped.keys() {
         local.links.push(name.clone());
         let json = sh(&words(&format!("ip -j addr show dev {name}"))).unwrap_or_default();
@@ -509,7 +515,7 @@ fn run(options: &Options) -> ExitCode {
     let mut last_fill: Option<Instant> = None;
     let mut filled = String::new();
     let mut reach = classes::Local::default();
-    let mut vpns: BTreeMap<String, Vpn> = BTreeMap::new();
+    let mut vpns: (BTreeMap<String, Vpn>, cost::Cost) = (BTreeMap::new(), cost::Cost::default());
     let mut last_kept = Instant::now();
     // Listing every process costs more than a step can spend, so the pi
     // sessions are found every few seconds, and whether each runs a typed
@@ -553,8 +559,8 @@ fn run(options: &Options) -> ExitCode {
             }
             primary = order.first().cloned();
             let base = order.first().and_then(|p| shaped.get(p)).map(|s| s.applied);
-            follow_vpns(&mut vpns, &options.vpns, base);
-            reach = local(&shaped, &vpns);
+            follow_vpns(&mut vpns, &options.vpns, base, t);
+            reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
             // The one-way controller hears, each second, whose each
             // upload's queue is, which its probes can't see behind a
@@ -575,7 +581,7 @@ fn run(options: &Options) -> ExitCode {
         let mut sets = classes::read(&options.cgroups);
         sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-        sets.vpnbulk = quiet_vpns(&vpns, &mut heard, rides, t);
+        sets.vpnbulk = quiet_vpns(&vpns.0, &mut heard, rides, t);
         let text = classes::transaction(TABLE, &sets, &reach);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
@@ -724,9 +730,34 @@ fn moved(applied: Option<u64>, kbit: u64) -> bool {
 }
 
 /// Keeps a CAKE on each VPN that's there, each way, at its share of the
-/// primary uplink's rates, and lets go of one that's gone or has no uplink
-/// to ride.
-fn follow_vpns(applied: &mut BTreeMap<String, Vpn>, names: &[String], base: Option<(u64, u64)>) {
+/// primary uplink's rates, less what its own packets cost the uplink past
+/// what its CAKE counts, and lets go of one that's gone or has no uplink to
+/// ride. Read at `t` seconds.
+fn follow_vpns(
+    (applied, spent): &mut (BTreeMap<String, Vpn>, cost::Cost),
+    names: &[String],
+    base: Option<(u64, u64)>,
+    t: f64,
+) {
+    let counted: Option<u64> = applied
+        .keys()
+        .map(|name| {
+            qdisc::counted_bytes(
+                &sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default(),
+            )
+        })
+        .sum();
+    let carried = sh(&words(&format!(
+        "nft -j list counter inet {TABLE} {}",
+        cost::COUNTER
+    )));
+    let extra = match (
+        carried.ok().as_deref().and_then(cost::counter_bytes),
+        counted,
+    ) {
+        (Some(carried), Some(counted)) => spent.sample(carried, counted, t),
+        _ => 0,
+    };
     for name in names {
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
@@ -741,7 +772,7 @@ fn follow_vpns(applied: &mut BTreeMap<String, Vpn>, names: &[String], base: Opti
             continue;
         };
         let ifb = qdisc::ifb(index);
-        let up = qdisc::vpn_rate(up).max(FLOOR.up);
+        let up = qdisc::vpn_rate(up).saturating_sub(extra).max(FLOOR.up);
         let down = qdisc::vpn_rate(down).max(FLOOR.down);
         let was = applied.get(name);
         // A VPN brought back up is a new device, with a new index.
