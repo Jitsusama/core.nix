@@ -2937,6 +2937,10 @@ Scope {
     // afresh, for the check that a refresh redraws only what changed.
     property int rowsMade: 0
     property int rowsDrawn: 0
+    // And how many of those were built from nothing rather than taken
+    // from the rows let go, for the check that a step takes its rows from
+    // those it let go.
+    property int rowsBuilt: 0
 
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
@@ -6362,7 +6366,7 @@ Scope {
         function made(): string {
             return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
                 keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
-                drawn: root.rowsDrawn });
+                drawn: root.rowsDrawn, built: root.rowsBuilt });
         }
 
         // How many frames the card has drawn since this was first asked,
@@ -6483,7 +6487,8 @@ Scope {
                 y: Math.round(line.mapToItem(card, 0, 0).y), height: line.height,
                 ink: String(line.color) })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
-            drawn: root.rowsDrawn, ahead: list.cacheBuffer, listed: list.count, firstAt,
+            drawn: root.rowsDrawn, built: root.rowsBuilt,
+            ahead: list.cacheBuffer, listed: list.count, firstAt,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
     }
@@ -8357,6 +8362,17 @@ Scope {
                             model: ListModel {
                                 id: rowsKept
                             }
+                            // A row let go is kept aside and given to the
+                            // next row new to the list, rather than each
+                            // being built from nothing: a step into Desktop
+                            // or Machine built every row it showed, 2.5 to 3
+                            // ms each, two thirds of the step's own work,
+                            // and taking them from those let go took that
+                            // from 40 ms to 14 under load (2026-11-10). A row
+                            // kept aside says nothing and is selected by
+                            // nothing, so it takes nothing of what it was
+                            // to the row it's given (entry.aside).
+                            reuseItems: true
 
                             // What each kept row is, in the order they stand,
                             // so keeping them never reads the model back.
@@ -8695,14 +8711,31 @@ Scope {
                                 // says what it last said till then, since
                                 // read by a place it hasn't, it said nothing
                                 // and every binding on it failed.
-                                readonly property var modelData: entry.index >= 0
-                                    ? list.rows[entry.index] : entry.said
+                                readonly property var modelData: !entry.aside
+                                    && entry.index >= 0 ? list.rows[entry.index] : entry.said
                                 property var said: ({})
                                 onModelDataChanged: {
-                                    if (entry.index >= 0)
+                                    if (!entry.aside && entry.index >= 0)
                                         entry.said = entry.modelData;
                                 }
-                                Component.onCompleted: root.rowsDrawn += 1
+                                // Whether it's kept aside, let go and not yet
+                                // given a row (list.reuseItems): it reads
+                                // only what it last said, and isn't selected,
+                                // so a name reading on stops and rests at its
+                                // start, and its turns are counted afresh.
+                                property bool aside: false
+                                ListView.onPooled: {
+                                    entry.aside = true;
+                                    choice.letGo();
+                                }
+                                ListView.onReused: {
+                                    entry.aside = false;
+                                    root.rowsDrawn += 1;
+                                }
+                                Component.onCompleted: {
+                                    root.rowsDrawn += 1;
+                                    root.rowsBuilt += 1;
+                                }
                                 // What it's inside, whose glyph an act of its
                                 // own without one wears.
                                 readonly property var thing: root.held.length > 0
@@ -8734,8 +8767,8 @@ Scope {
                                 Choice {
                                     id: choice
                                     anchors.bottom: parent.bottom
-                                    selected: entry.index === root.current
-                                    flashed: root.flashing[entry.index] === true
+                                    selected: !entry.aside && entry.index === root.current
+                                    flashed: !entry.aside && root.flashing[entry.index] === true
                                     tinted: root.tints(entry.index)
                                     // Seen until the closing card has faded, and
                                     // reading a long name on only while the keys

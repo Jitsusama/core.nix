@@ -11,6 +11,7 @@ launcher closed and leaves it so, so any test runs alone.
 from __future__ import annotations
 
 import errno
+import functools
 import itertools
 import json
 import math
@@ -938,6 +939,92 @@ def test_a_first_letter_draws_only_the_rows_in_view(shell: Shell) -> None:
     # The rows shown, one cut by the view's foot among them, and one past it: the list stands
     # at its top, so no row is built above it.
     assert drawn <= shown + 1, f"{drawn} rows drawn for a first letter where {shown} are shown"
+
+
+def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:
+    """A step into Desktop or Machine and back builds no row, once one round has built them.
+
+    Each step into a place built every row it showed from nothing, 2.5 to 3 ms each, about two
+    thirds of the step's own work under load, as Joel stepped into Desktop in up to half a
+    second (2026-11-10: "this needs to be as fast as thought no matter how loaded my machine
+    is"). The rows a step lets go are given to those it shows, so after the first round,
+    which may build a row the opening hadn't, a step builds none.
+
+    Every row a place shows is drawn as its own: its name among its words, and no word only
+    the other place says, with nothing reading on but the selection, so a row given on takes
+    nothing of the one it was. And each row drawn again reads the same, word for word, in
+    the same places and inks, as the first time, whichever row it was given.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    built, rounds = [], []
+    for place in ("Desktop", "Machine") * 2:
+        shell.type_in(place.lower(), selecting=place)
+        before = int(laid_out(shell)["built"])
+        shell.step_in()
+        shell.launcher_until(functools.partial(stands_in, place))
+        shell.normal()
+        laid = laid_out(shell)
+        built.append(int(laid["built"]) - before)
+        rounds.append((place, laid))
+        stepped_out(shell)
+    shell.close_launcher()
+    # The second round's steps built nothing.
+    assert built[2:] == [0, 0], f"rows built by each step, Desktop then Machine twice: {built}"
+    names = {place: {row["reads"].split(" \u00b7 ")[0] for row in laid["rows"]}
+             for place, laid in rounds}  # fmt: skip
+    for place, laid in rounds:
+        others = set().union(*(names[other] for other in names if other != place))
+        only = others - names[place]
+        # Else no row is shown, and this proves nothing.
+        assert laid["rows"], (place, laid)
+        for row in laid["rows"]:
+            texts = {word["text"] for word in row["words"]}
+            name = row["reads"].split(" \u00b7 ")[0]
+            assert name in texts, f"{place}'s {row['is']} doesn't say {name}: {sorted(texts)}"
+            left = texts & only
+            assert not left, f"{place}'s {row['is']} says what it said elsewhere: {left}"
+            assert row["selected"] or row["readsDone"] == 0, (place, row["is"], row)
+    for place in ("Desktop", "Machine"):
+        first, again = (dict(drawn_rows(laid)) for shown, laid in rounds if shown == place)
+        # A row whose figures moved between the visits reads otherwise, and isn't compared.
+        both = first.keys() & again.keys()
+        # Else every row read differently between the visits, and this proves nothing.
+        assert both, (place, first, again)
+        differ = {key: (first[key], again[key]) for key in both if first[key] != again[key]}
+        assert not differ, f"{place}'s rows drawn otherwise the second time: {differ}"
+
+
+def drawn_rows(laid: Json) -> Iterator[tuple[tuple[str, str], list[tuple[object, ...]]]]:
+    """Give each row shown by what it is and reads, with its words as drawn, each in order.
+
+    The selected row is left out, since its name may be reading on.
+    """
+    for row in laid["rows"]:
+        if row["selected"]:
+            continue
+        words: list[tuple[object, ...]] = [
+            (word["text"], word["x"], word["y"] - row["band"], word["ink"], word["width"])
+            for word in row["words"]
+        ]
+        yield (str(row["is"]), str(row["reads"])), words
+
+
+def stands_in(place: str, shown: Json) -> bool:
+    """Say whether the launcher shows the place, as the last of its path."""
+    return cast("list[str]", shown["path"])[-1:] == [place]
+
+
+def stepped_out(shell: Shell) -> None:
+    """Step back out to home by -, and take back what was typed to step in, as Joel would."""
+    before = len(shell.showing()["held"])
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: len(shown["held"]) < before)
+    shell.on_find()
+    typed = len(shell.showing()["typed"])
+    if typed:
+        shell.as_account("wtype " + " ".join(["-k BackSpace"] * typed))
+    shell.launcher_until(lambda shown: shown["typed"] == "")
 
 
 def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell) -> None:
