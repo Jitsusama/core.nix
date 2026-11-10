@@ -2159,7 +2159,8 @@
     colours and copies them, says once and quietly what needs a network couldn't, holds an
     answer's row from the keystroke, finds the power acts by their names and the names they had
     and asks before they act, draws nothing closed as a minute turns though it says the new time
-    as it opens, draws nothing left open and still, its caret steady, searches text a program
+    as it opens, draws nothing left open and still, its caret steady, makes no window's rows
+    shut as windows open and close yet finds them as it opens, searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
     letters found, steps into For You's looks by :filter look and back out by -, glides the
     selection to its row by the arrows only and draws it on its row as

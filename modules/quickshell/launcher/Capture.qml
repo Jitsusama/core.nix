@@ -102,9 +102,16 @@ Provider {
     // before it describes the window, and Niri.windows changes in place, so
     // this follows Niri.revision too: on an empty workspace, Niri.current
     // names the new window while Niri.windows doesn't hold it yet.
+    // Followed only while Capture's rows are wanted, as the windows below
+    // are: each change made the seven fixed rows again, shut too.
+    readonly property var lastFocused: ({ window: null })
     readonly property var focused: {
+        if (!provider.wanted)
+            return provider.lastFocused.window;
         void Niri.revision;
-        return Niri.current === null ? null : Niri.windows[Niri.current] ?? null;
+        provider.lastFocused.window = Niri.current === null ? null
+            : Niri.windows[Niri.current] ?? null;
+        return provider.lastFocused.window;
     }
 
     readonly property var stop: member({
