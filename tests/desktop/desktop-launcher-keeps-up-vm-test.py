@@ -190,6 +190,8 @@ class Turns:
         self.refreshes = 0
         self.window = 0.0
         self.turns = 0
+        # The keys' own span, said beside it to show how far the frames run past it.
+        self.pressing = 0.0
         self.keyed = 0
         self.handled: dict[bool, list[float]] = {True: [], False: []}
         self.drawn: dict[bool, list[float]] = {True: [], False: []}
@@ -289,6 +291,7 @@ class Turns:
         self.refreshes += after["refreshes"] - before["refreshes"]
         self.window += until - since
         self.turns += 1
+        self.pressing += (downs[-1] - downs[0]) / 1000 + REPEAT
 
     def held(self, where: str, scale: str) -> None:
         """Say how the turns went, and fail a launcher that didn't keep up."""
@@ -300,7 +303,8 @@ class Turns:
             f"{at}: while things changed the unseen made {self.unseen_made} rows and Agents "
             f"{self.agents_made} a turn, and while frozen the keys made {self.keys_made}, "
             f"and the look for where rows live {self.walked}; "
-            f"{self.refreshes} refreshes in {self.window:.1f} s, {rate:.1f} a second, "
+            f"{self.refreshes} refreshes in {self.window:.1f} s, {rate:.1f} a second, the keys "
+            f"pressed over {self.pressing:.1f} s of it, "
             f"{self.keyed} taken on a key's path; handlers 95% within {handled[False]:.1f} ms "
             f"changing against {handled[True]:.1f} ms frozen, the slowest "
             f"{max(self.handled[False]):.1f} against {max(self.handled[True]):.1f} ms; keys to "
