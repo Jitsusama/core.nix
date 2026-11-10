@@ -9,7 +9,9 @@ A session's Close asks first, saying what of it stays, and y steers it a close f
 A drawer's eyebrow names the repo a record says, rather than the folder it works in. One past
 80% of its context says how full first, in the warning's hue, and its drawer its figures. A
 drawer's first screen says how a session stands, its quest, what it landed last and its
-figures, and what its quest is about, which runs long, comes last. Both
+figures, and what its quest is about, which runs long, comes last. Landed lists what landed,
+saying how many landed today; what says what to try waits in For You until it's read, its
+Return stepping into it in Landed, then stands in For You's History. Both
 sit under an orchestrator at work, so they fold into one row after its own, which Return steps
 into, and typing still finds each. Of two sessions the last boot left to reopen, the one whose
 folder is gone says so on its row before Return, holds only Forget It, and Reopen Them All
@@ -481,43 +483,65 @@ def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: S
     assert [(one["act"], one["from"]) for one in told] == [("close", "joel")], told
 
 
-def test_landed_reads_newest_first_and_return_d_read_each_u_brings_one_back(shell: Shell) -> None:
-    """Landed counts what's unread, but a plan item ticked alone; Return and d read; u unreads.
+def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
+    shell: Shell,
+) -> None:
+    """Landed lists what landed, but a plan item ticked alone, saying how many landed today.
 
-    Return's read is a mark, as a notice's is, never an ending; d's is Forget It, its ending.
+    What says what to try waits in For You's To Try, never counted in Landed too; its Return
+    steps into it where it lives, in Landed, and reads it, so it goes to For You's History.
     """
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
-    # Said as a run, state first; none of them landed today.
-    assert shell.showing()["selected"]["side"] == "2 to read", shell.showing()
+    # None of them landed today, and what's to read is For You's alone to count.
+    assert shell.showing()["selected"]["side"] == "none today", shell.showing()
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
     assert shell.showing()["selected"]["side"] == "core.nix#2140", shell.showing()
     # No link to it is known and its session has no window, so normal's Return only reads it,
-    # keeping the launcher; the find's lands on it, as on any row that changes something. Read,
-    # it stands dimmed where it was until the list is left, as a row gone from any does.
+    # keeping the launcher; the find's lands on it, as on any row that changes something.
     shell.normal()
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: gone(shown) == [True, False])
-    shell.down_to(CLOSING)
+    shell.close_launcher()
+    # Only the one saying what to try waits in For You, the one read or not.
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "To Try" in shown["rows"])
+    shell.down_to("To Try")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"] == [CLOSING])
+    assert shell.showing()["selected"]["side"] == "core.nix#2138", shell.showing()
     # What to try is a sentence, so its drawer says it rather than the row beside its ref.
     shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("body") == TRY)
-    assert "d forget" in shell.showing()["selected"]["told"], shell.showing()
-    shell.send_chars("dd")
-    shell.launcher_until(lambda shown: gone(shown) == [True, True])
-    shell.send_chars("u")
-    shell.launcher_until(lambda shown: gone(shown) == [True, False])
-    # Left and come back to, Landed counts the one still unread.
+    # Return steps into it where it lives, never a copy of it.
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
+    assert "Copy What to Try" in shell.showing()["rows"], shell.showing()
+    shell.close_launcher()
+    # Read, it's gone from To Try and in For You's History, saying when; Landed keeps both.
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "To Try" not in shown["rows"])
+    shell.down_to("History")
+    shell.step_in()
+    shell.launcher_until(lambda shown: CLOSING in shown["rows"])
+    shell.down_to(CLOSING)
+    side = shell.showing()["selected"]["side"]
+    assert re.fullmatch(r"read .+", side), f"a landing read says {side!r} in History"
     shell.close_launcher()
     opened(shell)
     shell.down_to("Landed")
-    assert shell.showing()["selected"]["side"] == "1 to read", shell.showing()
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
 
 
-def gone(shown: Json) -> list[bool]:
-    """Say which of the rows shown stand dimmed, gone from what's offered, in order."""
-    return [bool(one["gone"]) for one in shown["things"]]
+def in_for_you(shell: Shell) -> None:
+    """Open Now and step into For You."""
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
+    shell.down_to("For You")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
 
 
 def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
@@ -591,11 +615,9 @@ def test_the_sessions_to_reopen_are_a_thing_to_do_in_for_you_not_a_row_of_nows(
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
     assert "Sessions to Reopen" not in shell.showing()["rows"], shell.showing()
-    shell.down_to("For You")
-    shell.step_in()
-    shell.launcher_until(
-        lambda shown: shown["held"] == ["now", "For You"] and "Sessions to Reopen" in shown["rows"]
-    )
+    shell.close_launcher()
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "Sessions to Reopen" in shown["rows"])
     # The same row as in Agents: Return steps in to Reopen Them All.
     shell.down_to("Sessions to Reopen")
     shell.step_in()

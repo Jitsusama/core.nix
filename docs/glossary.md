@@ -97,7 +97,7 @@ the queue and conclude.
 | report | a quest's document on what happened, its outcomes and lessons | | |
 | landing | what a session finished and handed Joel: a merged change, a built plan or a hand-off, at its ref, with a line saying what to try | | presence `landings` |
 | Landed | the group of landings in Agents, named for its state as Unread and Recent are | | `agents:landed` |
-| read | a landing Joel has seen and marked so, which leaves Landed, as mail he has opened is read | | `agents:landed`'s mark |
+| read | a landing Joel has seen, by its drawer or Return, which leaves For You for its History, as mail he has opened is read | | `agents:landed`'s mark |
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
 | carry | moving a quest's work and its session to another machine | | `carry` |

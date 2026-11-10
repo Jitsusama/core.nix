@@ -445,8 +445,9 @@ QtObject {
         }
 
         // What landed reads newest first, changes and what says what to
-        // try, never a plan item ticked alone or one Joel has read, and
-        // only a web link opens.
+        // try, never a plan item ticked alone, and only a web link opens.
+        // What says what to try waits in For You until Joel reads it, and
+        // what he read goes to its History with when.
         const landing = (ref, at, more) => Object.assign({ ref: ref, at: at, what: ref }, more);
         const landers = [
             { address: "A", presence: { session: "a", landings: [
@@ -463,15 +464,20 @@ QtObject {
         ];
         const landedAs = rows => rows.map(one => `${one.session.address}:${one.ref}`
             + `${one.person === "" ? "" : "+try"}${one.url === "" ? "" : "+url"}`).join(" ");
-        const unread = Landed.landed([], landers, []);
+        const unread = Landed.all([], landers);
         const unreadWant = "B:world#9 A:core.nix#2140+url A:PLAN-20261106-2ZPAI5#4+try "
             + "B:core.nix#2138";
         if (landedAs(unread) !== unreadWant)
             failures.push(`what landed: "${landedAs(unread)}", not "${unreadWant}"`);
-        const once = Landed.landed([], landers, [unread[1].key]);
-        const onceWant = "B:world#9 A:PLAN-20261106-2ZPAI5#4+try B:core.nix#2138";
-        if (landedAs(once) !== onceWant)
-            failures.push(`with one read: "${landedAs(once)}", not "${onceWant}"`);
+        const toTry = Landed.toTry(unread, [unread[1].key]);
+        if (landedAs(toTry) !== "A:PLAN-20261106-2ZPAI5#4+try")
+            failures.push(`to try: "${landedAs(toTry)}", not only the one saying what to`);
+        if (Landed.toTry(unread, [unread[2].key]).length !== 0)
+            failures.push("a landing read still waits to be tried");
+        const readAt = { [unread[2].key]: 1000, [unread[0].key]: 2000, [unread[3].key]: "x" };
+        const tried = Landed.triedRead(unread, readAt);
+        if (tried.length !== 1 || tried[0].one !== unread[2] || tried[0].at !== 1000)
+            failures.push(`what's read for History: ${JSON.stringify(tried.map(one => one.at))}`);
         const kept = Landed.stillRead([], landers, [unread[1].key, "z gone#1 2026"]);
         if (kept.join() !== unread[1].key)
             failures.push(`what's kept read: ${JSON.stringify(kept)}`);
@@ -485,7 +491,7 @@ QtObject {
             landing("core.nix#2138", "2026-11-07T11:20:00Z", { session: "b", address: "B" }),
             landing("PLAN-20261106-2ZPAI5#5", "2026-11-07T09:10:00Z", { session: "d" })
         ];
-        const lasting = Landed.landed(keeping, landers, []);
+        const lasting = Landed.all(keeping, landers);
         const lastingWant = `${unreadWant} D:core.nix#2200`;
         if (landedAs(lasting) !== lastingWant)
             failures.push(`what's kept: "${landedAs(lasting)}", not "${lastingWant}"`);
@@ -502,12 +508,11 @@ QtObject {
             failures.push(`landed today: ${todayCount}, not 2`);
         if (Landed.landedToday(keeping, Date.parse("2026-11-09T15:00:00Z")) !== 0)
             failures.push("a landing two days old counted as today's");
-        // Landed's row says at its right how it stands, state first.
-        const standing = { unread: "{count} to read", today: "{count} today" };
-        const stood = [[2, 5], [0, 5], [2, 0], [0, 0]]
-            .map(([unread, today]) => Landed.stands(unread, today, standing));
-        if (JSON.stringify(stood) !== JSON.stringify(["2 to read \u00b7 5 today", "5 today",
-            "2 to read", ""]))
+        // Landed's row says at its right how many landed today, never
+        // how many are to read, which For You alone counts.
+        const standing = { today: "{count} today", none: "none today" };
+        const stood = [5, 0].map(today => Landed.stands(today, standing));
+        if (JSON.stringify(stood) !== JSON.stringify(["5 today", "none today"]))
             failures.push(`Landed stands: ${JSON.stringify(stood)}`);
         // A landing's drawer says who landed it and when, what it is, and
         // what to try as its words, which the row's one line has no room
