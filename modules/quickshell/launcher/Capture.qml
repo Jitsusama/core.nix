@@ -514,53 +514,91 @@ Provider {
 
     // What file-preview said of each thing taken, by its path (null where
     // it couldn't), and which were asked; the file it's asked of now, and
-    // the next wanted while it answers.
+    // the next wanted while it answers or starts.
     readonly property bool canPreview: (settings.preview ?? []).length > 0
     property var previews: ({})
     property var previewAsked: ({})
+    property string previewAsking: ""
     property string previewNext: ""
 
     // Only the newest wanted waits, so one it replaces is no longer asked,
     // and its drawer asks again when it's next shown rather than never.
     function preview(path) {
-        if (previewing.running) {
+        if (!previewer.ready || provider.previewAsking !== "") {
             if (provider.previewNext !== "" && provider.previewNext !== path)
                 delete provider.previewAsked[provider.previewNext];
             provider.previewNext = path;
+            Qt.callLater(provider.startPreviewer);
             return;
         }
-        previewing.path = path;
-        previewing.command = settings.preview.concat(["show", path]);
-        previewing.running = true;
+        provider.previewAsking = path;
+        // A path with a line end in it can't be asked as a line, so it has
+        // nothing to show.
+        if (path.includes("\n"))
+            Qt.callLater(provider.previewed, "");
+        else
+            previewer.write(`show ${path}\n`);
     }
 
-    function previewed(path, text) {
-        let shown = null;
-        try {
-            const parsed = JSON.parse(text);
-            shown = typeof parsed === "object" && parsed !== null && !parsed.error
-                ? parsed : null;
-        } catch (error) {
-            shown = null;
+    // file-preview's answer to the one asked, then the next wanted.
+    function previewed(line) {
+        const path = provider.previewAsking;
+        provider.previewAsking = "";
+        if (path !== "") {
+            provider.previews = Object.assign({}, provider.previews,
+                { [path]: Captured.shownFrom(line) });
         }
-        provider.previews = Object.assign({}, provider.previews, { [path]: shown });
+        provider.askNext();
     }
 
+    // Started a frame later, never inside its own exit, and only while one
+    // is still wanted.
+    function startPreviewer() {
+        if (!previewer.ready && provider.previewNext !== "")
+            previewer.running = true;
+    }
+
+    function askNext() {
+        if (provider.previewNext === "" || provider.previewAsking !== "")
+            return;
+        const next = provider.previewNext;
+        provider.previewNext = "";
+        provider.preview(next);
+    }
+
+    // One file-preview, started as the first drawer wants it and kept, asked
+    // a line at a time, so nothing is started for each thing taken shown; it
+    // waits on its input, costing nothing, while the launcher's shut. One
+    // that stops is started again for what's wanted next; one that stops
+    // before answering anything is given up on for what's wanted, so one
+    // that can't start isn't started again and again.
     Process {
-        id: previewing
+        id: previewer
 
-        property string path: ""
+        property bool ready: false
+        property bool answered: false
 
-        stdout: StdioCollector {
-            onStreamFinished: provider.previewed(previewing.path, text)
+        command: (provider.settings.preview ?? []).concat(["serve"])
+        stdinEnabled: true
+        stdout: SplitParser {
+            onRead: line => {
+                previewer.answered = true;
+                provider.previewed(line);
+            }
         }
-        // The next is asked once this one has ended, its answer read.
-        onRunningChanged: {
-            if (running || provider.previewNext === "")
-                return;
-            const next = provider.previewNext;
-            provider.previewNext = "";
-            provider.preview(next);
+        onStarted: {
+            ready = true;
+            answered = false;
+            Qt.callLater(provider.askNext);
+        }
+        onExited: {
+            ready = false;
+            if (!answered)
+                provider.previewNext = "";
+            if (provider.previewAsking !== "")
+                provider.previewed("");
+            else
+                Qt.callLater(provider.startPreviewer);
         }
     }
 

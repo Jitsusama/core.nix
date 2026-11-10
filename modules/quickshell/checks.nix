@@ -3105,10 +3105,22 @@ onLinux {
   # rest the one used last first, and when the focus moves make again only
   # the rows of the windows it moved between, as Capture's do
   # (tests/windows.qml), with what the windows daemon tells given as its
-  # lines, and niri, pi's sessions, the recorder, the shortcuts and what
-  # was taken stood in.
+  # lines, and niri, pi's sessions, the recorder, the shortcuts, what was
+  # taken and file-preview stood in.
   the-launcher-remakes-only-the-windows-that-changed =
     let
+      # A stand-in for file-preview, whether kept (serve) or started for each
+      # picture: it answers with the picture's own sides and its process.
+      previewer = pkgs.writeShellScript "file-preview" ''
+        answer() {
+          printf '{"picture": "%s", "across": 4, "down": 3, "by": %s}\n' "''${1#show }" "$$"
+        }
+        if [ "$1" = serve ]; then
+          while IFS= read -r line; do answer "$line"; done
+        else
+          answer "$*"
+        fi
+      '';
       # What a window's verbs read of niri as they're asked.
       niri = singleton "Niri.qml" ''
         property var windows: ({
@@ -3182,7 +3194,7 @@ onLinux {
       cp ${files} Files.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${noFonts}
+      export FONTCONFIG_FILE=${noFonts} PREVIEWER=${previewer}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out

@@ -8,8 +8,10 @@
 // changed are made again, the rest kept as they were, while a window
 // renamed is made again with its new name, the same whole answer again
 // makes none, and a window closed goes. Capture lists every window but the
-// one Joel's in, and keeps a window's row the same way. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// one Joel's in, and keeps a window's row the same way, and asks each
+// thing taken's drawer of one file-preview it keeps, the newest wanted
+// next. It exits 0 once every case holds, and otherwise 1, saying which
+// didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -41,12 +43,24 @@ ShellRoot {
         settings: ({ name: "capture", camera: false })
     }
 
-    // One whose file-preview answers slowly, so what's wanted next waits.
+    // One with a file-preview stood in, which answers each picture with its
+    // own sides and the process it was asked of.
     Launcher.Capture {
         id: previewer
 
         launcher: launcher
-        settings: ({ name: "previews", camera: false, preview: ["sh", "-c", "sleep 5", "preview"] })
+        settings: ({ name: "previews", camera: false, preview: [Quickshell.env("PREVIEWER")] })
+    }
+
+    // Which of file-preview's answers the case waits for.
+    property int previewing: 0
+
+    Connections {
+        target: previewer
+
+        function onPreviewsChanged() {
+            root.previewed();
+        }
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
@@ -246,17 +260,49 @@ ShellRoot {
             windows.quietFor();
             Expect.same("nor for a restart answered within the second", windows.noted(), "");
 
-            // Only the newest wanted waits for file-preview, so one it
-            // replaces is asked again when its drawer is next shown.
+            // Only the newest wanted waits while file-preview starts, so one
+            // it replaces is asked again when its drawer is next shown.
             previewer.previewAsked = { "/a.png": true, "/b.png": true, "/c.png": true };
             previewer.preview("/a.png");
             previewer.preview("/b.png");
             previewer.preview("/c.png");
-            const asked = Object.keys(previewer.previewAsked).join(", ");
-            Expect.expect("a picture replaced while it waits is no longer asked",
-                asked === "/a.png, /c.png" && previewer.previewNext === "/c.png",
-                `${asked}; next ${previewer.previewNext}`);
-            Qt.callLater(() => Qt.exit(0));
+            Expect.same("a picture replaced while file-preview starts is no longer asked",
+                Object.keys(previewer.previewAsked).join(", "), "/c.png");
+            root.previewing = 1;
+            root.waiting = "file-preview's first answer";
+        } catch (error) {
+            Expect.fail(error.message);
+        }
+    }
+
+    // Then, while it answers one, only the newest wanted waits too, and
+    // each is asked of the one file-preview, kept, rather than one started
+    // for each.
+    function previewed() {
+        try {
+            const said = previewer.previews;
+            if (root.previewing === 1 && "/c.png" in said) {
+                Expect.same("its answer is the picture's facts", [said["/c.png"].picture,
+                    said["/c.png"].across, said["/c.png"].down].join(" "), "/c.png 4 3");
+                root.previewing = 2;
+                root.waiting = "file-preview's next answers";
+                previewer.previewAsked = Object.assign({}, previewer.previewAsked,
+                    { "/d.png": true, "/e.png": true, "/f.png": true });
+                previewer.preview("/d.png");
+                previewer.preview("/e.png");
+                previewer.preview("/f.png");
+                Expect.expect("a picture replaced while another is asked is no longer asked",
+                    !("/e.png" in previewer.previewAsked) && previewer.previewAsking === "/d.png"
+                        && previewer.previewNext === "/f.png",
+                    `asking ${previewer.previewAsking}, next ${previewer.previewNext}`);
+            } else if (root.previewing === 2 && "/d.png" in said && "/f.png" in said) {
+                Expect.same("each wanted is asked in turn", Object.keys(said).join(", "),
+                    "/c.png, /d.png, /f.png");
+                const by = Object.values(said).map(shown => shown.by);
+                Expect.expect("every picture is asked of one file-preview",
+                    by.every(one => one === by[0]), by.join(", "));
+                Qt.callLater(() => Qt.exit(0));
+            }
         } catch (error) {
             Expect.fail(error.message);
         }
