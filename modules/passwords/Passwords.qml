@@ -139,9 +139,8 @@ Provider {
         const byKey = {};
         for (const row of rows)
             byKey[row.key] = row;
-        return managers.filter(manager => signedOut(manager)).map(manager => unlock(manager))
-            .concat(attention, Passwords.listed(records).map(record => byKey[record.key]),
-                [checkRow]);
+        return unreadRows().concat(attention,
+            Passwords.listed(records).map(record => byKey[record.key]), [checkRow]);
     }
     onAllChanged: changed()
 
@@ -307,8 +306,8 @@ Provider {
         const byKey = {};
         for (const row of everyone)
             byKey[row.key] = row;
-        return managers.filter(manager => signedOut(manager)).map(manager => unlock(manager))
-            .concat(Passwords.needing(records).map(record => byKey[record.key]).filter(Boolean));
+        return unreadRows().concat(Passwords.needing(records)
+            .map(record => byKey[record.key]).filter(Boolean));
     }
 
     // The to-do's drawer, in the facts every For You drawer gives
@@ -548,17 +547,62 @@ Provider {
     // can't tell them apart (op refuses both alike, and every manager
     // starts unlet after a boot, while 1Password is locked), and Return
     // does the same for both.
+    // Below it, the manager's own words for why, as "is closed, and Unlock
+    // opens it", so a closed app reads otherwise than a locked one (2026-11-10:
+    // Unlock with 1Password closed did nothing, and said nothing).
+    // It runs once the launcher has gone, so 1Password's prompt never comes
+    // up beneath it.
     function unlock(manager) {
         const words = "verb:passwords:unlock";
         return thing({
             key: `${words}:${manager.name}`,
             name: Words.name(words, "", { manager: manager.called }),
             side: said.locked ?? "",
+            note: whyNot(manager),
             verb: Words.verb(words),
             glyph: Words.glyph(words),
             hue: "action",
+            later: true,
             run: () => provider.letIn(manager)
         });
+    }
+
+    // Why a manager can't read, by its own words less its name, or nothing.
+    function whyNot(manager) {
+        return Managers.noted(daemon.sources[manager.name]?.reason, manager.called);
+    }
+
+    // The row leading the place while a manager is refused, as 1Password
+    // is while its Integrate with 1Password CLI is off: Return opens its
+    // program, where the setting is, the note below saying which, since
+    // the launcher can't turn it on and Unlock would ask for nothing
+    // (2026-11-10: the place was empty while it was refused).
+    function settle(manager) {
+        const words = "verb:passwords:settle";
+        const program = DesktopEntries.byId(manager.program);
+        return thing({
+            key: `${words}:${manager.name}`,
+            name: Words.name(words, "", { manager: manager.called }),
+            side: said.refused ?? "",
+            note: whyNot(manager),
+            verb: Words.verb(words),
+            glyph: Words.glyph(words),
+            hue: "alert",
+            leads: true,
+            later: true,
+            run: () => {
+                if (program)
+                    Niri.spawn(provider.command(program));
+            }
+        });
+    }
+
+    // A row for each manager that can't read: Unlock while it waits on
+    // Joel or its app, and its program while it's refused, never nothing.
+    function unreadRows() {
+        return Managers.unread(managers, daemon.sources)
+            .map(unread => unread.row === "unlock" ? unlock(unread.manager)
+                : settle(unread.manager));
     }
 
     // Answered once Joel answers his manager, for as long as he takes. The
@@ -661,6 +705,8 @@ Provider {
     function counted() {
         if (records.length === 0 && managers.some(manager => signedOut(manager)))
             return said.locked ?? "";
+        if (records.length === 0 && managers.some(manager => refused(manager)))
+            return said.refused ?? "";
         return records.length === 0 ? "empty"
             : String(records.length).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
@@ -776,6 +822,9 @@ Provider {
                 glyph: Words.glyph(key),
                 hue: "action",
                 leads: true,
+                // Once the launcher has gone, so 1Password's prompt is
+                // never beneath it.
+                later: true,
                 run: () => provider.letIn(manager)
             })];
         }
