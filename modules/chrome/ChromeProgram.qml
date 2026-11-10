@@ -21,7 +21,8 @@
 // lists it twice, dated by when it finished, so Recent orders it among
 // the sites by when, newest first (Recent.js), and opened as the desktop
 // opens a file. Beside it are its size and when, as the file chooser says
-// them (FileFacts.js), and its drawer says where it came from. Open the
+// them (FileFacts.js), and its drawer, as every file's, says where it is
+// then its kind, shows a picture, and says where it came from. Open the
 // Latest Download comes last, there only while the last reading found
 // one, its name beside it, and found from the top by its name then too.
 pragma ComponentBehavior: Bound
@@ -152,20 +153,27 @@ Provider {
     }
 
     // A download as its Recent's row: the file's own, its size and when
-    // beside it, and its drawer where it is and the site it came from.
+    // beside it, and its drawer where it is then its kind, by its ending as
+    // a file nothing has read says it, a picture previewed as it is, and
+    // the site it came from.
     function downloaded(one, now) {
         const row = Files.file(one.path, thing, [opens(one)]);
         const from = Downloads.cameFrom(one.from);
+        const drawer = Object.assign(FileFacts.placed(Files.within(one.path),
+            FileFacts.kindByName(row.name, fileWords), fileWords), {
+            title: row.name,
+            facts: from === "" ? [] : [{ label: Words.name("chrome:download:from"),
+                value: from }]
+        });
+        const preview = FileFacts.pictured(one.path);
+        if (preview)
+            drawer.preview = preview;
         return Object.assign(row, {
             // Its size, and when where Chrome kept it, as a file whose
             // place said both is said (FileFacts.js).
             side: FileFacts.sideElsewhere({ size: one.size, modified: one.at }, now, fileWords),
             at: one.at,
-            drawer: Object.assign(FileFacts.placed(Files.within(one.path), "", fileWords), {
-                title: row.name,
-                facts: from === "" ? [] : [{ label: Words.name("chrome:download:from"),
-                    value: from }]
-            })
+            drawer: drawer
         });
     }
 

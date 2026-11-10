@@ -353,11 +353,28 @@ function sideElsewhere(entry, now, words) {
 // place's facts. Its size and when it changed are its row's side, and
 // where it is its eyebrow's, as a file's here are (VKCF3Z, 2026-11-08).
 function plateElsewhere(file, words) {
-    const ending = nameEnd(file.name);
-    const kind = file.entry.folder ? words.folder
-        : ending < file.name.length ? file.name.slice(ending + 1).toUpperCase() : words.file;
+    const kind = file.entry.folder ? words.folder : kindByName(file.name, words);
     return Object.assign(placed(file.where ?? "", kind, words, file.within ?? ""), {
         title: file.name,
         facts: file.facts ?? []
     });
+}
+
+// What kind of file a name says it is, where nothing has read the file:
+// its ending in capitals, as file-preview names a kind ("PNG", "PDF"), or
+// a file's word for a name with none, so every file's eyebrow says where
+// and then what, whoever lists it.
+function kindByName(name, words) {
+    const ending = nameEnd(name);
+    return ending < name.length ? name.slice(ending + 1).toUpperCase() : words.file;
+}
+
+// A picture the shell draws itself, by its ending.
+const DRAWN = /\.(?:png|jpe?g|webp|avif|gif)$/i;
+
+// A picture previewed as it is, where nothing has read it yet, as a
+// picture taken is (launcher/Captured.js): its path, its size left to
+// the picture itself; or undefined for a file that isn't one.
+function pictured(path) {
+    return DRAWN.test(String(path ?? "")) ? { picture: path, across: 0, down: 0 } : undefined;
 }

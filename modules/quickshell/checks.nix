@@ -997,8 +997,10 @@ onLinux {
   # A file in the launcher's chooser of files says its size and when it
   # changed as VKCF3Z set them, and its plate its kind, preview and facts,
   # one kept elsewhere, as in Google Drive, alike from what its place
-  # listed, and a file in the Nix store goes by its own name past its hash,
-  # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
+  # listed, a file nothing has read is its ending's kind and a picture
+  # previewed as it is, and a file in the Nix store goes by its own name
+  # past its hash, as tests/file-facts.qml holds FileFacts.js to it in Qt's
+  # own engine.
   a-file-says-its-size-and-when-it-changed =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -4207,8 +4209,9 @@ onLinux {
   # with niri and the clipboard's history stood in (tests/program-acts.qml).
   # Chrome's downloads are read from Chrome's ChromeDownloads.js in Qt's
   # engine and through its provider from a stand-in for chrome-recent-sites
-  # once Chrome is stepped into: file rows in its Recent, and Open the
-  # Latest Download only while there's one. Neovim's files open now come
+  # once Chrome is stepped into: file rows in its Recent, each drawer
+  # saying where it is then its kind and previewing a picture, and Open
+  # the Latest Download only while there's one. Neovim's files open now come
   # from a stand-in open-now, whose reading of a real Neovim is open-with's
   # own tests'.
   the-launcher-acts-only-on-what-it-can =
@@ -4314,11 +4317,12 @@ onLinux {
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
       # Chrome's downloads, as chrome-recent-sites prints them: one from a
-      # page, finished at a time of its own, and one Chrome kept no time
-      # or page for.
+      # page, finished at a time of its own, one Chrome kept no time or
+      # page for, and a picture.
       export DOWNLOADS_LIST=${pkgs.writeShellScript "downloads-list" ''
         printf '%s\t%s\t%s\t%s\n' "$HOME/Downloads/report.pdf" 2048 1800000100 \
-          'https://docs.example.com/q3?x=1' "$HOME/Downloads/undated.zip" 10 "" ""
+          'https://docs.example.com/q3?x=1' "$HOME/Downloads/undated.zip" 10 "" "" \
+          "$HOME/Downloads/tide-chart.png" 84300 1800000050 'https://tide.example.org/'
       ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
