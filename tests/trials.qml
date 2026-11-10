@@ -87,6 +87,23 @@ QtObject {
         expect("a trial from before the timing",
             Trials.timed({ keys: {} }, 1, 2, null).timed.count === 1, "lost");
 
+        // A step says where its rows went: the place's own search, finding
+        // in 7 ms and showing in 20, keeps its answers and their composing,
+        // beside the step's own lists and holding; the 3 ms left after
+        // opening are its rows.
+        const inner = { before: 0, lists: 7, rows: 0, answers: 20, each: {},
+            composing: { asking: 0, placing: 2, showing: 18 } };
+        const step = Trials.stepped(inner, { began: 100, made: 105, pushed: 106, opened: 106,
+            ended: 136 });
+        expect("a step keeps the place's answers", step.answers === 20
+            && step.composing.showing === 18, JSON.stringify(step));
+        expect("a step's lists are its own and the place's", step.lists === 12
+            && step.each.making === 5 && step.each.finding === 7 && step.each.holding === 1
+            && step.rows === 3, JSON.stringify(step));
+        const bare = Trials.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
+        expect("a step with no search said", bare.answers === 0 && bare.rows === 4
+            && bare.composing === null, JSON.stringify(bare));
+
         // The oldest go once there are too many; none while there aren't.
         const three = Trials.kept(Trials.kept(Trials.kept([], { at: 1 }, 2), { at: 2 }, 2),
             { at: 3 }, 2);

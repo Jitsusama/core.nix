@@ -157,6 +157,39 @@ function named(summary, body, typed, holds) {
     return { name: title, note: best };
 }
 
+// Each row as a copy, its note (`count`) the line of its body named
+// holds the words typed, worked out only once something reads it. A
+// search finds every notice that holds what's typed, but the main search
+// shows only its best, the rest behind one row, so lining each at once
+// spent 40 to 90 ms of a letter over 800 notices, more than all else the
+// search does. Anything that reads every found row's note, a sort by it
+// or a copy of them all, gives that back, so read only the rows shown.
+// Each is a copy, so a search or a program's row never
+// changes the note of a row shown elsewhere, copied by Object.assign,
+// which reads each of the row's getters: copying their descriptors
+// instead, to leave them unread, took three to four times as long in
+// Qt's engine.
+function lined(rows, typed, holds) {
+    return rows.map((row) => {
+        const copy = Object.assign({}, row);
+        let note = null;
+        Object.defineProperty(copy, "count", {
+            enumerable: true,
+            configurable: true,
+            get: () => {
+                if (note === null) {
+                    note = named(row.title, row.wrote, typed, holds).note;
+                }
+                return note;
+            },
+            set: (said) => {
+                note = said;
+            },
+        });
+        return copy;
+    });
+}
+
 // Its drawer's facts, each a label and a value: when it arrived, how it
 // left, and the urgency its sender asked. Arrived goes where Left would
 // say the same time, "put away at 10:51" then standing for both (VKCF3Z,

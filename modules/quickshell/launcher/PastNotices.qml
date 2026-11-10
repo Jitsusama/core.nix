@@ -495,12 +495,10 @@ Provider {
 
     // Each row's note, the line of its body that holds the words typed,
     // or its first line with none. Not `noted`, which is Provider's own,
-    // what a collection's row says below it. Each is a copy, so a search
-    // or a program's row never changes the note of a row shown elsewhere.
+    // what a collection's row says below it. Each is a copy, its note
+    // worked out once it's read (Notice.js's lined).
     function lined(rows, words) {
-        return rows.map(row => Object.assign({}, row, {
-            count: Notice.named(row.title, row.wrote, words, provider.holds).note
-        }));
+        return Notice.lined(rows, words, provider.holds);
     }
 
     // Found by its title, which names it and shows where, else by
