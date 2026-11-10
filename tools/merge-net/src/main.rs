@@ -296,27 +296,22 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     let at_head = |file: &str| at(commit, file);
     let at_main = |file: &str| at(main, file);
     let change = patch_id(Path::new("."), main, commit);
-    // What main did since the base `candidate` was checked from: its
-    // base, the files main changed and the paths it took away.
-    let since_base = |candidate: &str| {
-        let base = git(&["merge-base", candidate, main]).ok()?;
-        let since = lines(&git(&["diff", "--name-only", &base, main]).ok()?);
-        let taken_away = gone(&base, main).ok()?;
-        Some((base, since, taken_away))
+    let base_of = |candidate: &str| git(&["merge-base", candidate, main]).ok();
+    // What main did since `base`: the files it changed and the paths it
+    // took away.
+    let since = |base: &str| {
+        let since = lines(&git(&["diff", "--name-only", base, main]).ok()?);
+        let taken_away = gone(base, main).ok()?;
+        Some((since, taken_away))
     };
-    let same = |candidate: &str| {
-        if candidate == commit || change.is_none() {
-            return None;
-        }
-        let (base, since, taken_away) = since_base(candidate)?;
-        if patch_id(Path::new("."), &base, candidate) != change {
-            return None;
-        }
-        let branch = ready::Side {
-            changed: &files,
-            gone: &renamed,
-            text: &at_head,
-        };
+    let id_of = |base: &str, candidate: &str| patch_id(Path::new("."), base, candidate);
+    let branch = ready::Side {
+        changed: &files,
+        gone: &renamed,
+        text: &at_head,
+    };
+    let shared_since = |candidate: &str, base: String| {
+        let (since, taken_away) = since(&base)?;
         let main_side = ready::Side {
             changed: &since,
             gone: &taken_away,
@@ -327,13 +322,16 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         shared.retain(|file| !ready::stands_apart(file, &branch, &main_side, &at_base, &checked));
         Some(shared)
     };
+    let same = |candidate: &str| {
+        if candidate == commit {
+            return None;
+        }
+        ready::when_same(candidate, change.as_deref()?, base_of, id_of, |base| {
+            shared_since(candidate, base)
+        })
+    };
     let names_gone = |candidate: &str| {
-        let (_, since, taken_away) = since_base(candidate)?;
-        let branch = ready::Side {
-            changed: &files,
-            gone: &renamed,
-            text: &at_head,
-        };
+        let (since, taken_away) = since(&base_of(candidate)?)?;
         let main_side = ready::Side {
             changed: &since,
             gone: &taken_away,

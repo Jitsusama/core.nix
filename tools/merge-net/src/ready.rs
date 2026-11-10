@@ -106,6 +106,28 @@ pub fn checked_before(
     })
 }
 
+/// What `then` makes of `candidate`'s base (`base_of`), only when the
+/// change from that base to it has the patch id `change` (`id_of`).
+/// Nearly every candidate is another change, and its id, from a diff of
+/// that change alone, tells it apart in milliseconds, while what main
+/// moved since a base hours old is a diff of hundreds of files, with
+/// renames found. On 9 November the gate read that for each of a day's
+/// 1,245 passed records before it compared ids, so `ready` took five
+/// minutes and the review tool's merge gave up on #2687.
+pub fn when_same<T>(
+    candidate: &str,
+    change: &str,
+    base_of: impl Fn(&str) -> Option<String>,
+    id_of: impl Fn(&str, &str) -> Option<String>,
+    then: impl FnOnce(String) -> Option<T>,
+) -> Option<T> {
+    let base = base_of(candidate)?;
+    if id_of(&base, candidate).as_deref() != Some(change) {
+        return None;
+    }
+    then(base)
+}
+
 /// One side of a rebase: the files it changed, the paths it renamed or
 /// deleted, and what a file holds on that side.
 pub struct Side<'a> {
@@ -587,6 +609,30 @@ mod tests {
                 moved(at)
             )),
             Before::Unchecked
+        );
+    }
+
+    #[test]
+    fn another_change_is_told_apart_by_its_id_before_mains_moves_are_read() {
+        let read = std::cell::Cell::new(0);
+        let base_of = |candidate: &str| Some(format!("{candidate}-base"));
+        let id_of = |_: &str, candidate: &str| {
+            Some(if candidate == "same" { "id" } else { "other" }.to_owned())
+        };
+        let mains_moves = |base: String| {
+            read.set(read.get() + 1);
+            Some(base)
+        };
+        assert_eq!(
+            when_same("another", "id", base_of, id_of, mains_moves),
+            None,
+            "a change with another id counted as the same"
+        );
+        assert_eq!(read.get(), 0, "it read what main moved for another change");
+        assert_eq!(
+            when_same("same", "id", base_of, id_of, mains_moves),
+            Some("same-base".to_owned()),
+            "the same change wasn't read from its own base"
         );
     }
 
