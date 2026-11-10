@@ -13,7 +13,7 @@
 //!
 //! So while the node has given up, this asks the jobs slice, agents' work,
 //! to give back [`ASK`] through its `memory.reclaim`, more than the high
-//! watermark of about 700 MB: reclaim that makes progress clears the
+//! watermark of about 375 MB: reclaim that makes progress clears the
 //! give-up once the node is balanced. It asks at most once every
 //! [`SPACED`], so a give-up that lasts doesn't empty the jobs slice, and
 //! each ask the give-up outlasts doubles the wait before the next, up to
