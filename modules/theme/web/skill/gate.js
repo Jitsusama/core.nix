@@ -77,7 +77,9 @@
   if (marks.length === 0) {
     missing.push("the site's mark, drawn as inline SVG in the first <header>");
   }
-  const titles = page.querySelectorAll("h1").length;
+  // Only what's drawn counts, since an interface keeps its other views
+  // mounted under [hidden], each with its own h1, while it shows one.
+  const titles = [...page.querySelectorAll("h1")].filter((title) => title.checkVisibility()).length;
   if (titles !== 1) {
     missing.push(`one <h1>, the page's title: it has ${titles}`);
   }
@@ -145,7 +147,10 @@
     }
   }
   const keyLine = [...page.querySelectorAll("kbd")].find(
-    (key) => key.textContent.trim() === "?" && !keysList?.parentElement?.contains(key),
+    (key) =>
+      key.textContent.trim() === "?" &&
+      key.checkVisibility() &&
+      !keysList?.parentElement?.contains(key),
   );
   if (keyLine === undefined) {
     missing.push("the key line under the head, naming ? for the keys");
@@ -191,7 +196,8 @@
 
   // The writing's guard, over every word a reader reads (code, keys and
   // samples are names, not prose): no emdash or Unicode ellipsis, Canadian
-  // spelling, and nothing private that an agent's work left behind. A proper
+  // spelling, and nothing private that an agent's work left behind. It reads
+  // views kept hidden too, since each is a page the reader opens. A proper
   // name is marked translate="no", the standard's own way of saying it stays
   // as written, so a surname such as Gray is never asked to be respelled.
   const names = '[translate="no"]';
