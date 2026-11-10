@@ -59,10 +59,14 @@ pub struct Derivation {
 /// the store's folder, with their inputs under `inputs.drvs`, where once
 /// they stood alone with theirs under `inputDrvs`, each a list of outputs
 /// or, later, an object holding one.
-/// An output with no path, as a content-addressed one has, is left out,
-/// since no store can say it holds it, and so is a fixed one, whose hash
-/// is known before it's built: the builder fetches that from its own
-/// source, far faster than it could be sent.
+/// An output with no path, as a floating content-addressed one has, is
+/// left out, since no store can say it holds it. A fixed one, a download
+/// whose hash is known before it's fetched, is kept by the path [`fixed`]
+/// reads, so one this machine holds can stand in for its fetch: on 9
+/// November a lent builder was refused a Go zone's 25 modules by the
+/// proxy this machine fetched them through, and built none of the zone.
+/// `there` still has the builder fetch it first, since its own source
+/// is far faster than this machine's uplink.
 pub fn derivations(shown: &Value) -> BTreeMap<String, Derivation> {
     let all = shown.get("derivations").unwrap_or(shown);
     let Some(all) = all.as_object() else {
@@ -75,10 +79,9 @@ pub fn derivations(shown: &Value) -> BTreeMap<String, Derivation> {
                 .and_then(Value::as_object)
                 .into_iter()
                 .flatten()
-                .filter(|(_, output)| output.get("hash").is_none())
                 .filter_map(|(name, output)| {
-                    let path = output.get("path")?.as_str()?;
-                    Some((name.clone(), stored(path)))
+                    let path = output_path(shown, name, output)?;
+                    Some((name.clone(), stored(&path)))
                 })
                 .collect();
             let inputs = shown
@@ -179,18 +182,33 @@ pub fn fixed(shown: &Value) -> BTreeMap<String, String> {
             .flatten()
             .filter(|(_, output)| output.get("hash").is_some())
         {
-            let path = output
-                .get("path")
-                .or_else(|| shown.pointer(&format!("/env/{name}")))
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .or_else(|| structured_output(shown, name));
-            if let Some(path) = path {
+            if let Some(path) = output_path(shown, name, output) {
                 fixed.insert(stored(&path), stored(derivation));
             }
         }
     }
     fixed
+}
+
+/// The path of output `name`, shown as `output`, of the derivation
+/// `shown`: its own, or for a fixed one, which now shows none, the one
+/// its builder is told. A floating one is told a placeholder, not a
+/// path, and has none.
+fn output_path(shown: &Value, name: &str, output: &Value) -> Option<String> {
+    let own = output
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    if output.get("hash").is_none() {
+        return own;
+    }
+    own.or_else(|| {
+        shown
+            .pointer(&format!("/env/{name}"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    })
+    .or_else(|| structured_output(shown, name))
 }
 
 /// The path of output `name` of a derivation with structured attributes,
@@ -208,7 +226,8 @@ fn structured_output(shown: &Value, name: &str) -> Option<String> {
 /// Of what sending would take up with it, `closure`, the fixed derivations
 /// the builder is to fetch for itself first: those whose outputs it would
 /// otherwise build, as [`fixed`] reads them from its plan, since no cache
-/// it asks holds them. Sent, the 14 GB of a model's downloads took a day
+/// it asks holds them, whether they're sent in their own right or only
+/// referenced by what is. Sent, the 14 GB of a model's downloads took a day
 /// through a tunnel on 4 November, where their own source gives them in
 /// minutes.
 pub fn fetched(
@@ -422,20 +441,39 @@ mod tests {
     }
 
     #[test]
-    fn a_fixed_output_is_never_one_to_send() {
-        // Now one has no path; before, it had one beside its hash.
-        let now = json!({"version": 4, "derivations": {"a.drv": {
-            "outputs": {"out": {"hash": "sha256-AAAA", "method": "flat"}},
-            "inputs": {"drvs": {}}}}});
+    fn a_fixed_output_is_one_to_send_by_the_path_its_builder_is_told() {
+        // Now one shows no path among its outputs, only in its builder's
+        // environment, or with structured attributes in the JSON it
+        // carries; before, it had one beside its hash. A floating one is
+        // told a placeholder, never a path, so it's left out.
+        let now = json!({"version": 4, "derivations": {
+            "a.drv": {"outputs": {"out": {"hash": "sha256-AAAA", "method": "flat"}},
+                      "env": {"out": "/nix/store/a"}, "inputs": {"drvs": {}}},
+            "c.drv": {"outputs": {"out": {"hash": "sha256-CCCC", "method": "flat"}},
+                      "env": {"__json": "{\"outputs\":{\"out\":\"/nix/store/c\"}}"},
+                      "inputs": {"drvs": {}}},
+            "b.drv": {"outputs": {"out": {"method": "nar", "hashAlgo": "sha256"}},
+                      "env": {"out": "/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8k"},
+                      "inputs": {"drvs": {}}}}});
         let before = json!({"/nix/store/a.drv": {
             "outputs": {"out": {"path": "/nix/store/a", "hashAlgo": "sha256", "hash": "00"}},
             "inputDrvs": {}}});
-        for shown in [now, before] {
-            assert!(
-                derivations(&shown)["/nix/store/a.drv"].outputs.is_empty(),
+        let a = BTreeMap::from([("out".to_owned(), "/nix/store/a".to_owned())]);
+        for shown in [now.clone(), before] {
+            assert_eq!(
+                derivations(&shown)["/nix/store/a.drv"].outputs,
+                a,
                 "{shown}"
             );
         }
+        assert_eq!(
+            derivations(&now)["/nix/store/b.drv"].outputs,
+            BTreeMap::new()
+        );
+        assert_eq!(
+            derivations(&now)["/nix/store/c.drv"].outputs,
+            BTreeMap::from([("out".to_owned(), "/nix/store/c".to_owned())])
+        );
     }
 
     #[test]
