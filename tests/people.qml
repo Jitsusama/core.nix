@@ -115,8 +115,8 @@ ShellRoot {
                     open[0].glyph === String.fromCodePoint(0xf04ce), open[0].glyph);
                 expect("one called lately doesn't",
                     open[3].glyph === String.fromCodePoint(0xf0004), open[3].glyph);
-                expect("no one else is held", people.persons.length === 4,
-                    names(people.persons));
+                expect("no one else is held", people.persons().length === 4,
+                    names(people.persons()));
                 // Who an address is, for a meeting's guests counted or a
                 // call's name, is known with no row made: counting a
                 // meeting's guests by their rows made each one's whole row
@@ -183,7 +183,7 @@ ShellRoot {
                 + "gus@example.com, Eli Fenwick, Zo\u00eb \"Zed\" Quill", names(all));
         }),
         seeking("ben", "the shell holds only those listed and those found", () => {
-            expect("only those", people.persons.length === 4, names(people.persons));
+            expect("only those", people.persons().length === 4, names(people.persons()));
             expect("found", names(found("ben")) === "Ben Carrow", names(found("ben")));
         }),
         seeking("ad", "a letter more searches only those the letters before found", () => {
@@ -293,12 +293,29 @@ ShellRoot {
                 names(people.all));
         }),
         {
+            // Tuple's change heard while People's rows aren't wanted, as
+            // with the launcher shut: merging everyone at every change
+            // took 26 to 38 ms of the GUI thread with nobody looking
+            // (2026-11-10), so nobody is merged until someone asks.
+            what: "a change heard while nobody looks",
+            run: () => {
+                launcher.wanting = false;
+                root.mergedBefore = people.merges;
+                root.heardBefore = people.revision;
+                touching.running = true;
+            },
+            holds: () => people.revision > root.heardBefore,
+            check: () => {
+                expect("merges no one", typeof people.merges === "number"
+                    && people.merges === root.mergedBefore,
+                    `${people.merges} merges, ${root.mergedBefore} before`);
+                launcher.wanting = true;
+            }
+        },
+        {
             // As Tuple says them now, with the favourites changed here,
             // which the stand-in never says, kept as they were asked.
             what: "a favourite gone into a call, as Tuple says it",
-            run: () => {
-                touching.running = true;
-            },
             holds: () => names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore"
                 && sides(people.all) === "in a call, in a call, , offline",
             check: () => {
@@ -307,6 +324,11 @@ ShellRoot {
             }
         }
     ]
+
+    // How many merges and changes People had before a change heard while
+    // nobody looks.
+    property var mergedBefore: null
+    property int heardBefore: 0
 
     // The steps in order, each waited on up to 30 s from when it starts,
     // so a machine slowed by other work fails no step that came in time.

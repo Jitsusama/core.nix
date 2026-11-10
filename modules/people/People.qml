@@ -85,13 +85,60 @@ Provider {
     // As many as a search is answered with, as the daemon does unasked.
     readonly property int soughtMost: 50
 
+    // Everything the people are made from: the daemon's records, and each
+    // source's people and how they stand. A change to any marks what's
+    // made of them stale, to be made again only once something asks, so
+    // a change nobody looks at merges no one: merging everyone took 26 to
+    // 38 ms of the GUI thread at every change to any source's people,
+    // open or shut, 600 of them in Qt's engine (2026-11-10).
+    readonly property var heard: [book.revision, sought].concat(sources.map(source =>
+        [source.people, source.stands, source.standing]))
+    onHeardChanged: {
+        merging.stale = true;
+        rowsOfEveryone.stale = true;
+        heardRevision += 1;
+    }
+    // Counts each change heard, for a binding that reads what's made.
+    property int heardRevision: 0
+    // How many times everyone was merged, for a test to bound.
+    property int merges: 0
+    readonly property var merging: ({ stale: true })
+
+    // Everyone the sources know as one person each, how they stand, and
+    // each record read and each person by address, made again only when
+    // asked after a change. Plain, so keeping it notifies nothing.
+    function merged() {
+        const kept = merging;
+        if (!kept.stale)
+            return kept;
+        kept.records = readRecords();
+        kept.recordOf = {};
+        for (const record of kept.records)
+            kept.recordOf[record.key] = record;
+        const daemon = fromDaemon(kept.records);
+        kept.persons = Person.merged(sources.map(source => ({
+            name: source.settings.name,
+            people: source.daemonHolds ? daemon.people[source.settings.name] : source.people
+        })));
+        kept.stands = sources.map(source => (source.daemonHolds
+            ? daemon.stands[source.settings.name] : source.stands));
+        kept.byEmail = {};
+        for (const person of kept.persons) {
+            for (const email of person.emails)
+                kept.byEmail[email.toLowerCase()] = person;
+        }
+        kept.stale = false;
+        merges += 1;
+        Report.say(`people holds ${kept.persons.length}`);
+        return kept;
+    }
+
     // Every record read from the daemon, once each: the latest search's
     // first, in its order, then those listed.
-    readonly property var records: {
+    function readRecords() {
         const by = {};
         const all = [];
-        const held = book.revision >= 0 ? book.held : {};
-        for (const record of sought.records.concat(Object.values(held))) {
+        for (const record of sought.records.concat(Object.values(book.held))) {
             if (record.gone || record.key in by)
                 continue;
             by[record.key] = record;
@@ -99,16 +146,18 @@ Provider {
         }
         return all;
     }
-    readonly property var recordOf: {
-        const by = {};
-        for (const record of records)
-            by[record.key] = record;
-        return by;
+
+    // The record read for a key, found without making anyone, for a
+    // source keeping something of its own until the daemon says it
+    // (Tuple's favourites changed here).
+    function recordFor(key) {
+        return sought.records.find(record => record.key === key && !record.gone)
+            ?? book.held[key] ?? null;
     }
 
     // A held source's people and stands, from the records read, as a
     // source of its own gives them.
-    readonly property var fromDaemon: {
+    function fromDaemon(records) {
         const people = {};
         const stands = {};
         for (const source of sources.filter(each => each.daemonHolds)) {
@@ -144,7 +193,7 @@ Provider {
         const keys = person.emails.length > 0 ? person.emails.map(email => `person:${email}`)
             : [`person:${person.key}`];
         for (const key of keys) {
-            const entry = recordOf[key]?.sources?.[name];
+            const entry = merged().recordOf[key]?.sources?.[name];
             if (entry)
                 return Object.assign({ email: addressOf(key) }, entry);
         }
@@ -177,19 +226,12 @@ Provider {
     // comes in 2 ms, before the key's first frame (427IH3, 2026-10-31).
     readonly property int freshFor: 50
 
-    // How many it holds, for a test to bound; and everyone's rows are
-    // made again when next looked through.
-    onPersonsChanged: {
-        Report.say(`people holds ${persons.length}`);
-        rowsOfEveryone.stale = true;
-    }
-
     // Everyone shown, one person each: those the sources give, and those
-    // read from the daemon.
-    readonly property var persons: Person.merged(sources.map(source => ({
-        name: source.settings.name,
-        people: source.daemonHolds ? fromDaemon.people[source.settings.name] : source.people
-    })))
+    // read from the daemon. How many is said as they're merged, for a
+    // test to bound.
+    function persons() {
+        return merged().persons;
+    }
 
     // And each as a row, by key, its name and addresses made ready to
     // match only when first searched, made only when a search looks
@@ -202,7 +244,7 @@ Provider {
         const made = rowsOfEveryone;
         if (made.stale) {
             keepingBegun(made.keeping);
-            made.rows = persons.map(person => keptOr(made.keeping, person.key,
+            made.rows = persons().map(person => keptOr(made.keeping, person.key,
                 JSON.stringify(person), () => provider.made(person, Person.standing(person, []))));
             keptOnly(made.keeping);
             made.stale = false;
@@ -212,11 +254,8 @@ Provider {
 
     // How each stands, which changes often, read from every source in
     // order, so the first that says is believed.
-    readonly property var stands: sources.map(source => (source.daemonHolds
-        ? fromDaemon.stands[source.settings.name] : source.stands))
-
     function standOf(person) {
-        return Person.standing(person, stands);
+        return Person.standing(person, merged().stands);
     }
 
     // Those listed with nothing typed, as they stand now, the last thing
@@ -228,7 +267,7 @@ Provider {
     // refreshes nothing. Listing them writes into keptListed, a plain
     // object that's never reassigned, so writing it notifies nothing and
     // can't loop (Provider.qml's keeper).
-    readonly property var all: provider.wanted ? listedNow() : []
+    readonly property var all: provider.wanted && heardRevision >= 0 ? listedNow() : []
     onAllChanged: {
         if (provider.wanted)
             changed();
@@ -408,17 +447,6 @@ Provider {
         return kept ? [kept] : [];
     }
 
-    // Everyone by each of their addresses, lowercased, joined again only
-    // when who's known is.
-    readonly property var byEmail: {
-        const by = {};
-        for (const person of persons) {
-            for (const email of person.emails)
-                by[email.toLowerCase()] = person;
-        }
-        return by;
-    }
-
     // The person an address is, as their one row, for a thing that names
     // them, as a mail's sender or a meeting's guests (Mail.qml,
     // Calendar.qml): null when no source knows them, so nothing is listed
@@ -434,7 +462,7 @@ Provider {
     // (Calendar.qml, Transcripts.qml), which made each one's whole row; null
     // when no source knows them.
     function whoIs(email) {
-        return byEmail[String(email ?? "").trim().toLowerCase()] ?? null;
+        return merged().byEmail[String(email ?? "").trim().toLowerCase()] ?? null;
     }
 
     // Their next meeting, drawn as a meeting is everywhere, the soonest any
@@ -575,12 +603,14 @@ Provider {
     function listedPersons() {
         const now = Date.now();
         const kept = listing;
-        if (kept.persons !== persons || kept.stands !== stands || now >= kept.until) {
-            kept.listed = Person.ordered(persons.filter(person => Person.listed(person,
+        const everyone = merged();
+        if (kept.persons !== everyone.persons || kept.stands !== everyone.stands
+            || now >= kept.until) {
+            kept.listed = Person.ordered(everyone.persons.filter(person => Person.listed(person,
                 standOf(person), now)), person => standOf(person), now);
-            kept.persons = persons;
-            kept.stands = stands;
-            kept.until = Person.changesAt(persons, now);
+            kept.persons = everyone.persons;
+            kept.stands = everyone.stands;
+            kept.until = Person.changesAt(everyone.persons, now);
         }
         return kept.listed;
     }

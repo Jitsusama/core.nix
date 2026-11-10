@@ -62,6 +62,10 @@ QtObject {
     property var stands: ({})
     // Whether the people daemon holds who it knows, rather than `people`.
     property bool daemonHolds: false
+    // What stood() reads beyond the daemon's entry, as Tuple's favourites
+    // changed here: People makes everyone again once it changes, since it
+    // makes them only when asked rather than following what stood() reads.
+    property var standing: null
     // The People place it's a source of, given as it's made.
     property var place: null
     // Its name as Joel reads it, in Open in it for a person's page.
