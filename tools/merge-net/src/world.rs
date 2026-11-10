@@ -235,10 +235,8 @@ impl Real {
             );
         }
         let (newest, sha) = self.onto_newest(branch, &cut_from, sha)?;
-        match still(&newest, &sha) {
-            Ok(true) => {}
-            Ok(false) => return Err(format!("{DROPPED}, {}", log.display())),
-            Err(why) => return Err(format!("{why}, {}", log.display())),
+        if !still(&newest, &sha).map_err(|why| format!("{why}, {}", log.display()))? {
+            return Err(format!("{DROPPED}, {}", log.display()));
         }
         let slug = self.slug();
         let made = run(Command::new("gh").args([
