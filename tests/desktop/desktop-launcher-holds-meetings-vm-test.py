@@ -157,7 +157,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Retro"])
     desktop.close_launcher()
-    mails_recent_opens(desktop, opened, day)
+    mails_recent_opens(desktop, opened)
     meets_recent_joins(desktop, opened, day)
     shoot_recents_at_joels_scales(desktop, day)
 
@@ -167,21 +167,28 @@ def selected_named(name: str) -> Callable[[Json], bool]:
     return lambda shown: (shown["selected"] or {}).get("name") == name
 
 
-def mails_recent_opens(desktop: Desktop, opened: str, day: str) -> None:
+# When a mail the stand-in holds came, as its row's side says it (When.js's came): its time
+# today, or the day alone, since the stand-in's were read and sent three and four hours before
+# it started, which is yesterday from midnight to 04:00 on the VM's clock, UTC (RTOIMQ,
+# 2026-11-09).
+MAILED = r"(\d\d:\d\d|yesterday)"
+
+
+def mails_recent_opens(desktop: Desktop, opened: str) -> None:
     """Mail's Recent holds what Joel read and what he sent, and Return opens one."""
     machine = desktop.machine
     # Mail's holds Trip Notes, which Joel read, saying who it's from and when; Return opens it.
     desktop.answer("mail")
     desktop.launcher_until(selected_named("Mail"))
     desktop.into_program()
-    first_in_recent(desktop, "Trip Notes", rf"Grace Hopper \u00b7 (\d\d:\d\d|{day})")
+    first_in_recent(desktop, "Trip Notes", rf"Grace Hopper \u00b7 {MAILED}")
     # What he sent names who it went to, never him (VKCF3Z, c7d9e2bd).
     desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Notes on the Plan"
             and re.fullmatch(
-                rf"to Ada Lovelace, Grace Hopper and 1 more \u00b7 (\d\d:\d\d|{day})",
+                rf"to Ada Lovelace, Grace Hopper and 1 more \u00b7 {MAILED}",
                 str(shown["selected"].get("side")),
             )
             is not None
@@ -236,7 +243,7 @@ def shoot_recents_at_joels_scales(desktop: Desktop, day: str) -> None:
         desktop.as_account(f"niri msg output winit scale {scale}")
         for program, first, side in (
             ("Calendar", "Retro", day),
-            ("Mail", "Trip Notes", rf"Grace Hopper \u00b7 (\d\d:\d\d|{day})"),
+            ("Mail", "Trip Notes", rf"Grace Hopper \u00b7 {MAILED}"),
         ):
             desktop.answer(program.lower())
             desktop.launcher_until(selected_named(program))
