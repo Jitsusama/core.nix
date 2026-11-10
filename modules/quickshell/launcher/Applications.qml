@@ -873,11 +873,13 @@ Provider {
     // Whether it has a source of what it had: its own list's settings, the
     // list programs share naming it, or another provider keeping some or
     // giving some now.
-    function keepsRecent(entry) {
+    // `given`, what other providers give it, is asked here when not passed,
+    // as it is by a note that reads it once for all it counts.
+    function keepsRecent(entry, given) {
         return provider.sourceOf(entry) !== null || provider.recents.of(entry.id).length > 0
             || (provider.launcher?.sources ?? []).some(other => other !== provider
                 && typeof other.keepsRecentOf === "function" && other.keepsRecentOf(entry.id))
-            || givenRecent(entry.id).length > 0;
+            || (given ?? givenRecent(entry.id)).length > 0;
     }
 
     // What its Recent holds, as Recent.js lays them out, each { key, at,
@@ -886,7 +888,9 @@ Provider {
     // keeps and what other providers give, merged by when each was last
     // used where its source says (a dated source, recents.nix), none of
     // what it has open now.
-    function kept(entry) {
+    // `asked` and `opens`, what other providers give it and list as open in
+    // it, are asked here when not passed, as keepsRecent's `given` is.
+    function kept(entry, asked, opens) {
         const source = provider.sourceOf(entry);
         const site = source?.kind === "site";
         const kind = site ? "site" : source?.list && source.kind === "folder" ? "folder" : "file";
@@ -901,9 +905,9 @@ Provider {
             at: provider.recents.atOf(entry.id, line),
             row: { line: line }
         }));
-        const given = givenRecent(entry.id)
+        const given = (asked ?? givenRecent(entry.id))
             .map(row => ({ key: row.key, at: row.at, row: { made: row } }));
-        return Recent.listed([saved, listed, given], provider.openKeys(entry),
+        return Recent.listed([saved, listed, given], provider.openKeys(entry, opens),
             provider.recents.most);
     }
 
@@ -937,8 +941,8 @@ Provider {
     // The keys of what it has open now, read from what its source said
     // without making a row, and of what other providers list as open in
     // it (givenOpen), so its Recent never lists one again.
-    function openKeys(entry) {
-        return ownOpenKeys(entry).concat(provider.givenOpen(entry.id));
+    function openKeys(entry, given) {
+        return ownOpenKeys(entry).concat(given ?? provider.givenOpen(entry.id));
     }
 
     function ownOpenKeys(entry) {
@@ -1042,10 +1046,16 @@ Provider {
         const pages = addresses.size;
         // A closed browser's saved tabs are counted as recent, as listed.
         const live = isRunning(entry);
-        const opened = site ? (live ? pages : 0) : open.length + givenOpen(entry.id).length;
+        // What other providers list open in it and give its Recent, asked
+        // once for all it counts: a row that doesn't step in reads this for
+        // its count, on every row a step into Programs draws.
+        const openGiven = givenOpen(entry.id);
+        const recentGiven = givenRecent(entry.id);
+        const opened = site ? (live ? pages : 0) : open.length + openGiven.length;
         // As many as its Recent lists, so what's open, listed above it, isn't
         // counted twice.
-        const kept = provider.keepsRecent(entry) ? provider.kept(entry).length : 0;
+        const kept = provider.keepsRecent(entry, recentGiven)
+            ? provider.kept(entry, recentGiven, openGiven).length : 0;
         const parts = provider.launcher?.partsOfRows[`program:${entry.id}`] ?? [];
         const meetings = parts.filter(part => part.what === "meeting");
         const mail = parts.filter(part => part.what === "mail").length;
