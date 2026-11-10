@@ -65,6 +65,12 @@ Scope {
             : "";
     }
 
+    // What a step spent, its own parts beside those of the search that drew
+    // its rows (Trials.js).
+    function stepped(inner, at) {
+        return Trials.stepped(inner, at);
+    }
+
     // The three collections that took longest, if any took a millisecond.
     function slowest(each) {
         const named = Object.keys(each ?? {}).filter(name => each[name] > 0)

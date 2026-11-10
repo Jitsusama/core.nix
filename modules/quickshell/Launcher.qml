@@ -73,7 +73,6 @@ import "launcher/Steady.js" as Steady
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
-import "launcher/Trials.js" as Trials
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -4354,7 +4353,7 @@ Scope {
         // Said as a key's are: making the step's lists, what each part of
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
-        searchParts = Trials.stepped(searchParts, { began, made, pushed, opened,
+        searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
             ended: Date.now() });
         keyTimed(`\u2192 ${row.name}`, began, heard, pressed);
         return true;
