@@ -2163,7 +2163,8 @@
     People with Tuple as its source, read from the people daemon, lists favourites and those called
     lately, finds anyone as they stand while holding only those listed and found, calls, joins and
     favours them, steps in before calling, lists a source's page for them after the ways to reach
-    them with its facts in the drawer and the time where they are, and never asks Tuple itself
+    them with its facts in the drawer and the time where they are, knows who an address is with no
+    row made, and never asks Tuple itself
   '';
   the-launcher-finds-the-quests = ''
     the launcher reads the open and ended quests the node serves, each with its own kind rather
@@ -2679,7 +2680,8 @@
     among them, which may be moved and to what later or typed time, what that clashes with and who's
     told, writes the lines that answer, cancel and move it, says when one over was held, knows
     which Meet call a window is and whose meeting it is, and lists as Meet's Recent the calls held
-    on Meet, once by code and newest first, each saying who it was with and when
+    on Meet, once by code and newest first, each saying who it was with and when, and counts the
+    people known on a meeting, each once, making no one's row
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage

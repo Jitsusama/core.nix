@@ -234,6 +234,26 @@ function asked(person) {
     return said === "" ? name : `${name}${BETWEEN}${said}`;
 }
 
+// The addresses of those on a meeting besides Joel: who holds it, unless
+// he does, then each guest.
+function guestEmails(meeting) {
+    return (meeting.holds ? [] : [meeting.organizer?.email])
+        .concat((meeting.guests ?? []).map(guest => guest.email));
+}
+
+// How many of those on a meeting People knows, each person once however
+// many of their addresses are on it, asking `people` (People.qml) who
+// each address is, so no one's row is made to count them: counting by
+// their rows made each guest's whole row every time a meeting's acts were
+// read (2026-11-10). None without People.
+function knownGuests(meeting, people) {
+    if (!people) {
+        return 0;
+    }
+    return new Set(guestEmails(meeting).map(email => people.whoIs(email)?.key)
+        .filter(key => key !== undefined)).size;
+}
+
 // How those asked answered, counted, as a calendar heads its list of
 // guests: "9 going, 2 not going, 3 not answered", each answer in the
 // order an invitation offers them. One not yet heard from counts as not

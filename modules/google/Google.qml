@@ -88,6 +88,14 @@ Singleton {
         return people ? people.personOf(email) : null;
     }
 
+    // The launcher's provider that knows people, asked who an address is
+    // with no row made (People.qml's whoIs), as a meeting's guests are
+    // counted; null on a machine without People.
+    function peopleOf(launcher) {
+        return (launcher?.sources ?? []).find(source => typeof source.whoIs
+            === "function") ?? null;
+    }
+
     // The launcher's chooser of files (open-with's FileChooser.qml), which
     // asks where to save, or null on a machine without it.
     function chooserOf(launcher) {

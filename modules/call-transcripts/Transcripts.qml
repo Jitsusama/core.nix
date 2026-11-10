@@ -71,9 +71,9 @@ Singleton {
     function personName(call, provider) {
         if (!call.person)
             return "";
-        const people = (provider.launcher?.sources ?? []).find(source => typeof source.personOf
+        const people = (provider.launcher?.sources ?? []).find(source => typeof source.whoIs
             === "function");
-        return people?.personOf(call.person)?.name ?? "";
+        return people?.whoIs(call.person)?.name ?? "";
     }
 
     // A call's row, made with the provider of the surface showing it, whose
