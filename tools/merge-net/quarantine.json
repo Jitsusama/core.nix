@@ -19,5 +19,12 @@
     "owner_pr": null,
     "reason": "failed, then passed, at a693826b5ecf",
     "test": "vm-desktop-keeps-pace"
+  },
+  {
+    "at": 1794349841,
+    "commit": "e253f525450f7b0af2a83b4811e3a9471eb52dc8",
+    "owner_pr": 2929,
+    "reason": "failed, then passed, at e253f525450f",
+    "test": "the-newest-surface-takes-the-keys-on-niri"
   }
 ]
