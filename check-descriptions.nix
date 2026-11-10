@@ -890,6 +890,14 @@
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
   '';
+  linux-builder-collects-only-what-it-is-asked = ''
+    the Linux VM's collection, run for a collecting key, collects all that's dead, or at most the
+    GiB asked, or nothing for free, prints the store's free bytes, and refuses anything else
+  '';
+  linux-builder-lets-collecting-keys-only-collect = ''
+    a Mac's Linux VM lets a collecting key in only restricted to its collection, never plainly as
+    a builder, and is changed from the cached guest so it keeps room
+  '';
   linux-builder-offers-the-features-it-is-given = ''
     a Mac's Linux builder offers benchmark and big-parallel and any feature it's given, on the Mac's
     line and in the guest's Nix, and with none given offers only its own
