@@ -132,9 +132,9 @@ Item {
     // How the place the head is in stands where that presses, as "not
     // answering": said where a find's count is, ahead of it, in every mode,
     // since it's so whatever's typed (VKCF3Z, 2026-11-10).
-    property string placeSays
+    property string placeStands
     // The note on the head's baseline after what's typed or asked.
-    readonly property string noteSaid: placeSays !== "" ? placeSays : narrowSaid ? narrowed : ""
+    readonly property string noteSaid: Typing.noteOf(placeStands, narrowed, narrowSaid)
     readonly property bool capitals: secret && Lights.caps
     readonly property string said: capitals ? "caps lock" : aside
     // How wide an aside is at Note, a pixel to spare, so what's measured to
@@ -1386,7 +1386,7 @@ Item {
             text: prompt.hint
             // A place that can't answer says so in its question's stead, so
             // the head keeps to two levels.
-            visible: input.text === "" && text !== "" && prompt.placeSays === ""
+            visible: input.text === "" && text !== "" && prompt.placeStands === ""
             color: Theme.muted
             font.family: Theme.level.voice.family
             font.italic: Theme.level.voice.italic
