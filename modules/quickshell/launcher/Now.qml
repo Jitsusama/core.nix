@@ -208,7 +208,7 @@ Provider {
     // followed it is Time's (Clocks.qml), since the zone is the clock's.
     //
     // GeoClue's altitude, speed and heading are on the plate where its
-    // source gives them, as GPS does; Wi-Fi and an IP address give none,
+    // source gives them, as GPS does; Wi-Fi and a network's address give none,
     // and the plate's body names what's missing and the source that
     // couldn't give it, as design.md has what's left out named on screen
     // with its reason. The source is the plate's eyebrow (VKCF3Z,

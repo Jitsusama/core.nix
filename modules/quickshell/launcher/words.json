@@ -5262,7 +5262,7 @@
         "via-cell": "via cell towers \u00b7 location",
         "via-wifi-and-cell": "via Wi-Fi and cell towers \u00b7 location",
         "via-cdma": "via CDMA \u00b7 location",
-        "via-ip": "via IP address \u00b7 location",
+        "via-ip": "via a network's address \u00b7 location",
         "via-gps": "via GPS \u00b7 location",
         "via-file": "via a fixed file \u00b7 location",
         "altitude": "{n} m",
@@ -5294,7 +5294,7 @@
         "leftOut-cell": "Cell towers give no {missing}.",
         "leftOut-wifi-and-cell": "Wi-Fi and cell towers give no {missing}.",
         "leftOut-cdma": "CDMA gives no {missing}.",
-        "leftOut-ip": "An IP address gives no {missing}.",
+        "leftOut-ip": "A network's address gives no {missing}.",
         "leftOut-gps": "GPS gave no {missing}.",
         "leftOut-file": "A fixed file gives no {missing}."
       }
