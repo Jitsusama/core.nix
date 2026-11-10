@@ -4,8 +4,6 @@
 //! and whether the shell says the screen is shared. Each source changes
 //! its own part, and `made` makes every record from all of them.
 
-use std::collections::BTreeMap;
-
 use serde_json::Value;
 
 use crate::row::{self, Known, Words};
@@ -72,7 +70,7 @@ impl Inputs {
     }
 
     /// Every record served, made from what each source last said.
-    pub fn made(&self) -> BTreeMap<String, Value> {
+    pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
         let jobs: Vec<Value> = self.jobs.records().map(|(_, job)| job.clone()).collect();
         let spent = |id: &str| self.spent(id);
@@ -107,7 +105,7 @@ impl Inputs {
                 .unwrap_or("")
         };
         let rows = row::rows(&sessions, &known, &self.words);
-        served::records(&rows, &summary::summary(&states, today, &self.words.agents))
+        served::made(&rows, &summary::summary(&states, today, &self.words.agents))
     }
 }
 
@@ -150,34 +148,68 @@ mod tests {
         inputs
     }
 
+    /// Every record served of what the inputs say now.
+    fn served(inputs: &Inputs) -> served::Served {
+        let mut served = served::Served::default();
+        served.take(inputs.made());
+        served
+    }
+
+    /// What a session's row says at its right, its items joined.
+    fn side(served: &served::Served, address: &str) -> String {
+        let row = &served
+            .get(&format!("row:agents:{address}"))
+            .expect("its row")["row"];
+        let items = row["side"].as_array().expect("its items");
+        let said: Vec<_> = items
+            .iter()
+            .filter_map(|item| item["said"].as_str())
+            .collect();
+        said.join(" \u{b7} ")
+    }
+
+    fn summary_of(served: &served::Served) -> Value {
+        served.get(served::SUMMARY).expect("the summary")["row"]["held"]["said"].clone()
+    }
+
     #[test]
     fn every_record_is_made_from_what_each_source_said() {
-        let made = inputs().made();
-        assert_eq!(made[served::ORDER]["keys"], json!(["agent:O", "agent:P"]));
+        let served = served(&inputs());
+        let order = |address: &str| {
+            served
+                .get(&format!("row:agents:{address}"))
+                .expect("its row")["row"]["order"]
+                .clone()
+        };
+        assert_eq!((order("O"), order("P")), (json!(1024), json!(2048)));
         assert_eq!(
-            made["agent:O"]["side"], "listening \u{b7} $9 in all",
+            side(&served, "O"),
+            "listening \u{b7} $9 in all",
             "one the harness lists orchestrates, saying its orchestration's spend"
         );
-        assert_eq!(made["agent:O"]["also"], "O  QEST-O kelp Kelp");
-        assert_eq!(made["agent:P"]["side"], "working \u{b7} $4");
-        assert_eq!(made[served::SUMMARY]["said"], "1 working \u{b7} $214 today");
-        assert!(!made.contains_key("agent:X"), "one closed is Recent's");
+        let also = &served.get("row:agents:O").expect("its row")["row"]["held"]["also"];
+        assert_eq!(also, "O  QEST-O kelp Kelp");
+        assert_eq!(side(&served, "P"), "working \u{b7} $4");
+        assert_eq!(summary_of(&served), "1 working \u{b7} $214 today");
+        assert!(
+            served.get("row:agents:X").is_none(),
+            "one closed is Recent's"
+        );
     }
 
     #[test]
     fn sharing_the_screen_says_no_amount() {
         let mut inputs = inputs();
         inputs.sharing = true;
-        let made = inputs.made();
-        assert_eq!(made["agent:P"]["side"], "working");
-        assert_eq!(made[served::SUMMARY]["said"], "1 working");
+        let served = served(&inputs);
+        assert_eq!(side(&served, "P"), "working");
+        assert_eq!(summary_of(&served), "1 working");
     }
 
     #[test]
     fn a_question_to_joel_counts_him_needed_and_only_that_session_moves() {
         let mut inputs = inputs();
-        let mut shown = served::Served::default();
-        shown.take(inputs.made());
+        let mut shown = served(&inputs);
         inputs
             .sessions
             .took(&json!({"changed": [{"key": "session:o",
@@ -187,12 +219,12 @@ mod tests {
         let keys: Vec<_> = moved.changed.iter().map(|one| one["key"].clone()).collect();
         assert_eq!(
             keys,
-            [json!("agent:O"), json!(served::SUMMARY)],
+            [json!("row:agents:O"), json!(served::SUMMARY)],
             "an orchestrator's own question is Joel's, and moves its row and the summary"
         );
         assert_eq!(
-            shown.get(served::SUMMARY).map(|one| one["said"].clone()),
-            Some(json!("1 needs you \u{b7} 1 working \u{b7} $214 today"))
+            summary_of(&shown),
+            "1 needs you \u{b7} 1 working \u{b7} $214 today"
         );
     }
 }
