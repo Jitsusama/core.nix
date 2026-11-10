@@ -112,23 +112,40 @@ function eyebrow(here, said) {
     return (here.source ? said[`via-${here.source}`] : null) ?? said.via;
 }
 
-// The figures only some sources give, as GPS does, each in GeoClue's own
-// units and only while held: altitude to the metre, speed to a tenth of
-// a metre a second, and heading to the degree east of north.
+// The figures only some sources give, as GPS does, and only while held:
+// altitude to the metre and heading to the degree east of north, in
+// GeoClue's own units, and speed in kilometres an hour, as a road says it,
+// to three significant figures, from GeoClue's metres a second, so 4.26
+// m/s reads "15.3 km/h" (VKCF3Z, 2026-11-10).
 const MEASURES = [
     { id: "altitude", decimals: 0 },
-    { id: "speed", decimals: 1 },
+    { id: "speed", scale: 3.6 },
     { id: "heading", decimals: 0 }
 ];
+
+// A measure's figure: to its places where it keeps a fixed number, else
+// to three significant figures, nothing but "0" when it rounds to none.
+function figure(value, decimals, told) {
+    if (decimals !== undefined) {
+        return told.number(value, decimals);
+    }
+    const kept = Number(value.toPrecision(FIGURES));
+    if (kept === 0) {
+        return told.number(0, 0);
+    }
+    const whole = Math.floor(Math.log10(Math.abs(kept))) + 1;
+    return told.number(kept, Math.max(0, FIGURES - whole));
+}
 
 function held(value) {
     return Number.isFinite(value);
 }
 
 function measures(here, said, told) {
-    return MEASURES.map(({ id, decimals }) => ({
+    return MEASURES.map(({ id, decimals, scale }) => ({
         id,
-        value: held(here[id]) ? said[id].replace("{n}", told.number(here[id], decimals)) : ""
+        value: held(here[id])
+            ? said[id].replace("{n}", figure(here[id] * (scale ?? 1), decimals, told)) : ""
     }));
 }
 
