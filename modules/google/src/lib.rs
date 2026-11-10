@@ -16,6 +16,7 @@ pub mod api;
 pub mod ask;
 pub mod calendar;
 pub mod daemon;
+pub mod document_rows;
 pub mod done;
 pub mod drive;
 pub mod files;

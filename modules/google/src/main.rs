@@ -59,7 +59,7 @@ use google::ask::{self, Ask};
 use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
-use google::rows::Words;
+use google::rows::Vocabulary;
 use google::saves;
 use google::state::{Standing, State};
 use google::watch::Watch;
@@ -204,10 +204,10 @@ fn places() -> Places {
 }
 
 /// The words rows are said in, read from the launcher's vocabulary.
-fn vocabulary(path: &Path) -> Result<Words, String> {
+fn vocabulary(path: &Path) -> Result<Vocabulary, String> {
     let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
     let whole = serde_json::from_str(&text).map_err(|error| error.to_string())?;
-    Words::read(&whole)
+    Vocabulary::read(&whole)
 }
 
 /// Whether an ask last made then is due again, a wait on; never made, it is.
