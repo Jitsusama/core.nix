@@ -1,0 +1,11 @@
+# gcloud-broker mints a service account's hour-long Google Cloud tokens
+# with the person's own login, for what may not hold that login
+# (src/lib.rs says why). It needs nothing past the standard library.
+[package]
+name = "gcloud-broker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
