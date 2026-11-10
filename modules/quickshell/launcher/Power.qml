@@ -21,10 +21,10 @@
 // the battery; it reads them once a second while Power's rows can be seen
 // (Seen.js), as Machine's Power row is, and once as the shell starts and
 // as UPower says a device came or went (Daemon.qml's refresh). The charge
-// limit is still written here, through the kernel's own files.
+// limit is moved by the daemon too, asked over the socket held for the
+// figures, which tells the new limit before it answers.
 import qs
 import Quickshell
-import Quickshell.Io
 import Quickshell.Services.UPower
 import QtQuick
 import "Numbers.js" as Numbers
@@ -81,10 +81,9 @@ Provider {
     // to run at, and warns from where it's too warm to charge well.
     readonly property int hottest: 60
     readonly property int warm: 45
-    // The limits a step into the charge limit offers, and how far below
-    // each charging starts again, as the firmware's own is set.
+    // The limits a step into the charge limit offers; the daemon starts
+    // charging again a little below each, as the firmware's own is set.
     readonly property var stops: [60, 70, 80, 90, 100]
-    readonly property int restart: 5
 
     // A part's name, as the vocabulary says it.
     function named(id, state, fill) {
@@ -296,13 +295,15 @@ Provider {
         }, fields ?? {}));
     }
 
-    // Moves the charge limit, each file written in the order the kernel
-    // takes them.
-    function setLimit(name, start, stop, wanted) {
-        for (const write of Power.limitWrites(start, stop, wanted, restart)) {
-            writer.path = `/sys/class/power_supply/${name}/${write[0]}`;
-            writer.setText(`${write[1]}\n`);
-        }
+    // Has the machine daemon move the charge limit to stop at `wanted`,
+    // starting again a little below it where the battery can (its
+    // supply.rs, which writes the kernel's files in the order it takes
+    // them). The row moves as the daemon tells the supply again.
+    function setLimit(name, wanted) {
+        daemon.ask({ ask: "act", act: "charge-limit", supply: name, stop_pct: wanted }, said => {
+            if (said?.error)
+                console.warn(`the charge limit stayed: ${said.error.message}`);
+        });
     }
 
     // The Charge limit: where charging stops and starts again, a setting
@@ -332,7 +333,7 @@ Provider {
             hue: "action",
             side: stop === each ? says("limit:stop", "chosen") : "",
             stays: true,
-            run: () => provider.setLimit(record.name, start, stop, each)
+            run: () => provider.setLimit(record.name, each)
         })));
     }
 
@@ -537,13 +538,5 @@ Provider {
         paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
-    }
-
-    // The kernel's files can't be replaced, only written in place.
-    FileView {
-        id: writer
-        preload: false
-        atomicWrites: false
-        blockWrites: true
     }
 }

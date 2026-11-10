@@ -2797,12 +2797,6 @@ QtObject {
         machine("made on a day", Power.made(2026, 7, 20), "2026-07-20");
         machine("made in a month", Power.made(2026, 7, 0), "2026-07");
         machine("a date that isn't", Power.made(0, 13, 40), "");
-        machine("a limit raised moves its stop first", Power.limitWrites(75, 80, 90, 5),
-            [["charge_control_end_threshold", "90"], ["charge_control_start_threshold", "85"]]);
-        machine("a limit lowered moves its start first", Power.limitWrites(75, 80, 60, 5),
-            [["charge_control_start_threshold", "55"], ["charge_control_end_threshold", "60"]]);
-        machine("a limit with no start", Power.limitWrites(null, 80, 90, 5),
-            [["charge_control_end_threshold", "90"]]);
         machine("a dark room", Power.roomLevel(0), 0);
         machine("daylight", Power.roomLevel(10000), 1);
         machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,
