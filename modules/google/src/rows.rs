@@ -6,13 +6,16 @@
 //! `row:mail:<id>` record whose `row` is the launcher's own key for it,
 //! `mail:<id>`, and whose times travel as `{at, as}` for the shell to
 //! word against its own clock, since a row worded here would change
-//! every minute. Mail.qml and Mail.js make the same row today; these
-//! take their place as the shell reads them.
+//! every minute. A row's drawer, the mail's body with it, is a record of
+//! its own, `drawer:mail:<id>`, which the row names and the shell watches
+//! by key only while it shows. Mail.qml and Mail.js make the same row
+//! today; these take their place as the shell reads them.
 
 use std::fmt::Write;
 
 use serde_json::{Value, json};
 
+use crate::document_rows;
 use crate::mail::Mail;
 
 /// How many people a sent mail's row names before it counts the rest.
@@ -37,6 +40,23 @@ pub struct Words {
     pub to_more: String,
     /// "{count} people".
     pub to_people: String,
+}
+
+/// Every place's words, from the launcher's vocabulary.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Vocabulary {
+    pub mail: Words,
+    pub documents: document_rows::Words,
+}
+
+impl Vocabulary {
+    /// Each place's words, or the first word one lacks.
+    pub fn read(vocabulary: &Value) -> Result<Vocabulary, String> {
+        Ok(Vocabulary {
+            mail: Words::read(vocabulary)?,
+            documents: document_rows::Words::read(vocabulary)?,
+        })
+    }
 }
 
 impl Words {
@@ -77,24 +97,38 @@ pub fn mail(held: &[Mail], words: &Words) -> Vec<Value> {
         .collect()
 }
 
-fn row(mail: &Mail, order: usize, words: &Words) -> Value {
-    let name = if mail.subject.is_empty() {
+/// Each wanting piece's drawer, by the key its row's drawer is watched by.
+pub fn mail_drawers(held: &[Mail], words: &Words) -> Vec<(String, Value)> {
+    held.iter()
+        .filter(|mail| mail.done.is_none())
+        .map(|mail| {
+            let key = format!("drawer:mail:{}", mail.id);
+            (key, drawer(mail, titled(mail, words)))
+        })
+        .collect()
+}
+
+fn titled<'a>(mail: &'a Mail, words: &'a Words) -> &'a str {
+    if mail.subject.is_empty() {
         &words.untitled
     } else {
         &mail.subject
-    };
+    }
+}
+
+fn row(mail: &Mail, order: usize, words: &Words) -> Value {
     json!({
         "key": format!("row:mail:{}", mail.id),
         "row": format!("mail:{}", mail.id),
         "place": "mail",
         "kind": "mail",
         "order": order,
-        "name": name,
+        "name": titled(mail, words),
         "glyph": words.glyph,
         "hue": "program",
         "depth": 0,
         "side": beside(mail, words),
-        "drawer": drawer(mail, name),
+        "drawer": format!("drawer:mail:{}", mail.id),
         "acts": acts(mail),
         "held": {
             "page": mail.page, "address": mail.address, "sent": mail.sent,
@@ -197,8 +231,11 @@ fn sender(mail: &Mail) -> String {
 }
 
 /// Its acts, in the one order every surface lists them, each with what it
-/// asks of this daemon, or for its sender the address People finds them
-/// by, since the launcher holds People.
+/// asks of this daemon, or the step the launcher takes for it: its sender
+/// is People's row for the address (`step: person`), since the launcher
+/// holds People, and Attachments steps in to its files (`step:
+/// attachments`), which `held.attachments` gives until they're rows of
+/// their own.
 fn acts(mail: &Mail) -> Vec<Value> {
     let opens = |key: &str, link: &str| json!({"key": key, "ask": {"open": {"link": link}}});
     let mut listed = vec![opens("verb:mail:open", &mail.page)];
@@ -217,10 +254,14 @@ fn acts(mail: &Mail) -> Vec<Value> {
     listed.push(json!({"key": "verb:mail:archive", "ask": {"archive": {"id": mail.id}}}));
     listed.push(json!({"key": "verb:mail:read", "ask": {"read": {"id": mail.id}}}));
     if !mail.address.is_empty() {
-        listed.push(json!({"key": "mail:sender", "address": mail.address}));
+        listed.push(json!({"key": "mail:sender", "step": "person",
+                           "address": mail.address}));
     }
     if !mail.attachments.is_empty() {
-        listed.push(json!({"key": "verb:mail:attachments", "count": mail.attachments.len()}));
+        listed.push(
+            json!({"key": "verb:mail:attachments", "step": "attachments",
+                           "count": mail.attachments.len()}),
+        );
     }
     listed.push(json!({"key": "verb:mail:link", "ask": {"copy": mail.page}}));
     listed
@@ -372,10 +413,17 @@ mod tests {
         });
         let mut bare = one("bare", 1_000);
         bare.subject = String::new();
-        let rows = mail(&[done, bare], &words());
+        let both = [done, bare];
+        let rows = mail(&both, &words());
         assert_eq!(rows.len(), 1, "mail dealt with was kept a row: {rows:?}");
         assert_eq!(rows[0]["name"], "Mail Without a Subject");
-        assert_eq!(rows[0]["drawer"]["title"], "Mail Without a Subject");
+        let drawers = mail_drawers(&both, &words());
+        assert_eq!(
+            drawers.len(),
+            1,
+            "mail dealt with kept a drawer: {drawers:?}"
+        );
+        assert_eq!(drawers[0].1["title"], "Mail Without a Subject");
     }
 
     #[test]
@@ -437,9 +485,15 @@ mod tests {
                 bytes: Bytes::Asked("x".into()),
             })
             .to_vec();
-        let rows = mail(&[carrying], &words());
+        let rows = mail(std::slice::from_ref(&carrying), &words());
         assert_eq!(
-            rows[0]["drawer"],
+            rows[0]["drawer"], "drawer:mail:a",
+            "the row didn't name its drawer"
+        );
+        let drawers = mail_drawers(&[carrying], &words());
+        assert_eq!(drawers[0].0, "drawer:mail:a");
+        assert_eq!(
+            drawers[0].1,
             json!({
                 "title": "Engines",
                 "facts": [
@@ -455,7 +509,7 @@ mod tests {
         let acts = rows[0]["acts"].as_array().cloned().unwrap_or_default();
         assert_eq!(
             acts[acts.len() - 2],
-            json!({"key": "verb:mail:attachments", "count": 2}),
+            json!({"key": "verb:mail:attachments", "step": "attachments", "count": 2}),
             "Attachments wasn't offered just before Copy the Link"
         );
         assert_eq!(rows[0]["held"]["attachments"][1]["name"], "notes.txt");
@@ -480,7 +534,7 @@ mod tests {
                 {"key": "verb:mail:replyAll", "ask": {"open": {"link": reply_all}}},
                 {"key": "verb:mail:archive", "ask": {"archive": {"id": "a"}}},
                 {"key": "verb:mail:read", "ask": {"read": {"id": "a"}}},
-                {"key": "mail:sender", "address": "ada@example.com"},
+                {"key": "mail:sender", "step": "person", "address": "ada@example.com"},
                 {"key": "verb:mail:link", "ask": {"copy": page}}
             ])
         );

@@ -20,10 +20,14 @@
 //! (ask.rs), so the shell can do everything on one connection.
 //!
 //! Each piece of mail that wants Joel is also a `row:mail:<id>` record,
-//! the row the launcher shows for it, worded in the vocabulary this
-//! program is handed (rows.rs), so the shell makes no rows of its own;
-//! a `list` or `watch` of rows names its `place`, one or a list of them,
-//! to hear only those. Without a vocabulary, no rows are made.
+//! and each document a `row:documents:<id>`, the row the launcher shows
+//! for it, worded in the vocabulary this program is handed (`rows.rs`,
+//! `document_rows.rs`), so the shell makes no rows of its own; a `list` or
+//! `watch` of rows names its `place`, one or a list of them, to hear only
+//! those. Each row's drawer is a `drawer:<place>:<id>` record of its own,
+//! which the row names, watched by its key only while it shows, so a
+//! mail's body never rides with its row. Without a vocabulary, no rows
+//! or drawers are made.
 //!
 //! A `list` or a `watch` answers beside its records when Google was last
 //! read (`read`, in milliseconds since the epoch, null until the first
@@ -46,17 +50,18 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::ask;
+use crate::document_rows;
 use crate::drive::Drive;
 use crate::files::Fetched;
-use crate::rows::{self, Words};
+use crate::rows::{self, Vocabulary};
 use crate::state::{Meet, Standing, State};
 
 /// The interface's version.
 pub const VERSION: u64 = 1;
 
 /// The kinds this daemon keeps.
-const KINDS: [&str; 8] = [
-    "meeting", "mail", "file", "held", "lately", "call", "account", "row",
+const KINDS: [&str; 9] = [
+    "meeting", "mail", "file", "held", "lately", "call", "account", "row", "drawer",
 ];
 
 /// The one account's key.
@@ -121,15 +126,28 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
 
 /// Every ready row the state makes, in each place's order, as records
 /// keyed as rows.rs keys them, each its row under `row`.
-fn rows_of(state: &State, words: &Words) -> Vec<(String, Value)> {
-    rows::mail(&state.mail, words)
+fn rows_of(state: &State, words: &Vocabulary) -> Vec<(String, Value)> {
+    let rows = rows::mail(&state.mail, &words.mail)
         .into_iter()
+        .chain(document_rows::documents(&state.documents, &words.documents))
         .map(|row| {
             let key = row["key"].as_str().unwrap_or_default().to_owned();
             let record = json!({"key": key, "kind": "row", "row": row});
             (key, record)
-        })
-        .collect()
+        });
+    let drives = &state.drive.places.drives.files;
+    let drawers = rows::mail_drawers(&state.mail, &words.mail)
+        .into_iter()
+        .chain(document_rows::drawers(
+            &state.documents,
+            drives,
+            &words.documents,
+        ))
+        .map(|(key, drawer)| {
+            let record = json!({"key": key, "kind": "drawer", "drawer": drawer});
+            (key, record)
+        });
+    rows.chain(drawers).collect()
 }
 
 /// The source's word for how the account stands, as the people daemon
@@ -171,7 +189,7 @@ impl Watch {
         let place = rest.split_once(':').map_or(rest, |(place, _)| place);
         self.kinds.as_ref().is_none_or(|kinds| kinds.contains(kind))
             && self.keys.as_ref().is_none_or(|keys| keys.contains(key))
-            && (kind != "row"
+            && (!matches!(kind, "row" | "drawer")
                 || self
                     .places
                     .as_ref()
@@ -188,7 +206,7 @@ struct Held {
     /// The last state said, none before the first look at Google.
     state: Option<State>,
     /// The words rows are said in, none to make no rows.
-    words: Option<Words>,
+    words: Option<Vocabulary>,
     watches: Vec<Watch>,
     since: i64,
     connections: u64,
@@ -233,7 +251,7 @@ impl Daemon {
     }
 
     /// Makes ready rows from now on, said in these words.
-    pub fn words(&self, words: Words) {
+    pub fn words(&self, words: Vocabulary) {
         self.lock().words = Some(words);
     }
 
@@ -348,7 +366,7 @@ impl Daemon {
                     "unknown-kind",
                     &format!(
                         "this daemon keeps meeting, mail, file, held, lately, call, \
-                         account and row, not {kind}"
+                         account, row and drawer, not {kind}"
                     ),
                 );
             }
@@ -606,10 +624,13 @@ mod tests {
             &asks,
         );
         assert_eq!(unworded["records"], json!([]), "rows made without words");
-        daemon.words(Words {
-            untitled: "Mail Without a Subject".into(),
-            glyph: "mail".into(),
-            ..Words::default()
+        daemon.words(Vocabulary {
+            mail: rows::Words {
+                untitled: "Mail Without a Subject".into(),
+                glyph: "mail".into(),
+                ..rows::Words::default()
+            },
+            ..Vocabulary::default()
         });
         let ask = |line: &str| {
             daemon.answer(line, 1, &told, &asks);
@@ -629,6 +650,15 @@ mod tests {
         assert_eq!(heard["changed"][0]["row"]["name"], "Engines");
         assert!(lines.try_recv().is_err(), "more was said than mail's row");
         assert_eq!(documents["records"], json!([]));
+        // Its drawer is heard only by a watch of its key.
+        let drawer =
+            ask(r#"{"id": 4, "ask": "watch", "kind": "drawer", "keys": ["drawer:mail:m1"]}"#);
+        assert_eq!(drawer["records"][0]["drawer"]["title"], "Engines");
+        assert!(
+            heard["changed"][0]["row"]["body"].is_null()
+                && heard["changed"][0]["row"]["drawer"] == "drawer:mail:m1",
+            "a row carried its drawer: {heard}"
+        );
     }
 
     #[test]
