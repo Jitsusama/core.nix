@@ -510,6 +510,23 @@ def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
     ]
 
 
+def slowed_drawers(drawn: dict[bool, dict[str, list[tuple[int, int]]]]) -> list[str]:
+    """Say each place's drawers by turns, and give those the load slowed past their bound."""
+    slowed = []
+    for place in sorted(drawn[True]):
+        loaded = sorted(took for took, _ in drawn[True][place])
+        frozen = sorted(took for took, _ in drawn[False].get(place, []))
+        print(
+            f"{place}'s drawer: under load {sorted(drawn[True][place])} ms to its frame and"
+            f" making, against {sorted(drawn[False].get(place, []))} with the load frozen"
+        )
+        if frozen and loaded[(len(loaded) - 1) // 2] > (
+            SLOWER_MOST * frozen[(len(frozen) - 1) // 2] + STEPPED_MORE
+        ):
+            slowed.append(place)
+    return slowed
+
+
 @pytest.fixture
 def pages_filled(desktop: Desktop) -> Iterator[None]:
     """Give Chrome its sites, its tab and a download, and a Neovim two files, as Joel's have."""
@@ -591,16 +608,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
             SLOWER_MOST * middle(free[place]) + STEPPED_MORE
         ):
             slowed.append(place)
-    drawers_slowed = []
-    for place in sorted(drawn[True]):
-        took = [one for one, _ in drawn[True][place]]
-        frozen = [one for one, _ in drawn[False].get(place, [])]
-        print(
-            f"{place}'s drawer: under load {sorted(drawn[True][place])} ms to its frame and"
-            f" making, against {sorted(drawn[False].get(place, []))} with the load frozen"
-        )
-        if frozen and middle(took) > SLOWER_MOST * middle(frozen) + STEPPED_MORE:
-            drawers_slowed.append(place)
+    drawers_slowed = slowed_drawers(drawn)
     assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
     assert "Programs" in drawn[True], f"no drawer in Programs was timed: {drawn}"
     assert not drawers_slowed, f"the load slowed the drawers of {drawers_slowed}: {drawn}"
