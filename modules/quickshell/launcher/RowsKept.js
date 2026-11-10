@@ -19,11 +19,44 @@ function tagged(keys) {
     });
 }
 
+// The rows held that keep their places, the most of them that stand in
+// the same order before and now, so every other row moves once rather
+// than each row it passes: a row falling to the end is one move, not one
+// for each row below it.
+function staying(held, into) {
+    const places = held.map(key => into.indexOf(key));
+    // tails[n]: the row ending the least rising run n + 1 long; before[at]:
+    // the row before it in its run.
+    const tails = [];
+    const before = [];
+    places.forEach((place, at) => {
+        let low = 0;
+        let high = tails.length;
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if (places[tails[middle]] < place) {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        before[at] = low > 0 ? tails[low - 1] : -1;
+        tails[low] = at;
+    });
+    const stay = new Set();
+    for (let at = tails.length > 0 ? tails[tails.length - 1] : -1; at >= 0; at = before[at]) {
+        stay.add(held[at]);
+    }
+    return stay;
+}
+
 // The steps that make `was` into `now`, done in order to a ListModel: the
 // rows gone, last first, as { remove, count }, so each place counts from
-// the rows still there; then each row in its place, as { move, to }, a row
-// held further down moved up, or { insert, key }, one the list didn't
-// hold. None where the two are the same.
+// the rows still there; then each row in its place, as { move, to }, or
+// { insert, key }, one the list didn't hold. A row that moves is moved up
+// into its place, or, in a staying row's way, down to just before the
+// next row listed after it now that stays or has already moved down, or
+// the end. None where the two are the same.
 function steps(was, now) {
     const from = tagged(was);
     const into = tagged(now);
@@ -40,7 +73,19 @@ function steps(was, now) {
         end = at;
     }
     const held = from.filter(key => wanted.has(key));
+    const stay = staying(held, into);
+    const settled = new Set(stay);
     for (let at = 0; at < into.length; at += 1) {
+        // Rows before a staying row's place that aren't yet in theirs
+        // move, so it never does.
+        while (stay.has(into[at]) && held[at] !== into[at]) {
+            const falling = held[at];
+            const next = into.slice(into.indexOf(falling) + 1).find(key => settled.has(key));
+            const to = next === undefined ? held.length - 1 : held.indexOf(next) - 1;
+            done.push({ move: at, to });
+            held.splice(to, 0, ...held.splice(at, 1));
+            settled.add(falling);
+        }
         if (held[at] === into[at]) {
             continue;
         }
