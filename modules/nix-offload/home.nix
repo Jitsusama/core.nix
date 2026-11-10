@@ -107,8 +107,11 @@ let
       }
     );
   # How many VM lenders past the second there may be, one for each folder
-  # nixos.nix makes, /run/nix-offload-vm-3 to -8, and `there` looks in.
-  extraVmLenders = 6;
+  # nixos.nix makes, /run/nix-offload-vm-3 to -16, and `there` looks in:
+  # on 9 November eight were full for twenty minutes, and VM runs waited a
+  # median of 7 minutes for them. One lent past those busy costs nothing,
+  # since it's lent only while they're full and goes once idle.
+  extraVmLenders = 14;
   # The lender of the VM builder numbered `number`, from 3, while
   # vmTests.extra has one for it.
   extraVm =
@@ -622,6 +625,14 @@ in
     systemd.user.services.nix-offload-vm-6 = extraVm 6;
     systemd.user.services.nix-offload-vm-7 = extraVm 7;
     systemd.user.services.nix-offload-vm-8 = extraVm 8;
+    systemd.user.services.nix-offload-vm-9 = extraVm 9;
+    systemd.user.services.nix-offload-vm-10 = extraVm 10;
+    systemd.user.services.nix-offload-vm-11 = extraVm 11;
+    systemd.user.services.nix-offload-vm-12 = extraVm 12;
+    systemd.user.services.nix-offload-vm-13 = extraVm 13;
+    systemd.user.services.nix-offload-vm-14 = extraVm 14;
+    systemd.user.services.nix-offload-vm-15 = extraVm 15;
+    systemd.user.services.nix-offload-vm-16 = extraVm 16;
 
     systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
       Unit = {

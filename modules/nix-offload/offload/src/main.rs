@@ -113,7 +113,7 @@
 //! `nix-offload/vm-builds` says it runs at once, else 4 (as both VM
 //! lenders' helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs
 //! still going have sent it, each saying so in its folder's `sending`.
-//! Lenders in /run/nix-offload-vm-3 to -8 lend more, each taking what's
+//! Lenders in /run/nix-offload-vm-3 to -16 lend more, each taking what's
 //! past the room of those before it. Past every builder's room, a run's
 //! VM tests wait for room, in the order runs came, since Nix bounds each
 //! run's build alone. A run's parts go at once, each to its own builder,
@@ -699,12 +699,12 @@ fn vm_dirs(vm_dir: &Path) -> Vec<PathBuf> {
 }
 
 /// The folders of the VM lenders past the second, /run/nix-offload-vm-3
-/// to -8, as many as home.nix's vmTests.extra may lend from;
+/// to -16, as many as home.nix's vmTests.extra may lend from;
 /// `NIX_OFFLOAD_VM_EXTRA_DIRS` names others, a path list.
 fn vm_extra_dirs() -> Vec<PathBuf> {
     env::var_os("NIX_OFFLOAD_VM_EXTRA_DIRS").map_or_else(
         || {
-            (3..=8)
+            (3..=16)
                 .map(|number| PathBuf::from(format!("{VM_DIR}-{number}")))
                 .collect()
         },
