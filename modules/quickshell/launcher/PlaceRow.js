@@ -64,25 +64,16 @@ function drawer(name, names, eyebrow, holding = "") {
 // reading not back yet says it (Displays' Room Light, Recent's rows).
 const READING = "\u2026";
 
-// Home's rows as the launcher keeps them while it's shut, for the next
-// opening to draw at once (Launcher.qml's keepHome): each where it stood,
-// by the same name and key, so the rows read again land where they are
-// and nothing moves in; but what each said of how it stands, at its right
-// or below its name, is as old as the opening that read it, so it says
-// it's being read rather than showing that as now (Y2YBTS, 2026-11-10).
-// A row that said nothing there still says nothing.
-function kept(rows) {
+// Home's rows as the launcher kept them, still unfilled a second after an
+// opening asked for them (Launcher.qml's keptUnfilled). Kept, they're drawn
+// as they stood, sides and notes alike, and the fill replaces in place only
+// what changed, since a mark shown for a frame or two and then put back is
+// a flash (VKCF3Z, 2026-11-10). Held a second, a reading at a row's right
+// could mislead, so it says it's being read; its note and name stay, and
+// a row that said nothing there still says nothing.
+function unfilled(rows) {
     return rows.map(row => {
         const stands = (row.side ?? "") !== "" || (row.sideItems ?? []).length > 0;
-        const noted = (row.note ?? "") !== "";
-        if (!stands && !noted) {
-            return row;
-        }
-        return Object.assign({}, row, {
-            side: stands ? READING : row.side,
-            sideItems: [],
-            note: noted ? READING : row.note,
-            kept: true
-        });
+        return stands ? Object.assign({}, row, { side: READING, sideItems: [] }) : row;
     });
 }

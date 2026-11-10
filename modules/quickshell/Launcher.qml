@@ -7105,6 +7105,9 @@ Scope {
             // the room past them before the next step's mark.
             pathDrawn: prompt.pathDrawn(),
             rows: root.matches.slice(0, 20).map(row => row.name),
+            // The rows the card shows, by what each is and what it says at its
+            // right, so a check sees each frame of an opening filling in.
+            seen: root.rowsSaid(),
             // How many rows there are in all, beyond the twenty named.
             count: root.matches.length,
             // What each of those rows is, and how it reads whole, so a
@@ -7760,6 +7763,7 @@ Scope {
             openAsked = KeyTimes.now();
             openSettled = -1;
             openBegun = -1;
+            openKept = false;
         }
     }
     // When the ask that opened it was done, every binding the opening
@@ -7806,6 +7810,27 @@ Scope {
             open = true;
     }
 
+    // Whether the opening began from what was kept, and what filled it in:
+    // its first frame, or a key or a click before that frame was drawn,
+    // whose fill is said once the frame is, since it's that opening's.
+    property bool openKept: false
+    property string openFilledBy: ""
+    property real fillEarly: -1
+
+    // A second after an opening asked for home as it was kept, rows still
+    // unfilled say how they stand as being read (PlaceRow.unfilled), since
+    // a reading held that long could mislead: Joel's openings under load
+    // took seconds to their frame (2026-11-10).
+    Timer {
+        id: keptUnfilled
+
+        interval: 1000
+        onTriggered: {
+            if (root.opening && !root.open)
+                root.matches = PlaceRow.unfilled(root.matches);
+        }
+    }
+
     // Home as the last opening found it, and whether the closed card holds
     // it, kept (keepHome), so the next opening can draw it at once.
     property var homeKept: []
@@ -7817,6 +7842,10 @@ Scope {
     // over so the first one lands, and asks for its frame; nothing else
     // wakes until that frame is drawn (openShown).
     function beginOpening() {
+        keptUnfilled.restart();
+        openKept = true;
+        openFilledBy = "";
+        fillEarly = -1;
         opening = true;
         keysHeld = false;
         openMark.setText("open\n");
@@ -7833,19 +7862,23 @@ Scope {
         if (!opening)
             return;
         openDrawn();
-        filled();
+        filled("frame");
     }
 
     // Brings a card shown from what it kept up to now: open, every source
     // it reads wakes, home is found again where its rows stand, and its
     // drawer comes. A key or a click before its first frame is drawn does
     // this first, so it acts on what's there now, never on what was kept.
-    function filled() {
+    function filled(by) {
         if (!opening || open)
             return;
+        openFilledBy = by;
         const began = KeyTimes.now();
         open = true;
-        filledSaid(KeyTimes.now() - began);
+        if (openAsked >= 0)
+            fillEarly = KeyTimes.now() - began;
+        else
+            filledSaid(KeyTimes.now() - began);
     }
 
     // Shut again before it was filled in, as a second press of the chord
@@ -7858,10 +7891,10 @@ Scope {
     }
 
     // Once the closed card is clear, it's put back to home as the last
-    // opening found it, or as it was left there, each row saying how it
-    // stands as still being read (PlaceRow.kept), so the next opening
-    // draws it with nothing made and nothing woken. Every row is read
-    // again as that opening fills in, landing where it stands.
+    // opening found it, or as it was left there, each row as it stood, so
+    // the next opening draws it with nothing made and nothing woken. Every
+    // row is read again as that opening fills in, landing where it stands,
+    // and only what changed is drawn anew.
     function keepHome() {
         if (open || opening || parting !== "")
             return;
@@ -7879,7 +7912,7 @@ Scope {
             typed = "";
             candidates = [];
             prompt.text = "";
-            matches = PlaceRow.kept(home);
+            matches = home;
             current = 0;
             tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
         } finally {
@@ -7910,7 +7943,7 @@ Scope {
             return;
         const worked = Math.round(fillWorked);
         const filled = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
-            verbs: openVerbsWeighed, filled: rowsSaid() };
+            verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy };
         openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);
         console.info(`launcher: filled the opening in ${filled.filling} ms, ${worked} ms`
             + ` working (${Pacing.openingParts(fillParts)}) and the rest waking`);
@@ -7941,7 +7974,7 @@ Scope {
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
-        const kept = opening;
+        const kept = openKept;
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows,
@@ -7949,6 +7982,10 @@ Scope {
         if (kept)
             timed.shown = rowsSaid();
         openingsTimed = openingsTimed.concat([timed]).slice(-20);
+        if (kept && fillEarly >= 0) {
+            filledSaid(fillEarly);
+            fillEarly = -1;
+        }
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
             + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
@@ -8377,7 +8414,7 @@ Scope {
                 z: 1
                 enabled: root.opening
                 onPressed: mouse => {
-                    root.filled();
+                    root.filled("click");
                     mouse.accepted = false;
                 }
             }
@@ -8531,7 +8568,7 @@ Scope {
                         narrowed: root.typed !== "" && root.matches.length > 0
                             ? (Words.field.found ?? "").replace("{count}",
                                 String(root.matches.length)) : ""
-                        onPressing: root.filled()
+                        onPressing: root.filled("key")
                         onTextChanged: {
                             // Put back to home while closed, nothing is
                             // searched or timed (keepHome).
