@@ -38,6 +38,7 @@ mod replay;
 #[cfg(test)]
 mod sim;
 mod stamp;
+mod waiting;
 
 use memory::{Held, Memory};
 use probe::{Echo, Probes};
@@ -194,6 +195,10 @@ struct Shaped {
     told: bool,
     /// Whether a call's or a screen share's traffic crosses the link.
     real_time: qdisc::RealTime,
+    /// What the upload's CAKE held when last read, and of the reads since
+    /// the controller was last told, how many found a queue in it.
+    holding: Option<(u64, u64)>,
+    queued_reads: (u32, u32),
 }
 
 impl Shaped {
@@ -204,14 +209,34 @@ impl Shaped {
     /// within three hours, on a connection carrying about 11, and a cut
     /// could go no further under that than Wi-Fi's floor, so the queue
     /// formed in the router behind every session's requests.
-    fn bytes(&self) -> (u64, u64) {
-        let sent = |dev: &str| {
-            sh(&words(&format!("tc -s -j qdisc show dev {dev}")))
-                .ok()
-                .and_then(|json| qdisc::shaped_bytes(&json))
+    ///
+    /// The upload's CAKE is read for the queue it holds at the same time,
+    /// five times a second, so a moment's burst through it isn't taken
+    /// for a queue.
+    fn bytes(&mut self) -> (u64, u64) {
+        let read = |dev: &str| sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).ok();
+        let up = read(&self.uplink.name);
+        if let Some(now) = up.as_deref().and_then(qdisc::holding) {
+            let (queued, reads) = &mut self.queued_reads;
+            *queued += u32::from(qdisc::queued(self.holding, now));
+            *reads += 1;
+            self.holding = Some(now);
+        }
+        let sent = |json: Option<String>| {
+            json.and_then(|json| qdisc::shaped_bytes(&json))
                 .unwrap_or(0)
         };
-        (sent(&self.uplink.name), sent(&self.ifb))
+        (sent(up), sent(read(&self.ifb)))
+    }
+
+    /// Whose the upload's queue has been since last asked: whether CAKE
+    /// held one in most reads, and whether data waits to go.
+    fn ours(&mut self, waiting: bool) -> Option<oneway::Ours> {
+        let (queued, reads) = std::mem::take(&mut self.queued_reads);
+        (reads > 0).then_some(oneway::Ours {
+            queued: queued * 2 >= reads,
+            waiting,
+        })
     }
 
     /// What the link sent and received since it was last counted, in
@@ -239,18 +264,19 @@ fn recording(folder: &Path) -> ExitCode {
             thread::sleep(Duration::from_secs(5));
             continue;
         };
-        let network = network_of(&uplink);
+        let network = asked_network_of(&uplink);
         let gateway = uplink.gateway.as_ref().and_then(|g| g.parse().ok());
         // The same uplink on the same network: a router that hadn't yet
         // answered names its network once it does, and the pool and the
-        // record start over under that name.
+        // record start over under that name. A router whose entry has gone
+        // stale for a moment is still the same router.
         let still = || {
             uplinks().iter().find(|u| {
                 u.gateway
                     .as_ref()
                     .is_some_and(|g| g.parse::<std::net::Ipv4Addr>().is_ok())
             }) == Some(&uplink)
-                && network_of(&uplink) == network
+                && router_of(&uplink).is_none_or(|router| router == network)
         };
         record::record(&uplink.name, &network, gateway, folder, &still);
         thread::sleep(Duration::from_secs(2));
@@ -260,6 +286,42 @@ fn recording(folder: &Path) -> ExitCode {
 /// Names the network an uplink is on: its router's hardware address, or
 /// the link's own name until the router has answered.
 fn network_of(uplink: &links::Uplink) -> String {
+    router_of(uplink).unwrap_or_else(|| format!("link {}", uplink.name))
+}
+
+/// How many times, and how often, the recorder asks a router that hasn't
+/// answered yet: a router answers ARP within a second of being asked.
+const ASKS: u32 = 10;
+const ASKING: Duration = Duration::from_millis(300);
+
+/// Names the network as `network_of` does, first asking a router that
+/// hasn't answered. A link that has just come up sends nothing to its
+/// router until something needs it, so the recorder, which starts with
+/// the link, named its network by the link and started over under the
+/// router's name a moment later (19:18:42 on 9 November).
+fn asked_network_of(uplink: &links::Uplink) -> String {
+    let gateway = uplink
+        .gateway
+        .as_ref()
+        .and_then(|g| g.parse::<std::net::Ipv4Addr>().ok());
+    for _ in 0..ASKS {
+        if let Some(router) = router_of(uplink) {
+            return router;
+        }
+        // Any datagram to the router makes the kernel ask its address;
+        // the discard port takes it, or the router drops it.
+        if let Some(gateway) = gateway
+            && let Ok(socket) = std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0))
+        {
+            let _ = socket.send_to(&[0], (gateway, 9));
+        }
+        thread::sleep(ASKING);
+    }
+    network_of(uplink)
+}
+
+/// The hardware address of an uplink's router, once it has answered.
+fn router_of(uplink: &links::Uplink) -> Option<String> {
     uplink
         .gateway
         .as_ref()
@@ -271,7 +333,6 @@ fn network_of(uplink: &links::Uplink) -> String {
             .ok()
         })
         .and_then(|json| links::gateway_address(&json))
-        .unwrap_or_else(|| format!("link {}", uplink.name))
 }
 
 /// The most a link can carry each way, in kbit/s: Ethernet says, Wi-Fi
@@ -339,6 +400,8 @@ fn start(
         follows: None,
         told: false,
         real_time: qdisc::RealTime::default(),
+        holding: None,
+        queued_reads: (0, 0),
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
@@ -465,6 +528,17 @@ fn run(options: &Options) -> ExitCode {
             follow_vpns(&mut vpns, &options.vpns, base);
             reach = local(&shaped, &vpns);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
+            // The one-way controller hears, each second, whose each
+            // upload's queue is, which its probes can't see behind a
+            // router that queues flow by flow.
+            if let Some(l) = live.as_mut() {
+                let waiting = waiting::read(&options.proc);
+                for (name, s) in &mut shaped {
+                    if let Some(ours) = s.ours(waiting) {
+                        l.see(name, ours);
+                    }
+                }
+            }
         }
         // A slice or unit made a moment ago reaches its set at the next
         // step. nixos-rebuild loads the table afresh on a switch, empty, so
@@ -689,6 +763,7 @@ fn look(
                     sh(&words(&format!("tc -j qdisc show dev {}", s.ifb))).unwrap_or_default();
                 if !qdisc::ours(&json) || !qdisc::turned(&json) || !qdisc::ours(&ifb) {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
+                    s.holding = None;
                     install(
                         &s.uplink.name,
                         &s.ifb,

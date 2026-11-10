@@ -276,6 +276,31 @@ pub fn unbulk_bytes(json: &str) -> Option<u64> {
     )
 }
 
+/// What the CAKE in `tc -s -j qdisc show dev` holds now, in bytes, and the
+/// packets it has dropped or marked, every tin together, or none without a
+/// CAKE.
+pub fn holding(json: &str) -> Option<(u64, u64)> {
+    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
+        return None;
+    };
+    let cake = all.iter().find(|q| q["kind"] == "cake")?;
+    let backlog = cake["backlog"].as_u64().unwrap_or(0);
+    let marks: u64 = tins(json).iter().map(|t| t.marks).sum();
+    Some((backlog, cake["drops"].as_u64().unwrap_or(0) + marks))
+}
+
+/// A queue CAKE holds, at least, rather than packets passing through it: a
+/// couple of full-sized packets waiting.
+const QUEUED_BYTES: u64 = 3_000;
+
+/// Whether CAKE held a queue since it was last read: something waiting in
+/// it now, or a packet it dropped or marked since, from what `holding`
+/// read then and now. A count that starts over, as a link's queues made
+/// again do, says nothing of the drops.
+pub fn queued(before: Option<(u64, u64)>, now: (u64, u64)) -> bool {
+    now.0 >= QUEUED_BYTES || before.is_some_and(|(_, dropped)| now.1 > dropped)
+}
+
 /// The packets the video tin of the CAKE in `tc -s -j qdisc show dev` has
 /// sent.
 pub fn video_packets(json: &str) -> u64 {
@@ -354,6 +379,24 @@ mod tests {
             {"sent_bytes":9000},{"sent_bytes":100},{"sent_bytes":20},{"sent_bytes":3}]}]"#;
         assert_eq!(unbulk_bytes(json), Some(123));
         assert_eq!(unbulk_bytes(r#"[{"kind":"fq_codel"}]"#), None);
+    }
+
+    #[test]
+    fn what_cake_holds_is_its_backlog_and_every_tins_drops_and_marks() {
+        let json = r#"[{"kind":"htb","backlog":99999,"drops":7},
+                      {"kind":"cake","backlog":4542,"drops":10,"tins":[
+            {"ecn_mark":1},{"ecn_mark":2},{"ecn_mark":0},{"ecn_mark":0}]}]"#;
+        assert_eq!(holding(json), Some((4542, 13)));
+        assert_eq!(holding(r#"[{"kind":"fq_codel","backlog":9000}]"#), None);
+    }
+
+    #[test]
+    fn a_queue_is_something_waiting_in_cake_or_a_packet_it_dropped() {
+        assert!(queued(Some((0, 13)), (4542, 13)));
+        assert!(queued(Some((0, 13)), (0, 14)));
+        assert!(!queued(Some((0, 13)), (1514, 13)));
+        // Queues made again count from nothing.
+        assert!(!queued(None, (0, 14)));
     }
 
     #[test]

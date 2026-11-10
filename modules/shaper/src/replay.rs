@@ -56,6 +56,9 @@ pub struct Second {
     pub down_delay_ms: Option<f64>,
     /// The gateway's round trip, in ms, when it answered in the second.
     pub gateway_ms: Option<f64>,
+    /// Whose the upload's queue was, as only the live shaper sees it; the
+    /// recorder's lines don't say, so a replay leaves it None.
+    pub up_ours: Option<crate::oneway::Ours>,
 }
 
 /// The rates a controller sets each way, in kbit/s; None holds no limit.
@@ -350,6 +353,7 @@ impl Reading {
                 up_delay_ms: median(tick.up.values().copied()),
                 down_delay_ms: median(tick.down.values().copied()),
                 gateway_ms: median(tick.gateway.iter().copied()),
+                up_ours: None,
             });
         }
         self.done = self.done.max(second);
