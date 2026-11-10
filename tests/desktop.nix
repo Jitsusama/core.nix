@@ -1181,15 +1181,25 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # brings, so the switch onto it changes the unit in a way that would
       # restart it. Over the boot's own unit, which forces the method away.
       # And the same machine with the shell's unit and the slow one changed,
-      # so a switch onto it stops the slow one and restarts the shell.
+      # so a switch onto it stops the slow one and restarts the shell, and
+      # with a shell.qml of its own, so the shell's files change under the
+      # old shell while the slow one stops.
       specialisation = lib.mkIf switchesTheHome {
         switched.configuration.home-manager.users.${account}.systemd.user.services.sessions-kitty = {
           Unit.X-SwitchMethod = lib.mkOverride 40 "keep-old";
           Service.Environment = [ "SESSIONS_KITTY_SWITCHED=1" ];
         };
-        slowed.configuration.home-manager.users.${account}.systemd.user.services = {
-          quickshell.Service.Environment = [ "SHELL_SWITCHED=1" ];
-          slow-to-stop.Service.Environment = [ "SLOW_TO_STOP_SWITCHED=1" ];
+        slowed.configuration.home-manager.users.${account} = {
+          systemd.user.services = {
+            quickshell.Service.Environment = [ "SHELL_SWITCHED=1" ];
+            slow-to-stop.Service.Environment = [ "SLOW_TO_STOP_SWITCHED=1" ];
+          };
+          xdg.configFile."quickshell/shell.qml".source = lib.mkForce (
+            pkgs.concatText "shell.qml" [
+              ../modules/quickshell/shell.qml
+              (pkgs.writeText "switched" "// The switch's own.\n")
+            ]
+          );
         };
       };
     };

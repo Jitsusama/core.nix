@@ -155,7 +155,8 @@ def test_a_switch_restarts_the_shell_once_a_slow_stop_is_done(desktop: Desktop) 
 
     The switch stops the slow unit, and every other it stops, in one batch and waits for the
     slowest. The shell, restarted rather than stopped with them, runs on until that batch is
-    done, and its new process follows the old one at once.
+    done, and its new process follows the old one at once. Through that batch the old shell
+    runs over the new shell.qml, and loads it no second time.
     """
     machine = desktop.machine
     booted = machine.succeed("readlink -f /run/booted-system").strip()
@@ -170,6 +171,16 @@ def test_a_switch_restarts_the_shell_once_a_slow_stop_is_done(desktop: Desktop) 
         assert "SHELL_SWITCHED=1" in desktop.as_account("systemctl --user cat quickshell"), (
             "the switch didn't change the shell's unit"
         )
+        assert "The switch's own" in desktop.as_account("cat ~/.config/quickshell/shell.qml"), (
+            "the switch didn't change the shell's files"
+        )
+        # Quickshell says each load, or reload, of its files, and each that fails, by this word.
+        loads = [
+            line
+            for line in desktop.as_account(f"journalctl --user _PID={old} -o cat").splitlines()
+            if "configuration" in line.lower()
+        ]
+        assert len(loads) == 1, f"the old shell loaded its files again in the switch: {loads}"
         stopping = lasted(desktop, "slow-to-stop", STOPPING, STOPPED)
         assert stopping > SLOW_STOP - 5, f"the slow unit stopped in {stopping:.1f} s, not slowly"
         new = shown(desktop, "quickshell", "MainPID")["MainPID"]
