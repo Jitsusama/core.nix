@@ -117,6 +117,15 @@ PAGES = [
 ]
 # Neovim's page lists the files each Neovim holds, so one holds two.
 SOUNDINGS = "soundings"
+# The shell started again as a switch starts it, by turns with the load frozen and running, and
+# opened each time as Joel opens it after one: People listing as many as Joel's lists, 486 on
+# 2026-11-10's first opening, and the shell's own start work (Launcher.qml's, 5 s after it
+# starts) done, as it is by the time he opens it. A first opening under load may take twice its
+# time with the load frozen and STEPPED_MORE ms more, as a step may.
+STARTS = 4
+CROWD = "/run/user/1000/crowd"
+LISTED = 500
+STARTED = timedelta(seconds=8)
 
 
 @pytest.fixture(scope="module")
@@ -491,6 +500,77 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
             slowed.append(place)
     assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
     assert not slowed, f"the load slowed stepping into {slowed}: {under} against {free}"
+
+
+def openings(desktop: Desktop) -> list[Json]:
+    """Give the last openings the launcher timed, each from its ask to its first frame."""
+    return cast("list[Json]", json.loads(desktop.as_account("qs ipc call launcher openings")))
+
+
+def opened_timed(desktop: Desktop) -> Json:
+    """Open the launcher as its chord does, and give that opening's time to its first frame."""
+    timed = len(openings(desktop))
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    each: list[Json] = []
+
+    def drawn(_: bool) -> bool:
+        each[:] = openings(desktop)
+        return len(each) > timed
+
+    retry(drawn, timeout=REACHING)
+    desktop.close_launcher()
+    return each[-1]
+
+
+@pytest.mark.usefixtures("loaded")
+def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is_busy(
+    desktop: Desktop,
+) -> None:
+    """The first opening after the shell starts shows soon, as later ones do, every core busy.
+
+    Every switch starts the shell again, several times a day, and Joel named the start as slow
+    (Y2YBTS, 2026-11-10): its first opening made every row its places read, 486 of them
+    People's, where a later one makes only what changed.
+    """
+    timing = Timing(desktop)
+    first: dict[bool, list[int]] = {True: [], False: []}
+    # Each opening as the launcher timed it, the first after a start and the one after it.
+    said: list[tuple[bool, Json, Json]] = []
+    desktop.as_account(f"echo '{LISTED} 1 listed' > {CROWD}.new && mv {CROWD}.new {CROWD}")
+    try:
+        for turn in range(STARTS):
+            loaded = turn % 2 == 1
+            if loaded != timing.loading:
+                timing.load(on=loaded)
+            since = desktop.mark()
+            desktop.as_account("systemctl --user restart quickshell")
+            desktop.reported(
+                "crowd ", lambda rest: rest.startswith(f"{LISTED} "), since, REACHING * 4
+            )
+            time.sleep(STARTED.total_seconds())
+            opening = opened_timed(desktop)
+            assert opening["first"], f"the opening after a start wasn't its first: {opening}"
+            first[loaded].append(opening["took"])
+            said.append((loaded, opening, opened_timed(desktop)))
+    finally:
+        if not timing.loading:
+            timing.load(on=True)
+        desktop.as_account(f"echo '0 0' > {CROWD}.new && mv {CROWD}.new {CROWD}")
+        desktop.launcher_left_closed()
+
+    def middle(times: list[int]) -> int:
+        return sorted(times)[(len(times) - 1) // 2]
+
+    for loaded, opening, after in said:
+        print(
+            f"{'under load' if loaded else 'with the load frozen'}, the first opening after a"
+            f" start {opening}, and the one after it {after}"
+        )
+    assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (
+        f"the load slowed the first opening after a start: {first[True]} ms against "
+        f"{first[False]} ms frozen"
+    )
 
 
 @pytest.mark.usefixtures("keyboard", "loaded")
