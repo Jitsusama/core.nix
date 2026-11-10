@@ -47,13 +47,27 @@ let
         # conversation can be sent to it; it says so from a child process.
         Type = "notify";
         NotifyAccess = "all";
-        ExecStart = lib.escapeShellArgs [
-          host.node
-          # The harness's package.json names no module type, on purpose.
-          "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
-          entry
-          kind
-        ];
+        ExecStart = lib.escapeShellArgs (
+          # Environment= can only replace PATH, so env puts the realm's folders
+          # before the user manager's; systemd expands ${PATH}, and env execs
+          # node in its place, the pid systemd watches. A folder's % and $ are
+          # doubled, so systemd reads neither as a specifier or a variable. The
+          # manager always has a PATH on NixOS, so the list never ends in the
+          # empty entry that would mean the working folder.
+          lib.optionals (host.path != [ ]) [
+            "${pkgs.coreutils}/bin/env"
+            "PATH=${
+              lib.concatMapStringsSep ":" (lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ]) host.path
+            }:\${PATH}"
+          ]
+          ++ [
+            host.node
+            # The harness's package.json names no module type, on purpose.
+            "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
+            entry
+            kind
+          ]
+        );
         # Quoted, as systemd splits an unquoted entry at its spaces.
         Environment = lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
           host.environment
@@ -103,6 +117,17 @@ in
             description = ''
               The node that pi was built with, which its native modules are
               built for; the host runs on it.
+            '';
+          };
+          path = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            example = [ "/home/someone/.local/share/dev/bin" ];
+            description = ''
+              Folders put before the user manager's PATH, for the commands the
+              realm's launcher finds on a shell's PATH and a user service's
+              lacks: those the host runs for its credential, and those its
+              conversations' tools run.
             '';
           };
           environment = lib.mkOption {
