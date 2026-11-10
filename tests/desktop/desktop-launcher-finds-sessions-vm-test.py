@@ -1248,55 +1248,67 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         ],
     }
     desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/east ~/north ~/west")
-    kept(desktop, "~/.local/state/pi/restore.json", lost)
-    kept(desktop, arranged, {"v": 1, "boots": {"a-boot-before": where}})
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("to reopen", selecting="Sessions to Reopen")
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
-    desktop.land()
-    # kitty focuses a window it made with the token niri gave it, and on a
-    # busy machine that can come after the next session's workspace was
-    # focused, so north opens on the first. This stands in for that, every
-    # time: the first workspace is focused again until north is there.
-    pulling = (
-        "for _ in $(seq 400); do niri msg --json windows | grep -q 'session 01c3-north' && break;"
-        " niri msg action focus-workspace 1; sleep 0.05; done"
-    )
-    desktop.as_account(f"setsid sh -c {shlex.quote(pulling)} > /dev/null 2>&1 &")
-    watch_the_focus(desktop)
-    since = desktop.mark()
-    machine.send_key("ret")
-    opening = "niri msg --json windows | grep -o 'pi --session 01c3-' | wc -l"
-    machine.wait_until_succeeds(
-        desktop.in_session(f"[ $({opening}) = 3 ]"), timeout=dt.timedelta(seconds=60)
-    )
-    desktop.launcher_until(lambda shown: not shown["open"])
-    # Each began two seconds or more after the one before, so they don't
-    # all start at once. The shell paces them by its own clock, and the
-    # journal stamps each line as it reads it, up to a tenth of a second
-    # late on a busy machine: one read late once made a gap of 1.94 s
-    # between two the shell began 2 s apart.
-    began = started_apart(desktop, since, "report[resumed session 01c3-")
-    assert len(began) == len(where), began
-    assert all(gap >= 2 - JOURNAL_LAG for gap in began[1:]), began
-    back = sat(desktop, "01c3-")
-    assert back["01c3-west"][0] == back["01c3-east"][0] == 1, back
-    assert back["01c3-west"][1] < back["01c3-east"][1], back
-    assert back["01c3-north"][0] == 2, back  # noqa: PLR2004
-    # Each opened there, never on the workspace focused and moved after,
-    # though the focus was on the first while north opened. A title goes on
-    # past its session with what it was told, so it's found by what it
-    # begins with.
-    for one in where:
-        titled = f"pi --session {one}"
-        window = next(each for each in desktop.windows() if each["title"].startswith(titled))
-        assert first_on(desktop, titled) == window["workspace_id"], one
-    # Nothing's left to reopen once this boot is the one kept.
-    desktop.as_account("rm $XDG_RUNTIME_DIR/pi-stays && pkill -f 'sleep 600'")
-    kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
-    desktop.as_account("rm -rf ~/east ~/north ~/west ~/focus-events")
+    # Its sessions end however it ends, so a failure here leaves the next
+    # subtest no sessions of its own to trip on.
+    try:
+        kept(desktop, "~/.local/state/pi/restore.json", lost)
+        kept(desktop, arranged, {"v": 1, "boots": {"a-boot-before": where}})
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("to reopen", selecting="Sessions to Reopen")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+        desktop.land()
+        # kitty focuses a window it made with the token niri gave it, and on a
+        # busy machine that can come after the next session's workspace was
+        # focused, so north opens on the first. This stands in for that, every
+        # time: the first workspace is focused again until north is there.
+        pulling = (
+            "for _ in $(seq 400); do niri msg --json windows | grep -q 'session 01c3-north'"
+            " && break; niri msg action focus-workspace 1; sleep 0.05; done"
+        )
+        desktop.as_account(f"setsid sh -c {shlex.quote(pulling)} > /dev/null 2>&1 &")
+        watch_the_focus(desktop)
+        since = desktop.mark()
+        machine.send_key("ret")
+        opening = "niri msg --json windows | grep -o 'pi --session 01c3-' | wc -l"
+        machine.wait_until_succeeds(
+            desktop.in_session(f"[ $({opening}) = 3 ]"), timeout=dt.timedelta(seconds=60)
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+        # Each began two seconds or more after the one before, so they don't
+        # all start at once. The shell paces them by its own clock, and the
+        # journal stamps each line as it reads it, up to a tenth of a second
+        # late on a busy machine: one read late once made a gap of 1.94 s
+        # between two the shell began 2 s apart.
+        began = started_apart(desktop, since, "report[resumed session 01c3-")
+        assert len(began) == len(where), began
+        assert all(gap >= 2 - JOURNAL_LAG for gap in began[1:]), began
+        back = sat(desktop, "01c3-")
+        # Each workspace's sessions go back together, in order, on a workspace
+        # of their own: by who sits with whom, never by the number a workspace
+        # had last boot, which the windows already here have taken (Joel,
+        # 2026-11-09: one placer puts every window back by identity).
+        assert back["01c3-west"][0] == back["01c3-east"][0], back
+        assert back["01c3-west"][1] < back["01c3-east"][1], back
+        assert back["01c3-north"][0] == back["01c3-west"][0] + 1, back
+        # Each opened there, never on the workspace focused and moved after,
+        # though the focus was on the first while north opened. A title goes on
+        # past its session with what it was told, so it's found by what it
+        # begins with.
+        for one in where:
+            titled = f"pi --session {one}"
+            window = next(each for each in desktop.windows() if each["title"].startswith(titled))
+            assert first_on(desktop, titled) == window["workspace_id"], one
+    finally:
+        # Each pattern bracketed, so pkill doesn't match the shell it runs in.
+        desktop.as_account(
+            "rm -rf $XDG_RUNTIME_DIR/pi-stays ~/east ~/north ~/west ~/focus-events;"
+            " pkill -f 'sleep 60[0]'; pkill -f 'focus-workspac[e] 1';"
+            " pkill -f 'event-strea[m]'; true"
+        )
+        # Nothing's left to reopen once this boot is the one kept.
+        kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
 
 
 def test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile(
