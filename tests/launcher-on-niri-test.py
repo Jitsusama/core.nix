@@ -879,6 +879,43 @@ def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(shell: Shell)
     assert not drift, f"the selection was drawn off its row: {drift}"
 
 
+def test_a_letter_narrowing_the_rows_draws_none_it_kept(shell: Shell) -> None:
+    """A letter that leaves rows listed draws none of them again, only rows new to the list.
+
+    Kept only where the start and the end were the same, a letter narrowing a search drew
+    every row it kept afresh, about 3 ms each in the sandbox and most of what its showing
+    spent after its search (2026-11-09). Here the letter takes away rows at both ends.
+    """
+    titles = [f"Wren {name}" for name in ("Ash", "Birch", "Cedar", "Dogwood")]
+    windows = [shell.opened(title) for title in titles]
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.type_in("wren")
+        shell.launcher_until(lambda shown: set(titles) <= set(shown["rows"]))
+        before = laid_out(shell)
+        was = shell.showing()
+        shell.send_chars(" c")
+        shell.launcher_until(lambda shown: shown["typed"] == "wren c")
+        after = laid_out(shell)
+        now = shell.showing()
+        shell.close_launcher()
+    finally:
+        for window in windows:
+            shell.close(window)
+    # Else a row held before stood past what's reported, and this can't say it was kept.
+    assert was["count"] <= len(was["things"]), was["count"]
+    held = {thing["is"] for thing in was["things"]}
+    new = [thing["is"] for thing in now["things"] if thing["is"] not in held]
+    kept = [thing["is"] for thing in now["things"] if thing["is"] in held]
+    # Else nothing was kept, and this proves nothing.
+    assert kept, (was["rows"], now["rows"])
+    drawn = int(after["drawn"]) - int(before["drawn"])
+    assert drawn <= len(new), (
+        f"{drawn} rows drawn afresh where {len(new)} are new ({new}); kept {kept}"
+    )
+
+
 def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell) -> None:
     """A collection changing while home is shown leaves the selection and the list still.
 
