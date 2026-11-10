@@ -949,8 +949,8 @@ pub fn round_beside(
         match outcome {
             Outcome::Passed => {
                 if on_hold(test) {
-                    let passes = format!("passes again at {}", short(&head));
-                    settler.write(|| clear_hold_of(state, test, &passes))?;
+                    let how = format!("passes again at {}", short(&head));
+                    settler.write(|| clear_hold_of(state, test, &how))?;
                 }
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
