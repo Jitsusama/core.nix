@@ -15,7 +15,8 @@ pragma ComponentBehavior: Bound
 // it has more than this one, each that can't take a session dimmed with
 // why, each other saying how it stands as Machines says it, from the
 // node's machine records, and Wherever It Fits last; and a quest made since is heard, each
-// other's row kept as every quest is told again. It exits 0 once every
+// other's row kept as every quest is told again, and a change remakes only the quests it
+// names, a list written again with only when each was heard moved remaking none. It exits 0 once every
 // case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -31,6 +32,10 @@ ShellRoot {
     // The rows before the store is written again, and how many were made.
     property var made: []
     property int counted: 0
+    // The quests before the store is written again, and how many times
+    // they were said anew since.
+    property var before: []
+    property int questsSaid: 0
 
     function expect(what, holds, said) {
         if (!holds)
@@ -72,6 +77,11 @@ ShellRoot {
         onQuestsChanged: {
             if (root.waiting === "heard shut" && theQuests.quests.length > 4)
                 Qt.callLater(root.heardShut);
+            if (root.waiting === "only those heard") {
+                root.questsSaid += 1;
+                if (theQuests.quests.some(quest => quest.status === "retired"))
+                    Qt.callLater(root.onlyThoseHeard);
+            }
         }
     }
 
@@ -298,6 +308,7 @@ ShellRoot {
 
             root.made = theQuests.looksThrough();
             root.counted = theQuests.tally.rows;
+            root.before = theQuests.quests.slice();
             root.waiting = "heard shut";
             theLauncher.wanting = false;
             // The node tells every quest again as the harness writes its
@@ -324,6 +335,12 @@ ShellRoot {
                 `${theQuests.all.length} rows`);
             expect("still counted shut", theQuests.counted() === "4 open, 1 driving",
                 theQuests.counted());
+            // Every quest of both lists was copied again at each list
+            // written, 1,063 on Joel's shell (2026-11-10); one told again
+            // with only when it was heard moved is kept as it was.
+            const remade = root.before.filter(quest => !theQuests.quests.includes(quest));
+            expect("every quest told again unchanged kept", remade.length === 0,
+                remade.map(quest => quest.id).join(", "));
             root.waiting = "the quest made since";
             theLauncher.wanting = true;
         } catch (error) {
@@ -347,6 +364,37 @@ ShellRoot {
             expect("every other quest's row kept", remade.length === 0, names(remade));
             expect("one row made, for the new quest", theQuests.tally.rows - root.counted === 1,
                 `${theQuests.tally.rows - root.counted} rows`);
+            // The list written again with nothing moved but when each was
+            // heard, then the new one let go, then the ended one retired:
+            // the quests are said anew for the last two alone.
+            root.before = theQuests.quests.slice();
+            root.questsSaid = 0;
+            root.waiting = "only those heard";
+            tell("quest", { changed: root.open.map(one => ({ key: one.key, heard: 3 }))
+                .concat([{ key: "quest:QEST-20261020-NEWONE", heard: 3 }]) });
+            tell("quest", { gone: ["quest:QEST-20261020-NEWONE"] });
+            tell("ended-quest", { changed: [{ key: "ended-quest:QEST-20250105-BANNER",
+                status: "retired" }] });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // A change remakes only the quests it names (Daemon.qml's heard).
+    function onlyThoseHeard() {
+        if (root.waiting !== "only those heard")
+            return;
+        root.waiting = "the end";
+        try {
+            expect("said anew only for the quest let go and the one retired",
+                root.questsSaid === 2, `${root.questsSaid} times`);
+            expect("the one let go is gone",
+                !theQuests.quests.some(quest => quest.id === "QEST-20261020-NEWONE"),
+                theQuests.quests.map(quest => quest.id).join(", "));
+            const remade = root.before.filter(quest => !theQuests.quests.includes(quest)
+                && quest.id !== "QEST-20261020-NEWONE" && quest.id !== "QEST-20250105-BANNER");
+            expect("every other quest kept", remade.length === 0,
+                remade.map(quest => quest.id).join(", "));
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
