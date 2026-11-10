@@ -6,7 +6,8 @@
 //! watched; the programs are ranked by their share and their memory; a
 //! disk's file systems are found through what's mapped over it; the
 //! brightness and warmth the backlight program steers the screen to are
-//! told as it writes them; and an ask or kind it doesn't know is refused.
+//! told as it writes them; a charge limit set is told before it's
+//! answered; and an ask, act or kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
