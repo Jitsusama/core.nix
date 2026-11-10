@@ -4269,9 +4269,10 @@ onLinux {
   # engine and through its provider from a stand-in for chrome-recent-sites
   # once Chrome is stepped into: file rows in its Recent, each drawer
   # saying where it is then its kind and previewing a picture, and Open
-  # the Latest Download only while there's one. Neovim's files open now come
-  # from a stand-in open-now, whose reading of a real Neovim is open-with's
-  # own tests'.
+  # the Latest Download only while there's one, waiting in its place until
+  # the first reading answers. Neovim's files open now come from a stand-in
+  # open-now, whose reading of a real Neovim is open-with's own tests', each
+  # file's drawer saying where it is and its buffer.
   the-launcher-acts-only-on-what-it-can =
     let
       qt = pkgs.qt6.qtdeclarative;

@@ -807,6 +807,13 @@ ShellRoot {
                     { id: "org.example.viewer-pdf", name: "Viewer PDF", noDisplay: true, command: ["viewer"] },
                     { id: "org.example.viewer", name: "Viewer", noDisplay: false, command: ["/bin/viewer"] }
                 ]), "org.example.viewer");
+            same("by a keyword, where its entry goes by a short name the list doesn't know",
+                applications.recents.entryOf("Long Name of the Painter", [
+                    { id: "org.example.other", name: "Other", keywords: ["painting"],
+                        command: ["other"] },
+                    { id: "org.example.painter", name: "Painter",
+                        keywords: ["Long Name of the Painter", "painting"], command: ["painter"] }
+                ]), "org.example.painter");
             const recording = radio[4];
             same("Sound says it records, with nothing to draw",
                 `${recording.side} ${recording.graph}`, "recording undefined");

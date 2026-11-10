@@ -128,10 +128,14 @@ Scope {
         return (app in lately ? latelyAt[app] : sharedAt[app])?.[line];
     }
 
-    // The desktop entry a program on the shared list is, by its id.
+    // The desktop entry a program on the shared list is, by its id, its
+    // name, a keyword, as an entry given a short name keeps the long one
+    // the list knows it by among its keywords (GIMP's, modules/gimp), or
+    // its command.
     function entryOf(program, entries) {
         const entry = DesktopEntries.heuristicLookup(program)
             ?? entries.find(each => each.name === program)
+            ?? entries.find(each => Array.from(each.keywords ?? []).includes(program))
             ?? entries.find(each => !each.noDisplay
                 && (each.command[0] ?? "").split("/").pop() === program);
         return entry?.id ?? "";

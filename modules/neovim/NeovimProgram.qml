@@ -25,6 +25,11 @@
 // It, since closing a buffer could lose what's unsaved, which Neovim
 // should ask about, not the launcher. open-now asks each Neovim over its
 // own server, where it told its kitty window it listens (showing.lua).
+// Each file's drawer says where it is then its kind, previews its first
+// lines and counts them, as the file chooser says a file (FileFacts.js)
+// once file-preview has read it as saved, and then what only Neovim
+// knows: its buffer's number, as :b takes it, and when it was last in a
+// window (Neovim.js's plateFacts).
 //
 // Its drawer in Programs says how many files are open in how many
 // windows, and how many are modified. It only reads what each Neovim
@@ -32,15 +37,17 @@
 // editor stays the account's own.
 //
 // What's open is read ahead, as the shell starts and again as the
-// launcher closes, and again as Neovim is stepped into for what changed since, as kitty's tabs are (Kitty.qml),
-// so each row is there from the first frame Neovim's page draws, never
-// joining its end late. What each says is read in Neovim.js.
+// launcher closes, and again as Neovim is stepped into for what changed
+// since, as kitty's tabs are (Kitty.qml), so each row is there from the
+// first frame Neovim's page draws, never joining its end late. What each
+// says is read in Neovim.js.
 pragma ComponentBehavior: Bound
 
 import qs
 import Quickshell.Io
 import QtQuick
 import "../Copied.js" as Copying
+import "../FileFacts.js" as FileFacts
 import "Ago.js" as Ago
 import "Neovim.js" as Neovim
 import "NeovimOpening.js" as Opening
@@ -71,6 +78,19 @@ Provider {
     // What open-now last said, word for word, so an answer the same as the
     // last draws nothing again.
     property string lastHeard: ""
+
+    // What a file's drawer says of the file, as the file chooser says it,
+    // in the launcher's words.
+    readonly property var fileWords: FileFacts.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
+    // What file-preview said of each file whose drawer was drawn, by its
+    // path (null where it couldn't), and which were asked, both forgotten
+    // as the launcher closes, since a file open in Neovim changes; the
+    // file asked of now, and the next wanted while it answers.
+    readonly property bool canPreview: (settings.preview ?? []).length > 0
+    property var previews: ({})
+    property var previewAsked: ({})
+    property string previewNext: ""
 
     Component.onCompleted: {
         Repositories.want(provider.settings, false);
@@ -152,6 +172,8 @@ Provider {
                 provider.look();
             } else {
                 provider.looked = false;
+                provider.previews = {};
+                provider.previewAsked = {};
                 provider.readAhead();
             }
         }
@@ -190,7 +212,8 @@ Provider {
     function programFacts(asked) {
         if (asked !== program)
             return [];
-        return Neovim.held(provider.neovims, provider.openNow(), provider.said()).map(fact => ({ label: Words.name(fact.id), value: fact.value }));
+        return Neovim.held(provider.neovims, provider.openNow(), provider.said())
+            .map(fact => ({ label: Words.name(fact.id), value: fact.value }));
     }
 
     // What its rows and drawer say of what's open.
@@ -221,7 +244,77 @@ Provider {
             hue: "action",
             run: () => provider.go(one)
         });
-        return Files.held(one.path, thing, [goes], Neovim.side(one, provider.said()));
+        const row = Files.held(one.path, thing, [goes], Neovim.side(one, provider.said()));
+        row.drawer = () => provider.plate(one, row.name);
+        return row;
+    }
+
+    // A file's drawer: where it is and its kind, its name, its first lines
+    // and how many once file-preview has said, asked a frame after it's
+    // first drawn, never while the drawer's binding reads, since that
+    // would change what it reads; then what only Neovim knows of it.
+    function plate(one, name) {
+        const shown = provider.previews[one.path];
+        if (shown === undefined && provider.canPreview && !provider.previewAsked[one.path]) {
+            provider.previewAsked[one.path] = true;
+            Qt.callLater(() => provider.preview(one.path));
+        }
+        const file = { path: one.path, name: name, where: Files.within(one.path), entry: null };
+        const drawn = FileFacts.plate(file, shown ?? null, provider.fileWords);
+        const now = Date.now();
+        const own = Neovim.plateFacts(one, at => FileFacts.when(at, now, provider.fileWords));
+        drawn.facts = drawn.facts.concat(own.map(fact => ({
+            label: Words.name(fact.id),
+            value: fact.value
+        })));
+        return drawn;
+    }
+
+    // Only the newest wanted waits, so one it replaces is no longer asked,
+    // and its drawer asks again when it's next drawn rather than never.
+    function preview(path) {
+        if (previewing.running) {
+            if (provider.previewNext !== "" && provider.previewNext !== path)
+                delete provider.previewAsked[provider.previewNext];
+            provider.previewNext = path;
+            return;
+        }
+        previewing.path = path;
+        previewing.command = provider.settings.preview.concat(["show", path]);
+        previewing.running = true;
+    }
+
+    function previewed(path, text) {
+        let shown = null;
+        try {
+            const parsed = JSON.parse(text);
+            shown = typeof parsed === "object" && parsed !== null && !parsed.error
+                ? parsed : null;
+        } catch (_unread) {
+            shown = null;
+        }
+        provider.previews = Object.assign({}, provider.previews, { [path]: shown });
+    }
+
+    Process {
+        id: previewing
+
+        property string path: ""
+
+        running: false
+        stdout: StdioCollector {
+            id: previewText
+
+            onStreamFinished: provider.previewed(previewing.path, previewText.text)
+        }
+        // The next is asked once this one has ended, its answer read.
+        onRunningChanged: {
+            if (previewing.running || provider.previewNext === "")
+                return;
+            const next = provider.previewNext;
+            provider.previewNext = "";
+            provider.preview(next);
+        }
     }
 
     // Goes to a file: its kitty window and the buffer inside it through

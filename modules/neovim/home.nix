@@ -293,8 +293,9 @@ in
   # through the git repositories under ~/src, which fd finds and stat
   # dates, Open the Copied Path, and the files each Neovim has open, which
   # open-now asks of them, each file opening Neovim in kitty
-  # (NeovimOpening.js). After every other provider, as it adds no rows of
-  # its own.
+  # (NeovimOpening.js), and each one's drawer previewing it as file-preview
+  # reads it, the file chooser's own (../open-with/file-preview.nix). After
+  # every other provider, as it adds no rows of its own.
   jitsusama.quickshell.launcher.providers.neovim = lib.mkIf linux {
     order = 52;
     source = ./NeovimProgram.qml;
@@ -302,6 +303,7 @@ in
     fd = lib.getExe pkgs.fd;
     stat = lib.getExe' pkgs.coreutils "stat";
     openNow = open-now;
+    preview = [ (lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })) ];
   };
   xdg.configFile."quickshell/launcher/NeovimOpening.js" = lib.mkIf linux {
     source = ./NeovimOpening.js;

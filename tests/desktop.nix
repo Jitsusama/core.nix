@@ -55,17 +55,26 @@ let
     "launcher-reads-mail"
     "launcher-moves-windows"
   ];
-  # The area whose machine has a Chrome to say its tabs, its sites and its
-  # downloads, as the chrome module's recents and its own provider give
+  # The areas whose machine has a Chrome to say its tabs, its sites and
+  # its downloads, as the chrome module's recents and its own provider give
   # them: a desktop entry that starts nothing, and its three lists read from
   # files the test writes, in chrome-recent-sites' form, since no browser
-  # runs here.
-  bringsChrome = area == "opens-files";
-  # The area whose machine brings Neovim, as a workstation does, so
-  # Programs › Neovim lists the files each Neovim in a kitty window holds
-  # and goes to one. Only there, since its plugins and grammars are much
-  # of the account's build, and no other area reads what it holds.
-  bringsNeovim = area == "opens-files";
+  # runs here. Opens-files opens its latest download, and looks-programs
+  # shoots its page.
+  bringsChrome = builtins.elem area [
+    "opens-files"
+    "looks-programs"
+  ];
+  # The areas whose machine brings Neovim, as a workstation does, so
+  # Programs › Neovim lists the files each Neovim in a kitty window holds:
+  # opens-files goes to one, and looks-programs shoots the page. Only
+  # there, since its plugins and grammars are much of the account's build,
+  # and no other area reads what it holds; the two build the one package,
+  # so the second costs no build of its own.
+  bringsNeovim = builtins.elem area [
+    "opens-files"
+    "looks-programs"
+  ];
   # The areas whose launcher lists VMs, as a workstation's does
   # (modules/libvirt/home.nix): what the machine has to open and set, and
   # looks-programs, which shoots them.

@@ -13,13 +13,26 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import STARTING, drawn_at, laid_out, retry
+from desktop_session import (
+    LATEST_DOWNLOAD,
+    STARTING,
+    asked_of,
+    chrome_download_gone,
+    chrome_downloaded,
+    chrome_gone,
+    chrome_opened,
+    chrome_visited,
+    drawn_at,
+    laid_out,
+    neovim_in_kitty,
+    neovims_quit,
+    retry,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -111,7 +124,7 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # GIMP holds it on its page, which Tab opens from where its name is typed.
-    desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
+    desktop.type_in("gnu image", selecting="GIMP")
     desktop.into_program()
     desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
     desktop.close_launcher()
@@ -1238,12 +1251,6 @@ def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -
     machine.succeed(f"rm -r {notes}")
 
 
-# Chrome's downloads, as the stand-in's lister prints them (tests/desktop.nix), and the
-# act its page ends with once they're read.
-CHROME_DOWNLOADS = "/run/user/1000/chrome-downloads"
-LATEST_DOWNLOAD = "Open the Latest Download"
-
-
 # kitty's Recent holds the folders zoxide has learned, read again as
 # zoxide's database changes, even one it made after the shell started.
 # Return on one opens a kitty window there through the kitty already open,
@@ -1264,14 +1271,8 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
     which Chrome's own provider reads as its page opens: the file is in its Recent, and Open
     the Latest Download opens it as the desktop opens a file, in swayimg.
     """
-    visited = "/run/user/1000/chrome-visited"
-    open_now = "/run/user/1000/chrome-open"
-    sites = "https://estuary.example.org/\tEstuary Notes\nhttps://reef.example.org/\tReef Survey\n"
-    tab = "7\t1\ttrue\t1794070000000\thttps://tide.example.org/\tTide Tables\n"
-    desktop.as_account(f"printf '%s' {shlex.quote(sites)} > {visited}")
-    desktop.as_account(f"printf '%s' {shlex.quote(tab)} > {open_now}")
+    chrome_visited(desktop)
     downloaded = chrome_downloaded(desktop)
-    window = "kitty --class google-chrome --title 'Tide Tables - Google Chrome'"
 
     def under_chrome(note: str, verb: str) -> Callable[[Json], bool]:
         """Say whether Chrome is selected, saying this, with its tab and its sites under it."""
@@ -1300,11 +1301,7 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
         slack = after["starts"] - (tab_in["starts"] + tab_in["width"])
         assert slack < verb["width"], (slack, foot)
         desktop.close_launcher()
-        desktop.as_account(f"niri msg action spawn -- {window}")
-        desktop.machine.wait_until_succeeds(
-            desktop.in_session("niri msg focused-window | grep -q google-chrome"),
-            timeout=STARTING,
-        )
+        chrome_opened(desktop)
         desktop.answer("chrome")
         desktop.launcher_until(under_chrome("1 tab \u00b7 2 recent", "go to"))
         # Each sits a depth in under Chrome, which is all that ties it there.
@@ -1334,24 +1331,8 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
         chrome_download_opened(desktop, downloaded)
     finally:
         desktop.close_launcher()
-        # The bracket keeps pkill from matching the shell that runs it.
-        desktop.as_account(f"pkill -f 'kitty --clas[s] google-chrome'; rm -f {visited} {open_now}")
+        chrome_gone(desktop)
         chrome_download_gone(desktop, downloaded)
-
-
-def chrome_downloaded(desktop: Desktop) -> str:
-    """Put a picture in Downloads, listed as Chrome's newest download, and give its path.
-
-    Its line is what chrome-recent-sites downloads prints: its path, its size in bytes, when it
-    finished in seconds since 1970 and the page it came from, a tab between each.
-    """
-    downloaded = f"/home/{desktop.account}/Downloads/tide-chart.png"
-    desktop.as_account(
-        f"mkdir -p ~/Downloads && cp {desktop.values['picture']} {downloaded} && printf"
-        f' \'%s\\t%s\\t%s\\t%s\\n\' {downloaded} "$(stat -c %s {downloaded})" "$(date +%s)"'
-        f" https://tide.example.org/charts > {CHROME_DOWNLOADS}"
-    )
-    return downloaded
 
 
 def chrome_download_opened(desktop: Desktop, downloaded: str) -> None:
@@ -1379,17 +1360,6 @@ def chrome_download_opened(desktop: Desktop, downloaded: str) -> None:
     machine.wait_until_succeeds(
         f"pgrep -u {desktop.account} -f '[s]wayimg.*{downloaded}'", timeout=STARTING
     )
-
-
-def chrome_download_gone(desktop: Desktop, downloaded: str) -> None:
-    """Close what opened the download, and take it and its listing away."""
-    machine = desktop.machine
-    # A swayimg left open would be the next subtest's.
-    machine.succeed(f"pkill -KILL -u {desktop.account} -x swayimg || true")
-    machine.wait_until_fails(
-        f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=30)
-    )
-    machine.succeed(f"rm -f {downloaded} {CHROME_DOWNLOADS}")
 
 
 def test_kitty_typed_lists_the_folders_it_visited_under_it(desktop: Desktop) -> None:
@@ -1465,56 +1435,7 @@ def test_kittys_recent_opens_a_window_in_a_folder_and_neovims_page_goes_to_a_buf
 # holds, asked over the server each told its window of as its screen came
 # up (modules/neovim/showing.lua), and Return goes to that very buffer in
 # its own window. The walk only reads each Neovim from outside, so the
-# account's own configuration is what runs.
-
-
-def neovim_in_kitty(desktop: Desktop, folder: str, *given: str) -> tuple[int, str]:
-    """Open a kitty running Neovim on these, and give niri's window and Neovim's server.
-
-    The server is the one Neovim told its kitty window, read back through kitty's remote
-    control as open-now reads it, so a Neovim that never said it is never given.
-    """
-    before = {window["id"] for window in desktop.windows()}
-    command = ["niri", "msg", "action", "spawn", "--", "kitty", "--directory", folder, "nvim"]
-    desktop.as_account(shlex.join([*command, *given]))
-    told: list[tuple[int, str]] = []
-
-    def said_its_server(_: bool) -> bool:
-        """Say whether the new kitty window's Neovim has told kitty where it listens."""
-        new = [
-            window
-            for window in desktop.windows()
-            if window["app_id"] == "kitty" and window["id"] not in before
-        ]
-        if not new:
-            return False
-        status, listed = desktop.machine.execute(
-            desktop.in_session(f"kitty @ --to unix:@kitty-{new[0]['pid']} ls")
-        )
-        if status != 0:
-            return False
-        servers = [
-            inside["user_vars"]["neovim_server"]
-            for kitty_window in json.loads(listed)
-            for tab in kitty_window["tabs"]
-            for inside in tab["windows"]
-            if "neovim_server" in inside["user_vars"]
-        ]
-        told.extend((new[0]["id"], server) for server in servers)
-        return bool(servers)
-
-    retry(said_its_server, timeout=STARTING)
-    return told[0]
-
-
-def asked_of(desktop: Desktop, server: str, *remote: str) -> str:
-    """Ask the Neovim at this server from outside, through a client reading no configuration.
-
-    It's headless and reads nothing, since a client given the console started a screen of its
-    own there, drawing the answer on the console and writing its terminal's queries in its place.
-    """
-    client = ["nvim", "--clean", "--headless", "--server", server, *remote]
-    return desktop.as_account(f"{shlex.join(client)} < /dev/null")
+# account's own configuration is what runs (desktop_session.py's neovim_in_kitty).
 
 
 def neovims_open_files_are_gone_to(desktop: Desktop) -> None:
@@ -1589,13 +1510,7 @@ def neovims_open_files_are_gone_to(desktop: Desktop) -> None:
     finally:
         desktop.close_launcher()
         # Each quits unsaved, so the change made here is never written.
-        for _, each in neovims:
-            asked_of(desktop, each, "--remote-send", "<C-\\><C-N>:qa!<CR>")
-        gone = {window for window, _ in neovims}
-        retry(
-            lambda _: not gone & {window["id"] for window in desktop.windows()},
-            timeout=timedelta(seconds=30),
-        )
+        neovims_quit(desktop, neovims)
         desktop.as_account(f"rm -r {folder}")
 
 

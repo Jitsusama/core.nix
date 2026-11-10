@@ -9946,6 +9946,16 @@
       "name": "Modified"
     },
     {
+      "id": "nvim:buffer",
+      "in": "applications",
+      "name": "Buffer"
+    },
+    {
+      "id": "nvim:used",
+      "in": "applications",
+      "name": "Last Used"
+    },
+    {
       "id": "verb:chrome:repository",
       "command": "open",
       "argument": "github",
