@@ -708,10 +708,34 @@
  	return true;
  }
  
+--- a/packages/tui/src/terminal.ts
++++ b/packages/tui/src/terminal.ts
+@@ -137,6 +137,13 @@
+ 	 * status is re-sent when support is confirmed or the terminal restarts.
+ 	 */
+ 	setProgramStatus(status: ProgramStatus): void;
++
++	/**
++	 * Run one frame's drawing, for a terminal that belongs to one of several
++	 * screens in a process: a hosted screen draws as the conversation it shows,
++	 * whatever asked for the frame. Without it, a frame is drawn as it is.
++	 */
++	renderScope?(draw: () => void): void;
+ }
+ 
+ const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
 --- a/packages/tui/src/tui.ts
 +++ b/packages/tui/src/tui.ts
-@@ -559,6 +559,9 @@
+@@ -557,8 +557,17 @@
  
+ 	protected abstract doRender(): void;
+ 
++	/** Draws one frame within the terminal's render scope, where it has one. */
++	private drawFrame(): void {
++		if (this.terminal.renderScope) this.terminal.renderScope(() => this.doRender());
++		else this.doRender();
++	}
++
  	protected resetRenderState(): void {}
  
 +	/** Forgets which images the terminal holds, so the next render sends them again. */
@@ -720,10 +744,14 @@
  	protected beforeTerminalStart(): void {}
  
  	protected afterTerminalStart(): void {}
-@@ -1030,6 +1033,16 @@
- 		this.doRender();
- 	}
- 
+@@ -1027,7 +1036,17 @@
+ 		this.renderRequested = false;
+ 		this.cancelRenderTimer();
+ 		this.lastRenderAt = performance.now();
+-		this.doRender();
++		this.drawFrame();
++	}
++
 +	/**
 +	 * Redraws everything, images included, for a terminal that has seen none of
 +	 * this screen, as a viewer joining a hosted screen has. A forced render
@@ -732,11 +760,27 @@
 +	repaintForNewTerminal(): void {
 +		this.forgetSentImages();
 +		this.requestRender(true);
-+	}
-+
+ 	}
+ 
  	requestRender(force = false): void {
- 		if (force) {
- 			this.resetRenderState();
+@@ -1054,7 +1073,7 @@
+ 			this.cancelRenderTimer();
+ 			this.renderRequested = false;
+ 			this.lastRenderAt = performance.now();
+-			this.doRender();
++			this.drawFrame();
+ 		});
+ 	}
+ 
+@@ -1077,7 +1096,7 @@
+ 			}
+ 			this.renderRequested = false;
+ 			this.lastRenderAt = performance.now();
+-			this.doRender();
++			this.drawFrame();
+ 			if (this.renderRequested) {
+ 				this.scheduleRender();
+ 			}
 --- a/packages/tui/src/tui-alt-screen.ts
 +++ b/packages/tui/src/tui-alt-screen.ts
 @@ -500,6 +500,10 @@
