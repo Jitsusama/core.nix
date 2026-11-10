@@ -25,7 +25,7 @@
 //! those choices is tested against a stand-in (the tests below).
 
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex, MutexGuard};
 
 use serde_json::{Value, json};
 
@@ -70,8 +70,17 @@ pub const AT_ONCE: usize = 12;
 /// its slowest merge, and one that fails runs twice in a row, so halving a
 /// hundred merges took seven steps of up to two VM runs each, hours in
 /// which main stayed broken; by quarters it takes four. Its runs go as
-/// bulk, so they take no room another session's run is waiting for.
+/// bulk, so they take no room another session's run is waiting for. It is
+/// the least a step tries: a search alone takes the room `AT_ONCE` names,
+/// shared with the others under way (`Breaking::splits`).
 const SPLITS: usize = 3;
+
+/// How many failed tests' searches run side by side, each trying at least
+/// `SPLITS` merges a step, so together they fill the room `AT_ONCE` names.
+/// On 9 November a round's failures were searched one after another, about
+/// an hour each, and the round at 7b2252da was three hours old with four
+/// still to search.
+const SEARCHES: usize = AT_ONCE / SPLITS;
 
 /// What changed-checks named between two heads.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -376,13 +385,14 @@ pub fn attempt_all(
 /// commit without the check counts as passing it, so what it finds is
 /// checked by `before` before it's blamed. None when a run wasn't taken, so it
 /// can't be told, or when `go_on`, asked before each step after the first,
-/// says to stop.
+/// says to stop. Each step tries as many merges as `splits` says then.
 pub fn bisect(
     world: &dyn World,
     state: &State,
     merges: &[String],
     check: &str,
     go_on: &dyn Fn() -> bool,
+    splits: &dyn Fn() -> usize,
 ) -> Option<String> {
     // `good` is how many of the merges are known to pass, `bad` the index
     // of the first known to fail.
@@ -392,7 +402,7 @@ pub fn bisect(
         if !std::mem::take(&mut first) && !go_on() {
             return None;
         }
-        let tried = spread(good, bad, SPLITS);
+        let tried = spread(good, bad, splits());
         let passed = std::thread::scope(|scope| {
             let runs: Vec<_> = tried
                 .iter()
@@ -946,8 +956,9 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
 /// it does, while the round's other tests still run. On 7 November
 /// vm-checks-go-first failed twice at 12:46, but the search for its merge
 /// waited 34 minutes behind the round's slower desktop tests, and main
-/// stayed broken 113 minutes in all. One merge is looked for at a time,
-/// since each writes the hold, and the first error stops the rest.
+/// stayed broken 113 minutes in all. Up to `SEARCHES` tests are searched
+/// side by side, but what each found is settled one at a time, since each
+/// writes the hold, and the first error stops the rest.
 struct Breaking<'a, F> {
     world: &'a dyn World,
     state: &'a State,
@@ -958,6 +969,9 @@ struct Breaking<'a, F> {
     done: Mutex<Result<(), String>>,
     /// Main's newest head a held test with no revert was last run at.
     tried: Mutex<Option<String>>,
+    /// How many searches are under way, and the room one ending makes.
+    searching: Mutex<usize>,
+    room: Condvar,
 }
 
 impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
@@ -976,6 +990,8 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
             left_be,
             done: Mutex::new(Ok(())),
             tried: Mutex::new(None),
+            searching: Mutex::new(0),
+            room: Condvar::new(),
         }
     }
 
@@ -984,44 +1000,82 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
     /// 13:48, and eight merges waited off the machine behind the hold while
     /// the round it was found in ran on.
     ///
-    /// A failed test that finds another's search under way asks whether
-    /// main's newest head fixed it while it waits, rather than after. On
-    /// 8 November six tests failed at once at 06fc027e, and their searches
-    /// ran one after another from 10:30 to past 15:00, though five of the six
-    /// were fixed forward and each was found so within one search step.
+    /// A failed test searches for its merge at once, beside the others'
+    /// searches, and waits only to settle what it found.
+    fn heard(&self, test: &str, outcome: Outcome) {
+        self.write(|| clear_if_reverted(self.world, self.state));
+        if outcome == Outcome::Failed && !(self.left_be)(test) {
+            self.search(test);
+        }
+        self.fixed_forward_since();
+    }
+
+    /// Search for what broke `test`, once there's room, and settle it.
+    ///
+    /// A failed test that finds no room asks whether main's newest head
+    /// fixed it while it waits, rather than after. On 8 November six tests
+    /// failed at once at 06fc027e, and their searches ran one after another
+    /// from 10:30 to past 15:00, though five of the six were fixed forward
+    /// and each was found so within one search step.
     ///
     /// A test whose turn comes asks again whether it's left be, since the
-    /// search before it can take an hour: on 9 November main listed
+    /// searches before it can take an hour: on 9 November main listed
     /// launcher tests at 09:22 that had been waiting since 08:06 behind
     /// other searches, each decided to be searched as it failed.
-    fn heard(&self, test: &str, outcome: Outcome) {
-        let searched = outcome == Outcome::Failed && !(self.left_be)(test);
-        let mut done = match self.done.try_lock() {
-            Ok(done) => done,
-            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                // An error here is asked again beside the search's first
-                // step, so it's left to that.
-                if searched
-                    && fixed_forward(self.world, self.state, self.head, test, None) == Ok(true)
-                {
-                    self.fixed_forward_since();
-                    return;
-                }
-                self.done
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-            }
-        };
-        if done.is_err() {
+    fn search(&self, test: &str) {
+        if self.failed() {
             return;
         }
-        *done = clear_if_reverted(self.world, self.state);
-        if done.is_ok() && searched && !(self.left_be)(test) {
-            *done = broke(self.world, self.state, self.base, self.head, test);
+        let mut searching = lock(&self.searching);
+        if *searching >= SEARCHES {
+            drop(searching);
+            // An error here is asked again beside the search's first step,
+            // so it's left to that.
+            if fixed_forward(self.world, self.state, self.head, test, None) == Ok(true) {
+                return;
+            }
+            searching = lock(&self.searching);
+            while *searching >= SEARCHES {
+                searching = self
+                    .room
+                    .wait(searching)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+            if (self.left_be)(test) {
+                return;
+            }
         }
-        drop(done);
-        self.fixed_forward_since();
+        *searching += 1;
+        drop(searching);
+        let found = search(self.world, self.state, self.base, self.head, test, &|| {
+            self.splits()
+        });
+        *lock(&self.searching) -= 1;
+        self.room.notify_one();
+        self.write(|| match found? {
+            Some(found) => settle(self.world, self.state, self.base, self.head, found),
+            None => Ok(()),
+        });
+    }
+
+    /// How many merges a search's next step tries: the room `AT_ONCE` names,
+    /// shared among the searches under way, and never fewer than `SPLITS`.
+    /// A search alone tries twelve merges a step, and leaves a thirteenth.
+    fn splits(&self) -> usize {
+        (AT_ONCE / (*lock(&self.searching)).max(1)).max(SPLITS)
+    }
+
+    /// Whether an error has stopped the round's searches.
+    fn failed(&self) -> bool {
+        lock(&self.done).is_err()
+    }
+
+    /// Run `write`, one at a time, unless an error has stopped the round.
+    fn write(&self, write: impl FnOnce() -> Result<(), String>) {
+        let mut done = lock(&self.done);
+        if done.is_ok() {
+            *done = write();
+        }
     }
 
     /// Each test's end also runs a test held with no revert at main's newest
@@ -1067,6 +1121,14 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
             .into_inner()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
+}
+
+/// The value behind `mutex`, even one a panicking thread left, since what
+/// each guards is whole between writes.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Run a test held with no revert at the new head before anything else, and
@@ -1191,20 +1253,33 @@ fn failed_at_base(state: &State, base: &str, head: &str, test: &str) -> Result<b
     Ok(true)
 }
 
-/// A test failed for real at `head`: find the merge since `base` that
-/// broke it, hold switching on it, revert it, and tell its owner.
-fn broke(
+/// What a search found for a test that failed for real, for the round to
+/// settle one at a time, since each writes the hold.
+enum Found {
+    /// The merge that broke it.
+    Merge(Bad),
+    /// A run the search needed stalled or no builder took, so it couldn't
+    /// tell which merge broke `test`; `log` is the failure at the head.
+    Unsettled { test: String, log: String },
+}
+
+/// Find the merge since `base` that broke `test` at `head`, writing only
+/// findings that hold nothing, so searches for other tests can run beside
+/// it. None when nothing is to be held or reverted: it failed before
+/// `base`, was fixed forward, or no merge is to blame.
+fn search(
     world: &dyn World,
     state: &State,
     base: &str,
     head: &str,
     test: &str,
-) -> Result<(), String> {
+    splits: &dyn Fn() -> usize,
+) -> Result<Option<Found>, String> {
     // A round taken up again after a restart hears its failures again, and
     // one already found fixed forward was searched a second time on
     // 8 November, where runs stalled and held main.
     if state.found("fixed-forward", test, head) || failed_at_base(state, base, head, test)? {
-        return Ok(());
+        return Ok(None);
     }
     let merges = to_search(world, state, base, head, test)?;
     // Whether main's newest head fixed it is asked beside the search's first
@@ -1230,11 +1305,18 @@ fn broke(
         if merges.len() == 1 {
             merges.first().cloned()
         } else {
-            bisect(world, state, &merges, test, &|| fixed() == Ok(false))
+            bisect(
+                world,
+                state,
+                &merges,
+                test,
+                &|| fixed() == Ok(false),
+                splits,
+            )
         }
     });
     if fixed()? {
-        return Ok(());
+        return Ok(None);
     }
     let failing = bad.clone().unwrap_or_else(|| head.to_owned());
     let log = state.log(&failing, test, 2).display().to_string();
@@ -1243,7 +1325,8 @@ fn broke(
             Before::Passed => Some(commit),
             Before::Unsent => None,
             not_broken_here => {
-                return blames_none(world, state, test, &commit, &log, not_broken_here);
+                blames_none(world, state, test, &commit, &log, not_broken_here)?;
+                return Ok(None);
             }
         },
         None => None,
@@ -1251,36 +1334,58 @@ fn broke(
     if let Some(commit) = &bad
         && fixed_forward(world, state, head, test, Some(commit))?
     {
-        return Ok(());
+        return Ok(None);
     }
-    // A search ends with no merge only when a run it needed stalled or no
-    // builder took it, so the test is kept to run again at the next head
-    // without holding switches.
     let Some(commit) = bad else {
-        state.set_hold(&json!({
-            "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
-            "unsettled": true,
-        }))?;
-        state.say(&format!(
-            "{test} fails at {}, but its search couldn't tell which merge broke it, since a \
-             run stalled or no builder took it: switches go on, and it runs again at the next head",
-            short(head)
-        ));
-        state.find(&json!({
-            "kind": "failed", "test": test, "commit": head, "since": base,
-            "owner_pr": Value::Null, "log": log, "revert_error": "couldn't tell which merge broke it",
-            "at": now(),
-        }))?;
-        return Ok(());
+        return Ok(Some(Found::Unsettled {
+            test: test.to_owned(),
+            log,
+        }));
     };
     let subject = world.subject(&commit);
-    let found = Bad {
-        commit: commit.clone(),
+    Ok(Some(Found::Merge(Bad {
+        commit,
         pr: pr_of(&subject),
         subject,
         test: test.to_owned(),
-        log: log.clone(),
+        log,
+    })))
+}
+
+/// Hold switching on what a search found and revert it, or keep a test
+/// whose search couldn't tell to run again at the next head.
+fn settle(
+    world: &dyn World,
+    state: &State,
+    base: &str,
+    head: &str,
+    found: Found,
+) -> Result<(), String> {
+    // A search ends with no merge only when a run it needed stalled or no
+    // builder took it, so the test is kept to run again at the next head
+    // without holding switches.
+    let found = match found {
+        Found::Merge(found) => found,
+        Found::Unsettled { test, log } => {
+            state.set_hold(&json!({
+                "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
+                "unsettled": true,
+            }))?;
+            state.say(&format!(
+                "{test} fails at {}, but its search couldn't tell which merge broke it, since a \
+                 run stalled or no builder took it: switches go on, and it runs again at the \
+                 next head",
+                short(head)
+            ));
+            state.find(&json!({
+                "kind": "failed", "test": test, "commit": head, "since": base,
+                "owner_pr": Value::Null, "log": log,
+                "revert_error": "couldn't tell which merge broke it", "at": now(),
+            }))?;
+            return Ok(());
+        }
     };
+    let (commit, test, log) = (&found.commit, &found.test, &found.log);
     // A search can take hours, and the owner may have listed the test
     // meanwhile, so the list as main has it now is read again.
     if listed_on_main(world, head, test) {
@@ -1290,7 +1395,7 @@ fn broke(
         }))?;
         state.say(&format!(
             "{test} broke at {}, but main lists it as quarantined now: nothing is reverted or held",
-            short(&commit)
+            short(commit)
         ));
         return Ok(());
     }
@@ -1413,7 +1518,6 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::fs;
-    use std::sync::Condvar;
     use std::time::Duration;
 
     /// The exit the stand-in gives for a run stopped before it ended.
@@ -1437,9 +1541,6 @@ mod tests {
         quarantined: Vec<String>,
         /// Tests main's newest head lists as quarantined besides those.
         listed_since: Vec<String>,
-        /// Tests main's newest head lists too once a search has reverted a
-        /// merge.
-        listed_once_reverted: Vec<String>,
         /// What every fetch of main fails with, as before the network is
         /// up, so only its head as last fetched is known.
         fetch_fails: Option<String>,
@@ -1454,10 +1555,6 @@ mod tests {
         /// has run one at an older merge, or after a while without, when
         /// it's put in `waited_out`.
         newest_waits_for_search: bool,
-        /// Checks whose each run at the round's last merge ends only once a
-        /// search has run one at an older merge, or after a while without,
-        /// when it's put in `waited_out`.
-        waits_for_search: Vec<String>,
         /// Commits whose each run waits for a second run there to start,
         /// or after a while without, when it's put in `waited_out`.
         pairs: Vec<String>,
@@ -1465,6 +1562,11 @@ mod tests {
         /// of them to start there, or after a while without, when it's put
         /// in `waited_out`.
         together_at_newest: Vec<String>,
+        /// Checks whose each run at a merge before the round's last waits
+        /// for every one of them to have run at one, as their searches do
+        /// side by side, or after a while without, when it's put in
+        /// `waited_out`.
+        searched_together: Vec<String>,
         build_seen: Condvar,
         waited_out: Mutex<Vec<String>>,
         reaches_main_after: usize,
@@ -1491,6 +1593,19 @@ mod tests {
         }
         fn built(&self) -> Vec<(String, String)> {
             self.built.lock().unwrap().clone()
+        }
+        /// Waits while `waiting` says so of the runs begun, at most ten
+        /// seconds, putting `what` in `waited_out` when the time runs out.
+        fn wait_while(&self, waiting: impl FnMut(&mut Vec<(String, String)>) -> bool, what: &str) {
+            let built = self.built.lock().unwrap();
+            let (built, waited) = self
+                .build_seen
+                .wait_timeout_while(built, Duration::from_secs(10), waiting)
+                .unwrap();
+            drop(built);
+            if waited.timed_out() {
+                self.waited_out.lock().unwrap().push(what.to_owned());
+            }
         }
     }
 
@@ -1561,33 +1676,7 @@ mod tests {
                         .iter()
                         .any(|(at, _)| self.merges[..self.merges.len() - 1].contains(at))
                 };
-                let built = self.built.lock().unwrap();
-                let (built, waited) = self
-                    .build_seen
-                    .wait_timeout_while(built, Duration::from_secs(10), searched)
-                    .unwrap();
-                drop(built);
-                if waited.timed_out() {
-                    self.waited_out.lock().unwrap().push(check.to_owned());
-                }
-            }
-            if self.merges.last().is_some_and(|last| last == commit)
-                && self.waits_for_search.iter().any(|waits| waits == check)
-            {
-                let unsearched = |built: &mut Vec<(String, String)>| {
-                    !built
-                        .iter()
-                        .any(|(at, _)| self.merges[..self.merges.len() - 1].contains(at))
-                };
-                let built = self.built.lock().unwrap();
-                let (built, waited) = self
-                    .build_seen
-                    .wait_timeout_while(built, Duration::from_secs(10), unsearched)
-                    .unwrap();
-                drop(built);
-                if waited.timed_out() {
-                    self.waited_out.lock().unwrap().push(check.to_owned());
-                }
+                self.wait_while(searched, check);
             }
             if commit == self.head && self.together_at_newest.iter().any(|one| one == check) {
                 let apart = |built: &mut Vec<(String, String)>| {
@@ -1596,29 +1685,23 @@ mod tests {
                         .iter()
                         .all(|one| built.iter().any(|(at, ran)| at == commit && ran == one))
                 };
-                let built = self.built.lock().unwrap();
-                let (built, waited) = self
-                    .build_seen
-                    .wait_timeout_while(built, Duration::from_secs(10), apart)
-                    .unwrap();
-                drop(built);
-                if waited.timed_out() {
-                    self.waited_out.lock().unwrap().push(check.to_owned());
-                }
+                self.wait_while(apart, check);
+            }
+            let older = |at: &str| self.merges[..self.merges.len() - 1].iter().any(|m| m == at);
+            if self.searched_together.iter().any(|one| one == check) && older(commit) {
+                let apart = |built: &mut Vec<(String, String)>| {
+                    !self
+                        .searched_together
+                        .iter()
+                        .all(|one| built.iter().any(|(at, ran)| older(at) && ran == one))
+                };
+                self.wait_while(apart, check);
             }
             if self.pairs.iter().any(|paired| paired == commit) {
                 let alone = |built: &mut Vec<(String, String)>| {
                     built.iter().filter(|(at, _)| at == commit).count() < 2
                 };
-                let built = self.built.lock().unwrap();
-                let (built, waited) = self
-                    .build_seen
-                    .wait_timeout_while(built, Duration::from_secs(10), alone)
-                    .unwrap();
-                drop(built);
-                if waited.timed_out() {
-                    self.waited_out.lock().unwrap().push(commit.to_owned());
-                }
+                self.wait_while(alone, commit);
             }
             if self.after_revert.iter().any(|waits| waits == check) {
                 let reverted = self.reverted.lock().unwrap();
@@ -1648,9 +1731,6 @@ mod tests {
             let mut listed = self.quarantined.clone();
             if commit == self.head {
                 listed.extend(self.listed_since.iter().cloned());
-                if !self.reverted.lock().unwrap().is_empty() {
-                    listed.extend(self.listed_once_reverted.iter().cloned());
-                }
             }
             listed
         }
@@ -2113,6 +2193,54 @@ mod tests {
     }
 
     #[test]
+    fn tests_failing_at_once_are_searched_side_by_side_and_each_reverted() {
+        let state = state("side-by-side");
+        state.set_heads("s", "s").unwrap();
+        let mut world = Stand {
+            head: "h".into(),
+            merges: names("a b c d e f g h"),
+            changed: changed("vm-a vm-b"),
+            searched_together: names("vm-a vm-b"),
+            ..Stand::default()
+        };
+        for commit in names("c d e f g h") {
+            world = world.exits(&commit, "vm-a", &[1, 1]);
+        }
+        for commit in names("f g h") {
+            world = world.exits(&commit, "vm-b", &[1, 1]);
+        }
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "one test's search waited for another's to end"
+        );
+        let mut reverted = world.reverted.lock().unwrap().clone();
+        reverted.sort();
+        assert_eq!(reverted, names("c f"), "each test's merge is reverted");
+    }
+
+    #[test]
+    fn a_search_alone_takes_the_room_and_shares_it_with_others() {
+        let state = state("splits");
+        let world = Stand::default();
+        let breaking = Breaking::new(&world, &state, "s", "h", |_: &str| false);
+        let at = |searches: usize| {
+            *lock(&breaking.searching) = searches;
+            breaking.splits()
+        };
+        assert_eq!(at(1), AT_ONCE, "a search alone left room unused");
+        assert_eq!(at(2), AT_ONCE / 2);
+        assert_eq!(
+            at(SEARCHES),
+            SPLITS,
+            "searches together took more than the room"
+        );
+    }
+
+    #[test]
     fn a_test_failing_one_run_at_mains_newest_head_is_listed_there() {
         let state = state("flaky-at-newest");
         state.set_heads("s", "s").unwrap();
@@ -2180,12 +2308,20 @@ mod tests {
         assert_eq!(
             built,
             [
+                ("a", "vm-a"),
+                ("a", "vm-a"),
                 ("b", "vm-a"),
                 ("b", "vm-a"),
+                ("c", "vm-a"),
+                ("c", "vm-a"),
                 ("d", "vm-a"),
                 ("d", "vm-a"),
+                ("e", "vm-a"),
+                ("e", "vm-a"),
                 ("f", "vm-a"),
                 ("f", "vm-a"),
+                ("g", "vm-a"),
+                ("g", "vm-a"),
                 ("h", "vm-a"),
                 ("h", "vm-a"),
                 ("n", "vm-a"),
@@ -2497,30 +2633,34 @@ mod tests {
         let world = Stand {
             head: "n".into(),
             merges: names("a b h"),
-            changed: changed("vm-a vm-b"),
-            listed_once_reverted: names("vm-a vm-b"),
-            waits_for_search: names("vm-b"),
+            changed: changed("vm-b"),
             ..Stand::default()
         }
-        .exits("h", "vm-a", &[1])
-        .exits("h", "vm-b", &[1])
-        .exits("n", "vm-a", &[1])
-        .exits("n", "vm-b", &[1]);
-        round(&world, &state, "s").unwrap();
-        let searched: std::collections::BTreeSet<String> = world
-            .built()
-            .into_iter()
-            .filter(|(at, _)| at == "a" || at == "b")
-            .map(|(_, test)| test)
-            .collect();
-        assert_eq!(
-            searched.len(),
-            1,
-            "the test whose turn came after main listed it isn't searched: {searched:?}"
-        );
+        .exits("n", "vm-b", &[1, 1]);
+        let listed = std::sync::atomic::AtomicBool::new(false);
+        let breaking = Breaking::new(&world, &state, "s", "h", |_: &str| {
+            listed.load(std::sync::atomic::Ordering::SeqCst)
+        });
+        *lock(&breaking.searching) = SEARCHES;
+        std::thread::scope(|scope| {
+            scope.spawn(|| breaking.search("vm-b"));
+            // With no room, it asks main's newest head first, and then waits.
+            world.wait_while(|built| built.is_empty(), "main's newest head");
+            listed.store(true, std::sync::atomic::Ordering::SeqCst);
+            *lock(&breaking.searching) -= 1;
+            breaking.room.notify_one();
+        });
         assert!(
             world.waited_out.lock().unwrap().is_empty(),
-            "the second test failed while the first one's search ran"
+            "it never asked main"
+        );
+        assert!(
+            world.built().iter().all(|(at, _)| at == "n"),
+            "the test whose turn came after main listed it is searched"
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a test main listed had a merge reverted"
         );
     }
 
@@ -2571,10 +2711,9 @@ mod tests {
         for broken in 11..=15 {
             world = world.exits(&format!("m{broken}"), "vm-a", &[1]);
         }
-        assert_eq!(
-            round(&world, &state, "s").unwrap(),
-            Round::Failed("m15".into())
-        );
+        // Searches that share the room each try the least a step does.
+        let found = search(&world, &state, "s", "m15", "vm-a", &|| SPLITS).unwrap();
+        settle(&world, &state, "s", "m15", found.unwrap()).unwrap();
         assert_eq!(*world.reverted.lock().unwrap(), names("m11"));
         let built = world.built();
         for tried in ["m4", "m8", "m9", "m10", "m11"] {
@@ -2662,7 +2801,8 @@ mod tests {
             changed: changed("vm-a"),
             ..Stand::default()
         };
-        broke(&world, &state, "s", "m2", "vm-a").unwrap();
+        let found = search(&world, &state, "s", "m2", "vm-a", &|| SPLITS).unwrap();
+        assert!(found.is_none(), "it found something to hold");
         assert!(world.built.lock().unwrap().is_empty(), "nothing runs");
         assert!(state.hold().is_none());
     }
