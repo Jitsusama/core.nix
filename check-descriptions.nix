@@ -1451,6 +1451,11 @@
     session's agent from pi's own options through the host, and a turn its durable generation
     commits waits for the host to end or continue it, once, across recovery
   '';
+  pi-hosted-screen-stays-in-its-session = ''
+    pi built with the host's patches, applied exactly, ends only a hosted screen when it quits,
+    crashes or is suspended, copies through its viewers' terminals, refuses the external editor
+    and tells every screen of a theme change, while ordinary pi keeps its process exits
+  '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the
     shell's want sound rings loud, both under the theme message's pitch

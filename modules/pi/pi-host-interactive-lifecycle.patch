@@ -1,0 +1,328 @@
+--- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
++++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+@@ -123,7 +123,12 @@
+ import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
+ import { addMcpServerConfig, loadMcpConfig } from "../../extensions/mcp/config.ts";
+ import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
+-import { copyToClipboard, readClipboardFilePaths, readClipboardText } from "../../utils/clipboard.ts";
++import {
++	copyToClipboard,
++	osc52CopySequence,
++	readClipboardFilePaths,
++	readClipboardText,
++} from "../../utils/clipboard.ts";
+ import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
+ import { parseGitUrl } from "../../utils/git.ts";
+ import { ensurePngTranscoder } from "../../utils/image-convert.ts";
+@@ -449,6 +454,11 @@
+ 	initialThemeSetting?: string;
+ 	/** Terminal implementation. Defaults to the current process terminal. */
+ 	terminal?: Terminal;
++	/** Hosted screens leave process lifetime and session disposal to their owner. */
++	hosted?: {
++		/** Called once after this screen stops; the host closes only its session. */
++		onExit: (exitCode: number, error?: unknown) => Promise<void>;
++	};
+ }
+ 
+ interface ExtensionChangelogUpdate {
+@@ -458,6 +468,9 @@
+ }
+ 
+ export class InteractiveMode {
++	/** Lets a host reject an unpatched pi before constructing a shared screen. */
++	static readonly hostedLifecycleVersion = 1;
++
+ 	private runtimeHost: AgentSessionRuntime;
+ 	private renderer: TuiMainScreen | TuiAltScreen;
+ 	private ui: TUI;
+@@ -616,6 +629,9 @@
+ 	}
+ 
+ 	constructor(runtimeHost: AgentSessionRuntime, options: InteractiveModeOptions = {}) {
++		if (options.hosted && !options.terminal) {
++			throw new Error("Hosted interactive mode requires an independent terminal");
++		}
+ 		this.runtimeHost = runtimeHost;
+ 		setCapabilityOverrides(this.settingsManager.getTerminalCapabilityOverrides());
+ 		const tuiMode = options.tuiMode ?? this.settingsManager.getTuiMode();
+@@ -984,7 +1000,10 @@
+ 		// after exit. Fullscreen shows the notice in the header instead (#11508).
+ 		if (this.renderer.mode !== "fullscreen") {
+ 			const modelScopeNotice = this.getModelScopeNotice();
+-			if (modelScopeNotice) console.log(modelScopeNotice);
++			if (modelScopeNotice) {
++				if (this.options.hosted) this.ui.terminal.write(`${modelScopeNotice}\r\n`);
++				else console.log(modelScopeNotice);
++			}
+ 		}
+ 
+ 		// Keep one component tree and remount it when changing renderers.
+@@ -1128,7 +1147,7 @@
+ 		this.renderInitialMessages();
+ 
+ 		// Set up theme file watcher
+-		onThemeChange(() => {
++		this.themeChangeUnsubscribe = onThemeChange(() => {
+ 			this.ui.invalidate();
+ 			this.updateEditorBorderColor();
+ 			this.ui.requestRender();
+@@ -1274,8 +1293,9 @@
+ 		}
+ 
+ 		// Main interactive loop
+-		while (true) {
++		while (!this.isShuttingDown) {
+ 			const userInput = await this.getUserInput();
++			if (this.isShuttingDown) break;
+ 			try {
+ 				await this.session.prompt(userInput);
+ 			} catch (error: unknown) {
+@@ -2216,7 +2236,7 @@
+ 		this.updateTerminalTitle();
+ 	}
+ 
+-	private async handleFatalRuntimeError(prefix: string, error: unknown): Promise<never> {
++	private async handleFatalRuntimeError(prefix: string, error: unknown): Promise<{ cancelled: true }> {
+ 		const message = error instanceof Error ? error.message : String(error);
+ 		this.showError(`${prefix}: ${message}`);
+ 		const extensionHint = this.getCrashExtensionHint(error);
+@@ -2227,6 +2247,10 @@
+ 			const instructions = this.crashReportInstructions();
+ 			this.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), this.outputPad, 0));
+ 		}
++		if (this.options.hosted) {
++			await this.exitHosted(1, error);
++			return { cancelled: true };
++		}
+ 		stopThemeWatcher();
+ 		this.stop("transcript");
+ 		process.exit(1);
+@@ -4340,6 +4364,7 @@
+ 	}
+ 
+ 	async getUserInput(): Promise<string> {
++		if (this.isShuttingDown) return "";
+ 		const queuedInput = this.pendingUserInputs.shift();
+ 		if (queuedInput !== undefined) {
+ 			return queuedInput;
+@@ -4383,8 +4408,32 @@
+ 	 * repaint the final frame while the process is exiting.
+ 	 */
+ 	private isShuttingDown = false;
++	private hostedExit: Promise<void> | undefined;
++	private themeChangeUnsubscribe: (() => void) | undefined;
++
++	/** Stop this screen once; the host owns scoped session and child cleanup. */
++	private exitHosted(exitCode: number, error?: unknown): Promise<void> {
++		if (this.hostedExit) return this.hostedExit;
++		const hosted = this.options.hosted;
++		if (!hosted) throw new Error("Hosted exit requires a host owner");
++		this.isShuttingDown = true;
++		this.pendingUserInputs = [];
++		this.onInputCallback?.("");
++		// Install the promise before cleanup so reentrant quit requests share it.
++		this.hostedExit = Promise.resolve().then(async () => {
++			try {
++				this.stop();
++			} catch (cleanupError) {
++				exitCode = 1;
++				error ??= cleanupError;
++			}
++			await hosted.onExit(exitCode, error);
++		});
++		return this.hostedExit;
++	}
+ 
+ 	private async shutdown(options?: { fromSignal?: boolean }): Promise<void> {
++		if (this.options.hosted) return this.exitHosted(0);
+ 		if (this.isShuttingDown) return;
+ 		this.isShuttingDown = true;
+ 		// Keep signal handlers registered until terminal cleanup has completed.
+@@ -4425,7 +4474,11 @@
+ 		process.exit(0);
+ 	}
+ 
+-	private emergencyTerminalExit(): never {
++	private emergencyTerminalExit(): void {
++		if (this.options.hosted) {
++			void this.exitHosted(129);
++			return;
++		}
+ 		this.isShuttingDown = true;
+ 		this.unregisterSignalHandlers();
+ 		killTrackedDetachedChildren();
+@@ -4445,7 +4498,11 @@
+ 	 * call ui.stop() to restore cooked mode, the cursor, and disable bracketed
+ 	 * paste / Kitty / modifyOtherKeys sequences.
+ 	 */
+-	private uncaughtCrash(error: Error): never {
++	private uncaughtCrash(error: Error): void {
++		if (this.options.hosted) {
++			void this.exitHosted(1, error);
++			return;
++		}
+ 		// A dead terminal is not a pi crash. Do not try to restore it or record it.
+ 		if (isDeadTerminalError(error)) {
+ 			this.emergencyTerminalExit();
+@@ -4482,6 +4539,8 @@
+ 	}
+ 
+ 	private registerSignalHandlers(): void {
++		// The host registers process handlers once and attributes failures itself.
++		if (this.options.hosted) return;
+ 		this.unregisterSignalHandlers();
+ 
+ 		const signals: NodeJS.Signals[] = ["SIGTERM"];
+@@ -4532,6 +4591,10 @@
+ 	}
+ 
+ 	private handleCtrlZ(): void {
++		if (this.options.hosted) {
++			this.showStatus("Suspend is unavailable in a hosted session; close the viewer to detach");
++			return;
++		}
+ 		if (process.platform === "win32") {
+ 			this.showStatus("Suspend to background is not supported on Windows");
+ 			return;
+@@ -4690,6 +4753,11 @@
+ 	}
+ 
+ 	private async handleOpenExternalEditor(): Promise<void> {
++		// The editor would need the host's own terminal, which no viewer can see.
++		if (this.options.hosted) {
++			this.showStatus("The external editor is unavailable in a hosted session");
++			return;
++		}
+ 		const editorCmd = this.settingsManager.getExternalEditorCommand();
+ 		const content = this.editor.getExpandedText?.() ?? this.editor.getText();
+ 		this.ui.stop();
+@@ -5797,7 +5865,7 @@
+ 					return;
+ 				}
+ 				try {
+-					await copyToClipboard(text);
++					await this.copyText(text);
+ 					this.showStatus("Copied selected message to clipboard");
+ 				} catch (error) {
+ 					this.showError(error instanceof Error ? error.message : String(error));
+@@ -6736,6 +6804,17 @@
+ 		);
+ 	}
+ 
++	/**
++	 * Copy text to the clipboard of whoever is looking. A hosted screen's viewers may sit on
++	 * other machines, so it copies through their terminals rather than the host's clipboard.
++	 */
++	private async copyText(text: string): Promise<void> {
++		if (!this.options.hosted) return copyToClipboard(text);
++		const sequence = osc52CopySequence(text);
++		if (!sequence) throw new Error("Clipboard unavailable: text exceeds the OSC 52 size limit");
++		this.ui.terminal.write(sequence);
++	}
++
+ 	private async handleCopyCommand(
+ 		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
+ 	): Promise<void> {
+@@ -6756,7 +6835,7 @@
+ 		}
+ 
+ 		try {
+-			await copyToClipboard(text);
++			await this.copyText(text);
+ 			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
+ 				this.ui.flash("Copied!");
+ 			} else {
+@@ -7196,6 +7275,8 @@
+ 		}
+ 		this.clearStatusIndicator();
+ 		this.themeController.disableAutoSync();
++		this.themeChangeUnsubscribe?.();
++		this.themeChangeUnsubscribe = undefined;
+ 		this.clearExtensionTerminalInputListeners();
+ 		this.footer.dispose();
+ 		this.footerDataProvider.dispose();
+--- a/packages/coding-agent/src/modes/interactive/theme/theme.ts
++++ b/packages/coding-agent/src/modes/interactive/theme/theme.ts
+@@ -671,7 +671,12 @@
+ let currentThemeName: string | undefined;
+ let themeWatcher: fs.FSWatcher | undefined;
+ let themeReloadTimer: NodeJS.Timeout | undefined;
+-let onThemeChangeCallback: (() => void) | undefined;
++// A host runs one screen per conversation, so every screen hears a change.
++const themeChangeListeners = new Set<() => void>();
++
++function notifyThemeChange(): void {
++	for (const listener of [...themeChangeListeners]) listener();
++}
+ const registeredThemes = new Map<string, Theme>();
+ 
+ export function setRegisteredThemes(themes: Theme[]): void {
+@@ -707,9 +712,7 @@
+ 		if (enableWatcher) {
+ 			startThemeWatcher();
+ 		}
+-		if (onThemeChangeCallback) {
+-			onThemeChangeCallback();
+-		}
++		notifyThemeChange();
+ 		return { success: true };
+ 	} catch (error) {
+ 		// Theme is invalid - fall back to the system theme
+@@ -727,13 +730,13 @@
+ 	setGlobalTheme(themeInstance);
+ 	currentThemeName = "<in-memory>";
+ 	stopThemeWatcher(); // Can't watch a direct instance
+-	if (onThemeChangeCallback) {
+-		onThemeChangeCallback();
+-	}
++	notifyThemeChange();
+ }
+ 
+-export function onThemeChange(callback: () => void): void {
+-	onThemeChangeCallback = callback;
++/** Listen for theme changes; the returned function stops listening. */
++export function onThemeChange(callback: () => void): () => void {
++	themeChangeListeners.add(callback);
++	return () => themeChangeListeners.delete(callback);
+ }
+ 
+ function startThemeWatcher(): void {
+@@ -781,10 +784,8 @@
+ 				const reloadedTheme = loadThemeFromPath(themeFile);
+ 				registeredThemes.set(watchedThemeName, reloadedTheme);
+ 				setGlobalTheme(reloadedTheme);
+-				// Notify callback (to invalidate UI)
+-				if (onThemeChangeCallback) {
+-					onThemeChangeCallback();
+-				}
++				// Notify listeners (to invalidate UI)
++				notifyThemeChange();
+ 			} catch (_error) {
+ 				// Ignore errors (file might be in invalid state while being edited)
+ 			}
+--- a/packages/coding-agent/src/utils/clipboard.ts
++++ b/packages/coding-agent/src/utils/clipboard.ts
+@@ -17,12 +17,19 @@
+ 	return Boolean(env.SSH_CONNECTION || env.SSH_CLIENT || env.MOSH_CONNECTION || env.PI_CLIPBOARD_OSC52 === "1");
+ }
+ 
+-function emitOsc52(text: string): boolean {
++/** The OSC 52 sequence that copies text, or undefined when it is too large to send. */
++export function osc52CopySequence(text: string): string | undefined {
+ 	const encoded = Buffer.from(text).toString("base64");
+ 	if (encoded.length > MAX_OSC52_ENCODED_LENGTH) {
+-		return false;
++		return undefined;
+ 	}
+-	process.stdout.write(`\x1b]52;c;${encoded}\x07`);
++	return `\x1b]52;c;${encoded}\x07`;
++}
++
++function emitOsc52(text: string): boolean {
++	const sequence = osc52CopySequence(text);
++	if (!sequence) return false;
++	process.stdout.write(sequence);
+ 	return true;
+ }
+ 

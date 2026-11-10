@@ -11,6 +11,28 @@
   workstation,
   ...
 }:
+let
+  # pi as a host runs it, built from pi's own source with every host patch,
+  # applied exactly, never fuzzed, so a pi that moved under them fails here
+  # rather than in a host. Every pi an account starts stays unpatched: only
+  # the hosted checks build this one.
+  hostedPi = pkgs.pi-coding-agent.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [
+      ./pi-host-agent-interface.patch
+      ./pi-host-committed-turn.patch
+      ./pi-host-interactive-lifecycle.patch
+    ];
+    patchFlags = [
+      "-p1"
+      "--fuzz=0"
+    ];
+    # nixpkgs keeps the libraries pi's command loads and drops pi-schema, which
+    # the durable runtime a host drives imports through chord.
+    postInstall = old.postInstall + ''
+      cp -r packages/schema "$out/lib/node_modules/pi-monorepo/node_modules/@earendil-works/pi-schema"
+    '';
+  });
+in
 {
   # pi's folder, its session logs among what it holds, is the account's
   # alone, set as the account is switched to, on every machine with pi.
@@ -315,34 +337,24 @@
     touch $out
   '';
 
-  # pi as a host runs it builds from pi's own source with the host's patches,
-  # which must apply exactly, never fuzzed, so a pi that moved under them fails
-  # here rather than in a host. Its seams are there to detect, and a turn its
-  # durable generation commits is the host's to end or continue. Every pi an
-  # account starts stays unpatched: only this check builds the patched one.
-  pi-hosted-keeps-turns-its-own =
-    let
-      hosted = pkgs.pi-coding-agent.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [
-          ./pi-host-agent-interface.patch
-          ./pi-host-committed-turn.patch
-        ];
-        patchFlags = [
-          "-p1"
-          "--fuzz=0"
-        ];
-        # nixpkgs keeps the libraries pi's command loads and drops pi-schema, which
-        # the durable runtime a host drives imports through chord.
-        postInstall = old.postInstall + ''
-          cp -r packages/schema "$out/lib/node_modules/pi-monorepo/node_modules/@earendil-works/pi-schema"
-        '';
-      });
-    in
-    pkgs.runCommandLocal "pi-hosted-keeps-turns-its-own" { } ''
-      HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-        ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hosted}/lib/node_modules/pi-monorepo
-      touch $out
-    '';
+  # A hosted pi's seams are there to detect, and a turn its durable generation
+  # commits is the host's to end or continue.
+  pi-hosted-keeps-turns-its-own = pkgs.runCommandLocal "pi-hosted-keeps-turns-its-own" { } ''
+    HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+      ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+    touch $out
+  '';
+
+  # A hosted pi's screen stays in its own conversation: quitting, a crash or
+  # a suspend ends only that screen, a copy reaches its viewers' terminals,
+  # every screen hears a theme change, and ordinary pi keeps every path.
+  pi-hosted-screen-stays-in-its-session =
+    pkgs.runCommandLocal "pi-hosted-screen-stays-in-its-session" { }
+      ''
+        HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-screen-stays-in-its-session.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
 
   # pi-ask's digest says what's true on the machine as each question starts,
   # from the machine's own files alone, leaving out what it doesn't have.
