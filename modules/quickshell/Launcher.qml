@@ -7849,6 +7849,7 @@ Scope {
         openFramesSized = 0;
         openFramesWaited = 0;
         openFirstDrawn = -1;
+        openFirstMade = null;
         opening = true;
         keysHeld = false;
         openMark.setText("open\n");
@@ -7874,6 +7875,10 @@ Scope {
     // When its first frame was swapped, so its drawing is that frame's
     // own, and the frames waited for niri's size are said apart as sizing.
     property real openFirstDrawn: -1
+    // The rows each source had made by then, so what's said made before
+    // the frame is made before that first one, not by a source while
+    // niri's size was awaited.
+    property var openFirstMade: null
     function drawnAsAsked() {
         const window = card.Window.window;
         return window !== null && Math.abs(window.width - surface.implicitWidth) < 1
@@ -7887,8 +7892,10 @@ Scope {
             return;
         openFramesSized = drawnAsAsked() ? openFramesSized + 1 : 0;
         openFramesWaited += 1;
-        if (openFirstDrawn < 0)
+        if (openFirstDrawn < 0) {
             openFirstDrawn = KeyTimes.now();
+            openFirstMade = tallies();
+        }
         if (openFramesSized < 2 && openFramesWaited < 20) {
             afterFrame(openShown);
             return;
@@ -8004,7 +8011,9 @@ Scope {
         const worked = Math.round(openWorked);
         const first = openingsDrawn === 0;
         openingsDrawn += 1;
-        const now = tallies();
+        const now = openFirstMade ?? tallies();
+        openFirstMade = null;
+        openFirstDrawn = -1;
         const made = Object.keys(now).map(name => ({ name, rows: now[name]
             - (madeFrom.rows[name] ?? 0) })).filter(each => each.rows > 0)
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
