@@ -21,7 +21,7 @@ import shlex
 import time
 from datetime import timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import desktop_session
 import pytest
@@ -438,14 +438,24 @@ def selects(key: str, shown: Json) -> bool:
     return (shown["selected"] or {}).get("is") == key
 
 
-def moved(desktop: Desktop) -> tuple[int, int] | None:
-    """Move onto the place's next row and give its drawer's time and making, once it's drawn.
+class Drawn(NamedTuple):
+    """A drawer's time to its frame, as the launcher split it (Launcher.qml's drawerMade)."""
+
+    took: int
+    making: int
+    waiting: int
+    drawing: int
+
+
+def moved(desktop: Desktop) -> Drawn | None:
+    """Move onto the place's next row and give its drawer's time, once it's drawn.
 
     A place of one row isn't moved in, and a row with no drawer gives none.
     """
     shown = desktop.showing()
     at = shown["current"]
     if at + 1 >= len(shown["rows"]):
+        print(f"no drawer timed after {shown['selected']}: its place has one row")
         return None
     was = shown["drawer"]["row"]
     counted = shown["drawer"]["timed"]["count"]
@@ -464,15 +474,19 @@ def moved(desktop: Desktop) -> tuple[int, int] | None:
     desktop.next_row()
     desktop.launcher_until(drawn)
     drawer = rested[-1]
-    return (drawer["timed"]["took"], drawer["timed"]["making"]) if drawer["wanted"] else None
+    if not drawer["wanted"]:
+        print(f"no drawer timed for {drawer['row']}: it has none")
+        return None
+    timed = drawer["timed"]
+    return Drawn(timed["took"], timed["making"], timed["waiting"], timed["drawing"])
 
 
-def stepped_round(desktop: Desktop) -> dict[str, tuple[int, int]]:
+def stepped_round(desktop: Desktop) -> dict[str, Drawn]:
     """Step into Programs, each program's page, Chrome's Recent and Passwords, once each.
 
     Each is moved in once after its step, and its drawer's time and making given by place.
     """
-    drawers: dict[str, tuple[int, int] | None] = {}
+    drawers: dict[str, Drawn | None] = {}
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.down_to("Programs")
@@ -510,15 +524,15 @@ def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
     ]
 
 
-def slowed_drawers(drawn: dict[bool, dict[str, list[tuple[int, int]]]]) -> list[str]:
+def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
     """Say each place's drawers by turns, and give those the load slowed past their bound."""
     slowed = []
     for place in sorted(drawn[True]):
-        loaded = sorted(took for took, _ in drawn[True][place])
-        frozen = sorted(took for took, _ in drawn[False].get(place, []))
+        loaded = sorted(one.took for one in drawn[True][place])
+        frozen = sorted(one.took for one in drawn[False].get(place, []))
         print(
-            f"{place}'s drawer: under load {sorted(drawn[True][place])} ms to its frame and"
-            f" making, against {sorted(drawn[False].get(place, []))} with the load frozen"
+            f"{place}'s drawer: under load {sorted(drawn[True][place])} ms,"
+            f" against {sorted(drawn[False].get(place, []))} with the load frozen"
         )
         if frozen and loaded[(len(loaded) - 1) // 2] > (
             SLOWER_MOST * frozen[(len(frozen) - 1) // 2] + STEPPED_MORE
@@ -571,8 +585,8 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     # (2026-11-10).
     early: list[tuple[float, float]] = []
     # Each place's drawer, made for the row moved onto, by turns: its time to its frame and
-    # how much of it was the launcher's own making.
-    drawn: dict[bool, dict[str, list[tuple[int, int]]]] = {True: {}, False: {}}
+    # how much of it the launcher made it, waited for its frame and drew it.
+    drawn: dict[bool, dict[str, list[Drawn]]] = {True: {}, False: {}}
     try:
         stepped_round(desktop)
         for turn in range(ROUNDS):

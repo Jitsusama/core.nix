@@ -6742,7 +6742,9 @@ Scope {
     // been, for the check that times each place's drawer under load; the
     // journal says only those slow enough to feel. It's set anew, once a
     // drawer, so what the launcher shows is said again with it.
-    property var drawerTimedLast: ({ key: "", took: 0, making: 0, count: 0 })
+    property var drawerTimedLast: ({
+        key: "", took: 0, making: 0, waiting: 0, drawing: 0, count: 0
+    })
     // Times a drawer from the work begun for it, at `began` on KeyTimes's
     // clock, which keys and openings are timed by and setting the wall clock
     // never moves, to the first frame begun after, as a key is timed, and
@@ -6754,12 +6756,18 @@ Scope {
         if (!open)
             return;
         const key = drawerRow?.key ?? "";
-        afterFrame(() => {
+        const made = KeyTimes.now();
+        afterFrame(begun => {
             if (!root.open)
                 return;
-            const took = Math.round(KeyTimes.now() - began);
-            root.drawerTimedLast = { key, took, making, count: root.drawerTimedLast.count + 1 };
-            trials.drawerTimed(key, took, making);
+            const now = KeyTimes.now();
+            const took = Math.round(now - began);
+            const waiting = Math.round(begun - made);
+            const drawing = Math.round(now - begun);
+            root.drawerTimedLast = {
+                key, took, making, waiting, drawing, count: root.drawerTimedLast.count + 1
+            };
+            trials.drawerTimed(key, took, { making, waiting, drawing });
         });
     }
     property bool drawerOut: false
@@ -7981,8 +7989,12 @@ Scope {
             target: card.Window.window
             enabled: root.afterFrames.length > 0 || root.afterFramesDrawing.length > 0
 
+            // Each is told when its frame began, so a drawer's time says how
+            // much of it waited for its frame and how much drew it.
             function onAfterAnimating() {
-                root.afterFramesDrawing = root.afterFramesDrawing.concat(root.afterFrames);
+                const begun = KeyTimes.now();
+                root.afterFramesDrawing = root.afterFramesDrawing
+                    .concat(root.afterFrames.map(then => () => then(begun)));
                 root.afterFrames = [];
             }
 
