@@ -846,7 +846,12 @@ Provider {
         provider.recents.ask(entry.id);
         const words = Words.of("program:recent");
         const kept = provider.kept(entry);
+        // Named from the rows themselves, kept while each reads the same,
+        // and only those it holds now are kept on.
+        const keeping = provider.recentKeeper(entry);
+        keepingBegun(keeping);
         const names = kept.map(one => provider.made(entry, one).name);
+        keptOnly(keeping);
         const source = provider.sourceOf(entry);
         const waiting = source?.asked === true && !(entry.id in provider.recents.lately);
         const stands = Recent.said(names, waiting, words.said);
@@ -911,14 +916,33 @@ Provider {
             provider.recents.most);
     }
 
-    // One of what its Recent holds as its row.
+    // One of what its Recent holds as its row, kept while its line is, so
+    // a step held, drawn again at every change of Programs (redrawHeld),
+    // makes none of its Recent again: Chrome's step on Joel's shell was
+    // made again whole as its downloads were read (2026-11-10, 136 ms).
     function made(entry, one) {
         if (one.row.made)
             return one.row.made;
         const source = provider.sourceOf(entry);
-        if (source?.kind === "site")
-            return provider.visited(entry, one.row.line);
-        return provider.lately(entry, source?.list ? source : null, one.row.line);
+        const line = one.row.line;
+        return keptOr(provider.recentKeeper(entry), line, line, () => source?.kind === "site"
+            ? provider.visited(entry, line)
+            : provider.lately(entry, source?.list ? source : null, line));
+    }
+
+    // Each program's keeper of its Recent's rows, by its desktop entry's
+    // id, made anew when its entry or its list's settings are, as when
+    // the desktop entries are read again, so no kept row holds one gone.
+    // A plain object, so keeping notifies nothing.
+    readonly property var recentKept: ({})
+    function recentKeeper(entry) {
+        const source = provider.sourceOf(entry);
+        const had = recentKept[entry.id];
+        if (had && had.entry === entry && had.source === source)
+            return had.keeping;
+        const keeping = keeper();
+        recentKept[entry.id] = { entry: entry, source: source, keeping: keeping };
+        return keeping;
     }
 
     // What it has open now, where its source says (`opened`), each the

@@ -47,7 +47,8 @@
 // top that asks for a choice goes to its list inside its program. The list
 // programs share, heard again as it was, changes nothing, and an act
 // another provider gives to be found from the top makes its own row and
-// no program's own again. Typing on
+// no program's own again. A step asked again, as a held one is at each
+// change, makes none of its Recent's rows again. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
