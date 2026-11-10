@@ -1277,6 +1277,8 @@ onLinux {
       cp ${../../tests/machines.qml} machines.qml
       cp ${./launcher/RealmMachines.js} RealmMachines.js
       cp ${./launcher/Order.js} Order.js
+      cp ${./launcher/Machine.js} Machine.js
+      cp ${./launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -1935,6 +1937,8 @@ onLinux {
       cp ${./launcher/Quests.qml} launcher/Quests.qml
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/RealmMachines.js} launcher/RealmMachines.js
+      cp ${./launcher/Machine.js} launcher/Machine.js
+      cp ${./When.js} When.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml

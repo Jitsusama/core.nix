@@ -2905,6 +2905,7 @@
         "reaches": "reached",
         "unreaches": "not reached",
         "freeOf": "{free} free of {total}",
+        "sized": "{total} in all",
         "cores": "{count} cores",
         "on": "on {realm} \u00b7 machine",
         "gpu": "graphics",

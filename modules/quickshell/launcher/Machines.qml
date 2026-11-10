@@ -16,7 +16,6 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "Ago.js" as Ago
 import "../When.js" as When
 import "RealmMachines.js" as Listed
 
@@ -95,7 +94,6 @@ Provider {
             now: Date.now(),
             realms: realms.length,
             core: here?.updated?.followed?.core ?? "",
-            ago: Ago.ago,
             band: band => (band === "" || band === "healthy" ? ""
                 : (Words.of("machine:disk").said ?? {})[band] ?? band)
         };
