@@ -22,7 +22,8 @@
 // repository's files are forgotten as the launcher closes, and as it
 // opens they're all read again, so a folder holding none takes both acts
 // away. Chrome's downloads are read only once Chrome is stepped into, by
-// a stand-in for chrome-recent-sites: each is then a file's row in its
+// the real programs daemon running a stand-in for chrome-recent-sites,
+// and the step starts no process of the shell's: each is then a file's row in its
 // Recent, dated, its size and when beside it and its drawer saying where
 // it is then its kind, a picture previewed, and where it came from, and
 // Open the Latest Download is listed and found from the
@@ -159,7 +160,7 @@ ShellRoot {
 
         launcher: theLauncher
         settings: ({ folder: root.src, command: ["chrome", "--new-window"],
-            downloads: [Quickshell.env("DOWNLOADS_LIST")] })
+            downloads: "listed:google-chrome:downloads" })
         onChanged: root.heard += 1
     }
 
@@ -515,9 +516,10 @@ ShellRoot {
                 expect("Open the Latest Download waits in its place until a reading answers",
                     waiting[0].side === "\u2026", waiting[0].side);
                 theLauncher.held = [{ row: { key: "program:google-chrome" } }];
-                // A step's frame never waits on starting a process.
-                expect("its downloads wait for the step to be drawn",
-                    theLauncher.frames.due.length === 1, theLauncher.frames.due.length);
+                // The programs daemon reads them, so a step's frame never
+                // waits on starting a process, nor on anything after it.
+                expect("its downloads asked of the daemon, nothing left for the frame",
+                    theLauncher.frames.due.length === 0, theLauncher.frames.due.length);
                 theLauncher.drawn();
             }
         }, {

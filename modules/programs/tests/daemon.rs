@@ -4,7 +4,8 @@
 //! entry changed while watched is said again and one removed said gone;
 //! a program's list is read as its watch begins and again as its file
 //! changes, and not while nobody watches, and one whose command fails
-//! is heard empty, saying why; what a program has open is
+//! is heard empty, saying why; a page's own list is read only as its
+//! key is watched, its lines as printed; what a program has open is
 //! read as it's asked; and an ask or kind it doesn't know is refused.
 
 use std::path::{Path, PathBuf};
@@ -70,7 +71,17 @@ fn fixture(folder: &Path) -> PathBuf {
         "echo read >> {} && printf 'https://a.example\\tA\\t1793000000\\n'",
         at("lists/site-reads")
     );
+    let downloads = format!(
+        "echo read >> {} && printf '/d/a.pdf\t12\t1793000000\thttps://a.example\n'",
+        at("lists/download-reads")
+    );
     let sources = json!([
+        {
+            "app": "browser",
+            "name": "downloads",
+            "asked": true,
+            "list": ["sh", "-c", downloads],
+        },
         {
             "app": "kitty",
             "kind": "folder",
@@ -276,6 +287,27 @@ fn an_asked_list_is_read_only_as_its_program_is_watched() {
     assert_eq!(
         client.changed("recent:browser")["sites"],
         json!([{"address": "https://a.example", "title": "A", "used_at_s": 1_793_000_000}])
+    );
+}
+
+#[test]
+fn a_pages_own_list_is_read_only_as_its_key_is_watched() {
+    let running = Running::new("listed");
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": ["recent", "listed"]}));
+    client.changed("recent:kitty");
+    client.ask(&json!({"id": 2, "ask": "watch", "keys": ["recent:browser"]}));
+    client.changed("recent:browser");
+    assert!(
+        !running.path("lists/download-reads").exists(),
+        "a page's downloads read with every opening or with its program's Recent"
+    );
+    client.ask(&json!({"id": 3, "ask": "watch", "keys": ["listed:browser:downloads"]}));
+    let listed = client.changed("listed:browser:downloads");
+    assert_eq!(listed["kind"], "listed");
+    assert_eq!(
+        listed["lines"],
+        json!(["/d/a.pdf\t12\t1793000000\thttps://a.example"])
     );
 }
 
