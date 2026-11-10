@@ -24,8 +24,9 @@
 // answer is the whole of its kind, as the node's is, lets go what went in
 // a gap. What each message changed and let go is heard apart, a key let
 // go never said as changed, and a whole answer says every key it holds
-// and those it dropped. Each step waits on what the client says, at most
-// ten seconds.
+// and those it dropped. A socket that refuses is tried again twice as late
+// each time, a minute at most, counted again from its next answer. Each
+// step waits on what the client says, at most ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 // Its stand-ins are in modules/quickshell/tests/stand-ins.
 import Quickshell
@@ -337,6 +338,12 @@ ShellRoot {
                 && "waiting:b" in whole.held && !("waiting:a" in whole.held)
                 && JSON.stringify(root.wholeHeard)
                 === '{"changed":["waiting:b"],"gone":["waiting:a"]}'
+        },
+        {
+            what: "a socket that refuses is tried twice as late each time, a minute at most",
+            holds: () => typeof people.waitAfter === "function"
+                && [0, 1, 2, 5, 9].map(n => people.waitAfter(n)).join(" ") === "2000 4000 8000 60000 60000"
+                && people.refusals === 0
         }
     ]
 
