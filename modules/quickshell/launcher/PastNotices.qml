@@ -99,8 +99,12 @@ Provider {
             // Its words styled as its card draws them where they carry
             // markup or a link, and plain otherwise, so a long log keeps its
             // own lines to scroll by; its own picture while it has one; and
-            // how it was sent and how it left, as facts.
-            drawer: { eyebrow: provider.fromAndKind(notice), eyebrowNames: true,
+            // how it was sent and how it left, as facts. Made as it's shown,
+            // since only the selected row's ever is: made with every row, its
+            // eyebrow and facts were most of the 150 to 300 ms the history's
+            // 862 rows took to make on the first key that searched them
+            // (2026-11-10).
+            drawer: () => ({ eyebrow: provider.fromAndKind(notice), eyebrowNames: true,
                 title: notice.summary,
                 body: provider.marked(notice) ? notice.styled : notice.body,
                 styled: provider.marked(notice),
@@ -108,7 +112,7 @@ Provider {
                 // in memory while it lives, since the drawer draws either
                 // (Pictures.js's source; VKCF3Z, 210afa2f).
                 prose: true, picture: Notices.pictureOf(notice),
-                facts: provider.facts(notice) },
+                facts: provider.facts(notice) }),
             // Its sender's, which the history keeps as a code point
             // (Notices.qml), muted for one sent at low urgency, as its card
             // draws it.
