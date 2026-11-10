@@ -24,6 +24,7 @@
     "jitsusama.theme.syntax.operator" = "an operator is a code token, such as =, not a person";
     linux-builder-lets-only-those-named-restart-it = "a VM and a service restart; the Mac isn't rebooted";
     nix-offload-lines-reach-root-alone = "a line is a builder's entry in Nix's machines files, not a connection";
+    pi-hosts-refuse-an-unproven-runtime = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-start-with-the-session = "a pi host is the harness's process holding many pi conversations, not a machine";
     platform-profiles-reach-the-legacy-file = "the kernel's platform_profile file, by its name";
     quickshell-restarts-with-its-files = "a program restarts; the machine isn't rebooted";
