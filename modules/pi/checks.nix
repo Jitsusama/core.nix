@@ -399,6 +399,13 @@ in
             GREETING = ''say "hi" there'';
           };
         };
+        two = {
+          inherit pi node;
+          path = [
+            "/first/bin"
+            "/second/bin"
+          ];
+        };
       };
       naming =
         bare: role:
@@ -430,17 +437,28 @@ in
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
         # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
         && lib.elem ''"GREETING=say \"hi\" there"'' environment;
+      # A realm naming folders runs node through env, which puts them before
+      # the PATH systemd expands, quoted so it stays one word.
+      findsItsPath =
+        kind:
+        lib.hasPrefix "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:\${PATH}' ${node} " (
+          first services."pi-host-two-${kind}".Service.ExecStart
+        );
       hostsIn = services: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames services);
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, misses its realm's environment, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         starts "attended"
         && starts "background"
+        && findsItsPath "attended"
+        && findsItsPath "background"
         &&
           hostsIn services == [
             "pi-host-one-attended"
             "pi-host-one-background"
+            "pi-host-two-attended"
+            "pi-host-two-background"
           ]
         && hostsIn (account workstation).systemd.user.services == [ ]
         && hostsIn mac.systemd.user.services == [ ]

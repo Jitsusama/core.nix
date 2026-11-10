@@ -1504,7 +1504,8 @@
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, ready
-    once it says so, in agents.slice with its realm's environment, left stopped after refusing
+    once it says so, in agents.slice with its realm's environment and its folders first on its
+    PATH, left stopped after refusing
     what it was given and left running through a switch, and a machine naming none, or a Mac,
     gets none
   '';
