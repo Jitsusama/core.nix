@@ -89,6 +89,16 @@ QtObject {
         check(failures, "an act of its own waiting to be agreed keeps them wanted elsewhere",
             wanted({ held: [{ row: { from: people } }], becoming: [{ from: agents }] }, agents),
             true);
+        check(failures, "shut, the one warming for home is",
+            wanted({ open: false, warming: people }, people), true);
+        check(failures, "and no other", wanted({ open: false, warming: people }, agents), false);
+        check(failures, "nor one home doesn't name",
+            wanted({ open: false, warming: agents }, agents), false);
+        check(failures, "opening, one not woken yet isn't", wanted({ waking: [] }, people),
+            false);
+        check(failures, "and woken, it is", wanted({ waking: [people] }, people), true);
+        check(failures, "woken, the rest of where it stands still decides",
+            wanted({ waking: [agents] }, agents), false);
     }
 
     // A key's acts are each said shown by the first frame begun after its

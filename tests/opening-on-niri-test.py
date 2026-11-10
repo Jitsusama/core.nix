@@ -7,7 +7,9 @@ so a closed launcher keeps home, and an opening draws that at once and wakes the
 first frame. Kept, home is drawn as it stood, and the fill replaces in place only what changed:
 a mark shown for a frame or two and then put back is a flash (VKCF3Z, 2026-11-10). Filled in,
 the rows land where the kept ones stood and the cursor stays on its row, so nothing jumps or
-flashes in (Y2YBTS, 2026-11-10). Every test starts with the launcher closed, and leaves it so.
+flashes in (Y2YBTS, 2026-11-10). Home is kept a few seconds after the shell starts too, so its
+first opening is drawn the same way. Every test starts with the launcher closed, and leaves it
+so.
 """
 
 from __future__ import annotations
@@ -29,11 +31,8 @@ READING = "\u2026"
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
-    """Give the shell, started once a run, opened and closed once so it has home to keep."""
+    """Give the shell, started once a run and never opened before the first test opens it."""
     started = launcher_on_niri.started()
-    started.as_account(started.ipc("toggle"))
-    started.launcher_ready()
-    started.close_launcher()
     yield started
     started.stop()
 
@@ -82,6 +81,24 @@ def settled(shell: Shell) -> Json:
     """Wait until the launcher's rows have held still, and give the rows it shows then."""
     assert shell.held_still(), "the launcher never held still after it opened"
     return cast("Json", shell.showing()["seen"])
+
+
+def test_the_first_opening_after_a_start_is_drawn_from_home_kept_as_it_started(
+    shell: Shell,
+) -> None:
+    """The shell keeps home a few seconds after it starts, so its first opening draws from it.
+
+    Made on the chord instead, the first opening after each switch made every row home reads
+    before its frame: 489 on Joel's at 14:05, which took 3,521 ms (2026-11-10). Filled in, a
+    source nothing changed since the start makes none of its rows again.
+    """
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    assert openings(shell) == [], "the launcher was opened before the test opened it"
+    opening = opened_from_kept(shell)
+    assert opening.get("first"), f"the opening wasn't the first since the shell started: {opening}"
+    assert opening.get("madeBy", {}).get("applications", 0) == 0, (
+        f"filling in remade applications' rows, which nothing changed since the start: {opening}"
+    )
 
 
 def test_home_kept_is_drawn_as_it_stood(shell: Shell) -> None:

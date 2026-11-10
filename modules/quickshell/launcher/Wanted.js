@@ -9,13 +9,19 @@
 // `stands` is what the launcher says of itself: whether its catalogue is
 // walked from outside (`cataloguing`), whether it's `open`, the steps
 // `held`, each with the row it stepped into, the acts `becoming`, each with
-// the source whose rows it waits on, and what's `typed`.
+// the source whose rows it waits on, and what's `typed`; the one source
+// `warming`, whose home rows are made while it's shut so the first opening
+// after a start draws from what's kept, and the sources `waking` as it
+// opens, each woken in turn so the rows each makes are timed as its own.
 function wanted(stands, source) {
     // Walked from outside, every row is read.
     if (stands.cataloguing) {
         return true;
     }
-    if (!stands.open) {
+    if (!stands.open && stands.warming !== source) {
+        return false;
+    }
+    if (stands.waking && !stands.waking.includes(source)) {
         return false;
     }
     // Held, or with an act of its own waiting to be agreed, its rows are
