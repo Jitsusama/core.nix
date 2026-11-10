@@ -187,18 +187,35 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
 /// minutes on a builder that didn't answer, and nothing said so.
 pub const GOING_QUIET_MIN: i64 = 15;
 
+/// The least time between two switches, in minutes, as update-to-main's
+/// follower keeps it (its `SWITCH_EVERY`): a merge that lands soon after a
+/// switch waits for the next by design. On 10 November a merge 22 minutes
+/// after a switch was said not on, eight minutes before the follower
+/// could ask for it, and the follower was restarted for nothing.
+pub const SWITCH_EVERY_MIN: i64 = 30;
+
 /// The oldest merge that should be on the machine by now and isn't, unless
 /// a switch that began after it is under way, for less than
-/// `GOING_QUIET_MIN`, or one waits out a call.
+/// `GOING_QUIET_MIN`, or one waits out a call. A merge is counted late
+/// from when it could first go on: when it merged, or once the switches'
+/// spacing since the last one has passed, whichever is later.
 fn not_on(s: &Snapshot) -> Option<Breach> {
     if s.follower.meeting {
         return None;
     }
+    let spaced = s
+        .follower
+        .looks
+        .iter()
+        .filter(|look| look.switched)
+        .map(|look| look.at + SWITCH_EVERY_MIN * 60)
+        .max();
+    let due = |l: &Landing| spaced.map_or(l.merge.at, |spaced| spaced.max(l.merge.at));
     let mut waiting: Vec<&Landing> = s
         .landings
         .iter()
         .filter(|l| l.on.is_none() && !l.merge.tests_only())
-        .filter(|l| s.now - l.merge.at >= NOT_ON_MIN * 60 && s.now - l.merge.at < 6 * 3600)
+        .filter(|l| s.now - due(l) >= NOT_ON_MIN * 60 && s.now - l.merge.at < 6 * 3600)
         .collect();
     waiting.sort_by_key(|l| l.merge.at);
     let oldest = waiting.first()?;
@@ -564,6 +581,33 @@ mod tests {
             said[0]
                 .text
                 .ends_with("though a switch has been under way 15 min"),
+            "{}",
+            said[0].text
+        );
+    }
+
+    #[test]
+    fn a_merge_waiting_out_the_switches_spacing_is_late_only_from_its_end() {
+        let now = 100_000;
+        let mut s = calm(now);
+        // The 10 November case: a switch at 06:32, a merge at 06:34, said
+        // not on at 06:55, though the follower could ask only from 07:02.
+        s.follower.looks = vec![Look {
+            at: now - 23 * 60,
+            core: "old".into(),
+            switched: true,
+        }];
+        s.landings = vec![Landing {
+            merge: merge("abc", now - 21 * 60),
+            on: None,
+        }];
+        assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);
+        // Twenty minutes past the spacing's end it's late after all.
+        s.now = now - 23 * 60 + (SWITCH_EVERY_MIN + NOT_ON_MIN) * 60;
+        let said = breaches(&s);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(
+            said[0].text.contains("#1 merged 48 min ago"),
             "{}",
             said[0].text
         );
