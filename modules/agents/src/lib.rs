@@ -10,12 +10,14 @@
 //! - `summary`: how the sessions stand together.
 //! - `said`: the launcher's own words for all of it.
 //! - `row`: a session's row, and every row laid out, folds and all.
+//! - `served`: every record served by key, and only what moved sent.
 //! - `session`: a session as the node tells of it, and their order.
 //! - `watch`: what the node and the other daemons hold, heard as it moves.
 
 pub mod figures;
 pub mod row;
 pub mod said;
+pub mod served;
 pub mod session;
 pub mod standing;
 pub mod summary;
