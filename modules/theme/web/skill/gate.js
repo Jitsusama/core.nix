@@ -4,7 +4,9 @@
 // answers with what the page lacks or gets wrong, each in a line saying what
 // to do. An empty answer passes this step; anything else and the page isn't
 // published. It finds the parts every page has, the switch and keys of its
-// head, and the faults a guard on the writing catches. SKILL.md says why
+// head, rows and folds that don't hold their layout, and the faults a guard
+// on the writing catches. It opens each fold and closes it again, so run it
+// on a page nobody is reading. SKILL.md says why
 // each is there; this file only finds them, so a page built by any model,
 // from any first draft, is held to the same bar. It ends without a
 // semicolon, since an eval asked for one expression answers nothing for a
@@ -278,6 +280,221 @@
       );
     }
   }
+
+  // Things set side by side are a row: two or more of a grid's or a flex
+  // line's children, of about one width, each holding words, none over
+  // another. A row holds its shape by layout (SKILL.md's Layout That
+  // Holds): framed ones end level, the parts of alike ones (state, title,
+  // figure, line, fold) sit on one line across the row, and none is
+  // squeezed under 256 px, where a phone takes one to a row. A row inside a
+  // drawing, a table, the head or a dialog is the drawing's own business.
+  // Boxes are measured as laid out, before any transform, so a part still
+  // arriving by its motion isn't taken for one the layout moved.
+  const laid = (element) => {
+    if (!(element instanceof HTMLElement)) {
+      const edges = element.getBoundingClientRect();
+      return { left: edges.left + scrollX, top: edges.top + scrollY, width: 0, height: 0 };
+    }
+    let left = 0;
+    let top = 0;
+    for (let at = element; at !== null; at = at.offsetParent) {
+      left += at.offsetLeft;
+      top += at.offsetTop;
+    }
+    return { left, top, width: element.offsetWidth, height: element.offsetHeight };
+  };
+  const quoted = (element) => named(element).slice(0, 40) || element.localName;
+  const holdsWords = (element) =>
+    shown(element) &&
+    !getComputedStyle(element).display.startsWith("inline") &&
+    element.textContent.trim().length >= 30;
+  const framed = (element) => {
+    const look = getComputedStyle(element);
+    return (
+      !/rgba\(0, 0, 0, 0\)|transparent/.test(look.backgroundColor) ||
+      look.boxShadow !== "none" ||
+      [look.borderLeftWidth, look.borderRightWidth, look.borderBottomWidth].some(
+        (width) => Number.parseFloat(width) > 0,
+      )
+    );
+  };
+  const rowsOf = (parent) => {
+    const lines = [];
+    for (const child of [...parent.children].filter(holdsWords)) {
+      const { top } = laid(child);
+      const line = lines.find((held) => Math.abs(held.top - top) <= 2);
+      if (line === undefined) {
+        lines.push({ top, cells: [child] });
+      } else {
+        line.cells.push(child);
+      }
+    }
+    const apart = (cells) => {
+      const spans = cells.map(laid).sort((one, other) => one.left - other.left);
+      return spans.every(
+        (span, at) => at === 0 || span.left >= spans[at - 1].left + spans[at - 1].width - 1,
+      );
+    };
+    return lines
+      .map((line) => line.cells)
+      .filter((cells) => {
+        const widths = cells.map((cell) => cell.offsetWidth);
+        const alike = Math.max(...widths) <= Math.min(...widths) * 1.15;
+        return cells.length > 1 && alike && apart(cells);
+      });
+  };
+  const rows = [main, ...(main?.querySelectorAll("*") ?? [])]
+    .filter(
+      (parent) =>
+        parent !== null &&
+        /grid|flex/.test(getComputedStyle(parent).display) &&
+        parent.closest("svg, table, header, nav, dialog, pre") === null,
+    )
+    .flatMap(rowsOf);
+  const uneven = new Set();
+  for (const cells of rows) {
+    const heights = cells.map((cell) => cell.offsetHeight);
+    const widest = Math.max(...cells.map((cell) => cell.offsetWidth));
+    const shapes = cells.map((cell) => [...cell.children].map((part) => part.localName).join());
+    if (cells.some(framed) && Math.max(...heights) - Math.min(...heights) > 1.5) {
+      uneven.add(
+        `framed things side by side end at different heights ("${quoted(cells[0])}"): ` +
+          "level them by layout, a grid row each stretches to, never padding",
+      );
+    } else if (cells[0].children.length > 1 && shapes.every((shape) => shape === shapes[0])) {
+      const astray = [...cells[0].children].find((part, at) => {
+        const tops = cells.map((cell) => laid(cell.children[at]).top);
+        return Math.max(...tops) - Math.min(...tops) > 2;
+      });
+      if (astray !== undefined) {
+        const where = named(astray).length > 2 ? astray : cells[0];
+        uneven.add(
+          `the parts of things side by side don't line up ("${quoted(where)}"): ` +
+            "put each part on one line across the row with subgrid",
+        );
+      }
+    }
+    if (widest < 256) {
+      uneven.add(
+        `${cells.length} side by side at ${Math.round(widest)} px each ("${quoted(cells[0])}"),` +
+          " squeezed under 256 px: drop a column, one to a row on a phone",
+      );
+    }
+  }
+  missing.push(...[...uneven].slice(0, 4));
+
+  // Opening a fold never reflows the page: it grows only itself, downward,
+  // or opens over the page in a side sheet. Each closed <details>, and each
+  // button that expands what it controls, is opened in turn, every box in
+  // <main> measured before and after, and closed again. Above it nothing
+  // moves; beside it nothing resizes or moves; below it things only move
+  // down; what holds it may grow taller but never wider. It waits for the
+  // opening's motion to settle, a second at most.
+  const settled = () =>
+    Promise.race([
+      Promise.all(page.getAnimations().map((motion) => motion.finished.catch(() => null))),
+      new Promise((done) => setTimeout(done, 1000)),
+    ]).then(() => new Promise((done) => requestAnimationFrame(() => done())));
+  const boxes = [...(main?.querySelectorAll("*") ?? [])]
+    .filter(
+      (element) =>
+        shown(element) &&
+        element.closest("svg, dialog") === null &&
+        !getComputedStyle(element).display.startsWith("inline"),
+    )
+    .slice(0, 3000);
+  const folds = [
+    ...(main?.querySelectorAll(
+      "details:not([open]), button[aria-expanded='false'][aria-controls]",
+    ) ?? []),
+  ]
+    .filter(shown)
+    .slice(0, 24);
+  // Three pixels of slack, since a fold closing leaves a pixel or two of its
+  // motion behind, which no reader sees.
+  const moved = (before, after) =>
+    ["left", "top", "width", "height"].filter((side) => Math.abs(before[side] - after[side]) > 3);
+  const trial = async (fold) => {
+    const was = new Map(boxes.map((element) => [element, laid(element)]));
+    const opened =
+      fold.localName === "details" ? fold : page.getElementById(fold.getAttribute("aria-controls"));
+    const dialogs = new Set(page.querySelectorAll("dialog[open]"));
+    if (fold.localName === "details") {
+      fold.open = true;
+    } else {
+      fold.click();
+    }
+    await settled();
+    const grown = opened === null || !shown(opened) ? null : laid(opened);
+    const from = grown?.top;
+    // What stood beside it as it opened: begun above its top and running
+    // past it, and not holding it. Anything inside one of these that moves
+    // is a neighbour reflowing, such as the parts of the next card over.
+    const beside = boxes.filter((element) => {
+      const then = was.get(element);
+      return (
+        grown !== null &&
+        !element.contains(opened) &&
+        !opened.contains(element) &&
+        then.top < from + 1 &&
+        then.top + then.height > from + 1
+      );
+    });
+    const culprit = boxes.find((element) => {
+      if (grown === null) {
+        return false;
+      }
+      const now = laid(element);
+      const then = was.get(element);
+      const sides = moved(then, now);
+      if (element === opened) {
+        return sides.some((side) => side !== "height");
+      }
+      if (fold.contains(element) || opened.contains(element)) {
+        return false;
+      }
+      if (element.contains(opened)) {
+        return sides.includes("left") || sides.includes("width");
+      }
+      // Above it or beside it, nothing changes, though an unframed box may
+      // stretch unseen; below it, things only move down, and nothing inside
+      // what stood beside it moves at all.
+      if (then.top < from + 1) {
+        return sides.some((side) => side !== "height") || (sides.length > 0 && framed(element));
+      }
+      const neighbour = beside.some((other) => other.contains(element));
+      return sides.some((side) => side !== "top") || (sides.length > 0 && neighbour);
+    });
+    for (const dialog of page.querySelectorAll("dialog[open]")) {
+      if (!dialogs.has(dialog)) {
+        dialog.close();
+      }
+    }
+    if (fold.localName === "details") {
+      fold.open = false;
+    } else if (fold.getAttribute("aria-expanded") === "true") {
+      fold.click();
+    }
+    await settled();
+    return culprit === undefined ? null : { culprit, opened };
+  };
+  // A box that settles late (a part kept unrendered off screen, a font)
+  // can move once by itself, so a reflow counts only when a second opening
+  // shows it too.
+  const reflows = [];
+  await folds.reduce(async (before, fold) => {
+    await before;
+    const seen = (await trial(fold)) && (await trial(fold));
+    if (seen !== null) {
+      const asks = fold.querySelector(":scope > summary") ?? fold;
+      const what =
+        seen.culprit === seen.opened ? "widens or moves it" : `moves "${quoted(seen.culprit)}"`;
+      reflows.push(
+        `opening "${quoted(asks)}" ${what}: let it grow only downward, or open it in a side sheet`,
+      );
+    }
+  }, Promise.resolve());
+  missing.push(...[...new Set(reflows)].slice(0, 4));
 
   // The writing's guard, over every word a reader reads (code, keys and
   // samples are names, not prose): no emdash or Unicode ellipsis, Canadian
