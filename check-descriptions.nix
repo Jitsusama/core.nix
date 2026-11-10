@@ -1487,12 +1487,18 @@
     lacks, refuses header variables where it can't read the context, and reads the process for a
     runtime given none, as ordinary pi does
   '';
+  pi-hosted-screen-reaches-its-viewers = ''
+    pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
+    through a hosted screen's viewers' terminals, sends a viewer who joins late the images
+    already on the screen, and edits a draft, an extension's panel's too, in the external
+    editor of the viewer that asked through its host, keeping the draft and saying why when
+    the edit fails and refusing it in place when the host can't
+  '';
   pi-hosted-screen-stays-in-its-session = ''
-    pi built with the host's patches, applied exactly, ends only a hosted screen when it quits,
-    crashes or is suspended, binds nothing after quitting during startup, copies (a fullscreen
-    selection too) through its viewers' terminals, refuses the external editor,
-    tells every screen of a theme change and sends a viewer who joins late the images
-    already on the screen, while ordinary pi keeps its process exits
+    pi built with the host's patches, applied exactly, ends only a hosted screen when it quits
+    or crashes, suspends only the viewer that asked when its host can and refuses otherwise,
+    binds nothing after quitting during startup and tells every screen of a theme change,
+    while ordinary pi keeps its process exits
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the

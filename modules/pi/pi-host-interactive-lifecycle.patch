@@ -1,3 +1,94 @@
+--- a/packages/coding-agent/src/modes/interactive/bug-report.ts
++++ b/packages/coding-agent/src/modes/interactive/bug-report.ts
+@@ -19,6 +19,7 @@
+ import { BorderedLoader } from "./components/bordered-loader.ts";
+ import { ExtensionEditorComponent } from "./components/extension-editor.ts";
+ import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
++import type { ExternalEditorResult } from "./external-editor.ts";
+ import { createShareTrailingEntries } from "./session-share.ts";
+ import { theme } from "./theme/theme.ts";
+ 
+@@ -30,6 +31,8 @@
+ 	keybindings: KeybindingsManager;
+ 	showStatus: (message: string) => void;
+ 	showError: (message: string) => void;
++	/** Edits externally somewhere other than this process's terminal, as a hosted screen does. */
++	editExternally?: (text: string) => Promise<ExternalEditorResult>;
+ }
+ 
+ interface BugReportOptions {
+@@ -247,6 +250,7 @@
+ 			() => finish(null),
+ 			{ description },
+ 			context.session.settingsManager.getExternalEditorCommand(),
++			context.editExternally,
+ 		);
+ 		showOverlay(context, component);
+ 	});
+--- a/packages/coding-agent/src/modes/interactive/components/extension-editor.ts
++++ b/packages/coding-agent/src/modes/interactive/components/extension-editor.ts
+@@ -14,7 +14,7 @@
+ 	type TUI,
+ } from "@earendil-works/pi-tui";
+ import type { KeybindingsManager } from "../../../core/keybindings.ts";
+-import { editInExternalEditor } from "../external-editor.ts";
++import { editInExternalEditor, type ExternalEditorResult } from "../external-editor.ts";
+ import { getEditorTheme, theme } from "../theme/theme.ts";
+ import { DynamicBorder } from "./dynamic-border.ts";
+ import { keyHint } from "./keybinding-hints.ts";
+@@ -30,6 +30,8 @@
+ 	private tui: TUI;
+ 	private keybindings: KeybindingsManager;
+ 	private externalEditorCommand: string;
++	/** Edits externally somewhere other than this process's terminal, as a hosted screen does. */
++	private editExternally: ((text: string) => Promise<ExternalEditorResult>) | undefined;
+ 	/** Shows external editor failures; renders nothing while empty. */
+ 	private externalEditorStatus = new Text("", 1, 0);
+ 
+@@ -51,8 +53,10 @@
+ 		onCancel: () => void,
+ 		options?: ExtensionEditorOptions,
+ 		externalEditorCommand?: string,
++		editExternally?: (text: string) => Promise<ExternalEditorResult>,
+ 	) {
+ 		super();
++		this.editExternally = editExternally;
+ 
+ 		this.tui = tui;
+ 		this.keybindings = keybindings;
+@@ -127,19 +131,28 @@
+ 
+ 	private async handleOpenExternalEditor(): Promise<void> {
+ 		const content = this.editor.getText();
++		if (this.editExternally) {
++			this.showExternalEditorResult(await this.editExternally(content));
++			this.tui.requestRender();
++			return;
++		}
+ 		this.tui.stop();
+ 		try {
+ 			const result = await editInExternalEditor({
+ 				command: this.externalEditorCommand,
+ 				content,
+ 			});
+-			this.externalEditorStatus.setText(result.status === "failed" ? theme.fg("warning", result.message) : "");
+-			if (result.status === "complete") {
+-				this.editor.setText(result.content);
+-			}
++			this.showExternalEditorResult(result);
+ 		} finally {
+ 			this.tui.start();
+ 			this.tui.requestRender(true);
+ 		}
+ 	}
++
++	private showExternalEditorResult(result: ExternalEditorResult): void {
++		this.externalEditorStatus.setText(result.status === "failed" ? theme.fg("warning", result.message) : "");
++		if (result.status === "complete") {
++			this.editor.setText(result.content);
++		}
++	}
+ }
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 @@ -123,7 +123,12 @@
@@ -14,7 +105,16 @@
  import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
  import { parseGitUrl } from "../../utils/git.ts";
  import { ensurePngTranscoder } from "../../utils/image-convert.ts";
-@@ -449,6 +454,11 @@
+@@ -182,7 +187,7 @@
+ import { TrustSelectorComponent } from "./components/trust-selector.ts";
+ import { UserMessageComponent } from "./components/user-message.ts";
+ import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
+-import { editInExternalEditor } from "./external-editor.ts";
++import { editInExternalEditor, type ExternalEditorResult } from "./external-editor.ts";
+ import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
+ import { getModelSearchText } from "./model-search.ts";
+ import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
+@@ -449,6 +454,21 @@
  	initialThemeSetting?: string;
  	/** Terminal implementation. Defaults to the current process terminal. */
  	terminal?: Terminal;
@@ -22,11 +122,21 @@
 +	hosted?: {
 +		/** Called once after this screen stops; the host closes only its session. */
 +		onExit: (exitCode: number, error?: unknown) => Promise<void>;
++		/**
++		 * Edits text in the external editor of the viewer that asked, in its own terminal,
++		 * while the screen runs on for the others. Without it the external editor is refused.
++		 */
++		editText?: (text: string) => Promise<ExternalEditorResult>;
++		/**
++		 * Suspends the viewer that asked, leaving the conversation running, and says whether
++		 * it could. Without it, or when it can't, suspend is refused.
++		 */
++		suspend?: () => boolean;
 +	};
  }
  
  interface ExtensionChangelogUpdate {
-@@ -458,6 +468,9 @@
+@@ -458,6 +478,9 @@
  }
  
  export class InteractiveMode {
@@ -36,7 +146,7 @@
  	private runtimeHost: AgentSessionRuntime;
  	private renderer: TuiMainScreen | TuiAltScreen;
  	private ui: TUI;
-@@ -616,6 +629,9 @@
+@@ -616,6 +639,9 @@
  	}
  
  	constructor(runtimeHost: AgentSessionRuntime, options: InteractiveModeOptions = {}) {
@@ -46,7 +156,7 @@
  		this.runtimeHost = runtimeHost;
  		setCapabilityOverrides(this.settingsManager.getTerminalCapabilityOverrides());
  		const tuiMode = options.tuiMode ?? this.settingsManager.getTuiMode();
-@@ -637,6 +653,7 @@
+@@ -637,6 +663,7 @@
  			onRightClickPaste: this.onRightClickPaste,
  			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
  			fullscreenWheelScrollLines: this.settingsManager.getFullscreenWheelScrollLines(),
@@ -54,7 +164,7 @@
  		});
  		this.ui = createInteractiveTuiReference(() => this.renderer);
  		this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
-@@ -946,6 +963,7 @@
+@@ -946,6 +973,7 @@
  			onRightClickPaste: this.onRightClickPaste,
  			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
  			fullscreenWheelScrollLines: this.settingsManager.getFullscreenWheelScrollLines(),
@@ -62,7 +172,7 @@
  		});
  		nextUi.setClearOnShrink(clearOnShrink);
  		nextUi.onDebug = onDebug;
-@@ -972,7 +990,8 @@
+@@ -972,7 +1000,8 @@
  	}
  
  	async init(): Promise<void> {
@@ -72,7 +182,7 @@
  
  		this.registerSignalHandlers();
  
-@@ -984,7 +1003,10 @@
+@@ -984,7 +1013,10 @@
  		// after exit. Fullscreen shows the notice in the header instead (#11508).
  		if (this.renderer.mode !== "fullscreen") {
  			const modelScopeNotice = this.getModelScopeNotice();
@@ -84,7 +194,7 @@
  		}
  
  		// Keep one component tree and remount it when changing renderers.
-@@ -1028,6 +1050,7 @@
+@@ -1028,6 +1060,7 @@
  		// The header and startup notices bake theme colors into their text, so build them once the terminal
  		// reported its colors. This ends at the terminal's DA1 reply, or after 100 ms if it answers nothing.
  		await this.themeController.waitForTerminalColors();
@@ -92,7 +202,7 @@
  
  		// Add header with keybindings from config (unless silenced)
  		if (this.shouldShowStartupHeader()) {
-@@ -1115,6 +1138,7 @@
+@@ -1115,6 +1148,7 @@
  			ensureTool("rg", (status) => this.showManagedToolStatus(status)),
  		]);
  		this.fdPath = fdPath;
@@ -100,7 +210,7 @@
  
  		// Enable the remaining input handlers only after managed-tool setup completes.
  		this.setupKeyHandlers();
-@@ -1123,12 +1147,13 @@
+@@ -1123,12 +1157,13 @@
  
  		// Initialize extensions first so resources are shown before messages
  		await this.rebindCurrentSession();
@@ -115,7 +225,7 @@
  			this.ui.invalidate();
  			this.updateEditorBorderColor();
  			this.ui.requestRender();
-@@ -1141,6 +1166,7 @@
+@@ -1141,6 +1176,7 @@
  
  		// Initialize available provider count for footer display
  		await this.updateAvailableProviderCount();
@@ -123,7 +233,7 @@
  
  		// Flush the completed startup state before loading the remaining syntax grammars.
  		this.ui.renderNow();
-@@ -1170,6 +1196,7 @@
+@@ -1170,6 +1206,7 @@
  	 */
  	async run(): Promise<void> {
  		await this.init();
@@ -131,7 +241,7 @@
  
  		if (!process.env.PI_OFFLINE) {
  			const controller = new AbortController();
-@@ -1274,8 +1301,9 @@
+@@ -1274,8 +1311,9 @@
  		}
  
  		// Main interactive loop
@@ -142,7 +252,7 @@
  			try {
  				await this.session.prompt(userInput);
  			} catch (error: unknown) {
-@@ -2203,7 +2231,8 @@
+@@ -2203,7 +2241,8 @@
  
  		await this.bindCurrentSessionExtensions();
  
@@ -152,7 +262,7 @@
  			return;
  		}
  
-@@ -2216,7 +2245,7 @@
+@@ -2216,7 +2255,7 @@
  		this.updateTerminalTitle();
  	}
  
@@ -161,7 +271,7 @@
  		const message = error instanceof Error ? error.message : String(error);
  		this.showError(`${prefix}: ${message}`);
  		const extensionHint = this.getCrashExtensionHint(error);
-@@ -2227,6 +2256,10 @@
+@@ -2227,6 +2266,10 @@
  			const instructions = this.crashReportInstructions();
  			this.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), this.outputPad, 0));
  		}
@@ -172,7 +282,15 @@
  		stopThemeWatcher();
  		this.stop("transcript");
  		process.exit(1);
-@@ -4340,6 +4373,7 @@
+@@ -2923,6 +2966,7 @@
+ 				() => finish(undefined),
+ 				undefined,
+ 				this.settingsManager.getExternalEditorCommand(),
++				this.hostedExternalEdit(),
+ 			);
+ 			this.pushExtensionDialog(editor, { kind: "question", message: title });
+ 		});
+@@ -4340,6 +4384,7 @@
  	}
  
  	async getUserInput(): Promise<string> {
@@ -180,7 +298,7 @@
  		const queuedInput = this.pendingUserInputs.shift();
  		if (queuedInput !== undefined) {
  			return queuedInput;
-@@ -4383,8 +4417,43 @@
+@@ -4383,8 +4428,43 @@
  	 * repaint the final frame while the process is exiting.
  	 */
  	private isShuttingDown = false;
@@ -224,7 +342,7 @@
  		if (this.isShuttingDown) return;
  		this.isShuttingDown = true;
  		// Keep signal handlers registered until terminal cleanup has completed.
-@@ -4425,7 +4494,11 @@
+@@ -4425,7 +4505,11 @@
  		process.exit(0);
  	}
  
@@ -237,7 +355,7 @@
  		this.isShuttingDown = true;
  		this.unregisterSignalHandlers();
  		killTrackedDetachedChildren();
-@@ -4445,7 +4518,11 @@
+@@ -4445,7 +4529,11 @@
  	 * call ui.stop() to restore cooked mode, the cursor, and disable bracketed
  	 * paste / Kitty / modifyOtherKeys sequences.
  	 */
@@ -250,7 +368,7 @@
  		// A dead terminal is not a pi crash. Do not try to restore it or record it.
  		if (isDeadTerminalError(error)) {
  			this.emergencyTerminalExit();
-@@ -4482,6 +4559,8 @@
+@@ -4482,6 +4570,8 @@
  	}
  
  	private registerSignalHandlers(): void {
@@ -259,30 +377,34 @@
  		this.unregisterSignalHandlers();
  
  		const signals: NodeJS.Signals[] = ["SIGTERM"];
-@@ -4532,6 +4611,10 @@
+@@ -4532,6 +4622,11 @@
  	}
  
  	private handleCtrlZ(): void {
 +		if (this.options.hosted) {
++			if (this.options.hosted.suspend?.()) return;
 +			this.showStatus("Suspend is unavailable in a hosted session; close the viewer to detach");
 +			return;
 +		}
  		if (process.platform === "win32") {
  			this.showStatus("Suspend to background is not supported on Windows");
  			return;
-@@ -4690,6 +4773,11 @@
- 	}
- 
+@@ -4692,6 +4787,14 @@
  	private async handleOpenExternalEditor(): Promise<void> {
-+		// The editor would need the host's own terminal, which no viewer can see.
-+		if (this.options.hosted) {
-+			this.showStatus("The external editor is unavailable in a hosted session");
-+			return;
-+		}
  		const editorCmd = this.settingsManager.getExternalEditorCommand();
  		const content = this.editor.getExpandedText?.() ?? this.editor.getText();
++		const hostedEdit = this.hostedExternalEdit();
++		if (hostedEdit) {
++			const result = await hostedEdit(content);
++			if (result.status === "complete") this.editor.setText(result.content);
++			else this.showStatus(result.message);
++			this.ui.requestRender();
++			return;
++		}
  		this.ui.stop();
-@@ -5797,7 +5885,7 @@
+ 		try {
+ 			const result = await editInExternalEditor({
+@@ -5797,7 +5900,7 @@
  					return;
  				}
  				try {
@@ -291,7 +413,13 @@
  					this.showStatus("Copied selected message to clipboard");
  				} catch (error) {
  					this.showError(error instanceof Error ? error.message : String(error));
-@@ -6736,6 +6824,17 @@
+@@ -6731,11 +6834,43 @@
+ 				keybindings: this.keybindings,
+ 				showStatus: (message) => this.showStatus(message),
+ 				showError: (message) => this.showError(message),
++				editExternally: this.hostedExternalEdit(),
+ 			},
+ 			hint,
  		);
  	}
  
@@ -306,10 +434,30 @@
 +		this.ui.terminal.write(sequence);
 +	}
 +
++	/**
++	 * How a hosted screen edits text externally: in the terminal of the viewer that asked, or
++	 * refused when its host can't. Undefined for ordinary pi, which runs the editor itself.
++	 */
++	private hostedExternalEdit(): ((text: string) => Promise<ExternalEditorResult>) | undefined {
++		const hosted = this.options.hosted;
++		if (!hosted) return undefined;
++		const { editText } = hosted;
++		if (!editText) {
++			return async () => ({ status: "failed", message: "The external editor is unavailable in a hosted session" });
++		}
++		return async (text) => {
++			try {
++				return await editText(text);
++			} catch (error) {
++				return { status: "failed", message: error instanceof Error ? error.message : String(error) };
++			}
++		};
++	}
++
  	private async handleCopyCommand(
  		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
  	): Promise<void> {
-@@ -6756,7 +6855,7 @@
+@@ -6756,7 +6891,7 @@
  		}
  
  		try {
@@ -318,7 +466,7 @@
  			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
  				this.ui.flash("Copied!");
  			} else {
-@@ -7196,6 +7295,8 @@
+@@ -7196,6 +7331,8 @@
  		}
  		this.clearStatusIndicator();
  		this.themeController.disableAutoSync();
