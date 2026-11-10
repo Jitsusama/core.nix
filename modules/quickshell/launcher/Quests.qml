@@ -97,32 +97,96 @@ Provider {
         };
     }
 
+    // Every quest, open first, each as its record says it (questOf). A
+    // quest in both lists, as it ends or reopens, is the open one until
+    // both are written. Said anew only when a quest heard reads otherwise
+    // than it did, so a list the harness writes again, which tells every
+    // quest anew with only when it was heard moved, changes nothing here.
+    property var quests: []
+
+    // What each list's records made, by the record's key: the record and
+    // its quest. Each change remakes only the keys it names (Daemon.qml's
+    // heard), where every quest of both lists, 1,063 on Joel's shell, was
+    // copied field by field at each list written, the launcher shut too
+    // (2026-11-10). Plain objects, so keeping one notifies nothing.
+    readonly property var openMade: ({})
+    readonly property var endedMade: ({})
+
     // A quest as its record says it, without what the node adds: its key,
     // when it was heard, which moves for every quest each time a list is
     // written, and the node's own kind, which stands over the quest's, so
-    // the harness says that again as quest.kind. A quest in both lists, as
-    // it ends or reopens, is the open one until both are written.
-    readonly property var quests: {
-        void openKind?.revision;
-        void endedKind?.revision;
+    // the harness says that again as quest.kind.
+    function questOf(record) {
+        const quest = {};
+        for (const field of Object.keys(record)) {
+            if (!["key", "heard", "kind", "quest.kind", "start"].includes(field))
+                quest[field] = record[field];
+        }
+        quest.kind = record["quest.kind"] ?? "quest";
+        quest.folder = record.start ?? Sessions.home;
+        return quest;
+    }
+
+    // Takes what a list said of these keys into what it made, a key whose
+    // record reads the same but for when it was heard keeping its quest,
+    // and lists the quests again if any changed.
+    function took(list, made, changed, gone) {
+        let moved = false;
+        for (const key of changed) {
+            const record = list.held[key];
+            const before = made[key];
+            if (!record || before && Pi.fieldsAlike(before.record, record, ["heard"]))
+                continue;
+            made[key] = { record: record, quest: questOf(record) };
+            moved = true;
+        }
+        for (const key of gone) {
+            if (key in made) {
+                delete made[key];
+                moved = true;
+            }
+        }
+        if (moved)
+            listed();
+    }
+
+    function listed() {
         const seen = new Set();
         const all = [];
-        const records = Object.values(openKind?.held ?? {})
-            .concat(Object.values(endedKind?.held ?? {}));
-        for (const record of records) {
-            if (seen.has(record.id))
-                continue;
-            seen.add(record.id);
-            const quest = {};
-            for (const field of Object.keys(record)) {
-                if (!["key", "heard", "kind", "quest.kind", "start"].includes(field))
-                    quest[field] = record[field];
+        for (const made of [openMade, endedMade]) {
+            for (const key in made) {
+                const quest = made[key].quest;
+                if (seen.has(quest.id))
+                    continue;
+                seen.add(quest.id);
+                all.push(quest);
             }
-            quest.kind = record["quest.kind"] ?? "quest";
-            quest.folder = record.start ?? Sessions.home;
-            all.push(quest);
         }
-        return all;
+        quests = all;
+    }
+
+    // A list's link made again, as the node's socket moves, starts it
+    // afresh from what the new one holds.
+    function linked(list, made) {
+        for (const key of Object.keys(made))
+            delete made[key];
+        if (list)
+            took(list, made, Object.keys(list.held), []);
+        listed();
+    }
+    onOpenKindChanged: linked(openKind, openMade)
+    onEndedKindChanged: linked(endedKind, endedMade)
+    Connections {
+        target: provider.openKind
+        function onHeard(changed, gone) {
+            provider.took(provider.openKind, provider.openMade, changed, gone);
+        }
+    }
+    Connections {
+        target: provider.endedKind
+        function onHeard(changed, gone) {
+            provider.took(provider.endedKind, provider.endedMade, changed, gone);
+        }
     }
 
     // The status glyph each status wears.

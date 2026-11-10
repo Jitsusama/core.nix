@@ -2236,7 +2236,8 @@
     the launcher reads the open and ended quests the node serves, each with its own kind rather
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
-    each saying how it stands as Machines does, and sees one made since
+    each saying how it stands as Machines does, and sees one made since, remaking only the quests
+    a change names and none a list written again leaves the same
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
