@@ -1029,6 +1029,79 @@ fn printing_out_paths_brings_them_here_from_the_builder_and_prints_them() {
     );
 }
 
+// Where the machine names the keys its lent builders sign with, what one
+// built comes back only signed, so an account Nix here no longer trusts
+// can still bring it, and one that does takes nothing unchecked.
+#[test]
+fn a_signed_builders_paths_come_back_checked() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    fs::write(offload.join("builder-keys"), "builders-1:AAAA\n").unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    let ran = there_with(folder.path(), &offload, &["--print-out-paths"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
+    assert_eq!(
+        fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
+        format!("copy --from {} /nix/store/aaaa-a\n", STORE.trim())
+    );
+}
+
+// A path the builder got from here goes back signed only once its push
+// signs it, on a timer, so a checked copy that fails waits for that.
+#[test]
+fn a_checked_copy_back_that_fails_waits_for_the_builder_to_sign() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    fs::write(offload.join("builder-keys"), "builders-1:AAAA\n").unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
+    fs::write(folder.path().join("nix-fails"), "1").unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args([
+            "there",
+            "-L",
+            "github:o/r/abc",
+            "checks.x.a",
+            "--print-out-paths",
+        ])
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                folder.path().display(),
+                std::env::var("PATH").unwrap()
+            ),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("NIX_OFFLOAD_SIGNED_WITHIN", "1")
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
+    let copy = format!("copy --from {} /nix/store/aaaa-a\n", STORE.trim());
+    assert_eq!(
+        fs::read_to_string(folder.path().join("nix-calls")).unwrap(),
+        copy.repeat(2)
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "nix-offload: what came back may hold a path the builder signs only as it \
+             pushes, so this waits 1 s for it first"
+        ),
+        "{ran:?}"
+    );
+}
+
 // The builder's log and errors go on to the caller as they come, so a
 // build that fails says why rather than only that it did.
 #[test]

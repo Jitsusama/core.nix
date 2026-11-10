@@ -915,6 +915,9 @@ fn sent(
             .and_then(standing)
             .or_else(|| there::stood_again(dir, waiting, since))
     };
+    // Every lent builder signs with the same keys, which the first
+    // lender's folder names, VM builders' included.
+    let first = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let ran = there::run(
         part,
         store.as_deref(),
@@ -922,6 +925,7 @@ fn sent(
         waiting,
         scratch,
         ["ssh", "nix"],
+        there::signatures(&first),
     );
     (ran, stood)
 }
