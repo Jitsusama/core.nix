@@ -70,6 +70,12 @@ ShellRoot {
         command: ["touch", `${root.runtime}/next`]
     }
 
+    // The people daemon stopped, as when it fails.
+    Process {
+        id: stopping
+        command: ["sh", "-c", `kill "$(cat ${root.runtime}/people.pid)"`]
+    }
+
     function names(rows) {
         return rows.map(row => row.name).join(", ");
     }
@@ -327,6 +333,19 @@ ShellRoot {
             check: () => {
                 expect("is joined", people.all[0].verbs()[0].name === "Join Their Call",
                     people.all[0].verbs()[0].name);
+            }
+        },
+        {
+            // A down daemon is said at home rather than a count of whom it
+            // last listed, which would read as if all were well.
+            what: "the people daemon gone",
+            run: () => {
+                stopping.running = true;
+            },
+            holds: () => people.homeSays() === "not answering",
+            check: () => {
+                expect("still lists whom it last listed", people.all.length === 4,
+                    names(people.all));
             }
         }
     ]

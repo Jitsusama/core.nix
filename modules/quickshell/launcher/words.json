@@ -9192,7 +9192,10 @@
       "parts": ["transcripts"],
       "ask": "who?",
       "empty": "Nobody you've met or written lately.",
-      "none": "nobody lately"
+      "none": "nobody lately",
+      "said": {
+        "silent": "not answering"
+      }
     },
     {
       "id": "verb:person:call",
