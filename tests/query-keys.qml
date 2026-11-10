@@ -2135,6 +2135,11 @@ QtObject {
             holds(`the caret ${what}`, Typing.caretAfter(act, text, at), want);
         holds("normal's caret rests on the last letter", Typing.resting("sound", 5), 4);
         holds("and on an empty line at its start", Typing.resting("", 0), 0);
+        holds("a find narrowed says how far", Typing.noteOf("", "3 found", true), "3 found");
+        holds("but not where that isn't said", Typing.noteOf("", "3 found", false), "");
+        holds("a place that can't answer says so in a count's stead",
+            Typing.noteOf("not answering", "3 found", true), "not answering");
+        holds("whatever's typed", Typing.noteOf("not answering", "", false), "not answering");
 
         operating(holds);
 

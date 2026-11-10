@@ -70,10 +70,15 @@ ShellRoot {
         command: ["touch", `${root.runtime}/next`]
     }
 
-    // The people daemon stopped, as when it fails.
+    // The people daemon stopped, as when it fails, and started again.
     Process {
         id: stopping
         command: ["sh", "-c", `kill "$(cat ${root.runtime}/people.pid)"`]
+    }
+    Process {
+        id: starting
+        command: [Quickshell.env("PEOPLE"), `${root.runtime}/daemons/people.sock`,
+            Quickshell.env("SOURCES")]
     }
 
     function names(rows) {
@@ -348,15 +353,37 @@ ShellRoot {
             // last listed, which would read as if all were well.
             what: "the people daemon gone",
             run: () => {
+                root.stoppedAt = Date.now();
                 stopping.running = true;
             },
             holds: () => people.homeSays() === "not answering",
             check: () => {
+                // Only once silent a second, so a restart or a reconnect
+                // never blinks it (VKCF3Z, 2026-11-10).
+                const silent = Date.now() - root.stoppedAt;
+                expect("said only once silent a second", silent >= 1000, `${silent} ms`);
                 expect("still lists whom it last listed", people.all.length === 4,
                     names(people.all));
+                // Said inside People too, on its head, as home's row says it.
+                expect("said on People's head", people.pressing === "not answering",
+                    people.pressing);
+            }
+        },
+        {
+            what: "the people daemon back",
+            run: () => {
+                starting.running = true;
+            },
+            holds: () => people.pressing === "",
+            check: () => {
+                expect("home counts again", people.homeSays() !== "not answering",
+                    people.homeSays());
             }
         }
     ]
+
+    // When the people daemon was stopped.
+    property real stoppedAt: 0
 
     // How many merges and changes People had before a change heard while
     // nobody looks.
