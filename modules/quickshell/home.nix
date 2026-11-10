@@ -2534,6 +2534,9 @@ in
         # rather than in app.slice beside Chrome and Slack, where a build's
         # pressure reaches them first.
         Slice = "session.slice";
+        # The launcher's open mark says nothing once the shell is gone, so a
+        # switch waiting on it never waits on a shell that died.
+        ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher";
         # Inside session.slice, first beside the compositor, ahead of the
         # portals and the bus at their tenth: the launcher is how Joel drives
         # the machine. Its floor is hard, so a build filling memory never
