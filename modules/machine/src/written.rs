@@ -156,7 +156,8 @@ mod tests {
         assert!(
             written
                 .wait(Duration::from_secs(5))
-                .contains(&"warmth".to_owned())
+                .contains(&"warmth".to_owned()),
+            "a file written in place is heard"
         );
         // A folder made later is watched from then, and said found.
         fs::create_dir_all(&later).unwrap();
@@ -165,7 +166,8 @@ mod tests {
         assert!(
             written
                 .wait(Duration::from_secs(5))
-                .contains(&"learned".to_owned())
+                .contains(&"learned".to_owned()),
+            "a file in a folder made later is heard"
         );
     }
 }

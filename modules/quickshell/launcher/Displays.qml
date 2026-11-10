@@ -484,7 +484,7 @@ Provider {
         const records = Object.values(lights.held);
         const now = Backlight.lit(records);
         const sensed = Backlight.sensor(records);
-        const level = Backlight.settled(records);
+        const level = Backlight.settledOf(records);
         const points = Backlight.curve(records);
         const warmed = Warmth.of(records);
         const moved = (was, is) => JSON.stringify(was) !== JSON.stringify(is);

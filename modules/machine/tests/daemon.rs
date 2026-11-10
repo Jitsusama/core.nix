@@ -7,6 +7,9 @@
 //! disk's file systems are found through what's mapped over it; the
 //! brightness and warmth the backlight program steers the screen to are
 //! told as it writes them; and an ask or kind it doesn't know is refused.
+//!
+//! Long because every case runs the one daemon over the one fixture
+//! machine built here, which a second file of cases would have to copy.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

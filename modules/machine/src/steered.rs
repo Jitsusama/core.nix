@@ -222,7 +222,10 @@ mod tests {
         assert_eq!(files.warmth, "/run/user/1000/backlight-warmth");
         assert_eq!(files.learned, "/state/backlight/learned");
         assert_eq!(files.folders(), ["/run/user/1000", "/state/backlight"]);
-        assert!(files.names("learned") && files.names("backlight-now"));
+        assert_eq!(
+            (files.names("learned"), files.names("backlight-now")),
+            (true, true)
+        );
         assert!(
             !files.names("backlight-now.writing"),
             "a file being written isn't one"

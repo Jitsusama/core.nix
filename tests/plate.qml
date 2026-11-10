@@ -84,7 +84,7 @@ QtObject {
     // level. Then the curve, as the daemon orders it.
     function backlight(check) {
         const lx = each => `${each} lx`;
-        const said = (level, lux, asks, following, curve) => Backlight.settled([{
+        const said = (level, lux, asks, following, curve) => Backlight.settledOf([{
             key: "brightness:built-in", kind: "brightness", level_ratio: level, lux,
             asks_ratio: asks, following, curve: curve ?? []
         }]);
@@ -121,7 +121,7 @@ QtObject {
             JSON.stringify(unheard));
         const curveOnly = said(null, null, null, null, [{ lux: 6, level_ratio: 0.377 }]);
         check("no record, or one with no level settled, says nothing",
-            Backlight.settled([]) === null && curveOnly === null
+            Backlight.settledOf([]) === null && curveOnly === null
             && Backlight.follows(null, backlightSaid) === ""
             && Backlight.room(null, 28, backlightSaid, lx) === "28 lx"
             && Backlight.room(null, null, backlightSaid, lx) === "",

@@ -45,7 +45,7 @@ function brightness(records) {
 // `following` is the program's: light heard and the lid open, the curve
 // setting the level; a pick is learned into the curve at once, so there's
 // no pick held apart from it.
-function settled(records) {
+function settledOf(records) {
     const found = brightness(records);
     if (!Number.isFinite(found?.level_ratio) || typeof found.following !== "boolean") {
         return null;
