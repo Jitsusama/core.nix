@@ -493,7 +493,8 @@ Provider {
                 count: space.focused ? "here" : "",
                 glyph: space.new ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
                 hue: "machine",
-                side: space.new ? "" : space.inside.length === 0 ? "empty" : space.inside.join(", "),
+                side: space.new ? ""
+                    : space.inside.length === 0 ? "empty" : space.inside.join(", "),
                 note: chord === "" ? "" : `next time ${chord}`,
                 run: () => Niri.act({
                     MoveWindowToWorkspace: {
