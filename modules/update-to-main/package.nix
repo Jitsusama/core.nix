@@ -1,6 +1,7 @@
 # update-to-main, built from this directory, its tests run as it builds
-# against real git, gpg, ssh-keygen and tar.
+# against real git, gpg, ssh-keygen, tar and curl.
 {
+  curl,
   git,
   gnupg,
   gnutar,
@@ -23,6 +24,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   nativeCheckInputs = [
+    curl
     git
     gnupg
     gnutar

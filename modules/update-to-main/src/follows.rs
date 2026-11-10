@@ -102,7 +102,11 @@ fn lock(config: &Config, head: &str) -> Result<Value, Failure> {
         }
         _ => "flake.lock".to_owned(),
     };
-    let text = git::show(&Repo::main(config), head, &path).ok_or_else(|| {
+    let text = match &config.hosted {
+        Some(hosted) => hosted::show(config, hosted, head, "flake.lock"),
+        None => git::show(&Repo::main(config), head, &path),
+    };
+    let text = text.ok_or_else(|| {
         Failure::new(format!(
             "main at {} has no {path}, so nothing says where its inputs were",
             git::short(head)

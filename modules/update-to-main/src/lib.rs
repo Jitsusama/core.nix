@@ -14,6 +14,7 @@
 //! - `update`: one update, from fetching main to its ending.
 //! - `git`: root's copy of main, its history and its signature.
 //! - `hosted`: main as its host names it, for a host that signs nothing.
+//! - `read`: a hosted main's folder read from its host's API, unfetched.
 //! - `follows`: the flake's inputs that follow their own signed main.
 //! - `follow`: the asker that asks whenever main moves.
 //! - `system`: building, switching, the health checks and going back.
@@ -37,6 +38,7 @@ pub mod hosted;
 pub mod line;
 pub mod power;
 pub mod progress;
+pub mod read;
 pub mod run;
 pub mod serve;
 pub mod session;

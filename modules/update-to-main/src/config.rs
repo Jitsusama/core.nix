@@ -236,6 +236,13 @@ pub struct Hosted {
     /// ever spares a fetch: what's built is still a commit the host named.
     #[serde(default)]
     pub changed: Option<Vec<String>>,
+    /// The host's REST API for the repository, as
+    /// `https://HOST/api/v3/repos/OWNER/REPO`, which root asks with the
+    /// token for the folder's trees and blobs at main's head, so main
+    /// needn't be fetched into `checkout` (src/read.rs). None, or an API
+    /// that fails, and main is fetched.
+    #[serde(default)]
+    pub api: Option<String>,
     /// The folders `user`'s commands find their programs in.
     pub path: Vec<PathBuf>,
     /// The flake's inputs only `user` can fetch, fetched as them by their
@@ -265,6 +272,8 @@ pub struct Tools {
     pub nix_env: PathBuf,
     /// What unpacks the folder a hosted main's flake is in.
     pub tar: PathBuf,
+    /// What reads a hosted main's folder from its host's API.
+    pub curl: PathBuf,
     /// macOS's pmset, which says how a Mac is powered; none on Linux.
     pub pmset: Option<PathBuf>,
 }
@@ -319,6 +328,12 @@ impl Config {
     /// time.
     pub fn source(&self) -> PathBuf {
         self.state.join("source")
+    }
+
+    /// The folder keeping what each read of a hosted main's folder from its
+    /// host found, by commit.
+    pub fn reads(&self) -> PathBuf {
+        self.state.join("read")
     }
 
     /// The keyring holding only the PGP keys that count.

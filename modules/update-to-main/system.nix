@@ -354,6 +354,22 @@ in
                   fetched as it would be without it.
                 '';
               };
+              api = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                example = "https://github.example.com/api/v3/repos/owner/repo";
+                description = ''
+                  The host's REST API for the repository, which root asks
+                  with the token for the folder's trees and blobs at main's
+                  head, each checked against the id the tree above it
+                  names, so main needn't be fetched into the checkout: a
+                  fetch that moves a large repository's main checks the
+                  new head's whole tree is there, which took minutes. Only
+                  the commit's tree, and whether main descends from what
+                  the machine runs, are the host's word, as main's head
+                  is. When the API fails, main is fetched.
+                '';
+              };
               path = mkOption {
                 type = types.listOf types.str;
                 default = [
@@ -540,6 +556,7 @@ in
               gpg = lib.getExe' pkgs.gnupg "gpg";
               ssh_keygen = lib.getExe' pkgs.openssh "ssh-keygen";
               tar = lib.getExe pkgs.gnutar;
+              curl = lib.getExe pkgs.curl;
             }
             // cfg.system.tools;
           }

@@ -7,6 +7,12 @@
 //! has fetched the inputs only it can reach, each of which the store holds
 //! to the hash its lock names.
 //!
+//! Where the host has a REST API, root reads the folder at main's head from
+//! it instead, tree by tree, each checked against the id above it
+//! (src/read.rs): a fetch into a large repository's checkout spends minutes
+//! checking the new head's whole tree is there. When the API fails, main is
+//! fetched as before.
+//!
 //! In a repository whose main moves far more often than the flake's folder,
 //! the account may also name the commit that last changed the folder. When
 //! that commit's folder is the very tree last built, nothing is fetched or
@@ -17,6 +23,7 @@
 
 use crate::config::{Config, Hosted};
 use crate::git::{self, Repo};
+use crate::read;
 use crate::run::{self, Account, Failure};
 use crate::session;
 use serde_json::Value;
@@ -43,6 +50,23 @@ pub fn head(config: &Config, hosted: &Hosted, last: Option<&str>) -> Result<Stri
     let token = token(hosted, &account)?;
     let head = ask(config, &token)?;
     borrow(config, hosted, &account)?;
+    if !git::has(&main, &head)
+        && let Some(api) = &hosted.api
+    {
+        match read::read(config, hosted, api, &token, &head, last) {
+            // The folder as it was last built is that build's, unbuilt.
+            Ok(found) => match last {
+                Some(last) if folder(config, hosted, last).as_ref() == Some(&found.folder) => {
+                    return Ok(last.to_owned());
+                }
+                _ => return Ok(head),
+            },
+            Err(failure) => eprintln!(
+                "update-to-main: {}, so main is fetched instead",
+                failure.why
+            ),
+        }
+    }
     if let Some(last) = last
         && !git::has(&main, &head)
         && unmoved(config, hosted, &account, last)
@@ -78,6 +102,33 @@ pub fn prepare(config: &Config, hosted: &Hosted, commit: &str) -> Result<String,
         }
     }
     Ok(format!("path:{}#{}", folder.display(), config.output))
+}
+
+/// The folder's tree at `commit`, from root's copy, or from what a read of
+/// it from the host found; none when neither has it.
+pub fn folder(config: &Config, hosted: &Hosted, commit: &str) -> Option<String> {
+    git::tree(&Repo::main(config), commit, &hosted.directory)
+        .or_else(|| read::found(config, commit).map(|found| found.folder))
+}
+
+/// Whether `newer` descends from `older`: by root's copy when it holds
+/// `newer`, and otherwise by the host's word when the folder was read from
+/// it with `older` the commit last switched to.
+pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failure> {
+    let main = Repo::main(config);
+    if git::has(&main, newer) {
+        return git::descends(&main, older, newer);
+    }
+    match read::found(config, newer) {
+        Some(found) if found.from.as_deref() == Some(older) => Ok(found.descends),
+        _ => Ok(false),
+    }
+}
+
+/// The file at `path` in the folder at `commit`, or none.
+pub fn show(config: &Config, hosted: &Hosted, commit: &str, path: &str) -> Option<String> {
+    let tree = folder(config, hosted, commit)?;
+    git::show(&Repo::main(config), &tree, path)
 }
 
 fn token(hosted: &Hosted, account: &Account) -> Result<String, Failure> {
@@ -221,11 +272,12 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
     let into = source.join(commit);
     let folder = into.join(&hosted.directory);
     fs::create_dir_all(&folder).map_err(|e| Failure::new(format!("{}: {e}", folder.display())))?;
-    let tree = if hosted.directory.is_empty() {
-        commit.to_owned()
-    } else {
-        format!("{commit}:{}", hosted.directory)
-    };
+    let tree = self::folder(config, hosted, commit).ok_or_else(|| {
+        Failure::new(format!(
+            "root's copy has no folder for {}",
+            git::short(commit)
+        ))
+    })?;
     let mut archive = git::git(&Repo::main(config));
     archive.args(["archive", "--format=tar", &tree]);
     let mut archive = archive
