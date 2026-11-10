@@ -2,6 +2,7 @@
 # its opening comment says what each kind of check proves.
 {
   account,
+  bareDarwin,
   bareNixos,
   holds,
   lib,
@@ -355,6 +356,69 @@ in
           ${./tests/pi-hosted-screen-stays-in-its-session.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
         touch $out
       '';
+
+  # A realm a machine names gets two hosts, attended and background, started
+  # with the account's session once the harness is installed, run by the
+  # host's own pi and node, said ready by the host, among the agents'
+  # sessions, and left running through a switch; a machine that names none,
+  # and a Mac, get no host.
+  pi-hosts-start-with-the-session =
+    let
+      pi = "${pkgs.emptyDirectory}/pi";
+      node = "${pkgs.emptyDirectory}/node";
+      hosts = {
+        one = {
+          inherit pi node;
+          environment = {
+            PROXY_ORIGIN = "https://proxy.example.com";
+            GREETING = ''say "hi" there'';
+          };
+        };
+      };
+      naming =
+        bare: role:
+        account (bare [
+          role
+          { home-manager.users.someone.jitsusama.pi.hosts = hosts; }
+        ]);
+      services = (naming bareNixos self.nixosModules.workstation).systemd.user.services;
+      mac = naming bareDarwin self.darwinModules.workstation;
+      # home-manager keeps a unit's settings as lists.
+      first = value: lib.head (lib.toList value);
+      starts =
+        kind:
+        let
+          unit = services."pi-host-one-${kind}";
+          environment = lib.toList unit.Service.Environment;
+        in
+        unit.Service.Type == "notify"
+        && unit.Service.NotifyAccess == "all"
+        && unit.Service.Slice == "agents.slice"
+        && unit.Unit.X-SwitchMethod == "keep-old"
+        && unit.Install.WantedBy == [ "default.target" ]
+        && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
+        && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
+        && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
+        && lib.elem ''"MYCELIUM_REALM=one"'' environment
+        && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
+        && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
+        # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
+        && lib.elem ''"GREETING=say \"hi\" there"'' environment;
+      hostsIn = services: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames services);
+    in
+    holds "pi-hosts-start-with-the-session"
+      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts at a switch, misses its realm's environment, or a machine naming no realm, or a Mac, gets one."
+      (
+        starts "attended"
+        && starts "background"
+        &&
+          hostsIn services == [
+            "pi-host-one-attended"
+            "pi-host-one-background"
+          ]
+        && hostsIn (account workstation).systemd.user.services == [ ]
+        && hostsIn mac.systemd.user.services == [ ]
+      );
 
   # pi-ask's digest says what's true on the machine as each question starts,
   # from the machine's own files alone, leaving out what it doesn't have.

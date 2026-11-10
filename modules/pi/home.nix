@@ -14,7 +14,9 @@
 # On Linux a run Joel typed rings when it's done, with a low bell
 # (chime.nix).
 # Each morning, on Linux, the installed harness writes its measure in the
-# background: what the day cost and which mistakes recurred.
+# background: what the day cost and which mistakes recurred. A realm a
+# machine names in jitsusama.pi.hosts runs its conversations in shared pi
+# hosts, started with the session (host.nix).
 {
   config,
   lib,
@@ -165,6 +167,7 @@ in
 {
   imports = [
     ./agents.nix
+    ./host.nix
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix
