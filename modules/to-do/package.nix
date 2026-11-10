@@ -1,7 +1,9 @@
 # The to-do daemon, built from this directory, its tests run as it builds.
 # They run checks in sh, as the daemon does, with coreutils' sleep, rm and
 # touch standing for checks that take a while, pass only once or leave a
-# mark, and git for a switch's commit.
+# mark, and git for a switch's commit. Its socket's tests ask it with a
+# crate every daemon's tests share (../daemon-client), so the source is
+# cut from the modules folder holding both, and built from this one.
 {
   bash,
   coreutils,
@@ -9,18 +11,21 @@
   lib,
   rustPlatform,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "to-do";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../daemon-client/Cargo.toml
+      ../daemon-client/src
     ];
   };
+  sourceRoot = "${src.name}/to-do";
   cargoLock.lockFile = ./Cargo.lock;
   nativeCheckInputs = [
     bash

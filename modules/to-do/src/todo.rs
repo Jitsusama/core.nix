@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use serde_json::{Number, Value};
 
 /// How something will be known: a command that succeeds once it's so, a
 /// signal the machine gives, or only Joel's word.
@@ -35,8 +35,12 @@ pub enum Signal {
 /// One to-do, by the key the shell and the harness both give it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToDo {
-    /// `<quest>:<id>`.
+    /// `<quest>:<id>`, or `<quest>:<title>` for one with no id, as
+    /// Waiting.js's `identity` gives it.
     pub key: String,
+    /// The name of the file it's in, without `.json`, which For You lists
+    /// them by first.
+    pub file: String,
     /// When it was raised, in seconds since 1970, which a boot, a switch or
     /// a sign-in must come after.
     pub raised: Option<i64>,
@@ -47,6 +51,9 @@ pub struct ToDo {
     /// What the harness says of its owner's sandbox, which decides whether
     /// its checks run here, outside any.
     pub sandbox: Sandbox,
+    /// The item whole, as its owner wrote it, naming its quest, for the
+    /// shell (stream.rs).
+    pub item: Value,
 }
 
 /// The sandbox a to-do's owner runs in, as `mesh_wait` writes it in
@@ -131,13 +138,13 @@ pub fn in_file(text: &str) -> Vec<ToDo> {
     items
         .iter()
         .filter_map(|item| {
-            let id = item
-                .get("id")
-                .or_else(|| item.get("title"))
-                .and_then(Value::as_str)?;
+            let id = identity(item)?;
             let quest = item.get("quest").and_then(Value::as_str).unwrap_or(quest);
+            let mut whole = item.clone();
+            whole["quest"] = Value::String(quest.to_owned());
             Some(ToDo {
                 key: format!("{quest}:{id}"),
+                file: quest.to_owned(),
                 raised: item
                     .get("raisedAt")
                     .and_then(Value::as_str)
@@ -146,6 +153,7 @@ pub fn in_file(text: &str) -> Vec<ToDo> {
                 done_when: item.get("doneWhen").and_then(knowing),
                 ready_when: item.get("readyWhen").and_then(knowing),
                 sandbox: Sandbox::of(item),
+                item: whole,
             })
         })
         .collect()
@@ -165,9 +173,52 @@ pub fn in_folder(folder: &Path) -> Vec<ToDo> {
     files.sort();
     files
         .iter()
-        .filter_map(|path| fs::read_to_string(path).ok())
-        .flat_map(|text| in_file(&text))
+        .filter_map(|path| {
+            let file = path.file_stem()?.to_string_lossy().into_owned();
+            let text = fs::read_to_string(path).ok()?;
+            Some(in_file(&text).into_iter().map(move |todo| ToDo {
+                file: file.clone(),
+                ..todo
+            }))
+        })
+        .flatten()
         .collect()
+}
+
+/// Who an item is within its quest, as Waiting.js's `identity` writes it:
+/// its id, a number as JavaScript writes one, or its title where it has no
+/// id. An id of any other kind is none, where JavaScript would write
+/// `true` or `[object Object]`, since `mesh_wait` writes only text.
+fn identity(item: &Value) -> Option<String> {
+    match item.get("id") {
+        Some(Value::String(id)) => Some(id.clone()),
+        Some(Value::Number(id)) => Some(as_javascript(&Value::Number(id.clone())).to_string()),
+        None | Some(Value::Null) => item.get("title").and_then(Value::as_str).map(str::to_owned),
+        Some(_) => None,
+    }
+}
+
+/// `value` with each number as JavaScript writes it, a whole one without
+/// its point, so `5.0` is `5`.
+pub fn as_javascript(value: &Value) -> Value {
+    match value {
+        Value::Number(number) => Value::Number(whole(number).unwrap_or_else(|| number.clone())),
+        Value::Array(values) => values.iter().map(as_javascript).collect(),
+        Value::Object(fields) => fields
+            .iter()
+            .map(|(name, field)| (name.clone(), as_javascript(field)))
+            .collect(),
+        other => other.clone(),
+    }
+}
+
+/// A float that is whole, as the integer it is.
+fn whole(number: &Number) -> Option<Number> {
+    let float = number.as_f64().filter(|_| number.is_f64())?;
+    (float.fract() == 0.0)
+        .then(|| format!("{float:.0}").parse::<i64>().ok())
+        .flatten()
+        .map(Number::from)
 }
 
 /// Seconds since 1970 from an ISO time.
@@ -231,6 +282,15 @@ mod tests {
             found[1].ready_when,
             Some(Knowing::Signal(Signal::Switch(Some("abc".into()))))
         );
+        assert_eq!(
+            found[0].item["quest"], "QEST-1",
+            "an item held whole names its file's quest"
+        );
+        assert_eq!(
+            found[1].item["quest"], "QEST-2",
+            "an item naming its own quest keeps it"
+        );
+        assert_eq!(found[1].item["title"], "B", "the item is held whole");
         assert_eq!(found[2].key, "QEST-1:Only a title");
         assert_eq!(found[2].done_when, None);
     }
@@ -270,6 +330,18 @@ mod tests {
     #[test]
     fn no_json_holds_no_to_dos() {
         assert_eq!(in_file("{\"v\":2,"), Vec::<ToDo>::new());
+        let keys: Vec<String> = in_file(
+            r#"{"quest":"Q","items":[{"id":5,"title":"A"},{"id":6.0,"title":"B"},
+                {"id":null,"title":"C"},{"title":"D"},{"id":true,"title":"E"}]}"#,
+        )
+        .into_iter()
+        .map(|todo| todo.key)
+        .collect();
+        assert_eq!(
+            keys,
+            ["Q:5", "Q:6", "Q:C", "Q:D"],
+            "an id as Waiting.js's identity writes it, its title where it has none"
+        );
         assert_eq!(in_file("[]"), Vec::<ToDo>::new());
     }
 }

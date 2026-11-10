@@ -2,9 +2,11 @@
 //! verdicts it writes as checks pass, files come, a boot is newer than a
 //! to-do, and a to-do leaves its file; a check that hangs holding up no
 //! other; a done to-do staying done through a failing check and a
-//! restart; a check run only for an owner outside every sandbox; and a
-//! check finding what the session's PATH holds.
+//! restart; a check run only for an owner outside every sandbox; a
+//! check finding what the session's PATH holds; and over its socket, each
+//! to-do, look and word of Joel's told to a watch as it changes.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
@@ -13,6 +15,7 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
 
 struct Running {
@@ -36,23 +39,81 @@ fn start(dir: &Path) -> Running {
 /// Starts the daemon over `dir`, asking `systemctl` for a session's
 /// environment.
 fn start_with(dir: &Path, systemctl: &Path) -> Running {
+    let child = command(dir, systemctl).spawn().unwrap();
+    Running {
+        child,
+        verdicts: dir.join("verdicts.json"),
+    }
+}
+
+/// The daemon over `dir`, whose `root/proc/stat` says the boot.
+fn command(dir: &Path, systemctl: &Path) -> Command {
     let root = dir.join("root");
     fs::create_dir_all(root.join("proc")).unwrap();
     fs::write(root.join("proc/stat"), "cpu 1\nbtime 1794200000\n").unwrap();
     fs::create_dir_all(dir.join("waiting")).unwrap();
-    let verdicts = dir.join("verdicts.json");
-    let child = Command::new(env!("CARGO_BIN_EXE_to-do"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_to-do"));
+    command
         .arg(dir.join("waiting"))
-        .arg(&verdicts)
+        .arg(dir.join("verdicts.json"))
         .arg(dir.join("signins"))
         .arg(dir.join("core.git"))
         .args(["--follower", "none", "--root"])
         .arg(&root)
         .arg("--systemctl")
-        .arg(systemctl)
-        .spawn()
-        .unwrap();
-    Running { child, verdicts }
+        .arg(systemctl);
+    command
+}
+
+/// The daemon over `dir`, serving its socket, with the harness's looks
+/// and the shell's word of Joel's beside it.
+fn served(dir: PathBuf) -> Daemon {
+    let socket = dir.join("daemons/to-do.sock");
+    let mut command = command(&dir, Path::new("none"));
+    command
+        .arg("--socket")
+        .arg(&socket)
+        .arg("--looks")
+        .arg(dir.join("looks"))
+        .arg("--settled")
+        .arg(dir.join("settled.json"));
+    Daemon::start(&mut command, socket, dir)
+}
+
+/// Writes a file whole, under another name, then renames it, as the
+/// harness and the shell write theirs.
+fn written(path: &Path, text: &str) {
+    let writing = path.with_extension("writing");
+    fs::write(&writing, text).unwrap();
+    fs::rename(writing, path).unwrap();
+}
+
+/// What a watch holds once `wanted` holds of it, taking in each line the
+/// daemon says: its records, those that changed and the keys gone.
+fn told(
+    client: &mut Client,
+    held: &mut BTreeMap<String, Value>,
+    wanted: impl Fn(&BTreeMap<String, Value>) -> bool,
+) {
+    while !wanted(held) {
+        take(held, &client.heard());
+    }
+}
+
+/// Takes in one line a watch is told: its records, those that changed and
+/// the keys gone.
+fn take(held: &mut BTreeMap<String, Value>, said: &Value) {
+    for record in said["records"]
+        .as_array()
+        .or_else(|| said["changed"].as_array())
+        .into_iter()
+        .flatten()
+    {
+        held.insert(record["key"].as_str().unwrap().to_owned(), record.clone());
+    }
+    for key in said["gone"].as_array().into_iter().flatten() {
+        held.remove(key.as_str().unwrap());
+    }
 }
 
 /// Writes `quest`'s file of `items`, each owned by a session outside
@@ -65,10 +126,10 @@ fn to_dos(dir: &Path, quest: &str, items: &str) {
         }
     }
     let file = dir.join("waiting").join(format!("{quest}.json"));
-    let writing = file.with_extension("writing");
-    let text = json!({"v": 2, "quest": quest, "items": items}).to_string();
-    fs::write(&writing, text).unwrap();
-    fs::rename(writing, file).unwrap();
+    written(
+        &file,
+        &json!({"v": 2, "quest": quest, "items": items}).to_string(),
+    );
 }
 
 /// The shell on PATH, which runs a stand-in's script.
@@ -304,4 +365,95 @@ fn a_check_finds_what_the_sessions_path_holds_now() {
     );
     let found = until(&running, |v| state(v, "QEST-8:found").is_some());
     assert_eq!(state(&found, "QEST-8:found"), Some("done"), "{found}");
+}
+
+#[test]
+fn a_watch_is_told_each_to_do_look_and_word_of_joels_as_it_changes() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    fs::create_dir_all(dir.join("waiting")).unwrap();
+    to_dos(
+        &dir,
+        "QEST-9",
+        r#"{"id":"now","title":"N","ready":true,"doneWhen":{"by":"person"}},
+           {"id":"check","title":"C","doneWhen":{"check":"true"}}"#,
+    );
+    let daemon = served(dir);
+    let mut client = daemon.client();
+    let hello = client.ask(&json!({"id": 0, "ask": "hello"}));
+    assert_eq!(
+        (&hello["domain"], &hello["version"]),
+        (&json!("to-do"), &json!(1)),
+        "hello says whose it is: {hello}"
+    );
+    let mut held = BTreeMap::new();
+    take(&mut held, &client.ask(&json!({"id": 1, "ask": "watch"})));
+    let state =
+        |held: &BTreeMap<String, Value>, key: &str| held.get(key).map(|r| r["state"].clone());
+    told(&mut client, &mut held, |held| {
+        state(held, "to-do:QEST-9:check") == Some(json!("done"))
+    });
+    assert_eq!(
+        state(&held, "to-do:QEST-9:now"),
+        Some(json!("now")),
+        "a ready to-do is for now: {held:?}"
+    );
+    assert_eq!(
+        held["to-do:QEST-9:check"]["verdict"]["state"], "done",
+        "a to-do carries what the daemon found"
+    );
+    assert_eq!(
+        held["waiting:summary"]["to_dos"],
+        json!({"now": 1, "later": 0, "done": 1}),
+        "the count of to-dos"
+    );
+    let look = json!({"v": 1, "id": "a1", "kind": "pr", "title": "Fix", "state": "waiting"});
+    written(&daemon.folder().join("looks/a1.json"), &look.to_string());
+    told(&mut client, &mut held, |held| held.contains_key("look:a1"));
+    assert_eq!(held["look:a1"]["look"], look, "a look is told whole");
+    told(&mut client, &mut held, |held| {
+        held["waiting:summary"]["looks"]["waiting"] == 1
+    });
+    written(
+        &daemon.folder().join("settled.json"),
+        r#"{"done":{"QEST-9:now":1794000000000},"notNow":{}}"#,
+    );
+    told(&mut client, &mut held, |held| {
+        state(held, "to-do:QEST-9:now") == Some(json!("done"))
+    });
+    written(&daemon.folder().join("settled.json"), r#"{"done":"#);
+    let standing = loop {
+        let line = client.heard();
+        take(&mut held, &line);
+        if line["sources"]["settled"]["state"] == "failing" {
+            break line;
+        }
+    };
+    assert_eq!(
+        standing["sources"]["waiting"]["state"], "answering",
+        "a watch is told how every source stands: {standing}"
+    );
+    assert_eq!(
+        state(&held, "to-do:QEST-9:now"),
+        Some(json!("done")),
+        "Joel's word that can't be read keeps the last he said"
+    );
+    to_dos(
+        daemon.folder(),
+        "QEST-9",
+        r#"{"id":"now","title":"N","ready":true,"doneWhen":{"by":"person"}}"#,
+    );
+    told(&mut client, &mut held, |held| {
+        !held.contains_key("to-do:QEST-9:check")
+    });
+    let listed = client.ask(&json!({"id": 2, "ask": "list", "kind": "look"}));
+    assert_eq!(
+        listed["records"],
+        json!([{"key": "look:a1", "kind": "look", "look": look}]),
+        "a list of one kind"
+    );
+    let refused = client.ask(&json!({"id": 3, "ask": "list", "kind": "person"}));
+    assert_eq!(
+        refused["error"]["code"], "unknown-kind",
+        "a kind kept elsewhere is refused"
+    );
 }

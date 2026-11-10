@@ -126,6 +126,8 @@ function identity(item) {
 
 // What an item says, so one Joel put off comes back once its owner says
 // something new of it, and not when its file is rewritten for another.
+// The to-do daemon writes the same to tell a put-off one apart
+// (modules/to-do/src/stream.rs, `SAID`), so a field added here goes there.
 function said(item) {
     return JSON.stringify([item.title, item.why ?? null, item.detail ?? null, item.when ?? null,
         item.ready ?? null, item.minutes ?? null, item.window ?? null, item.steps ?? null,
