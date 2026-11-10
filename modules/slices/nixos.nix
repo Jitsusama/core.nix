@@ -517,71 +517,84 @@ in
       path = [ config.systemd.package ];
       serviceConfig = {
         Slice = "session.slice";
-        ExecStart = lib.escapeShellArgs [
-          "${sorter}/bin/jobs-sorter"
-          "--under"
-          "app.slice"
-          "--under"
-          "agents.slice"
-          "--home"
-          "kitty-"
-          "--keep"
-          "pi"
-          "--jobs"
-          "jobs.slice/jobs-awaited.slice/awaited.service"
-          "--split"
-          "jobs.slice/jobs.service=jobs-work.slice"
-          "--split"
-          "jobs.slice/jobs-awaited.slice/awaited.service"
-          "--split"
-          "jobs.slice/jobs-timed.slice/timed.service"
-          "--no-real-time"
-          "jobs.slice/jobs.service"
-          "--no-real-time"
-          "jobs.slice/jobs-work.slice"
-          "--no-real-time"
-          "jobs.slice/jobs-timed.slice"
-          # An agent's command for a quest goes in that quest's slice under
-          # jobs-work.slice, at the weight pi's sessions give the quest by
-          # its priority, so a quest Joel drives gets more of what agents'
-          # work gets, and never more than that. The disk's share acts only
-          # under io.cost or BFQ, not on io.latency targets alone.
-          "--by-quest"
-          "jobs-work.slice"
-          "--quests"
-          "%t/jobs/quests.json"
-          # A window whose every pi runs a turn nobody typed, with no key
-          # for a minute and nothing in its editor, as the harness marks
-          # them, yields to the apps until a key comes; a session started
-          # outside a terminal is weighed the same way.
-          "--background"
-          "%t/pi/background"
-          "--weigh"
-          "mycelium-pi-"
-          # When the kernel's reclaim thread gives up, agents' work gives a
-          # gibibyte back, which brings it back; otherwise every program
-          # reclaims for itself until the OOM killer ends one.
-          "--revive"
-          "jobs.slice"
-          # A Nix evaluation or build agents start runs at once while a
-          # quarter of memory stays available once it has grown by a
-          # sixteenth, counting those let in the last two minutes as
-          # growing. Short of that it runs ranked behind all other work,
-          # its memory capped to keep a sixteenth free, and only short of
-          # that too does it wait, frozen as it starts, five minutes at
-          # most. Through a call, which pw-dump hears as a program
-          # recording a microphone, three eighths stay, and nothing held
-          # or ranked comes into the call.
-          "--door"
-          "jobs.slice"
-          "--calls"
-          (lib.getExe' pkgs.pipewire "pw-dump")
-          # A window holding a session others report to, as the harness's
-          # mesh says, keeps a memory floor and is the last systemd-oomd
-          # ends, and every other pi gives way first to the OOM killer.
-          "--orchestrators"
-          "%h/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
-        ];
+        ExecStart =
+          lib.escapeShellArgs [
+            "${sorter}/bin/jobs-sorter"
+            "--under"
+            "app.slice"
+            "--under"
+            "agents.slice"
+            "--home"
+            "kitty-"
+            "--keep"
+            "pi"
+            "--jobs"
+            "jobs.slice/jobs-awaited.slice/awaited.service"
+            "--split"
+            "jobs.slice/jobs.service=jobs-work.slice"
+            "--split"
+            "jobs.slice/jobs-awaited.slice/awaited.service"
+            "--split"
+            "jobs.slice/jobs-timed.slice/timed.service"
+            "--no-real-time"
+            "jobs.slice/jobs.service"
+            "--no-real-time"
+            "jobs.slice/jobs-work.slice"
+            "--no-real-time"
+            "jobs.slice/jobs-timed.slice"
+            # An agent's command for a quest goes in that quest's slice under
+            # jobs-work.slice, at the weight pi's sessions give the quest by
+            # its priority, so a quest Joel drives gets more of what agents'
+            # work gets, and never more than that. The disk's share acts only
+            # under io.cost or BFQ, not on io.latency targets alone.
+            "--by-quest"
+            "jobs-work.slice"
+            "--quests"
+            "%t/jobs/quests.json"
+            # A window whose every pi runs a turn nobody typed, with no key
+            # for a minute and nothing in its editor, as the harness marks
+            # them, yields to the apps until a key comes; a session started
+            # outside a terminal is weighed the same way.
+            "--background"
+            "%t/pi/background"
+            "--weigh"
+            "mycelium-pi-"
+            # When the kernel's reclaim thread gives up, agents' work gives a
+            # gibibyte back, which brings it back; otherwise every program
+            # reclaims for itself until the OOM killer ends one.
+            "--revive"
+            "jobs.slice"
+            # A Nix evaluation or build agents start runs at once while a
+            # quarter of memory stays available once it has grown by a
+            # sixteenth, counting those let in the last two minutes as
+            # growing. Short of that it runs ranked behind all other work,
+            # its memory capped to keep a sixteenth free, and only short of
+            # that too does it wait, frozen as it starts, five minutes at
+            # most. Through a call, which pw-dump hears as a program
+            # recording a microphone, three eighths stay, and nothing held
+            # or ranked comes into the call.
+            "--door"
+            "jobs.slice"
+            "--calls"
+            (lib.getExe' pkgs.pipewire "pw-dump")
+            # A window holding a session others report to, as the harness's
+            # mesh says, keeps a memory floor and is the last systemd-oomd
+            # ends, and every other pi gives way first to the OOM killer.
+            "--orchestrators"
+            "%h/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
+          ]
+          # The session window Joel is at, as niri says, and those he was at
+          # in the last ten minutes, three in all, rank as his own programs:
+          # an app's weight, a floor inside agents.slice's own and oomd's
+          # avoid. On 10 November the pi he typed into, at an agent's rank
+          # beside eighty, had 726 MB in swap and his keys felt sluggish.
+          + lib.optionalString config.programs.niri.enable (
+            " "
+            + lib.escapeShellArgs [
+              "--niri"
+              (lib.getExe config.programs.niri.package)
+            ]
+          );
         Restart = "on-failure";
         RestartSec = 5;
       };

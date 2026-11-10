@@ -20,8 +20,10 @@
 
 use std::collections::HashMap;
 use std::ffi::{CString, c_char, c_int, c_void};
-use std::io;
+use std::io::{self, Read};
+use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
@@ -139,9 +141,11 @@ const IN_MOVED_FROM: u32 = 0x40;
 const IN_MOVED_TO: u32 = 0x80;
 const POLLIN: i16 = 1;
 
-/// A folder of marks, watched for one coming or going.
+/// A folder of marks, watched for one coming or going, and for a wake
+/// another thread sends, as niri's focus moving does (`src/focus.rs`).
 pub struct Watch {
     fd: c_int,
+    woken: Option<UnixStream>,
 }
 
 impl Watch {
@@ -152,7 +156,7 @@ impl Watch {
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
-        let watch = Self { fd };
+        let watch = Self { fd, woken: None };
         let path = CString::new(dir.as_os_str().as_bytes())
             .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
         let mask = IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO;
@@ -163,23 +167,44 @@ impl Watch {
         Ok(watch)
     }
 
-    /// Waits up to `longest` for a mark to come or go, and says whether
-    /// one did, reading every event waiting so the next wait starts clean.
+    /// The end another thread writes a byte to, to end a wait at once.
+    pub fn waker(&mut self) -> io::Result<UnixStream> {
+        let (woken, waker) = UnixStream::pair()?;
+        woken.set_nonblocking(true)?;
+        waker.set_nonblocking(true)?;
+        self.woken = Some(woken);
+        Ok(waker)
+    }
+
+    /// Waits up to `longest` for a mark to come or go, or a wake, and says
+    /// whether one did, reading every event waiting so the next wait
+    /// starts clean.
     pub fn wait(&self, longest: Duration) -> bool {
-        let mut fds = PollFd {
-            fd: self.fd,
-            events: POLLIN,
-            revents: 0,
-        };
+        let mut fds = [
+            PollFd {
+                fd: self.fd,
+                events: POLLIN,
+                revents: 0,
+            },
+            PollFd {
+                fd: self.woken.as_ref().map_or(-1, AsRawFd::as_raw_fd),
+                events: POLLIN,
+                revents: 0,
+            },
+        ];
         let ms = c_int::try_from(longest.as_millis()).unwrap_or(c_int::MAX);
-        // SAFETY: `fds` is one valid entry that outlives the call.
-        if unsafe { poll(&raw mut fds, 1, ms) } <= 0 {
+        // SAFETY: `fds` is two valid entries that outlive the call; poll
+        // passes over the one with a negative descriptor.
+        if unsafe { poll(fds.as_mut_ptr(), 2, ms) } <= 0 {
             return false;
         }
         let mut buffer = [0u8; 4096];
         // SAFETY: `buffer` is writable for its whole length, and the
         // descriptor doesn't block, so this ends once nothing is left.
         while unsafe { read(self.fd, buffer.as_mut_ptr().cast(), buffer.len()) } > 0 {}
+        if let Some(mut woken) = self.woken.as_ref() {
+            while woken.read(&mut buffer).is_ok_and(|read| read > 0) {}
+        }
         true
     }
 }
@@ -269,6 +294,27 @@ mod tests {
         assert!(began.elapsed() < Duration::from_secs(5));
         // Read whole, so the next wait starts clean.
         assert!(!watch.wait(Duration::ZERO));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_wake_ends_the_wait_at_once() {
+        let dir = std::env::temp_dir().join(format!("woken-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let mut watch = Watch::new(&dir).unwrap();
+        let mut waker = watch.waker().unwrap();
+        assert!(
+            !watch.wait(Duration::from_millis(50)),
+            "no wake, no mark: the wait runs out"
+        );
+        std::io::Write::write_all(&mut waker, &[1]).unwrap();
+        let began = Instant::now();
+        assert!(watch.wait(Duration::from_secs(10)), "woken");
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "woken at once, not at the wait's end"
+        );
+        assert!(!watch.wait(Duration::ZERO), "read whole");
         fs::remove_dir_all(&dir).unwrap();
     }
 
