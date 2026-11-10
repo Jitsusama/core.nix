@@ -98,6 +98,24 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
+@pytest.fixture(autouse=True)
+def diag_last_words(desktop: Desktop) -> Iterator[None]:
+    """Diag only: after each test, print the shell's journal that isn't a report."""
+    yield
+    desktop.machine.log(
+        desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager -o short-monotonic"
+            " | grep -v 'report\\[' | tail -n 60"
+        )
+    )
+    desktop.machine.log(
+        desktop.machine.succeed(
+            "df -h / /tmp /run /var 2>&1; journalctl -t systemd-coredump --no-pager -o cat"
+            " | tail -n 80"
+        )
+    )
+
+
 @pytest.fixture(scope="module")
 def keyboard(desktop: Desktop) -> Iterator[None]:
     """Start the stand-in keyboard and its repeat, and wait until the desktop reads it."""
