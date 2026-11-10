@@ -315,8 +315,6 @@ Rectangle {
         level: row.voiced ? Theme.level.voice : Theme.level.name
         text: row.name
         plain: row.plainName
-        // Cut only at a whole word (docs/design.md, Set, not styled).
-        wholeWords: true
         // The flash takes the row's ground, so a find's wash, which would
         // lie on it in the selection's colour and vanish, gives way.
         finds: row.flashed ? [] : row.finds
@@ -500,23 +498,15 @@ Rectangle {
         // that item changes, by the column, as any side's does.
         readonly property bool squeezed: itemised
             && Math.ceil(sideFace.advanceWidth(said)) + 1 > room
-        // How a row stands never gives way: the name is cut first, at a
-        // whole word, and "256 \u00d7 256 px" stays whole (docs/design.md,
-        // A row says what it is; VKCF3Z, 6918348b, and of Inkscape's
-        // copied picture, 2026-11-09). A window's title keeps its room
-        // since its program and place are words after its name, which give
-        // way first (Joel, 2026-10-25: titles "get elipsed really quick").
-        // Only words too long for 45% of the row, a sentence, are cut, and
-        // to what the name leaves, down to a fifth of the row, so however
-        // long they run they can't reach the name. Past its own side a row
-        // takes only that too, so a long side on one row doesn't cut every
-        // name in the step through the column they share. It's
+        // What a row is never takes more than its share of the row, so
+        // however long it runs it can't reach the name, and it gives the
+        // name its room first, down to a fifth of the row: a window's
+        // title is what Joel looks for, its program and place only help
+        // (Joel, 2026-10-25: titles "get elipsed really quick"). It's
         // reckoned from where a name starts at no depth, so a row a step in
         // says as much at its right as the row above it. That start already
         // holds the glyph's column, so only the right's inset is taken here.
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
-            atRight.sided && sideText.implicitWidth <= row.width * 0.45
-                ? Math.ceil(sideText.implicitWidth) : 0,
             row.width - nameBox.x + row.indent - nameBox.implicitWidth
             - Theme.space.rung.groups - Theme.space.rung.inset
             - (!row.detailed ? 0
