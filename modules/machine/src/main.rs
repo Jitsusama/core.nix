@@ -4,8 +4,9 @@
 //! that asks, over SOCKET in the shell's daemon interface (interface.rs):
 //! the processor, the memory, each disk, this boot, the programs using
 //! the machine most, its sensors, thermal zones and cooling, each power
-//! supply, how it sleeps, its firmware, and the screen's backlight and the
-//! room's light, each a record whose figures are
+//! supply, how it sleeps, its firmware, the screen's backlight and the
+//! room's light, and the brightness and warmth the backlight program
+//! steers the built-in screen to, each a record whose figures are
 //! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
@@ -25,7 +26,10 @@
 //! the firmware of fwupd once a minute and whenever it says it changed.
 //! Its signals are listened for only while firmware is watched, but
 //! logind's `PrepareForSleep` always, since a sleep happens while nothing
-//! watches, and a signal wakes nothing until it comes.
+//! watches, and a signal wakes nothing until it comes. The backlight
+//! program's files are heard as it writes them while their kinds are
+//! watched, so a switch turned in the launcher reads turned within a
+//! frame, not at the next second's read.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -41,7 +45,7 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use machine::{
     Root, boot, clock_ms, disk, firmware, heat, light, memory, now_ms, processor, rounded, sleep,
-    supply, tree, using,
+    steered, supply, tree, using, written::Written,
 };
 use serde_json::{Value, json};
 
@@ -66,6 +70,9 @@ const LOGIND_EVERY: Duration = Duration::from_secs(2);
 const FRESH: Duration = Duration::from_millis(1500);
 /// How near its time a kind is read with others due now.
 const LEEWAY: Duration = Duration::from_millis(50);
+/// The kinds read as their files are written (`steered_loop`), never on
+/// the second.
+const HEARD: [&str; 2] = ["brightness", "warmth"];
 /// How many of the last reads' times health says.
 const TIMES: usize = 32;
 /// How many lines a connection may have waiting to be written before
@@ -108,6 +115,9 @@ struct Reader {
     programs: Option<using::Counters>,
     /// The sensors' labels and limits, read once.
     sensors: heat::Kept,
+    /// Where the backlight program says what it steers the screen to, or
+    /// none for a session with no runtime folder.
+    steered: Option<steered::Files>,
 }
 
 impl Reader {
@@ -182,6 +192,14 @@ impl Reader {
         }
         if wants("light") {
             records.extend(buses.light.iter().cloned());
+        }
+        if let Some(files) = self.steered.as_ref() {
+            if wants("brightness") {
+                records.extend(steered::brightness(&self.root, files));
+            }
+            if wants("warmth") {
+                records.extend(steered::warmth(&self.root, files));
+            }
         }
         if wants("awake") {
             records.push(sleep::awake(&buses.logind));
@@ -296,6 +314,11 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || firmware_loop(&shared));
     }
+    if let Some(files) = steered::Files::of_session() {
+        let shared = Arc::clone(&shared);
+        let root = root.clone();
+        std::thread::spawn(move || steered_loop(&shared, &root, &files));
+    }
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
@@ -340,6 +363,7 @@ fn shared(root: &Root) -> Shared {
             disk_sensors: disk::Kept::default(),
             programs: None,
             sensors: heat::Kept::default(),
+            steered: steered::Files::of_session(),
         }),
         woken: Condvar::new(),
     }
@@ -511,7 +535,8 @@ fn watch_loop(shared: &Shared) {
                 .wait(daemon)
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
-        let kinds = watched(&daemon);
+        let mut kinds = watched(&daemon);
+        kinds.retain(|kind| !HEARD.contains(&kind.as_str()));
         let mut due = HashSet::new();
         let mut next = EVERY;
         for kind in &kinds {
@@ -644,6 +669,52 @@ fn light_loop(shared: &Shared, root: &Root) {
         let said = light::sensors(root);
         lock(&shared.daemon).light = said;
         read(shared, &kinds, &[]);
+    }
+}
+
+/// Hears the backlight program's files as it writes them while their
+/// kinds are watched, and tells what changed at once; they're read at no
+/// other time but a watch's first answer and a get. They're read once more
+/// as the watch on them begins, so one written since the first answer is
+/// said all the same. With the last watch the files are let be, so an
+/// idle machine is woken by none of their writes.
+fn steered_loop(shared: &Shared, root: &Root, files: &steered::Files) {
+    let kinds: HashSet<String> = HEARD.iter().map(|kind| (*kind).to_owned()).collect();
+    let watching = |daemon: &Daemon| watched(daemon).iter().any(|kind| kinds.contains(kind));
+    loop {
+        {
+            let mut daemon = lock(&shared.daemon);
+            while !watching(&daemon) {
+                daemon = shared
+                    .woken
+                    .wait(daemon)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+        let folders = files
+            .folders()
+            .iter()
+            .map(|folder| root.path(folder))
+            .collect::<Vec<_>>();
+        let Some(mut written) = Written::on(folders) else {
+            // With no watch the kernel will give, they're read on the
+            // second instead, as every other kind is.
+            while watching(&lock(&shared.daemon)) {
+                read(shared, &kinds, &[]);
+                std::thread::sleep(EVERY);
+            }
+            continue;
+        };
+        read(shared, &kinds, &[]);
+        while watching(&lock(&shared.daemon)) {
+            let heard = written.wait(EVERY);
+            if heard
+                .iter()
+                .any(|name| name.is_empty() || files.names(name))
+            {
+                read(shared, &kinds, &[]);
+            }
+        }
     }
 }
 

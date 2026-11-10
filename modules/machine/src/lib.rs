@@ -2,7 +2,9 @@
 //! its tests reach it: what a client asks ([`interface`]), and what each
 //! of the kernel's files says, made into records ([`processor`],
 //! [`memory`], [`disk`], [`boot`], [`using`], [`tree`], [`heat`],
-//! [`supply`], [`sleep`], [`firmware`], [`light`]). Every file is read through
+//! [`supply`], [`sleep`], [`firmware`], [`light`], and what the backlight
+//! program steers the screen to, [`steered`], heard as it's written through
+//! [`written`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before.
 //!
@@ -26,9 +28,11 @@ pub mod memory;
 pub mod pressure;
 pub mod processor;
 pub mod sleep;
+pub mod steered;
 pub mod supply;
 pub mod tree;
 pub mod using;
+pub mod written;
 
 use std::path::{Path, PathBuf};
 
