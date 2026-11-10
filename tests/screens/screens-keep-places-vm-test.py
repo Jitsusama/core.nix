@@ -237,8 +237,10 @@ def test_reopen_them_all_after_a_reboot_reopens_only_what_its_list_names(
     asks (2026-11-07, "no, i never wanted them automatic"). Then the list is all Reopen
     Them All brings back, never what a boot's end left in restore.json: at 09:08 that day a
     switch restarting the shell reopened 36 sessions a boot four days old had left. A window
-    Joel opens as he signs in takes no session's workspace from it: at 10:33 his browser's,
-    alone on the first, left every session one workspace along.
+    Joel opens as he signs in, as his browser alone on the first at 10:33, shares no workspace
+    with a session, and the sessions keep who sits with whom. Since 2026-11-09 they go back by
+    identity, never by a workspace's number (Joel: one placer puts every window back by
+    identity), so they go on the workspaces after his.
     """
     machine = booted.machine
     where = {
@@ -267,13 +269,27 @@ def test_reopen_them_all_after_a_reboot_reopens_only_what_its_list_names(
         """Whether each listed is on its own screen, its workspace and its order there."""
         if not all(one in now for one in where):
             return False
-        left, right = now["01c7-left"], now["01c7-right"]
+        # Each by who sits with whom, never by its workspace's number, which
+        # Joel's window has taken: left and right together, up on the next,
+        # and none with Lantern (Joel, 2026-11-09: one placer puts every
+        # window back by identity).
+        left, right, up = now["01c7-left"], now["01c7-right"], now["01c7-up"]
         return (
-            now["01c7-there"][:2] == ("Virtual-1", 1)
-            and left[:2] == right[:2] == ("Virtual-2", 1)
+            now["01c7-there"][0] == "Virtual-1"
+            and left[:2] == right[:2]
+            and left[0] == "Virtual-2"
             and left[2] < right[2]
-            and now["01c7-up"][:2] == ("Virtual-2", 2)
+            and up[:2] == ("Virtual-2", left[1] + 1)
+            and lantern() not in {left[:2], up[:2]}
         )
+
+    def lantern() -> tuple[str, int]:
+        """Give the screen and workspace Joel's own window is on."""
+        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
+        spaces = {one["id"]: one for one in listed}
+        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
+        [space] = [spaces[one["workspace_id"]] for one in windows if one["title"] == "Lantern"]
+        return space["output"], space["idx"]
 
     # restore.json holds the listed and one a boot's end left besides.
     boot = booted.hand_over({**where, "01c7-stale": kept_on("Virtual-1", 2, 1)})

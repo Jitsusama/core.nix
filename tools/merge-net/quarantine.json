@@ -1,12 +1,5 @@
 [
   {
-    "at": 1794037906,
-    "commit": "5d4f5f331565874729a19ff6408b50a97241980c",
-    "owner_pr": null,
-    "reason": "failed, then passed, at 5d4f5f331565",
-    "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
     "at": 1794094075,
     "commit": "85a12fcab559eee7d8d103bbc6dc23fe743c2198",
     "owner_pr": null,

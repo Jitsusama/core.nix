@@ -965,7 +965,8 @@ Singleton {
     }
     // Puts a session reopened where whereBack says, beside the sessions
     // back before it (Places.js), when it isn't there already: "held" when
-    // it was, "moved", or "waiting" while niri hasn't laid it out or its
+    // it was, "standing" when it was but on a screen standing in for its
+    // own, "moved", or "waiting" while niri hasn't laid it out or its
     // screen has no workspace yet, as while a screen comes back. One
     // another session handed over (`quiet`), as `quest restore` does, goes
     // to its workspace without the focus, and so wherever niri puts it
@@ -981,9 +982,15 @@ Singleton {
             { output: found.output ?? entry.at.output }) : found;
         const holds = entry.quiet === true && !where.make ? workspace.id === where.join
             : Places.holds(where, { workspace, column }, beside);
+        // One that holds on a screen standing in for its own, gone as it
+        // opened, only stands there: it hasn't landed, so settling places
+        // it again once its screen is back. Taken as landed, two sessions
+        // kept on the monitor stayed on the laptop's screen after every
+        // screen dropped and came back (screens-keep-places, 2026-11-09).
         if (holds) {
             root.noteAway(entry.away, workspace.id);
-            return "held";
+            const own = entry.at?.output ?? "";
+            return own === "" || workspace.output === own ? "held" : "standing";
         }
         const into = entry.quiet === true ? root.moveQuietly(window, where, workspace)
             : root.moveTo(window, where, workspace, column, beside);
@@ -1555,7 +1562,13 @@ Singleton {
         const workspace = Niri.workspace(window.workspace_id);
         const column = window.layout.pos_in_scrolling_layout[0];
         let into = workspace?.id ?? null;
-        if (workspace && !Places.holds(where, { workspace, column }, beside))
+        // One kept on a workspace of its own has none while another window
+        // shares it: none of those back before it does, or it would join
+        // them. Held there, a chat kept alone between two sessions' stayed
+        // with Joel's windows on the first, as it opened.
+        const shared = where.make && Object.values(Niri.windows)
+            .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
+        if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
         if (into !== null && Places.connectorOf(at, screens) === undefined)
             root.noteAway({ screen: at.screen || at.output, workspace: at.workspace }, into);
