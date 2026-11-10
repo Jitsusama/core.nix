@@ -998,16 +998,26 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
 def drawn_rows(laid: Json) -> Iterator[tuple[tuple[str, str], list[tuple[object, ...]]]]:
     """Give each row shown by what it is and reads, with its words as drawn, each in order.
 
-    The selected row is left out, since its name may be reading on.
+    The selected row is left out, since its name may be reading on. A graph is given by its ink,
+    height and width alone: what it draws is the figure's history, which its reading leaves out,
+    and where it stands is the list's, beside the widest of every graphed row's figures
+    (Choice.qml's `figures`), so another row's figure growing by a character moves it.
     """
     for row in laid["rows"]:
         if row["selected"]:
             continue
         words: list[tuple[object, ...]] = [
-            (word["text"], word["x"], word["y"] - row["band"], word["ink"], word["width"])
+            ("graph", None, word["y"] - row["band"], word["ink"], word["width"])
+            if is_graph(word["text"])
+            else (word["text"], word["x"], word["y"] - row["band"], word["ink"], word["width"])
             for word in row["words"]
         ]
         yield (str(row["is"]), str(row["reads"])), words
+
+
+def is_graph(text: object) -> bool:
+    """Say whether a word is a graph's, set wholly in braille as Graph.qml sets one."""
+    return isinstance(text, str) and text != "" and all("\u2800" <= c <= "\u28ff" for c in text)
 
 
 def stands_in(place: str, shown: Json) -> bool:
