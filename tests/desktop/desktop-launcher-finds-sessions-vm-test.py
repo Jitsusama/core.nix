@@ -899,8 +899,11 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
         desktop.in_session("[ $(niri msg --json windows | grep -o '\"crowd\"' | wc -l) -ge 30 ]"),
         timeout=dt.timedelta(seconds=180),
     )
-    crowd = desktop.as_account("pgrep -c -x stress-ng; true").strip()
-    assert int(crowd or 0) >= CROWD, f"only {crowd} of the crowd's sessions are at work"
+    # A window is drawn before the work in it starts, so the work is waited on too.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"[ $(pgrep -c -x stress-ng) -ge {CROWD} ]"),
+        timeout=dt.timedelta(seconds=60),
+    )
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
     box = window_box(desktop, notes["id"])
     try:
