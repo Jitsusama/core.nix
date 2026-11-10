@@ -1,6 +1,7 @@
 // What in Slack wants Joel, as Now's Slack piece says it, run in Qt's own
 // JavaScript engine, the one the shell runs it in: what Slack's daemon
-// holds gathered in Slack's order whatever order it was heard in, a count
+// holds gathered in Slack's order whatever order it was heard in, a
+// change moving only the parts whose keys it names, a count
 // shown only while the daemon answers and Slack answered it, why there's
 // none when not, said on Slack's program rather than in Now, a channel
 // merely unread kept for Slack's Unread but never counted in Now, Recent,
@@ -197,6 +198,36 @@ QtObject {
         const later = Object.assign({}, first, { ts: "1730000001.000200" });
         check("a tie newest first", Unreads.gathered(held("ok", { messages: [first, later],
             whole: true }), true).messages.map(one => one.ts), [later.ts, first.ts]);
+
+        // A change remakes only the parts whose keys it names (Daemon.qml's
+        // heard), each kind known by its key alone, so a key gone is too:
+        // a message heard lists the messages alone, a conversation gone
+        // the conversations alone, and a key of no part it lists nothing.
+        const holds = held("ok", { unread: [ada, deploys], recent: [read], messages: [first],
+            whole: true });
+        const byKey = Unreads.keeping();
+        const parts = moved => Object.keys(moved).sort();
+        check("every part at first", parts(Unreads.keep(byKey, holds, Object.keys(holds))),
+            ["account", "conversations", "messages", "recent"]);
+        check("kept as gathered", Unreads.toldBy(byKey.account, Unreads.listed(byKey), true),
+            Unreads.gathered(holds, true));
+        const heard = `slack-message:${second.channel}:${second.ts}`;
+        holds[heard] = { key: heard, kind: "slack-message", heard: 2, "slack-message": second };
+        check("a message heard moves the messages alone",
+            parts(Unreads.keep(byKey, holds, [heard])), ["messages"]);
+        check("and is listed", Unreads.messagesOf(byKey).map(one => one.ts),
+            [second.ts, first.ts]);
+        delete holds["slack-unread:C1"];
+        check("a conversation gone moves the conversations alone",
+            parts(Unreads.keep(byKey, holds, ["slack-unread:C1"])), ["conversations"]);
+        check("and is let go", Unreads.conversationsOf(byKey).map(one => one.id), ["D1"]);
+        check("a key of no part moves nothing",
+            parts(Unreads.keep(byKey, holds, ["slack-search:C1", "slack-account:other"])), []);
+        check("the account's key is the account", byKey.account.standing, "ok");
+        check("nothing told while not answering",
+            Unreads.toldBy(byKey.account, Unreads.listed(byKey), false), null);
+        check("the threads among those wanting him",
+            Unreads.threads(whole.conversations).map(one => one.id), ["threads"]);
 
         // Slack's own notices of what was read in Slack are read too, each
         // known by its conversation, sender, time and words, one to one

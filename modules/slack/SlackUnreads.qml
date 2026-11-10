@@ -23,11 +23,43 @@ Singleton {
         keptThroughGap: false
     }
 
+    // What's kept of what the daemon holds, the account and each other
+    // kind's by key, and each part listed from it, remade only when a
+    // change names one of its keys (SlackUnreads.js's keep), so a message
+    // heard lists the messages alone and wakes nothing reading the rest,
+    // where all 400 held were gathered again at each (RCTRF8, 2026-11-10).
+    // Plain objects, so keeping one notifies nothing.
+    readonly property var kept: Unreads.keeping()
+    property var account: null
+    property var conversationsHeld: []
+    property var recentHeld: []
+    property var messagesHeld: []
+
+    Connections {
+        target: slack
+        function onHeard(changed, gone) {
+            root.took(changed.concat(gone));
+        }
+    }
+
+    function took(keys) {
+        const moved = Unreads.keep(kept, slack.held, keys);
+        if (moved.account)
+            account = kept.account;
+        if (moved.conversations)
+            conversationsHeld = Unreads.conversationsOf(kept);
+        if (moved.recent)
+            recentHeld = Unreads.recentOf(kept);
+        if (moved.messages)
+            messagesHeld = Unreads.messagesOf(kept);
+    }
+
     // What the daemon holds, { state, conversations, recent, messages,
-    // whole }, or null while it isn't answering; read beside `revision`,
-    // so it's gathered once a change.
-    readonly property var told: slack.revision >= 0
-        ? Unreads.gathered(slack.held, slack.state === "answering") : null
+    // whole }, or null while it isn't answering. What's made from it
+    // reads the part it lists, so a part unmoved is the same list and
+    // notifies nothing.
+    readonly property var told: Unreads.toldBy(account, { conversations: conversationsHeld,
+        recent: recentHeld, messages: messagesHeld }, slack.state === "answering")
     // "none", "ok", "signedOut" or "unknown" (SlackUnreads.js's standing).
     readonly property string stands: Unreads.standing(told)
     readonly property bool shown: Unreads.shown(told, stands)
@@ -43,14 +75,14 @@ Singleton {
     readonly property string programNote: Unreads.programNote(stands)
     // Each { id, name, kind, count, link } that wants Joel, for Now, only
     // while Slack answers, so no old count is offered as Slack's.
-    readonly property var conversations: stands === "ok" ? told.conversations.filter(Unreads.wants)
-        : []
+    readonly property var conversations: stands === "ok"
+        ? conversationsHeld.filter(Unreads.wants) : []
     // Every one unread, those wanting him first and then the channels
     // merely unread, for Slack's own Unread, of which Now's are the first
     // three groups, so the two never disagree.
-    readonly property var unread: stands === "ok" ? told.conversations : []
+    readonly property var unread: stands === "ok" ? conversationsHeld : []
     // What he read last, newest first, for Slack's Recent.
-    readonly property var recent: stands === "ok" ? told.recent : []
+    readonly property var recent: stands === "ok" ? recentHeld : []
     // Each message wanting him, done ones too, the newest first, while the
     // daemon holds every one; else null, and the conversations stand for
     // them (SlackUnreads.js's messages). For You's Slack row lists those
@@ -82,7 +114,7 @@ Singleton {
             Notices.markRead(readThere, "readInSlack");
     }
     // Threads, which no message stands for, beside the messages.
-    readonly property var unheld: stands === "ok" ? Unreads.unheld(told) : []
+    readonly property var unheld: Unreads.threads(conversations)
 
     // A conversation's row's words, for the piece, which lives where
     // SlackUnreads.js can't be imported.
