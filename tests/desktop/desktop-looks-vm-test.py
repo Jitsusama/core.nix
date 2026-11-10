@@ -2530,7 +2530,7 @@ CLOSED = [
 ]
 # What the owner under the orchestrator landed, newest first, as the harness keeps it: a change
 # with its page, a plan item ticked alone, which Landed leaves out, and a change saying what to
-# try (VKCF3Z's design: Landed in Now, tier 2).
+# try, which waits in For You until it's read (VKCF3Z, 2026-11-10).
 STOPPED = "Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 LANDINGS = [
@@ -2575,30 +2575,30 @@ def orchestrated(desktop: Desktop) -> None:
     for address, title, under, stands in ORCHESTRATION:
         if address != "TESTQA":
             desktop.pi_window(address, window_of(address, title))
-        desktop.presence_says(
-            {
-                "session": (
-                    "01a1face-test" if address == "TESTQA" else f"01a1face-{address[-2:].lower()}"
-                ),
-                "addresses": [address],
-                "busy": stands == "working",
-                "state": "busy" if stands == "working" else stands,
-                "owns": [f"QEST-20261022-{address}"],
-                "orchestratedBy": under,
-                # The orchestrator's record names its repository, which its drawer's eyebrow
-                # says as it's written.
-                **({"repo": "core.nix"} if address == "TESTQA" else {}),
-                **({"landings": LANDINGS} if address == "TESTQC" else {}),
-                **({"usage": FULL, **BUILDER} if address == "TESTQD" else {}),
-            },
-            address,
-        )
+        desktop.presence_says(record_of(address, under, stands, LANDINGS), address)
     desktop.as_account(
         f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo '{json.dumps(SPENT)}'"
         " > $XDG_RUNTIME_DIR/spend-watch/.c"
         " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
     )
     closed_listed(desktop)
+
+
+def record_of(address: str, under: str | None, stands: str, landings: list[Json]) -> Json:
+    """Give an orchestration's session as its record says it, the owner's with its landings."""
+    return {
+        "session": ("01a1face-test" if address == "TESTQA" else f"01a1face-{address[-2:].lower()}"),
+        "addresses": [address],
+        "busy": stands == "working",
+        "state": "busy" if stands == "working" else stands,
+        "owns": [f"QEST-20261022-{address}"],
+        "orchestratedBy": under,
+        # The orchestrator's record names its repository, which its drawer's eyebrow says as
+        # it's written.
+        **({"repo": "core.nix"} if address == "TESTQA" else {}),
+        **({"landings": landings} if address == "TESTQC" else {}),
+        **({"usage": FULL, **BUILDER} if address == "TESTQD" else {}),
+    }
 
 
 def closed_listed(desktop: Desktop) -> None:
@@ -2873,14 +2873,39 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
 
 
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
-    """Shoot Landed, how many to read at its side, then inside it, a landing's drawer out.
+    """Shoot For You's one landing to try, Landed, then a landing's drawer, then History.
 
     Each says what landed as its name and its ref in the mono at its right; its drawer says
-    who landed it and when, and what to try, a sentence the row has no room for. Nothing is
-    read, so the walk can come back to it.
+    who landed it and when, and what to try, a sentence the row has no room for. Landed says
+    how many landed today at its side; what's to read is For You's alone to count. The one
+    saying what to try lands afresh at each scale, so each finds it unread.
     """
+    # A second for the scale's figures, 11:19:15 at 1.5 and 11:19:02 at 2.
+    fresh = {**LANDINGS[2], "at": f"2026-11-07T11:19:{int(shot.replace('-', '')):02}Z"}
+    landings = [*LANDINGS[:2], fresh]
+    desktop.presence_says(record_of("TESTQC", "TESTQA", "listening", landings), "TESTQC")
+    desktop.close_launcher()
+    desktop.machine.send_key("meta_l-o")
+    desktop.in_now("For You")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "To Try" in shown["rows"])
+    desktop.down_to("To Try")
+    desktop.shoot(f"launcher-for-you-to-try-at-{shot}")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == [CLOSING])
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True and shown["drawer"]["body"] == LANDINGS[2]["person"]
+        )
+    )
+    desktop.shoot(f"launcher-for-you-landing-at-{shot}")
+    # Return steps into it where it lives, Agents \u203a Landed, and reads it.
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
+    desktop.step_out()
+    desktop.step_out()
     desktop.down_to("Landed")
-    assert desktop.showing()["selected"]["side"] == "2 to read", f"at {shot}: {desktop.showing()}"
+    assert desktop.showing()["selected"]["side"] == "none today", f"at {shot}: {desktop.showing()}"
     desktop.shoot(f"launcher-agents-landed-at-{shot}")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
@@ -2893,7 +2918,21 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
         )
     )
     desktop.shoot(f"launcher-agents-landed-in-at-{shot}")
-    desktop.step_out()
+    desktop.close_launcher()
+    # Read, it's in For You's History, saying when.
+    desktop.machine.send_key("meta_l-o")
+    desktop.in_now("For You")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "To Try" not in shown["rows"])
+    desktop.down_to("History")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: CLOSING in shown["rows"])
+    desktop.down_to(CLOSING)
+    side = desktop.showing()["selected"]["side"]
+    assert side.startswith("read "), f"at {shot} a landing read says {side!r} in History"
+    desktop.shoot(f"launcher-for-you-history-at-{shot}")
+    desktop.close_launcher()
+    into_agents(desktop)
 
 
 def after_the_sessions(desktop: Desktop, shot: str) -> None:

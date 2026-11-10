@@ -77,11 +77,9 @@ Provider {
                 () => made(fact))
         }));
         keptOnly(piecesKept);
-        // What sessions landed that he hasn't read, Agents' own row too,
-        // while any is (VKCF3Z's design: Landed in Now, tier 2).
-        const landed = source("agents")?.landed ?? null;
-        if (landed)
-            rows.push({ group: "wants", name: landed.name, row: landed });
+        // What sessions landed that says what to try waits in For You, so
+        // it's counted once there and never lifted here too (VKCF3Z,
+        // 2026-11-10).
         return [waiting].concat(moment, Groups.ordered(rows).map(each => each.row));
     }
     // Said only when what the rows show has changed (Provider's
@@ -1014,14 +1012,23 @@ Provider {
             if (found[at] !== undefined)
                 notices[notice.id] = found[at];
         });
+        const say = forYouSaid(now);
         const ours = from === undefined ? looks.history.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
-                given.done.map(one => ({ at: one.done.at, row: () => one.row })))
+                given.done.map(one => ({ at: one.done.at,
+                    row: () => provider.givenDone(one, say) })))
             : [];
         const rows = ours.concat(came.map(one => ({ at: one.at,
             row: () => provider.cameDoneRow(one, notices) })));
         return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
+    }
+    // What a source gave that's done, in History as its source made it,
+    // saying at its side how it went and when, "read 14:02", as every row
+    // there does.
+    function givenDone(one, say) {
+        return Object.assign({}, one.row, { side: ForYou.historySide({ how: one.done.how,
+            resolved: one.done.at, since: null }, say), later: true });
     }
     readonly property int resolvedCount: looks.history.length + doneItems.length
         + cameDone.length + given.done.length

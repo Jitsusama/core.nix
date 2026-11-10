@@ -862,22 +862,24 @@ Provider {
         }
     }
 
-    // What sessions landed that Joel hasn't read (SessionRow.js's landed):
-    // one row while any is, Landed, its count at its side, which Now shows
-    // among what wants him (VKCF3Z's design, tier 2) and Agents after the
-    // sessions. A step in, each landing, newest first: what it is as its
-    // name and its ref at the right in the mono; its drawer says who landed
-    // it and when, and what to try, a sentence the row has no room for
-    // beside its ref. Return goes to the change, or to its session where no
-    // link to the change is known, and marks it read, as opening a notice or
-    // a mail does: a mark, never an ending, since no Return ends or takes
-    // away. Its own step in holds Open the Change, Go To the Session, Copy
-    // What to Try and Forget It, its ending, which d does and u takes back,
-    // as a notice's is. What landed is kept 30 days past its session's end
-    // (the harness's landings.json, served as the node's `landing` kind),
-    // so a session closed leaves what it landed in Landed. Its row says at
-    // its right how many are to read and how many landed today, and its
-    // drawer, as a place's, what it holds (VKCF3Z, adba1297).
+    // What sessions landed (Landed.js's all): Landed, one row always, after
+    // the sessions, the landings' own place, as a to-do lives in its app
+    // (VKCF3Z, 2026-11-10). A step in, each landing of the past 30 days,
+    // newest first: what it is as its name and its ref at the right in the
+    // mono; its drawer says who landed it and when, and what to try, a
+    // sentence the row has no room for beside its ref. Return goes to the
+    // change, or to its session where no link to the change is known, and
+    // marks it read, as opening a notice or a mail does: a mark, never an
+    // ending, since no Return ends or takes away; its drawer shown reads it
+    // too (`landingDrawn`). Its own step in holds Open the Change, Go To the
+    // Session and Copy What to Try. Read, it stays, in Landed and in For
+    // You's History, so nothing read is lost. What landed is kept 30 days
+    // past its session's end (the
+    // harness's landings.json, served as the node's `landing` kind), so a
+    // session closed leaves what it landed in Landed. Its row says at its
+    // right how many landed today, never how many are to read, which For
+    // You alone counts (`forYou`), and its drawer, as a place's, what it
+    // holds (VKCF3Z, adba1297).
     readonly property var keptLandings: {
         void landingKind?.revision;
         return Object.values(landingKind?.held ?? {});
@@ -894,18 +896,21 @@ Provider {
             answersWhole: true
         }
     }
+    readonly property var landings: Landed.all(keptLandings,
+        Sessions.running.concat(Sessions.parked))
+    function readLanding(key) {
+        if (Sessions.landingsRead.includes(key))
+            return;
+        Sessions.readLandings([key], Landed.stillRead(keptLandings,
+            Sessions.running.concat(Sessions.parked), Sessions.landingsRead));
+    }
+    // Where a landing lives, Agents \u203a Landed \u203a it, which For You's rows
+    // step into rather than show a copy of (VKCF3Z, 2026-11-10).
+    function landingTrail(one) {
+        return ["collection:agents", "agents:landed", `agents:landed:${one.key}`];
+    }
     readonly property var landed: {
-        const sessions = Sessions.running.concat(Sessions.parked);
-        const kept = keptLandings;
-        const unread = Landed.landed(kept, sessions, Sessions.landingsRead);
-        // The last read while the launcher holds it, it stays, empty, so
-        // the step in can be said again with every landing dimmed, as a
-        // row gone from any list is, rather than lost from under it; it
-        // goes once the launcher lets it go.
-        if (unread.length === 0 && !holdsLanded)
-            return null;
-        const read = one => Sessions.readLandings([one.key],
-            Landed.stillRead(kept, sessions, Sessions.landingsRead));
+        const read = one => provider.readLanding(one.key);
         const act = (id, fields) => thing(Object.assign({
             key: `verb:agents:landed:${id}`,
             verb: Words.verb(`verb:agents:landed:${id}`),
@@ -929,12 +934,7 @@ Provider {
                 copy: one.person,
                 figure: false,
                 glyph: Words.glyph("verb:agents:landed:try")
-            }) : null,
-            act("forget", Object.assign({
-                stays: true,
-                run: () => read(one),
-                undo: () => Sessions.unreadLandings([one.key])
-            }, Words.ending("verb:agents:landed:forget")))
+            }) : null
         ].filter(row => row !== null);
         const landing = one => thing({
             thing: true,
@@ -949,6 +949,8 @@ Provider {
             verb: Words.verb(`verb:agents:landed:${goes(one) || "read"}`),
             glyph: Words.glyph("agents:landed"),
             hue: "action",
+            // Its drawer shown is it read (`landingDrawn`).
+            readsLanding: one.key,
             later: goes(one) !== "",
             // Read where it goes nowhere, which keeps the launcher, as a
             // setting's change does, so the next landing is under the cursor.
@@ -966,8 +968,7 @@ Provider {
         return thingRow({
             key: "agents:landed",
             name: Words.name("agents:landed"),
-            side: Landed.stands(unread.length, Landed.landedToday(kept, Date.now()),
-                words.said ?? {}),
+            side: Landed.stands(Landed.landedToday(keptLandings, Date.now()), words.said ?? {}),
             drawer: () => ({
                 eyebrow: (Words.field.drawer ?? {}).place ?? "",
                 title: Words.name("agents:landed"),
@@ -975,13 +976,67 @@ Provider {
             }),
             glyph: Words.glyph("agents:landed"),
             hue: "action"
-        }, () => unread.map(landing));
+        }, () => landings.map(landing));
     }
 
-    // Whether the launcher holds Landed open, apart, so a step anywhere else
-    // remakes Landed only when this answer flips, never on every key.
-    readonly property bool holdsLanded: !!provider.launcher && provider.launcher.open
-        && (provider.launcher.held ?? []).some(step => step.row.key === "agents:landed")
+    // A landing whose drawer was out is read, as Return on it makes it
+    // (VKCF3Z, 2026-11-10: it clears itself once he opens its drawer or
+    // presses Return on it), wherever its row is, in Landed or For You.
+    // It's read once the drawer leaves it, for another row's or as the
+    // launcher closes, so the row he's on stays there for his Return,
+    // which a row gone dimmed would not take.
+    readonly property string landingDrawn: provider.launcher?.open === true
+        && provider.launcher.drawerOut === true
+        ? String(provider.launcher.drawerRow?.readsLanding ?? "") : ""
+    property string landingShown: ""
+    onLandingDrawnChanged: {
+        if (landingShown !== "" && landingShown !== landingDrawn)
+            provider.readLanding(landingShown);
+        landingShown = landingDrawn;
+    }
+
+    // What Landed gives For You (ForYou.js's given): each landing that says
+    // what to try and Joel hasn't read, waiting in To Try with its mark,
+    // weighed as the rest are, and each read since, in its History with
+    // when he read it. Return on either, as its drawer shown, steps into the
+    // landing in Agents \u203a Landed, never a copy, and reads it, so one
+    // landing is counted once, in For You, and goes from it once read
+    // (VKCF3Z and Y2YBTS, 2026-11-10).
+    readonly property var forYou: {
+        const said = Words.of("agents:landed").said ?? {};
+        const row = (one, fields) => thing(Object.assign({
+            thing: true,
+            name: one.what,
+            side: one.ref,
+            drawer: () => Landed.landingDrawer(one, {
+                at: one.at !== "" ? started(one.at) : "",
+                session: one.session.title ?? "",
+                named: id => Words.name(`agents:${id}`)
+            }),
+            verb: "go to",
+            glyph: Theme.glyph.toTry,
+            readsLanding: one.key,
+            trail: provider.landingTrail(one),
+            spot: "",
+            stays: true,
+            changes: false,
+            run: () => {
+                provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
+                provider.readLanding(one.key);
+            }
+        }, fields));
+        return Landed.toTry(landings, Sessions.landingsRead).map(one => ({
+            row: row(one, {
+                key: `on:waiting:try:${one.key}`,
+                hue: "action",
+                forYou: { kind: "try", source: "sessions" }
+            }),
+            thing: { kind: "try", ready: true, since: one.at }
+        })).concat(Landed.triedRead(landings, Sessions.landingsReadAt).map(tried => ({
+            row: row(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
+            done: { how: String(said.read ?? ""), at: tried.at }
+        })));
+    }
 
     // Agents' Recent: the sessions that closed this boot, as every Recent
     // is laid out (Recent.js), newest first, each once by its id, and

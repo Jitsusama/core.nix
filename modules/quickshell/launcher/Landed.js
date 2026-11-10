@@ -1,12 +1,13 @@
 .pragma library
 .import "Order.js" as Order
 // What pi's sessions landed, as Agents' Landed lists it (VKCF3Z,
-// 2026-11-06): which landings are worth Joel's reading, those he hasn't
-// read, newest first, each one's drawer, and what of his reading is still
-// worth keeping. A landing outlives its session: the harness keeps each
-// 30 days (harness #1049), which the realm's node serves as its `landing`
-// kind. Said apart from Agents.qml so tests/session-row.qml holds it in
-// Qt's own engine.
+// 2026-11-06): which landings are worth Joel's reading, newest first,
+// which of them wait in For You to try until he reads them and which he
+// has, each one's drawer, and what of his reading is still worth keeping.
+// A landing outlives its session: the harness keeps each 30 days (harness
+// #1049), which the realm's node serves as its `landing` kind. Said
+// apart from Agents.qml so tests/session-row.qml holds it in Qt's own
+// engine.
 
 // A change as a landing names it, `repo#number`, never a quest document's
 // item, `PLAN-20261106-2ZPAI5#14`, and the only link a landing may open,
@@ -57,13 +58,12 @@ function lander(sessions, one) {
         ?? { address: String(one.address ?? ""), title: "", presence: { session: id } };
 }
 
-// What sessions landed that Joel hasn't read, newest first, each worth his
-// reading: those the harness keeps (`kept`, the node's `landing` records),
-// which outlive their session, and those the sessions there are still
-// carry from before the harness kept them, each once. Each is { key, at,
-// ref, what, person, url, quest, repo, machine, session }, `url` only a
-// web link.
-function landed(kept, sessions, read) {
+// What sessions landed, newest first, each worth Joel's reading: those the
+// harness keeps (`kept`, the node's `landing` records), which outlive
+// their session, and those the sessions there are still carry from before
+// the harness kept them, each once. Each is { key, at, ref, what, person,
+// url, quest, repo, machine, session }, `url` only a web link.
+function all(kept, sessions) {
     const rows = kept.filter(worthReading).map(one => landingOf(lander(sessions, one), one));
     const keys = rows.map(one => one.key);
     for (const session of sessions) {
@@ -75,7 +75,24 @@ function landed(kept, sessions, read) {
             }
         }
     }
-    return Order.sorted(rows.filter(one => !read.includes(one.key)), Order.stream(one => one.at));
+    return Order.sorted(rows, Order.stream(one => one.at));
+}
+
+// Those of `rows` that wait in For You's To Try: each saying what Joel
+// should try, while he hasn't read it (`read`, the keys he has). One
+// without a line to try is only Landed's to list, and asks nothing of him
+// (VKCF3Z and Y2YBTS, 2026-11-10).
+function toTry(rows, read) {
+    return rows.filter(one => one.person !== "" && !read.includes(one.key));
+}
+
+// Those that waited there and he has read since, for For You's History,
+// each { one, at }, `at` when he read it (`readAt`, by key, in
+// milliseconds). One read before the shell kept when has no time to say,
+// so it isn't History's.
+function triedRead(rows, readAt) {
+    return rows.filter(one => one.person !== "" && typeof readAt[one.key] === "number")
+        .map(one => ({ one, at: readAt[one.key] }));
 }
 
 // How many landings worth reading landed today, read or not, on this
@@ -86,16 +103,15 @@ function landedToday(kept, now) {
         && new Date(Date.parse(String(one.at ?? ""))).toDateString() === today).length;
 }
 
-// How Landed stands, said at its row's right as a run, state first: how
-// many are still to read, then how many landed today, each only when it's
-// any, as For You's Lately says "12 to read"; nothing after its name,
-// since a place's row says nothing there (VKCF3Z, adba1297). `said` gives
-// each part's words, `unread` and `today`, holding `{count}`.
-function stands(unread, today, said) {
-    return [[unread, said.unread], [today, said.today]]
-        .filter(([count]) => count > 0)
-        .map(([count, words]) => String(words ?? "").replace("{count}", count))
-        .join(" \u00b7 ");
+// How Landed stands, said at its row's right: how many landed today, "5
+// today", or "none today". What's still to read is For You's alone to
+// count, since saying it here too would be a second inbox (VKCF3Z,
+// 2026-11-10); nothing after its name, since a place's row says nothing
+// there (VKCF3Z, adba1297). `said` gives the words, `today` holding
+// `{count}`, and `none`.
+function stands(today, said) {
+    return today > 0 ? String(said.today ?? "").replace("{count}", today)
+        : String(said.none ?? "");
 }
 
 // A landing's drawer: who landed it and when as its eyebrow, what landed
