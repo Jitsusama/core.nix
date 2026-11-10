@@ -2,7 +2,7 @@ import QtQuick
 import "PiSource.js" as Pi
 
 // pi's sessions, as many and as large as Joel's, each changing its step in
-// turn, sorted and told against the last sorting taken as PiSource.qml
+// turn, each change told as the node tells it and sorted as PiSource.qml
 // does, the launcher shut for half of them and showing them for the rest,
 // and each taken lived again as Sessions.qml does. It counts only what's
 // taken and lived again itself: the check runs it
@@ -21,12 +21,10 @@ Item {
     property var sorting: ({ live: [], resting: [], ending: [] })
     property int changed: 0
     property int taken: 0
-    property bool shown: false
     // What Sessions.qml's relive() last made, and how often what it made
     // moved.
     property var lived: ({ live: [], resting: [], ending: [] })
     property int relived: 0
-    readonly property var place: ({ machine: "skiff", bootId: "boot", bootedAt: 0, markers: {} })
 
     function session(at) {
         const names = [];
@@ -35,6 +33,8 @@ Item {
         return {
             id: `s-${at}`,
             state: "busy",
+            standing: "running",
+            here: true,
             machine: "skiff",
             presence: {
                 addresses: [`A${at}`],
@@ -64,7 +64,7 @@ Item {
         for (let at = 0; at < sessions; at += 1)
             held[`session:s-${at}`] = session(at);
         root.held = held;
-        root.sorting = Pi.sorted(held, place);
+        root.sorting = Pi.sorted(held);
         changing.start();
     }
 
@@ -75,21 +75,21 @@ Item {
         repeat: true
         onTriggered: {
             // A change arrives as the node's text, parsed and laid over
-            // what's held, as Daemon.qml does.
+            // what's held, as Daemon.qml does. A step moving alone carries
+            // no new digest of what's read shut.
             const key = `session:s-${root.changed % root.sessions}`;
             const said = JSON.parse(JSON.stringify({ presence: Object.assign({},
                 root.held[key].presence, { step: `step ${root.changed}` }) }));
+            const answer = { id: 1, changed: [Object.assign({ key }, said)] };
             const held = Object.assign({}, root.held);
             held[key] = Object.assign({}, root.held[key], said);
             root.held = held;
             // The launcher shows them for the second half, so each change
             // is taken there, and lived again as Sessions.qml does.
             const shown = root.changed >= root.changes / 2;
-            const next = Pi.sorted(held, root.place);
-            if (shown !== root.shown || !Pi.tellsAlike(root.sorting, next, shown)) {
-                root.shown = shown;
+            if (shown || Pi.movesShut(answer)) {
                 root.taken += 1;
-                root.sorting = next;
+                root.sorting = Pi.sorted(held);
                 root.relive();
             }
             root.changed += 1;

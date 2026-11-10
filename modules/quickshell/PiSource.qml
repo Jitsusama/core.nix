@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 pragma Singleton
-import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -63,15 +62,6 @@ Singleton {
         printErrors: false
     }
     readonly property string bootId: boot.text().trim()
-    // When this boot began, in milliseconds since the epoch, read once.
-    FileView {
-        id: uptime
-        path: "/proc/uptime"
-        blockLoading: true
-        printErrors: false
-    }
-    readonly property real bootedAt: Date.now()
-        - Number(uptime.text().split(" ")[0] || 0) * 1000
 
     // The home realm's node, by its socket, and its links for each kind of
     // record pi's sessions leave: watched whole, then told each change as
@@ -87,7 +77,7 @@ Singleton {
             socket: root.nodePath
             kind: "session"
             changesDiffer: true
-            onRevisionChanged: root.resort()
+            onTold: answer => root.resort(answer)
         }
     }
     readonly property var runKind: runLink.item
@@ -129,17 +119,16 @@ Singleton {
 
     // The node's sessions sorted (PiSource.js): `live`, `resting` and
     // `ending`, each `{ file, presence, window, held }` and more, made
-    // again when the node tells of a change or a park comes or goes, and
-    // kept as they were when nothing in them did, so what reads them isn't
-    // told for nothing. `sorted` is said once they change. All three are
-    // set at once, so what reads more than one is told once.
+    // again when the node tells of a change, by how it says each stands.
+    // `sorted` is said once they change. All three are set at once, so
+    // what reads more than one is told once.
     property var sorting: ({ live: [], resting: [], ending: [] })
     readonly property var live: sorting.live
     readonly property var resting: sorting.resting
     readonly property var ending: sorting.ending
     signal sorted()
     // Whether the launcher shows them (shell.qml). While it doesn't, a
-    // change only to what it alone shows (Pi.tellsAlike) is held back, and
+    // change only to what it alone shows (Pi.movesShut) is held back, and
     // taken once it shows them again: just after, so opening isn't slowed by
     // it, since what it first shows, how each session stands, was never held.
     property bool showing: false
@@ -148,25 +137,21 @@ Singleton {
             Qt.callLater(resort);
     }
     property bool heldBack: false
-    // Whether what was last sorted (`sorting`) was taken while shown, which
-    // is what the next is told against.
-    property bool saidShown: false
-    function resort() {
-        const next = Pi.sorted(node?.held ?? {}, {
-            machine: machine,
-            bootId: bootId,
-            bootedAt: bootedAt,
-            markers: parkedMarkers()
-        });
+    // Sorts what the node holds again for `answer`, one of its answers as
+    // Daemon.qml tells it, or for what was held back when there is none.
+    // An answer that holds no records moved nothing.
+    function resort(answer) {
+        if (answer && answer.records === undefined && answer.changed === undefined
+            && answer.gone === undefined)
+            return;
         sorts.heard += 1;
-        if (sorts.taken > 0 && saidShown === showing && Pi.tellsAlike(sorting, next, showing)) {
-            heldBack = !showing;
+        if (answer && !showing && sorts.taken > 0 && !Pi.movesShut(answer)) {
+            heldBack = true;
             return;
         }
-        saidShown = showing;
         heldBack = false;
         sorts.taken += 1;
-        sorting = next;
+        sorting = Pi.sorted(node?.held ?? {});
         sorted();
     }
     // How many sortings it has made and how many it took, in a plain
@@ -185,53 +170,10 @@ Singleton {
     // Every session it tells of, as the contract's records.
     readonly property var sessions: Pi.sessions(sorting, machine)
 
-    // The sessions parked now, by the marker each keeps while it is (the
-    // harness's park-workflow/parked/<session>.json), deleted as it starts
-    // again. A record can go on saying "parked" after its session has
-    // stopped being, so it's parked only while its marker stands. One
-    // listing of one folder, which changes only as a session parks or
-    // wakes, rather than a file watched for each.
+    // Where the harness keeps each parked session's marker (its
+    // park-workflow/parked/<session>.json), which names the file that wakes
+    // it. The node watches the folder and says which are parked itself.
     readonly property string parkedFolder: `${harness}/park-workflow/parked`
-    // A listing of a folder that isn't there yet says it's empty, and never
-    // hears of it after, and the harness makes its park folder only as a
-    // session first parks. So the folders above it are listed too, each
-    // of nothing but folders, which change only as one is made, and the
-    // listing below one listed again as it does: never the one above,
-    // which would list itself again for ever.
-    function relist(listing, folder) {
-        listing.folder = "";
-        listing.folder = `file://${folder}`;
-    }
-    FolderListModel {
-        folder: `file://${root.harness}`
-        showFiles: false
-        onCountChanged: root.relist(parkFolder, `${root.harness}/park-workflow`)
-    }
-    FolderListModel {
-        id: parkFolder
-        folder: `file://${root.harness}/park-workflow`
-        showFiles: false
-        onCountChanged: root.relist(markers, root.parkedFolder)
-    }
-    FolderListModel {
-        id: markers
-        folder: `file://${root.parkedFolder}`
-        showDirs: false
-        nameFilters: ["*.json"]
-        onCountChanged: root.resort()
-        onStatusChanged: root.resort()
-    }
-    function parkedMarkers() {
-        const ids = {};
-        if (markers.status !== FolderListModel.Ready)
-            return ids;
-        for (let at = 0; at < markers.count; at += 1)
-            ids[String(markers.get(at, "fileName")).replace(/\.json$/, "")] = true;
-        return ids;
-    }
-    function parks(presence, markers) {
-        return Pi.parks(presence, markers, bootId);
-    }
 
     // A parked session's marker, read when asked.
     FileView {
