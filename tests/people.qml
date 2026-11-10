@@ -300,15 +300,15 @@ ShellRoot {
             what: "a change heard while nobody looks",
             run: () => {
                 launcher.wanting = false;
-                root.mergedBefore = people.merges;
+                root.mergedBefore = people.merging.merges;
                 root.heardBefore = people.revision;
                 touching.running = true;
             },
             holds: () => people.revision > root.heardBefore,
             check: () => {
-                expect("merges no one", typeof people.merges === "number"
-                    && people.merges === root.mergedBefore,
-                    `${people.merges} merges, ${root.mergedBefore} before`);
+                const merges = people.merging.merges;
+                expect("merges no one", typeof merges === "number" && merges === root.mergedBefore,
+                    `${merges} merges, ${root.mergedBefore} before`);
                 launcher.wanting = true;
             }
         },

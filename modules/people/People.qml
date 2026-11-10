@@ -100,9 +100,10 @@ Provider {
     }
     // Counts each change heard, for a binding that reads what's made.
     property int heardRevision: 0
-    // How many times everyone was merged, for a test to bound.
-    property int merges: 0
-    readonly property var merging: ({ stale: true })
+    // What's merged, and how many times everyone was, for a test to
+    // bound: kept in a plain object, since a property written as `all`
+    // is made would be read by it too, and loop.
+    readonly property var merging: ({ stale: true, merges: 0 })
 
     // Everyone the sources know as one person each, how they stand, and
     // each record read and each person by address, made again only when
@@ -128,7 +129,7 @@ Provider {
                 kept.byEmail[email.toLowerCase()] = person;
         }
         kept.stale = false;
-        merges += 1;
+        kept.merges += 1;
         Report.say(`people holds ${kept.persons.length}`);
         return kept;
     }
