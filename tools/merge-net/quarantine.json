@@ -1,12 +1,5 @@
 [
   {
-    "at": 1794094075,
-    "commit": "85a12fcab559eee7d8d103bbc6dc23fe743c2198",
-    "owner_pr": null,
-    "reason": "failed, then passed, at 85a12fcab559",
-    "test": "vm-desktop-starts-clean"
-  },
-  {
     "at": 1794295991,
     "commit": "29ae3044e4de5e7899a0cbe67ed3af8f66a60d01",
     "owner_pr": 2687,
