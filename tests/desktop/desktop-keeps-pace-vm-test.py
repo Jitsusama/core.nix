@@ -407,14 +407,14 @@ def stepped_round(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
-def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int]]:
-    """Give each step the launcher timed since the mark: its place, its frame and its search."""
+def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
+    """Give each step timed since the mark: its place, its frame, its search and its line."""
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)} | grep -a -F ' ms to its frame'; true"
     )
     return [
-        (found[1], int(found[2]), int(found[3]))
+        (found[1], int(found[2]), int(found[3]), found.string.strip())
         for found in map(STEP_SAID.search, said.splitlines())
         if found
     ]
@@ -454,6 +454,9 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     under: dict[str, list[int]] = {}
     free: dict[str, list[int]] = {}
     searching: dict[str, list[int]] = {}
+    # Each place's slowest step under load as the launcher said it, whose
+    # parts say where its time went.
+    slowest: dict[str, tuple[int, str]] = {}
     try:
         stepped_round(desktop)
         for turn in range(ROUNDS):
@@ -462,10 +465,11 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
                 timing.load(on=loaded)
             since = desktop.mark()
             stepped_round(desktop)
-            for place, took, search in steps_said(desktop, since):
+            for place, took, search, line in steps_said(desktop, since):
                 (under if loaded else free).setdefault(place, []).append(took)
                 if loaded:
                     searching.setdefault(place, []).append(search)
+                    slowest[place] = max(slowest.get(place, (0, "")), (took, line))
     finally:
         if not timing.loading:
             timing.load(on=True)
@@ -479,7 +483,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
         print(
             f"stepping into {place}: under load {sorted(under[place])} ms to its frame,"
             f" {sorted(searching[place])} of it searching, against {sorted(free.get(place, []))}"
-            " with the load frozen"
+            f" with the load frozen; its slowest said {slowest[place][1]}"
         )
         if place in free and middle(under[place]) > (
             SLOWER_MOST * middle(free[place]) + STEPPED_MORE
