@@ -239,6 +239,17 @@ impl Real {
         if !still(&newest, &sha).map_err(|why| format!("{why}, {}", log.display()))? {
             return Err(format!("{DROPPED}, {}", log.display()));
         }
+        self.pull(branch, title, body, &sha)
+    }
+}
+
+impl Real {
+    /// Open a PR for `branch`, or take up the one already open for it, and
+    /// merge it at `sha`. On 10 November GitHub refused the net's merge of
+    /// a quarantine a moment after its push, saying the head had moved, and
+    /// the PR it left open made every later land of that test fail at
+    /// opening one.
+    fn pull(&self, branch: &str, title: &str, body: &str, sha: &str) -> Result<Merged, String> {
         let slug = self.slug();
         let made = run(Command::new("gh").args([
             "pr",
@@ -253,22 +264,56 @@ impl Real {
             title,
             "--body",
             body,
-        ]))?;
-        let pr: u64 = made
-            .rsplit('/')
-            .next()
-            .and_then(|number| number.trim().parse().ok())
-            .ok_or_else(|| format!("gh made a PR it didn't name: {made}"))?;
-        run(Command::new("gh").args([
-            "pr",
-            "merge",
-            &pr.to_string(),
-            "--repo",
-            &slug,
-            "--merge",
-            "--match-head-commit",
-            &sha,
-        ]))?;
+        ]));
+        let pr = match made {
+            Ok(made) => {
+                pr_named(&made).ok_or_else(|| format!("gh made a PR it didn't name: {made}"))?
+            }
+            Err(why) => {
+                let pr = open_already(&why).ok_or(why)?;
+                // What the open PR says is of an earlier try; this one's
+                // body says what lands now, and failing to say it stops
+                // nothing.
+                let _ = run(Command::new("gh").args([
+                    "pr",
+                    "edit",
+                    &pr.to_string(),
+                    "--repo",
+                    &slug,
+                    "--title",
+                    title,
+                    "--body",
+                    body,
+                ]));
+                pr
+            }
+        };
+        let merge = || {
+            run(Command::new("gh").args([
+                "pr",
+                "merge",
+                &pr.to_string(),
+                "--repo",
+                &slug,
+                "--merge",
+                "--match-head-commit",
+                sha,
+            ]))
+        };
+        let mut merging = merge();
+        for _ in 0..3 {
+            match &merging {
+                Err(why) if head_not_seen(why) => {
+                    // GitHub takes a few seconds to see a push as the PR's
+                    // head, and the merge names that head, so it's asked
+                    // again after a pause rather than at once.
+                    std::thread::sleep(Duration::from_secs(10));
+                    merging = merge();
+                }
+                _ => break,
+            }
+        }
+        merging.map_err(|why| format!("#{pr} is open but didn't merge: {why}"))?;
         // GitHub may name the merge's commit a moment after it merges; the
         // hold clears only once it's known and on main.
         let mut merged = None;
@@ -319,6 +364,26 @@ impl Real {
             .status();
         built.is_ok_and(|status| !status.success())
     }
+}
+
+/// The PR a link gh printed names, as `.../pull/2941`.
+fn pr_named(said: &str) -> Option<u64> {
+    said.trim().rsplit('/').next()?.trim().parse().ok()
+}
+
+/// The PR gh says is already open for the branch, when that's why it
+/// opened none.
+fn open_already(why: &str) -> Option<u64> {
+    if !why.contains("already exists") {
+        return None;
+    }
+    why.split_whitespace().rev().find_map(pr_named)
+}
+
+/// Whether GitHub refused a merge only because it hadn't yet seen the
+/// pushed commit as the PR's head.
+fn head_not_seen(why: &str) -> bool {
+    why.contains("Head branch was modified")
 }
 
 /// Whether a build's log says its builder couldn't fetch the commit's own
@@ -842,6 +907,42 @@ fn run(command: &mut Command) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pr_left_open_for_the_branch_is_taken_up_rather_than_failing() {
+        let why = "gh failed: a pull request for branch \"merge-net/quarantine-x\" into branch \"main\" \
+                   already exists:\nhttps://github.com/someone/core.nix/pull/2941";
+        assert_eq!(
+            open_already(why),
+            Some(2941),
+            "the open PR wasn't found in {why}"
+        );
+        assert_eq!(
+            open_already("gh failed: HTTP 502: Bad Gateway https://github.com/x/y/pull/7"),
+            None,
+            "a failure other than an open PR was taken for one"
+        );
+        assert_eq!(
+            pr_named("https://github.com/someone/core.nix/pull/2952\n"),
+            Some(2952),
+            "the PR gh opened wasn't read from its link"
+        );
+    }
+
+    #[test]
+    fn a_merge_github_refused_before_seeing_the_push_is_asked_again() {
+        assert!(
+            head_not_seen(
+                "gh failed: GraphQL: Head branch was modified. Review and try the merge again. \
+                 (mergePullRequest)"
+            ),
+            "GitHub's lag after a push wasn't seen as one"
+        );
+        assert!(
+            !head_not_seen("gh failed: GraphQL: Base branch was modified. (mergePullRequest)"),
+            "a moved main, which the net lands onto afresh, was asked again"
+        );
+    }
 
     #[test]
     fn a_commits_check_is_evaluated_once_and_a_moving_name_every_time() {
