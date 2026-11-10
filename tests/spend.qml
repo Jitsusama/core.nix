@@ -213,6 +213,24 @@ ShellRoot {
         settings: ({ name: "spend" })
     }
 
+    // The launcher as a source asks it whether its rows are wanted, shut
+    // or open elsewhere (Provider.qml's wanted).
+    QtObject {
+        id: shutLauncher
+
+        property bool wanting: true
+
+        function wants(source) {
+            return wanting;
+        }
+    }
+
+    Launcher.Spend {
+        id: shutSpend
+        settings: ({ name: "spend" })
+        launcher: shutLauncher
+    }
+
     FileView {
         id: real
         path: `${root.runtime}/written/status.json`
@@ -665,11 +683,48 @@ ShellRoot {
             expect("marking it expected",
                 Niri.spawned.join(" ") === "spend-watch findings expect burn:s1",
                 Niri.spawned.join(" "));
+            root.shut();
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
             Qt.callLater(() => Qt.exit(1));
         }
+    }
+
+    // With the launcher shut, spend-watch writing its file again, as it
+    // does every few seconds, makes none of the collection's rows, nor does
+    // a pick asking every collection what it holds (Launcher.qml's
+    // knowing): every row was made again at each write, 90 in four minutes
+    // on Joel's shell (YQZGPC, 2026-11-10). Home's figure reads what was
+    // written, and a row shown elsewhere is made as it reads now. Wanted
+    // again, they're made once, as last written.
+    function shut() {
+        const finding = rows => rows.some(row => row.name === "A burn in Aquifer");
+        expect("wanted, it lists what was last written", finding(shutSpend.everything()),
+            shutSpend.everything().map(row => row.name).join(", "));
+        shutLauncher.wanting = false;
+        const before = shutSpend.tally.rows;
+        SpendWatch.said = JSON.parse(root.collected);
+        SpendWatch.said = JSON.parse(root.collected);
+        const held = shutSpend.everything();
+        expect("shut, spend-watch writing again makes none of its rows",
+            shutSpend.tally.rows === before && finding(held), shutSpend.tally.rows - before);
+        expect("and home's figure says what was written", shutSpend.counted() === spend.counted(),
+            `${shutSpend.counted()} against ${spend.counted()}`);
+        const today = spend.everything()[0];
+        const now = shutSpend.rowNow(today.key);
+        expect("a row shown elsewhere is made as it reads now", now?.side === today.side
+            && shutSpend.tally.rows === before + 1, JSON.stringify([now?.side, today.side]));
+        const made = shutSpend.tally.rows;
+        shutLauncher.wanting = true;
+        const wanted = shutSpend.everything();
+        const again = shutSpend.tally.rows;
+        shutSpend.everything();
+        expect("wanted again, they're made once, as last written", !finding(wanted)
+            && wanted.length === spend.everything().length && again > made
+            && shutSpend.tally.rows === again,
+            JSON.stringify([again - made, shutSpend.tally.rows - again,
+                wanted.map(row => row.name)]));
     }
 
     Component.onCompleted: begin()

@@ -83,9 +83,13 @@ Provider {
         return /hdmi|displayport/i.test(`${node.name} ${node.description}`);
     }
 
+    // Every node the sound server has, which a check with no sound server
+    // gives as stand-ins.
+    property var serverNodes: Pipewire.nodes.values
+
     // Hardware, and the filters that put themselves in front of it, as the
     // speakers' tuning and the MV7's voice do: not a program's stream.
-    readonly property var nodes: Pipewire.nodes.values
+    readonly property var nodes: serverNodes
         .filter(node => !!node.audio && !node.isStream
             && (node.type & PwNodeType.Audio) && (node.isSink || (node.type & PwNodeType.Source)))
     readonly property var filters: nodes.filter(node => node.properties["filter.smart"] === "true")
@@ -149,9 +153,9 @@ Provider {
 
     // Each stream open to play through, which carries the server's sink
     // flag, and each open to record from, which doesn't.
-    readonly property var streams: Pipewire.nodes.values
+    readonly property var streams: serverNodes
         .filter(node => node.isStream && node.isSink && (node.type & PwNodeType.Audio))
-    readonly property var recorders: Pipewire.nodes.values
+    readonly property var recorders: serverNodes
         .filter(node => node.isStream && !node.isSink && (node.type & PwNodeType.Audio))
 
     // A node's volume and properties are heard only once something binds
@@ -1648,9 +1652,25 @@ Provider {
     }
 
     // A device going away can be read once more before the lists drop it.
-    readonly property var all: ordered(outputs).concat(ordered(inputs))
-        .filter(node => !!node.audio).map(node => made(node))
+    // Made only while they're wanted (Provider.qml's whileWanted), since a
+    // volume, a jack or niri's workspaces moving made every device's row
+    // again: 137 in four minutes with the launcher shut on Joel's shell
+    // (YQZGPC, 2026-11-10). Home's count reads the devices themselves.
+    readonly property var all: whileWanted("all", () => ordered(outputs)
+        .concat(ordered(inputs)).filter(node => !!node.audio).map(node => made(node)))
     onAllChanged: changed()
+
+    // A device's row as it reads now, for Now's Volume and Microphone,
+    // which borrow its drawer while Now is held and these rows aren't
+    // wanted: made then, or none for one that can no longer be read. Where
+    // they're wanted, or for a key no device has, the launcher looks in
+    // `all`, which is as it reads now while they are.
+    function rowNow(key) {
+        if (provider.wanted)
+            return undefined;
+        const node = devices.find(one => `sound:${one.name}` === key);
+        return node === undefined ? undefined : node.audio ? made(node) : null;
+    }
 
     function search(typed) {
         const words = Fuzzy.words(typed);
