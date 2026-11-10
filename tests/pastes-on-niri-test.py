@@ -123,8 +123,9 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
         lambda: "paste-here" in shell.as_account("niri msg focused-window"),
         "focused the terminal",
     )
+    # wl-copy stays behind to serve the copy, so it's given nothing to hold open.
     with shell.told(f"heard copy {COPIED}"):
-        shell.as_account(f"printf %s '{COPIED}' | wl-copy")
+        shell.as_account(f"printf %s '{COPIED}' | wl-copy > /dev/null 2>&1")
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("shell is busy", selecting=COPIED)

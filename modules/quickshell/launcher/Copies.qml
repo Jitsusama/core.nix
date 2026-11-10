@@ -38,17 +38,25 @@ Provider {
     // What the helper said of each copy it keeps, newest first.
     property var records: []
 
-    // A row per record, made while the rows are wanted, and each kept
-    // while its record is the same one, so a copy heard makes one row.
+    // A row per record, made as the rows are next looked at rather than
+    // as a copy is heard, and each kept while its record is the same one,
+    // so a copy heard while the launcher is shut makes nothing, and makes
+    // one row once it's looked at. Made by asking rather than bound, since
+    // whether the rows are wanted asks the launcher, which reads them.
+    property var all: []
+    property bool stale: false
     readonly property var keeping: keeper()
-    readonly property var all: whileWanted("all", () => {
+    function fresh() {
+        if (!stale)
+            return;
         keepingBegun(keeping);
-        const rows = records.map(said => said.picture !== undefined
+        all = records.map(said => said.picture !== undefined
             ? keptOr(keeping, `picture:${said.picture}`, said, () => pictured(said))
             : keptOr(keeping, `copy:${said.id}`, said, () => made(said)));
         keptOnly(keeping);
-        return rows;
-    })
+        stale = false;
+    }
+    onRecordsChanged: stale = true
 
     // Whether the helper is connected, to copy and paste for Pasting.qml.
     property bool linked: false
@@ -244,6 +252,7 @@ Provider {
     }
 
     function search(typed) {
+        fresh();
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
@@ -274,6 +283,7 @@ Provider {
     // lands on the newest copy, never on forgetting them all, as Wi-Fi
     // holds its off (collection-order.md).
     function everything() {
+        fresh();
         return all.length > 0 ? aged(all.slice()).concat([forget]) : [];
     }
 
