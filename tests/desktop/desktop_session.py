@@ -1496,3 +1496,133 @@ def drawn_held_still(desktop: Desktop) -> int:
 def charged(desktop: Desktop) -> str:
     """Give the stand-in battery's charge, as the kernel's stand-in has it."""
     return desktop.machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
+
+
+# What opens-files, which opens what Chrome downloaded and goes to a Neovim's buffer, shares
+# with looks-programs, which shoots both programs' pages: Chrome's lists, files the stand-in's
+# listers print (tests/desktop.nix), in the form chrome-recent-sites prints them, and Neovims in
+# kitty windows, read only from outside, so the account's own configuration is what runs.
+CHROME_VISITED = "/run/user/1000/chrome-visited"
+CHROME_OPEN = "/run/user/1000/chrome-open"
+CHROME_DOWNLOADS = "/run/user/1000/chrome-downloads"
+# The sites it visited, an address and a title a line, and the tab it has open: its id, window,
+# whether it's in front, when it was looked at, its address and title, a tab between each.
+CHROME_SITES = (
+    "https://estuary.example.org/\tEstuary Notes\nhttps://reef.example.org/\tReef Survey\n"
+)
+CHROME_TAB = "7\t1\ttrue\t1794070000000\thttps://tide.example.org/\tTide Tables\n"
+# A kitty standing in for Chrome's window, by its app id and its front tab's title.
+CHROME_WINDOW = "kitty --class google-chrome --title 'Tide Tables - Google Chrome'"
+# The act Chrome's page ends with once its downloads are read.
+LATEST_DOWNLOAD = "Open the Latest Download"
+
+
+def chrome_visited(desktop: Desktop) -> None:
+    """Give the stand-in Chrome the sites it visited and the tab it has open."""
+    desktop.as_account(f"printf '%s' {shlex.quote(CHROME_SITES)} > {CHROME_VISITED}")
+    desktop.as_account(f"printf '%s' {shlex.quote(CHROME_TAB)} > {CHROME_OPEN}")
+
+
+def chrome_opened(desktop: Desktop) -> None:
+    """Open the window standing in for Chrome's, and wait until niri has it focused."""
+    desktop.as_account(f"niri msg action spawn -- {CHROME_WINDOW}")
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("niri msg focused-window | grep -q google-chrome"), timeout=STARTING
+    )
+
+
+def chrome_gone(desktop: Desktop) -> None:
+    """Close the window standing in for Chrome's, if it's open, and take its lists away."""
+    # The bracket keeps pkill from matching the shell that runs it.
+    desktop.as_account(
+        f"pkill -f 'kitty --clas[s] google-chrome'; rm -f {CHROME_VISITED} {CHROME_OPEN}"
+    )
+
+
+def chrome_downloaded(desktop: Desktop) -> str:
+    """Put a picture in Downloads, listed as Chrome's newest download, and give its path.
+
+    Its line is what chrome-recent-sites downloads prints: its path, its size in bytes, when it
+    finished in seconds since 1970 and the page it came from, a tab between each.
+    """
+    downloaded = f"/home/{desktop.account}/Downloads/tide-chart.png"
+    desktop.as_account(
+        f"mkdir -p ~/Downloads && cp {desktop.values['picture']} {downloaded} && printf"
+        f' \'%s\\t%s\\t%s\\t%s\\n\' {downloaded} "$(stat -c %s {downloaded})" "$(date +%s)"'
+        f" https://tide.example.org/charts > {CHROME_DOWNLOADS}"
+    )
+    return downloaded
+
+
+def chrome_download_gone(desktop: Desktop, downloaded: str) -> None:
+    """Close what opened the download, if anything did, and take it and its listing away."""
+    machine = desktop.machine
+    # A swayimg left open would be the next subtest's.
+    machine.succeed(f"pkill -KILL -u {desktop.account} -x swayimg || true")
+    machine.wait_until_fails(
+        f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=30)
+    )
+    machine.succeed(f"rm -f {downloaded} {CHROME_DOWNLOADS}")
+
+
+def neovim_in_kitty(desktop: Desktop, folder: str, *given: str) -> tuple[int, str]:
+    """Open a kitty running Neovim on these, and give niri's window and Neovim's server.
+
+    The server is the one Neovim told its kitty window, read back through kitty's remote
+    control as open-now reads it, so a Neovim that never said it is never given.
+    """
+    before = {window["id"] for window in desktop.windows()}
+    command = ["niri", "msg", "action", "spawn", "--", "kitty", "--directory", folder, "nvim"]
+    desktop.as_account(shlex.join([*command, *given]))
+    told: list[tuple[int, str]] = []
+
+    def said_its_server(_: bool) -> bool:
+        """Say whether the new kitty window's Neovim has told kitty where it listens."""
+        new = [
+            window
+            for window in desktop.windows()
+            if window["app_id"] == "kitty" and window["id"] not in before
+        ]
+        if not new:
+            return False
+        status, listed = desktop.machine.execute(
+            desktop.in_session(f"kitty @ --to unix:@kitty-{new[0]['pid']} ls")
+        )
+        if status != 0:
+            return False
+        servers = [
+            inside["user_vars"]["neovim_server"]
+            for kitty_window in json.loads(listed)
+            for tab in kitty_window["tabs"]
+            for inside in tab["windows"]
+            if "neovim_server" in inside["user_vars"]
+        ]
+        told.extend((new[0]["id"], server) for server in servers)
+        return bool(servers)
+
+    retry(said_its_server, timeout=STARTING)
+    return told[0]
+
+
+def asked_of(desktop: Desktop, server: str, *remote: str) -> str:
+    """Ask the Neovim at this server from outside, through a client reading no configuration.
+
+    It's headless and reads nothing, since a client given the console started a screen of its
+    own there, drawing the answer on the console and writing its terminal's queries in its place.
+    """
+    client = ["nvim", "--clean", "--headless", "--server", server, *remote]
+    return desktop.as_account(f"{shlex.join(client)} < /dev/null")
+
+
+def neovims_quit(desktop: Desktop, neovims: list[tuple[int, str]]) -> None:
+    """Quit each Neovim neovim_in_kitty gave, and wait until every one's window is gone.
+
+    Each quits unsaved, so a change a test made in one is never written.
+    """
+    for _, server in neovims:
+        asked_of(desktop, server, "--remote-send", "<C-\\><C-N>:qa!<CR>")
+    gone = {window for window, _ in neovims}
+    retry(
+        lambda _: not gone & {window["id"] for window in desktop.windows()},
+        timeout=timedelta(seconds=30),
+    )

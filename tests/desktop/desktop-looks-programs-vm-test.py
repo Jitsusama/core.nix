@@ -12,6 +12,10 @@ tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytes
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it; Passwords' goes last, since its copy stays on
 the clipboard until it clears.
+
+Long because each program's page is shot in the state that shows it whole, so each subtest has a
+fixture of its own beside it making that state and taking it away, and the area stays one file
+for one machine: split, each part would boot a machine of its own to shoot the same pages.
 """
 
 from __future__ import annotations
@@ -85,6 +89,23 @@ SAVED = "Harbour Map.svg"
 SAVED_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"></svg>\n'
 FRESH = "Drawing 2026-11-09 10.12.03.svg"
 
+# Where in the home GIMP saved the pictures it edited lately, the last the newest, and the name
+# GIMP says each it opens under on the desktop's list of files opened lately.
+EDITED = "Pictures/Posters"
+EDITS = ("quay-retouched.png", "ferry-poster.png")
+GIMP = "GNU Image Manipulation Program"
+
+# Where in the home the Neovims' files are, by name, the first the one left changed, and the
+# lines each holds, enough for a drawer's preview to show several.
+SOUNDINGS = "soundings"
+SOUNDED = ("tides.txt", "currents.txt", "reefs.txt")
+SOUNDS = (
+    "Soundings off the quay, at low water.",
+    "North pier: 4 fathoms",
+    "South pier: 3 fathoms",
+    "Harbour mouth: 7 fathoms",
+)
+
 # Windows standing in for Google's programs in Chrome, as launcher-moves-windows' are: a kitty
 # given the app id and title Chrome gives Mail's own window, and one given Chrome's app id and a
 # Docs tab's title, each by the layer Shortcuts opens on and its shot's name.
@@ -128,6 +149,12 @@ def figures_on(title: str, shown: Json) -> bool:
     """Say whether the drawer draws every fact of the thing titled, none left for its keys."""
     drawer = shown["drawer"]
     return drawer_on(title, shown) and len(drawer["lines"]["facts"]) == len(drawer["facts"])
+
+
+def previewed(title: str, shown: Json) -> bool:
+    """Say whether the drawer is out, drawing the thing titled and previewing it."""
+    preview = shown["drawer"]["preview"] or {}
+    return drawer_on(title, shown) and bool(preview.get("picture") or preview.get("lines"))
 
 
 def named(name: str, shown: Json) -> bool:
@@ -465,12 +492,23 @@ def test_zathuras_page_is_shot_at_each_scale(desktop: Desktop, at_each_scale: li
 
 
 @pytest.fixture
-def drawings_and_a_picture_copied(desktop: Desktop) -> Iterator[None]:
-    """Give Inkscape two drawings it opened lately, and the clipboard a picture.
+def a_picture_copied(desktop: Desktop) -> Iterator[None]:
+    """Copy a picture, once the shell has heard it, and copy something else over it after."""
+    with desktop.told("heard copy Image 256 \u00d7 256"):
+        desktop.as_account(
+            f"wl-copy --type image/png < {desktop.values['picture']} > /dev/null 2>&1"
+        )
+    yield
+    with desktop.told("heard copy after the picture"):
+        desktop.as_account("echo -n 'after the picture' | wl-copy > /dev/null 2>&1")
+
+
+@pytest.fixture
+def drawings_opened(desktop: Desktop) -> Iterator[None]:
+    """Give Inkscape two drawings it opened lately, and take them away after.
 
     Each drawing is said to the desktop's list of files opened lately under Inkscape's own
-    name, as it says each it opens, the saved map first and the new one after, newest. After,
-    something else is copied over the picture and the drawings go.
+    name, as it says each it opens, the saved map first and the new one after, newest.
     """
     folder = f"/home/{desktop.account}/{DRAWINGS}"
     template = f"/home/{desktop.account}/.config/inkscape/templates/default.svg"
@@ -480,17 +518,11 @@ def drawings_and_a_picture_copied(desktop: Desktop) -> Iterator[None]:
         f"mkdir -p {folder} && printf %s {shlex.quote(SAVED_SVG)} > {saved}"
         f" && cp {template} {fresh} && recent-files add org.inkscape.Inkscape {saved} {fresh}"
     )
-    with desktop.told("heard copy Image 256 \u00d7 256"):
-        desktop.as_account(
-            f"wl-copy --type image/png < {desktop.values['picture']} > /dev/null 2>&1"
-        )
     yield
-    with desktop.told("heard copy after the picture"):
-        desktop.as_account("echo -n 'after the picture' | wl-copy > /dev/null 2>&1")
     desktop.as_account(f"rm -rf {folder}")
 
 
-@pytest.mark.usefixtures("drawings_and_a_picture_copied")
+@pytest.mark.usefixtures("a_picture_copied", "drawings_opened")
 def test_inkscapes_page_and_its_recent_are_shot_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -507,6 +539,161 @@ def test_inkscapes_page_and_its_recent_are_shot_at_each_scale(
         desktop.follow()
         desktop.launcher_until(partial(drawer_on, FRESH))
         desktop.shoot(f"launcher-inkscape-recent-at-{at}")
+        desktop.close_launcher()
+
+
+@pytest.fixture
+def pictures_edited(desktop: Desktop) -> Iterator[None]:
+    """Give the screenshots' folder a screenshot, and GIMP two pictures it edited lately.
+
+    Each picture is said to the desktop's list of files opened lately under the name GIMP says
+    them under, one at a time, as GIMP opens them, so the last is the newest. After, the
+    screenshot and the pictures go, and their entries on the list go unlisted with them.
+    """
+    folder = f"/home/{desktop.account}/{EDITED}"
+    shot = shlex.quote(f"{desktop.pictures}/{SCREENSHOTS[-1]}")
+    edits = [shlex.quote(f"{folder}/{name}") for name in EDITS]
+    added = " && ".join(f"recent-files add {shlex.quote(GIMP)} {edit}" for edit in edits)
+    desktop.as_account(
+        f"mkdir -p {desktop.pictures} {folder}"
+        f' && for to in {shot} {" ".join(edits)}; do cp {desktop.values["picture"]} "$to"; done'
+        f" && {added}"
+    )
+    yield
+    desktop.as_account(f"rm -f {shot} && rm -rf {folder}")
+
+
+@pytest.mark.usefixtures("a_picture_copied", "pictures_edited")
+def test_gimps_page_and_its_recent_are_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Shoot GIMP's page holding every act, and its Recent led by the picture edited last.
+
+    A picture is copied and a screenshot taken, so New Image From the Copied Picture and Edit
+    the Newest Screenshot both stand there, beside its Recent.
+    """
+    acts = {"New Image From the Copied Picture", "Edit the Newest Screenshot", "Recent"}
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("gimp")
+        desktop.launcher_until(partial(selects, "program:gimp"))
+        desktop.into_program()
+        desktop.launcher_until(lambda shown: acts <= set(shown["rows"]))
+        desktop.shoot(f"launcher-gimp-at-{at}")
+        desktop.type_in("recent", selecting="Recent")
+        desktop.follow()
+        desktop.launcher_until(partial(named, EDITS[-1]))
+        desktop.shoot(f"launcher-gimp-recent-at-{at}")
+        desktop.close_launcher()
+
+
+@pytest.fixture
+def neovims_open(desktop: Desktop) -> Iterator[str]:
+    """Open two Neovims in kitty windows, three files between them, and copy one file's path.
+
+    The first holds two files in two tabs, the first changed and unsaved, and the other one,
+    as opens-files' walk has them; a repository under ~/src and the path copied, at a line,
+    give Neovim's page Open a File by Name and Open the Copied Path. It gives the changed
+    file's name. After, each Neovim quits unsaved, something else is copied over the path, and
+    the files and the repository go.
+    """
+    folder = f"/home/{desktop.account}/{SOUNDINGS}"
+    tides, currents, reefs = (f"{folder}/{name}" for name in SOUNDED)
+    desktop.as_account(
+        f"mkdir -p {folder} && printf '%s\\n' {shlex.join(SOUNDS)}"
+        f" | tee {tides} {currents} {reefs} > /dev/null && git init -q ~/src/{REPOSITORY}"
+    )
+    neovims: list[tuple[int, str]] = []
+    try:
+        changed = "+call setline(1, 'shoals')"
+        neovims.append(
+            desktop_session.neovim_in_kitty(desktop, folder, "-p", tides, currents, changed)
+        )
+        neovims.append(desktop_session.neovim_in_kitty(desktop, folder, reefs))
+        desktop.as_account(f"echo -n {reefs}:3 | wl-copy > /dev/null 2>&1")
+        yield SOUNDED[0]
+    finally:
+        desktop_session.neovims_quit(desktop, neovims)
+        with desktop.told("heard copy after the path"):
+            desktop.as_account("echo -n 'after the path' | wl-copy > /dev/null 2>&1")
+        desktop.as_account(f"rm -rf {folder} ~/src/{REPOSITORY}")
+
+
+def holds_each_open(shown: Json) -> bool:
+    """Say whether Neovim's page holds its two acts and a row for every file open."""
+    acts = {"Open a File by Name", "Open the Copied Path"}
+    return acts | set(SOUNDED) <= set(shown["rows"])
+
+
+def test_neovims_page_is_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str], neovims_open: str
+) -> None:
+    """Shoot Neovim's page, its acts and every file two Neovims hold, the changed one's drawer out.
+
+    What's open is asked of each Neovim over its own server as the launcher opens, so the
+    page is shot once every file is a row.
+    """
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("neovim")
+        desktop.launcher_until(partial(selects, "program:nvim"))
+        desktop.into_program()
+        desktop.launcher_until(holds_each_open)
+        desktop.down_to(neovims_open)
+        desktop.launcher_until(partial(previewed, neovims_open))
+        desktop.shoot(f"launcher-neovim-at-{at}")
+        desktop.close_launcher()
+
+
+def latest_said(name: str, shown: Json) -> bool:
+    """Say whether Chrome's page holds its tab and Recent, and the latest download by name.
+
+    Until its downloads are first read, the act waits in its place saying an ellipsis.
+    """
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    latest = [read for read in reads if read.startswith(desktop_session.LATEST_DOWNLOAD)]
+    held = {"Tide Tables", "Recent"} <= set(shown["rows"])
+    return held and len(latest) == 1 and name in latest[0]
+
+
+@pytest.fixture
+def chrome_with_a_download(desktop: Desktop) -> Iterator[str]:
+    """Give the stand-in Chrome its tab, the sites it visited and a download, its window open.
+
+    It gives the download's name. After, the window closes, and the lists and the file go.
+    """
+    desktop_session.chrome_visited(desktop)
+    downloaded = desktop_session.chrome_downloaded(desktop)
+    try:
+        desktop_session.chrome_opened(desktop)
+        yield downloaded.rsplit("/", 1)[-1]
+    finally:
+        desktop_session.chrome_gone(desktop)
+        desktop_session.chrome_download_gone(desktop, downloaded)
+
+
+def test_chromes_page_and_its_download_are_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str], chrome_with_a_download: str
+) -> None:
+    """Shoot Chrome's page holding its tab and the latest download, and the download in Recent.
+
+    Its downloads are read as Chrome is stepped into, so the page is shot once Open the
+    Latest Download stands on it; in its Recent, among the sites it visited, the download's
+    drawer says its kind and previews it.
+    """
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("chrome")
+        desktop.launcher_until(partial(selects, "program:google-chrome"))
+        desktop.into_program()
+        desktop.launcher_until(partial(latest_said, chrome_with_a_download))
+        desktop.shoot(f"launcher-chrome-at-{at}")
+        desktop.type_in("recent", selecting="Recent")
+        desktop.follow()
+        desktop.launcher_until(lambda shown: chrome_with_a_download in shown["rows"])
+        desktop.down_to(chrome_with_a_download)
+        desktop.launcher_until(partial(previewed, chrome_with_a_download))
+        desktop.shoot(f"launcher-chrome-recent-at-{at}")
         desktop.close_launcher()
 
 
