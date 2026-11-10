@@ -44,8 +44,8 @@ Singleton {
     Connections {
         target: daemon
 
-        function onHeard(keys) {
-            root.heard(keys);
+        function onHeard(changed, gone) {
+            root.heard(changed.concat(gone));
         }
     }
 

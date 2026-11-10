@@ -919,9 +919,9 @@ Provider {
     Connections {
         target: diskWatch
 
-        function onHeard(keys) {
+        function onHeard(changed) {
             const own = provider.machineDisk();
-            if (own && keys.includes(own.key))
+            if (own && changed.includes(own.key))
                 provider.sparked(own);
             if (provider.shown)
                 provider.answered();

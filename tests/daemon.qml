@@ -22,7 +22,10 @@
 // record it holds, letting go a field said as null. A client of a kind
 // with no records knows it holds none once it's answered, and one whose
 // answer is the whole of its kind, as the node's is, lets go what went in
-// a gap. Each step waits on what the client says, at most ten seconds.
+// a gap. What each message changed and let go is heard apart, a key let
+// go never said as changed, and a whole answer says every key it holds
+// and those it dropped. Each step waits on what the client says, at most
+// ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 // Its stand-ins are in modules/quickshell/tests/stand-ins.
 import Quickshell
@@ -41,7 +44,13 @@ ShellRoot {
 
         socket: `${root.runtime}/daemons/people.sock`
         kind: "person"
+        onHeard: (changed, gone) => {
+            root.peopleChanged = root.peopleChanged.concat(changed);
+            root.peopleGone = root.peopleGone.concat(gone);
+        }
     }
+    property var peopleChanged: []
+    property var peopleGone: []
 
     // Watching only those a source lists with nothing typed.
     Daemon {
@@ -97,8 +106,13 @@ ShellRoot {
             if ("waiting:a" in held && "waiting:b" in held)
                 root.heldBoth = true;
         }
+        onHeard: (changed, gone) => {
+            if (gone.includes("waiting:a"))
+                root.wholeHeard = { changed: changed, gone: gone };
+        }
     }
     property bool heldBoth: false
+    property var wholeHeard: null
 
     // Not live, so watching only once it's refreshed, until answered.
     Daemon {
@@ -255,8 +269,12 @@ ShellRoot {
             // The roster lets Ivy go once it's asked anything, as the ask
             // ahead for Ada asked it, and Slack's stand-in was never
             // asked of her.
-            what: "one no source knows any more is let go",
-            holds: () => !(root.ivy in people.held)
+            what: "one no source knows any more is let go, heard as gone",
+            run: () => {
+                root.peopleChanged = [];
+            },
+            holds: () => !(root.ivy in people.held) && root.peopleGone.includes(root.ivy)
+                && !root.peopleChanged.includes(root.ivy)
         },
         {
             what: "a get is answered by its id, asked as a step-in",
@@ -314,9 +332,11 @@ ShellRoot {
             holds: () => none.answered && Object.keys(none.held).length === 0
         },
         {
-            what: "a whole answer after a gap lets go what went in it",
+            what: "a whole answer after a gap lets go what went in it, heard as gone",
             holds: () => root.heldBoth && whole.state === "answering"
                 && "waiting:b" in whole.held && !("waiting:a" in whole.held)
+                && JSON.stringify(root.wholeHeard)
+                === '{"changed":["waiting:b"],"gone":["waiting:a"]}'
         }
     ]
 

@@ -202,6 +202,6 @@ Scope {
         live: recents.showing || !recents.primed
         ahead: recents.stepped
 
-        onHeard: keys => recents.took(keys)
+        onHeard: (changed, gone) => recents.took(changed.concat(gone))
     }
 }
