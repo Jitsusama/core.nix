@@ -424,13 +424,29 @@ function look(text) {
 // The looks folder's files, each { file, text }, as { waiting, history }:
 // those waiting in the order they came, the oldest first, and the rest
 // newest first by when each was resolved. A file still being written,
-// `*.writing`, is left out, and so is one that can't be read.
-function looks(files) {
+// `*.writing`, is left out, and so is one that can't be read. Given
+// `kept`, a plain object it keeps each file's text and look in, a file
+// whose text is as it was is not parsed again: an act changes one of
+// Joel's 166 files, and parsing all of them again took about 9 ms of it
+// (2026-11-10). A file no longer given goes from `kept`.
+function looks(files, kept) {
+    const given = {};
     const read = (files ?? []).filter(one => !String(one.file ?? "").endsWith(".writing"))
         .map(one => {
+            const file = String(one.file ?? "");
+            given[file] = true;
+            const was = kept?.[file];
+            if (was !== undefined && was.text === one.text) {
+                return was.look;
+            }
             const each = look(one.text);
-            return each === null ? null : Object.assign(each, { file: String(one.file ?? "") });
+            const made = each === null ? null : Object.assign(each, { file: file });
+            if (kept) {
+                kept[file] = { text: one.text, look: made };
+            }
+            return made;
         }).filter(one => one !== null);
+    Object.keys(kept ?? {}).filter(file => !given[file]).forEach(file => delete kept[file]);
     return {
         waiting: Order.sorted(read.filter(one => one.state === "waiting"),
             Order.smaller(one => one.since)),

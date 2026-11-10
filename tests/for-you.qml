@@ -8,7 +8,8 @@
 // try that blocks or is due, needs him now, and the rest stand in their kind's
 // row, the oldest first among ties; a row's side says its strongest
 // reason; the looks folder's files are read into what waits and what's
-// history, a file that can't be read left out; and what other sources give
+// history, a file that can't be read left out and only one that changed
+// parsed again; and what other sources give
 // For You, as Passwords' one to-do, is gathered into what waits and what's
 // done, and weighed beside the rest.
 import QtQuick
@@ -257,6 +258,18 @@ QtObject {
         expect("a look read whole", read.waiting[0].title, "Review the change");
         expect("a look's time as a number", read.waiting[0].since,
             Date.parse("2026-11-08T09:00:00Z"));
+
+        // Read again keeping what was parsed, only a file that changed is
+        // parsed again, and one gone is forgotten.
+        const kept = {};
+        const first = ForYou.looks(files, kept);
+        const changed = files.filter(one => one.file !== "e.json").map(one => one.file
+            === "a.json" ? { file: one.file, text: lookOf({ id: "A", title: "Again" }) } : one);
+        const again = ForYou.looks(changed, kept);
+        const byId = (them, id) => them.waiting.concat(them.history).find(one => one.id === id);
+        expect("a file as it was, not parsed again", byId(again, "B") === byId(first, "B"), true);
+        expect("a file that changed, parsed again", byId(again, "A").title, "Again");
+        expect("a file gone, forgotten", ["e.json" in kept, "a.json" in kept], [false, true]);
 
         // History's side: how it went and when.
         const side = id => ForYou.historySide(read.history.find(one => one.id === id), say);
