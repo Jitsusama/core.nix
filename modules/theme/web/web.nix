@@ -64,17 +64,18 @@ let
 
   property = name: "--${lib.replaceStrings [ "_" ] [ "-" ] name}";
 
-  # A ground so near grey that a browser reads its hue as missing would turn
-  # from no hue at all and land on the turn itself, a brown or a maroon under
-  # text turned from green. Mixing in none of the accent fills only a missing
-  # hue, with the accent's, and leaves every other part of the colour as it
-  # was, so each role turns from the theme's own hue.
+  # A role turns by rotating its a and b in OKLab, which is turning its hue
+  # with its lightness and chroma held. OKLCH's own hue would be simpler, but
+  # a browser reads a ground near grey as having none, so it would turn from
+  # 0 and land a cream on pink and a green-grey on brown; a and b are always
+  # there, and a turn of 0 gives back the theme's colour exactly.
   turnedFrom =
-    colours: value:
+    value:
     let
-      filled = "color-mix(in oklch, ${value} 100%, ${colours.accent} 0%)";
+      cos = "cos(calc(var(--turn) * 1deg))";
+      sin = "sin(calc(var(--turn) * 1deg))";
     in
-    "oklch(from ${filled} l c calc(h + var(--turn)))";
+    "oklab(from ${value} l calc(a * ${cos} - b * ${sin}) calc(a * ${sin} + b * ${cos}))";
 
   roles =
     colours: turn:
@@ -82,7 +83,7 @@ let
       lib.mapAttrsToList (
         name: value:
         if turn then
-          lib.optionalString (lib.elem name turned) "  ${property name}: ${turnedFrom colours value};\n"
+          lib.optionalString (lib.elem name turned) "  ${property name}: ${turnedFrom value};\n"
         else
           "  ${property name}: ${value};\n"
       ) colours
@@ -327,7 +328,7 @@ let
     /* A site's tint: --turn turns the grounds, the text and the accent round
        the hue wheel by that many degrees, keeping their lightness, so a blue
        site reads as blue and still passes as the theme does. */
-    @supports (color: oklch(from red l c h)) {
+    @supports (color: oklab(from red l calc(a * cos(0deg)) b)) {
     ${scheme true}}
 
     :root {
