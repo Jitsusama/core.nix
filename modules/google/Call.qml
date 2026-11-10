@@ -117,11 +117,16 @@ Piece {
         verb: Words.verb("meet:call:leave"),
         run: () => Niri.act({ CloseWindow: { id: piece.call.window.id } })
     }, {
-        // Copy is last, as it always is (docs/design.md).
+        // Copy is last, as it always is (docs/design.md). The clipboard's
+        // history puts the link on the clipboard over the socket it holds
+        // open (Pasting.qml), so nothing is started; without one kept,
+        // wl-copy takes it, since a piece outside the launcher holds no
+        // keys for Qt's clipboard.
         glyph: Theme.glyph.link,
         name: Words.name("meet:call:link"),
         verb: Words.verb("meet:call:link"),
-        run: () => Niri.spawn(["wl-copy", piece.link])
+        run: () => Pasting.copy(JSON.stringify(piece.link),
+            () => Niri.spawn(["wl-copy", piece.link]))
     }]
 
     // Pipewire reports a node's mute only once something binds it.
