@@ -522,6 +522,32 @@ QtObject {
                 meeting: null }, said).facts
                 .map(fact => fact.label), ["Started", "Code"]);
 
+        // A meeting's Guests counts the people People knows on it, each
+        // once, asking who each address is (People.qml's whoIs) and making
+        // no one's row (its personOf).
+        let rowsMade = 0;
+        const known = {
+            "ada@example.com": { key: "ada", name: "Ada Lovelace" },
+            "grace@example.com": { key: "grace", name: "Grace Hopper" },
+            "g.hopper@example.com": { key: "grace", name: "Grace Hopper" }
+        };
+        const people = {
+            whoIs: email => known[email] ?? null,
+            personOf: email => {
+                rowsMade += 1;
+                return known[email] ? { key: `person:${known[email].key}` } : null;
+            }
+        };
+        const guested = meeting("guested", now, now, { holds: false,
+            organizer: { email: "ada@example.com" }, guests: [{ email: "grace@example.com" },
+                { email: "g.hopper@example.com" }, { email: "stranger@example.com" }] });
+        check("a meeting's guests counted, each known one once",
+            Calendar.knownGuests(guested, people), 2);
+        check("making no one's row", rowsMade, 0);
+        check("one he holds counts its guests alone", Calendar.knownGuests(Object.assign({},
+            guested, { holds: true }), people), 1);
+        check("and none without People", Calendar.knownGuests(guested, null), 0);
+
         heldCases(check, at, now, meeting);
 
         for (const failure of failures)
