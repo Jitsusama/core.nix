@@ -258,13 +258,15 @@ ShellRoot {
             parkedAs() === "NAPPER", parkedAs());
         // Those the node says are closed, one whose record says parked
         // among them, the latest first, by id when they ended at once, each
-        // saying when it ended.
+        // saying when it ended as the node's number, never a time written
+        // out for the launcher to read back.
         const closed = Sessions.closed;
         expect("closed, as the node says each is",
             closed.map(one => one.id).join(" ") === "s-ENDED3 s-STALE7 s-WOKEN8",
             JSON.stringify(closed.map(one => one.id)));
         expect("each saying when it ended, and its address",
-            closed.every(one => !isNaN(Date.parse(one.endedAt))) && closed[0].address === "ENDED3",
+            closed.every(one => typeof one.ended === "number" && one.ended > 0
+                && one.endedAt === undefined) && closed[0].address === "ENDED3",
             JSON.stringify(closed[0]));
         const napper = Sessions.parked[0];
         expect("one parked is named by its record, with no window",

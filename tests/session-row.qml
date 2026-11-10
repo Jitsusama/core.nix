@@ -555,17 +555,19 @@ QtObject {
         // Agents' Recent: those closed this boot, keyed by id at when they
         // ended, and never one Agents shows already: a closed orchestrator
         // or one running again by its address, one to reopen by its id.
+        // When each ended is the node's number, read as it is, never a
+        // time written out to be read back at each opening.
         const closed = [
             { id: "s-1", address: "A", title: "Recent, Once", machine: "here",
-                folder: "tree", endedAt: "2026-11-08T05:41:00.000Z",
+                folder: "tree", ended: 1794116460000,
                 presence: { questInfo: { title: "Recent, Once" }, repo: "core.nix" } },
             { id: "s-2", address: "B", title: "notes", machine: "here", folder: "notes",
-                quest: "QEST-B", endedAt: "2026-11-08T05:30:00.000Z",
+                quest: "QEST-B", ended: 1794115800000,
                 presence: { questInfo: { title: "Write It Up" } } },
             { id: "s-3", address: "C", title: "C", machine: "here", folder: "x",
-                endedAt: "2026-11-08T05:00:00.000Z", presence: {} },
+                ended: 1794114000000, presence: {} },
             { id: "s-4", address: "D", title: "D", machine: "here", folder: "y",
-                endedAt: "2026-11-08T04:00:00.000Z", presence: {} }
+                ended: 1794110400000, presence: {} }
         ];
         const keyed = SessionRow.closedRecent(closed);
         const keyedSays = keyed.map(one => `${one.key}@${one.at}`).join(" ");
@@ -593,8 +595,8 @@ QtObject {
             closedOn: "closed {day} {time}" };
         const ended = new Date(2026, 10, 7, 23, 41);
         const at = [new Date(2026, 10, 7, 23, 59), new Date(2026, 10, 8, 9, 5)]
-            .map(now => SessionRow.closedAt(ended.toISOString(), now, closing, () => "Sat"))
-            .concat([SessionRow.closedAt("", ended, closing, () => "Sat")]).join(" | ");
+            .map(now => SessionRow.closedAt(ended.getTime(), now, closing, () => "Sat"))
+            .concat([SessionRow.closedAt(undefined, ended, closing, () => "Sat")]).join(" | ");
         if (at !== "closed 23:41 | closed Sat 23:41 | closed")
             failures.push(`when each closed: "${at}"`);
 
