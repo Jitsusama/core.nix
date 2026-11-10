@@ -3189,8 +3189,8 @@ onLinux {
     '';
 
   # The shell's niri, told niri's events as its stream would, moves the keys
-  # without making any list again, and still lists a window retitled,
-  # opened, closed or used (tests/niri-focus.qml).
+  # and says a window used without making any list again, and still lists
+  # a window retitled, opened or closed (tests/niri-focus.qml).
   niri-moving-the-keys-makes-no-list-again =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -3317,6 +3317,7 @@ onLinux {
             workspace_id: 3, layout: { pos_in_scrolling_layout: [2, 1] } }
         })
         property int revision: 0
+        property int used: 0
         property var current: null
         property var acted: null
         property var spawned: []

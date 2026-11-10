@@ -51,6 +51,9 @@ Singleton {
     // first, the one whose window was used last first, then those with
     // none; then those elsewhere, the one that changed last first.
     readonly property var running: {
+        // A window used moves only `used`, not niri's windows, so the order
+        // follows it while niriWindows isn't made again.
+        void Niri.used;
         const when = window => {
             const stamp = window ? window.focus_timestamp : null;
             return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;

@@ -31,6 +31,7 @@ pragma ComponentBehavior: Bound
 // of the node, its refusal said. One the node says is gone goes; a
 // change saying only what differs keeps the rest of what the node said,
 // and one to a running session tells nothing of the parked or closed;
+// the one whose window niri says was used last goes first;
 // one the node says has ended goes; and a node lost leaves what it said
 // shown. It exits 0 once every case holds, and otherwise 1, saying which
 // didn't.
@@ -524,6 +525,21 @@ ShellRoot {
         Niri.revision += 1;
         expect("a window opened anew by its app id is its session's once niri says so",
             find("OTHER2")?.window?.id === 23, JSON.stringify(find("OTHER2")?.window));
+        // niri saying a window was used changes it in place and says so by
+        // `used` alone, as Niri.qml does, and the one used last goes first.
+        const before = () => {
+            const order = Sessions.running.map(session => session.address);
+            return order.indexOf("NOWIN6") < order.indexOf("OTHER2");
+        };
+        windows[find("NOWIN6").window.id].focus_timestamp = { secs: 200, nanos: 0 };
+        windows["23"].focus_timestamp = { secs: 300, nanos: 0 };
+        Niri.used += 1;
+        expect("the session whose window was used last goes first", !before(),
+            Sessions.running.map(session => session.address).join(" "));
+        windows[find("NOWIN6").window.id].focus_timestamp = { secs: 400, nanos: 0 };
+        Niri.used += 1;
+        expect("and the other once its window is used", before(),
+            Sessions.running.map(session => session.address).join(" "));
         stage = "ended";
         tell({ changed: [{ key: "session:s-OTHER2", state: "ended", standing: "closed",
             told: "0000000000000002" }] });
