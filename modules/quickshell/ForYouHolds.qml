@@ -50,6 +50,7 @@ Singleton {
         toDo: WaitingOnYou.now,
         looks: waitingLooks,
         given: given,
+        toReopen: Sessions.toReopen,
         notices: Notices.history,
         // The notices with a card up, those still open and not resting.
         onScreen: Object.keys(Notices.live).filter(id => !(id in Notices.resting))

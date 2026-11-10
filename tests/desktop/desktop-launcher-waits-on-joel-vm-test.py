@@ -224,9 +224,10 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
         "said": "Which way?",
     }
     # The shell hears it from the node, a moment after pi writes it, so the
-    # windows are opened once it has: as its For You notice shows.
-    with desktop.told("shows card A quest of its own & whole needs you"):
-        desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    # windows are opened once it has: as For You's tray counts it, since a
+    # want posts no notice of its own.
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    tray_counts(desktop, 1)
     tabbed()
     desktop.launcher_until(lambda shown: shown["selected"]["name"] == "Notes for Tuesday")
     desktop.next_row()
@@ -1012,7 +1013,7 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
     """A session wanting Joel to do one of its items is in For You once, as the item.
 
     And it's said once, by For You's notice: the session's own notice for the same thing
-    put two up in the same second (2026-11-06).
+    put two up in the same second (2026-11-06), and a session's want posts none now.
     """
     desktop.pi_session()
     # From another window, so the session's notices aren't passed over.
@@ -1033,17 +1034,6 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
     action = {"kind": "action", "since": since, "said": "Sign the Form"}
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": action})
     try:
-        # A question after it is the session's to say, so once its card shows, the
-        # action's would have shown before it.
-        question = {"kind": "question", "since": since, "said": "Which way now?"}
-        with desktop.told("shows card A quest of its own & whole needs you"):
-            desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
-        cards = desktop.as_account(
-            "journalctl --user --unit=quickshell --no-pager --output=cat"
-            f" --after-cursor={shlex.quote(begun)} | grep -o 'report\\[shows card [^]]*'"
-        ).splitlines()
-        assert cards.count("report[shows card A quest of its own & whole needs you") == 1, cards
-        desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": action})
         desktop.as_account("qs ipc call launcher collection on")
         desktop.launcher_ready()
         desktop.launcher_until(
@@ -1059,36 +1049,15 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
             lambda shown: shown["held"] == ["now", "For You"] and shown["rows"] == ["Sign the Form"]
         )
         desktop.close_launcher()
+        # By the time For You lists it, the shell has heard the session's want, and
+        # only Needs You's card was said.
+        cards = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(begun)} | grep -o 'report\\[shows card [^]]*'"
+        ).splitlines()
+        assert cards == ["report[shows card Sign the Form"], cards
     finally:
         desktop.as_account(f"rm -f {asked}")
-        desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
-
-
-def test_a_wants_notice_goes_to_the_session_through_the_shell(desktop: Desktop) -> None:
-    """A want's notice, taken by Super+N, goes to the session as the launcher's Go To does.
-
-    Its Return asks the shell, which finds the session by its address, so one on another
-    machine is joined from here the same way.
-    """
-    machine = desktop.machine
-    desktop.pi_session()
-    desktop.as_account(
-        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
-    )
-    since = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
-    question = {"kind": "question", "since": since, "said": "Which way now?"}
-    try:
-        with desktop.told("shows card A quest of its own & whole needs you"):
-            desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
-        with desktop.told("keys notices"):
-            machine.send_key("meta_l-n")
-        with desktop.told("lets notices go"):
-            machine.send_key("ret")
-        machine.wait_until_succeeds(
-            desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
-            timeout=dt.timedelta(seconds=10),
-        )
-    finally:
         desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 
 

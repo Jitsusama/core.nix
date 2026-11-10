@@ -583,6 +583,25 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     assert kept == ["01b2-harbour", "01b3-given"], kept
 
 
+def test_the_sessions_to_reopen_are_a_thing_to_do_in_for_you_not_a_row_of_nows(
+    shell: Shell,
+) -> None:
+    """Sessions to Reopen waits on Joel in For You, Agents' own row, and Now has none of it."""
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
+    assert "Sessions to Reopen" not in shell.showing()["rows"], shell.showing()
+    shell.down_to("For You")
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: shown["held"] == ["now", "For You"] and "Sessions to Reopen" in shown["rows"]
+    )
+    # The same row as in Agents: Return steps in to Reopen Them All.
+    shell.down_to("Sessions to Reopen")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+
+
 def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell: Shell,
 ) -> None:

@@ -60,7 +60,7 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
 
 
 # One walk, as its subtest was: each step starts where the last left it.
-def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  # noqa: PLR0915
+def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
     desktop: Desktop,
 ) -> None:
     """The launcher finds a pi session by its quest, and goes to its window."""
@@ -184,9 +184,9 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     assert "Binding loop" not in log, "a session's title is read inside a binding"
 
     # It comes to want Joel, its presence replaced by rename as pi's
-    # is: For You's tray lights in the margin, and goes once answered.
-    # From another window, so it's said as a notice too, whose
-    # Return goes to the session's window.
+    # is: For You's tray lights in the margin at once, and goes once
+    # answered. From another window, where a notice once said it too;
+    # now For You lists it, so none comes.
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
@@ -196,83 +196,28 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         """Give the machine's time now, as pi writes when a want began."""
         return machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
 
-    question = {"kind": "question", "since": begun(), "said": "Which <way> & why?"}
-    since = desktop.mark()
-    # Said as written: the summary is plain, so its & isn't escaped.
-    with desktop.told("shows card A quest of its own & whole needs you"):
-        desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
-    # Its card goes by itself after ten seconds, which a busy host spends
-    # on what follows, so Super+N takes the stack at once: held, it waits.
-    with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
-    # The card says it, so the tray, holding only pi's want, waits for
-    # the card to go: a card or a mark, never both.
-    told_since = desktop.as_account(
-        "journalctl --user --unit=quickshell --no-pager --output=cat"
-        f" --after-cursor={shlex.quote(since)}"
-    )
-    assert not re.search("holds margin [^\\n]*\\bforYou\\b", told_since), (
-        "For You's tray showed beside pi's card"
-    )
-    # The same want, its file replaced again, says nothing new.
-    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
-    time.sleep(3)
-    cards = (
-        "journalctl --user --unit=quickshell --no-pager --output=cat"
-        " | grep -c 'report\\[shows card A quest of its own & whole needs you'"
-    )
-    assert desktop.as_account(cards).strip() == "1", "the same want was said twice"
-    since = desktop.mark()
-    machine.send_key("ret")
-    machine.wait_until_succeeds(
-        desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
-        timeout=dt.timedelta(seconds=10),
-    )
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"),
-        timeout=dt.timedelta(seconds=10),
-    )
-    # Its card gone, the want still stands, so For You's tray shows.
-    desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
-    desktop.shoot("margin-pi-wants")
-    # Another, unanswered, from the other window: its notice says what
-    # it wants, and goes when the want does, missed by nobody.
-    desktop.as_account(
-        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
-    )
-    with desktop.told("shows card A quest of its own & whole needs your yes"):
-        desktop.presence_says(
-            {
-                "addresses": ["TESTQA"],
-                "busy": False,
-                "wants": {"kind": "approval", "since": begun(), "said": "Push it?"},
-            }
+    # Each kind of want is the tray alone, and ended, the tray goes; none
+    # is a card.
+    for at, wants in enumerate(
+        (
+            {"kind": "question", "since": begun(), "said": "Which <way> & why?"},
+            {"kind": "approval", "since": begun(), "said": "Push it?"},
+            {"kind": "blocked", "since": begun(), "said": "Out of ideas."},
         )
-    # Ended while its notice is up, the notice goes with it, well
-    # before its own ten seconds would.
-    desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"),
-        timeout=dt.timedelta(seconds=5),
+    ):
+        since = desktop.mark()
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": wants})
+        desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
+        if at == 0:
+            desktop.shoot("margin-pi-wants")
+        since = desktop.mark()
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
+        desktop.reported("holds margin ", lambda rest: "forYou" not in rest.split(), since)
+    cards = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        " | grep -c 'report\\[shows card A quest of its own' || true"
     )
-    # A third, left to time out while its want stands: it isn't
-    # missed, since the tray says the want; ended, the tray goes, so
-    # nothing of pi's notice was left in For You either.
-    with desktop.told("shows card A quest of its own & whole needs you to unblock it"):
-        desktop.presence_says(
-            {
-                "addresses": ["TESTQA"],
-                "busy": False,
-                "wants": {"kind": "blocked", "since": begun(), "said": "Out of ideas."},
-            }
-        )
-    machine.wait_until_fails(
-        desktop.in_session("niri msg layers | grep -q notifications"),
-        timeout=dt.timedelta(seconds=30),
-    )
-    since = desktop.mark()
-    desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
-    desktop.reported("holds margin ", lambda rest: "forYou" not in rest.split(), since)
+    assert cards.strip() == "0", "a session's want was said as a notice"
 
 
 def an_orchestrator(desktop: Desktop) -> None:

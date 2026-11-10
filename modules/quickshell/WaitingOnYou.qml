@@ -301,9 +301,9 @@ Singleton {
     // when Joel takes it. It's named by what's asked, its minutes and its
     // quest below, and its sender says it waits on him: named "Waiting on
     // you", the notices kept since were a second thing of that name beside
-    // Now's row. It's the only notice of an action, which its session no
-    // longer says too (Waiting.saidByNeedsYou), so the quest it's for is
-    // said here, as plain text, since a body is read as markup.
+    // Now's row. It's the only notice of an action, since a session's want
+    // posts none (Sessions.qml), so the quest it's for is said here, as
+    // plain text, since a body is read as markup.
     function told(item) {
         const said = Words.of("on:waiting").said ?? {};
         const minutes = typeof item.minutes === "number"

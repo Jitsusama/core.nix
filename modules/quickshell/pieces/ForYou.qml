@@ -15,16 +15,14 @@ import "Holding.js" as Holding
 Piece {
     readonly property var holds: ForYouHolds.holds
 
-    // Set together as what it holds changes, whose card says it first, so
-    // the margin never reads it lit before it knows to wait for that card:
-    // two bindings would come true in whichever order Qt notifies them, and
-    // lit with no card named it shows at once, beside the card (Margin.qml's
-    // waits). While all it holds is sessions wanting Joel, pi's card says it.
-    // Counted here, not read from the count, which Qt may not have made
-    // again yet.
+    // Set together as what it holds changes, so the margin never reads it
+    // wanting and not lit, or lit and not wanting: two bindings would come
+    // true in whichever order Qt notifies them. No card says what it holds,
+    // since a session's want posts none (Sessions.qml), so it waits for
+    // none. Counted here, not read from the count, which Qt may not have
+    // made again yet.
     function hold() {
         const any = Holding.count(holds) > 0;
-        app = Holding.saidBy(holds);
         wants = any;
         active = any;
     }

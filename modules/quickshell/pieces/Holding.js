@@ -22,7 +22,8 @@ function wanting(sessions) {
 // keeps those For You lists); `toDo`, what the agents wait on him for
 // that he can do now; `looks`, what they left him to look at that waits;
 // `given`, what the launcher's other sources give him to do (ForYou.js's
-// given); and `notices`, the notices kept, of which one counts while it's
+// given); `toReopen`, the sessions there are to reopen, held as one thing
+// to do, Reopen Them All, however many; and `notices`, the notices kept, of which one counts while it's
 // critical, unread and off the screen, its id not among `onScreen`'s.
 // For You's Desktop holds a notice until it's read, and of those only a
 // critical one waits on Joel, the rest being what came lately; on screen
@@ -37,6 +38,7 @@ function held(sources) {
         toDo: each("toDo"),
         looks: each("looks"),
         given: each("given"),
+        reopen: each("toReopen").length > 0 ? [each("toReopen")] : [],
         notices: each("notices").filter(one => one?.urgency === "critical"
             && one.read !== true && !one.waits && !shown.includes(String(one.id)))
     };
@@ -58,14 +60,5 @@ function lookFiles(records) {
 // How many things For You holds, of every kind.
 function count(holds) {
     return holds.wanting.length + holds.toDo.length + holds.looks.length
-        + holds.given.length + holds.notices.length;
-}
-
-// The program whose card says all of what's held, so the mark waits for
-// that card to go, as a card or a mark, never both (Margin.qml): pi's,
-// while all of it is sessions wanting Joel; none otherwise, since no one
-// card says the rest.
-function saidBy(holds) {
-    const wants = holds.wanting.length;
-    return wants > 0 && wants === count(holds) ? "pi" : "";
+        + holds.given.length + holds.reopen.length + holds.notices.length;
 }

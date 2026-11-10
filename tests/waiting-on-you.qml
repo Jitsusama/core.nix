@@ -288,14 +288,6 @@ QtObject {
             true);
         expect("no want is none", Waiting.asksJoel({ wants: null }, by), false);
 
-        // One ask, one notice: For You says an action's to-do itself.
-        expect("an action is For You's to say",
-            Waiting.saidByNeedsYou({ kind: "action" }), true);
-        expect("a question, a yes and a stuck run are the session's",
-            ["question", "approval", "blocked"].map(kind =>
-                Waiting.saidByNeedsYou({ kind: kind })), [false, false, false]);
-        expect("as is no want", Waiting.saidByNeedsYou(null), false);
-
         // A want is who it is, whatever its words say as they count up.
         const since = "2026-11-06T21:00:00.000Z";
         expect("a want reworded is the same want",

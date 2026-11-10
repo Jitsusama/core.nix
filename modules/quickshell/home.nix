@@ -981,35 +981,6 @@ let
         grep -q '^#compdef launcher$' $out/share/zsh/site-functions/_launcher
       '';
 
-  # A pi session that has come to want Joel, said as a notice from pi
-  # (Sessions.qml starts it once a want): its quest and what it wants, and
-  # Return or a click on it goes to the session as the launcher's Go To
-  # does, through the shell, so one on another machine is joined here. A
-  # notice's action reaches only a sender still waiting, so this waits
-  # until the notice closes, which the shell does when the want ends, and
-  # no more than an hour, so one a restarted shell forgot can't linger. Its
-  # want's key goes with it as a hint, for the shell to know which notice
-  # is whose. qs finds the shell by the display it draws on.
-  piWants = pkgs.writeShellApplication {
-    name = "pi-wants-you";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.libnotify
-      pkgs.quickshell
-    ];
-    text = ''
-      address=$1
-      want=$2
-      title=$3
-      body=$4
-      action=$(timeout 1h notify-send --app-name=pi --action=default="Go To" \
-        --hint=string:x-pi-want:"$want" --wait -- "$title" "$body" || true)
-      if [ "$action" = default ]; then
-        qs ipc call sessions goTo "$address"
-      fi
-    '';
-  };
-
   # OpenSSH's askpass, asked through the shell (./askpass.sh).
   askpass = pkgs.writeShellApplication {
     name = "ssh-askpass";
@@ -1133,11 +1104,11 @@ in
     defaultText = lib.literalExpression ''config.jitsusama.pi.chime.want, or "''${pkgs.sound-theme-freedesktop}/share/sounds/freedesktop/stereo/message.oga" without pi'';
     description = ''
       The one sound the shell makes, at half volume, when a pi session
-      first wants Joel and its notice is said, so he hears it from across
-      the room; never while notices are held, nor for a want he's already
-      looking at. Where the machine has pi it's pi's low bell struck twice
-      (modules/pi/chime.nix), since the theme's message sits at 840 Hz to
-      5 kHz, where it scared Joel's dog. Null makes none.
+      first wants Joel, so he hears it from across the room, since it
+      posts no notice; never while notices are held, nor for a want he's
+      already looking at. Where the machine has pi it's pi's low bell
+      struck twice (modules/pi/chime.nix), since the theme's message sits
+      at 840 Hz to 5 kHz, where it scared Joel's dog. Null makes none.
     '';
   };
 
@@ -1897,7 +1868,6 @@ in
       askpass
       launcherInATerminal
       launcherSay
-      piWants
       pkgs.quickshell
       pkgs.wf-recorder
       (pkgs.callPackage ./record-window/package.nix { })
