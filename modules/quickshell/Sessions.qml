@@ -50,13 +50,12 @@ Singleton {
     // first, the one whose window was used last first, then those with
     // none; then those elsewhere, the one that changed last first.
     readonly property var running: {
-        void Niri.revision;
         const when = window => {
             const stamp = window ? window.focus_timestamp : null;
             return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
         };
-        const kitties = kittyWindows();
-        return live.map(record => shown(record, kitties))
+        const windows = niriWindows;
+        return live.map(record => shown(record, windows.pids, windows.opened))
             .sort((a, b) => Number(b.here) - Number(a.here)
                 || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
     }
@@ -82,13 +81,14 @@ Singleton {
     })).sort((one, other) => other.endedAt.localeCompare(one.endedAt)
         || one.id.localeCompare(other.id))
 
-    // A session as `running` lists it, from its record.
-    function shown(record, kitties) {
+    // A session as `running` lists it, from its record, with niri's windows
+    // by app id when they're at hand (windowOf).
+    function shown(record, kitties, opened) {
         const presence = record.presence;
         const address = (presence.addresses ?? [])[0];
         const name = named(presence);
         return {
-            window: windowOf(record, kitties),
+            window: windowOf(record, kitties, opened),
             address: address,
             title: name.title || address,
             folder: name.folder,
@@ -2119,7 +2119,25 @@ Singleton {
         ask();
     }
 
-    // niri's windows by the process drawing them, each kitty's oldest first.
+    // niri's windows by the process drawing them, each kitty's oldest first,
+    // and by the app id each was opened with, the first niri lists of each,
+    // for `running`. They're made once for each change to niri's windows,
+    // rather than again for every change to a session and looked through for
+    // every session, which with a hundred sessions made a hundred lists a
+    // change.
+    readonly property var niriWindows: {
+        void Niri.revision;
+        const opened = {};
+        for (const window of Object.values(Niri.windows)) {
+            if (!(String(window.opened) in opened))
+                opened[String(window.opened)] = window;
+        }
+        return { pids: kittyWindows(), opened: opened };
+    }
+
+    // niri's windows by the process drawing them, each kitty's oldest first,
+    // read afresh for what a change to niri's windows runs before
+    // `niriWindows` has followed it.
     function kittyWindows() {
         const by = {};
         for (const window of Object.values(Niri.windows)) {
@@ -2139,8 +2157,13 @@ Singleton {
     // kitty's, each newer than the last, once kitty has said which of its
     // windows holds the session and has as many as niri shows. That ranking
     // goes wrong as windows come and go, so it's only for windows with no
-    // app id, and goes once every session's window has one.
-    function windowOf(record, kitties) {
+    // app id, and goes once every session's window has one. Without the
+    // windows by app id, as for a parked or closed session, whose lists
+    // needn't be made again each time niri's focus moves, niri's are looked
+    // through.
+    function windowOf(record, kitties, opened) {
+        if (record.opened !== "" && opened)
+            return opened[String(record.opened)] ?? null;
         if (record.opened !== "")
             return Object.values(Niri.windows).find(window => window.opened === record.opened)
                 ?? null;
