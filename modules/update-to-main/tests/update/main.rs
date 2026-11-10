@@ -234,6 +234,7 @@ impl World {
                 nix: stand_ins.join("nix"),
                 nix_env: stand_ins.join("nix-env"),
                 tar: program("tar"),
+                curl: program("curl"),
                 pmset: None,
             },
             session: None,
@@ -294,6 +295,7 @@ impl World {
             directory: "machine".to_owned(),
             token: vec![shell(), "-c".to_owned(), token],
             changed: None,
+            api: None,
             path: std::env::split_paths(&path).collect(),
             inputs: Vec::new(),
         });
@@ -1074,6 +1076,278 @@ fn a_hosted_main_is_fetched_into_a_ref_of_its_own() {
     );
 }
 
+/// A hosted world whose host has a REST API, its answers files under the
+/// world's own folder that curl reads as it would the host's over HTTPS.
+/// `World::answer` writes them for everything main holds.
+fn with_api() -> World {
+    api_on(World::hosted_from(World::new(), counted_token))
+}
+
+/// `world`, hosted, reading its folder through the host's API.
+fn api_on(mut world: World) -> World {
+    let api = format!("file://{}", world.root.join("api").display());
+    world.config.hosted.as_mut().unwrap().api = Some(api);
+    world
+}
+
+impl World {
+    /// Writes the host's API answers for every commit, tree and blob the
+    /// remote holds, and how each two of its commits stand.
+    fn answer(&self) {
+        let api = self.root.join("api");
+        for d in ["git/commits", "git/trees", "git/blobs", "compare"] {
+            fs::create_dir_all(api.join(d)).unwrap();
+        }
+        let objects = git(
+            &self.origin,
+            &[
+                "cat-file",
+                "--batch-all-objects",
+                "--batch-check=%(objecttype) %(objectname)",
+            ],
+        );
+        let mut commits = Vec::new();
+        for line in objects.lines() {
+            let (kind, id) = line.split_once(' ').unwrap();
+            let answer = match kind {
+                "commit" => {
+                    commits.push(id.to_owned());
+                    let tree = git(&self.origin, &["rev-parse", &format!("{id}^{{tree}}")]);
+                    serde_json::json!({"sha": id, "tree": {"sha": tree.trim()}})
+                }
+                "tree" => {
+                    let entries: Vec<_> = git(&self.origin, &["ls-tree", id])
+                        .lines()
+                        .map(|entry| {
+                            let (about, name) = entry.split_once('\t').unwrap();
+                            let about: Vec<&str> = about.split(' ').collect();
+                            serde_json::json!({
+                                "path": name, "mode": about[0], "type": about[1], "sha": about[2]
+                            })
+                        })
+                        .collect();
+                    serde_json::json!({"sha": id, "truncated": false, "tree": entries})
+                }
+                "blob" => {
+                    let out = Command::new(program("git"))
+                        .arg("-C")
+                        .arg(&self.origin)
+                        .args(["cat-file", "blob", id])
+                        .output()
+                        .unwrap();
+                    serde_json::json!({
+                        "sha": id, "encoding": "base64", "content": base64(&out.stdout)
+                    })
+                }
+                _ => continue,
+            };
+            let folder = match kind {
+                "commit" => "git/commits",
+                "tree" => "git/trees",
+                _ => "git/blobs",
+            };
+            fs::write(api.join(folder).join(id), answer.to_string()).unwrap();
+        }
+        for older in &commits {
+            for newer in &commits {
+                let is_ancestor = |a: &str, b: &str| {
+                    Command::new(program("git"))
+                        .arg("-C")
+                        .arg(&self.origin)
+                        .args(["merge-base", "--is-ancestor", a, b])
+                        .status()
+                        .unwrap()
+                        .success()
+                };
+                let status = if older == newer {
+                    "identical"
+                } else if is_ancestor(older, newer) {
+                    "ahead"
+                } else if is_ancestor(newer, older) {
+                    "behind"
+                } else {
+                    "diverged"
+                };
+                let answer = serde_json::json!({
+                    "status": status, "merge_base_commit": {"sha": older}
+                });
+                fs::write(
+                    api.join("compare").join(format!("{older}...{newer}")),
+                    answer.to_string(),
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    /// Whether the account's checkout holds `commit`.
+    fn checkout_has(&self, commit: &str) -> bool {
+        let checkout = &self.config.hosted.as_ref().unwrap().checkout;
+        Command::new(program("git"))
+            .arg("-C")
+            .arg(checkout)
+            .args(["cat-file", "-e", &format!("{commit}^{{commit}}")])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    }
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut text = String::new();
+    for (n, chunk) in bytes.chunks(3).enumerate() {
+        // The host breaks its lines every 60 characters.
+        if n > 0 && n % 15 == 0 {
+            text.push('\n');
+        }
+        let bits = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |bits, (i, b)| bits | (u32::from(*b) << (16 - 8 * i)));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                text.push(ALPHABET[((bits >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                text.push('=');
+            }
+        }
+    }
+    text
+}
+
+/// A fetch that moves main in a large repository checks the new head's
+/// whole tree is there, which took six minutes of seven on 10 November.
+/// Where the host has an API, the folder is read from it, and the checkout
+/// is never fetched.
+#[test]
+fn a_hosted_main_is_read_from_its_hosts_api_unfetched() {
+    let world = with_api();
+    let head = world.hosted_commit("one", None);
+    world.answer();
+    let system = world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.running(), system);
+    assert_eq!(world.read("seen"), "one");
+    assert!(!world.checkout_has(&head), "the checkout was fetched");
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.system(&two);
+    assert_eq!(world.update().1, done(&two));
+    assert_eq!(world.read("seen"), "onetwo");
+    assert!(!world.checkout_has(&two), "the checkout was fetched");
+}
+
+/// Main moving outside the folder read from the host builds nothing, as
+/// with a folder the account says hasn't moved.
+#[test]
+fn a_folder_read_from_the_host_where_it_was_is_not_built() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    world.unsigned("outside the folder");
+    world.answer();
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: one.clone(),
+            followed: BTreeMap::new()
+        }
+    );
+    assert_eq!(world.builds(), 1);
+}
+
+/// Main's folder where it was, read from the host, with a followed input
+/// moved on is built again with the input: main where it was descends from
+/// itself, though root's copy never held it.
+#[test]
+fn a_folder_read_from_the_host_where_it_was_with_its_input_moved_on_is_built_again() {
+    let world = api_on(World::hosted_from(following(), counted_token));
+    let pinned = world.core_commit("pinned", true);
+    let one = world.hosted_commit("one", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, following_done(&one, &pinned));
+    assert!(!world.checkout_has(&one), "main was fetched");
+    world.unsigned("outside the folder");
+    let newer = world.core_commit("newer", true);
+    world.answer();
+    world.system(&format!("{one}+{newer}"));
+    assert_eq!(world.update().1, following_done(&one, &newer));
+    assert_eq!(world.builds(), 2);
+}
+
+/// A file the host gives with contents its tree doesn't name is never
+/// built: main is fetched instead, and built from the checkout's objects.
+#[test]
+fn a_host_whose_api_gives_another_file_is_fetched_from() {
+    let world = with_api();
+    let head = world.hosted_commit("one", None);
+    world.answer();
+    let file = git(
+        &world.origin,
+        &["rev-parse", &format!("{head}:machine/file")],
+    );
+    let answer = world.root.join("api/git/blobs").join(file.trim());
+    let lie = serde_json::json!({"sha": file.trim(), "encoding": "base64", "content": base64(b"the host's own")});
+    fs::write(&answer, lie.to_string()).unwrap();
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.read("seen"), "one");
+    assert!(world.checkout_has(&head), "main wasn't fetched");
+}
+
+/// The host's API answering for another commit than the head `ls-remote`
+/// named is never read from.
+#[test]
+fn a_host_whose_api_answers_for_another_commit_is_fetched_from() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    let commits = world.root.join("api/git/commits");
+    fs::copy(commits.join(&one), commits.join(&two)).unwrap();
+    world.system(&two);
+    assert_eq!(world.update().1, done(&two));
+    assert_eq!(world.read("seen"), "two");
+    assert!(world.checkout_has(&two), "main wasn't fetched");
+}
+
+/// An API that doesn't answer leaves main to be fetched, as without one.
+#[test]
+fn a_host_whose_api_doesnt_answer_is_fetched_from() {
+    let world = with_api();
+    let head = world.hosted_commit("one", None);
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert!(world.checkout_has(&head), "main wasn't fetched");
+}
+
+/// A main the host says doesn't descend from what the machine last ran is
+/// refused, as one root's copy shows doesn't.
+#[test]
+fn a_main_the_host_says_doesnt_descend_is_refused() {
+    let world = with_api();
+    let start = world.unsigned("start");
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    git(&world.origin, &["reset", "--quiet", "--hard", &start]);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.system(&two);
+    let (_, ending) = world.update();
+    let Line::Refused { why, .. } = &ending else {
+        panic!("not refused: {ending:?}")
+    };
+    assert!(why.contains("doesn't descend"), "{why}");
+    assert!(!world.checkout_has(&two), "the checkout was fetched");
+}
+
 /// A hosted world whose account names the commit that last changed the
 /// folder with the shell command `changed` gives for the world's folder.
 fn with_changed(changed: impl Fn(&Path) -> String) -> World {
@@ -1371,18 +1645,23 @@ impl World {
 
     /// Commits a signed main whose lock pins core at `pinned`.
     fn signed_pinning(&self, message: &str, pinned: &str) -> String {
-        let lock = serde_json::json!({
-            "nodes": {
-                "root": { "inputs": { "core": "core" } },
-                "core": { "locked": { "type": "github", "rev": pinned } },
-            },
-            "root": "root",
-            "version": 7,
-        });
-        fs::write(self.origin.join("flake.lock"), lock.to_string()).unwrap();
+        fs::write(self.origin.join("flake.lock"), pinning(pinned)).unwrap();
         git(&self.origin, &["add", "flake.lock"]);
         self.signed(message)
     }
+}
+
+/// A lock pinning core at `pinned`.
+fn pinning(pinned: &str) -> String {
+    serde_json::json!({
+        "nodes": {
+            "root": { "inputs": { "core": "core" } },
+            "core": { "locked": { "type": "github", "rev": pinned } },
+        },
+        "root": "root",
+        "version": 7,
+    })
+    .to_string()
 }
 
 fn following_done(commit: &str, core: &str) -> Line {

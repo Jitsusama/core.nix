@@ -119,7 +119,11 @@ fn run(
         };
     }
     if let Some(last) = &last {
-        match git::descends(&main, last, &head) {
+        let descends = match &config.hosted {
+            Some(_) => hosted::descends(config, last, &head),
+            None => git::descends(&main, last, &head),
+        };
+        match descends {
             Ok(true) => {}
             Ok(false) => {
                 return Line::Refused {
