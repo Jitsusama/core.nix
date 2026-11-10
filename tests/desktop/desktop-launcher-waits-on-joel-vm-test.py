@@ -598,8 +598,11 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     machine = desktop.machine
     state = "$HOME/.local/state"
     # The verdicts here are written by hand, standing in for the to-do
-    # daemon, which would otherwise judge them as they are.
-    desktop.as_account("systemctl --user stop to-do")
+    # daemon, which would otherwise judge them as they are. Its socket goes
+    # too: left listening, the tray's first ask of to-do.sock started the
+    # daemon again a tenth of a second later, and it judged them anyway.
+    # Starting the daemon again brings the socket back, which it requires.
+    desktop.as_account("systemctl --user stop to-do.socket to-do")
     # The index holds the live quest, and not the concluded one.
     indexed(desktop, "QEST-20261026-LIVEQA")
     # A live quest's, as mesh_wait writes them: one ready, one the to do

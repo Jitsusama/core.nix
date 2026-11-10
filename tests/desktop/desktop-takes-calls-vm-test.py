@@ -225,12 +225,10 @@ def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(
     machine.wait_until_fails(offered, timeout=timedelta(seconds=10))
     kept = "grep -q 'Missed a call from someone' ~/.local/state/quickshell/by-shell/*/notices.json"
     machine.wait_until_succeeds(desktop.in_session(kept), timeout=timedelta(seconds=10))
-    # Once it goes by itself it waits, and the margin shows it.
+    # Once it goes by itself it waits among what came lately, and lights no
+    # mark: a missed call is an ordinary notice, and For You's tray is the
+    # one mark, lit only by what needs Joel.
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
-    desktop.wait_for_surface("margin")
-    machine.send_key("meta_l-n")
-    desktop.launcher_ready()
-    desktop.close_launcher()
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 
 
