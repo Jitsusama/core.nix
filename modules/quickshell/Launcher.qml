@@ -7788,7 +7788,7 @@ Scope {
     property real chordAt: -1
     property real chordHeardAfter: -1
     function chordHeard(word) {
-        if (shown || word === "") {
+        if (open || opening || word === "") {
             chordAt = -1;
             return;
         }
