@@ -865,7 +865,8 @@ Provider {
     // does. modules/windows' display kind takes this over, serving the
     // screens' rows ready, by 12 November.
     property string spotsStamp: JSON.stringify([outputsSaid,
-        light === null ? false : light.connector ?? "", roomSensor !== null, warmth === null ? null : warmth.seesColour === true,
+        light === null ? false : light.connector ?? "", roomSensor !== null,
+        warmth === null ? null : warmth.seesColour === true,
         Niri.powersOffEach, Object.keys(facts).sort().map(name => [name,
             (facts[name] ?? []).map(fact => `${fact.name}:${fact.value === ""}`)])])
 
