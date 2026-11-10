@@ -2167,7 +2167,8 @@
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
-    run or what it waits for, its quest and memory, and goes to its session or copies its name
+    run or what it waits for, its quest and memory, and goes to its session or copies its name;
+    the sessions said anew make no row again, and the queue written again only the job it changed
   '';
   the-launcher-hears-talks-from-the-node = ''
     Agents hears each talk from the node by its session's address, newest first, moves it on as

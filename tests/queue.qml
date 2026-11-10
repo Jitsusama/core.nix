@@ -8,7 +8,9 @@
 // marks; Return goes to its session's window, or copies its name with
 // none; a step in lists its quest, session, command and the rest, the
 // quest opening as Quests opens it; typing finds a job by its name or its
-// quest; and a queue that stopped saying says so. It exits 0 once every
+// quest; a job's row is made again only for a change to it, never for the
+// sessions said anew, and Return still goes to its session's window as it
+// is then; and a queue that stopped saying says so. It exits 0 once every
 // case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -168,6 +170,33 @@ ShellRoot {
             const byQuest = queue.search("make tea").rows;
             expect("found by its quest", names(byQuest) === "Lighthouse, Zathura Opens a PDF",
                 names(byQuest));
+
+            // The sessions are said anew at each step and focus move, and
+            // the queue each time it's written: a row is made again only
+            // for a job they changed, as remaking all of them made 150 to
+            // 204 rows an opening on Joel's shell (2026-11-09).
+            const madeBefore = queue.tally.rows;
+            Sessions.running = [{ presence: { session: "s1" }, window: { id: 9 },
+                address: "QUEUE1" }];
+            const moved = queue.everything();
+            expect("the sessions said anew make no job's row again",
+                moved.every((row, at) => row === all[at]) && queue.tally.rows === madeBefore,
+                JSON.stringify([moved.map((row, at) => row === all[at]),
+                    queue.tally.rows - madeBefore]));
+            moved[0].run();
+            expect("and Return goes to its session's window as it is now",
+                JSON.stringify(Niri.acted) === "{\"FocusWindow\":{\"id\":9}}",
+                JSON.stringify(Niri.acted));
+            expect("its session's step too", moved[0].verbs()[1].side === "QUEUE1",
+                moved[0].verbs()[1].side);
+            const written = JSON.parse(JSON.stringify(Jobs.said));
+            written.jobs.find(job => job.id === "w3").waitingOn = "memory";
+            Jobs.said = written;
+            const rewritten = queue.everything();
+            expect("the queue written again makes again only the job it changed",
+                rewritten.every((row, at) => (row === all[at]) === (at !== 5))
+                    && rewritten[5].side === "waits for memory",
+                JSON.stringify(rewritten.map((row, at) => [row.side, row === all[at]])));
 
             Jobs.said = null;
             expect("a queue that stopped saying says so",

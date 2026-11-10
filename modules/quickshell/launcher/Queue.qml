@@ -19,8 +19,8 @@
 // Return goes to the window of the session it's for, or copies its name
 // when none is open; the right arrow steps into its quest, its session,
 // the command it runs and the rest of what the queue knows of it. Nothing
-// here is read for a key: the rows are made as the queue changes, and the
-// times and memory are read once a minute while the launcher's open.
+// here is read for a key: a job's row is made as the queue changes it, and
+// the times and memory are read once a minute while the launcher's open.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell.Io
@@ -170,7 +170,8 @@ Provider {
             note: note(job, both.more, quest ? quest.name : job.quest ?? ""),
             glyph: Theme.glyph[job.state === "waiting" ? "queued" : "active"],
             hue: job.state === "waiting" ? "muted" : "action",
-            verbs: () => provider.parts(job, session, quest)
+            verbs: () => provider.parts(job, provider.sessionOf(job),
+                job.quest ? provider.questRow(job.quest) : null)
         };
         // A row that copies still wears how its job stands.
         if (session === null)
@@ -178,8 +179,36 @@ Provider {
         return member(Object.assign(fields, {
             verb: Words.verb("verb:job:go"),
             later: true,
-            run: provider.goes(session)
+            run: () => {
+                const now = provider.sessionOf(job);
+                if (now !== null)
+                    Sessions.goTo(now);
+            }
         }));
+    }
+
+    // What a job's row reads beyond the step in, which looks its session
+    // and quest up as it's taken: the job as the queue said it, whether its
+    // session runs, its quest's title, and while it runs, the minute and
+    // the memory it holds. The sessions are said anew at each step and
+    // focus move, and remaking every job's row then made 150 to 204 rows
+    // an opening on Joel's shell (2026-11-09).
+    function readOf(job) {
+        const running = job.state === "running";
+        return [JSON.stringify(job), sessionOf(more(job).job) !== null,
+            job.quest ? questRow(job.quest)?.name ?? "" : "", running ? minute : "",
+            running ? held[job.slice] ?? "" : ""].join("\u0001");
+    }
+    // Plain, so keeping notifies nothing (Provider.qml's keeper).
+    readonly property var keptJobs: keeper()
+
+    function listed() {
+        keepingBegun(keptJobs);
+        const rows = Jobs.running.concat(Order.sorted(Jobs.waiting,
+            (a, b) => (a.place ?? 0) - (b.place ?? 0)))
+            .map(job => keptOr(keptJobs, String(job.id), readOf(job), () => made(job)));
+        keptOnly(keptJobs);
+        return rows;
     }
 
     // What the queue knows of a job, each a step in: its quest and session
@@ -228,10 +257,7 @@ Provider {
 
     // Running first, then in line, those at one place in the order the
     // queue said them.
-    readonly property var all: provider.launcher?.open ?? true
-        ? Jobs.running.concat(Order.sorted(Jobs.waiting, (a, b) => (a.place ?? 0) - (b.place ?? 0)))
-            .map(job => made(job))
-        : []
+    readonly property var all: provider.launcher?.open ?? true ? listed() : []
     onAllChanged: changedTo(all)
 
     function everything() {
