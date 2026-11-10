@@ -259,7 +259,11 @@ def words_on_their_names(card: Json, scale: str, serif: str) -> int:
 def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Home's lists and a found row's note are in the serif, on the name's baseline, a step on."""
+    """A found row's note is in the serif, on the name's baseline, a step on.
+
+    Home's rows say nothing after their names (VKCF3Z, dae7fb67), which place-row.qml holds,
+    so the words are held where a row still has them, and home's own foot is held here.
+    """
     # The serif is the theme's, read as the theme exports it, so a theme with another face is
     # held to that face.
     theme = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))
@@ -269,11 +273,6 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.launcher_until(lambda shown: shown["drawer"]["out"] is True)
-        card = desktop.showing()["drawer"]["cardLines"]
-        assert words_on_their_names(card, scale, serif) > 1, (
-            f"at {scale} home's rows say nothing: {card}"
-        )
-        desktop.shoot(f"launcher-row-words-at-{scale.replace('.', '-')}")
         # No key is named in a mode where it does nothing: on the find the arrows move the
         # caret, so home's first row, a place, says Return alone, and in normal its arrow too.
         foot = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["foot"]
