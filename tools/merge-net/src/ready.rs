@@ -128,6 +128,42 @@ pub fn when_same<T>(
     then(base)
 }
 
+/// The candidates, in their order, whose own newest commit changed one of
+/// `files`, the files the head's change makes, as `touched` says: `git log
+/// --name-only` over every candidate at once, each commit's files below a
+/// line holding `\x01` and its id. A rebase keeps a change's newest commit
+/// and the files it touches, so a candidate whose newest commit touched
+/// none of them is another change, told apart without a git of its own.
+/// On 10 November a day held 1,034 passed records, and three gits for
+/// each, a merge base, a diff and a patch id, made `ready` take two
+/// minutes, and past five once, so the review tool's merge gave up on
+/// #2820. A change whose newest commit touches only what the change as a
+/// whole leaves alone, or is a merge, isn't found and runs its checks
+/// again, which costs a run and never merges anything unchecked.
+pub fn likely(candidates: &[String], touched: &str, files: &[String]) -> Vec<String> {
+    let mut changed: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    let mut current = None;
+    for line in touched.lines() {
+        if let Some(id) = line.strip_prefix('\x01') {
+            current = Some(id.trim());
+            changed.entry(id.trim()).or_default();
+        } else if let Some(id) = current
+            && !line.is_empty()
+        {
+            changed.entry(id).or_default().push(line);
+        }
+    }
+    candidates
+        .iter()
+        .filter(|candidate| {
+            changed
+                .get(candidate.as_str())
+                .is_some_and(|its| its.iter().any(|file| files.iter().any(|f| f == file)))
+        })
+        .cloned()
+        .collect()
+}
+
 /// One side of a rebase: the files it changed, the paths it renamed or
 /// deleted, and what a file holds on that side.
 pub struct Side<'a> {
@@ -644,6 +680,20 @@ mod tests {
             when_same("same", "id", base_of, id_of, mains_moves),
             Some("same-base".to_owned()),
             "the same change wasn't read from its own base"
+        );
+    }
+
+    #[test]
+    fn only_runs_whose_newest_commit_touched_the_change_are_read() {
+        let touched = "\x01rebased\n\na.rs\nc.md\n\x01other\n\nd.rs\n\x01merge\n\x01old\n\nb.md\n";
+        let candidates: Vec<String> = ["rebased", "other", "merge", "gone", "old"]
+            .map(str::to_owned)
+            .to_vec();
+        let files = vec!["a.rs".to_owned(), "b.md".to_owned()];
+        assert_eq!(
+            likely(&candidates, touched, &files),
+            vec!["rebased".to_owned(), "old".to_owned()],
+            "it kept a run of another change, or lost one of this change, or their order"
         );
     }
 

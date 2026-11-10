@@ -339,8 +339,13 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         };
         Some(ready::names_gone(&branch, &main_side))
     };
-    let mut before =
-        ready::checked_before(&ready::recent_records(), &ready::record, on_main, &same);
+    let records = ready::recent_records();
+    // Should git fail to say what they touched, every record is read, as
+    // slow as before but no less right.
+    let candidates = touched_by(&records).map_or(records.clone(), |touched| {
+        ready::likely(&records, &touched, &files)
+    });
+    let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
             println!(
@@ -540,6 +545,38 @@ fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
         .split_whitespace()
         .next()
         .map(str::to_owned)
+}
+
+/// What each of `commits` changed in its own commit, as `git log
+/// --name-only` prints it for `ready::likely`, from one git for them all.
+/// A commit this clone lacks is left out.
+fn touched_by(commits: &[String]) -> Option<String> {
+    let mut log = Command::new("git")
+        .args([
+            "log",
+            "--no-walk=unsorted",
+            "--ignore-missing",
+            "--stdin",
+            "--format=%x01%H",
+            "--name-only",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .ok()?;
+    {
+        use std::io::Write;
+        // git reads every name before it prints, so this can't fill the
+        // pipe it writes to.
+        log.stdin
+            .take()?
+            .write_all(commits.join("\n").as_bytes())
+            .ok()?;
+    }
+    let said = log.wait_with_output().ok()?;
+    said.status
+        .success()
+        .then(|| String::from_utf8_lossy(&said.stdout).into_owned())
 }
 
 fn git(arguments: &[&str]) -> Result<String, String> {
