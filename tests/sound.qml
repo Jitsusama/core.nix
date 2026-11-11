@@ -168,6 +168,33 @@ ShellRoot {
         drawers();
         shut();
         spotsMake();
+        partsKept();
+    }
+
+    // Shut, a device's parts asked for again with nothing moved, as its
+    // spots are a minute after each closing (Launcher.qml's
+    // spotsFreshened), make none of them again; a volume moving makes them
+    // again, saying it; and shown, they're made as they're asked for.
+    function partsKept() {
+        shutLauncher.wanting = false;
+        deskSpeakers.audio = { volume: 0.4, muted: false };
+        const first = shutSound.verbs(deskSpeakers);
+        const before = shutSound.tally.rows;
+        const again = shutSound.verbs(deskSpeakers);
+        expect("shut, with nothing moved, its parts are made no more",
+            shutSound.tally.rows === before && again === first && first.length > 0,
+            `${shutSound.tally.rows - before} made of ${first.length}`);
+        deskSpeakers.audio = { volume: 0.6, muted: false };
+        const moved = shutSound.verbs(deskSpeakers);
+        const volume = moved.find(part => part.key === "sound:usb-desk-speakers:volume");
+        expect("a volume moving makes them again, saying it",
+            shutSound.tally.rows > before && moved !== first && volume?.side === "60%",
+            `${shutSound.tally.rows - before} made, saying ${volume?.side}`);
+        shutLauncher.wanting = true;
+        const shown = shutSound.tally.rows;
+        shutSound.verbs(deskSpeakers);
+        expect("shown, they're made as they're asked for", shutSound.tally.rows > shown,
+            `${shutSound.tally.rows - shown} made`);
     }
 
     // What Sound's spots are made of holds while a volume or a mute moves,
