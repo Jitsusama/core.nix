@@ -81,6 +81,13 @@ At each, check with every fold closed and every fold open, and in both looks,
 dark and light. A layout that only holds at the width it was built at is the
 fault "stretched and grotesque" names.
 
+Run 390 and 834 a second time as a touch screen, with a coarse pointer and
+no hover (`browser_go` emulate with a phone's or a tablet's `device`, or
+Playwright's `has_touch` and `is_mobile`), and pass `gate.js` there too. A rule behind
+`(hover: none)` or `(pointer: coarse)` shows only then: one such rule hid
+two sites' key lines on touch, against the key line's own rule (`craft.md`),
+and passed every run with a mouse.
+
 ## Layout
 
 - **No short lines.** Count blocks of prose of 40 characters or more whose
