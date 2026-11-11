@@ -131,8 +131,20 @@ fn fixture(folder: &Path) -> PathBuf {
     let file = folder.join("sources.json");
     std::fs::write(&file, sources.to_string()).unwrap();
     previewer(&folder.join("file-preview"));
+    std::fs::write(folder.join("words.json"), WORDS).unwrap();
     file
 }
+
+/// The launcher's words Capture's rows are said in, as words.json holds them.
+const WORDS: &str = r#"{"things": [
+  {"id": "capture:recent", "said": {"in": "in {folder}", "picture": "picture",
+    "video": "video", "silent": "not answering"}},
+  {"id": "capture:taken", "name": "Taken"},
+  {"id": "capture:dimensions", "name": "Dimensions"},
+  {"id": "capture:length", "name": "Length"},
+  {"id": "file-chooser:size", "name": "Size"},
+  {"id": "path:file", "glyph": "file"}
+]}"#;
 
 /// A stand-in for file-preview, kept (serve), answering each file asked
 /// with its path and the process that answered, so a case sees whether
@@ -150,7 +162,7 @@ fn previewer(path: &Path) {
     let script = r#"#!SHELL
 while IFS= read -r line; do
   case $line in *stuck*) sleep infinity & echo $! > "$0.waiting"; wait ;; esac
-  printf '{"picture": "%s", "by": %s}\n' "${line#show }" $$
+  printf '{"picture": "%s", "by": %s, "across": 4, "down": 3}\n' "${line#show }" $$
 done
 "#
     .replace("SHELL", &shell.display().to_string());
@@ -190,6 +202,8 @@ impl Running {
         command
             .arg(&socket)
             .arg(&sources)
+            .arg(folder.join("words.json"))
+            .env("HOME", &folder)
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
             .env("PROGRAMS_PREVIEW", folder.join("file-preview"))
@@ -485,6 +499,57 @@ fn a_list_of_folders_is_read_with_no_command_and_again_as_a_file_comes() {
         paths(&again).len(),
         2,
         "a file made in a watched folder wasn't heard: {again}"
+    );
+}
+
+#[test]
+fn captures_rows_are_served_as_things_are_taken_and_whole_once_ahead() {
+    let running = Running::new("taken-rows");
+    let mut client = running.client();
+    let shots = running.path("shots").to_string_lossy().into_owned();
+    let first = format!("row:taken:{shots}/2026-11-10 09-00-00.png");
+    client.ask(&json!({
+        "id": 1, "ask": "watch", "kind": "row", "place": "taken", "folders": [shots],
+    }));
+    let row = client.changed(&first);
+    assert_eq!(
+        row["row"]["name"], "2026-11-10 09-00-00.png",
+        "a shot's row: {row}"
+    );
+    assert_eq!(
+        row["row"]["side"][1],
+        json!({"said": "~/shots", "keep": 1}),
+        "a folder that isn't the usual one is said: {row}"
+    );
+    assert_eq!(
+        row["row"]["drawer"]["facts"],
+        json!([
+            {"name": "Taken", "at": row["row"]["held"]["at"], "as": "moment"},
+            {"name": "Size", "said": "4\u{a0}B"}
+        ]),
+        "not ahead, its drawer says only what the list does: {row}"
+    );
+    // A programs watch hears only Programs' rows.
+    let programs =
+        client.ask(&json!({"id": 2, "ask": "watch", "kind": "row", "place": "programs"}));
+    assert!(
+        programs["records"]
+            .as_array()
+            .is_some_and(|records| records.iter().all(|record| record["key"] != first.as_str())),
+        "a watch of another place was told Capture's rows: {programs}"
+    );
+    std::fs::write(running.path("shots/2026-11-11 01-00-00.png"), "shot").unwrap();
+    let taken = client.changed(&format!("row:taken:{shots}/2026-11-11 01-00-00.png"));
+    assert!(
+        taken["row"]["order"].as_i64() < row["row"]["order"].as_i64(),
+        "a thing just taken doesn't lead: {taken}"
+    );
+    client.send(&json!({"id": "ahead", "ask": "watch", "kind": ["row"], "keys": [first]}));
+    let whole = client.changed(&first);
+    assert_eq!(
+        whole["row"]["drawer"]["facts"][2],
+        json!({"name": "Dimensions", "said": "4\u{a0}\u{d7}\u{a0}3"}),
+        "ahead, its drawer doesn't say what file-preview did: {whole}"
     );
 }
 

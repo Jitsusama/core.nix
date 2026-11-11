@@ -28,6 +28,7 @@ pub mod preview;
 pub mod program_rows;
 pub mod repositories;
 pub mod source;
+pub mod taken_rows;
 pub mod visited;
 pub mod xdg;
 

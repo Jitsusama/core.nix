@@ -131,12 +131,18 @@ fn windows_changed(shared: &Shared, said: &Value) {
     }
 }
 
-/// Whether a watch wants Programs' rows: one of the `row` kind whole, or
-/// naming a row's key.
+/// Whether a watch wants Programs' rows: one of the `row` kind whole, of
+/// their place or none, or naming one of them.
 pub fn watched(daemon: &Daemon) -> bool {
     daemon.watches.iter().any(|watch| match &watch.keys {
-        Some(keys) => keys.iter().any(|key| key.starts_with("row:")),
-        None => watch.kinds.iter().any(|kind| kind == "row"),
+        Some(keys) => keys.iter().any(|key| key.starts_with("row:programs:")),
+        None => {
+            watch
+                .place
+                .as_deref()
+                .is_none_or(|place| place == "programs")
+                && watch.kinds.iter().any(|kind| kind == "row")
+        }
     })
 }
 
