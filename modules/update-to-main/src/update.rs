@@ -167,7 +167,13 @@ fn run(
             followed,
         };
     }
-    if let Some(why) = quiet(config, following).or_else(|| busy(config)) {
+    // A pause or hold asked while it built or waited, up to an hour, is
+    // seen here, before anything switches.
+    if let Some(why) = quiet(config, following)
+        .or_else(|| busy(config))
+        .or_else(|| held::paused(config))
+        .or_else(|| held::stops(config, &head, &followed))
+    {
         return Line::Refused { commit: last, why };
     }
 

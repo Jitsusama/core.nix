@@ -137,10 +137,16 @@ pub fn changed(held: &mut Held, ask: &str, uid: u32, at: u64) -> Option<Result<S
 }
 
 /// Takes an ask that changes what's held, keeps the change, and says what
-/// holds now; none when the ask isn't one.
-pub fn ask(config: &Config, ask: &str, uid: u32) -> Option<Result<String, String>> {
+/// holds now; none when the ask isn't one. An asker whose uid couldn't be
+/// read changes nothing, since what's held names who asked.
+pub fn ask(config: &Config, ask: &str, uid: Option<u32>) -> Option<Result<String, String>> {
     let mut held = read(config);
-    let said = changed(&mut held, ask, uid, now())?;
+    let said = changed(&mut held, ask, uid.unwrap_or(u32::MAX), now())?;
+    if uid.is_none() {
+        return Some(Err(
+            "who asked couldn't be told, so nothing changed".to_owned()
+        ));
+    }
     Some(said.and_then(|said| write(config, &held).map(|()| said)))
 }
 
@@ -193,6 +199,18 @@ pub fn paused(config: &Config) -> Option<String> {
 #[must_use]
 pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String> {
     for hold in &read(config).commits {
+        // A commit is one repository's, and a followed input's copy is
+        // fetched before this asks, so a commit one of them has is judged
+        // there alone. Main's host doesn't know another repository's
+        // commits, and asking it would refuse every head.
+        let theirs: Vec<(&String, &String)> = followed
+            .iter()
+            .filter(|(name, _)| {
+                config.follows.get(*name).is_some_and(|follow| {
+                    git::has(&Repo::followed(config, name, follow), &hold.commit)
+                })
+            })
+            .collect();
         let mut unknown = None;
         let mut judged = |seen: Result<bool, Failure>| match seen {
             Ok(true) => true,
@@ -202,11 +220,12 @@ pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String>
                 false
             }
         };
-        let in_main = judged(match &config.hosted {
-            Some(hosted) => hosted::holds(config, hosted, &hold.commit, head),
-            None => git::descends(&Repo::main(config), &hold.commit, head),
-        });
-        let in_followed = followed.iter().any(|(name, commit)| {
+        let in_main = theirs.is_empty()
+            && judged(match &config.hosted {
+                Some(hosted) => hosted::holds(config, hosted, &hold.commit, head),
+                None => git::descends(&Repo::main(config), &hold.commit, head),
+            });
+        let in_followed = theirs.into_iter().any(|(name, commit)| {
             config.follows.get(name).is_some_and(|follow| {
                 judged(git::descends(
                     &Repo::followed(config, name, follow),

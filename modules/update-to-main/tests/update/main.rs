@@ -1005,7 +1005,7 @@ fn a_main_holding_a_held_commit_is_refused_until_it_is_lifted() {
     world.system(&bad);
     let three = world.signed("three");
     world.system(&three);
-    let said = held::ask(&world.config, &format!("hold {bad}"), 1000);
+    let said = held::ask(&world.config, &format!("hold {bad}"), Some(1000));
     assert!(
         said.is_some_and(|said| said.is_ok()),
         "a hold on {bad} wasn't taken"
@@ -1021,7 +1021,7 @@ fn a_main_holding_a_held_commit_is_refused_until_it_is_lifted() {
     );
     assert!(why.contains("is held"), "refused for another reason: {why}");
     assert_eq!(world.builds(), 1, "a main holding a held commit was built");
-    held::ask(&world.config, &format!("lift {bad}"), 1000);
+    held::ask(&world.config, &format!("lift {bad}"), Some(1000));
     assert_eq!(
         world.update().1,
         done(&three),
@@ -1034,12 +1034,76 @@ fn a_hold_on_a_commit_main_doesnt_hold_lets_it_switch() {
     let world = World::new();
     let one = world.signed("one");
     world.system(&one);
-    held::ask(&world.config, &format!("hold {}", "0".repeat(40)), 1000);
+    held::ask(
+        &world.config,
+        &format!("hold {}", "0".repeat(40)),
+        Some(1000),
+    );
     assert_eq!(
         world.update().1,
         done(&one),
         "a hold main doesn't hold refused it"
     );
+}
+
+/// A hold taken while the switch waits, as it may for an hour on someone
+/// at the machine, is seen before it switches, not only before it builds.
+#[test]
+fn a_hold_taken_while_the_switch_waits_refuses_it() {
+    let world = World::new();
+    let one = world.signed("one");
+    world.system(&one);
+    world.update();
+    let two = world.signed("two");
+    world.system(&two);
+    let (_, ending) = world.asked_by(&|| {
+        held::ask(&world.config, &format!("hold {two}"), Some(1000));
+        false
+    });
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a hold taken while it waited didn't refuse the switch: {ending:?}")
+    };
+    assert!(why.contains("is held"), "refused for another reason: {why}");
+}
+
+/// A hold on a followed input's commit is judged in that input's copy
+/// alone. Main's host doesn't know core's commits, and asking it refused
+/// every head while one of core's was held.
+#[test]
+fn a_hold_on_a_followed_inputs_commit_is_judged_in_its_repository_alone() {
+    let world = api_on(World::hosted_from(following(), counted_token));
+    let pinned = world.core_commit("pinned", true);
+    let one = world.hosted_commit("one", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, following_done(&one, &pinned));
+    // Root's copy of core holds a commit core's main doesn't, as it would
+    // one main left behind.
+    let core = world.root.join("core");
+    git(&core, &["checkout", "--quiet", "-b", "aside"]);
+    let aside = world.core_commit("aside", true);
+    git(&core, &["checkout", "--quiet", "main"]);
+    let from = format!("file://{}", core.display());
+    let copy = world.config.follows_folder().join("core.git");
+    git(&copy, &["fetch", "--quiet", &from, "aside"]);
+    held::ask(&world.config, &format!("hold {aside}"), Some(1000));
+    let two = world.hosted_commit("two", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        following_done(&two, &pinned),
+        "a hold on a commit core's main doesn't hold refused main"
+    );
+    let newer = world.core_commit("newer", true);
+    held::ask(&world.config, &format!("hold {newer}"), Some(1000));
+    let three = world.hosted_commit("three", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&three);
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("a core holding a held commit wasn't refused")
+    };
+    assert!(why.contains("is held"), "refused for another reason: {why}");
 }
 
 #[test]

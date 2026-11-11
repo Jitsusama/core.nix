@@ -169,12 +169,13 @@ fn answer(
     current: &Arc<Mutex<Option<Arc<Answer>>>>,
     stream: &UnixStream,
 ) -> io::Result<()> {
-    let asker = asker(stream);
+    // The account asking, by what the kernel says of the socket's other end.
+    let uid = peer_uid(stream);
+    let asker = uid.map_or_else(|| "unknown".to_owned(), |uid| uid.to_string());
     stream.set_read_timeout(Some(ASK_WITHIN))?;
     let mut ask = String::new();
     BufReader::new(stream.take(ASK_AT_MOST)).read_line(&mut ask)?;
     let mut out = stream;
-    let uid = peer_uid(stream).unwrap_or(u32::MAX);
     if let Some(said) = held::ask(config, ask.trim(), uid) {
         // A pause stops what runs too, so nothing switches after it.
         let why = match said {
@@ -401,11 +402,6 @@ fn moved(program: &Path, started: Option<&Path>) -> bool {
 fn idle(update: &Answer) -> bool {
     let said = update.state.lock().expect("the answer's lock");
     said.ended.is_some() && said.hearing == 0
-}
-
-/// The account asking, by what the kernel says of the socket's other end.
-fn asker(stream: &UnixStream) -> String {
-    peer_uid(stream).map_or_else(|| "unknown".to_owned(), |uid| uid.to_string())
 }
 
 #[cfg(target_os = "linux")]
