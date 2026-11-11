@@ -269,8 +269,8 @@ fn row(document: &Document, place: &str, words: &Words) -> Value {
         "side": side,
         "drawer": format!("drawer:{place}:{}", document.id),
         "acts": [
-            {"key": kind.open, "ask": {"open": {"link": document.link}}},
-            {"key": kind.link, "ask": {"copy": document.link}},
+            {"key": kind.open, "open": document.link},
+            {"key": kind.link, "copy": document.link},
         ],
         "held": {"link": document.link, "viewed": document.viewed, "mime": document.mime},
     })

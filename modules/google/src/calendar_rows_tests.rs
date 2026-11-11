@@ -205,11 +205,12 @@ fn its_acts_come_in_the_one_order_each_with_what_it_asks_or_the_step_it_takes() 
     );
     let acts = row["acts"].as_array().unwrap();
     assert_eq!(
-        acts[0]["ask"],
-        json!({"open": {"link": "https://meet.google.com/abc-defg-hij"}})
+        acts[0],
+        json!({"key": "verb:calendar:join", "open": "https://meet.google.com/abc-defg-hij"}),
+        "joining opens the link itself, as ready-rows' open form"
     );
     assert_eq!(
-        acts[1]["ask"]["open"]["link"],
+        acts[1]["open"],
         "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com%2Cgrace%40example.com\
          &su=Plan%20%26%20Review"
     );

@@ -348,7 +348,7 @@ fn sender(mail: &Mail, words: &Words) -> String {
 /// attachments`), which `held.attachments` gives until they're rows of
 /// their own.
 fn acts(mail: &Mail) -> Vec<Value> {
-    let opens = |key: &str, link: &str| json!({"key": key, "ask": {"open": {"link": link}}});
+    let opens = |key: &str, link: &str| json!({"key": key, "open": link});
     let mut listed = vec![opens("verb:mail:open", &mail.page)];
     let subject = answering(&mail.subject);
     let reply = writing(&[&mail.address], &subject, &[]);
@@ -374,7 +374,7 @@ fn acts(mail: &Mail) -> Vec<Value> {
                            "count": mail.attachments.len()}),
         );
     }
-    listed.push(json!({"key": "verb:mail:link", "ask": {"copy": mail.page}}));
+    listed.push(json!({"key": "verb:mail:link", "copy": mail.page}));
     listed
 }
 
@@ -622,13 +622,13 @@ mod tests {
         assert_eq!(
             rows[0]["acts"],
             json!([
-                {"key": "verb:mail:open", "ask": {"open": {"link": page}}},
-                {"key": "verb:mail:reply", "ask": {"open": {"link": reply}}},
-                {"key": "verb:mail:replyAll", "ask": {"open": {"link": reply_all}}},
+                {"key": "verb:mail:open", "open": page},
+                {"key": "verb:mail:reply", "open": reply},
+                {"key": "verb:mail:replyAll", "open": reply_all},
                 {"key": "verb:mail:archive", "ask": {"archive": {"id": "a"}}},
                 {"key": "verb:mail:read", "ask": {"read": {"id": "a"}}},
                 {"key": "mail:sender", "step": "person", "address": "ada@example.com"},
-                {"key": "verb:mail:link", "ask": {"copy": page}}
+                {"key": "verb:mail:link", "copy": page}
             ])
         );
         let mut alone = one("b", 1_000);

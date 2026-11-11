@@ -93,8 +93,8 @@ fn a_document_is_a_row_keyed_as_the_launcher_keys_it_in_the_order_held() {
     assert_eq!(
         row["acts"],
         json!([
-            {"key": "verb:sheets:open", "ask": {"open": {"link": link}}},
-            {"key": "verb:sheets:link", "ask": {"copy": link}}
+            {"key": "verb:sheets:open", "open": link},
+            {"key": "verb:sheets:link", "copy": link}
         ])
     );
 }
