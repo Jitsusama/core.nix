@@ -363,6 +363,46 @@ pub fn over_ssh(store: &str, scratch: &Path, ssh: &str, within: Duration) -> Pro
     passed
 }
 
+/// How long a builder that fails its proofs while builds still reach it
+/// has to answer at all, its daemon saying which store it is: a live one
+/// answers in well under a second, however busy.
+pub const ANSWERING: Duration = Duration::from_secs(20);
+
+/// Whether the builder whose store `store` names (its first line) answers
+/// at all over ssh, as `there` reaches it, within `within`: its daemon says
+/// which store it is, which waits for no build slot. A builder whose slots
+/// are all taken builds no proof in time though it builds what reaches it,
+/// so this tells a busy builder from a lost one. `scratch` holds its host
+/// key and ssh's log while it runs.
+pub fn answers_over_ssh(store: &str, scratch: &Path, ssh: &str, within: Duration) -> bool {
+    let Some(lent) = store
+        .lines()
+        .next()
+        .and_then(|line| there::builder(line.trim()))
+    else {
+        return false;
+    };
+    let Ok((mut command, known, said)) = there::reach(&lent, scratch, ssh) else {
+        return false;
+    };
+    command
+        .args(["-o", &format!("ConnectTimeout={CONNECTING}")])
+        .arg(&lent.host)
+        .arg("nix store info")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let answered = command
+        .spawn()
+        .ok()
+        .and_then(|mut running| there::finished_within(&mut running, within))
+        .is_some_and(|status| status.success());
+    for file in [&known, &said] {
+        let _ = fs::remove_file(file);
+    }
+    answered
+}
+
 /// What Nix says once a builder has built a proof and its output comes
 /// back, which is as far as a proof through the daemon need go: this
 /// store takes nothing while a collection holds its lock, as the disk
@@ -850,6 +890,46 @@ mod tests {
         assert!(
             !over_ssh("", &scratch, &ssh, WITHIN).passed,
             "no store, no proof"
+        );
+    }
+
+    #[test]
+    fn a_busy_builder_is_asked_only_whether_its_daemon_answers() {
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = stand_in(dir.path(), "ssh", "exit 0");
+        let scratch = dir.path().join("answering");
+        assert!(
+            answers_over_ssh(STORE, &scratch, &ssh, ANSWERING),
+            "a daemon that says its store answers"
+        );
+        let given = fs::read_to_string(dir.path().join("given")).unwrap();
+        let words: Vec<&str> = given.lines().collect();
+        for option in ["ConnectTimeout=10", "HostKeyAlias=nix-offload"] {
+            assert!(words.contains(&option), "{option} in {given}");
+        }
+        assert_eq!(words[words.len() - 2..], ["nix-offload", "nix store info"]);
+        assert!(
+            fs::read_dir(&scratch).unwrap().next().is_none(),
+            "its host key and log are cleaned up"
+        );
+        let refused = stand_in(dir.path(), "ssh", "exit 255");
+        assert!(
+            !answers_over_ssh(STORE, &scratch, &refused, ANSWERING),
+            "one ssh can't reach doesn't answer"
+        );
+        let silent = stand_in(dir.path(), "ssh", "exec tail -f /dev/null");
+        let began = Instant::now();
+        assert!(
+            !answers_over_ssh(STORE, &scratch, &silent, Duration::from_secs(1)),
+            "one that says nothing doesn't answer"
+        );
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "one that says nothing is given up on"
+        );
+        assert!(
+            !answers_over_ssh("", &scratch, &ssh, ANSWERING),
+            "no store, no answer"
         );
     }
 

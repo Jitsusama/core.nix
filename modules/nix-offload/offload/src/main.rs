@@ -2035,6 +2035,67 @@ fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Optio
     proof::write(dir, health, machines.beside_health().as_deref(), now());
 }
 
+/// What a lender has said of the builder it keeps though it fails its
+/// proofs, so it says each once while that lasts.
+#[derive(Default)]
+struct SaidKept {
+    reached: bool,
+    busy: bool,
+}
+
+/// Whether `builder`, which a build `reached` this tick or not, is given
+/// back as lost by its proofs in `keeper`, saying once in `said` why one
+/// failing them is kept instead.
+fn unanswered(
+    settings: &Settings,
+    keeper: &mut Option<Keeper>,
+    builder: &Lent,
+    reached: bool,
+    said: &mut SaidKept,
+) -> bool {
+    let dropped = kept(settings, keeper, builder, Instant::now(), "ssh");
+    let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
+    let unanswered = decide::proven_lost(dropped, failures, reached, || {
+        answers(settings, builder, "ssh")
+    });
+    if dropped && !unanswered && !std::mem::replace(&mut said.reached, true) {
+        eprintln!(
+            "nix-offload: {} failed {failures} proofs in a row, so no new build goes there, but \
+             builds still reach it, so it's kept until they end, or once it has failed {} in a \
+             row, until it stops answering",
+            builder.name,
+            decide::FAILS_WHILE_REACHED
+        );
+    }
+    said.reached &= dropped;
+    let busy = dropped && !unanswered && failures >= decide::FAILS_WHILE_REACHED;
+    if busy && !std::mem::replace(&mut said.busy, true) {
+        eprintln!(
+            "nix-offload: {} still answers, so it's busy rather than lost, and keeps what it \
+             builds",
+            builder.name
+        );
+    }
+    said.busy &= dropped;
+    unanswered
+}
+
+/// Whether `builder` answers at all, its daemon saying which store it is
+/// over `ssh`, for one failing its proofs while builds still reach it. One
+/// reached only through root's daemon has no store of its own to ask, so
+/// it's taken as not answering, as before this was asked.
+fn answers(settings: &Settings, builder: &Lent, ssh: &str) -> bool {
+    let Some(store) = &builder.store else {
+        return false;
+    };
+    proof::answers_over_ssh(
+        store,
+        &settings.dir.join("answering.d"),
+        ssh,
+        proof::ANSWERING,
+    )
+}
+
 /// Give back `builder`, which failed its last proofs, as lost: no build
 /// is sent there from now, since every file this lender writes leaves it
 /// out, and ending its helper ends the relay, closing every connection
@@ -2106,7 +2167,7 @@ fn serve(settings: &Settings) -> bool {
     let mut said_superseded = false;
     let mut restarts = false;
     let mut handing_over = false;
-    let mut said_reached = false;
+    let mut said_kept = SaidKept::default();
     let mut outliving_as_it_restarts: Option<bool> = None;
     // The builders left to finish that this start has said it keeps.
     let mut said_finishing = BTreeSet::new();
@@ -2132,19 +2193,8 @@ fn serve(settings: &Settings) -> bool {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
-                let dropped = !gone && kept(settings, &mut keeper, &builder, Instant::now(), "ssh");
-                let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
-                let unanswered = decide::proven_lost(dropped, failures, reached);
-                if dropped && !unanswered && !std::mem::replace(&mut said_reached, true) {
-                    eprintln!(
-                        "nix-offload: {} failed {failures} proofs in a row, so no new build goes \
-                         there, but builds still reach it, so it's kept until they end or it \
-                         fails {} in a row",
-                        builder.name,
-                        decide::FAILS_WHILE_REACHED
-                    );
-                }
-                said_reached &= dropped;
+                let unanswered =
+                    !gone && unanswered(settings, &mut keeper, &builder, reached, &mut said_kept);
                 let (used, ends) = (builder.used, builder.ends);
                 match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {

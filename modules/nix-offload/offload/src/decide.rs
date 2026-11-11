@@ -167,19 +167,28 @@ pub fn give_back_proven(
 }
 
 /// How many proofs in a row a builder that builds still reach may fail
-/// before it's given back. A proof waits for a build slot like any build,
-/// so a builder every slot of which is busy can fail one while it answers:
-/// on 8 November one carrying about 40 builds failed two in 76 s, and its
-/// give-back cut them all. A dead builder's relay gives up on its own
-/// within 3 minutes, which ends what reaches it.
+/// before it's asked whether it answers at all. A proof waits for a build
+/// slot like any build, so a builder every slot of which is busy can fail
+/// one while it answers: on 8 November one carrying about 40 builds failed
+/// two in 76 s, and its give-back cut them all. A dead builder's relay
+/// gives up on its own within 3 minutes, which ends what reaches it.
 pub const FAILS_WHILE_REACHED: u32 = 10;
 
 /// Whether a builder whose proofs say it's dropped (`dropped`, after
 /// `failures` in a row) is given back as lost, given whether a build
-/// reaches it (`reached`). Dropped, it's named nowhere either way, so no
-/// new build goes there.
-pub fn proven_lost(dropped: bool, failures: u32, reached: bool) -> bool {
-    dropped && (!reached || failures >= FAILS_WHILE_REACHED)
+/// reaches it (`reached`) and, asked only once it has failed
+/// [`FAILS_WHILE_REACHED`] with builds on it, whether it `answers` at all.
+/// Dropped, it's named nowhere either way, so no new build goes there. One
+/// that answers is busy, not lost, and keeps what it builds until it ends:
+/// on 10 November a builder whose slots stayed full failed ten proofs in a
+/// row and was given back, ending three test suites 35 to 68 minutes in.
+pub fn proven_lost(
+    dropped: bool,
+    failures: u32,
+    reached: bool,
+    answers: impl FnOnce() -> bool,
+) -> bool {
+    dropped && (!reached || (failures >= FAILS_WHILE_REACHED && !answers()))
 }
 
 /// Whether a builder last used at `used`, asked to live until `ends`, is
@@ -299,11 +308,29 @@ mod tests {
 
     #[test]
     fn a_builder_builds_still_reach_is_given_back_only_after_ten_failed_proofs() {
-        assert!(proven_lost(true, 2, false), "nothing reaches it");
-        assert!(!proven_lost(true, 2, true), "a build reaches it");
-        assert!(!proven_lost(true, FAILS_WHILE_REACHED - 1, true));
-        assert!(proven_lost(true, FAILS_WHILE_REACHED, true));
-        assert!(!proven_lost(false, 0, false), "it answers");
+        let unasked = || panic!("it isn't asked whether it answers");
+        assert!(proven_lost(true, 2, false, unasked), "nothing reaches it");
+        assert!(!proven_lost(true, 2, true, unasked), "a build reaches it");
+        assert!(!proven_lost(true, FAILS_WHILE_REACHED - 1, true, unasked));
+        assert!(
+            proven_lost(true, FAILS_WHILE_REACHED, true, || false),
+            "it doesn't answer"
+        );
+        assert!(!proven_lost(false, 0, false, unasked), "it passes");
+    }
+
+    #[test]
+    fn a_busy_builder_that_answers_keeps_what_it_builds_however_many_proofs_it_fails() {
+        for failures in [FAILS_WHILE_REACHED, FAILS_WHILE_REACHED * 5] {
+            assert!(
+                !proven_lost(true, failures, true, || true),
+                "{failures} failed proofs, but it answers"
+            );
+        }
+        assert!(
+            proven_lost(true, FAILS_WHILE_REACHED * 5, false, || true),
+            "once nothing reaches it, it goes"
+        );
     }
 
     #[test]
