@@ -42,7 +42,8 @@ Flow {
             // its ink does, and each + keeps the same distance from both its
             // keys.
             readonly property rect ink: face.tightBoundingRect(text)
-            leftPadding: index === 0 ? 0 : plus.width
+            leftPadding: index === 0 ? 0
+                : modelData.after === true ? Theme.space.rung.tie : plus.width
             width: modelData.wide ? leftPadding + ink.x + ink.width : implicitWidth
             text: modelData.text
             color: chord.colour
@@ -54,13 +55,15 @@ Flow {
             // "+ 0"). Only in keys: a figure anywhere else keeps its zero.
             font.features: ({ cv01: 1 })
 
+            // Always a +, hidden after a key pressed before it: a kept key
+            // that changed its + to nothing changed the width read from it
+            // as that width was worked out, a binding loop.
             Text {
                 id: plus
-                visible: parent.index > 0
-                width: parent.modelData.after === true ? Theme.space.rung.tie
-                    : implicitWidth + 2 * Theme.space.rung.tie
+                visible: parent.index > 0 && parent.modelData.after !== true
+                width: implicitWidth + 2 * Theme.space.rung.tie
                 horizontalAlignment: Text.AlignHCenter
-                text: parent.modelData.after === true ? "" : "+"
+                text: "+"
                 color: chord.colour
                 font: parent.font
             }
