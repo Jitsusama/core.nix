@@ -270,17 +270,27 @@ fn a_watch_of_rows_hears_each_entrys_row_without_a_secret() {
     assert_eq!(rows.len(), 3, "not every entry was a row: {heard}");
     let github = rows
         .iter()
-        .find(|row| row["key"] == "row:entry:keeping:gh")
+        .find(|row| row["key"] == "row:passwords:entry:keeping:gh")
         .unwrap_or_else(|| panic!("GitHub's entry had no row: {heard}"));
     assert_eq!(github["kind"], "row");
-    assert_eq!(github["row"]["row"], "entry:keeping:gh");
+    assert_eq!(github["row"]["thing"], "entry:keeping:gh");
+    let mut orders: Vec<i64> = rows
+        .iter()
+        .filter_map(|row| row["row"]["order"].as_i64())
+        .collect();
+    orders.sort_unstable();
+    assert_eq!(
+        orders,
+        [1024, 2048, 3072],
+        "the rows weren't spaced 1024 apart: {heard}"
+    );
     assert_eq!(github["row"]["side"], json!([{"said": "ada"}]));
     assert!(
         rows.iter().all(|row| row["row"]["kind"] != "entry"),
         "a row was said as an entry: {heard}"
     );
     assert_eq!(
-        github["row"]["drawer"], "drawer:entry:keeping:gh",
+        github["row"]["drawer"], "drawer:passwords:entry:keeping:gh",
         "a row carried its drawer rather than naming it"
     );
     holds_no_secret(&heard);
@@ -307,11 +317,11 @@ fn a_drawer_is_heard_by_its_key_alone_and_only_as_it_changes() {
     asking.ask(&json!({"id": 1, "ask": "list", "asked": true}));
     let mut watching = running.client();
     watching.say(&json!({"id": "d", "ask": "watch", "kind": "drawer",
-                         "keys": ["drawer:entry:keeping:gh"]}));
+                         "keys": ["drawer:passwords:entry:keeping:gh"]}));
     let first = watching.hear();
     assert_eq!(
         keys(&first),
-        ["drawer:entry:keeping:gh"],
+        ["drawer:passwords:entry:keeping:gh"],
         "a drawer watch heard drawers it didn't name: {first}"
     );
     assert_eq!(first["records"][0]["kind"], "drawer");
@@ -319,9 +329,9 @@ fn a_drawer_is_heard_by_its_key_alone_and_only_as_it_changes() {
     holds_no_secret(&first);
     let listed = asking.ask(
         &json!({"id": 2, "ask": "list", "kind": "drawer", "held": true,
-                                    "keys": ["drawer:entry:keeping:gh"]}),
+                                    "keys": ["drawer:passwords:entry:keeping:gh"]}),
     );
-    assert_eq!(keys(&listed), ["drawer:entry:keeping:gh"]);
+    assert_eq!(keys(&listed), ["drawer:passwords:entry:keeping:gh"]);
     let none = asking.ask(&json!({"id": 3, "ask": "list", "kind": "drawer", "held": true}));
     assert_eq!(
         keys(&none),
@@ -335,6 +345,31 @@ fn a_drawer_is_heard_by_its_key_alone_and_only_as_it_changes() {
     assert_eq!(
         next["id"], "h",
         "a drawer watch heard a drawer that hadn't changed: {next}"
+    );
+}
+
+#[test]
+fn rows_asked_of_a_daemon_whose_words_didnt_read_are_refused_saying_so() {
+    let running = Running::started(
+        "wordless",
+        &[("keeping", KEEPING)],
+        &[],
+        "/nowhere/words.json",
+    );
+    let mut asking = running.client();
+    asking.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    for (id, asked) in [(2, "list"), (3, "watch")] {
+        let answer = asking.ask(&json!({"id": id, "ask": asked, "kind": "row"}));
+        assert_eq!(
+            answer["error"]["code"], "no-words",
+            "a {asked} of rows without words wasn't refused: {answer}"
+        );
+    }
+    let entries = asking.ask(&json!({"id": 4, "ask": "list", "held": true}));
+    assert_eq!(
+        keys(&entries).len(),
+        3,
+        "entries were refused with the rows: {entries}"
     );
 }
 

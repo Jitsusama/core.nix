@@ -9345,6 +9345,13 @@
         "password": "password",
         "code": "one-time code",
         "hidden": "hidden",
+        "terrible": "terrible",
+        "weak": "weak",
+        "fair": "fair",
+        "good": "good",
+        "veryGood": "very good",
+        "excellent": "excellent",
+        "fantastic": "fantastic",
         "set": "set up",
         "none": "none",
         "unsecured": "unsecured website",
@@ -9439,6 +9446,14 @@
       "name": "Check Every Password",
       "verb": "check",
       "glyph": "retry"
+    },
+    {
+      "id": "verb:details",
+      "act": "do",
+      "in": "passwords",
+      "name": "Read the Details",
+      "verb": "read",
+      "glyph": "read"
     },
     {
       "id": "passwords:off",

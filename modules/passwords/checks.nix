@@ -34,7 +34,13 @@ onLinux {
   # program, its --json the daemon's answer with no secret but show's, a
   # title and a detail's label naming what they name, each exit status the
   # usage says, and what completion asks answered from what's held.
-  passwords-holds-no-secret = pkgs.callPackage ./package.nix { };
+  # Its rows are said in the account's own vocabulary, every word of them
+  # its, as the shell says them.
+  passwords-holds-no-secret = pkgs.callPackage ./package.nix {
+    words =
+      pkgs.writeText "words.json"
+        (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+  };
   # passwords keys lists what an SSH agent holds where 1Password's
   # listens, ~/.1password/agent.sock: a row a key, its type, size,
   # fingerprint, comment and public half, the same as --json, nothing for
@@ -44,6 +50,7 @@ onLinux {
   # (tests/keys.rs).
   passwords-lists-1passwords-ssh-keys = (pkgs.callPackage ./package.nix { }).overrideAttrs (old: {
     pname = "passwords-lists-1passwords-ssh-keys";
+    doCheck = true;
     nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [ pkgs.openssh ];
     cargoTestFlags = [
       "--test"

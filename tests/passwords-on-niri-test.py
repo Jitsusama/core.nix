@@ -137,9 +137,22 @@ def let_in(shell: Shell) -> None:
         # Told on opening, it's said where a key's word is, until the first key.
         shell.launcher_until(lambda shown: shown["saying"] == [REFUSED])
         shell.close_launcher()
+    # The refused let-in was followed by a list too, so only a let-in past
+    # those asked already says this one was heard: Unlock asks as the
+    # launcher goes, after the test has moved on.
+    before = asks().count("let-in")
     unlocked(shell)
     # Let in, the daemon reads the list afresh.
-    shell.launcher_until(lambda _: asks()[-2:] == ["let-in", "list"])
+    shell.launcher_until(lambda _: listed_after_let_in(before))
+
+
+def listed_after_let_in(before: int) -> bool:
+    """Say whether a let-in past the `before` asked already was heard, then a list."""
+    heard = asks()
+    if heard.count("let-in") <= before:
+        return False
+    last = len(heard) - 1 - heard[::-1].index("let-in")
+    return "list" in heard[last:]
 
 
 def unlocked(shell: Shell) -> None:

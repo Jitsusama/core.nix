@@ -13,6 +13,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The ready-row form every daemon shares: rows kept as last told with their
+# spaced order, and figures said as the launcher says them.
+ready-rows = { path = "../ready-rows" }
 ring = "0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

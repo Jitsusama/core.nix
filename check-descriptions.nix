@@ -1423,6 +1423,9 @@
     only to the client that asked to see it or to the clipboard marked sensitive and cleared when
     its time is up, says a one-time code's period, gives a one-time code's detail as its code and
     never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    serves each entry's row and drawer keyed by its place, in the account's own words and with no
+    secret, rows spaced 1024 apart and one row moving told alone, a row with nothing to copy or
+    open reading its details, and refuses rows where the words didn't read;
     audits every password only when Joel asks, refusing otherwise and for a manager signed out,
     counting the entries that share one and matching each hash's suffix against a stand-in Have I
     Been Pwned's range, padding counting nothing, sending it five characters alone and saying no
