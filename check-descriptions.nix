@@ -3281,8 +3281,9 @@
     window that's no session, root's, or for an account outside wheel
   '';
   vm-admins-tune-memory = ''
-    an account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU and
-    swappiness to a listed value with no password; one outside wheel can't, and an unlisted value needs one
+    an account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU,
+    swappiness and swap's read-ahead to a listed value with no password; one outside wheel can't,
+    and an unlisted value needs one
   '';
   vm-admins-tune-the-work-slices = ''
     an account in wheel sets build.slice's and machine.slice's weight and cores for the boot with no
