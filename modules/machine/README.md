@@ -46,7 +46,7 @@ listed change, since some answer every read through slow firmware.
 
 ## Ready Rows
 
-Heat's and Power's rows and headlines are made here, ready for the
+Heat's, Power's and Firmware's rows and headlines are made here, ready for the
 launcher, in the one form every daemon serves them in: each a
 `row:<place>:<id>` record of kind `row`, its row under `row` naming what
 it shows as its `thing` (`power:limit`), and the headline a
@@ -60,12 +60,16 @@ that leaves it as drawn changes nothing. The processor's telemetry is
 asked only then, and the Last Reads kept only then, so a shut launcher
 costs nothing. Power's are made the same way from the supplies, its
 sparks of watts and volts kept a read a second while watched, and each
-of its Charge Limit's choices asks the `charge-limit` act. They're said
+of its Charge Limit's choices asks the `charge-limit` act. Firmware's
+are made from what fwupd says, asked once a minute while they're
+watched; an act that can't be taken back holds one `sure` row a step
+in that asks it, and while an act goes its row says so, then how it
+ended until the launcher shuts. They're said
 in the launcher's words and number settings,
 handed on the command line (`--words`, `--numbers`) by home.nix from the
 launcher's own; handed none, it makes no rows.
-[`src/heat_rows.rs`][heat-rows] and [`src/power_rows.rs`][power-rows]
-make them,
+[`src/heat_rows.rs`][heat-rows], [`src/power_rows.rs`][power-rows] and
+[`src/firmware_rows.rs`][firmware-rows] make them,
 [`src/rows.rs`][rows] places and graphs them, and
 [`src/words.rs`][words] words them.
 
@@ -334,6 +338,7 @@ service's runtime folder, is looked for again every 10 seconds.
 [main]: src/main.rs
 [lib]: src/lib.rs
 [machine]: ../quickshell/launcher/Machine.qml
+[firmware-rows]: src/firmware_rows.rs
 [heat-rows]: src/heat_rows.rs
 [power-rows]: src/power_rows.rs
 [rows]: src/rows.rs

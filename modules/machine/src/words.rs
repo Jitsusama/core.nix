@@ -84,6 +84,13 @@ impl Words {
         said.map_or_else(String::new, |said| filled(said, fill))
     }
 
+    /// What an act that can't be taken back asks once, its braces
+    /// filled, or "" where it asks nothing.
+    pub fn sure(&self, id: &str, fill: &[(&str, &str)]) -> String {
+        let sure = self.things.get(id).and_then(|thing| thing["sure"].as_str());
+        sure.map_or_else(String::new, |sure| filled(sure, fill))
+    }
+
     /// The glyph role a thing shows, or "".
     pub fn glyph(&self, id: &str) -> String {
         let role = self

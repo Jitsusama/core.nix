@@ -41,13 +41,15 @@
 //! since the shell watches them while the launcher's shut: neither is
 //! read on a clock, so watching them wakes nothing until they change.
 //!
-//! Heat's and Power's rows and headlines are made here too, ready for
-//! the launcher (`heat_rows.rs`, `power_rows.rs`), in the launcher's words
+//! Heat's, Power's and Firmware's rows and headlines are made here too,
+//! ready for the launcher (`heat_rows.rs`, `power_rows.rs`,
+//! `firmware_rows.rs`), in the launcher's words
 //! (`--words`, its `words.json`) and number settings (`--numbers`,
 //! `{ group, point }`): a watch of kind `row` or `head` with `place`
 //! `heat` has the sensors, zones, cooling and processor read as their
-//! own watch would, and one with `place` `power` the supplies, and each
-//! read makes that place's rows again and tells only those that changed.
+//! own watch would, one with `place` `power` the supplies, and one with
+//! `place` `firmware` fwupd, and each read makes that place's rows again
+//! and tells only those that changed.
 //! The processor's own telemetry is asked only while Heat's are watched.
 //! Handed no words, it makes no rows.
 //!
@@ -74,9 +76,9 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, acts, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, kept, keyboards,
-    light, memory, now_ms, power_rows, processor, rounded, rows, sleep, status, steered, supply,
-    telemetry, tree, units, using, written::Written,
+    Root, acts, boot, camera, clock_ms, counts, disk, firmware, firmware_rows, heat, heat_rows,
+    kept, keyboards, light, memory, now_ms, power_rows, processor, rounded, rows, sleep, status,
+    steered, supply, telemetry, tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -156,7 +158,11 @@ const POWER: Place = Place {
     name: "power",
     sources: &["supply"],
 };
-const PLACES: [Place; 2] = [HEAT, POWER];
+const FIRMWARE: Place = Place {
+    name: "firmware",
+    sources: &["firmware"],
+};
+const PLACES: [Place; 3] = [HEAT, POWER, FIRMWARE];
 /// How long to wait before asking the processor's telemetry again once
 /// it couldn't be reached, as on a machine with none.
 const TELEMETRY_AGAIN: Duration = Duration::from_secs(30);
@@ -421,6 +427,9 @@ struct Daemon {
     heat: heat_rows::Heat,
     /// The reads Power's sparks keep while its rows are watched.
     power: power_rows::Power,
+    /// How Firmware's acts stand: the one going, so another waits its
+    /// turn, and how each ended while its rows are watched.
+    acting: firmware_rows::Acting,
     /// Each place's rows and headline as last told, by the place's name,
     /// so each row keeps its order and one coming or going sends itself
     /// alone, where ordering siblings by where they stood sent every one
@@ -430,8 +439,6 @@ struct Daemon {
     telemetry: Vec<Value>,
     /// The kinds whose source said they changed, to be asked again now.
     hurried: HashSet<String>,
-    /// Whether a firmware act is going, so another waits its turn.
-    acting: bool,
     /// When the last sleep began and ended, as logind's signal said.
     slept: Arc<Mutex<Value>>,
     took: VecDeque<u64>,
@@ -617,10 +624,10 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             words,
             heat: heat_rows::Heat::default(),
             power: power_rows::Power::default(),
+            acting: firmware_rows::Acting::default(),
             kept: BTreeMap::new(),
             telemetry: Vec::new(),
             hurried: HashSet::new(),
-            acting: false,
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
             since: now_ms(),
@@ -735,6 +742,12 @@ fn sources_of(kinds: &HashSet<String>, places: &[Place]) -> HashSet<String> {
     read
 }
 
+/// The kinds read while what's watched is: those watched, and what the
+/// places watched are made of, as fwupd is asked for Firmware's rows.
+fn reads(daemon: &Daemon) -> HashSet<String> {
+    sources_of(&watched(daemon), &making(daemon))
+}
+
 /// Lets a place's reads go once nothing watches its rows, so a shut
 /// launcher keeps none, and the next watch starts afresh.
 fn let_go(daemon: &mut Daemon) {
@@ -745,8 +758,12 @@ fn let_go(daemon: &mut Daemon) {
         if place == HEAT {
             daemon.heat.forget();
             daemon.telemetry.clear();
-        } else {
+        } else if place == POWER {
             daemon.power.forget();
+        } else {
+            // How an act ended is said until the launcher shuts, as
+            // Firmware kept it; one still going is kept.
+            daemon.acting.ended.clear();
         }
         daemon.kept.remove(place.name);
         daemon.held.retain(|key, _| !place.holds(key));
@@ -767,6 +784,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
         held,
         heat,
         power,
+        acting,
         words,
         telemetry,
         ..
@@ -776,6 +794,9 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
     };
     if place == POWER {
         return power.read(&held_of(held, "supply"), clock_ms(), words);
+    }
+    if place == FIRMWARE {
+        return firmware_rows::read(&held_of(held, "firmware"), acting, words);
     }
     let (sensors, zones, cooling) = (
         held_of(held, "sensor"),
@@ -1036,7 +1057,7 @@ fn watch_loop(shared: &Shared) {
 fn due(shared: &Shared, kind: &str, every: Duration, last: &mut Option<Instant>) {
     let mut daemon = lock(&shared.daemon);
     loop {
-        let watching = watched(&daemon).contains(kind);
+        let watching = reads(&daemon).contains(kind);
         let hurried = watching && daemon.hurried.remove(kind);
         if watching && (hurried || last.is_none_or(|at| at.elapsed() >= every)) {
             break;
@@ -1066,7 +1087,7 @@ fn due_while_watched(
 ) -> bool {
     let mut daemon = lock(&shared.daemon);
     loop {
-        if !watched(&daemon).contains(kind) {
+        if !reads(&daemon).contains(kind) {
             *last = None;
             return false;
         }
@@ -2094,15 +2115,26 @@ fn firmware_act(
     said: Value,
     told: SyncSender<String>,
 ) {
+    let text = |name: &str| said[name].as_str().unwrap_or("").to_owned();
+    let key = match act.as_str() {
+        "firmware-install" => format!("install:{}", text("device")),
+        "firmware-fix" => format!("fix:{}", text("attribute")),
+        "firmware-undo" => format!("undo:{}", text("attribute")),
+        _ => "setup".to_owned(),
+    };
     {
         let mut daemon = lock(&shared.daemon);
-        if daemon.acting {
+        if daemon.acting.going.is_some() {
             let busy = error(&id, "busy", "another firmware act is going");
             let _ = told.send(busy.to_string());
             return;
         }
-        daemon.acting = true;
+        daemon.acting.going = Some(key.clone());
+        daemon.acting.ended.remove(&key);
     }
+    // Firmware's rows say it's going before anything else is said.
+    let firmware = HashSet::from(["firmware".to_owned()]);
+    read(shared, &firmware, &[]);
     let shared = Arc::clone(shared);
     std::thread::spawn(move || {
         let patience = said["patience_s"]
@@ -2121,10 +2153,23 @@ fn firmware_act(
         };
         {
             let mut daemon = lock(&shared.daemon);
-            daemon.acting = false;
+            daemon.acting.going = None;
+            // How it ended is said while Firmware's rows are watched, and
+            // a launcher opened after has nothing to be told of it.
+            if makes(&daemon, FIRMWARE) {
+                let ended = match &done {
+                    Ok(()) => firmware_rows::Ended::Done,
+                    Err(refused) if refused.code == "stopped" => {
+                        firmware_rows::Ended::Stopped(patience.as_secs().div_ceil(60))
+                    }
+                    Err(refused) => firmware_rows::Ended::Refused(refused.message.clone()),
+                };
+                daemon.acting.ended.insert(key, ended);
+            }
             daemon.hurried.insert("firmware".to_owned());
         }
         shared.woken.notify_all();
+        read(&shared, &firmware, &[]);
         let answer = match done {
             Ok(()) => json!({"id": id, "done": true}),
             Err(refused) => error(&id, refused.code, &refused.message),
@@ -2169,5 +2214,74 @@ mod tests {
         assert_eq!(said.len(), 2, "the whole answer, then the change: {said:?}");
         assert_eq!(said[0]["records"][0]["raw"], Value::Null, "{said:?}");
         assert_eq!(said[1]["changed"][0]["raw"], json!(0.0), "{said:?}");
+    }
+
+    // Firmware's rows say an act is going while it goes, and how it
+    // ended once it has, before the act is answered: here an install on a
+    // machine with no fwupdmgr, which is refused at once.
+    #[test]
+    fn firmwares_rows_say_an_act_going_then_how_it_ended() {
+        let vocabulary = json!({ "things": [
+            { "id": "firmware", "name": "Firmware", "said": { "one": "1 update ready" } },
+            { "id": "verb:firmware:install", "name": "Install {version}",
+                "sure": "Install {version} on {device} Now", "said": {
+                "installing": "installing", "failed": "didn't install" } }
+        ] });
+        let words = Words::new(&vocabulary, ",", ".");
+        let root = Root::new(std::env::temp_dir());
+        let shared = Arc::new(shared(&root, Some(words)));
+        lock(&shared.daemon).firmware = vec![json!({ "key": "firmware:b10",
+            "kind": "firmware", "id": "b10", "name": "System Firmware",
+            "version": "1.12.0", "update": { "version": "1.13.0" } })];
+        let (told, lines) = mpsc::sync_channel(QUEUED);
+        let (end, _other) = UnixStream::pair().unwrap();
+        let hangup = Arc::new(end);
+        let watch = ask(r#"{"id":"f","ask":"watch","kind":["row"],"place":"firmware"}"#);
+        // A watch's whole answer is queued as it's held, not returned.
+        let _ = answer(&shared, watch, 1, &told, &hangup);
+        let first: Value = serde_json::from_str(&lines.try_recv().unwrap()).unwrap();
+        let records = first["records"].as_array().into_iter().flatten();
+        let keys: Vec<&Value> = records.map(|record| &record["key"]).collect();
+        assert!(
+            keys.contains(&&json!("row:firmware:b10:install")),
+            "Install is offered: {first}"
+        );
+        let said = json!({ "device": "b10", "patience_s": 60 });
+        firmware_act(
+            &shared,
+            json!(1),
+            "firmware-install".to_owned(),
+            said,
+            told.clone(),
+        );
+        let mut notes = Vec::new();
+        loop {
+            let line = lines
+                .recv_timeout(Duration::from_secs(10))
+                .expect("the act is answered");
+            let line: Value = serde_json::from_str(&line).unwrap();
+            if line["id"] == 1 {
+                assert_eq!(line["error"]["code"], "bad-act", "{line}");
+                break;
+            }
+            let changed = line["changed"].as_array().into_iter().flatten();
+            notes.extend(
+                changed
+                    .filter(|record| record["key"] == "row:firmware:b10:install")
+                    .map(|record| record["row"]["note"].clone()),
+            );
+        }
+        assert_eq!(
+            notes,
+            [
+                "installing",
+                "didn't install \u{b7} no fwupdmgr on this machine"
+            ],
+            "going, then how it ended, before the answer"
+        );
+        assert!(
+            lock(&shared.daemon).acting.going.is_none(),
+            "nothing is going"
+        );
     }
 }

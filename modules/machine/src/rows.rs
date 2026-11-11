@@ -41,6 +41,10 @@ pub struct Made {
     pub note: String,
     pub drawer: Option<Value>,
     pub inside: Vec<Made>,
+    /// Whether it's the step that asks Joel to be sure of an act that
+    /// can't be taken back, so its Return does the act (Y2YBTS,
+    /// 2026-11-11).
+    pub sure: bool,
 }
 
 /// A row that says a figure and copies it.
@@ -143,6 +147,9 @@ pub fn placed(
         }
         if let Some(drawer) = row.drawer {
             set("drawer", drawer);
+        }
+        if row.sure {
+            set("sure", json!(true));
         }
         let mut acts = Vec::new();
         if !row.copies.is_empty() {
