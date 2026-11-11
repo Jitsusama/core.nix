@@ -877,6 +877,11 @@
       }
     },
     {
+      "id": "heat:cpu-fan",
+      "in": "heat",
+      "name": "Processor Fan"
+    },
+    {
       "id": "heat:fan",
       "in": "heat",
       "name": "Fan {n}",
