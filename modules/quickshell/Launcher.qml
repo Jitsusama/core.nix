@@ -8732,8 +8732,22 @@ Scope {
     // can be presented before the fill's second frame times it.
     property real presentedAt: -1
     property bool presentedTimed: false
+    // Whether the journal has said niri gives no presentation times, said
+    // once a shell: without them no opening, key or change says when niri
+    // showed it, and nothing fails silently (Y2YBTS, 2026-11-11).
+    property bool presentedUnavailableSaid: false
+    function presentedAvailable() {
+        if (surface.FramePresentation.available)
+            return true;
+        if (!presentedUnavailableSaid) {
+            presentedUnavailableSaid = true;
+            console.warn("launcher: niri gives no presentation times, so no opening, key "
+                + "or change says when niri showed it, only when the shell drew it");
+        }
+        return false;
+    }
     function presentedBegin(from) {
-        if (!surface.FramePresentation.available)
+        if (!presentedAvailable())
             return;
         presentedFrom = from;
         presentedFromChord = false;
@@ -8815,7 +8829,7 @@ Scope {
     // next. Asked for only while a key's frame waits, never while shut.
     property var presentedWaiting: []
     function presentedAwait(from, said) {
-        if (!surface.FramePresentation.available)
+        if (!presentedAvailable())
             return;
         presentedWaiting = presentedWaiting.concat([{ from, said,
             frame: surface.FramePresentation.framesBegun + 1 }]);
