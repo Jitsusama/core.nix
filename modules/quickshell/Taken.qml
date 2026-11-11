@@ -3,10 +3,17 @@ pragma Singleton
 // screenshots, recordings and the camera's, for Capture's Recent
 // (launcher/Capture.qml) and the image programs' own screenshot rows
 // (modules/gimp, modules/swayimg). Each names the folders it shows
-// (`want`); they're read once as the shell starts and again as the
-// launcher opens (`read`, which Capture asks), and never otherwise, since
-// nothing is taken while the launcher shows: Capture closes it first. So
-// no folder is watched at rest (the shell's design, RSCH-20261029-0E8050).
+// (`want`), which must be among those the programs daemon reads for it,
+// `listed:shared:taken` (modules/quickshell/home.nix). It reads them
+// itself, with no command, so the shell starts no process for them (Joel,
+// 2026-11-10: the daemons are the data layer, reached over a socket held
+// open). They're watched from the shell's start until the launcher first
+// rests, and again from each opening (`read`, which Capture asks) until it
+// closes (`rest`), each watch beginning reading them afresh if one changed
+// since, so nothing is read at rest (the shell's design,
+// RSCH-20261029-0E8050). The files are still made here from the daemon's
+// lines, a stopgap until it serves Capture's and the image programs' rows
+// as ready rows, with Programs' own by Thu 12 Nov.
 //
 // It finds what it read by name (`named`), each name made ready to match
 // once, and screenshots by the words in them (`search`), asking the
@@ -18,7 +25,6 @@ pragma Singleton
 // the last few answers are kept through a rest, so typing back over a word
 // asks nothing again.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Fuzzy.js" as Fuzzy
 
@@ -31,8 +37,11 @@ Singleton {
     // bytes, for Capture's drawer, and at in
     // milliseconds since the epoch.
     property var files: []
-    // Asked to read while reading, so the last ask always counts.
-    property bool again: false
+    // The programs daemon's key for what's in the folders.
+    readonly property string key: "listed:shared:taken"
+    // Whether they're watched now: from the first want until the launcher
+    // rests, and from each opening.
+    property bool wanted: false
 
     function want(folder) {
         if (root.folders.includes(folder))
@@ -42,12 +51,8 @@ Singleton {
     }
 
     function read() {
-        if (root.folders.length === 0)
-            return;
-        if (finding.running)
-            root.again = true;
-        else
-            finding.running = true;
+        if (root.folders.length > 0)
+            root.wanted = true;
     }
 
     // The newest file in a folder whose name passes, or none.
@@ -59,9 +64,10 @@ Singleton {
         return root.files.filter(file => file.folder === folder && named.test(file.path)).length;
     }
 
-    // find's lines, a file's time in seconds, its size and its path each.
+    // The daemon's lines, as find prints them: a file's time in seconds, its
+    // size and its path each.
     function heard(lines) {
-        root.files = lines.split("\n").filter(line => line.includes("\t"))
+        root.files = lines.filter(line => line.includes("\t"))
             .map(line => {
                 const first = line.indexOf("\t");
                 const second = line.indexOf("\t", first + 1);
@@ -129,6 +135,7 @@ Singleton {
     // connection is let go, and a text still asked is asked again next
     // time, while the answers kept stay.
     function rest() {
+        root.wanted = false;
         reader.active = false;
         root.pending = [];
         root.searches = root.searches.filter(search => search.records !== null);
@@ -247,19 +254,18 @@ Singleton {
         }
     }
 
-    Process {
-        id: finding
+    // What's in the folders, as the programs daemon reads them.
+    Daemon {
+        id: programs
 
-        command: ["find"].concat(root.folders, ["-maxdepth", "1", "-type", "f", "-not", "-name",
-            ".*", "-printf", "%T@\\t%s\\t%p\\n"])
-        onExited: {
-            if (root.again) {
-                root.again = false;
-                finding.running = true;
-            }
-        }
-        stdout: StdioCollector {
-            onStreamFinished: root.heard(text)
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/programs.sock`
+        kind: "listed"
+        live: false
+        ahead: root.wanted ? [root.key] : []
+
+        onHeard: changed => {
+            if (changed.includes(root.key))
+                root.heard(programs.held[root.key]?.lines ?? []);
         }
     }
 }

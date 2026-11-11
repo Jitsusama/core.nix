@@ -73,7 +73,7 @@ ShellRoot {
 
     readonly property var steps: [
         {
-            what: "the folder is read with no connection made",
+            what: "the folder is read through the programs daemon, with no search asked",
             run: () => Taken.want(root.shots),
             holds: () => Taken.files.some(file => file.path === root.picture)
                 && root.askedSoFar().length === 0
@@ -190,7 +190,7 @@ ShellRoot {
     readonly property var wombatsMeant: [`${root.shots}/wombat plan.png`,
         `${root.shots}/wombat plan 2.png`]
 
-    // Three thousand files as find says them, a time, a size and a path
+    // Three thousand files as the daemon says them, a time, a size and a path
     // each, two named for the wombat
     // plan, the rest as screenshots and recordings are named, then every
     // key of a few searches typed, each judged by its best of five rounds,
@@ -206,7 +206,7 @@ ShellRoot {
         }
         lines.push(`1700000000\t3610000\t${root.shots}/wombat plan.png`);
         lines.push(`1690000000\t3610000\t${root.shots}/wombat plan 2.png`);
-        Taken.heard(lines.join("\n"));
+        Taken.heard(lines);
         const typed = ["screenshot 2026-10-1", "wombat plan", "recording", "zz top"]
             .reduce((all, text) => all.concat(Array.from(text, (_, at) => text.slice(0, at + 1))),
                 []);

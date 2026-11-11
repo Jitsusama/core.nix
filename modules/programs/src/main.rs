@@ -14,9 +14,11 @@
 //! source's list is read as a watch of its key begins if its file
 //! changed since, or every time for a source that's `asked`, and on each
 //! change of its file while it's watched; what a program has open, as a
-//! watch of its key begins and on each get. Each command runs on a thread
-//! of its own, without a shell, so a slow one never holds an answer back,
-//! and is stopped past ten seconds.
+//! watch of its key begins and on each get. A page's list of folders is
+//! read by this daemon itself, with no command, as its watch begins if
+//! one of them changed since, and on each change in them while watched.
+//! Each command runs on a thread of its own, without a shell, so a slow
+//! one never holds an answer back, and is stopped past ten seconds.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -338,7 +340,7 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
         .iter()
         .enumerate()
         .filter(|(_, source)| match run {
-            Run::List => !source.list.is_empty(),
+            Run::List => source.lists(),
             Run::Opened => source.opened_key().is_some(),
         })
         .filter(|(_, source)| {
@@ -401,7 +403,11 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
         daemon.read_as_of[at] = changed_at(source);
     }
     let started = Instant::now();
-    let printed = run(argv);
+    let printed = if what == Run::List && source.list.is_empty() {
+        Ok(source::files_in(&source.folders))
+    } else {
+        run(argv)
+    };
     let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut daemon = lock(&shared.daemon);
     daemon.took.push_back(took);
@@ -434,11 +440,22 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
     }
 }
 
-/// When a source's file last changed, or none where it has none.
+/// When a source's file last changed, or the latest of its folders, as a
+/// file made, moved or removed in one changes it; none where it has none.
 fn changed_at(source: &Source) -> Option<SystemTime> {
-    std::fs::metadata(source.watch.as_deref()?)
-        .and_then(|file| file.modified())
-        .ok()
+    let modified = |path: &str| {
+        std::fs::metadata(path)
+            .and_then(|file| file.modified())
+            .ok()
+    };
+    match source.watch.as_deref() {
+        Some(file) => modified(file),
+        None => source
+            .folders
+            .iter()
+            .filter_map(|folder| modified(folder))
+            .max(),
+    }
 }
 
 /// Whether a source's list is to be read again: it's asked, or its file
@@ -536,6 +553,8 @@ struct Heard {
     links: Vec<String>,
     /// The sources' files in it, by name.
     files: Vec<(String, usize)>,
+    /// The sources it's one of the folders of, whose every change counts.
+    lists: Vec<usize>,
 }
 
 /// Watches every folder of entries and of file kinds, and the folder of
@@ -583,6 +602,13 @@ fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
         let name = name.to_string_lossy().into_owned();
         folders.entry(watch).or_default().files.push((name, at));
     }
+    for (at, source) in shared.sources.iter().enumerate() {
+        for folder in source.folders.iter().filter(|_| !source.asked) {
+            if let Some(watch) = notify.watch(Path::new(folder)) {
+                folders.entry(watch).or_default().lists.push(at);
+            }
+        }
+    }
     folders
 }
 
@@ -606,6 +632,7 @@ fn notice(shared: &Arc<Shared>, notify: &Notify, folders: &HashMap<i32, Heard>) 
                     .filter(|(file, _)| *file == name)
                     .map(|(_, at)| *at),
             );
+            lists.extend(heard.lists.iter().copied());
         }
         if entries {
             entries_changed(shared);
