@@ -1131,9 +1131,15 @@ fn a_watchers_status_is_told_as_it_writes_it_and_said_silent_once_its_heartbeat_
         "told without its beats"
     );
     assert_eq!(guard["silent"], false);
-    // A window that ended two seconds short of lag-watch's thirty, and
-    // nothing after it, so only its deadline can say it silent.
-    let ended = now - 28.0;
+    // A window that ended five seconds short of lag-watch's thirty, and
+    // nothing after it, so only its deadline can say it silent: dated as
+    // it's written, since a busy machine can take seconds over the guard
+    // above, and five seconds is well inside the client's ten.
+    let ended = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+        - 25.0;
     write(
         "run/user/1000/lag-watch",
         format!(r#"{{"ended": {ended}, "trouble": []}}"#),
