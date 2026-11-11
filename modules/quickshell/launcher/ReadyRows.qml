@@ -234,10 +234,13 @@ Scope {
         const acting = acts.length === 0 ? {} : {
             verb: verbOf(first),
             stays: first.step === "rows" || Ready.actForm(first) === "ask",
-            run: () => act(key, first),
-            verbs: verbs,
-            targets: verbs
+            run: () => act(key, first)
         };
+        // A row asking Joel to be sure holds its one act alone, as the
+        // shell's own sure rows did, so the key language reads that act's
+        // command (Catalogue.endsSomething) rather than a row of verbs.
+        if (acts.length > 0 && row.sure !== true)
+            Object.assign(acting, { verbs: verbs, targets: verbs });
         // A row whose Return copies is a value, drawn as Provider.qml's
         // copyRow draws one, and what it copies is what y joins.
         const copying = Ready.actForm(first) !== "copy" ? {} : {
