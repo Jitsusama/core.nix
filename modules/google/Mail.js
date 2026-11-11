@@ -265,9 +265,8 @@ function kind(file, plain) {
     return at > 0 && at < file.name.length - 1 ? file.name.slice(at + 1).toUpperCase() : plain;
 }
 
-// Sizes in decimal units, as a picture's and a disk's are said elsewhere
-// in the launcher (Copies.qml's weighed), with a figure after the point
-// only below ten.
+// Sizes in decimal units, as a disk's is said elsewhere in the launcher,
+// with a figure after the point only below ten.
 const GIGA = 1e9;
 const MEGA = 1e6;
 const KILO = 1e3;

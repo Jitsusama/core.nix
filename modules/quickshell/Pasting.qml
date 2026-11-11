@@ -1,12 +1,14 @@
 pragma Singleton
 // Pasting into the window the launcher opened over, for whatever the
 // launcher pastes: Super+E's emoji, and Super+V's copies, which pasted so
-// first (launcher/Copies.qml). The clipboard's history pastes it: told the
-// copy, by its number or as text, it puts it on the clipboard itself and,
+// first (launcher/Copies.qml). The clipboard's history pastes it: asked
+// for the copy, by its number or as text, over the connection Copies
+// holds, it puts it on the clipboard itself and,
 // once niri says the launcher has let go of the keys, presses the window's
 // paste keys through a virtual keyboard: Ctrl+Shift+V in a terminal, whose
 // Ctrl+V is a key of its own, and Ctrl+V anywhere else
-// (clipboard/src/main.rs). So nothing waits on the shell's thread, which
+// (clipboard/src/main.rs), answering once they're pressed, or that they
+// couldn't be. So nothing waits on the shell's thread, which
 // can be busy for seconds after an opening, and the window reads the copy
 // from the history rather than from the shell. With no history kept, the
 // copy goes on the clipboard through Qt and the keys are pressed through
@@ -27,8 +29,9 @@ Singleton {
         "com.mitchellh.ghostty"]
 
     // The clipboard's history (launcher/Copies.qml), which copies and
-    // pastes while it's connected: its tell sends it a line, and linked
-    // says whether it's there to hear it. Null while no history is kept.
+    // pastes while it's connected: its ask asks it, as Daemon.qml's does,
+    // and linked says whether it's there to hear it. Null while no history
+    // is kept.
     property var helper: null
 
     // Whether the history answers, from the helper, watched so silence is
@@ -56,7 +59,7 @@ Singleton {
         say();
     }
 
-    // Told by the history that a paste never landed.
+    // Answered by the history that a paste never landed.
     function missed() {
         missedAt = Date.now();
         forgotten.restart();
@@ -99,12 +102,18 @@ Singleton {
         return pasting.helper !== null && pasting.helper.linked;
     }
 
+    // The copy `what` names, as the history's asks name it: its number, or
+    // text spelled as JSON. Not by `id`, which Daemon.qml gives the ask.
+    function named(what) {
+        return /^\d+$/.test(what) ? { copy: Number(what) } : { text: JSON.parse(what) };
+    }
+
     // Copies, through the history, which names the copy by what: its
     // number, or text spelled as JSON. Without the history, copied copies
     // it instead.
     function copy(what, copied) {
         if (helped())
-            pasting.helper.tell(`copy ${what}`);
+            pasting.helper.ask(Object.assign({ ask: "copy" }, named(what)), null);
         else
             copied();
     }
@@ -123,7 +132,14 @@ Singleton {
             missedAt = null;
             forgotten.stop();
             say();
-            pasting.helper.tell(`paste ${what} ${terminal ? "terminal" : "plain"}`);
+            const asked = Object.assign({ ask: "paste", into: terminal ? "terminal" : "plain" },
+                named(what));
+            pasting.helper.ask(asked, answer => {
+                if (answer?.pasted === true)
+                    return;
+                pasting.missed();
+                Report.say("never pasted");
+            });
             Report.say(`pastes into ${app}`);
             return;
         }

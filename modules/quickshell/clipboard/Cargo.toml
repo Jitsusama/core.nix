@@ -16,5 +16,8 @@ wayland-protocols-misc = { version = "0.3", features = ["client"] }
 # poll(2), to wait on the compositor and the shell at once, and a
 # keymap's file in memory, for the virtual keyboard.
 rustix = { version = "1", features = ["event", "fs"] }
-# niri's answers, and the text the shell sends, as JSON spells them.
+# niri's answers, and the records the shell is served, as JSON spells them.
 serde_json = "1"
+# The launcher's daemon interface, and the form its rows are served in.
+daemon-serve = { path = "../../daemon-serve" }
+ready-rows = { path = "../../ready-rows" }

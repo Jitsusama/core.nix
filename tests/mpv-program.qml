@@ -2,7 +2,7 @@
 // modules/quickshell/launcher/Applications.qml) through Quickshell itself,
 // over mpv's desktop entry written beside this, with niri, the desktop's
 // shortcuts and what's playing stood in, the shell's own watch of the
-// clipboard (Copied.qml) with wl-paste stood in, so a copy is set by
+// clipboard (Copied.qml) with no history to hear, so a copy is set by
 // hand, and mpv-stopped by a script printing what it would. First, in
 // Qt's own engine, Mpv.js's cases: which copies are one address mpv plays,
 // a video site's page or a media file, and which aren't, how far into a

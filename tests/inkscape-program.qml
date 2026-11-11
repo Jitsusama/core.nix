@@ -2,7 +2,7 @@
 // through modules/quickshell/launcher/Applications.qml) through Quickshell
 // itself, over Inkscape's desktop entry written beside this, with niri and
 // what's playing stood in, the shell's own watch of the clipboard
-// (Copied.qml) with wl-paste stood in, so a copy is set by hand, the
+// (Copied.qml) with no history to hear, so a copy is set by hand, the
 // clipboard's history stood in by its newest copy alone, and the desktop's
 // list of files opened lately as GLib writes it, read by recent-files as
 // the list programs share and by the account's own inkscape-drawings, each

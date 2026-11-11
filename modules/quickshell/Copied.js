@@ -1,5 +1,5 @@
 // What the clipboard holds, as the acts that take a copy read it
-// (Copied.qml): the line its one watcher says of each copy, whether it's
+// (Copied.qml): the record the clipboard's history holds of it, whether it's
 // a picture and of what type, one web address alone, or a file's path
 // with the line and column to open it at, and whether that file is
 // markdown. Kept apart from Quickshell's types, so the
@@ -7,12 +7,8 @@
 // engine (tests/quick-acts.qml).
 .pragma library
 
-// The unit separator the watcher writes for each line break, since it
-// says each copy as one line; nothing typed holds one.
-const BREAK = "\u001f";
-
 // A picture's type, as the clipboard's history says it too
-// (launcher/Copies.qml), in the fewest words, and the extension a file of
+// (clipboard/src/rows.rs), in the fewest words, and the extension a file of
 // it is saved with.
 const PICTURES = {
     "image/png": { said: "PNG", extension: "png" },
@@ -60,18 +56,20 @@ const MARKDOWN = /\.(md|markdown)$/i;
 // MuPDF reads too are the picture viewer's.
 const DOCUMENT = /\.(pdf|xps|oxps|epub|fb2|mobi|djvu|djv|ps|eps)$/i;
 
-// What the watcher says of one copy, its types, a space between each,
-// then a tab and its text, each line break written as BREAK, or an
-// empty line for a copy with nothing to read, as one cleared or a
-// password manager's: { types, text }.
-function heard(line) {
-    const tab = line.indexOf("\t");
-    if (tab < 0) {
-        return { types: [], text: "" };
+// What the clipboard's history says the clipboard holds now, its record
+// `now:clipboard`, `{ key, kind: "now", now: { types, text } }`, as
+// { types, text }: the types it's offered as, and its text, "" for one
+// with none to read, as one cleared or a password manager's. Null while
+// it holds no such record (clipboard/src/main.rs).
+function held(record) {
+    const said = record?.now;
+    if (said === null || typeof said !== "object") {
+        return null;
     }
     return {
-        types: line.slice(0, tab).split(" ").filter(type => type !== ""),
-        text: line.slice(tab + 1).split(BREAK).join("\n")
+        types: Array.isArray(said.types)
+            ? said.types.filter(type => typeof type === "string") : [],
+        text: typeof said.text === "string" ? said.text : ""
     };
 }
 

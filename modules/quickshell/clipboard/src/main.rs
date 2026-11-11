@@ -3,14 +3,22 @@
 //! A Wayland program only sees the clipboard while it holds the keys, so the
 //! shell can't keep a history by itself. This one program holds the
 //! compositor's data-control connection for the whole session instead, reads
-//! each new copy, and keeps the latest. The shell connects to its socket and
-//! is sent every copy kept, oldest first, then each new one as it comes: one
-//! JSON object to a line, the time in milliseconds since the epoch in `at`.
-//! A text copy is `{"at", "id", "text"}`, its number in `id`. A picture is
-//! `{"at", "picture", "type", "path", "bytes", "width", "height"}`: its
-//! number, its type, the file holding it, its size, and its width and height
-//! when its type says them. Text and pictures are numbered from one count,
-//! and a copy made again keeps its number. Nothing is started per copy.
+//! each new copy, and keeps the latest. Nothing is started per copy.
+//!
+//! It serves the shell as every daemon of the launcher does, over the shell's
+//! daemon interface (../../daemon-serve), in the ready-row form
+//! (../../ready-rows): each copy kept is a row of the launcher's Copies,
+//! `row:copies:<N>`, newest first, worded from the launcher's vocabulary
+//! (src/rows.rs), so the shell builds and words nothing. Text and pictures
+//! are numbered from one count, and a copy made again keeps its number and
+//! moves to the front, which sends that row alone. Beside them go
+//! `summary:copies`, how many are kept, and `now:clipboard`, what the
+//! clipboard holds now: the types it's offered as, and its text where it's
+//! offered as text, kept or not, so the shell's acts on a copy (Copied.qml)
+//! ask nothing of their own. A secret, the clipboard emptied with nothing to
+//! give back, or the history forgotten holds no types and no text. With
+//! `--keep 0` nothing is kept and that is all it serves, for a shell whose
+//! launcher keeps no copies.
 //!
 //! Text is kept in memory, and pictures in files of their own in the
 //! directory `--pictures` names, only this account's to read, which should
@@ -21,21 +29,21 @@
 //!
 //! A copy a password manager marks as secret is never kept, nor text larger
 //! than `--largest`, nor a picture larger than `--largest-picture`. The
-//! pictures kept take up at most `--room`, the oldest going first, and the
-//! shells are sent `{"gone":[N, ...]}` for those let go, to make room or
-//! past what it keeps, since their files go with them.
+//! pictures kept take up at most `--room`, the oldest going first, their
+//! rows and files going with them.
 //!
-//! From the shell, a line `copy N` puts copy N back on the clipboard, and
-//! `copy "text"`, the text spelled as JSON, puts the shell's own text
-//! there, kept as a copy is. `paste N terminal` or `paste N plain`, or the
-//! same with the text in place of N, puts it there and then presses the
+//! The shell asks it, as its own asks, `{"ask": "copy", "copy": N}` to put
+//! copy N back on the clipboard (not `id`, which names the ask itself), or with `"text"` in place of the number to
+//! put the shell's own text there, kept as a copy is. `"paste"`, with
+//! `"into": "terminal"` or `"plain"`, puts it there and then presses the
 //! paste keys for the window the launcher closed over: Ctrl+Shift+V for a
 //! terminal, whose Ctrl+V is a key of its own, and Ctrl+V anywhere else.
 //! They're pressed through the compositor's virtual keyboard, once niri
 //! says the launcher's layer has let go of the keys, so they reach the
 //! window and not the launcher, and nothing waits on the shell's thread:
-//! the window reads the copy from here, too. `clear` forgets everything,
-//! every client then being sent `{"clear":true}`.
+//! the window reads the copy from here, too. A paste is answered once its
+//! keys are pressed, or refused as `unpasted` once they couldn't be.
+//! `"clear"` forgets everything.
 //!
 //! A copy outlives the program that made it: when the clipboard empties
 //! because that program let go of it, as one does when it closes, this one
@@ -47,25 +55,35 @@
 //! since the clipboard emptied, which the compositor has taken, is then
 //! known, and kept rather than replaced.
 //!
-//! Usage: clipboard-history --socket PATH [--keep N] [--largest BYTES]
-//!        [--pictures DIR] [--largest-picture BYTES] [--room BYTES]
+//! Usage: clipboard-history --socket PATH --vocabulary WORDS [--keep N]
+//!        [--largest BYTES] [--pictures DIR] [--largest-picture BYTES]
+//!        [--room BYTES]
+//!
+//! WORDS is the launcher's words.json. Its numbers are grouped and pointed
+//! as the launcher's counts are, with the comma and the full stop.
+
+mod rows;
 
 use std::collections::{HashMap, VecDeque};
-use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, BufRead, BufReader, PipeReader, PipeWriter, Read, Write};
 use std::os::fd::AsFd;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, process, thread};
 
+use daemon_serve::asks::Domain;
+use daemon_serve::serve::{self, Own, Shared};
+use ready_rows::kept::Kept;
+use ready_rows::numbers::Numbers;
+use rows::Words;
 use rustix::event::{PollFd, PollFlags, poll};
 use rustix::fs::{MemfdFlags, memfd_create};
-use serde_json::Value;
+use serde_json::{Value, json};
 use wayland_client::backend::{ObjectId, WaylandError};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_registry, wl_seat};
@@ -162,20 +180,36 @@ enum Which {
     Text(String),
 }
 
-/// What the shell asks for, or the paste keys, once the launcher has let
-/// go of them: how long that took after the ask, and when it did.
+/// What the shell asks for.
 #[derive(Debug, PartialEq)]
-enum Asked {
+enum Wanted {
     Clear,
     Copy(Which),
     Paste(Which, Keys),
-    Press(Keys, Duration, Instant),
-    Unpasted,
 }
 
-/// What the shell is told when a paste it asked for never lands, so the
-/// place it pasted from can say so rather than leave it to the journal.
-const UNPASTED: &str = "{\"unpasted\":true}\n";
+/// Where an ask's answer goes: back to the connection that asked, which
+/// waits for it on a thread of its own.
+type Reply = mpsc::Sender<Value>;
+
+/// What the Wayland side is handed: an ask and where its answer goes, or a
+/// paste's keys once the launcher has let go of them, with how long that
+/// took after the ask and when it did, or a paste that never could be.
+#[derive(Debug)]
+enum Asked {
+    Wanted(Wanted, Reply),
+    Press(Keys, Duration, Instant, Reply),
+    Unpasted(Reply),
+}
+
+/// How long an ask waits on the Wayland side before it's answered as
+/// not answering: past a paste's whole wait for the keys.
+const ANSWERING: Duration = Duration::from_secs(3);
+
+/// An ask refused, in the interface's form, its words the launcher's.
+fn refused(code: &str, message: &str, said: &str) -> Value {
+    json!({ "error": { "code": code, "message": message, "said": said } })
+}
 
 /// What a paste says of its time, in the journal: how long the launcher
 /// took to let go of the keys after the ask, which is the shell's frame,
@@ -190,37 +224,32 @@ fn pasted(letting_go: Duration, pressing: Duration) -> String {
     )
 }
 
-/// A line from the shell, as what it asks, or none for one it doesn't
-/// understand.
-fn asked(line: &str) -> Option<Asked> {
-    let line = line.trim();
-    if line == "clear" {
-        return Some(Asked::Clear);
+/// What one of the shell's own asks wants, or none for one it doesn't
+/// know.
+fn wanted(said: &Value) -> Option<Wanted> {
+    match said["ask"].as_str()? {
+        "clear" => Some(Wanted::Clear),
+        "copy" => Some(Wanted::Copy(which(said)?)),
+        "paste" => {
+            let keys = match said["into"].as_str()? {
+                "terminal" => Keys::Terminal,
+                "plain" => Keys::Plain,
+                _ => return None,
+            };
+            Some(Wanted::Paste(which(said)?, keys))
+        }
+        _ => None,
     }
-    if let Some(rest) = line.strip_prefix("copy ") {
-        let (which, rest) = which(rest)?;
-        return rest.trim().is_empty().then_some(Asked::Copy(which));
-    }
-    let (which, rest) = which(line.strip_prefix("paste ")?)?;
-    let keys = match rest.trim() {
-        "terminal" => Keys::Terminal,
-        "plain" => Keys::Plain,
-        _ => return None,
-    };
-    Some(Asked::Paste(which, keys))
 }
 
-/// The copy a line names, and what follows it: text spelled as JSON, or
-/// else a number.
-fn which(said: &str) -> Option<(Which, &str)> {
-    let said = said.trim_start();
-    if said.starts_with('"') {
-        let mut strings = serde_json::Deserializer::from_str(said).into_iter::<String>();
-        let text = strings.next()?.ok()?;
-        return Some((Which::Text(text), &said[strings.byte_offset()..]));
+/// The copy an ask names: one kept by its number, or text of the shell's.
+fn which(said: &Value) -> Option<Which> {
+    if let Some(id) = said["copy"].as_u64() {
+        return Some(Which::Kept(id));
     }
-    let (number, rest) = said.split_once(' ').unwrap_or((said, ""));
-    Some((Which::Kept(number.parse().ok()?), rest))
+    said["text"]
+        .as_str()
+        .map(|text| Which::Text(text.to_owned()))
 }
 
 /// Whether niri's answer to `Layers` says the launcher holds no keys: none
@@ -346,52 +375,23 @@ struct Copy {
 }
 
 impl Copy {
-    fn line(&self) -> String {
+    /// Its row in the launcher's Copies.
+    fn row(&self, words: &Words) -> Value {
         match &self.content {
-            Content::Text(text) => format!(
-                "{{\"at\":{},\"id\":{},\"text\":{}}}\n",
-                self.at,
-                self.id,
-                quoted(text)
+            Content::Text(text) => rows::text(self.id, self.at, text, words),
+            Content::Picture(picture) => rows::picture(
+                &rows::Picture {
+                    id: picture.id,
+                    at: self.at,
+                    kind: picture.kind,
+                    path: &picture.path.to_string_lossy(),
+                    bytes: picture.bytes,
+                    size: picture.size,
+                },
+                words,
             ),
-            Content::Picture(picture) => {
-                let size = picture
-                    .size
-                    .map(|(width, height)| format!(",\"width\":{width},\"height\":{height}"))
-                    .unwrap_or_default();
-                format!(
-                    "{{\"at\":{},\"picture\":{},\"type\":{},\"path\":{},\"bytes\":{}{size}}}\n",
-                    self.at,
-                    picture.id,
-                    quoted(picture.kind),
-                    quoted(&picture.path.to_string_lossy()),
-                    picture.bytes,
-                )
-            }
         }
     }
-}
-
-/// A string as JSON spells it.
-fn quoted(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 2);
-    out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 || c == '\u{2028}' || c == '\u{2029}' => {
-                // Writing to a String can't fail.
-                _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }
 
 fn be16(bytes: &[u8], at: usize) -> Option<u32> {
@@ -490,19 +490,32 @@ fn written(path: &Path, bytes: &[u8]) -> io::Result<()> {
         .write_all(bytes)
 }
 
-/// The copies kept, newest first, the shells listening for more, what the
-/// clipboard holds now when it's a copy kept, where pictures go and how
-/// much room they have, and the pictures let go since the shells were last
-/// told.
+/// The copies kept, newest first, what the clipboard holds now when it's a
+/// copy kept, where pictures go and how much room they have, what the
+/// clipboard holds as the shell is told it, and how many times what's
+/// served has changed.
 struct History {
     copies: VecDeque<Copy>,
     keep: usize,
-    clients: Vec<UnixStream>,
     current: Option<Content>,
     pictures: Option<PathBuf>,
     room: usize,
     next: u64,
-    gone: Vec<u64>,
+    now: Value,
+    changes: u64,
+}
+
+/// What the clipboard holds once a program copies: nothing of a secret,
+/// and text only where it was read as text.
+fn offered(types: &[String], heard: Option<&Heard>) -> Value {
+    if types.iter().any(|kind| kind == SECRET) {
+        return rows::now::<&str>(&[], "");
+    }
+    let text = match heard {
+        Some(Heard::Text(text)) => text.as_str(),
+        _ => "",
+    };
+    rows::now(types, text)
 }
 
 impl History {
@@ -510,24 +523,40 @@ impl History {
         History {
             copies: VecDeque::new(),
             keep,
-            clients: Vec::new(),
             current: None,
             pictures,
             room,
             next: 1,
-            gone: Vec::new(),
+            now: rows::now::<&str>(&[], ""),
+            changes: 0,
         }
     }
 
-    /// The line telling the shells which pictures were let go to make room,
-    /// `{"gone":[N, ...]}`, since they keep rows of their own; none when
-    /// nothing went.
-    fn went(&mut self) -> Option<String> {
-        if self.gone.is_empty() {
-            return None;
+    /// What the clipboard holds now.
+    fn holds(&mut self, now: Value) {
+        if now != self.now {
+            self.now = now;
+            self.changes += 1;
         }
-        let ids: Vec<String> = self.gone.drain(..).map(|id| id.to_string()).collect();
-        Some(format!("{{\"gone\":[{}]}}\n", ids.join(",")))
+    }
+
+    /// What the clipboard holds once it offers the copy this offers, or
+    /// nothing while it offers none.
+    fn holds_current(&mut self) {
+        let now = match &self.current {
+            Some(Content::Text(text)) => rows::now(&TEXT, text),
+            Some(content @ Content::Picture(_)) => rows::now(&content.types(), ""),
+            None => rows::now::<&str>(&[], ""),
+        };
+        self.holds(now);
+    }
+
+    /// Everything it serves: a row for each copy, newest first, and beside
+    /// them how many there are and what the clipboard holds.
+    fn records(&self, words: &Words) -> (Vec<Value>, Vec<Value>) {
+        let rows = self.copies.iter().map(|copy| copy.row(words)).collect();
+        let beside = vec![rows::summary(self.copies.len(), words), self.now.clone()];
+        (rows, beside)
     }
 
     /// Keeps a copy, unless it's blank text. One copied again moves to the
@@ -558,11 +587,9 @@ impl History {
             gone.extend(self.copies.remove(oldest + 1));
         }
         for copy in gone {
-            if let Content::Picture(picture) = &copy.content {
-                self.gone.push(picture.id);
-            }
             discard(&copy.content);
         }
+        self.changes += 1;
         true
     }
 
@@ -633,6 +660,9 @@ impl History {
     /// the copy when it was kept.
     fn copied(&mut self, heard: Option<Heard>) -> Option<Copy> {
         self.current = None;
+        if self.keep == 0 {
+            return None;
+        }
         let content = match heard? {
             Heard::Text(text) => Content::Text(text),
             Heard::Picture { kind, bytes } => self.picture(kind, &bytes)?,
@@ -658,21 +688,46 @@ impl History {
         copy.at = now();
         self.copies.push_front(copy.clone());
         self.current = Some(copy.content.clone());
+        self.changes += 1;
         Some(copy)
     }
 
-    /// Forgets every copy, and what the clipboard holds with them.
+    /// Forgets every copy, and what the clipboard holds with them, which is
+    /// nothing now, since it gives nothing.
     fn forget(&mut self) {
         for copy in self.copies.drain(..) {
             discard(&copy.content);
         }
         self.current = None;
+        self.changes += 1;
+        self.holds_current();
     }
+}
 
-    /// Sends a line to every shell, dropping any that has gone.
-    fn tell(&mut self, line: &str) {
-        self.clients
-            .retain_mut(|client| client.write_all(line.as_bytes()).is_ok());
+/// What's served to the shell: the interface's watches, the rows as they
+/// were last sent, the words they're said in, and how many changes of the
+/// history they hold.
+struct Served {
+    shared: Arc<Shared>,
+    kept: Kept,
+    words: Words,
+    changes: Option<u64>,
+}
+
+impl Served {
+    /// Sends the shell what changed in the history since it was last sent,
+    /// unless nothing has.
+    fn send(&mut self, history: &History) {
+        if self.changes == Some(history.changes) {
+            return;
+        }
+        self.changes = Some(history.changes);
+        let (rows, beside) = history.records(&self.words);
+        let moved = self.kept.take(rows, beside);
+        if !moved.changed.is_empty() || !moved.gone.is_empty() {
+            self.shared
+                .change(self.kept.all().cloned().collect(), json!({}));
+        }
     }
 }
 
@@ -694,13 +749,15 @@ fn prepared(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// What the Wayland side needs: the history, the types each offer has said
-/// it can be read as until its selection arrives, the largest copies it
-/// reads, while a copy is offered in its program's place, that offer, the
-/// keyboard a paste's keys are pressed through, and how a paste waiting
-/// on the launcher to let go of the keys says it may press them.
+/// What the Wayland side needs: the history and what's served of it, the
+/// types each offer has said it can be read as until its selection
+/// arrives, the largest copies it reads, while a copy is offered in its
+/// program's place, that offer, the keyboard a paste's keys are pressed
+/// through, and how a paste waiting on the launcher to let go of the keys
+/// says it may press them.
 struct State {
-    history: Arc<Mutex<History>>,
+    history: History,
+    served: Served,
     offers: HashMap<ObjectId, Vec<String>>,
     largest: usize,
     largest_picture: usize,
@@ -721,14 +778,7 @@ impl State {
     /// Offers the copy the clipboard holds, in place of the program that
     /// let go of it, or as the shell chose it.
     fn hold(&mut self, handle: &QueueHandle<Self>) {
-        let Some(types) = self
-            .history
-            .lock()
-            .unwrap()
-            .current
-            .as_ref()
-            .map(Content::types)
-        else {
+        let Some(types) = self.history.current.as_ref().map(Content::types) else {
             return;
         };
         let source = self.manager.create_data_source(handle, ());
@@ -745,48 +795,40 @@ impl State {
     /// Puts a copy on the clipboard, as the shell asked: one kept, or the
     /// shell's own text, kept as a copy is. Answers whether it's there.
     fn offer(&mut self, which: Which, handle: &QueueHandle<Self>) -> bool {
-        let offered = {
-            let mut history = self.history.lock().unwrap();
-            let offered = match which {
-                Which::Kept(id) => history.choose(id),
-                Which::Text(text) => history.copied(Some(Heard::Text(text))),
-            };
-            if let Some(copy) = &offered {
-                history.tell(&copy.line());
-                if let Some(line) = history.went() {
-                    history.tell(&line);
-                }
-            }
-            offered.is_some()
+        let offered = match which {
+            Which::Kept(id) => self.history.choose(id),
+            Which::Text(text) => self.history.copied(Some(Heard::Text(text))),
         };
-        if offered {
-            self.hold(handle);
+        if offered.is_none() {
+            return false;
         }
-        offered
+        self.history.holds_current();
+        self.hold(handle);
+        true
     }
 
     /// Puts a copy on the clipboard, then waits, away from the Wayland
     /// side, for the launcher to let go of the keys, and asks for the paste
-    /// keys to be pressed once it has.
-    fn paste(&mut self, which: Which, keys: Keys, handle: &QueueHandle<Self>) {
+    /// keys to be pressed once it has. The paste is answered then.
+    fn paste(&mut self, which: Which, keys: Keys, reply: Reply, handle: &QueueHandle<Self>) {
         let asked = Instant::now();
         if !self.offer(which, handle) {
             eprintln!("That copy isn't kept, so nothing was pasted.");
-            self.unpasted();
+            let _ = reply.send(self.unkept());
             return;
         }
         let (Ok(mut waking), niri) = (self.waking.try_clone(), self.niri.clone()) else {
-            self.unpasted();
+            let _ = reply.send(self.unpasted());
             return;
         };
         let pressing = self.pressing.clone();
         thread::spawn(move || {
             let said = if keys_let_go(niri.as_deref()) {
                 let let_go = Instant::now();
-                Asked::Press(keys, let_go - asked, let_go)
+                Asked::Press(keys, let_go - asked, let_go, reply)
             } else {
                 eprintln!("The launcher never let go of the keys, so nothing was pasted.");
-                Asked::Unpasted
+                Asked::Unpasted(reply)
             };
             if pressing.send(said).is_ok() {
                 let _ = waking.write_all(b"!");
@@ -794,9 +836,36 @@ impl State {
         });
     }
 
-    /// Tells the shell a paste it asked for never landed.
-    fn unpasted(&self) {
-        self.history.lock().unwrap().tell(UNPASTED);
+    /// Does what the shell asked, answering it then, or for a paste, once
+    /// its keys are pressed.
+    fn wanted(&mut self, wanted: Wanted, reply: Reply, handle: &QueueHandle<Self>) {
+        let answer = match wanted {
+            Wanted::Copy(which) => {
+                if self.offer(which, handle) {
+                    json!({ "copied": true })
+                } else {
+                    self.unkept()
+                }
+            }
+            Wanted::Paste(which, keys) => return self.paste(which, keys, reply, handle),
+            Wanted::Clear => {
+                self.history.forget();
+                json!({ "cleared": true })
+            }
+        };
+        let _ = reply.send(answer);
+    }
+
+    /// The answer to a paste that never landed.
+    fn unpasted(&self) -> Value {
+        let said = self.served.words.said("unpasted");
+        refused("unpasted", "the paste keys were never pressed", &said)
+    }
+
+    /// The answer to an ask for a copy that's no longer kept.
+    fn unkept(&self) -> Value {
+        let said = self.served.words.said("unkept");
+        refused("unkept", "that copy is no longer kept", &said)
     }
 
     /// Presses the paste keys through the virtual keyboard: its modifiers
@@ -870,7 +939,7 @@ impl Dispatch<ExtDataControlSourceV1, ()> for State {
         match event {
             // Read when asked, so a history forgotten since gives nothing.
             ext_data_control_source_v1::Event::Send { fd, .. } => {
-                let content = state.history.lock().unwrap().current.clone();
+                let content = state.history.current.clone();
                 thread::spawn(move || {
                     let mut file = File::from(fd);
                     match content {
@@ -981,13 +1050,9 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
                     None => None,
                 };
                 offer.destroy();
-                let mut history = state.history.lock().unwrap();
-                if let Some(copy) = history.copied(heard) {
-                    history.tell(&copy.line());
-                    if let Some(line) = history.went() {
-                        history.tell(&line);
-                    }
-                }
+                let now = offered(&types, heard.as_ref());
+                state.history.copied(heard);
+                state.history.holds(now);
             }
             // The program holding the clipboard let go of it: what it held
             // is offered once the events after this are read (run).
@@ -1042,53 +1107,42 @@ fn now() -> u128 {
         .map_or(0, |since| since.as_millis())
 }
 
-/// Sends each new shell every copy kept, then listens for what it asks:
-/// `clear` here, and a copy or a paste passed to the Wayland side, woken to
-/// do it.
-fn serve(
-    listener: &UnixListener,
-    history: &Arc<Mutex<History>>,
-    asked: &mpsc::Sender<Asked>,
-    wake: &PipeWriter,
-) {
-    for client in listener.incoming().flatten() {
-        let _ = client.set_write_timeout(Some(Duration::from_secs(1)));
-        let (Ok(asking), Ok(mut waking)) = (client.try_clone(), wake.try_clone()) else {
-            continue;
-        };
-        {
-            let mut history = history.lock().unwrap();
-            let mut client = client;
-            let all: String = history.copies.iter().rev().map(Copy::line).collect();
-            if client.write_all(all.as_bytes()).is_ok() {
-                history.clients.push(client);
-            }
+/// What the interface names this daemon, and the kinds of record it holds.
+const DOMAIN: Domain = Domain {
+    name: "clipboard",
+    kinds: &["row", "summary", "now"],
+};
+
+/// The shell's own asks, handed to the Wayland side, which is woken to do
+/// them, and answered as it answers, on the asking connection's thread.
+fn own(asked: mpsc::Sender<Asked>, wake: PipeWriter) -> Own {
+    let wake = Mutex::new(wake);
+    Box::new(move |said| {
+        let wanted = wanted(said)?;
+        let (reply, answer) = mpsc::channel();
+        let handed = asked.send(Asked::Wanted(wanted, reply)).is_ok()
+            && wake
+                .lock()
+                .is_ok_and(|mut wake| wake.write_all(b"!").is_ok());
+        let silent = || refused("not-answering", "the clipboard isn't answering", "");
+        if !handed {
+            return Some(silent());
         }
-        let history = Arc::clone(history);
-        let asked = asked.clone();
-        thread::spawn(move || {
-            for line in BufReader::new(asking).lines() {
-                let Ok(line) = line else { break };
-                match self::asked(&line) {
-                    Some(Asked::Clear) => {
-                        let mut history = history.lock().unwrap();
-                        history.forget();
-                        history.tell("{\"clear\":true}\n");
-                    }
-                    Some(wanted) => {
-                        if asked.send(wanted).is_err() || waking.write_all(b"!").is_err() {
-                            break;
-                        }
-                    }
-                    None => {}
-                }
-            }
-        });
-    }
+        Some(answer.recv_timeout(ANSWERING).unwrap_or_else(|_| silent()))
+    })
+}
+
+/// The clipboard's words, from the launcher's vocabulary.
+fn worded(vocabulary: &Path) -> Result<Words, String> {
+    let text = fs::read_to_string(vocabulary)
+        .map_err(|e| format!("can't read {}: {e}", vocabulary.display()))?;
+    Words::from_vocabulary(&text, Numbers::default())
+        .map_err(|e| format!("{} isn't JSON: {e}", vocabulary.display()))
 }
 
 struct Settings {
-    socket: String,
+    socket: PathBuf,
+    vocabulary: PathBuf,
     keep: usize,
     largest: usize,
     pictures: Option<PathBuf>,
@@ -1097,7 +1151,7 @@ struct Settings {
 }
 
 fn settings() -> Result<Settings, String> {
-    let mut socket = None;
+    let (mut socket, mut vocabulary) = (None, None);
     let mut keep = 200;
     let mut largest = 1 << 20;
     let mut pictures = None;
@@ -1116,7 +1170,8 @@ fn settings() -> Result<Settings, String> {
                 .map_err(|_| format!("{name} takes bytes"))
         };
         match argument.as_str() {
-            "--socket" => socket = Some(value()?),
+            "--socket" => socket = Some(PathBuf::from(value()?)),
+            "--vocabulary" => vocabulary = Some(PathBuf::from(value()?)),
             "--keep" => keep = value()?.parse().map_err(|_| "--keep takes a count")?,
             "--largest" => largest = bytes(value()?, "--largest")?,
             "--pictures" => pictures = Some(PathBuf::from(value()?)),
@@ -1126,11 +1181,13 @@ fn settings() -> Result<Settings, String> {
         }
     }
     let socket = socket.ok_or("--socket names where the shell connects")?;
+    let vocabulary = vocabulary.ok_or("--vocabulary names the launcher's words")?;
     if largest_picture > room {
         return Err("--largest-picture can't be more than --room".to_string());
     }
     Ok(Settings {
         socket,
+        vocabulary,
         keep,
         largest,
         pictures,
@@ -1145,6 +1202,7 @@ fn lost(error: impl std::fmt::Display) -> String {
 
 fn run() -> Result<(), String> {
     let settings = settings()?;
+    let words = worded(&settings.vocabulary)?;
     if let Some(dir) = &settings.pictures {
         prepared(dir).map_err(|e| format!("can't keep pictures in {}: {e}", dir.display()))?;
     }
@@ -1162,26 +1220,28 @@ fn run() -> Result<(), String> {
     let keyboards: Option<ZwpVirtualKeyboardManagerV1> = globals.bind(&handle, 1..=1, ()).ok();
     let keyboard = virtual_keyboard(keyboards.as_ref(), &seat, &handle);
 
-    // A socket left by an earlier run would refuse the bind.
-    let _ = fs::remove_file(&settings.socket);
-    let listener = UnixListener::bind(&settings.socket)
-        .map_err(|e| format!("can't listen at {}: {e}", settings.socket))?;
-    let history = Arc::new(Mutex::new(History::new(
-        settings.keep,
-        settings.pictures.clone(),
-        settings.room,
-    )));
+    let listener = serve::listen(&settings.socket)
+        .map_err(|e| format!("can't listen at {}: {e}", settings.socket.display()))?;
     let (asked, wanted) = mpsc::channel();
     let (mut woken, wake) = io::pipe().map_err(|e| format!("no pipe: {e}"))?;
-    let serving = Arc::clone(&history);
     let (pressing, waking) = (
         asked.clone(),
         wake.try_clone().map_err(|e| format!("no pipe: {e}"))?,
     );
-    thread::spawn(move || serve(&listener, &serving, &asked, &wake));
+    let shared = Shared::new(DOMAIN, own(asked, wake));
+    let mut served = Served {
+        shared: Arc::clone(&shared),
+        kept: Kept::default(),
+        words,
+        changes: None,
+    };
+    let history = History::new(settings.keep, settings.pictures.clone(), settings.room);
+    served.send(&history);
+    serve::accept(shared, listener);
 
     let mut state = State {
         history,
+        served,
         offers: HashMap::new(),
         largest: settings.largest,
         largest_picture: settings.largest_picture,
@@ -1201,27 +1261,32 @@ fn run() -> Result<(), String> {
         if state.emptied {
             queue.roundtrip(&mut state).map_err(lost)?;
         }
-        if std::mem::take(&mut state.emptied) && state.history.lock().unwrap().current.is_some() {
-            state.hold(&handle);
+        // Emptied, the clipboard holds the copy given back, or nothing.
+        if std::mem::take(&mut state.emptied) {
+            state.history.holds_current();
+            if state.history.current.is_some() {
+                state.hold(&handle);
+            }
         }
         for wanted in wanted.try_iter() {
             match wanted {
-                Asked::Copy(which) => {
-                    state.offer(which, &handle);
-                }
-                Asked::Paste(which, keys) => state.paste(which, keys, &handle),
-                Asked::Press(keys, letting_go, let_go) => {
-                    if state.press(keys) {
+                Asked::Wanted(wanted, reply) => state.wanted(wanted, reply, &handle),
+                Asked::Press(keys, letting_go, let_go, reply) => {
+                    let answer = if state.press(keys) {
                         eprintln!("{}", pasted(letting_go, let_go.elapsed()));
+                        json!({ "pasted": true })
                     } else {
-                        state.unpasted();
-                    }
+                        state.unpasted()
+                    };
+                    let _ = reply.send(answer);
                 }
-                Asked::Unpasted => state.unpasted(),
-                Asked::Clear => {}
+                Asked::Unpasted(reply) => {
+                    let _ = reply.send(state.unpasted());
+                }
             }
         }
         queue.flush().map_err(lost)?;
+        state.served.send(&state.history);
         let Some(guard) = queue.prepare_read() else {
             continue;
         };
@@ -1268,6 +1333,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rows::words;
 
     fn types(names: &[&str]) -> Vec<String> {
         names.iter().map(ToString::to_string).collect()
@@ -1328,6 +1394,14 @@ mod tests {
 
     fn history(keep: usize) -> History {
         History::new(keep, None, 0)
+    }
+
+    /// The keys of the rows it serves, in their order.
+    fn keys(history: &History) -> Vec<String> {
+        let (rows, _) = history.records(&words());
+        rows.iter()
+            .map(|row| row["key"].as_str().unwrap_or_default().to_owned())
+            .collect()
     }
 
     #[expect(
@@ -1427,25 +1501,25 @@ mod tests {
         let Content::Picture(oldest) = oldest.content else {
             unreachable!()
         };
-        assert!(!oldest.path.exists());
+        assert!(!oldest.path.exists(), "the oldest picture's file is kept");
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
-        // The shells are told, once, so their rows go with it.
-        assert_eq!(kept.went(), Some(format!("{{\"gone\":[{}]}}\n", oldest.id)));
-        assert_eq!(kept.went(), None);
+        // Its row goes with it.
+        assert_eq!(
+            keys(&kept),
+            ["row:copies:4", "row:copies:3", "row:copies:2"]
+        );
+        assert_eq!(oldest.id, 1);
         fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
-    fn a_picture_past_what_it_keeps_is_told_as_gone() {
+    fn a_picture_past_what_it_keeps_leaves_its_row() {
         let dir = directory("told");
         let mut kept = History::new(1, Some(dir.clone()), 100);
-        let made = kept.copied(picture(b"a picture")).unwrap();
-        let Content::Picture(made) = made.content else {
-            unreachable!()
-        };
-        assert_eq!(kept.went(), None);
+        kept.copied(picture(b"a picture"));
+        assert_eq!(keys(&kept), ["row:copies:1"]);
         kept.copied(text("one"));
-        assert_eq!(kept.went(), Some(format!("{{\"gone\":[{}]}}\n", made.id)));
+        assert_eq!(keys(&kept), ["row:copies:2"]);
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1547,39 +1621,73 @@ mod tests {
 
     #[test]
     fn the_shell_asks_for_a_copy_by_its_number_or_its_text() {
-        assert_eq!(asked("copy 12"), Some(Asked::Copy(Which::Kept(12))));
         assert_eq!(
-            asked("copy \"\\ud83d\\ude00 \\\"hi\\\"\\n\""),
-            Some(Asked::Copy(Which::Text("\u{1f600} \"hi\"\n".to_string())))
+            wanted(&json!({ "ask": "copy", "copy": 12, "id": "ask-1" })),
+            Some(Wanted::Copy(Which::Kept(12)))
         );
-        assert_eq!(asked("clear\n"), Some(Asked::Clear));
+        assert_eq!(
+            wanted(&json!({ "ask": "copy", "text": "\u{1f600} \"hi\"\n" })),
+            Some(Wanted::Copy(Which::Text("\u{1f600} \"hi\"\n".to_string())))
+        );
+        assert_eq!(wanted(&json!({ "ask": "clear" })), Some(Wanted::Clear));
     }
 
     #[test]
     fn the_shell_asks_for_a_paste_with_the_keys_its_window_takes() {
         assert_eq!(
-            asked("paste 3 terminal"),
-            Some(Asked::Paste(Which::Kept(3), Keys::Terminal))
+            wanted(&json!({ "ask": "paste", "copy": 3, "into": "terminal" })),
+            Some(Wanted::Paste(Which::Kept(3), Keys::Terminal))
         );
         assert_eq!(
-            asked("paste \"a b\" plain"),
-            Some(Asked::Paste(Which::Text("a b".to_string()), Keys::Plain))
+            wanted(&json!({ "ask": "paste", "text": "a b", "into": "plain" })),
+            Some(Wanted::Paste(Which::Text("a b".to_string()), Keys::Plain))
         );
     }
 
     #[test]
-    fn a_line_the_shell_never_sends_asks_nothing() {
-        for line in [
-            "copy",
-            "copy x",
-            "copy 3 terminal",
-            "paste 3",
-            "paste 3 loud",
-            "paste \"open",
-            "Press",
+    fn an_ask_the_shell_never_sends_wants_nothing() {
+        for said in [
+            json!({ "ask": "copy" }),
+            json!({ "ask": "copy", "copy": "x" }),
+            json!({ "ask": "copy", "id": 3 }),
+            json!({ "ask": "paste", "copy": 3 }),
+            json!({ "ask": "paste", "copy": 3, "into": "loud" }),
+            json!({ "ask": "press" }),
+            json!({}),
         ] {
-            assert_eq!(asked(line), None, "{line}");
+            assert_eq!(wanted(&said), None, "{said}");
         }
+    }
+
+    #[test]
+    fn an_ask_is_handed_to_the_wayland_side_and_answered_as_it_answers() {
+        let (asked, handed) = mpsc::channel();
+        let (mut woken, wake) = io::pipe().unwrap();
+        let own = own(asked, wake);
+        let answering = thread::spawn(move || {
+            let Ok(Asked::Wanted(wanted, reply)) = handed.recv() else {
+                panic!("nothing was handed over");
+            };
+            assert_eq!(wanted, Wanted::Copy(Which::Kept(3)));
+            reply.send(json!({ "copied": true })).unwrap();
+        });
+        let answer = own(&json!({ "ask": "copy", "copy": 3 }));
+        answering.join().unwrap();
+        assert_eq!(answer, Some(json!({ "copied": true })));
+        let mut wakes = [0; 1];
+        woken.read_exact(&mut wakes).unwrap();
+        assert_eq!(&wakes, b"!");
+        // One it doesn't know is the interface's to refuse.
+        assert_eq!(own(&json!({ "ask": "press" })), None);
+    }
+
+    #[test]
+    fn an_ask_with_no_wayland_side_is_refused_as_not_answering() {
+        let (asked, handed) = mpsc::channel();
+        let (_woken, wake) = io::pipe().unwrap();
+        drop(handed);
+        let answer = own(asked, wake)(&json!({ "ask": "clear" })).unwrap();
+        assert_eq!(answer["error"]["code"], "not-answering");
     }
 
     #[test]
@@ -1638,29 +1746,136 @@ mod tests {
         assert!(kept.copies.is_empty());
     }
 
-    #[test]
-    fn a_paste_that_never_lands_is_told_to_every_shell() {
-        let mut history = history(5);
-        let (shell, mut heard) = UnixStream::pair().unwrap();
-        history.clients.push(shell);
-        history.tell(UNPASTED);
-        let mut line = [0; UNPASTED.len()];
-        heard.read_exact(&mut line).unwrap();
-        assert_eq!(&line, b"{\"unpasted\":true}\n");
+    /// What the clipboard holds, as it's served.
+    fn holding(types: &[&str], text: &str) -> Value {
+        json!({ "key": "now:clipboard", "kind": "now", "now": { "types": types, "text": text } })
     }
 
     #[test]
-    fn a_line_is_json() {
-        let line = copy(5, "say \"hi\"\n\\ \u{1}").line();
+    fn a_copy_is_said_by_its_types_and_its_text() {
+        let said = offered(&types(&["text/plain", "image/png"]), text("a\nb").as_ref());
+        assert_eq!(said, holding(&["text/plain", "image/png"], "a\nb"));
+    }
+
+    #[test]
+    fn a_copy_read_as_no_text_says_none() {
+        let said = offered(&types(&["image/png"]), picture(b"a picture").as_ref());
+        assert_eq!(said, holding(&["image/png"], ""));
+        // Text too large to read, or a program that never handed it over.
         assert_eq!(
-            line,
-            "{\"at\":5,\"id\":0,\"text\":\"say \\\"hi\\\"\\n\\\\ \\u0001\"}\n"
+            offered(&types(&["text/plain"]), None),
+            holding(&["text/plain"], "")
         );
     }
 
     #[test]
-    fn a_pictures_line_says_where_it_is_and_its_size() {
-        let line = Copy {
+    fn a_secret_is_said_as_nothing() {
+        let said = offered(&types(&["text/plain", SECRET]), text("hunter2").as_ref());
+        assert_eq!(said, holding(&[], ""));
+    }
+
+    #[test]
+    fn what_the_clipboard_holds_changes_once_each_time_it_changes() {
+        let mut history = history(5);
+        let one = offered(&types(&["text/plain"]), text("one").as_ref());
+        history.holds(one.clone());
+        history.holds(one);
+        assert_eq!(history.changes, 1);
+        history.holds(offered(&types(&["text/plain"]), text("two").as_ref()));
+        assert_eq!(history.changes, 2);
+        assert_eq!(history.now, holding(&["text/plain"], "two"));
+    }
+
+    #[test]
+    fn the_copy_it_gives_back_is_said_as_it_offers_it() {
+        let mut history = history(5);
+        history.copied(text("one"));
+        history.holds_current();
+        assert_eq!(history.now, holding(&TEXT, "one"));
+    }
+
+    #[test]
+    fn forgetting_leaves_the_clipboard_holding_nothing() {
+        let mut history = history(5);
+        history.copied(text("one"));
+        history.holds_current();
+        history.forget();
+        assert_eq!(history.now, holding(&[], ""));
+        assert_eq!(keys(&history), Vec::<String>::new());
+    }
+
+    fn served() -> Served {
+        Served {
+            shared: Shared::new(DOMAIN, Box::new(|_| None)),
+            kept: Kept::default(),
+            words: words(),
+            changes: None,
+        }
+    }
+
+    #[test]
+    fn the_copies_are_served_newest_first_beside_their_count_and_the_clipboard() {
+        let mut served = served();
+        let mut history = history(5);
+        served.send(&history);
+        assert_eq!(
+            served.kept.get("summary:copies").unwrap()["summary"]["said"],
+            "empty"
+        );
+        assert_eq!(
+            served.kept.get("now:clipboard").unwrap()["now"]["types"],
+            json!([])
+        );
+        history.copied(text("one"));
+        history.copied(text("two"));
+        history.holds_current();
+        served.send(&history);
+        let order = |key: &str| served.kept.get(key).unwrap()["row"]["order"].as_i64();
+        assert!(
+            order("row:copies:2") < order("row:copies:1"),
+            "the newest copy is served first"
+        );
+        assert_eq!(
+            served.kept.get("summary:copies").unwrap()["summary"]["said"],
+            "2 copies"
+        );
+        assert_eq!(
+            served.kept.get("now:clipboard").unwrap()["now"]["text"],
+            "two"
+        );
+    }
+
+    #[test]
+    fn nothing_is_made_again_while_the_history_stands() {
+        let mut served = served();
+        let mut history = history(5);
+        history.copied(text("one"));
+        served.send(&history);
+        // Made again only as the history changes, which these rows outlast.
+        served.kept = Kept::default();
+        served.send(&history);
+        assert_eq!(served.kept.all().count(), 0);
+    }
+
+    #[test]
+    fn keeping_none_keeps_nothing_to_give_back() {
+        let mut history = history(0);
+        assert_eq!(history.copied(text("one")), None);
+        assert_eq!(history.copies.len(), 0);
+        assert_eq!(history.current, None);
+    }
+
+    #[test]
+    fn a_texts_row_holds_it_as_it_was_copied() {
+        let row = copy(5, "say \"hi\"\n\\").row(&words());
+        assert_eq!(row["key"], "row:copies:0");
+        assert_eq!(row["held"]["text"], "say \"hi\"\n\\");
+        assert_eq!(row["side"][1], json!({ "at": 5, "as": "came" }));
+    }
+
+    #[test]
+    fn a_pictures_row_holds_where_it_is_and_its_size() {
+        let row = Copy {
             at: 5,
             id: 3,
             content: Content::Picture(Picture {
@@ -1672,13 +1887,14 @@ mod tests {
                 size: Some((640, 480)),
             }),
         }
-        .line();
+        .row(&words());
+        assert_eq!(row["key"], "row:copies:3");
         assert_eq!(
-            line,
-            "{\"at\":5,\"picture\":3,\"type\":\"image/png\",\
-             \"path\":\"/run/user/1000/pictures/3.png\",\"bytes\":42,\
-             \"width\":640,\"height\":480}\n"
+            row["held"],
+            json!({ "id": 3, "picture": "/run/user/1000/pictures/3.png",
+                    "across": 640, "down": 480 })
         );
+        assert_eq!(row["side"][1]["said"], "42 B");
     }
 
     #[test]

@@ -631,7 +631,6 @@
       openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../../../tests/neovim-open-now.sh);
       # file-preview stood in, saying which process answered.
       previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../../tests/file-preview.sh);
-      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
       programs = pkgs.callPackage ../../programs/package.nix { };
       # Chrome's downloads, as chrome-recent-sites prints them: one from a
       # page, finished at a time of its own, one Chrome kept no time or
@@ -748,7 +747,6 @@
       export XDG_RUNTIME_DIR=$TMPDIR/runtime
       export PATH=${
         lib.makeBinPath [
-          paste
           pkgs.fd
           pkgs.coreutils
           pkgs.gnugrep

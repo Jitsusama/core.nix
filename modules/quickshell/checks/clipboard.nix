@@ -18,7 +18,10 @@
   a-paste-lands-while-the-shell-is-busy-on-niri = launcherOnNiri {
     name = "a-paste-lands-while-the-shell-is-busy-on-niri";
     tests = ../../../tests/pastes-on-niri-test.py;
-    given = [ "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}" ];
+    given = [
+      "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}"
+      "CLIPBOARD_WORDS=${../launcher/words.json}"
+    ];
   };
 
   # Copies and Emoji say the clipboard's history isn't answering only once

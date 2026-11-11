@@ -2,7 +2,7 @@
 // through modules/quickshell/launcher/Applications.qml) through Quickshell
 // itself, over the reader's desktop entry written beside this, with niri,
 // the desktop's shortcuts and what's playing stood in, the shell's own
-// watch of the clipboard (Copied.qml) with wl-paste stood in, and reader
+// watch of the clipboard (Copied.qml) with no history to hear, and reader
 // --places by a script printing what it would. First, in Qt's own engine,
 // Reader.js's cases: the lines reader --places prints, read, a share said
 // in whole percent and never rounded up to the whole, where a place is,
