@@ -305,7 +305,6 @@ def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell
         shell.close(window)
 
 
-
 def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     """Reopened as the closing's spots come due, the kept opening makes none before its frame.
 
