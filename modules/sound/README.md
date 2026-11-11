@@ -8,7 +8,8 @@ imports it, so a machine with the shell runs it.
 It hears PipeWire through its own API for as long as it runs: the
 registry says each node as it comes and goes, each output's and input's
 node says its properties and its Props as they change, and the default
-metadata says which output and input are chosen. A watch is told only
+metadata says which output and input are chosen and where each
+program's stream is sent. A watch is told only
 the records that changed and the keys gone, so a volume moving tells its
 one device. Before it, the launcher's Sound read Quickshell's PipeWire
 objects on its main thread, kept `pw-top` and `pw-metadata` running for
@@ -29,6 +30,8 @@ levels and choices, and read whole files rewritten by another daemon.
 |                         | `ports`: its card's ports for it, each's index, | Port                    |
 |                         | name and `available`, and the one `chosen`      |                         |
 | `row:sound:<node name>` | the launcher's row for it, ready to draw        | Sound's place           |
+| `targets:default`       | `targets`: each stream's `target.object`, by    | Plays On, Records From  |
+|                         | the stream's id, where one is sent              |                         |
 
 A volume is the mean of each channel's cube root, as Quickshell says it,
 since PipeWire holds each channel's share cubed.
@@ -45,12 +48,17 @@ it moved comes to every watch as the server says it back.
 | `mute`   | `muted`                               | mutes it, or lets it be heard         |
 | `use`    | nothing more                          | makes it the output or input chosen   |
 | `port`   | `index`, one of its `ports`           | plays it through that port, saved     |
+| `send`   | `target`: a device's node name, or "" | sends a stream there, or to the       |
+|          |                                       | default, which it then follows        |
 
 A card's own device takes its levels on the route that plays it, saved,
 as the session manager keeps a route's levels and as Quickshell sets
 them; any other device, a filter's or a virtual one, on its node's own
 Props. Use goes into the default metadata's configured key, which the
-session manager keeps and follows. An act on a device not heard is
+session manager keeps and follows. A send names a program's stream as
+`stream:<id>`, its PipeWire id, rather than a device, and goes into
+the default metadata as the stream's `target.object`, which the session
+manager moves it by, live. An act on a device not heard is
 refused as `no-device`, one missing what it needs as `bad-act`, a port
 its card doesn't offer it as `no-port`, and any while the server is
 away as `not-answering`.
@@ -85,6 +93,7 @@ process to do it.
 
 ## What Comes Next
 
-The launcher's Sound lists these rows rather than making its own. The
+The launcher's Sound lists these rows rather than making its own, and
+sends programs through the daemon rather than a `pw-metadata` each. The
 rest of each device's parts and its programs are served ready next, so
-`pw-top`, `pw-metadata` and the per-move processes go.
+`pw-top` goes too.

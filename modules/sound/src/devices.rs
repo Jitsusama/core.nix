@@ -46,7 +46,19 @@ pub enum Change {
         key: Option<String>,
         value: Option<String>,
     },
+    /// The default metadata saying where a program's stream is sent, its
+    /// `target.object`, or none where it's let go of and the stream
+    /// follows the default; no stream lets go of every one's, as the
+    /// metadata going away does.
+    Sent {
+        stream: Option<u32>,
+        target: Option<String>,
+    },
 }
+
+/// What a stream sent nowhere is said to be sent to, as WirePlumber says
+/// it besides letting the key go.
+const NOWHERE: [&str; 2] = ["", "-1"];
 
 /// One device as heard: its node's properties, and how loud it's set.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -76,6 +88,10 @@ pub struct Devices {
     offers: BTreeMap<(u32, i32), Port>,
     /// The profile each card is in, by its id.
     profiles: BTreeMap<u32, i32>,
+    /// Where each program's stream is sent, by the stream's id: a
+    /// device's node name or its object serial, as WirePlumber takes
+    /// either. A stream not here follows the default.
+    sent: BTreeMap<u32, String>,
 }
 
 /// One device as an act finds it.
@@ -193,6 +209,17 @@ impl Devices {
                 }
                 true
             }
+            Change::Sent { stream, target } => {
+                let Some(stream) = stream else {
+                    let had = !self.sent.is_empty();
+                    self.sent.clear();
+                    return had;
+                };
+                match target.filter(|target| !NOWHERE.contains(&target.as_str())) {
+                    Some(target) => self.sent.insert(stream, target.clone()) != Some(target),
+                    None => self.sent.remove(&stream).is_some(),
+                }
+            }
         }
     }
 
@@ -293,6 +320,17 @@ impl Devices {
                 })
             })
             .collect()
+    }
+
+    /// Where each program's stream is sent, as one record: each target by
+    /// the stream's id, which the shell matches to the streams it lists.
+    pub fn targets(&self) -> Value {
+        let targets: serde_json::Map<String, Value> = self
+            .sent
+            .iter()
+            .map(|(stream, target)| (stream.to_string(), json!(target)))
+            .collect();
+        json!({"key": "targets:default", "kind": "targets", "targets": targets})
     }
 
     /// Each device as a record, keyed by its node's name, which a device
@@ -411,6 +449,32 @@ mod tests {
             muted: None,
         });
         assert!(!heard, "levels of a node not heard change nothing");
+    }
+
+    #[test]
+    fn a_streams_target_is_where_the_default_metadata_sends_it() {
+        let mut devices = Devices::default();
+        let sent = |stream, target: Option<&str>| Change::Sent {
+            stream,
+            target: target.map(str::to_owned),
+        };
+        let targets = |devices: &Devices| devices.targets()["targets"].clone();
+        assert_eq!(devices.targets()["key"], "targets:default");
+        assert_eq!(targets(&devices), json!({}));
+        let to_headphones = || sent(Some(93), Some("headphones"));
+        assert!(devices.hear(to_headphones()), "a send is news");
+        assert!(!devices.hear(to_headphones()), "the same send isn't");
+        devices.hear(sent(Some(94), Some("61")));
+        assert_eq!(targets(&devices), json!({"93": "headphones", "94": "61"}));
+        // Sent nowhere, or let go of, it follows the default again.
+        devices.hear(sent(Some(94), Some("-1")));
+        devices.hear(sent(Some(95), Some("speakers")));
+        devices.hear(sent(Some(95), None));
+        assert_eq!(targets(&devices), json!({"93": "headphones"}));
+        let gone = devices.hear(sent(None, None));
+        assert!(gone, "the metadata gone lets each go");
+        assert_eq!(targets(&devices), json!({}));
+        assert_eq!(devices.records(), Vec::<Value>::new());
     }
 
     #[test]

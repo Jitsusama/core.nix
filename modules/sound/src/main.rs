@@ -5,13 +5,14 @@
 //! each output and input as a `device` record, saying how loud it's set,
 //! whether it's muted and whether it's the one chosen (devices.rs), and
 //! as the launcher's Sound row for it, worded from WORDS, the launcher's
-//! words.json (rows.rs), with its parts inside it (parts.rs).
+//! words.json (rows.rs), with its parts inside it (parts.rs); and where
+//! each program's stream is sent, as one `targets` record.
 //!
 //! It hears PipeWire through its own API for as long as it runs, rather
 //! than a program's output read line by line: the registry says each
 //! node as it comes and goes, each device's node says its properties and
 //! its Props as they change, and the default metadata says which output
-//! and input are chosen. A watch is told only the records that changed,
+//! and input are chosen and where each stream is sent. A watch is told only the records that changed,
 //! and those gone, so a volume moving tells its one device. Nothing runs
 //! on a timer: with PipeWire gone, it tries again every two seconds until
 //! it's back.
@@ -64,6 +65,8 @@ const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 const SERVER_AGAIN: Duration = Duration::from_secs(2);
 /// How long an act waits for PipeWire's loop to take it.
 const ACT_PATIENCE: Duration = Duration::from_secs(2);
+/// The default metadata's key the session manager sends a stream by.
+const TARGET: &str = "target.object";
 
 /// One act's move, for PipeWire's loop to do, and where to say how it
 /// went.
@@ -301,14 +304,23 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
             let shared = Arc::clone(shared);
             move |id| match bound.borrow_mut().remove(&id) {
                 Some(Bound::Node { .. } | Bound::Card { .. }) => told(&shared, Change::Gone { id }),
-                Some(Bound::Defaults { .. }) => told(
-                    &shared,
-                    Change::Chose {
-                        key: None,
-                        value: None,
-                    },
-                ),
-                None => {}
+                Some(Bound::Defaults { .. }) => {
+                    told(
+                        &shared,
+                        Change::Chose {
+                            key: None,
+                            value: None,
+                        },
+                    );
+                    let (stream, target) = (None, None);
+                    told(&shared, Change::Sent { stream, target });
+                }
+                // A program's stream, never bound, gone with whatever it
+                // was sent to.
+                None => {
+                    let (stream, target) = (Some(id), None);
+                    told(&shared, Change::Sent { stream, target });
+                }
             }
         })
         .register();
@@ -343,13 +355,7 @@ fn done(bound: &HashMap<u32, Bound>, doing: &Move) -> Result<(), String> {
             _ => Err(format!("card {id} is gone")),
         },
         Move::Choose { key, value } => {
-            let defaults = bound.values().find_map(|bound| match bound {
-                Bound::Defaults { proxy, .. } => Some(proxy),
-                _ => None,
-            });
-            let Some(defaults) = defaults else {
-                return Err("the default metadata is gone".to_owned());
-            };
+            let defaults = metadata(bound)?;
             defaults.set_property(
                 pw::core::PW_ID_CORE,
                 key,
@@ -358,7 +364,23 @@ fn done(bound: &HashMap<u32, Bound>, doing: &Move) -> Result<(), String> {
             );
             Ok(())
         }
+        // Untyped, as pw-metadata sets it, which the session manager reads.
+        Move::Send { stream, target } => {
+            metadata(bound)?.set_property(*stream, TARGET, None, target.as_deref());
+            Ok(())
+        }
     }
+}
+
+/// The default metadata, while it's bound.
+fn metadata(bound: &HashMap<u32, Bound>) -> Result<&Metadata, String> {
+    bound
+        .values()
+        .find_map(|bound| match bound {
+            Bound::Defaults { proxy, .. } => Some(proxy),
+            _ => None,
+        })
+        .ok_or_else(|| "the default metadata is gone".to_owned())
 }
 
 /// Binds a node that's an output or an input, by the class the registry
@@ -481,7 +503,8 @@ fn card(
     })
 }
 
-/// Binds the default metadata, which names the output and input chosen.
+/// Binds the default metadata, which names the output and input chosen,
+/// and where each program's stream is sent, by the stream's id.
 fn defaults(
     shared: &Arc<Mutex<Daemon>>,
     registry: &RegistryRc,
@@ -496,14 +519,15 @@ fn defaults(
         .property({
             let shared = Arc::clone(shared);
             move |subject, key, _, value| {
+                let value = value.map(str::to_owned);
                 if subject == pw::core::PW_ID_CORE {
-                    told(
-                        &shared,
-                        Change::Chose {
-                            key: key.map(str::to_owned),
-                            value: value.map(str::to_owned),
-                        },
-                    );
+                    let key = key.map(str::to_owned);
+                    told(&shared, Change::Chose { key, value });
+                } else if key.is_none_or(|key| key == TARGET) {
+                    // No key lets go of every key the stream had.
+                    let stream = Some(subject);
+                    let target = value.filter(|_| key.is_some());
+                    told(&shared, Change::Sent { stream, target });
                 }
                 0
             }
@@ -532,6 +556,7 @@ fn refresh(daemon: &mut Daemon) {
     let ready = served(&records, &daemon.words);
     daemon.served.take(ready, Vec::new());
     records.extend(daemon.served.all().cloned());
+    records.push(daemon.devices.targets());
     let said: HashSet<String> = records
         .iter()
         .filter_map(|record| record["key"].as_str().map(str::to_owned))
@@ -642,12 +667,16 @@ fn acted(shared: &Mutex<Daemon>, id: &Value, name: &str, said: &Value) -> Value 
     };
     let (done, acting) = {
         let daemon = lock(shared);
-        let Some(device) = daemon.devices.device(asked.key()) else {
-            return error(id, "no-device", &format!("no device {} here", asked.key()));
-        };
-        match planned(&asked, &device) {
-            Ok(done) => (done, daemon.acting.clone()),
-            Err(refused) => return error(id, refused.code, &refused.message),
+        if let Some(done) = asked.alone() {
+            (done, daemon.acting.clone())
+        } else {
+            let Some(device) = daemon.devices.device(asked.key()) else {
+                return error(id, "no-device", &format!("no device {} here", asked.key()));
+            };
+            match planned(&asked, &device) {
+                Ok(done) => (done, daemon.acting.clone()),
+                Err(refused) => return error(id, refused.code, &refused.message),
+            }
         }
     };
     let not_answering = || error(id, "not-answering", "the sound server isn't answering");

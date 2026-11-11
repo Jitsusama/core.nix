@@ -4,7 +4,9 @@
 //! through the route that plays it, as the session manager saves a route's
 //! levels and as Quickshell sets them; any other device through its node's
 //! own Props. The choice goes into the default metadata's configured key,
-//! which the session manager keeps and follows.
+//! which the session manager keeps and follows, and a program's stream is
+//! sent to a device by its `target.object` there, which the session
+//! manager moves it by, live.
 
 use serde_json::{Value, json};
 
@@ -33,6 +35,13 @@ pub enum Act {
         key: String,
         index: i32,
     },
+    /// A program's stream sent to a device, by the device's node name,
+    /// or back to the default, given none, which it then follows.
+    Send {
+        key: String,
+        stream: u32,
+        target: Option<String>,
+    },
 }
 
 /// Why an act isn't done, by the interface's codes.
@@ -58,6 +67,8 @@ pub enum Move {
     Card { id: u32, pod: Vec<u8> },
     /// Said in the default metadata.
     Choose { key: &'static str, value: String },
+    /// A stream's target said in the default metadata, or let go of.
+    Send { stream: u32, target: Option<String> },
 }
 
 #[expect(clippy::cast_possible_truncation, reason = "a volume fits an f32")]
@@ -67,6 +78,9 @@ fn share(volume: f64) -> f32 {
 
 /// The act named, with the rest of what was said as its arguments.
 pub fn act(name: &str, said: &Value) -> Result<Act, Refused> {
+    if name == "send" {
+        return sent(said);
+    }
     let key = said["key"]
         .as_str()
         .filter(|key| key.starts_with("device:"))
@@ -104,14 +118,46 @@ pub fn act(name: &str, said: &Value) -> Result<Act, Refused> {
     }
 }
 
+/// A send: the stream it moves, by its key, `stream:<id>` as PipeWire
+/// numbers it, and the device it goes to, by its node name, or "" for the
+/// default.
+fn sent(said: &Value) -> Result<Act, Refused> {
+    let key = said["key"].as_str().unwrap_or_default();
+    let stream = key
+        .strip_prefix("stream:")
+        .and_then(|id| id.parse().ok())
+        .ok_or_else(|| refused("bad-act", "a send names its stream's key"))?;
+    let target = said["target"]
+        .as_str()
+        .ok_or_else(|| refused("bad-act", "a send says its device, or \"\" for the default"))?;
+    Ok(Act::Send {
+        key: key.to_owned(),
+        stream,
+        target: (!target.is_empty()).then(|| target.to_owned()),
+    })
+}
+
 impl Act {
-    /// The device it acts on, by its record's key.
+    /// What it acts on, by its key: a device's record, or a stream.
     pub fn key(&self) -> &str {
         match self {
             Act::Volume { key, .. }
             | Act::Mute { key, .. }
             | Act::Use { key }
-            | Act::Port { key, .. } => key,
+            | Act::Port { key, .. }
+            | Act::Send { key, .. } => key,
+        }
+    }
+
+    /// How it's done where it needs no device found first: a send, whose
+    /// stream is the session manager's to find.
+    pub fn alone(&self) -> Option<Move> {
+        match self {
+            Act::Send { stream, target, .. } => Some(Move::Send {
+                stream: *stream,
+                target: target.clone(),
+            }),
+            _ => None,
         }
     }
 }
@@ -153,6 +199,10 @@ pub fn planned(act: &Act, device: &Device) -> Result<Move, Refused> {
             (Some(leveled(device.volumes, *volume)), *muted)
         }
         Act::Mute { muted, .. } => (None, Some(*muted)),
+        // Done alone, by `alone`, since it moves a stream.
+        Act::Send { .. } => {
+            return Err(refused("bad-act", "a send moves a stream, not a device"));
+        }
         Act::Port { index, .. } => {
             // Only a port its card offers it, so no act moves another
             // device's.
@@ -230,6 +280,24 @@ mod tests {
             code("louder", json!({"key": "device:a"})),
             Err("unknown-act")
         );
+        let at = |key: &str| json!({"key": key, "target": "speakers"});
+        assert_eq!(code("send", at("device:a")), Err("bad-act"));
+        assert_eq!(code("send", at("stream:x")), Err("bad-act"));
+        assert_eq!(code("send", json!({"key": "stream:93"})), Err("bad-act"));
+    }
+
+    #[test]
+    fn a_send_says_a_streams_target_or_lets_it_go() {
+        let said = json!({"key": "stream:93", "target": "headphones"});
+        let target = Some("headphones".to_owned());
+        let sending = act("send", &said).map(|act| act.alone());
+        assert_eq!(sending, Ok(Some(Move::Send { stream: 93, target })));
+        let said = json!({"key": "stream:93", "target": ""});
+        let back = act("send", &said).map(|act| act.alone());
+        let target = None;
+        assert_eq!(back, Ok(Some(Move::Send { stream: 93, target })));
+        let said = json!({"key": "device:speakers", "muted": true});
+        assert_eq!(act("mute", &said).map(|act| act.alone()), Ok(None));
     }
 
     #[test]
