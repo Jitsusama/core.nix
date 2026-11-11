@@ -94,16 +94,6 @@ let
 
   account = machine: machine.config.home-manager.users.someone;
 
-  # Runs a test that times itself in Qt's engine, in a fresh process each
-  # time, until one is fast enough. How fast the engine runs the same code
-  # differs from one process to the next by as much as half, while a
-  # slower search slows every process, so the fastest of five is what's
-  # judged (tests/lib/qml-in-time.sh).
-  timedQml = file: ''
-    ${shellFolderLint}
-    ${lib.getExe pkgs.bash} ${./tests/lib/qml-in-time.sh} ${pkgs.qt6.qtdeclarative} ${file}
-  '';
-
   # The machines most checks read, each evaluated once and shared, since an
   # evaluation is most of what a check costs.
   workstation = bareNixos [ self.nixosModules.workstation ];
@@ -424,7 +414,6 @@ let
       holds
       failure
       account
-      timedQml
       workstation
       graphical
       macWorkstation
