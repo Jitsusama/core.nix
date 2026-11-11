@@ -304,7 +304,7 @@ in
   # reads, Open the Copied Path, and the files each Neovim has open, which
   # open-now asks of them, each file opening Neovim in kitty
   # (NeovimOpening.js), and each one's drawer previewing it as file-preview
-  # reads it, the file chooser's own (../open-with/file-preview.nix). After
+  # reads it, the file chooser's own, kept by the programs daemon. After
   # every other provider, as it adds no rows of its own.
   jitsusama.quickshell.launcher.providers.neovim = lib.mkIf linux {
     order = 52;
@@ -312,7 +312,7 @@ in
     folder = "${config.home.homeDirectory}/src";
     openNow = open-now;
     open = "listed:nvim:open";
-    preview = [ (lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })) ];
+    preview = true;
   };
   xdg.configFile."quickshell/launcher/NeovimOpening.js" = lib.mkIf linux {
     source = ./NeovimOpening.js;

@@ -50,8 +50,9 @@ in
   };
 
   # Capture's Recent asks the same of what was taken, for a picture's
-  # dimensions and a recording's length and frame in its drawer.
-  jitsusama.quickshell.launcher.providers.capture.preview = [ (lib.getExe file-preview) ];
+  # dimensions and a recording's length and frame in its drawer, through
+  # the programs daemon, which keeps one (../programs/src/preview.rs).
+  jitsusama.quickshell.launcher.providers.capture.preview = true;
 
   home.packages = [ recent-files ];
 

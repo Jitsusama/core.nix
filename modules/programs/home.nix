@@ -41,8 +41,13 @@ in
     Service = {
       ExecStart = "${lib.getExe programs} %t/daemons/programs.sock ${sources}";
       # The git it lists a repository's files with, as Neovim's Open a
-      # File by Name steps into one (src/repositories.rs).
-      Environment = "PROGRAMS_GIT=${lib.getExe pkgs.git}";
+      # File by Name steps into one (src/repositories.rs), and the
+      # file-preview it keeps for drawers that preview a file
+      # (src/preview.rs).
+      Environment = [
+        "PROGRAMS_GIT=${lib.getExe pkgs.git}"
+        "PROGRAMS_PREVIEW=${lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })}"
+      ];
       Restart = "on-failure";
       RestartSec = 5;
     };

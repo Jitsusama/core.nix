@@ -5,7 +5,8 @@
 //! ([`package`]), each program's lists of what it had open ([`source`]),
 //! the commands that read them ([`command`]), a folder asked for by its
 //! path ([`folder`]), the git repositories under one and their files
-//! ([`repositories`]), the socket it answers on ([`listen`]), and
+//! ([`repositories`]), what a file shows of itself ([`preview`]), the
+//! socket it answers on ([`listen`]), and
 //! inotify, which says when any of them changes ([`notify`]).
 //!
 //! A record names every figure its source has, as the source says it,
@@ -21,6 +22,7 @@ pub mod listen;
 pub mod mime;
 pub mod notify;
 pub mod package;
+pub mod preview;
 pub mod repositories;
 pub mod source;
 pub mod xdg;

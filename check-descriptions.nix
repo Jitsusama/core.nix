@@ -1679,8 +1679,9 @@
     one, reads a folder named by its key as its watch begins and as a file comes in it, one not
     there holding nothing, reads the repositories under a folder three folders deep with their
     remotes and one's files as git lists them, hidden ones but not what it ignores, as each is
-    asked, reads what a program has open as it's asked, follows a data folder through each link
-    a switch replaces, and refuses an ask or a kind it doesn't know
+    asked, reads what a program has open as it's asked, asks what a file shows of one
+    file-preview it keeps, again only once the file changed, follows a data folder through each
+    link a switch replaces, and refuses an ask or a kind it doesn't know
   '';
   programs-passes-clippy = ''
     clippy finds nothing in the programs daemon or its tests
@@ -2595,7 +2596,9 @@
     the launcher's windows, as the windows daemon tells of them, list This Window, then the rest
     the one used last first, and when the focus moves make again only the rows of the windows it
     moved between, a renamed one too, the same whole answer again none and a closed one going, as
-    Capture's rows of the windows do
+    Capture's rows of the windows do, and Capture asks each thing taken's facts of the programs
+    daemon's one file-preview, only the newest wanted waiting, one changed asked again, and one
+    that can't answer said so
   '';
   the-launcher-says-the-page-zathura-is-on = ''
     zathura's provider reads open-now's lines as each zathura's document, page and page count,

@@ -7,9 +7,10 @@
 //! is heard empty, saying why; a page's own list is read only as its
 //! key is watched, its lines as printed; what a program has open is
 //! read as it's asked; the repositories under a folder and one's files
-//! are read as each is asked; and an ask or kind it doesn't know is
-//! refused.
+//! are read as each is asked; what a file shows is asked of one
+//! file-preview kept; and an ask or kind it doesn't know is refused.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -108,7 +109,29 @@ fn fixture(folder: &Path) -> PathBuf {
     ]);
     let file = folder.join("sources.json");
     std::fs::write(&file, sources.to_string()).unwrap();
+    previewer(&folder.join("file-preview"));
     file
+}
+
+/// A stand-in for file-preview, kept (serve), answering each file asked
+/// with its path and the process that answered, so a case sees whether
+/// one kept was asked. It runs on the shell the path finds, as the build
+/// has no /bin/sh.
+fn previewer(path: &Path) {
+    let shell = std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .map(|folder| Path::new(folder).join("sh"))
+        .find(|shell| shell.exists())
+        .expect("no sh on the path");
+    let script = r#"#!SHELL
+while IFS= read -r line; do
+  printf '{"picture": "%s", "by": %s}\n' "${line#show }" $$
+done
+"#
+    .replace("SHELL", &shell.display().to_string());
+    std::fs::write(path, script).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 struct Running {
@@ -145,6 +168,7 @@ impl Running {
             .arg(&sources)
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
+            .env("PROGRAMS_PREVIEW", folder.join("file-preview"))
             .stderr(Stdio::null());
         Running {
             daemon: Daemon::start(&mut command, socket, folder),
@@ -469,6 +493,35 @@ fn the_repositories_under_a_folder_and_their_files_are_read_as_each_is_asked() {
         said["records"][0]["dated"].as_array().map_or(0, Vec::len),
         3,
         "a file made since wasn't read as it was asked again: {said}"
+    );
+}
+
+#[test]
+fn what_a_file_shows_is_asked_of_one_file_preview_kept() {
+    let running = Running::new("preview");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "get", "keys": ["preview:/c.png"]}));
+    let first = &said["records"][0];
+    assert_eq!(
+        first["answering"],
+        json!(true),
+        "file-preview didn't answer: {said}"
+    );
+    assert_eq!(
+        first["shown"]["picture"],
+        json!("/c.png"),
+        "what it said of the file wasn't held: {said}"
+    );
+    let again = client.ask(&json!({"id": 2, "ask": "get", "keys": ["preview:/d.png"]}));
+    let second = &again["records"][0];
+    assert_eq!(
+        second["shown"]["picture"],
+        json!("/d.png"),
+        "the second file wasn't said: {again}"
+    );
+    assert_eq!(
+        first["shown"]["by"], second["shown"]["by"],
+        "both weren't asked of one file-preview, kept"
     );
 }
 

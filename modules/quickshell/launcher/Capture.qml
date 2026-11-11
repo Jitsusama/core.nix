@@ -509,12 +509,13 @@ Provider {
         });
     }
 
-    // What file-preview said of each thing taken, from the one kept.
+    // What file-preview said of each thing taken, from the one the
+    // programs daemon keeps.
     readonly property var previews: previewing
     Previewer {
         id: previewing
 
-        command: provider.settings.preview ?? []
+        can: provider.settings.preview === true
     }
 
     // A row's words, its name's and those beside it, made ready once.
