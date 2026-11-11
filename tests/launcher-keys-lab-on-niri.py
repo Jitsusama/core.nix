@@ -145,11 +145,17 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     return spans
 
 
-def say_profiled(trace: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Print each span's costliest places by their own time, or what the trace held instead."""
+def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    """Print each span's costliest places by their own time, or what the trace held instead.
+
+    With no span, what the profiler and the shell said of the debugger is printed too, as what's
+    said leaves the run with it.
+    """
     spans = profiled(trace) if trace.exists() else {}
     with capsys.disabled():
         if not spans:
+            for line in said:
+                print(f"lab-profile said: {line}", flush=True)
             whole = ET.parse(trace).getroot() if trace.exists() else None  # noqa: S314
             each = list(whole.iter("range")) if whole is not None else []
             texts = [one.get("text") for one in each if one.get("text")]
@@ -176,6 +182,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     words = os.environ.get("LAB_WORDS", " ".join(WORDS)).split()
     rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
     trace = tmp_path / "keys.qtd"
+    profiling = tmp_path / "profiler.log"
     profiler: subprocess.Popen[bytes] | None = None
     parts: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     with launcher_on_niri.running() as shell:
@@ -193,6 +200,8 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
                     "--include",
                     "binding,javascript,handlingsignal,debugmessages",
                 ],
+                stdout=profiling.open("wb"),
+                stderr=subprocess.STDOUT,
             )
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
@@ -209,11 +218,15 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
                     parts[typed]["took"].append(took or 0)
                     for name in PARTS:
                         parts[typed][name].append((part(line, name) or 0) if line else 0)
+    heard: list[str] = []
     if profiler is not None:
-        profiler.wait(timeout=60)
+        heard.append(f"the profiler ended {profiler.wait(timeout=60)}")
+        heard.extend(profiling.read_text(errors="replace").splitlines())
+        logged = shell.log.read_text(errors="replace").splitlines()
+        heard.extend(line for line in logged if "ebug" in line or "qmltooling" in line)
     for typed, each in parts.items():
         medians = ", ".join(f"{name} {statistics.median(spans):g}" for name, spans in each.items())
         with capsys.disabled():
             print(f"lab-keys {typed!r}: {len(each['took'])} typed, medians {medians}", flush=True)
     if profiler is not None:
-        say_profiled(trace, capsys)
+        say_profiled(trace, heard, capsys)
