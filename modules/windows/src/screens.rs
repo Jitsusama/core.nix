@@ -271,7 +271,7 @@ mod tests {
 
     /// A screen as niri says one: lit at its first mode, unless `logical`
     /// is null.
-    fn output(make: &str, model: &str, logical: Value) -> Value {
+    fn output(make: &str, model: &str, logical: &Value) -> Value {
         json!({
             "make": make, "model": model, "current_mode": 0,
             "modes": [{"width": 2560, "height": 1600, "refresh_rate": 59_951}],
@@ -287,10 +287,10 @@ mod tests {
         BTreeMap::from([
             (
                 "HDMI-A-1".to_owned(),
-                output("Dell Inc.", "U2723QE", lit(1.5)),
+                output("Dell Inc.", "U2723QE", &lit(1.5)),
             ),
-            ("eDP-1".to_owned(), output("BOE", "0x0BCA", lit(1.75))),
-            ("DP-2".to_owned(), output("LG", "0x5B11", Value::Null)),
+            ("eDP-1".to_owned(), output("BOE", "0x0BCA", &lit(1.75))),
+            ("DP-2".to_owned(), output("LG", "0x5B11", &Value::Null)),
         ])
     }
 
@@ -330,7 +330,7 @@ mod tests {
         assert_eq!(rows[1]["side"], json!([{"said": "off"}]));
         assert_eq!(rows[1]["note"], "off", "an unlaid screen runs nothing");
         assert_eq!(rows[2]["side"], json!([]));
-        let alone = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", lit(2.0)))]);
+        let alone = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
         let rows = super::rows(&alone, Some("eDP-1"), &words());
         assert_eq!(
             rows[0]["side"],
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn a_screen_dark_by_name_says_its_hub_is_on() {
-        let mut dark = output("Dell Inc.", "U2723QE", lit(1.0));
+        let mut dark = output("Dell Inc.", "U2723QE", &lit(1.0));
         dark["powered_off"] = json!(true);
         let outputs = BTreeMap::from([("DP-1".to_owned(), dark)]);
         let rows = rows(&outputs, None, &words());
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn a_screen_naming_nothing_is_its_connector() {
-        let outputs = BTreeMap::from([("DP-3".to_owned(), output("", "", lit(1.0)))]);
+        let outputs = BTreeMap::from([("DP-3".to_owned(), output("", "", &lit(1.0)))]);
         assert_eq!(names(&rows(&outputs, None, &words()))[0], "DP-3");
     }
 
