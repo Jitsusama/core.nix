@@ -469,7 +469,7 @@ impl Drop for Watching {
     }
 }
 
-fn stopping() -> Refused {
+pub(crate) fn stopping() -> Refused {
     Refused::Failed {
         reason: "wifid is stopping".into(),
     }

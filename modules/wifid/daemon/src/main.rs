@@ -21,6 +21,7 @@
 //! launcher its Wi-Fi rows ready, worded in the launcher's own vocabulary,
 //! on a second socket (face.rs, rows.rs), so the shell only draws them.
 
+mod acts;
 mod address;
 mod air;
 mod card;
@@ -392,7 +393,7 @@ async fn follow(
 /// it answers nobody.
 async fn answer(wifi: Wifi) -> Result<(), Box<dyn Error>> {
     let service::Handed { varlink, rows } = service::handed()?;
-    let face = Face::new(wifi.state.clone());
+    let face = Face::new(wifi.state.clone(), wifi.asks.clone());
     let rows = async move {
         let Some(listener) = rows else {
             eprintln!("<4>systemd passed no rows socket, so the launcher draws no Wi-Fi");
