@@ -2226,9 +2226,9 @@
     machine with no account keeps the kernel's
   '';
   the-daemons-test-the-launchers-words = ''
-    every word a daemon's tests are given, To Do's, Location's, Screens' and the machine's rows',
-    is the launcher's vocabulary's own at the same place, and a changed, unknown or vanished word
-    is refused
+    every word a daemon's tests are given, To Do's, Location's, Screens', the machine's rows' and
+    Slack's, is the launcher's vocabulary's own at the same place, and a changed, unknown or
+    vanished word is refused
   '';
   the-desktop-comes-first-in-its-session = ''
     niri and the shell sit first in session.slice, at ten times its other units' CPU weight,
