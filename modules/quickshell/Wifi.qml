@@ -2,10 +2,9 @@
 // every card, the saved networks and those in the air, sent whole whenever
 // any of it changes, so the shell asks nothing to keep up. The launcher
 // asks wifid's acts, joins among them, on its rows socket
-// (launcher/Wireless.qml); a check goes over a second connection,
-// answered in order. One network's detail comes
-// over another, answered again as it changes for as long as it's asked
-// about. wifid starting again closes them all, and each comes back a moment
+// (launcher/Wireless.qml), where a network's drawer and parts are served
+// too, while it's ahead; a check goes over a second connection, answered
+// in order. wifid starting again closes both, and each comes back a moment
 // later.
 pragma Singleton
 import Quickshell
@@ -29,26 +28,6 @@ Singleton {
     // The card on a network, and one whose network wants a sign-in.
     readonly property var joined: cards.find(card => card.network) ?? null
     readonly property var signingIn: cards.find(card => card.reach === "signIn") ?? null
-
-    // The network asked about in detail, and wifid's detail of it: its
-    // access points, how many in each band, the card's link on it, and the
-    // one wifid would pick. Null until wifid answers.
-    property string detailed: ""
-    property var detail: null
-
-    // Asks about one network in detail, or none: the cards read their links
-    // for as long as one is asked about, so the launcher asks only while
-    // it shows one.
-    function watch(name: string): void {
-        if (name === detailed)
-            return;
-        detailed = name;
-        detail = null;
-        if (details.connected)
-            details.connected = false;
-        else if (name !== "")
-            details.connected = true;
-    }
 
     function isSaved(name: string): var {
         return saved.find(network => network.name === name) ?? null;
@@ -154,34 +133,6 @@ Singleton {
                     answer(reply.parameters ?? {}, root.refusal(reply.error));
             }
         }
-    }
-
-    Socket {
-        id: details
-        path: root.path
-        onConnectionStateChanged: {
-            if (connected) {
-                write(root.message("Detail", { name: root.detailed }, true));
-                flush();
-            } else if (root.detailed !== "") {
-                // Another network asked about, or wifid starting again.
-                askingAgain.start();
-            }
-        }
-        parser: SplitParser {
-            splitMarker: "\u0000"
-            onRead: data => {
-                const reply = JSON.parse(data);
-                if (!reply.error && reply.parameters.name === root.detailed)
-                    root.detail = reply.parameters;
-            }
-        }
-    }
-
-    Timer {
-        id: askingAgain
-        interval: 50
-        onTriggered: details.connected = root.detailed !== ""
     }
 
     // wifid starting again closes the connection that hears it, which

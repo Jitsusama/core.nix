@@ -38,7 +38,6 @@ import "WarpSwitch.js" as WarpSwitch
 import "Seen.js" as Seen
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
-import "WifiLink.js" as WifiLink
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -1439,108 +1438,14 @@ QtObject {
             Networkd.neighbourParts({ system: "closet", acts: [] }).map(said => said.id),
             ["system"]);
 
-        // A Wi-Fi card's link as wifid says the kernel reads it (detail.rs).
-        const networkJoined = {
-            card: "wlp0s20f3", signal: -43, average: -40, frequency: 5745,
-            station: {
-                chains: [-52, -43], beacons: -35, power: 22, retries: 12, failed: 1,
-                missed: 0, dropped: 5451, connected: 11744, protected: false, wmm: true,
-                interval: 100, dtim: 2, shortPreamble: false, shortSlot: true, channel: 149,
-                legacy: false
-            }
-        };
-        const networkRadio = WifiLink.station(networkJoined);
-        machine("the signal at each antenna", [networkRadio.signal, networkRadio.antennas],
-            [-43, [-52, -43]]);
-        machine("the signal on average and of the beacons",
-            [networkRadio.average, networkRadio.beacons], [-40, -35]);
-        machine("what the card sends at", networkRadio.power, 22);
-        machine("what was sent again, never sent, missed and dropped", [networkRadio.retries,
-            networkRadio.failed, networkRadio.missed, networkRadio.dropped], [12, 1, 0, 5451]);
-        machine("how long it's been on", networkRadio.connected, 11744);
-        machine("its management frames unprotected", networkRadio.protected, false);
-        machine("how often the beacons come, and which say what's held",
-            [networkRadio.interval, networkRadio.dtim], [100, 2]);
-        machine("its preamble, slot time and traffic sorted by kind",
-            [networkRadio.preamble, networkRadio.shortSlot, networkRadio.wmm], ["long", true, true]);
-        const untimed = WifiLink.station({ signal: -43, station: { chains: [] } });
-        machine("an access point that says none of its timing",
-            [untimed.dtim, untimed.wmm, untimed.preamble], [null, null, null]);
-        machine("its channel and frequency", [networkRadio.channel, networkRadio.frequency],
-            [149, 5745]);
-        machine("a card the kernel hasn't answered for",
-            WifiLink.station({ card: "wlp0s20f3", signal: -43, station: null }), null);
-        machine("a card on no network", WifiLink.station(undefined), null);
+        // How long a time lasted, and a signal's height, as Machine and Home
+        // Network say them.
         machine("how long, in hours and minutes", Interfaces.lasted(11744), "3 h 15 min");
         machine("how long, in days", Interfaces.lasted(200000), "2 d 7 h");
         machine("how long, in whole hours", Interfaces.lasted(72000), "20 h");
         machine("how long, in whole days", Interfaces.lasted(172800), "2 d");
         machine("how long, only just", Interfaces.lasted(20), "under a minute");
         machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
-        // One way of a link, as wifid says it, what it leaves out said as null.
-        machine("a way of a link, as wifid says it", WifiLink.way({ mbps: 1081, width: 80,
-            generation: 6, mcs: 10, streams: 2, guard: 0.8, dcm: null, bytes: 23661070224 }),
-            { mbps: 1081, width: 80, generation: 6, mcs: 10, streams: 2, guard: 0.8, dcm: null,
-                bytes: 23661070224, packets: null });
-        machine("a way wifid doesn't say", WifiLink.way(null).mcs, null);
-        const mcs = value => `MCS ${value}`;
-        machine("a figure the same each way, said once", WifiLink.eachWay(10, 10, mcs),
-            "MCS 10");
-        machine("a figure each way", WifiLink.eachWay(10, 9, mcs), "MCS 10 in \u00b7 MCS 9 out");
-        machine("a figure only sent", WifiLink.eachWay(null, 9, mcs), "MCS 9 out");
-        machine("a figure only heard", WifiLink.eachWay(0, undefined, mcs), "MCS 0 in");
-        machine("a figure neither way", WifiLink.eachWay(null, null, mcs), "");
-        const tenths = (value, decimals) => value.toFixed(decimals);
-        machine("idle for milliseconds", WifiLink.idle(12, tenths), "12 ms");
-        machine("idle for seconds", WifiLink.idle(2430, tenths), "2.4 s");
-        machine("idle for tens of seconds", WifiLink.idle(42000, tenths), "42 s");
-        machine("idle for minutes", WifiLink.idle(3 * 60000, tenths), "3 min");
-        const retriesSaid = value => String(value);
-        machine("nothing sent again", WifiLink.retried(0, null, retriesSaid), "none");
-        machine("what was sent again and never sent, dotted",
-            WifiLink.retried(12, 1, retriesSaid),
-            "12 sent again \u00b7 1 never sent");
-        machine("protection's strength by its standard",
-            ["WPA3-SAE", "WPA2-PSK", "WEP", "WPA-PSK"].map(WifiLink.strength),
-            ["strong", "good", "broken", "weak"]);
-        // The connected network's drawer: where then what, what moves first, the
-        // access point's hardware address last.
-        const drawerSaid = { eyebrow: "on {band} \u00b7 network",
-            kind: "on Wi-Fi \u00b7 network",
-            over: "{margin} dB over the noise", since: "since {time}" };
-        const drawerNamed = id => id;
-        const linkKnown = { name: "Home", band: "5 GHz", signal: "-43 dBm", margin: 52,
-            speed: "1081 Mb/s in \u00b7 1134 Mb/s out", expected: "720 Mb/s",
-            carried: "23.7 GB in \u00b7 1.20 GB out", retries: "none", generation: "Wi-Fi 6",
-            coding: "MCS 10 in \u00b7 MCS 11 out", streams: "2", width: "80 MHz",
-            channel: "149 \u00b7 5745 MHz", heard: "2 on 2.4 \u00b7 3 on 5 GHz",
-            protection: "strong", standard: "WPA3-SAE", connected: "3 h 15 min",
-            since: "21:10", bssid: "aa:bb:cc:dd:ee:ff" };
-        const linkDrawer = WifiLink.drawer(linkKnown, drawerNamed, drawerSaid);
-        machine("a network's drawer says its band, then what it is",
-            [linkDrawer.eyebrow, linkDrawer.title], ["on 5 GHz \u00b7 network", "Home"]);
-        machine("what moves first, its identifier last", linkDrawer.facts.map(one => one.label),
-            ["signal", "speed", "expected", "carried", "retries", "generation", "coding",
-                "streams", "width", "channel", "heard", "protection", "standard",
-                "connected", "bssid"]);
-        machine("its signal over the noise and since when, dotted",
-            [linkDrawer.facts[0].value, linkDrawer.facts[13].value],
-            ["-43 dBm \u00b7 52 dB over the noise", "3 h 15 min \u00b7 since 21:10"]);
-        machine("its hardware address an identifier", linkDrawer.facts[14].identifies, true);
-        const earlyDrawer = WifiLink.drawer(Object.assign({}, linkKnown, { band: "",
-            margin: null, retries: "", connected: "", since: "", bssid: null }),
-        drawerNamed, drawerSaid);
-        machine("before iw reads, what it hasn't read left out, never said as unknown",
-            [earlyDrawer.eyebrow, earlyDrawer.facts[0].value,
-                earlyDrawer.facts.map(one => one.label).filter(label =>
-                    ["retries", "connected", "bssid"].includes(label))],
-            ["on Wi-Fi \u00b7 network", "-43 dBm", []]);
-        machine("its eyebrow set as written, the unit never re-cased",
-            linkDrawer.eyebrowNames, true);
-        machine("a width said as ours, a radio before Wi-Fi 4 told apart",
-            ["20 MHz (no HT)", "80 MHz", "80+80 MHz", ""].map(WifiLink.widthOf),
-            [{ width: "20 MHz", legacy: true }, { width: "80 MHz", legacy: false },
-                { width: "80+80 MHz", legacy: false }, { width: "", legacy: false }]);
         machine("a whole reading takes the real minus and no decimals",
             [Numbers.wholeReading(-14), Numbers.wholeReading(-60.4), Numbers.wholeReading(3)],
             ["\u221214", "\u221260", "3"]);

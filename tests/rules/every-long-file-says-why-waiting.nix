@@ -46,7 +46,6 @@
   "modules/quickshell/launcher/Displays.qml"
   "modules/quickshell/launcher/Now.qml"
   "modules/quickshell/launcher/Sound.qml"
-  "modules/quickshell/launcher/Wireless.qml"
   "modules/quickshell/timekeeping/src/candm.rs"
   "modules/quickshell/timers/src/lib.rs"
   "modules/quickshell/timers/src/main.rs"

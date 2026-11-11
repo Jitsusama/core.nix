@@ -3,8 +3,8 @@
 // another virtual network), named the same from sysfs for the network's
 // speed, the gateways from the kernel's routing tables, the name servers
 // from resolv.conf, and how a signal and a time lasted are told. A Wi-Fi
-// card's own link is WifiLink.js's. Networks.qml, Wireless.qml and
-// Traffic.qml read the files and run the programs; everything here is
+// card's own link is wifid's, served ready (Wireless.qml). Networks.qml
+// and Traffic.qml read the files and run the programs; everything here is
 // plain reading of what they said, so it's tested offscreen
 // (tests/answers.qml).
 .pragma library

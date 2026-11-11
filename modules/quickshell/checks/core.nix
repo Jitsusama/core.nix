@@ -471,7 +471,6 @@
       cp ${../launcher/Traffic.js} Traffic.js
       cp ${../launcher/Interfaces.js} Interfaces.js
       cp ${../launcher/Networkd.js} Networkd.js
-      cp ${../launcher/WifiLink.js} WifiLink.js
       cp ${../launcher/Links.js} Links.js
       cp ${../launcher/Sounds.js} Sounds.js
       cp ${../launcher/Cameras.js} Cameras.js

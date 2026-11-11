@@ -2,8 +2,9 @@
 // order each row's `order` says, so a change places only the rows it names,
 // each found its place by halving, and nothing sorts the rest. The daemon
 // spaces its orders and keeps them from one change to the next, so a row
-// that moves is said alone. Wireless.qml keeps wifid's rows by it, and
-// what it makes of each, and tests/placed.qml runs it in Qt's own engine.
+// that moves is said alone. Machine.qml keeps machine's rows by it, and
+// Wireless.qml each network's acts as made, and tests/placed.qml runs it
+// in Qt's own engine.
 .pragma library
 
 // The keys in their order once a message said the rows `changed` anew and
