@@ -8,6 +8,15 @@
 //! the dark, so below a dim light the warmth last seen holds, and while the
 //! lid is shut the light is the lid's, so nothing follows it.
 //!
+//! A sensor's colour flickers: at night on 2026-11-11 an XPS 14's said 2700,
+//! 5200 and 8000 K within seconds. So no one reading is believed. Each
+//! counts for the time it held, and the room's colour settles toward it
+//! over about 20 seconds, so a flicker is taken for the light between and
+//! a lamp switched on is followed within a minute. The settled colour is
+//! said for the shell only once it moves 15 mireds from what was last said,
+//! and not at all while the screen doesn't follow the room, since each
+//! change rewrites the note the shell wakes for.
+//!
 //! A move glides, 50 K a fifth of a second, so it's never seen as a jump,
 //! and one smaller than 150 K isn't started, so the screen doesn't wander
 //! with every flicker of the light. The night comes slower: a move to the
@@ -43,6 +52,17 @@ const EVERY: Duration = Duration::from_millis(200);
 const ARRIVING: Duration = Duration::from_millis(1200);
 /// The least move worth starting, in kelvin.
 const WORTH: u16 = 150;
+/// How long, in seconds, a reading of the room's colour takes to settle:
+/// the settled colour goes about two thirds of the way toward a reading
+/// that holds this long.
+const SETTLING: f64 = 20.0;
+/// How far, in mireds, the settled colour moves before it's said again.
+const BAND: f64 = 15.0;
+
+/// A light's colour in mireds, the scale on which equal steps look equal.
+fn mireds(kelvin: f64) -> f64 {
+    1e6 / kelvin.max(1.0)
+}
 
 /// The screen's warmth for a room's light, to the nearest step.
 pub fn for_room(room: f64) -> u16 {
@@ -66,9 +86,15 @@ pub struct Warmth {
     aim: Option<u16>,
     /// When its next step is due.
     next: Option<Instant>,
-    /// The room's warmth and light, last heard.
+    /// The room's colour and light, last heard, and when the colour last
+    /// settled toward what was heard.
     room: Option<f64>,
     lux: Option<f64>,
+    since: Option<Instant>,
+    /// The room's colour settled from what was heard, in mireds, and the
+    /// kelvin last said of it.
+    settled: Option<f64>,
+    said: Option<u16>,
     shut: bool,
     /// Whether the screen follows the room, as Joel last said.
     follows: bool,
@@ -92,6 +118,9 @@ impl Warmth {
             next: None,
             room: None,
             lux: None,
+            since: None,
+            settled: None,
+            said: None,
             shut: false,
             follows: true,
             held: None,
@@ -122,16 +151,11 @@ impl Warmth {
         self.follows
     }
 
-    /// The room's light's colour last heard, in kelvin, to the nearest
-    /// hundred as the shell says it, or none while no sensor has said.
+    /// The room's light's colour as last said, in kelvin to the nearest
+    /// hundred, while the screen follows the room; none while it doesn't,
+    /// or while no light bright enough to trust has been heard.
     pub fn room_white(&self) -> Option<u16> {
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "a light's colour, held between 1,000 and 40,000 K, fits"
-        )]
-        self.room
-            .map(|kelvin| ((kelvin.clamp(1000.0, 40_000.0) / 100.0).round() * 100.0) as u16)
+        self.said.filter(|_| self.follows)
     }
 
     /// The warmth the screen is at, or going to.
@@ -141,14 +165,60 @@ impl Warmth {
 
     /// The room's light changed warmth.
     pub fn room(&mut self, kelvin: f64, now: Instant) {
+        self.settle(now);
         self.room = Some(kelvin);
-        self.follow(now);
+        self.heard(now);
     }
 
     /// The room's light changed brightness, which says whether its colour
     /// can be trusted.
     pub fn light(&mut self, lux: f64, now: Instant) {
+        self.settle(now);
         self.lux = Some(lux);
+        self.heard(now);
+    }
+
+    /// Whether the room's light is bright enough for its colour to count.
+    fn trusted(&self) -> bool {
+        self.lux.is_some_and(|lux| lux >= DIM)
+    }
+
+    /// Counts the room's last reading for the time it held, if its light
+    /// was bright enough to trust, settling the room's colour toward it.
+    fn settle(&mut self, now: Instant) {
+        let since = self.since.replace(now);
+        let (Some(room), Some(since), Some(settled)) = (self.room, since, self.settled) else {
+            return;
+        };
+        if self.trusted() {
+            let held = now.saturating_duration_since(since).as_secs_f64();
+            let toward = 1.0 - (-held / SETTLING).exp();
+            self.settled = Some(settled + (mireds(room) - settled) * toward);
+        }
+    }
+
+    /// After a reading: the first trusted colour is taken as it is, the
+    /// settled colour is said once it has moved far enough, and the screen
+    /// follows.
+    fn heard(&mut self, now: Instant) {
+        if self.settled.is_none() && self.trusted() {
+            self.settled = self.room.map(mireds);
+        }
+        if let Some(settled) = self.settled {
+            let moved = self
+                .said
+                .is_none_or(|said| (mireds(f64::from(said)) - settled).abs() >= BAND);
+            if moved {
+                let kelvin = ((1e6 / settled).clamp(1000.0, 40_000.0) / 100.0).round() * 100.0;
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "a light's colour, held between 1,000 and 40,000 K, fits"
+                )]
+                let kelvin = kelvin as u16;
+                self.said = Some(kelvin);
+            }
+        }
         self.follow(now);
     }
 
@@ -180,12 +250,10 @@ impl Warmth {
         self.aim
     }
 
-    /// The room's warmth while its light is bright enough to trust.
+    /// The room's settled warmth while its light is bright enough to trust.
     fn lit(&self) -> Option<u16> {
-        let (Some(room), Some(lux)) = (self.room, self.lux) else {
-            return None;
-        };
-        (lux >= DIM).then(|| for_room(room))
+        let settled = self.settled?;
+        self.trusted().then(|| for_room(1e6 / settled))
     }
 
     /// Where the screen should be, if it should move: the warmer of the
@@ -381,7 +449,66 @@ mod tests {
         assert_eq!(warmth.step(now), Some(6450));
         warmth.set(6450, now);
         warmth.room(6500.0, now);
-        assert_eq!(glide(&mut warmth, now), vec![6500]);
+        let later = now + Duration::from_secs(120);
+        warmth.light(100.0, later);
+        assert_eq!(glide(&mut warmth, later), vec![6500]);
+    }
+
+    #[test]
+    fn a_flickering_sensor_settles_before_it_is_said_or_followed() {
+        // At night on 2026-11-11 an XPS 14's sensor said 2700, 5200 and
+        // 8000 K within seconds, and each was written for the shell.
+        let start = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, start);
+        warmth.room(5200.0, start);
+        glide(&mut warmth, start);
+        let mut said = vec![warmth.room_white()];
+        let mut aims = Vec::new();
+        let mut at = start;
+        for kelvin in [2700.0, 5200.0, 8000.0, 5200.0].iter().cycle().take(100) {
+            at += Duration::from_millis(500);
+            warmth.room(*kelvin, at);
+            if said.last() != Some(&warmth.room_white()) {
+                said.push(warmth.room_white());
+            }
+            aims.extend(warmth.going());
+        }
+        assert!(
+            said.len() <= 3,
+            "the room's colour was said {} times in 50 s: {said:?}",
+            said.len()
+        );
+        assert!(
+            aims.iter().all(|&aim| aim >= 5500),
+            "the screen aimed for a lamp it never had: {aims:?}"
+        );
+    }
+
+    #[test]
+    fn a_room_whose_colour_holds_is_followed_within_a_minute() {
+        let start = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, start);
+        warmth.room(6500.0, start);
+        warmth.room(2700.0, start + Duration::from_secs(1));
+        let mut at = start + Duration::from_secs(1);
+        for _ in 0..60 {
+            at += Duration::from_secs(1);
+            warmth.light(100.0, at);
+        }
+        assert_eq!(warmth.stands(), 5000, "the lamp's warmth, a minute on");
+    }
+
+    #[test]
+    fn the_rooms_colour_isnt_said_while_the_screen_doesnt_follow_it() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, now);
+        warmth.room(2700.0, now);
+        assert_eq!(warmth.room_white(), Some(2700));
+        warmth.follow_the_room(false, now);
+        assert_eq!(warmth.room_white(), None);
     }
 
     #[test]

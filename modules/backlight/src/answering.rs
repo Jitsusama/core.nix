@@ -154,7 +154,8 @@ impl Backlight<'_> {
 
     /// Tells the shell how the warmth stands, when that changed: the
     /// warmth, whether it follows the room, whether a sensor sees colour
-    /// and the room's colour it last heard, and the night light, on or
+    /// and the room's settled colour while the screen follows it (warmth.rs
+    /// says why it's settled first), and the night light, on or
     /// off, its white, and the sunset and sunrise of the night under way
     /// or the next, or null for both while where
     /// the laptop is isn't known.
