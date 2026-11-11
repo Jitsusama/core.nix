@@ -30,5 +30,17 @@ function run(failures) {
             failures.push(`"${typed}" gave ${quoted(got.headline)}, but nothing should`);
         }
     }
+    // It's asked on every key, so what's typed on the way to a word, or a
+    // colour not yet whole, never works out the theme's pigments: a role
+    // counts each time it's read.
+    asked++;
+    let read = 0;
+    const counted = { accent: { toString: () => { read++; return "#509475"; } } };
+    for (const typed of ["c", "ca", "bat", "meet", "#", "#12345", "rgb", "colour"]) {
+        Colours.answer(typed, ColourCases.palette, counted);
+    }
+    if (read > 0) {
+        failures.push(`words that aren't colours read the theme's roles ${read} times`);
+    }
     return asked;
 }

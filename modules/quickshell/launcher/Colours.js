@@ -270,12 +270,19 @@ function nearest(colour, known) {
 
 // The answer to what's typed, given the theme's `palette` and `roles`, or
 // null when it isn't a colour. A row that shows its colour carries it as
-// `swatch`, in Qt's own "#aarrggbb", which puts the alpha first.
+// `swatch`, in Qt's own "#aarrggbb", which puts the alpha first. It's
+// asked on every key, and what's typed is seldom a colour, so the theme's
+// pigments are worked out only once it is one: matching each against every
+// role ran 22,680 times over a lab's few words, two new strings each, all
+// for the collector to sweep between a key and its frame (2026-11-11).
 function answer(text, palette, roles) {
-    const known = pigments(palette, roles);
     let colour = read(text);
     const asked = ASKED.exec(text.trim());
-    if (!colour && asked) {
+    if (!colour && !asked) {
+        return null;
+    }
+    const known = pigments(palette, roles);
+    if (!colour) {
         const name = asked[1].toLowerCase().replace(GAPS, "_");
         const pigment = known.find(p => p.name === name || p.roles.indexOf(name) >= 0);
         colour = pigment ? { form: "name", rgb: pigment.colour.rgb, alpha: 1 } : null;
