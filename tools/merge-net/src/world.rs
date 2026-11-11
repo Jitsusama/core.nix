@@ -10,6 +10,7 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -104,6 +105,13 @@ pub struct Real {
     /// The branch it follows and lands its changes on: main, or a
     /// throwaway branch to prove the net on.
     pub branch: String,
+    /// Held by whatever moves the checkout's head, as a change landing and
+    /// a comparison do, so the two can't take turns in it. They run on
+    /// two threads, the settler's and the round's, and at 06:01 on 11
+    /// November a comparison checked out main's head under a quarantine
+    /// being cut. Its commit went on the detached head, the tree was left
+    /// changed, and its checks refused to run.
+    pub moving: Mutex<()>,
 }
 
 impl Real {
@@ -114,6 +122,11 @@ impl Real {
 
     fn checkout(&self) -> PathBuf {
         self.state.join("core")
+    }
+
+    /// The checkout to itself, until what's given back is dropped.
+    fn moving(&self) -> MutexGuard<'_, ()> {
+        self.moving.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The repository's `owner/name` on GitHub.
@@ -223,6 +236,7 @@ impl Real {
         still: &dyn Fn(&str, &str) -> Result<bool, String>,
         change: &dyn Fn() -> Result<(), String>,
     ) -> Result<Merged, String> {
+        let _moving = self.moving();
         let followed = self.followed();
         self.git(&["fetch", "--quiet", "origin", &self.branch])?;
         let cut_from = self.git(&["rev-parse", &followed])?;
@@ -601,6 +615,7 @@ impl World for Real {
         if let Ok(said) = fs::read_to_string(&kept) {
             return Ok(Changed::parse(&said));
         }
+        let _moving = self.moving();
         self.git(&["checkout", "--quiet", "--force", "--detach", head])?;
         let log = self
             .state
@@ -1420,12 +1435,36 @@ mod tests {
             system: "x86_64-linux".to_owned(),
             booted: 0,
             branch: "main".to_owned(),
+            moving: Mutex::new(()),
         };
         fs::create_dir_all(&net.state).unwrap();
         net.cloned().unwrap();
         git_in(&net.checkout(), &["config", "user.name", "net"]);
         git_in(&net.checkout(), &["config", "user.email", "net@t"]);
         (net, root)
+    }
+
+    #[test]
+    fn a_comparison_waits_while_a_change_is_landing_in_the_checkout() {
+        let (net, root) = a_net("moving", &json!([]));
+        let head = git_in(&root.join("main"), &["rev-parse", "HEAD"]);
+        let (tell, told) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let landing = net.moving();
+            scope.spawn(|| tell.send(net.changed(&head, &head).is_ok()));
+            // A comparison that took no turn moves the head at once, so a
+            // third of a second is time enough to have seen it go.
+            assert!(
+                told.recv_timeout(Duration::from_millis(300)).is_err(),
+                "a comparison moved the checkout while a change was landing"
+            );
+            drop(landing);
+            assert!(
+                told.recv_timeout(Duration::from_secs(30)).is_ok(),
+                "a comparison never took its turn once the landing ended"
+            );
+        });
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
