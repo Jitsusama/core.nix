@@ -50,9 +50,18 @@ const PACE: Duration = Duration::from_secs(2);
 /// process per lent builder each time.
 const ASK_AGAIN: Duration = Duration::from_secs(30);
 
-/// How long what the cloud last vouched for stands while it doesn't
-/// answer, so a few failed calls in a row don't drop every lent builder.
+/// How long what the cloud last vouched for stands while it can't be
+/// heard, so a few calls lost to the network don't drop every lent
+/// builder. A cloud refusing to answer, or a token that isn't one, stands
+/// for nothing: the lender's account writes the token, so either could
+/// otherwise buy this long for a change made unseen.
 const STANDS: Duration = Duration::from_secs(120);
+
+/// How long after first trust the audit log is read once more, for what
+/// it hadn't shown yet: a change logged late, or an insert made with a
+/// script of its own and set back, whose entries don't say what metadata
+/// it was made with. Its entries took seconds to show on 10 November.
+const REREAD: Duration = Duration::from_secs(600);
 
 /// How long gcloud has to answer, about thrice its slowest seen, so one
 /// hung call never holds every line.
@@ -294,11 +303,77 @@ struct Asked {
     /// When it had last started when root first trusted it, kept once
     /// it's refused too, so a reset is never trusted.
     started: Option<String>,
+    /// Its fingerprints when root first trusted it, which any change to it
+    /// moves, even one undone before the next look.
+    marks: Option<String>,
+    /// The lender's instance file and the host keys its lines carried when
+    /// this was asked, so an answer for others is asked again at once.
+    named: String,
+    wanted: Vec<String>,
     /// When the cloud last vouched for it.
     vouched: Option<Instant>,
+    /// When root first trusted it, and whether its audit log has been read
+    /// again since, [`REREAD`] on.
+    trusted_at: Option<Instant>,
+    reread: bool,
     /// Whether it was refused once root had trusted it, which is for good:
     /// what it ran while changed may still be there once it's set back.
     spoiled: bool,
+}
+
+/// Why the cloud didn't vouch for an instance.
+enum Unvouched {
+    /// It wasn't heard in time, or the network to it failed: what it said
+    /// last stands a while, since nothing running as Joel can bring that
+    /// about.
+    Silent,
+    /// It wasn't asked, its token being no token, or it refused to answer:
+    /// nothing stands, though the instance isn't known to be changed, and
+    /// its pinned fingerprints show anything done to it meanwhile once the
+    /// cloud answers again.
+    Unanswered(String),
+    /// It answered, and the instance isn't as made.
+    Refused(String),
+}
+
+impl From<String> for Unvouched {
+    fn from(why: String) -> Self {
+        Self::Refused(why)
+    }
+}
+
+/// The most a cloud token may hold.
+const TOKEN_BYTES: u64 = 4096;
+
+/// What gcloud says when the network to the cloud failed, as its HTTP
+/// library words it. Each holds a space or a capital, which no instance's
+/// name, the one thing of Joel's a refusal can quote, may hold.
+const UNREACHED: [&str; 10] = [
+    "(ConnectionError)",
+    "(SSLError)",
+    "(Timeout)",
+    "Max retries exceeded",
+    "Connection reset by peer",
+    "Connection refused",
+    "Read timed out",
+    "Temporary failure in name resolution",
+    "Network is unreachable",
+    "Failed to establish a new connection",
+];
+
+/// What a failed gcloud's `complaint` on standard error makes of it: a
+/// failed network is silence, and anything else, a refused token, a
+/// missing permission or instance, is the cloud not answering.
+fn failed(complaint: &str) -> Unvouched {
+    if UNREACHED.iter().any(|said| complaint.contains(said)) {
+        return Unvouched::Silent;
+    }
+    let said = complaint
+        .lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+        .unwrap_or("nothing");
+    Unvouched::Unanswered(format!("gcloud failed, saying {said}"))
 }
 
 /// The host keys asked of the cloud, by instance, and what was last said
@@ -307,6 +382,8 @@ pub struct HostKeys {
     asked: HashMap<(String, String), Asked>,
     config: PathBuf,
     said: HashMap<String, String>,
+    /// Whether the project's metadata holds, and when that was asked.
+    project: Option<(Instant, Result<(), String>)>,
 }
 
 impl HostKeys {
@@ -316,6 +393,7 @@ impl HostKeys {
             asked: HashMap::new(),
             config,
             said: HashMap::new(),
+            project: None,
         }
     }
 
@@ -336,7 +414,10 @@ impl HostKeys {
     }
 
     /// The host key of `lent`'s instance as its line carries it, while the
-    /// cloud vouches for the instance, asking again every [`ASK_AGAIN`].
+    /// cloud vouches for the instance, asking again every [`ASK_AGAIN`], or
+    /// at once when the lender names it or its host key anew: after each
+    /// switch on 10 November, an answer kept for the key before dropped
+    /// the line for up to 30 s.
     fn of(&mut self, lent: &Lent, settings: &Settings, wanted: &[String]) -> Option<String> {
         let about = lent.instance.display().to_string();
         // None named is a lender with nothing lent, which says nothing.
@@ -354,13 +435,14 @@ impl HostKeys {
         };
         self.say(&about, None);
         let key = (name.clone(), zone.clone());
-        let due = self
-            .asked
-            .get(&key)
-            .is_none_or(|asked| asked.at.is_none_or(|at| at.elapsed() >= ASK_AGAIN));
+        let due = self.asked.get(&key).is_none_or(|asked| {
+            let anew = asked.named != named || asked.wanted != wanted;
+            asked.at.is_none_or(|at| anew || at.elapsed() >= ASK_AGAIN)
+        });
         if due {
             let before = self.asked.remove(&key).unwrap_or_default();
-            let asked = self.vet(settings, &name, &zone, &lent.token, wanted, before);
+            let mut asked = self.vet(settings, &name, &zone, &lent.token, wanted, before);
+            (asked.named, asked.wanted) = (named, wanted.to_vec());
             self.asked.insert(key.clone(), asked);
         }
         self.asked
@@ -388,18 +470,27 @@ impl HostKeys {
                 ..before
             };
         }
-        let verdict = match pinned(settings) {
-            Ok(None) => Ok(None),
-            Ok(Some(pinned)) => {
-                let first = before.started.as_deref();
-                self.vouched(settings, name, zone, token, &pinned, first)
-                    .map(Some)
-            }
-            Err(why) => Err(Some(why)),
-        };
-        let started = match verdict {
-            Ok(started) => started,
-            Err(None) => {
+        let (trusted_at, reread) = (before.trusted_at, before.reread);
+        let again = !reread && trusted_at.is_some_and(|at| at.elapsed() >= REREAD);
+        let verdict = self
+            .copied(token)
+            .map_err(Unvouched::Unanswered)
+            .and_then(|token| {
+                let verdict = match pinned(settings) {
+                    Ok(None) => Ok(None),
+                    Ok(Some(pinned)) => {
+                        let first = (before.started.as_deref().zip(before.marks.as_deref()))
+                            .map(|(started, marks)| (started, marks, again));
+                        self.vouched(settings, name, zone, &token, &pinned, first)
+                            .map(Some)
+                    }
+                    Err(why) => Err(Unvouched::Refused(why)),
+                };
+                verdict.map(|vouched| (token, vouched))
+            });
+        let (token, (started, marks)) = match verdict {
+            Ok((token, vouched)) => (token, vouched.unzip()),
+            Err(Unvouched::Silent) => {
                 self.say(
                     name,
                     Some(format!("the cloud didn't describe {name} in {zone}")),
@@ -411,7 +502,20 @@ impl HostKeys {
                     ..before
                 };
             }
-            Err(Some(why)) => {
+            Err(Unvouched::Unanswered(why)) => {
+                self.say(
+                    name,
+                    Some(format!(
+                        "{name} in {zone} lends nothing until the cloud answers for it: {why}"
+                    )),
+                );
+                return Asked {
+                    host_key: None,
+                    at: Some(now),
+                    ..before
+                };
+            }
+            Err(Unvouched::Refused(why)) => {
                 self.say(
                     name,
                     Some(format!("{name} in {zone} {why}, so root trusts it no more")),
@@ -426,7 +530,7 @@ impl HostKeys {
         };
         let host_key = match before.host_key {
             Some(host_key) if wanted.contains(&host_key) => Some(host_key),
-            _ => self.host_key(settings, name, zone, token),
+            _ => self.host_key(settings, name, zone, &token),
         };
         let none = format!("the cloud gave no host key for {name} in {zone}");
         self.say(name, host_key.is_none().then_some(none));
@@ -434,42 +538,154 @@ impl HostKeys {
             host_key,
             at: Some(now),
             vouched: started.is_some().then_some(now),
+            trusted_at: started.is_some().then(|| trusted_at.unwrap_or(now)),
+            reread: reread || again,
             started,
+            marks,
             spoiled: false,
+            ..Asked::default()
         }
     }
 
-    /// When instance `name` in `zone` last started, while the cloud says
-    /// it's as `pinned` holds it and hasn't started again since `first`,
-    /// when root first trusted it; why not otherwise, or nothing when the
-    /// cloud doesn't answer. Its boot disk's image is asked at first trust.
+    /// When instance `name` in `zone` last started, and its fingerprints,
+    /// while the cloud says it's as `pinned` holds it, in a project whose
+    /// metadata holds, and that neither moved since `first`, when root
+    /// first trusted it; why not otherwise. At first trust, its boot disk's
+    /// image is asked, it must have started once, soon after its making,
+    /// and the audit log must hold its making alone, as it must still when
+    /// `first` says it's read again.
     fn vouched(
-        &self,
+        &mut self,
         settings: &Settings,
         name: &str,
         zone: &str,
         token: &Path,
         pinned: &Pinned,
-        first: Option<&str>,
-    ) -> Result<String, Option<String>> {
-        let described = self
-            .describe(settings, "instances", name, zone, token)
-            .ok_or(None)?;
+        first: Option<(&str, &str, bool)>,
+    ) -> Result<(String, String), Unvouched> {
+        let described = self.describe(settings, "instances", name, zone, token)?;
         let started = vet::vetted(&described, pinned)?;
+        let marks = vet::marks(&described).ok_or("says nothing of its fingerprints".to_owned())?;
+        self.project_holds(settings, token)?;
         match first {
-            Some(first) if first != started => Err(Some(format!(
+            Some((first, _, _)) if first != started => Err(Unvouched::Refused(format!(
                 "started again at {started}, after root first trusted it at {first}"
             ))),
-            Some(_) => Ok(started),
+            Some((_, was, _)) if was != marks => Err(Unvouched::Refused(format!(
+                "was changed since root first trusted it, its fingerprints moving from {was} \
+                 to {marks}"
+            ))),
+            Some((_, _, again)) => {
+                if again {
+                    let disk = vet::boot_disk(&described).ok_or("names no boot disk".to_owned())?;
+                    let history = self.history(settings, name, zone, &disk, token)?;
+                    vet::made_alone(&history)
+                        .map_err(|why| format!("{why}, as its audit log said once read again"))?;
+                }
+                Ok((started, marks))
+            }
             None => {
+                vet::started_once(&described)?;
                 let disk = vet::boot_disk(&described).ok_or("names no boot disk".to_owned())?;
-                let disk = self
-                    .describe(settings, "disks", &disk, zone, token)
-                    .ok_or("its boot disk couldn't be described".to_owned())?;
-                vet::imaged(&disk, pinned)?;
-                Ok(started)
+                let described = self.describe(settings, "disks", &disk, zone, token)?;
+                vet::imaged(&described, pinned)?;
+                vet::made_alone(&self.history(settings, name, zone, &disk, token)?)?;
+                Ok((started, marks))
             }
         }
+    }
+
+    /// Whether the project's metadata holds, as [`vet::project_holds`]
+    /// says, asked again every [`ASK_AGAIN`] while the cloud answers.
+    fn project_holds(&mut self, settings: &Settings, token: &Path) -> Result<(), Unvouched> {
+        if let Some((at, holds)) = &self.project
+            && at.elapsed() < ASK_AGAIN
+        {
+            return holds.clone().map_err(Unvouched::Refused);
+        }
+        let words = ["compute", "project-info", "describe", "--format=json"];
+        let said = self.gcloud(settings, &words, token)?;
+        let described: Value = serde_json::from_str(&said)
+            .map_err(|_| Unvouched::Unanswered("its project's answer wasn't JSON".to_owned()))?;
+        let holds = vet::project_holds(&described);
+        self.project = Some((Instant::now(), holds.clone()));
+        holds.map_err(Unvouched::Refused)
+    }
+
+    /// A copy of the token in `token`, which the lender's account writes,
+    /// kept where only this service reads, once it's a file holding one
+    /// token. A pipe there would make gcloud wait and garbage would make it
+    /// fail, and either could keep a line standing while the cloud said
+    /// nothing; a copy can't change while gcloud reads it.
+    fn copied(&self, token: &Path) -> Result<PathBuf, String> {
+        use std::io::{Read, Write};
+        use std::os::unix::fs::OpenOptionsExt;
+        let whose = token.display();
+        let unread = |_: std::io::Error| format!("its token at {whose} can't be read");
+        // Opened without waiting, so a pipe is seen for what it is.
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+            .open(token)
+            .map_err(unread)?;
+        let held = file.metadata().map_err(unread)?;
+        if !held.is_file() || held.len() > TOKEN_BYTES {
+            return Err(format!("its token at {whose} isn't a file of one token"));
+        }
+        let mut said = String::new();
+        file.take(TOKEN_BYTES)
+            .read_to_string(&mut said)
+            .map_err(unread)?;
+        let said = said.trim();
+        let fits = |byte: u8| byte.is_ascii_alphanumeric() || b"._~+/=-".contains(&byte);
+        if said.is_empty() || !said.bytes().all(fits) {
+            return Err(format!("its token at {whose} isn't one"));
+        }
+        let unwritten = |_: std::io::Error| "its token couldn't be copied".to_owned();
+        let copies = self.config.join("tokens");
+        fs::create_dir_all(&copies).map_err(unwritten)?;
+        let copy = copies.join(whose.to_string().replace('/', "_"));
+        fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&copy)
+            .and_then(|mut written| written.write_all(said.as_bytes()))
+            .map_err(unwritten)?;
+        Ok(copy)
+    }
+
+    /// What the audit log says was done to instance `name` in `zone` and
+    /// its boot disk `disk`, as JSON, newest first: the last day's, since
+    /// no builder lives longer.
+    fn history(
+        &self,
+        settings: &Settings,
+        name: &str,
+        zone: &str,
+        disk: &str,
+        token: &Path,
+    ) -> Result<Value, Unvouched> {
+        let project = &settings.project;
+        let resource = |kind: &str, name: &str| {
+            format!("protoPayload.resourceName=\"projects/{project}/zones/{zone}/{kind}/{name}\"")
+        };
+        let filter = format!(
+            "logName=\"projects/{project}/logs/cloudaudit.googleapis.com%2Factivity\" \
+             AND ({} OR {})",
+            resource("instances", name),
+            resource("disks", disk)
+        );
+        let words = [
+            "logging",
+            "read",
+            &filter,
+            "--freshness=1d",
+            "--format=json",
+        ];
+        serde_json::from_str(&self.gcloud(settings, &words, token)?)
+            .map_err(|_| Unvouched::Unanswered("its audit log's answer wasn't JSON".to_owned()))
     }
 
     /// What the cloud says of the instance or disk (`kind`) `name` in
@@ -481,10 +697,11 @@ impl HostKeys {
         name: &str,
         zone: &str,
         token: &Path,
-    ) -> Option<Value> {
+    ) -> Result<Value, Unvouched> {
         let said = self.gcloud(
             settings,
             &[
+                "compute",
                 kind,
                 "describe",
                 name,
@@ -493,7 +710,8 @@ impl HostKeys {
             ],
             token,
         )?;
-        serde_json::from_str(&said).ok()
+        serde_json::from_str(&said)
+            .map_err(|_| Unvouched::Unanswered(format!("its {kind} answer wasn't JSON")))
     }
 
     /// Asks the cloud for `name`'s host key, with the token in `token`.
@@ -504,26 +722,35 @@ impl HostKeys {
         zone: &str,
         token: &Path,
     ) -> Option<String> {
-        let said = self.gcloud(
-            settings,
-            &[
-                "instances",
-                "get-guest-attributes",
-                name,
-                &format!("--zone={zone}"),
-                "--query-path=hostkeys/ssh-ed25519",
-                "--format=value(value)",
-            ],
-            token,
-        )?;
+        let said = self
+            .gcloud(
+                settings,
+                &[
+                    "compute",
+                    "instances",
+                    "get-guest-attributes",
+                    name,
+                    &format!("--zone={zone}"),
+                    "--query-path=hostkeys/ssh-ed25519",
+                    "--format=value(value)",
+                ],
+                token,
+            )
+            .ok()?;
         carried(&said)
     }
 
-    /// What gcloud's `compute` says to `words` in the settings' project,
-    /// with the token in `token`, when it succeeds in time.
-    fn gcloud(&self, settings: &Settings, words: &[&str], token: &Path) -> Option<String> {
+    /// What gcloud says to `words` in the settings' project, with the token
+    /// in `token`, when it succeeds in time; otherwise whether it was
+    /// silent or refused, as [`failed`] tells.
+    fn gcloud(
+        &self,
+        settings: &Settings,
+        words: &[&str],
+        token: &Path,
+    ) -> Result<String, Unvouched> {
+        let unrun = || Unvouched::Unanswered("gcloud couldn't be run".to_owned());
         let mut asking = Command::new(&settings.gcloud)
-            .arg("compute")
             .args(words)
             .arg(format!("--project={}", settings.project))
             .arg(format!("--access-token-file={}", token.display()))
@@ -532,21 +759,34 @@ impl HostKeys {
             .env("CLOUDSDK_CORE_DISABLE_PROMPTS", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .spawn()
-            .ok()?;
+            .map_err(|_| unrun())?;
         // Read as it comes, since an instance described with its startup
         // script runs to tens of kilobytes, near what a pipe holds unread.
-        let mut out = asking.stdout.take()?;
-        let reading = std::thread::spawn(move || {
-            let mut said = String::new();
-            std::io::Read::read_to_string(&mut out, &mut said).map(|_| said)
-        });
+        let read = |mut from: Box<dyn std::io::Read + Send>| {
+            std::thread::spawn(move || {
+                let mut said = String::new();
+                std::io::Read::read_to_string(&mut from, &mut said).map(|_| said)
+            })
+        };
+        let out = read(Box::new(asking.stdout.take().ok_or_else(unrun)?));
+        let complaint = read(Box::new(asking.stderr.take().ok_or_else(unrun)?));
         let status = crate::there::finished_within(&mut asking, PATIENCE);
-        let said = reading.join().ok()?.ok()?;
-        status
-            .filter(std::process::ExitStatus::success)
-            .map(|_| said)
+        let said = out.join().ok().and_then(Result::ok);
+        let complaint = complaint
+            .join()
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        if !complaint.is_empty() {
+            eprint!("{complaint}");
+        }
+        match (status, said) {
+            (None, _) => Err(Unvouched::Silent),
+            (Some(status), Some(said)) if status.success() => Ok(said),
+            _ => Err(failed(&complaint)),
+        }
     }
 }
 
@@ -789,12 +1029,18 @@ mod tests {
     }
 
     const IMAGES: &str = "https://compute.example/projects/debian-cloud/global/images/";
+    const MADE: &str = "2026-11-10T05:14:21.390-08:00";
     const STARTED: &str = "2026-11-10T05:14:27.724-08:00";
     const ROOT_KEY: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIRoot";
 
     /// Writes what the cloud says of instance offload-1a2b into `dir`: that
     /// it started at `started`, carrying `extra` metadata beside its maker's.
     fn instance_in(dir: &Path, started: &str, extra: &[(&str, &str)]) {
+        marked_in(dir, started, extra, "Kk2h");
+    }
+
+    /// As [`instance_in`], with `mark` for its own fingerprint.
+    fn marked_in(dir: &Path, started: &str, extra: &[(&str, &str)], mark: &str) {
         let mut items = vec![
             json!({"key": "block-project-ssh-keys", "value": "TRUE"}),
             json!({"key": "offload-hook-key", "value": ROOT_KEY}),
@@ -807,26 +1053,40 @@ mod tests {
         );
         let described = json!({
             "status": "RUNNING",
+            "creationTimestamp": MADE,
             "lastStartTimestamp": started,
-            "metadata": {"items": items},
+            "fingerprint": mark,
+            "metadata": {"items": items, "fingerprint": "MQpH"},
             "disks": [{"boot": true, "source": "https://compute.example/disks/offload-1a2b"}],
         });
         fs::write(dir.join("instance.json"), described.to_string()).expect("the instance");
     }
 
-    /// A cloud in `dir` that describes the instance and its disk from
-    /// `instance.json` and `disk.json`, gives the host key `HOST` carries,
-    /// and logs what it's asked to `asked`; and the files root pins a lent
-    /// builder to, with its boot disk made from `image`.
+    /// A cloud in `dir` that describes the instance, its disk and its
+    /// project from `instance.json`, `disk.json` and `project.json`, reads
+    /// its audit log from `history.json`, gives the host key `HOST`
+    /// carries, and logs what it's asked to `asked`; that can't be reached
+    /// while `unreachable` is there, and refuses the token while `refusing`
+    /// is; and the files root pins a lent builder to, with its boot disk
+    /// made from `image`.
     fn cloud_in(dir: &Path, image: &str) -> PathBuf {
         let gcloud = dir.join("gcloud");
         let dir = dir.display();
         executable(
             &gcloud,
             &format!(
-                "#!/bin/sh\necho \"$*\" >> '{dir}/asked'\ncase \"$2 $3\" in\n\
-                 'instances describe') exec cat '{dir}/instance.json' ;;\n\
-                 'disks describe') exec cat '{dir}/disk.json' ;;\n\
+                "#!/bin/sh\necho \"$*\" >> '{dir}/asked'\n\
+                 if [ -e '{dir}/unreachable' ]; then\n\
+                 echo 'ERROR: gcloud crashed (ConnectionError): Max retries exceeded' >&2\n\
+                 exit 1\nfi\n\
+                 if [ -e '{dir}/refusing' ]; then\n\
+                 echo 'ERROR: Request had invalid authentication credentials.' >&2\n\
+                 exit 1\nfi\n\
+                 case \"$1 $2 $3\" in\n\
+                 'compute instances describe') exec cat '{dir}/instance.json' ;;\n\
+                 'compute disks describe') exec cat '{dir}/disk.json' ;;\n\
+                 'compute project-info describe') exec cat '{dir}/project.json' ;;\n\
+                 logging\\ read*) exec cat '{dir}/history.json' ;;\n\
                  *) echo AAAAC3NzaC1lZDI1NTE5AAAAIHost ;;\nesac\n"
             ),
         );
@@ -846,8 +1106,32 @@ mod tests {
             json!({"sourceImage": image}).to_string(),
         )
         .expect("the disk");
+        let project = json!({"commonInstanceMetadata": {"items": [
+            {"key": "enable-oslogin", "value": "TRUE"},
+            {"key": "ssh-keys", "value": "me:ssh-ed25519 AAAA me"},
+        ]}});
+        fs::write(dir.join("project.json"), project.to_string()).expect("the project");
+        history_in(dir, &["v1.compute.instances.insert"; 2]);
         instance_in(dir, STARTED, &[]);
         gcloud
+    }
+
+    /// Writes the audit log of offload-1a2b into `dir`: an entry for each of
+    /// `methods`, newest first.
+    fn history_in(dir: &Path, methods: &[&str]) {
+        let entries: Vec<Value> = methods
+            .iter()
+            .map(|method| {
+                json!({
+                    "timestamp": "2026-11-10T13:14:20Z",
+                    "protoPayload": {
+                        "methodName": method,
+                        "resourceName": "projects/a-lab/zones/us-east1-b/instances/offload-1a2b",
+                    },
+                })
+            })
+            .collect();
+        fs::write(dir.join("history.json"), Value::from(entries).to_string()).expect("the log");
     }
 
     /// A lender in a new folder lending instance offload-1a2b, whose line
@@ -858,6 +1142,7 @@ mod tests {
             fs::create_dir(dir.path().join(folder)).expect("a folder for the files");
         }
         let settings = settings_in(dir.path(), &cloud_in(dir.path(), image));
+        fs::write(dir.path().join("from/token"), "ya29.a0-x_y\n").expect("the token");
         fs::write(
             dir.path().join("from/machines"),
             format!("{}\n", line(URI, KEY, HOST)),
@@ -893,6 +1178,7 @@ mod tests {
         let asked = dir.path().join("asked");
         let gcloud = cloud_in(dir.path(), &format!("{IMAGES}debian-12-bookworm-v1"));
         let settings = settings_in(dir.path(), &gcloud);
+        fs::write(dir.path().join("from/token"), "ya29.a0-x_y\n").expect("the token");
         let standing =
             format!("ssh-ng://builder@home x86_64-linux /etc/nix/home_ed25519 4 1 - - {OTHER}");
         fs::write(
@@ -926,16 +1212,31 @@ mod tests {
             "the standing builder was lost"
         );
         let said = fs::read_to_string(&asked).expect("gcloud was asked");
+        let from = dir.path().join("from/token").display().to_string();
+        let copy = dir
+            .path()
+            .join("config/tokens")
+            .join(from.replace('/', "_"));
         assert!(
             said.contains("instances describe offload-1a2b --zone=us-east1-b --format=json")
                 && said.contains("disks describe offload-1a2b --zone=us-east1-b")
+                && said.contains("compute project-info describe --format=json")
+                && said.contains(
+                    "logging read logName=\"projects/a-lab/logs/\
+                     cloudaudit.googleapis.com%2Factivity\" AND (protoPayload.resourceName=\"\
+                     projects/a-lab/zones/us-east1-b/instances/offload-1a2b\" OR \
+                     protoPayload.resourceName=\"projects/a-lab/zones/us-east1-b/disks/\
+                     offload-1a2b\") --freshness=1d"
+                )
                 && said.contains("instances get-guest-attributes offload-1a2b --zone=us-east1-b")
                 && said.contains("--project=a-lab")
-                && said.contains(&format!(
-                    "--access-token-file={}",
-                    dir.path().join("from/token").display()
-                )),
+                && said.contains(&format!("--access-token-file={}", copy.display())),
             "gcloud was asked otherwise: {said}"
+        );
+        assert_eq!(
+            fs::read_to_string(&copy).expect("the token's copy"),
+            "ya29.a0-x_y",
+            "gcloud was given another token"
         );
         copy_once(&settings, &mut keys);
         assert_eq!(
@@ -943,8 +1244,93 @@ mod tests {
                 .expect("gcloud's log")
                 .lines()
                 .count(),
-            3,
+            5,
             "the cloud was asked again before it was due"
+        );
+    }
+
+    #[test]
+    fn an_instance_changed_before_root_first_trusted_it_lends_nothing() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        let made = "v1.compute.instances.insert";
+        history_in(dir.path(), &["v1.compute.instances.reset", made, made]);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "an instance reset once made was trusted"
+        );
+        fs::write(dir.path().join("history.json"), "not json").expect("the log");
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "an instance of unread history was trusted"
+        );
+    }
+
+    #[test]
+    fn an_instance_under_a_project_setting_more_lends_nothing() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        let project = json!({"commonInstanceMetadata": {"items": [
+            {"key": "startup-script-url", "value": "gs://mine/script"},
+        ]}});
+        fs::write(dir.path().join("project.json"), project.to_string()).expect("the project");
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a project's startup script was let run"
+        );
+    }
+
+    #[test]
+    fn a_trusted_instance_whose_fingerprint_moved_is_refused_for_good() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        marked_in(dir.path(), STARTED, &[], "Zz9q");
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "an instance changed and set back stayed trusted"
+        );
+        instance_in(dir.path(), STARTED, &[]);
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "its first fingerprint trusted it again"
+        );
+    }
+
+    #[test]
+    fn a_line_naming_a_new_host_key_is_asked_of_at_once() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let asked = || fs::read_to_string(dir.path().join("asked")).expect("gcloud's log");
+        let before = asked().lines().count();
+        fs::write(
+            dir.path().join("from/machines"),
+            format!("{}\n", line(URI, KEY, OTHER)),
+        )
+        .expect("the lender's machines");
+        copy_once(&settings, &mut keys);
+        assert!(
+            asked().lines().count() > before,
+            "a line naming a new key waited for its answer's 30 s"
+        );
+        let after = asked().lines().count();
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            asked().lines().count(),
+            after,
+            "an unchanged line was asked of again"
         );
     }
 
@@ -976,6 +1362,56 @@ mod tests {
             lent_to_root(&dir),
             "",
             "an instance set back was trusted again"
+        );
+    }
+
+    #[test]
+    fn an_instance_started_again_before_root_first_trusted_it_lends_nothing() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        instance_in(dir.path(), "2026-11-10T06:00:00.000-08:00", &[]);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "an instance started again long after its making was trusted"
+        );
+    }
+
+    #[test]
+    fn a_trusted_instance_whose_audit_log_grows_is_refused_for_good() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        let made = "v1.compute.instances.insert";
+        history_in(
+            dir.path(),
+            &["v1.compute.instances.setMetadata", made, made],
+        );
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "the audit log was read again before it was due"
+        );
+        for asked in keys.asked.values_mut() {
+            asked.trusted_at = Instant::now().checked_sub(REREAD);
+        }
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a change the audit log showed late was missed"
+        );
+        history_in(dir.path(), &[made, made]);
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a spoiled instance was trusted again"
         );
     }
 
@@ -1027,7 +1463,7 @@ mod tests {
     fn what_the_cloud_vouched_for_stands_a_while_when_it_stops_answering() {
         let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
         copy_once(&settings, &mut keys);
-        fs::remove_file(dir.path().join("instance.json")).expect("the instance gone");
+        fs::write(dir.path().join("unreachable"), "").expect("the network gone");
         due(&mut keys);
         copy_once(&settings, &mut keys);
         let trusted = format!("{}\n", line(URI, KEY, HOST));
@@ -1046,6 +1482,81 @@ mod tests {
             "",
             "a line stood long after the cloud last vouched"
         );
+    }
+
+    #[test]
+    fn a_cloud_refusing_the_token_drops_the_line_at_once_until_it_answers() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "the instance wasn't trusted");
+        fs::write(dir.path().join("refusing"), "").expect("the token refused");
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a line stood while the cloud refused to answer"
+        );
+        fs::remove_file(dir.path().join("refusing")).expect("the token taken again");
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "an instance its fingerprints show unchanged wasn't trusted again"
+        );
+    }
+
+    #[test]
+    fn a_token_that_isnt_one_drops_the_line_at_once() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let token = dir.path().join("from/token");
+        fs::write(&token, "ya29 --impersonate-service-account=x\n").expect("garbage");
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(lent_to_root(&dir), "", "a line stood on a garbage token");
+        fs::remove_file(&token).expect("the garbage gone");
+        let made = Command::new("mkfifo")
+            .arg(&token)
+            .status()
+            .expect("mkfifo runs");
+        assert!(made.success(), "no pipe was made for the token");
+        let began = Instant::now();
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(lent_to_root(&dir), "", "a line stood on a pipe for a token");
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "a pipe for a token kept lines waiting"
+        );
+    }
+
+    #[test]
+    fn only_a_failed_network_is_silence() {
+        for (complaint, silent) in [
+            (
+                "ERROR: gcloud crashed (ConnectionError): Max retries exceeded",
+                true,
+            ),
+            ("Read timed out. (read timeout=300)", true),
+            (
+                "ERROR: Request had invalid authentication credentials.",
+                false,
+            ),
+            (
+                "The resource 'projects/a/instances/offload-connectionerror' was not found",
+                false,
+            ),
+            ("", false),
+        ] {
+            assert_eq!(
+                matches!(failed(complaint), Unvouched::Silent),
+                silent,
+                "{complaint:?} was misjudged"
+            );
+        }
     }
 
     #[test]
