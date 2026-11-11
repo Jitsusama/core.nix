@@ -551,6 +551,36 @@ def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell
         shell.close(window)
 
 
+def test_windows_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:
+    """Windows' chord over another window draws it from what was kept, leaving that one out.
+
+    Kept only over the window it was kept over, Windows was made whole on every Super+Tab, since
+    it's pressed over the window it last went to: 84 ms to its frame on Joel's (2026-11-11,
+    16:23), never drawn from what was kept since Tuesday.
+    """
+    gull = shell.opened("Gull Notes")
+    tern = shell.opened("Tern Notes")
+    try:
+        shell.as_account(shell.ipc("collection", "windows"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Gull Notes" in shown["rows"])
+        settled(shell)
+        shell.close_launcher()
+        shell.as_account(f"niri msg action focus-window --id {gull['id']}")
+        # The span measured, for the window's focus to reach the shut shell, not a wait for an end.
+        time.sleep(SETTLING_S)
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        timed = latest(openings(shell))
+        shell.as_account(shell.ipc("collection", "windows"))
+        keys = cast("list[str]", filled_after(shell, timed)["shown"]["keys"])
+        assert keys, "the kept opening drew no windows"
+        assert keys[0] == f"window:{tern['id']}", f"the window used last wasn't first: {keys}"
+        assert f"window:{gull['id']}" not in keys, f"it listed the window under it: {keys}"
+    finally:
+        shell.close(tern)
+        shell.close(gull)
+
+
 def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     """Reopened as the closing's spots come due, the kept opening makes none before its frame.
 
