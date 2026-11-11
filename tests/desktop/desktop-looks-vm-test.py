@@ -72,13 +72,13 @@ def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
 def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
     """Hold the Home Network to the eero daemon's record, and each thing's plate whole.
 
-    The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
+    The record the stand-in serves (tests/desktop.nix) reaches the place: the internet first,
     then the gateway node with its devices under it, and each node after the one it hangs from.
     A node's, a device's and a profile's plates lay their facts out one way, every name and value
     whole, at both of Joel's scales. WARP, beside it in Network, is shot at each scale too.
     """
     desktop.machine.wait_until_succeeds(
-        desktop.in_session('test -s "$XDG_RUNTIME_DIR/eero/home-network.json"'),
+        desktop.in_session('test -S "$XDG_RUNTIME_DIR/eero/socket"'),
         timeout=timedelta(seconds=30),
     )
     for scale in at_each_scale:

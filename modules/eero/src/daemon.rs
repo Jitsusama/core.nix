@@ -1,13 +1,14 @@
 //! `eero daemon`: the home network kept current for the shell and the CLI.
 //!
 //! It keeps `$XDG_RUNTIME_DIR/eero/home-network.json`, written whole and
-//! only when it changes, and tells its socket's listeners each change
-//! (listeners.rs). It reads each part of the home network as often as its
-//! figures move (schedule.rs), and sleeps between, woken early only by a
-//! listener. When eero can't be reached the last model stays, its cloud
-//! saying so, since the internet being down is what the shell most needs
-//! to show. After each read it records what moves in the history
-//! (history/), in eero's folder in the account's state. With each read
+//! only when it changes, for the CLI, and tells its socket's listeners
+//! each change (listeners.rs), the shell among them. It reads each part
+//! of the home network as often as its figures move (schedule.rs), and
+//! sleeps between, woken early only by a listener. When eero can't be
+//! reached the last model stays, its cloud saying so, since the internet
+//! being down is what the shell most needs to show. After each read it
+//! records what moves in the history (history/), in eero's folder in the
+//! account's state. With each read
 //! of the network, and every 10 seconds while eero can't be reached, it
 //! takes its own look at the internet (probe.rs), so an outage is seen and
 //! timed even when eero can't say; then it asks eero again as often, so a
@@ -55,17 +56,17 @@ pub fn run() -> Result<(), String> {
     })?;
     let mut daemon = Daemon::new(earlier(&file), history());
     if let Some(model) = &daemon.model {
-        listeners.send(&line(model));
+        listeners.send(&value(model));
     }
     loop {
         let listening = listeners.listening();
         if let Some(model) = daemon.cycle(Instant::now(), listening) {
             write(&file, &line(&model)).map_err(|e| format!("{}: {e}", file.display()))?;
-            listeners.send(&line(&model));
+            listeners.send(&value(&model));
         }
         match woken.recv_timeout(daemon.wait(Instant::now(), listeners.listening())) {
             Ok(Call::Read) => daemon.schedule.ask(),
-            Ok(Call::Joined | Call::Left) | Err(RecvTimeoutError::Timeout) => {}
+            Ok(Call::Joined | Call::Left | Call::Looked) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return Err("the socket stopped".into()),
         }
     }
@@ -430,6 +431,10 @@ fn earlier(file: &Path) -> Option<HomeNetwork> {
 
 fn line(model: &HomeNetwork) -> String {
     serde_json::to_string(model).expect("the model is plain data")
+}
+
+fn value(model: &HomeNetwork) -> Value {
+    serde_json::to_value(model).expect("the model is plain data")
 }
 
 fn runtime() -> Result<PathBuf, String> {

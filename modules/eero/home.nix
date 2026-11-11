@@ -6,9 +6,10 @@
 #
 # The daemon keeps $XDG_RUNTIME_DIR/eero/home-network.json, the whole home
 # network as one record (home-network.json is its shape), and tells each
-# change to whoever listens on $XDG_RUNTIME_DIR/eero/socket. It reads each
-# part as often as its figures move, the network every 30 seconds while the
-# shell listens and every five minutes when nothing does (src/schedule.rs
+# change to whoever watches it on $XDG_RUNTIME_DIR/eero/socket, as the shell
+# does from its start. It reads each part as often as its figures move, the
+# network every 30 seconds while the Home Network or `eero watch` looks and
+# every five minutes when nothing does (src/schedule.rs
 # says each pace). It keeps 30 days of what moves in history.sqlite beside
 # the session, in the folder `eero sign-in` made, so the unit needs no
 # state folder of its own, and times its own look at the internet with

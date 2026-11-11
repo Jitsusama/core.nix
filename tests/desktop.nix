@@ -299,6 +299,12 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-slack.py);
 
+  # Stands in for the eero daemon, which would ask eero's cloud, on its
+  # socket (desktop/stand-in-eero.py).
+  standInEero = pkgs.writers.writePython3 "stand-in-eero" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-eero.py);
+
   # The areas that walk Passwords, looks-programs, which shoots it, and
   # keeps-pace, which steps into it under load, whose 1Password's manager
   # asks a stand-in for 1Password's command, op, since no 1Password account
@@ -1128,22 +1134,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # test's search ends with it.
         systemd.user.services.slack-stand-in.Service.ExecStart = "${standInSlack} %t/daemons/slack.sock";
         # The eero daemon would ask eero's cloud, which the VM can't reach.
-        # Its record is written as the daemon writes it, the model the
-        # daemon's parsers are tested against (modules/eero), so the Home
-        # Network has a whole three-node network to show.
+        # Its stand-in serves the model the daemon's parsers are tested
+        # against (modules/eero) on its socket, so the Home Network has a
+        # whole three-node network to show.
         jitsusama.quickshell.launcher.providers.eero.enable = lib.mkForce true;
         systemd.user.services.eero-stand-in = {
-          Service = {
-            Type = "oneshot";
-            ExecStart = lib.escapeShellArgs [
-              (lib.getExe' pkgs.coreutils "install")
-              "-D"
-              "-m"
-              "644"
-              "${../modules/eero/home-network.json}"
-              "%t/eero/home-network.json"
-            ];
-          };
+          Service.ExecStart = lib.escapeShellArgs [
+            "${standInEero}"
+            "%t/eero/socket"
+            "${../modules/eero/home-network.json}"
+          ];
           Install.WantedBy = [ "default.target" ];
         };
         # Firmware's fwupd isn't in the VM, and would have nothing to say.

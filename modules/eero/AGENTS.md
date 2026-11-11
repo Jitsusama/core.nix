@@ -79,10 +79,13 @@ as often as its figures move ([`src/schedule.rs`][schedule]):
 | the day's traffic, the network's and each node's | 1, and 1 a node | 15 min                       |
 | speed tests, profiles, Thread, outages, events   | 5               | 15 min                       |
 
-Its socket, `$XDG_RUNTIME_DIR/eero/socket`, writes whoever connects the
-model as one line of JSON, and another on every change. While anyone
-is connected the network is read at the fast pace, and a line `read`
-asks for it now, at most once every 5 seconds.
+Its socket, `$XDG_RUNTIME_DIR/eero/socket`, speaks the daemon interface
+the shell holds every daemon's on ([`src/listeners.rs`][listeners]): the
+model is one record, kind and key `home-network`, under `network`, and a
+watch is answered with it and told every change. The shell holds it from
+its start. While anyone watches it ahead, as the Home Network and
+`eero watch` do while shown, the network is read at the fast pace, and
+an ask `read` asks for it now, at most once every 5 seconds.
 
 After each read the daemon records what moves in
 `$XDG_STATE_HOME/eero/history.sqlite`, beside the sealed session, and
@@ -187,6 +190,7 @@ offered by its hardware address.
 [model]: home-network.json
 [read]: src/read/mod.rs
 [schedule]: src/schedule.rs
+[listeners]: src/listeners.rs
 [watch]: src/watch.rs
 [completion]: src/completion.zsh
 
