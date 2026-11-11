@@ -44,6 +44,26 @@ that after the last ask doesn't ask again, and each call gives up after
 ten seconds. A chip's labels and limits are read once, until the chips
 listed change, since some answer every read through slow firmware.
 
+## Ready Rows
+
+Heat's rows and headline are made here, ready for the launcher, in the
+one form every daemon serves them in (Y2YBTS's ready-row form): each a
+`row:heat:<id>` record of kind `row`, its row under `row`, and the
+headline a `head:heat` record of kind `head`. A watch names its place,
+`{"ask": "watch", "kind": ["row", "head"], "place": "heat"}`, and
+hears only that place's. While one does, the sensors, zones, cooling
+and processor are read together once a second as their own watch would
+have them, and each read makes the rows again and tells only those that
+changed; a graph is sent in the steps the shell draws, so a reading
+that leaves it as drawn changes nothing. The processor's telemetry is
+asked only then, and the Last Reads kept only then, so a shut launcher
+costs nothing. They're said in the launcher's words and number settings,
+handed on the command line (`--words`, `--numbers`) by home.nix from the
+launcher's own; handed none, it makes no rows.
+[`src/heat_rows.rs`][heat-rows] makes them,
+[`src/rows.rs`][rows] places and graphs them, and
+[`src/words.rs`][words] words them.
+
 ## Acts
 
 `{"ask": "act", "act": <name>, ...}` is answered `{"done": true}` once
@@ -273,3 +293,6 @@ service's runtime folder, is looked for again every 10 seconds.
 [main]: src/main.rs
 [lib]: src/lib.rs
 [machine]: ../quickshell/launcher/Machine.qml
+[heat-rows]: src/heat_rows.rs
+[rows]: src/rows.rs
+[words]: src/words.rs

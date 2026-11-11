@@ -29,6 +29,8 @@ use crate::words::Words;
 
 /// The place the launcher shows these rows in.
 const PLACE: &str = "heat";
+/// Reads nearer than this to the last a spark took are left out of it.
+const SAMPLED_MS: u64 = 1000;
 /// Reads further apart than this start a spark afresh.
 const STALE_MS: u64 = 5000;
 /// The firmware's points that act on heat, in the order it acts.
@@ -111,6 +113,14 @@ impl Heat {
     /// each temperature and fan as it reads, and the throttling as how
     /// many times a second it slowed since the read before.
     fn push(&mut self, read: &Read, now: u64) {
+        // Read again sooner, as a read whose rates aren't of now is, the
+        // sparks keep their one read a second, as the shell's did.
+        if self
+            .before
+            .is_some_and(|(at, _)| now.saturating_sub(at) < SAMPLED_MS)
+        {
+            return;
+        }
         let times = read.throttled.as_ref().map(|said| said.times);
         let before = self
             .before
@@ -1095,6 +1105,12 @@ mod tests {
         let first = read(&mut heat, 71.0, 79.0, 1000);
         assert_eq!(lately(&first), "one read so far");
         read(&mut heat, 72.0, 79.0, 2000);
+        // Read again a fifth of a second on, as a read not yet of now is,
+        // the spark takes nothing.
+        assert_eq!(
+            lately(&read(&mut heat, 90.0, 79.0, 2200)),
+            "the last 2 reads"
+        );
         let third = read(&mut heat, 75.0, 79.0, 3000);
         assert_eq!(lately(&third), "the last 3 reads");
         assert_eq!(

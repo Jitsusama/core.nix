@@ -1,4 +1,4 @@
-//! machine SOCKET [ROOT]
+//! machine SOCKET [ROOT] [--words FILE] [--numbers FILE]
 //!
 //! How this machine is doing, held ready for the shell and anything else
 //! that asks, over SOCKET in the shell's daemon interface (interface.rs):
@@ -38,6 +38,15 @@
 //! since the shell watches them while the launcher's shut: neither is
 //! read on a clock, so watching them wakes nothing until they change.
 //!
+//! Heat's rows and headline are made here too, ready for the launcher
+//! (heat_rows.rs), in the launcher's words (`--words`, its words.json)
+//! and number settings (`--numbers`, `{ group, point }`): a watch of
+//! kind `row` or `head` with `place` `heat` has the sensors, zones,
+//! cooling and processor read as their own watch would, and each read
+//! makes the rows again and tells only those that changed. The
+//! processor's own telemetry is asked only while they're watched. Handed
+//! no words, it makes no rows.
+//!
 //! It acts as well as answers, so the shell spawns and writes nothing of
 //! its own: `charge-limit` moves a battery's charge limit, and the supply
 //! is read again before the act is answered, so each watch is told the
@@ -50,14 +59,16 @@ use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
+use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
+use machine::words::Words;
 use machine::{
-    Root, boot, camera, clock_ms, disk, firmware, heat, kept, light, memory, now_ms, processor,
-    rounded, sleep, steered, supply, tree, units, using, written::Written,
+    Root, boot, camera, clock_ms, disk, firmware, heat, heat_rows, kept, light, memory, now_ms,
+    processor, rounded, sleep, steered, supply, telemetry, tree, units, using, written::Written,
 };
 use serde_json::{Value, json};
 
@@ -96,6 +107,14 @@ const KEPT: [&str; 2] = ["kept", "profile"];
 /// folder that isn't there, as `/run/power-profile` isn't while its
 /// service starts again.
 const KEPT_LOOKS_AGAIN: Duration = Duration::from_secs(10);
+/// The place Heat's rows are made for, its headline's key, and the kinds
+/// they're made of, read together while they're watched.
+const HEAT: &str = "heat";
+const HEAT_HEAD: &str = "head:heat";
+const HEAT_SOURCES: [&str; 4] = ["sensor", "zone", "cooling", "processor"];
+/// How long to wait before asking the processor's telemetry again once
+/// it couldn't be reached, as on a machine with none.
+const TELEMETRY_AGAIN: Duration = Duration::from_secs(30);
 /// How many of the last reads' times health says.
 const TIMES: usize = 32;
 /// How many lines a connection may have waiting to be written before
@@ -112,6 +131,9 @@ struct Watch {
     id: Value,
     kinds: Vec<String>,
     keys: Option<Vec<String>>,
+    /// The places whose rows and headline it watches, or none for every
+    /// place's.
+    places: Option<Vec<String>>,
     told: SyncSender<String>,
     /// Its connection, to hang up on once it stops reading.
     stream: Arc<UnixStream>,
@@ -119,11 +141,26 @@ struct Watch {
 
 impl Watch {
     fn wants(&self, key: &str) -> bool {
-        match &self.keys {
+        let named = match &self.keys {
             Some(keys) => keys.iter().any(|k| k == key),
             None => kind_of(key).is_some_and(|kind| self.kinds.iter().any(|k| k == kind)),
+        };
+        named && placed(key, self.places.as_deref())
+    }
+
+    /// Whether it watches any of Heat's rows or its headline.
+    fn wants_heat(&self) -> bool {
+        match &self.keys {
+            Some(keys) => keys.iter().any(|key| place_of(key) == Some(HEAT)),
+            None => self.wants("row:heat:") || self.wants(HEAT_HEAD),
         }
     }
+}
+
+/// Whether a key is of one of these places, or of none, as a record read
+/// rather than made is.
+fn placed(key: &str, places: Option<&[String]>) -> bool {
+    place_of(key).is_none_or(|place| places.is_none_or(|places| places.iter().any(|p| p == place)))
 }
 
 /// The counters each kind's rates are measured from, and what's fixed.
@@ -306,6 +343,12 @@ struct Daemon {
     light: Vec<Value>,
     /// What power-profiles-daemon last said, as `profile_loop` heard it.
     profile: Value,
+    /// The launcher's words, which rows are said in, or none to make none.
+    words: Option<Words>,
+    /// The reads Heat's sparks keep while its rows are watched.
+    heat: heat_rows::Heat,
+    /// The processor's telemetry's temperatures, as last told.
+    telemetry: Vec<Value>,
     /// The kinds whose source said they changed, to be asked again now.
     hurried: HashSet<String>,
     /// When the last sleep began and ended, as logind's signal said.
@@ -322,12 +365,23 @@ struct Shared {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let Some(socket) = args.next() else {
-        eprintln!("usage: machine SOCKET [ROOT]");
+    let mut named = Vec::new();
+    let (mut words, mut numbers) = (None, None);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--words" => words = args.next(),
+            "--numbers" => numbers = args.next(),
+            _ => named.push(arg),
+        }
+    }
+    let mut named = named.into_iter();
+    let Some(socket) = named.next() else {
+        eprintln!("usage: machine SOCKET [ROOT] [--words FILE] [--numbers FILE]");
         std::process::exit(64);
     };
-    let root = Root::new(args.next().unwrap_or_else(|| "/".to_owned()));
+    let root = Root::new(named.next().unwrap_or_else(|| "/".to_owned()));
     let socket = PathBuf::from(socket);
+    let words = worded(words.as_deref(), numbers.as_deref());
     let listener = match listen(&socket) {
         Ok(listener) => listener,
         Err(why) => {
@@ -335,7 +389,12 @@ fn main() {
             std::process::exit(71);
         }
     };
-    let shared = Arc::new(shared(&root));
+    let shared = Arc::new(shared(&root, words));
+    {
+        let shared = Arc::clone(&shared);
+        let path = root.path(telemetry::PATH);
+        std::thread::spawn(move || telemetry_loop(&shared, &path));
+    }
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || watch_loop(&shared));
@@ -399,8 +458,27 @@ fn main() {
     }
 }
 
-/// What every thread shares, holding nothing yet, reading under `root`.
-fn shared(root: &Root) -> Shared {
+/// The launcher's words, from its words.json at `words` and its number
+/// settings at `numbers`, or none, said in the journal, where it was
+/// handed none or they can't be read.
+fn worded(words: Option<&str>, numbers: Option<&str>) -> Option<Words> {
+    let read = |path: &str| {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    };
+    let Some(vocabulary) = words.and_then(read) else {
+        eprintln!("<5>handed no words it can read, so it makes no rows");
+        return None;
+    };
+    let numbers = numbers.and_then(read).unwrap_or(Value::Null);
+    let mark = |name: &str| numbers[name].as_str().unwrap_or("").to_owned();
+    Some(Words::new(&vocabulary, &mark("group"), &mark("point")))
+}
+
+/// What every thread shares, holding nothing yet, reading under `root`
+/// and saying rows in `words`.
+fn shared(root: &Root, words: Option<Words>) -> Shared {
     // SAFETY: sysconf only reads a constant of the running system.
     let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
     Shared {
@@ -415,6 +493,9 @@ fn shared(root: &Root) -> Shared {
             firmware: Vec::new(),
             light: Vec::new(),
             profile: Value::Null,
+            words,
+            heat: heat_rows::Heat::default(),
+            telemetry: Vec::new(),
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
@@ -500,9 +581,136 @@ fn watched_trees(daemon: &Daemon) -> BTreeSet<u32> {
         .collect()
 }
 
+/// Whether some watch holds Heat's rows or its headline.
+fn makes_heat(daemon: &Daemon) -> bool {
+    daemon.words.is_some() && daemon.watches.iter().any(Watch::wants_heat)
+}
+
+/// The kinds read for these: each as it is, but a made kind, which is
+/// made of the kinds its rows are said from.
+fn sources_of(kinds: &HashSet<String>) -> HashSet<String> {
+    let mut read: HashSet<String> = kinds
+        .iter()
+        .filter(|kind| !MADE.contains(&kind.as_str()))
+        .cloned()
+        .collect();
+    if kinds.iter().any(|kind| MADE.contains(&kind.as_str())) {
+        read.extend(HEAT_SOURCES.map(str::to_owned));
+    }
+    read
+}
+
+/// Lets Heat's reads go once nothing watches its rows, so a shut launcher
+/// keeps none, and the next watch starts afresh.
+fn let_go(daemon: &mut Daemon) {
+    if makes_heat(daemon) {
+        return;
+    }
+    daemon.heat.forget();
+    daemon.telemetry.clear();
+    daemon.held.retain(|key, _| place_of(key) != Some(HEAT));
+}
+
+/// The records of one kind held.
+fn held_of(held: &BTreeMap<String, Value>, kind: &str) -> Vec<Value> {
+    held.iter()
+        .filter(|(key, _)| kind_of(key) == Some(kind))
+        .map(|(_, record)| record.clone())
+        .collect()
+}
+
+/// Makes Heat's rows and headline again from what's held, keeps them,
+/// and says those that changed and the keys of those gone.
+fn made_heat(daemon: &mut Daemon) -> (Vec<Value>, Vec<String>) {
+    let Daemon {
+        held,
+        heat,
+        words,
+        telemetry,
+        ..
+    } = daemon;
+    let Some(words) = words.as_ref() else {
+        return (Vec::new(), Vec::new());
+    };
+    let (sensors, zones, cooling) = (
+        held_of(held, "sensor"),
+        held_of(held, "zone"),
+        held_of(held, "cooling"),
+    );
+    let processor = held_of(held, "processor").into_iter().next();
+    let said = heat_rows::Held {
+        sensors: &sensors,
+        zones: &zones,
+        cooling: &cooling,
+        processor: processor.as_ref(),
+        telemetry,
+    };
+    let ready = heat.read(said, clock_ms(), words);
+    let rows = ready
+        .rows
+        .into_iter()
+        .map(|row| json!({"key": row["key"].clone(), "kind": "row", "row": row}));
+    let head = ready
+        .head
+        .map(|head| json!({"key": HEAT_HEAD, "kind": "head", "head": head}));
+    let made: Vec<Value> = rows.chain(head).collect();
+    let keys: HashSet<&str> = made
+        .iter()
+        .filter_map(|record| record["key"].as_str())
+        .collect();
+    let gone: Vec<String> = held
+        .keys()
+        .filter(|key| place_of(key) == Some(HEAT) && !keys.contains(key.as_str()))
+        .cloned()
+        .collect();
+    for key in &gone {
+        held.remove(key);
+    }
+    let mut changed = Vec::new();
+    for record in made {
+        let key = record["key"].as_str().unwrap_or_default().to_owned();
+        if held.get(&key) != Some(&record) {
+            held.insert(key, record.clone());
+            changed.push(record);
+        }
+    }
+    (changed, gone)
+}
+
+/// Asks the processor's telemetry at `path` for its temperatures while
+/// Heat's rows are watched, and nothing otherwise, since the reader reads
+/// the processor's counters only while asked; asked again a second after
+/// it goes, or later where it was never reached.
+fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
+    loop {
+        {
+            let mut daemon = lock(&shared.daemon);
+            while !makes_heat(&daemon) {
+                daemon = shared
+                    .woken
+                    .wait(daemon)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+        let stop = AtomicBool::new(false);
+        let reached = telemetry::watch(path, &stop, |said| {
+            let mut daemon = lock(&shared.daemon);
+            daemon.telemetry = said.unwrap_or_default();
+            if !makes_heat(&daemon) {
+                stop.store(true, Ordering::Relaxed);
+            }
+        });
+        std::thread::sleep(if reached { EVERY } else { TELEMETRY_AGAIN });
+    }
+}
+
 /// Reads these kinds now, the trees watched and those `asked` names among
-/// them, keeps what changed, and tells each watch of it.
+/// them, keeps what changed, and tells each watch of it. A made kind
+/// among them has what it's made of read and made again, as it is while
+/// some watch holds it.
 fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
+    let makes = kinds.iter().any(|kind| MADE.contains(&kind.as_str()));
+    let kinds = &sources_of(kinds);
     let (buses, trees) = {
         let daemon = lock(&shared.daemon);
         let mut trees = watched_trees(&daemon);
@@ -541,6 +749,7 @@ fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
         .filter(|key| kind_of(key).is_some_and(|kind| kinds.contains(kind)) && !said.contains(*key))
         .cloned()
         .collect();
+    let mut gone = gone;
     for key in &gone {
         daemon.held.remove(key);
     }
@@ -553,6 +762,12 @@ fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
             daemon.held.insert(key, record.clone());
             changed.push(record);
         }
+    }
+    let heats = HEAT_SOURCES.iter().any(|kind| kinds.contains(*kind));
+    if heats && daemon.words.is_some() && (makes || makes_heat(&daemon)) {
+        let (made, unmade) = made_heat(&mut daemon);
+        changed.extend(made);
+        gone.extend(unmade);
     }
     if changed.is_empty() && gone.is_empty() {
         return;
@@ -582,6 +797,7 @@ fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
         daemon
             .watches
             .retain(|watch| !stuck.contains(&watch.connection));
+        let_go(&mut daemon);
     }
 }
 
@@ -608,6 +824,12 @@ fn watch_loop(shared: &Shared) {
         }
         let mut kinds = watched(&daemon);
         kinds.retain(|kind| !HEARD.contains(&kind.as_str()) && !KEPT.contains(&kind.as_str()));
+        // Heat's rows are read for only where some watch holds them, as
+        // rows of another place are made by another daemon.
+        if !makes_heat(&daemon) {
+            kinds.retain(|kind| !MADE.contains(&kind.as_str()));
+        }
+        let kinds = sources_of(&kinds);
         // Only kinds heard as they're written are watched, as the bar's
         // camera and Keep Awake always are, so nothing is due on the
         // second until a watch of another kind wakes this.
@@ -648,6 +870,16 @@ fn watch_loop(shared: &Shared) {
                     .unwrap_or_else(std::sync::PoisonError::into_inner),
             );
             continue;
+        }
+        // What Heat's rows are made of is read together, so each read
+        // makes them once.
+        if HEAT_SOURCES.iter().any(|kind| due.contains(*kind)) {
+            due.extend(
+                HEAT_SOURCES
+                    .iter()
+                    .filter(|kind| kinds.contains(**kind))
+                    .map(|kind| (*kind).to_owned()),
+            );
         }
         drop(daemon);
         read(shared, &due, &[]);
@@ -1443,16 +1675,18 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             break;
         }
     }
-    lock(&shared.daemon)
+    let mut daemon = lock(&shared.daemon);
+    daemon
         .watches
         .retain(|watch| watch.connection != connection);
+    let_go(&mut daemon);
 }
 
 /// The records held of these kinds or keys, read first where they aren't
 /// fresh or a key isn't held, in the daemon's order: by kind, then by key.
 fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
     refresh(shared, kinds, keys);
-    held(&lock(&shared.daemon), kinds, keys)
+    held(&lock(&shared.daemon), kinds, keys, None)
 }
 
 /// The kinds these kinds or keys are of.
@@ -1467,11 +1701,16 @@ fn wanted_kinds(kinds: &[String], keys: Option<&[String]>) -> HashSet<String> {
     }
 }
 
-/// Reads the kinds of these kinds or keys that weren't read lately.
+/// Reads the kinds of these kinds or keys that weren't read lately, and
+/// what Heat's rows are made of where they're asked for and not yet made.
 fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
-    let wanted = wanted_kinds(kinds, keys);
-    let stale: HashSet<String> = {
+    let asked = wanted_kinds(kinds, keys);
+    let wanted = sources_of(&asked);
+    let mut stale: HashSet<String> = {
         let daemon = lock(&shared.daemon);
+        let makes =
+            daemon.words.is_some() && asked.iter().any(|kind| MADE.contains(&kind.as_str()));
+        let unmade = makes && !daemon.held.contains_key(HEAT_HEAD);
         wanted
             .iter()
             .filter(|kind| {
@@ -1482,6 +1721,7 @@ fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
                     })
                 });
                 unheld
+                    || (unmade && HEAT_SOURCES.contains(&kind.as_str()))
                     || daemon
                         .read_at
                         .get(*kind)
@@ -1490,13 +1730,24 @@ fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
             .cloned()
             .collect()
     };
+    // Read for rows not yet watched, they're made though no watch holds
+    // them yet.
+    if !stale.is_empty() && asked.iter().any(|kind| MADE.contains(&kind.as_str())) {
+        stale.insert("row".to_owned());
+    }
     if !stale.is_empty() {
         read(shared, &stale, keys.unwrap_or_default());
     }
 }
 
-/// The records held of these kinds or keys, in the daemon's order.
-fn held(daemon: &Daemon, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
+/// The records held of these kinds or keys, and of the rows these
+/// places' alone, or every place's, in the daemon's order.
+fn held(
+    daemon: &Daemon,
+    kinds: &[String],
+    keys: Option<&[String]>,
+    places: Option<&[String]>,
+) -> Vec<Value> {
     let wanted = wanted_kinds(kinds, keys);
     let mut found: Vec<Value> = match keys {
         Some(keys) => keys
@@ -1508,12 +1759,14 @@ fn held(daemon: &Daemon, kinds: &[String], keys: Option<&[String]>) -> Vec<Value
             .held
             .iter()
             .filter(|(key, _)| kind_of(key).is_some_and(|kind| wanted.contains(kind)))
+            .filter(|(key, _)| placed(key, places))
             .map(|(_, record)| record.clone())
             .collect(),
     };
+    // By the kind its key names, as a row's own kind is its thing's.
     if keys.is_none() {
         found.sort_by_key(|record| {
-            let kind = record["kind"].as_str().unwrap_or("");
+            let kind = record["key"].as_str().and_then(kind_of).unwrap_or("");
             KINDS.iter().position(|k| *k == kind).unwrap_or(KINDS.len())
         });
     }
@@ -1545,7 +1798,12 @@ fn answer(
             json!({"id": id, "records": records(shared, &[], Some(&keys))})
         }
         Ask::List { id, kinds } => json!({"id": id, "records": records(shared, &kinds, None)}),
-        Ask::Watch { id, kinds, keys } => {
+        Ask::Watch {
+            id,
+            kinds,
+            keys,
+            places,
+        } => {
             refresh(shared, &kinds, keys.as_deref());
             // What it's told first is taken, and queued, under the lock
             // that holds the watch, so a read between them is either in it
@@ -1553,7 +1811,7 @@ fn answer(
             // read in between could be said first, and the whole answer
             // after it would put back what the change moved on from.
             let mut daemon = lock(&shared.daemon);
-            let snapshot = held(&daemon, &kinds, keys.as_deref());
+            let snapshot = held(&daemon, &kinds, keys.as_deref(), places.as_deref());
             // A watch asked again by its id replaces the one before.
             daemon
                 .watches
@@ -1570,6 +1828,7 @@ fn answer(
                 id: id.clone(),
                 kinds,
                 keys,
+                places,
                 told: told.clone(),
                 stream: Arc::clone(hangup),
             });
@@ -1581,6 +1840,7 @@ fn answer(
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            let_go(&mut daemon);
             json!({"id": id, "unwatched": true})
         }
         Ask::Health { id } => {
@@ -1642,7 +1902,7 @@ mod tests {
     // sensor stayed unread for the looks VM test's 30 seconds (2026-11-10).
     #[test]
     fn a_watch_is_answered_whole_before_any_change_told_it() {
-        let shared = Arc::new(shared(&Root::new(std::env::temp_dir())));
+        let shared = Arc::new(shared(&Root::new(std::env::temp_dir()), None));
         let (told, lines) = mpsc::sync_channel(QUEUED);
         let (end, _other) = UnixStream::pair().unwrap();
         let hangup = Arc::new(end);

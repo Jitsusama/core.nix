@@ -4,9 +4,30 @@
 # for the launcher's Machine place and anything else that asks
 # (src/main.rs says how). The shell imports it, since what Machine shows
 # is what it holds.
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   machine = pkgs.callPackage ./package.nix { };
+  # The launcher's vocabulary and Heat's number settings, which Heat's
+  # ready rows are said in; none where the shell isn't imported, and then
+  # it makes no rows.
+  launcher = config.jitsusama.quickshell.launcher or null;
+  heat = if launcher == null then { } else launcher.providers.heat or { };
+  worded = lib.optionals (launcher != null) [
+    "--words"
+    (pkgs.writeText "words.json" (builtins.toJSON launcher.words))
+    "--numbers"
+    (pkgs.writeText "numbers.json" (
+      builtins.toJSON {
+        group = heat.group or "";
+        point = heat.point or "";
+      }
+    ))
+  ];
 in
 {
   # It isn't in background.slice: what it holds is what the launcher shows
@@ -25,7 +46,13 @@ in
       After = [ "machine.socket" ];
     };
     Service = {
-      ExecStart = "${lib.getExe machine} %t/daemons/machine.sock";
+      ExecStart = lib.concatStringsSep " " (
+        [
+          (lib.getExe machine)
+          "%t/daemons/machine.sock"
+        ]
+        ++ worded
+      );
       Restart = "on-failure";
       RestartSec = 5;
     };
