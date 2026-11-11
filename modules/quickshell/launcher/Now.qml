@@ -164,9 +164,12 @@ Provider {
                 provider.reweather();
                 // Placing the time and the date makes Time's and Today's
                 // rows, so an opening into a place that shows none of Now's
-                // leaves them stale until Now is wanted (H6EDLC, 2026-11-11).
+                // leaves them stale until Now is wanted (H6EDLC, 2026-11-11),
+                // and one onto Now's rows places them only once a minute
+                // has turned since they were placed: each opening into For
+                // You made all 17 again with nothing changed (2026-11-11).
                 if (provider.wanted)
-                    provider.retime();
+                    provider.retimeIfStale();
                 else
                     provider.timeStale = true;
             } else {
@@ -192,17 +195,27 @@ Provider {
         const placed = id => provider.launcher?.resolved?.(id) ?? null;
         timeRow = placed("time");
         dateRow = placed("today");
+        timedMinute = provider.minuteNow();
         timeStale = false;
+    }
+
+    // The minute the time and the date were last placed in, so an opening
+    // within it keeps them, and the minute it is now.
+    property real timedMinute: -1
+
+    function minuteNow() {
+        return Math.floor(Date.now() / 60000);
     }
 
     // Whether a minute turned, or the launcher opened, while Now's rows
     // weren't wanted, so it's read as they are again. Placing the time and
     // the date makes Time's and Today's rows, so an opening onto Now's
-    // rows, which retimes already, retimes once.
+    // rows places them once, and only if they're stale or a minute has
+    // turned since.
     property bool timeStale: false
 
     function retimeIfStale() {
-        if (timeStale)
+        if (timeStale || timedMinute !== minuteNow())
             retime();
     }
 
@@ -340,14 +353,18 @@ Provider {
         // launcher keeps a row that reads the same, and a source or GPS's
         // measures can change while the town and its note don't.
         const plate = !here ? null : () => plateOf(Location.here ?? here, now, differs);
-        return thingRow(Object.assign({
-            key: "on:location",
-            name: Words.name("location"),
-            side: side,
-            note: note,
-            hue: differs ? "strong" : "voice",
-            glyph: Theme.glyph.location
-        }, plate ? { thing: true, drawer: plate } : {}), inside);
+        // Kept while it says the same of the same place in the same minute,
+        // since Now wanted again remade it at every opening into For You
+        // with nothing changed (2026-11-11).
+        return keptAlike(ownKept, "location", [here, side, note, differs, now],
+            () => thingRow(Object.assign({
+                key: "on:location",
+                name: Words.name("location"),
+                side: side,
+                note: note,
+                hue: differs ? "strong" : "voice",
+                glyph: Theme.glyph.location
+            }, plate ? { thing: true, drawer: plate } : {}), inside));
     })
 
     // Location's plate for here, as `location` says it.
