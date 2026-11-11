@@ -6,7 +6,9 @@
 # microphone itself does, while its voice still comes through. The noise
 # alone is sox's pink noise; the voice is a person's, over a room's noise
 # 10 dB under it, both from the recordings DeepFilterNet's repository
-# keeps, since a synthetic voice is taken down as if it were noise. The tests
+# keeps, since a synthetic voice is taken down as if it were noise. Choose
+# by Ear then records the same microphone, offers it four ways blind, and a
+# pick makes its twin the microphone chosen. The tests
 # are noise-cancelled-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
@@ -38,9 +40,11 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.systemPackages = [
       dictation
       pkgs.jq
+      pkgs.netcat-openbsd
       pkgs.sox
     ];
     environment.etc."noise-cancelled-clips".source = clips;
+    environment.etc."noise-cancelled-refusals.json".text = "[]";
   };
 
   values = _: pkgs.writeText "noise-cancelled-values.json" (builtins.toJSON { inherit model; });

@@ -5,6 +5,7 @@
 //! ```text
 //! noise-cancelled serve MODELS [CLEANER]
 //! noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32
+//! noise-cancelled trial SOCKET MODELS RUNNING REFUSALS
 //! ```
 //!
 //! CLEANER is deepfilternet, deepfilternet-gentle or rnnoise, and
@@ -19,12 +20,19 @@
 //!
 //! `clean` cleans raw 32-bit float samples, one channel at 48 kHz, from
 //! standard input to standard output, as a check hears it.
+//!
+//! `trial` answers the launcher's Choose by Ear on SOCKET, or the socket
+//! systemd hands it (trial.rs): RUNNING is the cleaner the microphones run,
+//! and REFUSALS a JSON file of what refuses a recording while it holds.
 
 mod denoise;
 mod pipe;
+mod trial;
 mod worker;
 
 use std::io::{Read, Write};
+use std::os::unix::io::FromRawFd;
+use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -41,10 +49,21 @@ fn main() -> ExitCode {
         ["clean", models, cleaner] => {
             Cleaner::named(cleaner).and_then(|cleaner| clean(Path::new(models), cleaner))
         }
+        ["trial", socket, models, running, refusals] => {
+            Cleaner::named(running).and_then(|running| {
+                trial::serve(
+                    Path::new(socket),
+                    Path::new(models),
+                    running,
+                    Path::new(refusals),
+                )
+            })
+        }
         _ => {
             eprintln!(
                 "usage: noise-cancelled serve MODELS [CLEANER]\n       \
-                 noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32"
+                 noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32\n       \
+                 noise-cancelled trial SOCKET MODELS RUNNING REFUSALS"
             );
             return ExitCode::from(2);
         }
@@ -56,6 +75,22 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The listening socket systemd hands this process, as the first
+/// descriptor after the standard three, when it says so (`sd_listen_fds`).
+fn handed() -> Option<UnixListener> {
+    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
+    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
+    if pid != std::process::id() || count < 1 {
+        return None;
+    }
+    // SAFETY: systemd hands descriptor 3 to this process alone, named by
+    // LISTEN_PID, and nothing here has opened or taken it before.
+    let given = unsafe { UnixListener::from_raw_fd(3) };
+    // A copy closed on exec, so the recorder and player it runs don't hold
+    // the socket open, which the descriptor as handed over isn't.
+    given.try_clone().ok()
 }
 
 /// Cleans standard input to standard output, a frame at a time, the last

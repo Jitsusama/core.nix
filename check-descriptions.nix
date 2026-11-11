@@ -1419,6 +1419,14 @@
     a switch restarts noise-cancelled after it reloads the units, so the microphones offered are
     never the old program's
   '';
+  noise-cancelled-trial-reaches-no-network = ''
+    the service behind Choose by Ear, which holds a few seconds of Joel's voice, may open no
+    socket but a local one
+  '';
+  noise-cancelled-trial-waits-out-a-call = ''
+    Choose by Ear's refusals hold a-call-is-on whatever a machine adds to them, so it never
+    records during a call
+  '';
   nothing-names-its-own-look = ''
     no module but the theme's names a colour or a face
   '';
@@ -3411,7 +3419,10 @@
     a microphone in Joel's PipeWire is offered a second time as "its name, Noise Cancelled",
     heard only while something records from that one and with no model loaded before; recorded
     beside the microphone itself, its noise comes out at least 10 dB quieter and its voice within
-    10 dB, and once the recording stops the program says it rests and stops hearing it
+    10 dB, and once the recording stops the program says it rests and stops hearing it; Choose
+    by Ear records the default microphone, offers it as four clips named by letter alone, and a
+    pick names every clip's cleaner and its cost and, cleaned, makes the twin WirePlumber's chosen
+    microphone
   '';
   vm-a-yubikey-answers-only-once-in = ''
     with a FIDO2 key plugged in and named, polkit takes its touch alone for run0 from a terminal on
