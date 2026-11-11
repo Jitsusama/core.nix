@@ -10,6 +10,10 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The one form every daemon's rows take, its spaced order keeping each
+# row's where it can, so one conversation moving sends one row
+# (../ready-rows).
+ready-rows = { path = "../ready-rows" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }

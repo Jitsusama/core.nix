@@ -18,9 +18,6 @@ use crate::messages::Raised;
 /// The place of each message wanting Joel, newest first.
 pub const MESSAGES: &str = "slack-messages";
 
-/// How far apart rows' orders are, as rows.rs spaces them.
-const SPACED: u64 = 1024;
-
 /// The words messages' rows are said in, from the launcher's vocabulary.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Words {
@@ -91,23 +88,22 @@ pub(crate) fn capitalised(word: &str) -> String {
     })
 }
 
-/// Each message's row and its drawer, as records keyed as the launcher
-/// watches them, newest first, by Slack's time where two came at once.
+/// Each message's row, newest first, by Slack's time where two came at
+/// once, for rows.rs's `Kept` to set its `order`, and each one's drawer
+/// as a record of its own, keyed as the launcher watches it.
 #[must_use]
-pub fn records(messages: &[Raised], words: &Words) -> Vec<(String, Value)> {
+pub fn rows(messages: &[Raised], words: &Words) -> (Vec<Value>, Vec<Value>) {
     let mut newest: Vec<&Raised> = messages.iter().collect();
     newest.sort_by(|one, other| other.at.cmp(&one.at).then_with(|| other.ts.cmp(&one.ts)));
-    let mut made = Vec::with_capacity(newest.len() * 2);
-    for (one, at) in newest.into_iter().zip(1..) {
-        let id = format!("{}:{}", one.channel, one.ts);
-        let drawer = format!("drawer:{MESSAGES}:{id}");
-        let key = format!("row:{MESSAGES}:{id}");
-        let row = row(one, &id, at * SPACED, &drawer, words);
-        made.push((key.clone(), json!({"key": key, "kind": "row", "row": row})));
-        let said = json!({"key": drawer, "kind": "drawer", "drawer": drawn(one, words)});
-        made.push((drawer, said));
-    }
-    made
+    newest
+        .into_iter()
+        .map(|one| {
+            let id = format!("{}:{}", one.channel, one.ts);
+            let drawer = format!("drawer:{MESSAGES}:{id}");
+            let said = json!({"key": drawer, "kind": "drawer", "drawer": drawn(one, words)});
+            (row(one, &id, &drawer, words), said)
+        })
+        .unzip()
 }
 
 /// Whether it's in a direct message, whose conversation Slack names with
@@ -128,7 +124,7 @@ fn who(one: &Raised, words: &Words) -> String {
 /// One message's row: Return opens it where Slack shows it, else its
 /// conversation in Slack's app; inside are Open in Slack, then Copy the
 /// Link where Slack has said where it is.
-fn row(one: &Raised, id: &str, order: u64, drawer: &str, words: &Words) -> Value {
+fn row(one: &Raised, id: &str, drawer: &str, words: &Words) -> Value {
     let opens = if one.link.is_empty() {
         format!("slack://channel?team={}&id={}", one.team, one.channel)
     } else {
@@ -140,10 +136,9 @@ fn row(one: &Raised, id: &str, order: u64, drawer: &str, words: &Words) -> Value
     }
     json!({
         "key": format!("row:{MESSAGES}:{id}"),
-        "row": format!("slack:message:{id}"),
+        "thing": format!("slack:message:{id}"),
         "place": MESSAGES,
         "kind": "message",
-        "order": order,
         "name": who(one, words),
         "glyph": words.glyph,
         "hue": "program",
@@ -181,6 +176,26 @@ fn drawn(one: &Raised, words: &Words) -> Value {
 mod tests {
     use super::*;
     use crate::messages::Done;
+    use crate::rows::{self, Told};
+    use crate::unreads::{Said, State};
+
+    /// Each message's record as the daemon serves it, its row's order
+    /// set as a first making sets it, each row then its drawer.
+    fn records(messages: &[Raised], words: &Words) -> Vec<(String, Value)> {
+        let said = Said {
+            state: State::Ok,
+            conversations: Vec::new(),
+            recent: Vec::new(),
+            messages: messages.to_vec(),
+            marks: Vec::new(),
+            whole: false,
+        };
+        let words = rows::Words {
+            messages: words.clone(),
+            ..rows::Words::default()
+        };
+        Told::default().records(&said, &words)
+    }
 
     fn words() -> Words {
         Words {
@@ -229,7 +244,7 @@ mod tests {
         let row = &made[2].1["row"];
         assert_eq!(
             (
-                &row["row"],
+                &row["thing"],
                 &row["order"],
                 &row["name"],
                 &row["note"],

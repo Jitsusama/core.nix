@@ -208,6 +208,10 @@ struct Held {
     stands: Stands,
     /// The words rows are said in, none to make no rows.
     words: Option<Words>,
+    /// Each place's rows as last made, so each keeps its order where it
+    /// can and a conversation coming first is one row changed, not every
+    /// one below it.
+    told: rows::Told,
     watches: Vec<Watch>,
     connections: u64,
 }
@@ -324,8 +328,9 @@ impl Daemon {
         let mut order = Vec::new();
         let mut kept = BTreeMap::new();
         let mut made = records(said);
-        if let (Some(words), Some(said)) = (held.words.as_ref(), said) {
-            made.extend(rows::records(said, words));
+        let Held { words, told, .. } = &mut *held;
+        if let (Some(words), Some(said)) = (words.as_ref(), said) {
+            made.extend(told.records(said, words));
         }
         for (key, mut record) in made {
             let heard = match held.records.get(&key) {
@@ -943,6 +948,37 @@ mod tests {
         );
         assert_eq!(listed["records"][0]["key"], "row:slack-recent:C1");
         assert_eq!(listed["records"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn a_conversation_coming_first_is_the_one_row_a_watch_hears() {
+        let daemon = Daemon::new(PathBuf::new(), String::new());
+        daemon.words(Words::default());
+        let first = vec![one("D1", Kind::Dm, 1, "1"), one("C1", Kind::Unread, 1, "1")];
+        daemon.say(Some(&ok(first.clone(), vec![])), 10);
+        let (told, heard) = mpsc::channel();
+        let asked = json!({"id": 1, "ask": "watch", "kind": "row", "place": "slack-unread"});
+        daemon.answer(&asked.to_string(), 1, &told);
+        heard.recv().unwrap();
+        let mut now = first;
+        now.insert(0, one("D2", Kind::Dm, 1, "2"));
+        daemon.say(Some(&ok(now, vec![])), 20);
+        let line: Value = serde_json::from_str(&heard.recv().unwrap()).unwrap();
+        let changed: Vec<(Value, Value)> = line["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| (record["key"].clone(), record["row"]["order"].clone()))
+            .collect();
+        assert_eq!(
+            changed,
+            [(json!("row:slack-unread:D2"), json!(0))],
+            "{line}"
+        );
+        assert!(
+            heard.try_recv().is_err(),
+            "the rows below it were said again"
+        );
     }
 
     #[test]
