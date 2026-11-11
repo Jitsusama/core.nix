@@ -352,15 +352,8 @@ mod tests {
 
     #[test]
     fn close_says_what_stays() {
-        let said = Said::of(&[
-            ("stays", "its {kept} stays."),
-            ("stay", "its {kept} stay."),
-            ("tree", "worktree"),
-            ("folder", "folder"),
-            ("and", "and"),
-            ("toDo", "{count} to-do"),
-            ("toDos", "{count} to-dos"),
-        ]);
+        let said =
+            Said::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read");
         let cases = [
             (true, 0, "its worktree stays."),
             (true, 1, "its worktree and 1 to-do stay."),

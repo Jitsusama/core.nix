@@ -16,6 +16,7 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ./tests/words.json
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
       ../quickshell/launcher/words.json

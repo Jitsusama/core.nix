@@ -1,0 +1,129 @@
+{
+  "things": [
+    {
+      "id": "agents",
+      "name": "Agents",
+      "term": "Agents/agent",
+      "noun": "agents",
+      "what": "agent",
+      "glyph": "agent",
+      "parts": ["quests", "jobs", "runs", "spend", "agents:budgets"],
+      "ask": "which session?",
+      "empty": "No sessions running.",
+      "none": "none running",
+      "said": {
+        "today": "{spent} today",
+        "needs": "needs you",
+        "needCount": "{count} need you",
+        "needsCount": "1 needs you",
+        "workingCount": "{count} working",
+        "inLineCount": "{count} in line",
+        "working": "working",
+        "inLine": "{place} in line",
+        "listening": "listening",
+        "paused": "paused",
+        "parked": "parked",
+        "closed": "closed",
+        "closedAt": "closed {time}",
+        "closedOn": "closed {day} {time}",
+        "allOf": "{spent} in all",
+        "since": "since {at}",
+        "under": "under {address}",
+        "stays": "its {kept} stays.",
+        "stay": "its {kept} stay.",
+        "tree": "worktree",
+        "folder": "folder",
+        "and": "and",
+        "toDo": "{count} to-do",
+        "toDos": "{count} to-dos",
+        "full": "{share}% full",
+        "contextOf": "{used} of {limit}",
+        "turnTook": "{took} \u00b7 {out} out",
+        "firstToken": "{took} first token",
+        "tokensOf": "{sent} in \u00b7 {out} out",
+        "cacheRead": "{share}% read"
+      }
+    },
+    {
+      "id": "agents:machine",
+      "in": "agents",
+      "name": "Machine",
+      "term": "Machine/machine",
+      "said": {
+        "on": "on {machine}",
+        "away": "{machine}, out of reach",
+        "unheld": "not joined \u00b7 {machine} can't hand it over",
+        "unreached": "not joined \u00b7 {machine} is out of reach",
+        "hosted": "not opened \u00b7 its host gave no way to view it",
+        "untold": "not told, {why}",
+        "unanswered": "not told, the node didn't answer"
+      }
+    },
+    {
+      "id": "agents:wants",
+      "in": "agents",
+      "name": "Needs You For",
+      "term": "Agents/Needs You For",
+      "said": {
+        "question": "needs you",
+        "approval": "needs your yes",
+        "blocked": "needs you to unblock it"
+      }
+    },
+    {
+      "id": "agents:step",
+      "in": "agents",
+      "name": "Doing",
+      "term": "Agents/Doing"
+    },
+    {
+      "id": "agents:last-landing",
+      "in": "agents",
+      "name": "Last Landing"
+    },
+    {
+      "id": "agents:spent",
+      "in": "agents",
+      "name": "Spent Today"
+    },
+    {
+      "id": "agents:own",
+      "in": "agents",
+      "name": "Its Own"
+    },
+    {
+      "id": "agents:under",
+      "in": "agents",
+      "name": "Its Sessions"
+    },
+    {
+      "id": "agents:budget",
+      "in": "agents",
+      "name": "Budget",
+      "term": "Agents/budget"
+    },
+    {
+      "id": "agents:context",
+      "in": "agents",
+      "name": "Context",
+      "term": "Agents/context"
+    },
+    {
+      "id": "agents:rebuilt",
+      "in": "agents",
+      "name": "Context Rebuilt"
+    },
+    {
+      "id": "agents:task",
+      "in": "agents",
+      "name": "Quest",
+      "term": "Agents/quest"
+    },
+    {
+      "id": "agents:works",
+      "in": "agents",
+      "name": "Working On",
+      "term": "Agents/Working on"
+    }
+  ]
+}

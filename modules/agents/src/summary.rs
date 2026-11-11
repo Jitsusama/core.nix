@@ -58,15 +58,8 @@ mod tests {
 
     #[test]
     fn together_they_say_who_needs_joel_who_works_and_the_days_dollars() {
-        let said = Said::of(&[
-            ("workingCount", "{count} working"),
-            ("inLineCount", "{count} in line"),
-            ("needsCount", "1 needs you"),
-            ("needCount", "{count} need you"),
-            ("listening", "listening"),
-            ("paused", "paused"),
-            ("today", "{spent} today"),
-        ]);
+        let said =
+            Said::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read");
         let cases = [
             (
                 "working working listening needs working",
