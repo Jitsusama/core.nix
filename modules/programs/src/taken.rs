@@ -10,7 +10,7 @@
 use programs::taken_rows::{self, Placing, Taken};
 use serde_json::Value;
 
-use super::{Daemon, Shared, keep, lock, read_named};
+use super::{Daemon, Run, Shared, keep, lock, read_named, sources_of};
 
 /// The list the rows are made from, as modules/quickshell/home.nix names it.
 pub const LIST: &str = "listed:shared:taken";
@@ -30,6 +30,15 @@ pub fn words(path: Option<String>) -> Option<taken_rows::Words> {
     words
         .inspect_err(|why| eprintln!("<4>Capture's rows aren't served from {path}: {why}"))
         .ok()
+}
+
+/// The source of what was taken, which any watch beginning reads too
+/// while Capture's rows are watched, or none while they aren't.
+pub fn lists(shared: &Shared) -> Vec<usize> {
+    if !watched(&lock(&shared.daemon)) {
+        return Vec::new();
+    }
+    sources_of(shared, Run::List, &[], Some(&[LIST.to_owned()]))
 }
 
 /// The path a row of these names, or none for another place's.

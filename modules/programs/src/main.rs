@@ -535,15 +535,8 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 /// kind, as the launcher holds while it's open, runs neither, so Chrome's
 /// history is read only as Chrome is stepped into.
 fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
-    let listed = [taken::LIST.to_owned()];
-    let taking = taken::watched(&lock(&shared.daemon));
-    let also = sources_of(shared, Run::List, &[], Some(&listed))
-        .into_iter()
-        .filter(|_| taking);
-    for at in sources_of(shared, Run::List, kinds, keys)
-        .into_iter()
-        .chain(also)
-    {
+    let lists = sources_of(shared, Run::List, kinds, keys);
+    for at in lists.into_iter().chain(taken::lists(shared)) {
         if keys.is_none() && shared.sources[at].asked {
             continue;
         }
