@@ -210,8 +210,8 @@
   '';
   agents-makes-the-launchers-rows = ''
     the agents daemon says how each pi session stands, its acts and what Return does, lays
-    sessions under their orchestrators with the waiting folded, and words each row's side, its
-    drawer's figures and the sessions together as the launcher's vocabulary says them
+    sessions under their orchestrators with the waiting folded, and words each row's side, each
+    drawer, what matters first, and the sessions together as the launcher's vocabulary says them
   '';
   agents-passes-clippy = ''
     clippy finds nothing in the agents daemon or its tests
@@ -2452,7 +2452,7 @@
   '';
   the-launcher-says-how-each-session-stands = ''
     a pi session says how it stands in the one order every list keeps, offers its acts in their
-    order, and its drawer says what matters first, and what it landed is kept past its end
+    order, its drawer's times are worded by the clock, and what it landed is kept past its end
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this

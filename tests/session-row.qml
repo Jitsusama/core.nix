@@ -7,7 +7,8 @@
 // one order of how they stand (needs you, working, in line, listening,
 // paused, parked). How Agents lays them out, each under the one
 // orchestrating it, is the agents daemon's (modules/agents/src/tree.rs),
-// as is what a row says at its right; its drawer is still said here.
+// as are what a row says at its right and its drawer (drawer.rs), whose
+// times alone are worded here.
 import QtQuick
 import "SessionDrawer.js" as SessionDrawer
 import "Holders.js" as Holders
@@ -121,35 +122,50 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
-        // Its drawer's eyebrow says its address, where it works and since
-        // when, and its facts don't say the address again.
-        const told = {
-            address: "8IDU4E",
-            place: "core.nix",
-            since: "since 21:52",
-            machine: "",
-            spent: "$4.20",
-            named: id => id
-        };
-        const drawn = SessionDrawer.drawer("A Quest", { worksOn: "the row" }, told);
-        if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since 21:52")
+        // The daemon's drawer is shown with its times worded by the clock:
+        // when it began after its address and where it works, and when it
+        // landed last after what it landed, alone where it said nothing
+        // else. It names things from the world, so it's set as they're
+        // written (modules/agents/src/drawer.rs says all the rest).
+        const clock = { clock: at => `@${at}`, since: "since {at}" };
+        const drawn = SessionDrawer.shown({
+            title: "A Quest",
+            eyebrow: [{ said: "8IDU4E", keep: 3 }, { said: "core.nix", keep: 2 },
+                { at: { at: 2152, as: "since" }, keep: 1 }],
+            facts: [
+                { label: "Last Landing", value: "Serve rows \u00b7 core.nix#1",
+                    at: { at: 1544, as: "clock" } },
+                { label: "Spent Today", value: "$4.20" },
+                { label: "Last Landing", value: "", at: { at: 1, as: "clock" } }
+            ],
+            body: ""
+        }, clock);
+        if (drawn.eyebrow !== "8IDU4E \u00b7 core.nix \u00b7 since @2152")
             failures.push(`the drawer's eyebrow: "${drawn.eyebrow}"`);
-        // Its hours ride on its own spend today as a spark, an orchestrator's
-        // on Its Own, and what rebuilding its context cost follows, unsaid
-        // when it's nothing.
-        const hours = { shape: "spark", values: [0, 0.5, 1] };
-        const sparked = given => SessionDrawer.drawer("A Quest", {},
-            Object.assign({}, told, { hours: hours }, given)).facts
-            .map(fact => fact.figure ? `${fact.label}=${fact.value}:${fact.figure.shape}`
-                : `${fact.label}=${fact.value}`).join(" ");
-        // An orchestrator's budget follows the whole of its spend, its own
-        // and its sessions' among it.
-        const sparks = [sparked({ rebuilt: "$1.20" }),
-            sparked({ spent: "$14.20 in all", own: "$3.10", rebuilt: "", budget: "Mine" })]
-            .join(" | ");
-        if (sparks !== "spent=$4.20:spark rebuilt=$1.20 | "
-            + "spent=$14.20 in all own=$3.10:spark budget=Mine")
-            failures.push(`a drawer's hours: "${sparks}"`);
+        const values = drawn.facts.map(fact => `${fact.label}=${fact.value}${fact.at ? "+at" : ""}`)
+            .join("; ");
+        const valuesWant = "Last Landing=Serve rows \u00b7 core.nix#1 \u00b7 @1544; "
+            + "Spent Today=$4.20; Last Landing=@1";
+        if (values !== valuesWant)
+            failures.push(`the drawer's times: "${values}", not "${valuesWant}"`);
+        if (drawn.eyebrowNames !== true || drawn.title !== "A Quest")
+            failures.push("the drawer's eyebrow isn't said to name things, or its title is lost");
+        // Short of room, as the drawer gives it way (Reading.wholeItems), it
+        // loses when it started first, then its repo, and never its address,
+        // each whole, at a letter's width a letter.
+        const eyebrowIn = room => Reading.wholeItems(drawn.eyebrowItems, room,
+            words => words.length);
+        for (const [room, want] of [[40, "8IDU4E \u00b7 core.nix \u00b7 since @2152"],
+            [30, "8IDU4E \u00b7 core.nix"], [10, "8IDU4E"], [3, "8IDU4E"]]) {
+            if (eyebrowIn(room) !== want)
+                failures.push(`the eyebrow in ${room}: "${eyebrowIn(room)}", not "${want}"`);
+        }
+        // One whose record names no place, nor when it began, says its
+        // address alone.
+        const bare = SessionDrawer.shown({ eyebrow: [{ said: "8IDU4E", keep: 3 },
+            { said: "", keep: 2 }], facts: [] }, clock);
+        if (bare.eyebrow !== "8IDU4E")
+            failures.push(`a bare drawer's eyebrow: "${bare.eyebrow}"`);
         // One paused, parked or closed never looks live: its glyph is muted,
         // every other a program's, as the live rows' are.
         const hues = ["needs", "working", "inLine", "listening", "paused", "parked", "off"]
@@ -178,52 +194,6 @@ QtObject {
             fills.push("one with no usage said it was full");
         for (const fill of fills)
             failures.push(`how full: ${fill}`);
-        // Counts read as figures do, and times as they're said.
-        const counts = [2, 999, 4100, 9999, 142400, 999600, 1000000, 1240000, 124620036]
-            .map(count => SessionRow.tokens(count)).join(" ");
-        if (counts !== "2 999 4.1k 10k 142k 1M 1M 1.2M 125M")
-            failures.push(`tokens as figures: "${counts}"`);
-        const times = [9284, 900, 38000, 125000].map(ms => SessionRow.took(ms)).join(", ");
-        if (times !== "9.3 s, 0.9 s, 38 s, 2 min")
-            failures.push(`turns' times: "${times}"`);
-        // The drawer's figures by gen_ai's names, today's only on its day.
-        const usage = {
-            day: "2026-11-07",
-            "gen_ai.request.model": "claude-opus-5-5",
-            last: { "gen_ai.usage.output_tokens": 4100 },
-            today: { "gen_ai.usage.input_tokens": 786, "gen_ai.usage.output_tokens": 272470,
-                "gen_ai.usage.cache_read.input_tokens": 124620036,
-                "gen_ai.usage.cache_creation.input_tokens": 1194960 },
-            context: { used: 142000, limit: 200000 },
-            turns: { today: 359, last: { duration_ms: 38000, first_token_ms: 900 } }
-        };
-        const figured = facts => facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
-        const onItsDay = figured(SessionRow.figures(usage, "2026-11-07", figureWords,
-            id => id));
-        const onItsDayWant = "context=142k of 200k; "
-            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token; model=claude-opus-5-5; "
-            + "turns=359; "
-            + "tokens=126M in \u00b7 272k out; cache=99.0% read";
-        if (onItsDay !== onItsDayWant)
-            failures.push(`the drawer's figures: "${onItsDay}", not "${onItsDayWant}"`);
-        const dayAfter = figured(SessionRow.figures(usage, "2026-11-08", figureWords,
-            id => id));
-        const dayAfterWant = "context=142k of 200k; "
-            + "last-turn=38 s \u00b7 4.1k out \u00b7 0.9 s first token; model=claude-opus-5-5";
-        if (dayAfter !== dayAfterWant)
-            failures.push(`the figures a day on: "${dayAfter}", not "${dayAfterWant}"`);
-        if (SessionRow.figures(undefined, "2026-11-07", figureWords, id => id).length !== 0)
-            failures.push("one with no usage had figures");
-        // Context alone carries a figure, Meter's stroke of how full, warning
-        // from 80%.
-        const drawnOf = given => SessionRow.figures(given, "2026-11-07", figureWords, id => id)
-            .filter(fact => fact.figure)
-            .map(fact => `${fact.label}:${fact.figure.shape}:${fact.figure.values}:`
-                + `${fact.figure.warn}`).join(" ");
-        const strokes = [drawnOf(usage),
-            drawnOf(Object.assign({}, usage, { context: { used: 168000, limit: 200000 } }))];
-        if (strokes.join(" | ") !== "context:stroke:0.71:false | context:stroke:0.84:true")
-            failures.push(`the drawer's strokes: "${strokes.join(" | ")}"`);
         // When a quest's session was last live: the harness's `at` where it
         // says one, else when a UUIDv7 id says it began, else never.
         const lives = [
@@ -246,67 +216,6 @@ QtObject {
             { address: "TIEDA", at: 2 }, { address: "TIEDB", at: 2 }]).join(" ");
         if (lastLive !== "NEWEST TIEDA TIEDB OLDEST NEVER")
             failures.push(`the closed, last live first: "${lastLive}"`);
-        // It names things from the world, so it's set as they're written.
-        if (drawn.eyebrowNames !== true)
-            failures.push("the drawer's eyebrow isn't said to name things");
-        // Short of room, as the drawer gives it way (Reading.wholeItems), it
-        // loses when it started first, then its repo, and never its address,
-        // each whole, at a letter's width a letter.
-        const eyebrowIn = room => Reading.wholeItems(drawn.eyebrowItems, room,
-            words => words.length);
-        for (const [room, want] of [[40, "8IDU4E \u00b7 core.nix \u00b7 since 21:52"],
-            [30, "8IDU4E \u00b7 core.nix"], [10, "8IDU4E"], [3, "8IDU4E"]]) {
-            if (eyebrowIn(room) !== want)
-                failures.push(`the eyebrow in ${room}: "${eyebrowIn(room)}", not "${want}"`);
-        }
-        // What it works on is words, said last, since it runs long.
-        const facts = drawn.facts.map(fact => `${fact.label}${fact.words ? ":words" : ""}`)
-            .join(" ");
-        if (facts !== "spent works:words")
-            failures.push(`the drawer's facts: "${facts}", not "spent works:words"`);
-        // Its first screen holds what matters, in this order: what it's
-        // doing, its step alone, what it needs Joel for, what it landed last,
-        // what it spent, the budget it drew on, its figures, then its quest,
-        // its machine and what its quest is about, that without the title
-        // the drawer already says (Joel, 2026-11-07: "the agents side panel
-        // generally just shows its title"; VKCF3Z, 2026-11-07; KP0L6A,
-        // 2026-11-07, for the budget).
-        const full = SessionDrawer.drawer("A Quest", {
-            worksOn: "A Quest: what it's for, at length",
-            stepDetail: { kind: "tool", name: "edit", detail: "/src/core.nix/Drawer.qml" },
-            wants: { said: "which way?" },
-            questInfo: { id: "QEST-1", title: "A Quest", status: "active" }
-        }, Object.assign({}, told, {
-            needs: "Sign In", landed: "core.nix#1 \u00b7 15:44",
-            budget: "Your AI proxy token \u00b7 $24,349 of $40,000",
-            machine: "there", figures: [{ label: "context", value: "84k of 200k" }]
-        })).facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
-        const fullWant = "step=edit Drawer.qml; wants=which way? \u00b7 Sign In; "
-            + "last-landing=core.nix#1 \u00b7 15:44; spent=$4.20; "
-            + "budget=Your AI proxy token \u00b7 $24,349 of $40,000; context=84k of 200k; "
-            + "task=QEST-1; machine=there; works=what it's for, at length";
-        if (full !== fullWant)
-            failures.push(`the drawer's first screen: "${full}", not "${fullWant}"`);
-        // One with no step says no Doing, and a quest that isn't active says
-        // how it stands.
-        const still = SessionDrawer.drawer("A Quest", {
-            questInfo: { id: "QEST-1", title: "A Quest", status: "paused" }
-        }, told).facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
-        if (still !== "spent=$4.20; task=QEST-1 \u00b7 paused")
-            failures.push(`a drawer with no step, its quest paused: "${still}"`);
-        // A step says its tool and what it's on, a file by its name, and
-        // nothing the harness cut short.
-        const steps = [{ kind: "thinking" }, { kind: "tool", name: "bash", detail: "cd ~/a; f\u2026" },
-            { kind: "tool", name: "quest", detail: "journal" }, null]
-            .map(detail => SessionDrawer.step(detail)).join(", ");
-        if (steps !== "thinking, bash, quest journal, ")
-            failures.push(`a step: "${steps}"`);
-        // One whose record names no place, nor when it began, says its
-        // address alone.
-        const bare = SessionDrawer.drawer("A Quest", {}, Object.assign({}, told,
-            { place: "", since: "" }));
-        if (bare.eyebrow !== "8IDU4E")
-            failures.push(`a bare drawer's eyebrow: "${bare.eyebrow}"`);
 
         // What landed reads newest first, changes and what says what to
         // try, never a plan item ticked alone, and only a web link opens.

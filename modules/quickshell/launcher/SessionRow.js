@@ -1,8 +1,9 @@
 .pragma library
 // A pi session as the launcher shows it, said once, and named apart from
-// Session.qml, which is the desktop session: how it stands, the acts it
-// offers in their order, and its drawer's figures (SessionDrawer.js says
-// the rest of its drawer), wherever the launcher shows it (Agents, an orchestrator's row, a quest's Go To Its Session).
+// Session.qml, which is the desktop session: how it stands and the acts it
+// offers in their order, wherever the launcher shows it (Agents, an
+// orchestrator's row, a quest's Go To Its Session). Its drawer, figures
+// and all, is the agents daemon's (modules/agents/src/drawer.rs).
 // Joel, 2026-10-28: "we need to not have different versions of these sort
 // of elements. they need to be treated the same everywhere." The providers
 // turn what this says into rows, each through its own `thing`.
@@ -162,87 +163,6 @@ function fullness(usage) {
 function full(usage, said) {
     const share = fullness(usage);
     return share >= FULL_AT ? String(said.full ?? "").replace("{share}", share) : "";
-}
-
-// A count of tokens as a figure reads it: whole under a thousand, then
-// thousands and millions, one decimal while that's under ten ("4.1k",
-// "142k", "1.2M", "1M").
-const THOUSAND = 1000;
-const MILLION = 1000000;
-const TENS = 10;
-const ZERO_DECIMAL = /\.0$/;
-function tokens(count) {
-    const many = Number(count ?? 0);
-    const scaled = (by, unit) => {
-        const value = many / by;
-        const shown = value < TENS ? value.toFixed(1).replace(ZERO_DECIMAL, "")
-            : String(Math.round(value));
-        return `${shown}${unit}`;
-    };
-    if (many < THOUSAND) {
-        return String(Math.round(many));
-    }
-    return Math.round(many / THOUSAND) < THOUSAND ? scaled(THOUSAND, "k") : scaled(MILLION, "M");
-}
-
-// How long a turn took, from milliseconds: tenths of a second under ten,
-// whole seconds under a minute, then minutes.
-const SECOND_MS = 1000;
-const MINUTE_S = 60;
-function took(ms) {
-    const seconds = Number(ms ?? 0) / SECOND_MS;
-    if (seconds < TENS) {
-        return `${seconds.toFixed(1).replace(ZERO_DECIMAL, "")} s`;
-    }
-    return seconds < MINUTE_S ? `${Math.round(seconds)} s` : `${Math.round(seconds / MINUTE_S)} min`;
-}
-
-// The drawer's figures for a session, by OpenTelemetry's gen_ai names as
-// its record's `usage` keeps them (the design's figures, tier 3): how
-// full its context is and its last turn first, the two that move as it
-// works, then its model and today's turns, tokens and cache, those only while the record's day is `today`, since the
-// harness starts them over each day. No amount is among them, so sharing
-// the screen hides none; what it spent is spend-watch's, said beside them.
-// `said` is the vocabulary's agents words, `named` names each figure.
-const GEN_AI = "gen_ai.usage.";
-function figures(usage, today, said, named) {
-    if (!usage) {
-        return [];
-    }
-    const fill = (key, parts) => Object.keys(parts)
-        .reduce((text, part) => text.replace(`{${part}}`, parts[part]), String(said[key] ?? ""));
-    const used = (spent, kind) => Number(spent?.[`${GEN_AI}${kind}`] ?? 0);
-    const model = usage["gen_ai.response.model"] ?? usage["gen_ai.request.model"] ?? "";
-    const context = usage.context?.limit > 0 && usage.context?.used > 0
-        ? fill("contextOf", { used: tokens(usage.context.used), limit: tokens(usage.context.limit) })
-        : "";
-    const last = usage.turns?.last;
-    const lastOut = used(usage.last, "output_tokens");
-    const turn = last?.duration_ms > 0
-        ? fill("turnTook", { took: took(last.duration_ms), out: tokens(lastOut) })
-            + (last.first_token_ms > 0
-                ? ` \u00b7 ${fill("firstToken", { took: took(last.first_token_ms) })}` : "")
-        : "";
-    const day = usage.day === today ? usage.today : null;
-    const sent = used(day, "input_tokens") + used(day, "cache_read.input_tokens")
-        + used(day, "cache_creation.input_tokens");
-    const read = sent > 0 ? used(day, "cache_read.input_tokens") / sent * PERCENT : 0;
-    const known = {
-        context,
-        "last-turn": turn,
-        model,
-        turns: usage.day === today && usage.turns?.today > 0 ? String(usage.turns.today) : "",
-        tokens: day && sent > 0 ? fill("tokensOf", {
-            sent: tokens(sent), out: tokens(used(day, "output_tokens"))
-        }) : "",
-        cache: day && sent > 0 ? fill("cacheRead", { share: read.toFixed(1) }) : ""
-    };
-    // Context carries Meter's stroke of how full, warning from FULL_AT as
-    // its row's glyph does (VKCF3Z, 2026-11-07).
-    const stroke = { shape: "stroke", values: [usage.context?.used / usage.context?.limit],
-        warn: fullness(usage) >= FULL_AT };
-    return Object.keys(known).filter(id => known[id] !== "").map(id => Object.assign(
-        { label: named(id), value: known[id] }, id === "context" ? { figure: stroke } : {}));
 }
 
 // Agents' Recent: the sessions that closed this boot (Sessions.closed),

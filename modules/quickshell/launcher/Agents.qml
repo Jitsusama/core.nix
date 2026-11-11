@@ -108,6 +108,7 @@ Provider {
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
             kind: ["row", "summary"]
             watching: ({ place: "agents" })
+            ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
             answersWhole: true
             onHeard: (changed, gone) => provider.placed(changed, gone)
             // Told as it answers, and again as sharing changes, whether the
@@ -138,17 +139,21 @@ Provider {
     readonly property var wrapped: ({})
     property int placings: 0
 
-    // Takes what the daemon said moved: each key gone or changed let go,
-    // and each changed put back where its order places it. Its lists come
-    // through the signal converted, so they're read by index.
+    // Takes what the daemon said moved: each row's key gone or changed let
+    // go, and each changed put back where its order places it. A drawer or
+    // the summary moves no row, so places nothing. Its lists come through
+    // the signal converted, so they're read by index.
     function placed(changed, gone) {
         const held = rowsKind?.held ?? {};
         const placedKeys = placing.keys;
+        const rowKey = key => String(key).startsWith("row:");
         const moved = [];
         for (let at = 0; at < changed.length; at += 1)
             moved.push(changed[at]);
         for (let at = 0; at < gone.length; at += 1)
             moved.push(gone[at]);
+        if (!moved.some(rowKey))
+            return;
         for (const key of moved) {
             delete wrapped[key];
             const at = placedKeys.indexOf(key);
@@ -434,8 +439,7 @@ Provider {
                     (session.presence?.addresses ?? [session.address]).join(", "))],
             // Its drawer reads the session as it stands, since its row is
             // kept while only its step moves.
-            drawer: () => provider.drawerOf(provider.sessionAt(session.address) ?? session,
-                quest, place)
+            drawer: () => provider.drawerOf(session.address)
         });
         // Itself as it reads ranked flat: at no depth, whom it's under
         // leading its note and what it says at its right (15J7N3,
@@ -460,53 +464,26 @@ Provider {
         return row === null ? null : Object.assign({}, row, { depth: 0 });
     }
 
-    // What a session's drawer says (SessionRow.js), read as it's shown:
-    // for an orchestrator, its orchestration's spend, then its own and its
-    // sessions'.
-    function drawerOf(session, quest, place) {
-        const presence = session.presence ?? {};
-        // Read as it's shown, so spend-watch's next sum reaches an open
-        // drawer even while the row stays as it was found.
-        const { spent, family } = spendOf(presence, quest, place);
-        // How its day went, as spend-watch says: its hours carry no dollars,
-        // but what rebuilding its context cost is an amount, hidden while
-        // the screen is shared. Its busiest hour nears no limit, so the
-        // spark never wears the warning, which is for a budget past its
-        // warning once the launcher reads budgets (VKCF3Z, 2026-11-07).
-        const day = SpendWatch.sessionsToday[presence.session ?? ""] ?? null;
-        // What it landed last, newest by when, with its ref and its time.
-        const last = Order.sorted(presence.landings,
-            Order.stream(one => String(one.at ?? "")))[0];
-        // What its quest waits on Joel for, in the order For You says it.
-        const needs = (presence.quest ?? "") === "" ? []
-            : WaitingOnYou.items.filter(item => item.quest === presence.quest);
-        return SessionDrawer.drawer(session.title, presence, {
-            needs: needs.map(item => item.title).join(" \u00b7 "),
-            landed: last ? [last.what ?? "", last.ref ?? "", last.at ? started(last.at) : ""]
-                .filter(part => part !== "").join(" \u00b7 ") : "",
-            hours: day?.graph ? Object.assign({}, day.graph, { warn: false }) : null,
-            rebuilt: Quiet.sharing ? "" : String(day?.rebuilt ?? ""),
-            spent: family ? word("allOf", { spent: family.all }) : spent,
-            own: family ? family.own : "",
-            under: family ? family.under : "",
-            // The budget it drew on last and how that stands, as
-            // budgets.json says it; a standing may be an amount, so it's
-            // hidden while the screen is shared.
-            budget: Quiet.sharing ? ""
-                : SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf,
-                    presence.session),
-            since: presence.owner?.startedAt
-                ? word("since", { at: started(presence.owner.startedAt) }) : "",
-            address: session.address,
-            // Where it works: its repository, as its record names it,
-            // else its folder.
-            place: presence.repo || session.folder,
-            machine: session.machine,
-            named: id => Words.name(`agents:${id}`),
-            // Its model, context, last turn and today's figures, as its
-            // record's usage keeps them by gen_ai's names.
-            figures: SessionRow.figures(presence.usage, Qt.formatDate(new Date(), "yyyy-MM-dd"),
-                Words.of("agents").said ?? {}, id => Words.name(`agents:${id}`))
+    // A session's drawer as the agents daemon made it ready
+    // (modules/agents/src/drawer.rs), what matters first: watched by its
+    // key only while it's shown, since its figures move every turn, so the
+    // drawer names its key just after it first asks, and fills as the
+    // daemon answers. Only its times are worded here, by the clock
+    // (SessionDrawer.js), so one left open never waits on the daemon to
+    // turn a minute.
+    property string drawerWanted: ""
+
+    function drawerOf(address) {
+        const key = `drawer:agents:${address}`;
+        if (key !== drawerWanted)
+            Qt.callLater(() => {
+                provider.drawerWanted = key;
+            });
+        void rowsKind?.revision;
+        const made = rowsKind?.held?.[key]?.drawer ?? null;
+        return made === null ? null : SessionDrawer.shown(made, {
+            clock: at => started(at),
+            since: word("since")
         });
     }
 
@@ -888,6 +865,9 @@ Provider {
 
         function onOpenChanged() {
             provider.lookForFolders();
+            // Shut, no drawer shows, so none is watched.
+            if (!provider.launcher.open)
+                provider.drawerWanted = "";
         }
     }
 
