@@ -642,12 +642,9 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
         shell.close_launcher()
         shell.reported("spots made while closed ", lambda _: True, since_closing)
 
-    def within_a_minute(
-        act: Callable[[], None], ready: Callable[[], None] = lambda: None
-    ) -> dict[str, int]:
+    def within_a_minute(act: Callable[[], None]) -> dict[str, int]:
         """Give the rows the act made, done again once if a minute turned, which remakes some."""
         for _ in range(2):
-            ready()
             minute, before = int(time.time() // 60), made()
             act()
             made_by_it = since(before)
@@ -660,8 +657,27 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
             shell.as_account("notify-send --expire-time=1000 'Whimbrel' 'a notice heard open'")
         settled(shell)
 
-    in_for_you()
-    again = within_a_minute(in_for_you, ready=shut)
+    def reopened() -> dict[str, int]:
+        """Give the rows a reopening made, done again once if a minute turned since the first.
+
+        The minute is read before the first opening places the time, since one turning
+        between that and the reopening remakes the time rightly, which a minute read only
+        around the reopening missed (Y2YBTS, 2026-11-11, at 1f562159).
+        """
+        made_again: dict[str, int] = {}
+        for _ in range(2):
+            minute = int(time.time() // 60)
+            in_for_you()
+            shut()
+            before = made()
+            in_for_you()
+            made_again = since(before)
+            if int(time.time() // 60) == minute:
+                break
+            shut()
+        return made_again
+
+    again = reopened()
     heard = within_a_minute(notified)
     shell.close_launcher()
     assert again == {}, f"opened into For You again with nothing come, it made {again}"
