@@ -1,9 +1,9 @@
 """Which programs have a loopback camera open, as the file naming them says.
 
-tests/loopback-holders.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what has to hold. Each test starts from the stand-in camera up
-and nobody named, and stops what it started and points the holders back at the stand-in as
-it ends, so any runs alone. The file naming the holders and the programs that hold the
+loopback-holders.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what has to hold. Each test starts from the
+stand-in camera up and nobody named, and stops what it started and points the holders back at the
+stand-in as it ends, so any runs alone. The file naming the holders and the programs that hold the
 camera are Nix's, given as the `values` fixture.
 """
 

@@ -1,9 +1,9 @@
 r"""Take the name it's given, whatever bytes it holds, then hold a camera open.
 
-tests/loopback-holders.nix installs this as renamed for tests/loopback-holders-vm-test.py,
-which names itself as the relay, or by a name with a line break and a byte that isn't UTF-8,
-to show how the holders' file names a program. The name is written with Python's escapes, as
-`a\nb\xff`.
+tests/vm/devices/loopback-holders.nix installs this as renamed for
+tests/vm/devices/loopback-holders-vm-test.py, which names itself as the relay, or by a name with a
+line break and a byte that isn't UTF-8, to show how the holders' file names a program. The name is
+written with Python's escapes, as `a\nb\xff`.
 """
 
 import ctypes

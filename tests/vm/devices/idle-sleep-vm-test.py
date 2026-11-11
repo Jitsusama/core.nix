@@ -1,10 +1,10 @@
 """A virtual machine left idle, on the charger and on battery.
 
-tests/idle-sleep.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Each test asks for the machine booted with its
+idle-sleep.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+and its opening comment says what the test proves. Each test asks for the machine booted with its
 desktop's session in use, on the charger and awake, and leaves it so. The stand-in charger, the
-session's account and the stand-in sleep are all named in the machine idle-sleep.nix builds, so
-the tests need no value from Nix.
+session's account and the stand-in sleep are all named in the machine idle-sleep.nix builds, so the
+tests need no value from Nix.
 """
 
 from __future__ import annotations

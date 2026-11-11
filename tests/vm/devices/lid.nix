@@ -14,7 +14,7 @@
 # and unplugging that monitor with the lid still shut puts it to sleep. The
 # script is lid-vm-test.py.
 { self, pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "lid";
 
   nodes.machine =
@@ -23,7 +23,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       imports = [ self.nixosModules.lid ];
 
       boot.extraModulePackages = [
-        (config.boot.kernelPackages.callPackage ./stand-in-lid { })
+        (config.boot.kernelPackages.callPackage ../../stand-in-lid { })
       ];
       boot.kernelModules = [
         "stand-in-lid"

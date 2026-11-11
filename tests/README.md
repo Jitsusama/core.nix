@@ -33,10 +33,6 @@ waiting list only as `tests/<rule>-waiting.nix`, and each list only shrinks.
   places and keep the launcher, and the session they share.
 - `wifi/`: the Wi-Fi test's areas, joining, joining when asked and holding
   on, and the session they share.
-- `ir-camera/`: the stand-in infrared camera, and the reader that names each
-  frame it saved.
-- `loopback-holders/`: the programs that hold a loopback camera open, one
-  under a name it's given.
 - `niri-off-cpu/`: a stand-in for niri's main thread, waiting and asleep as
   niri does.
 - `stand-in-backlight/`, `stand-in-lid/`, `stand-in-light/` and

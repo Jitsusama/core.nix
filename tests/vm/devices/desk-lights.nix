@@ -9,10 +9,10 @@
 let
   # What the tests need of the above, as their values fixture.
   values = pkgs.writeText "desk-lights-values.json" (
-    builtins.toJSON { standIn = "${./desk-light-stand-in.py}"; }
+    builtins.toJSON { standIn = "${../../desk-light-stand-in.py}"; }
   );
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desk-lights";
 
   nodes.machine = {

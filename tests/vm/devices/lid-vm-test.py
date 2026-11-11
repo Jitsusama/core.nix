@@ -1,6 +1,6 @@
 """A laptop's lid shut in a virtual machine, with and without a monitor plugged in.
 
-tests/lid.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
+lid.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Each test asks for the state it starts from as a
 fixture: the machine booted with its stand-in connectors, or its lid shut at a desk with the
 monitor off. The stand-in lid, connectors and sleep are all named in the machine lid.nix

@@ -391,8 +391,8 @@ in place of `runNixOSTest`, naming its machines and `tests = ./<name>-vm-test.py
 and the helper gives it the rest: the shared Python, the line that hands the
 file to pytest, and no driver type check, since ruff and mypy read the file
 as strictly as any other Python when `nix fmt` runs them, against the
-driver's own types. `tests/lid.nix` and `tests/lid-vm-test.py` are a small
-pair to copy.
+driver's own types. `tests/vm/devices/lid.nix` and
+`tests/vm/devices/lid-vm-test.py` are a small pair to copy.
 The driver's machines are fixtures (`machine`, `machines`, `driver`), and
 each state a test starts from, booted or with the network let down, is a
 fixture of its own, made once a run however many tests ask for it. What

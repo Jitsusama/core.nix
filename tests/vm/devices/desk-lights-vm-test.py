@@ -1,12 +1,12 @@
 """The desk's lights are told what to do again when they're plugged back in.
 
-tests/desk-lights.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py). Each
-stand-in logs the reports it's sent as hex. The Litra's power command is 11 ff 04 1c, then 01
-for on and 00 for off; the Pebble's lighting command is 03 6a 3a 02 00 25, then the same. Both
-come up as they were when plugged in again under their old hidraw names, so their programs
-must notice the device behind the name is new. Each test asks for the state it starts from as
-a fixture, the lights plugged in and followed, then a camera streaming, so any test runs alone
-with `-k`. The stand-in's path is desk-lights.nix's, given as the `values` fixture.
+desk-lights.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
+Each stand-in logs the reports it's sent as hex. The Litra's power command is 11 ff 04 1c, then 01
+for on and 00 for off; the Pebble's lighting command is 03 6a 3a 02 00 25, then the same. Both come
+up as they were when plugged in again under their old hidraw names, so their programs must notice
+the device behind the name is new. Each test asks for the state it starts from as a fixture, the
+lights plugged in and followed, then a camera streaming, so any test runs alone with `-k`. The
+stand-in's path is desk-lights.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations

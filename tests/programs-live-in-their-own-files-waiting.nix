@@ -59,7 +59,7 @@
   "tests/vm/sound/call-transcripts.nix" = 1;
   "tests/desktop.nix" = 4;
   "tests/vm/sound/dictation-chord.nix" = 1;
-  "tests/ir-camera.nix" = 1;
+  "tests/vm/devices/ir-camera.nix" = 1;
   "tests/lib/qemu-after-its-sockets.nix" = 1;
   "tests/vm-first.nix" = 1;
   "tests/vm/guide/canokeys.nix" = 1;
