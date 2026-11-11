@@ -8,10 +8,10 @@
 //! Each row carries its drawer, what niri says of the screen past its
 //! row and what desk-facts reads of its EDID (`drawer`), and holds what
 //! the shell's own acts need of it (`held`: its connector, how it stands
-//! and niri's whole record of it), since its settings and the ways it
-//! turns off are the shell's until they move here. Its Return, focusing
-//! it or turning it on, and Turn Every Screen Off's, are served as acts
-//! this daemon does on niri (acts.rs). While a screen is looked at, the
+//! and niri's whole record of it), since its settings are the shell's
+//! until they move here. Its Return, focusing it or turning it on, the
+//! ways it turns off and Turn Every Screen Off's are served as acts this
+//! daemon does on niri (acts.rs). While a screen is looked at, the
 //! drawer of the one whose place holds the Brightness leads with the
 //! light (light.rs). A change to a screen says nothing in niri's stream,
 //! so each act looks again, and the shell asks this daemon to look after
@@ -92,8 +92,16 @@ pub struct Words {
     /// A screen niri wouldn't turn on, and why: "{thing} not turned on
     /// · {why}".
     not_on: String,
+    /// A screen niri wouldn't turn off, and why.
+    not_off: String,
+    /// A screen niri wouldn't unplug, and why.
+    not_unplugged: String,
     /// A screen gone before niri came to it: "{name} is unplugged".
     is_unplugged: String,
+    /// Beside the last lit screen's Turn It Off: a key wakes it.
+    wakes: String,
+    /// Beside Unplug It: its windows move to the other screens.
+    moves: String,
     sleep: Sleep,
     told: Told,
     pub(crate) light: light::Words,
@@ -179,7 +187,11 @@ impl Words {
             hub_on: said("hubOn"),
             scale_at: said("scaleAt"),
             not_on: said("not-on"),
+            not_off: said("not-off"),
+            not_unplugged: said("not-unplugged"),
             is_unplugged: said("isUnplugged"),
+            wakes: word("verb:display-off", &["said", "wakes"], "wakes"),
+            moves: word("verb:display-unplug", &["said", "moves"], "moves"),
             sleep: Sleep {
                 name: word("displays:sleep", &["name"], "displays:sleep"),
                 glyph: word("displays:sleep", &["glyph"], ""),
@@ -290,8 +302,15 @@ fn built_in(name: &str) -> bool {
     name.starts_with("eDP")
 }
 
-/// Its maker and model, leaving out a model that's only a number, or
-/// its connector where niri says neither.
+/// Whether no screen but the one of `name` is lit, so once it's dark a
+/// key lights every screen again.
+#[must_use]
+pub fn last_lit(outputs: &BTreeMap<String, Value>, name: &str) -> bool {
+    !outputs
+        .iter()
+        .any(|(other, output)| other != name && standing(output) == "lit")
+}
+
 /// A screen's row's name, by its connector, from niri's outputs; its
 /// connector where niri has none of it.
 #[must_use]
@@ -301,6 +320,8 @@ pub fn named_of(outputs: &BTreeMap<String, Value>, name: &str, words: &Words) ->
         .map_or_else(|| name.to_owned(), |output| named(name, output, words))
 }
 
+/// Its maker and model, leaving out a model that's only a number, or
+/// its connector where niri says neither.
 fn named(name: &str, output: &Value, words: &Words) -> String {
     if built_in(name) {
         return words.built_in.clone();
@@ -643,11 +664,14 @@ pub fn looks_at(keys: Option<&[String]>) -> bool {
 /// connector of the workspace in front, said beside its screen only
 /// where more than one is lit. `desk` is what desk-facts says of each
 /// screen's EDID, by connector, and `seen` the light while a screen is
-/// looked at, which the drawer of the one holding it says.
+/// looked at, which the drawer of the one holding it says. `each` is
+/// whether niri darkens one screen by name (`NIRI_POWERS_OFF_EACH_OUTPUT`),
+/// which the ways a screen turns off follow (acts.rs).
 pub fn rows(
     outputs: &BTreeMap<String, Value>,
     desk: &BTreeMap<String, Value>,
     focused: Option<&str>,
+    each: bool,
     seen: Option<&Seen>,
     words: &Words,
 ) -> Vec<Value> {
@@ -686,13 +710,6 @@ pub fn rows(
             } else {
                 described(output, words)
             };
-            // Return focuses a lit screen and turns on any other, a dark
-            // one by name, since it's still in niri's outputs.
-            let (verb, act) = match stands {
-                "lit" => ("displays:focus", Act::Focus((*name).clone())),
-                "dark" => ("verb:display-on", Act::Wake((*name).clone())),
-                _ => ("verb:display-on", Act::On((*name).clone())),
-            };
             json!({
                 "key": key(&format!("display:{name}")),
                 "thing": format!("display:{name}"),
@@ -710,7 +727,7 @@ pub fn rows(
                     lit_by(name), words),
                 "held": {"output": name, "standing": stands, "builtIn": built_in(name),
                     "niri": output},
-                "acts": [{"key": verb, "ask": act.ask()}],
+                "acts": acts::of(name, stands, lit == 1, each, words),
             })
         })
         .collect();

@@ -21,10 +21,9 @@
     tests = ../../../tests/screens-off-on-niri-test.py;
   };
 
-  # A screen darkens by name where niri powers one output off, docked with
-  # its hub powered, and unplugs only as the bigger step; the last one lit
-  # waits for the key that asked to come up; an older niri only unplugs, as
-  # tests/screens.qml holds launcher/Screens.js to it in Qt's own engine.
+  # How a screen stands, and which act its row serves the : line's :setl
+  # power and unplugged do, as tests/screens.qml holds launcher/Screens.js
+  # to in Qt's own engine; the ways themselves are the windows daemon's.
   the-launcher-turns-each-screen-off =
     let
       qt = pkgs.qt6.qtdeclarative;
