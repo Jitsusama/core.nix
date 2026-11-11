@@ -3,19 +3,19 @@
 modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh. The daemon
 is the store's own, which the check gives the shell to run, with no socket, with one password
 manager: a stand-in for 1Password's, named as 1Password's is (tests/passwords-stand-in.sh),
-which never runs op, and logs where this file's environment says. It starts signed out.
-Nothing asks it anything until Joel steps into Passwords, which asks it once, and while it's signed out the
-place leads with 1Password's row, its side saying it's locked, whose Return unlocks it, and a
-window of 1Password's opening for that ask closes the launcher and takes the keys. Refused
-the first time, as a dismissed prompt is, the launcher says why the next time it opens. Once
-in, GitHub leads as a favourite, its username at its side, its Return copies its password
-through the daemon to the clipboard and the launcher goes, the margin wearing the clipboard's
-mark and the foot, opened again, saying when it clears; resting on it reads it in full, its
-drawer never saying its password, and stepped into, it holds its acts in the design's order.
-Open the Website, Chrome's a stand-in that writes down what it's given, hands Chrome GitHub's
-website as the launcher goes, its foot saying 1Password offers to fill it there. A walk from
-outside the launcher, as `launcher show` and `launcher do` make, finds no entry and asks the
-manager nothing.
+which never runs op, and logs where this file's environment says. It starts signed out. Nothing
+asks it anything until Joel steps into Passwords, which asks it once, and while it's signed out
+the place leads with 1Password's row, its side saying it's locked, whose Return unlocks it, and
+a window of 1Password's opening for that ask closes the launcher and takes the keys. Refused the
+first time, as a dismissed prompt is, the launcher says why the next time it opens. Once in,
+GitHub leads as a favourite, its username at its side, its Return copies its password through
+the daemon to the clipboard and the launcher goes, the margin wearing the clipboard's mark and
+the foot, opened again, saying when it clears; resting on it reads it in full, its drawer never
+saying its password, and stepped into, it holds its acts in the design's order. Open the
+Website, Chrome's a stand-in that writes down what it's given, hands Chrome GitHub's website as
+the launcher goes, its foot saying 1Password offers to fill it there. A walk from outside the
+launcher, as `launcher show` and `launcher do` make, finds no entry and asks the manager
+nothing.
 """
 
 from __future__ import annotations
