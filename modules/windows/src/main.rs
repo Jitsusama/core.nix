@@ -32,7 +32,7 @@ use programs::{now_ms, xdg};
 use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::Entries;
-use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
+use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, tells, trimmed};
 
 /// How many of the last events' times health says.
 const TIMES: usize = 32;
@@ -50,6 +50,8 @@ struct Watch {
     id: Value,
     kinds: Vec<String>,
     keys: Option<Vec<String>>,
+    /// The fields it's told of each record, or all of them.
+    fields: Option<Vec<String>>,
     told: SyncSender<String>,
     stream: Arc<UnixStream>,
 }
@@ -255,14 +257,16 @@ fn refresh(daemon: &mut Daemon) {
     for key in &gone {
         daemon.held.remove(key);
     }
+    // Each record changed, with what it was, so a watch of some fields is
+    // told it only when one of those changed.
     let mut changed = Vec::new();
     for record in records {
         let Some(key) = record["key"].as_str().map(str::to_owned) else {
             continue;
         };
         if daemon.held.get(&key) != Some(&record) {
-            daemon.held.insert(key, record.clone());
-            changed.push(record);
+            let was = daemon.held.insert(key, record.clone());
+            changed.push((was, record));
         }
     }
     if changed.is_empty() && gone.is_empty() {
@@ -270,9 +274,14 @@ fn refresh(daemon: &mut Daemon) {
     }
     let mut stuck = HashSet::new();
     for watch in &daemon.watches {
-        let records: Vec<&Value> = changed
+        let fields = watch.fields.as_deref();
+        let records: Vec<Value> = changed
             .iter()
-            .filter(|record| record["key"].as_str().is_some_and(|key| watch.wants(key)))
+            .filter(|(was, now)| {
+                now["key"].as_str().is_some_and(|key| watch.wants(key))
+                    && tells(was.as_ref(), now, fields)
+            })
+            .map(|(_, now)| trimmed(now, fields))
             .collect();
         let went: Vec<&String> = gone.iter().filter(|key| watch.wants(key)).collect();
         if records.is_empty() && went.is_empty() {
@@ -455,7 +464,12 @@ fn answer(
         Ask::List { id, kinds } => {
             json!({"id": id, "records": held(&lock(&shared.daemon), &kinds, None)})
         }
-        Ask::Watch { id, kinds, keys } => {
+        Ask::Watch {
+            id,
+            kinds,
+            keys,
+            fields,
+        } => {
             let mut daemon = lock(&shared.daemon);
             // A watch asked again by its id replaces the one before.
             daemon
@@ -466,12 +480,17 @@ fn answer(
                 id: id.clone(),
                 kinds: kinds.clone(),
                 keys: keys.clone(),
+                fields: fields.clone(),
                 told: told.clone(),
                 stream: Arc::clone(hangup),
             });
             // Told under the same lock a change is told under, so no
             // change comes before the answer it changes.
-            let whole = json!({"id": id, "records": held(&daemon, &kinds, keys.as_deref())});
+            let records: Vec<Value> = held(&daemon, &kinds, keys.as_deref())
+                .iter()
+                .map(|record| trimmed(record, fields.as_deref()))
+                .collect();
+            let whole = json!({"id": id, "records": records});
             if told.try_send(whole.to_string()).is_err() {
                 let _ = hangup.shutdown(Shutdown::Both);
             }

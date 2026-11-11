@@ -60,11 +60,13 @@ pub enum Ask {
         id: Value,
         kinds: Vec<String>,
     },
-    /// Records of these kinds as they change, all of them or these keys.
+    /// Records of these kinds as they change, all of them or these keys,
+    /// whole or only these fields of them.
     Watch {
         id: Value,
         kinds: Vec<String>,
         keys: Option<Vec<String>>,
+        fields: Option<Vec<String>>,
     },
     Unwatch {
         id: Value,
@@ -124,6 +126,13 @@ pub fn ask(line: &str) -> Ask {
             .map(str::to_owned)
             .collect::<Vec<_>>()
     });
+    let fields = said.get("fields").and_then(Value::as_array).map(|fields| {
+        fields
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    });
     let named = || kinds(&said);
     match asked.as_str() {
         "hello" => Ask::Hello { id },
@@ -136,12 +145,43 @@ pub fn ask(line: &str) -> Ask {
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "watch" => match named() {
-            Ok(kinds) => Ask::Watch { id, kinds, keys },
+            Ok(kinds) => Ask::Watch {
+                id,
+                kinds,
+                keys,
+                fields,
+            },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
         _ => Ask::Unknown { id, ask: asked },
+    }
+}
+
+/// A record as a watch naming these fields is told it: its key and those
+/// fields alone, or whole for a watch naming none.
+pub fn trimmed(record: &Value, fields: Option<&[String]>) -> Value {
+    let Some(fields) = fields else {
+        return record.clone();
+    };
+    let mut kept = json!({"key": record["key"]});
+    for field in fields {
+        if let Some(value) = record.get(field) {
+            kept[field] = value.clone();
+        }
+    }
+    kept
+}
+
+/// Whether a watch naming these fields is told a record that was this
+/// and is now that: always when it's new or the watch takes it whole, else
+/// only when one of its fields changed, so a watch of when windows were
+/// used hears nothing of a retitle.
+pub fn tells(was: Option<&Value>, now: &Value, fields: Option<&[String]>) -> bool {
+    match (was, fields) {
+        (Some(was), Some(fields)) => fields.iter().any(|field| was.get(field) != now.get(field)),
+        _ => true,
     }
 }
 
@@ -167,7 +207,8 @@ mod tests {
                     "cast".into(),
                     "screenshot".into()
                 ],
-                keys: Some(vec!["window:12".into(), "desktop".into()])
+                keys: Some(vec!["window:12".into(), "desktop".into()]),
+                fields: None
             }
         );
     }
@@ -179,7 +220,8 @@ mod tests {
             Ask::Watch {
                 id: json!(4),
                 kinds: vec!["window".into(), "layout".into()],
-                keys: None
+                keys: None,
+                fields: None
             }
         );
         assert!(
@@ -195,6 +237,32 @@ mod tests {
         assert_eq!(kind_of("screenshot:1"), None);
         assert_eq!(kind_of("cast:3"), Some("cast"));
         assert_eq!(kind_of("layout:12"), Some("layout"));
+    }
+
+    #[test]
+    fn a_watch_of_some_fields_is_told_them_only_as_they_change() {
+        assert_eq!(
+            ask(r#"{"id":4,"ask":"watch","kind":"window","fields":["order"]}"#),
+            Ask::Watch {
+                id: json!(4),
+                kinds: vec!["window".into()],
+                keys: None,
+                fields: Some(vec!["order".into()])
+            }
+        );
+        let fields = ["order".to_owned()];
+        let was = json!({"key": "window:12", "title": "zsh", "order": 100});
+        let retitled = json!({"key": "window:12", "title": "vim", "order": 100});
+        let used = json!({"key": "window:12", "title": "vim", "order": 200});
+        assert!(!tells(Some(&was), &retitled, Some(&fields)));
+        assert!(tells(Some(&retitled), &used, Some(&fields)));
+        assert!(tells(None, &used, Some(&fields)));
+        assert!(tells(Some(&was), &retitled, None));
+        assert_eq!(
+            trimmed(&used, Some(&fields)),
+            json!({"key": "window:12", "order": 200})
+        );
+        assert_eq!(trimmed(&used, None), used);
     }
 
     #[test]
