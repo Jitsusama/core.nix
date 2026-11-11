@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2310 # Each function here is a test, read in a condition.
 # Fails on a folder that doesn't say what it holds: one with no README.md or
 # AGENTS.md, no entry file (a module, its checks, a package or its
 # default.nix, a crate's manifest or root, or a file named after the folder)
@@ -84,18 +85,21 @@ says() {
     first=$(head -n 1 "$entry")
     case $first in
       '#'* | '//'*) return 0 ;;
+      *) ;;
     esac
   done
   return 1
 }
 
 cd "$tree"
+folders=$(find . -mindepth 1 -type d -not -path '*/.*' | sort)
 silent=()
 while IFS= read -r folder; do
+  [ -n "$folder" ] || continue
   folder=${folder#./}
   says "$folder" && continue
   grep -qxF "$folder" "$waiting" || silent+=("$folder")
-done < <(find . -mindepth 1 -type d -not -path '*/.*' | sort)
+done <<< "$folders"
 
 spoken=()
 while IFS= read -r folder; do

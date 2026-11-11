@@ -5,9 +5,11 @@
 # a monitor does when UPower goes.
 # usage: gdbus.sh monitor <arguments>
 set -euo pipefail
+: "${STATE:?run.sh gives the folder the states are in}"
 
 changed="org.freedesktop.DBus.Properties.PropertiesChanged"
 echo "The name org.freedesktop.UPower is owned by :1.12"
-for _ in $(seq "$(wc -l < "$STATE/steps")"); do
+steps=$(wc -l < "$STATE/steps")
+for _ in $(seq "$steps"); do
   echo "/org/freedesktop/UPower/devices/DisplayDevice: $changed ('org.freedesktop.UPower.Device', ...)"
 done

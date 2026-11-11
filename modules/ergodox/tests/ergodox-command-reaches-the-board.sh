@@ -7,6 +7,7 @@
 # as a usage error, and that with no channel the command says so.
 # usage: ergodox-command-reaches-the-board.sh <ergodox>
 set -euo pipefail
+shopt -s inherit_errexit
 
 ergodox=$1
 root=$(mktemp -d)
@@ -41,8 +42,12 @@ expect() {
   # A command with no argument is given none, so its word stays unquoted.
   # shellcheck disable=SC2086
   "$ergodox" "$1" $2
-  [ "$(sent hidraw2)" = "$want" ] || fail "ergodox $1 $2 wrote $(sent hidraw2), not $want."
-  [ -z "$(sent hidraw0)$(sent hidraw1)" ] \
+  local got other another
+  got=$(sent hidraw2)
+  [ "$got" = "$want" ] || fail "ergodox $1 $2 wrote $got, not $want."
+  other=$(sent hidraw0)
+  another=$(sent hidraw1)
+  [ -z "$other$another" ] \
     || fail "ergodox $1 $2 wrote to a node that isn't the board's channel."
 }
 # Runs a command that should fail, and says what it exited with.
@@ -74,4 +79,6 @@ status=$(exited layer sideways)
 rm -r "$root/sys/class/hidraw/hidraw2" "$root/dev/hidraw2"
 status=$(exited bootloader)
 [ "$status" = "$unavailable" ] || fail "With no board, bootloader exited $status, not $unavailable."
-[ -z "$(sent hidraw0)$(sent hidraw1)" ] || fail "With no board, ergodox wrote to another node."
+other=$(sent hidraw0)
+another=$(sent hidraw1)
+[ -z "$other$another" ] || fail "With no board, ergodox wrote to another node."

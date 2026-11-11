@@ -17,7 +17,7 @@ if [ ! -s answer ]; then
   echo "Neovim gave no answer, or didn't finish in two minutes"
   exit 1
 fi
-if [ "$(cat answer)" != "$expected" ]; then
+if [ "$(< answer)" != "$expected" ]; then
   cat answer
   exit 1
 fi
