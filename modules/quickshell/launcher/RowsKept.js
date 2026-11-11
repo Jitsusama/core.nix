@@ -87,6 +87,43 @@ function afresh(was, now) {
         .concat(now.length > 0 ? [{ insert: 0, keys: now.slice() }] : []);
 }
 
+// The lists shown lately, newest first, each as { rows, said }: its rows
+// and what was worked out of them by name. A backspace back to a place's
+// whole list lists the very rows it listed before, and each key walked
+// every one of them again, Emoji's 1,914, to key them, measure their
+// sides and weigh their keys, about 5 ms of each such key on a builder
+// (2026-11-11). Kept as that list again, they're worked out once.
+const LATELY = 4;
+
+// `was` with `rows` first, keeping what was worked out of it, and only
+// the few newest.
+function lately(was, rows) {
+    const known = was.find(one => one.rows === rows) ?? { rows, said: bare() };
+    return [known].concat(was.filter(one => one !== known)).slice(0, LATELY);
+}
+
+// The list shown lately that holds `now`'s rows, the same rows in the same
+// order, or `now`. Never `current`, the list shown now, which given again
+// would change nothing, so nothing would know a key had listed it.
+function again(shown, now, current) {
+    const same = shown.find(one => one.rows !== current && one.rows.length === now.length
+        && one.rows.every((row, at) => row === now[at]));
+    return same ? same.rows : now;
+}
+
+// What `make` works out of `rows`, kept by `name` while the rows are among
+// those shown lately, or worked out afresh.
+function said(shown, rows, name, make) {
+    const known = shown.find(one => one.rows === rows);
+    if (!known) {
+        return make();
+    }
+    if (!(name in known.said)) {
+        known.said[name] = make();
+    }
+    return known.said[name];
+}
+
 // Whether `taken` (what steps gave) put every row of `was` in again, as
 // afresh does, so the rows stand from the list's start, whatever it was
 // scrolled to, where moved rows keep those in view where they were:
