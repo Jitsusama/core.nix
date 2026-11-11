@@ -9,7 +9,7 @@
 # be named in keyboards.json with how often it's polled, and then no longer.
 # The script is desk-facts-vm-test.py.
 { self, pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desk-facts";
 
   nodes.machine = {

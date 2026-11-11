@@ -1,13 +1,13 @@
 """desk-facts follows a USB sound card plugged in, pulled out and plugged in again.
 
-tests/desk-facts.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), on a
-machine with an xHCI controller named desk and nothing plugged into it. QEMU's monitor plugs its
-USB audio device in and takes it out, and each time sound.json, which desk-facts rewrites only
-on what it hears, must name the card or no longer name it. snd-dummy's card, which isn't on USB,
-stands in for a laptop's own, named by each of its devices, and QEMU's USB keyboard must be named
-in keyboards.json while it's plugged in. Each state, booted, plugged in,
-pulled out and plugged in again, is a fixture made from the one before, so any test runs alone
-with `-k`. The tests need no value from Nix.
+desk-facts.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), on
+a machine with an xHCI controller named desk and nothing plugged into it. QEMU's monitor plugs its
+USB audio device in and takes it out, and each time sound.json, which desk-facts rewrites only on
+what it hears, must name the card or no longer name it. snd-dummy's card, which isn't on USB, stands
+in for a laptop's own, named by each of its devices, and QEMU's USB keyboard must be named in
+keyboards.json while it's plugged in. Each state, booted, plugged in, pulled out and plugged in
+again, is a fixture made from the one before, so any test runs alone with `-k`. The tests need no
+value from Nix.
 """
 
 from __future__ import annotations

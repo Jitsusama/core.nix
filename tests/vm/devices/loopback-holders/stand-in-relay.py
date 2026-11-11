@@ -1,7 +1,7 @@
 """Hold a loopback camera open as the camera's relay does, writing nothing to it.
 
-tests/loopback-holders.nix runs this as the stand-in camera's service, with the loopback it
-made as its argument, for tests/loopback-holders-vm-test.py.
+tests/vm/devices/loopback-holders.nix runs this as the stand-in camera's service, with the loopback
+it made as its argument, for tests/vm/devices/loopback-holders-vm-test.py.
 """
 
 import os

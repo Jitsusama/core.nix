@@ -13,7 +13,7 @@
 # lets go. Held, it still counts as idle and locks, since a lock against
 # idling would stop swayidle's lock. The script is idle-sleep-vm-test.py.
 { self, pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "idle-sleep";
 
   nodes.machine =

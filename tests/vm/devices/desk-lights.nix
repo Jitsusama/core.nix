@@ -12,7 +12,7 @@ let
     builtins.toJSON { standIn = "${./desk-light-stand-in.py}"; }
   );
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desk-lights";
 
   nodes.machine = {

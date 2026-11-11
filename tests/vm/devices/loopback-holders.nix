@@ -49,7 +49,7 @@ let
     }
   );
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "loopback-holders";
 
   nodes.machine =

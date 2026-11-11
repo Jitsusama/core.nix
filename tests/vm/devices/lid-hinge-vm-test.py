@@ -1,6 +1,6 @@
 """A laptop's lid shut in a virtual machine with its hinge coming down, left open and slammed.
 
-tests/lid-hinge.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+lid-hinge.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. The stand-in lid, hinge, light sensor and sleep
 are all named in the machine lid-hinge.nix builds, so the tests need no value from Nix.
 """

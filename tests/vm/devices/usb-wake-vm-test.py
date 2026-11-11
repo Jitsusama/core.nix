@@ -1,6 +1,6 @@
 """A virtual machine's USB 2 and 1.1 root hubs may wake it, as usb-wake sets them, and not USB 3's.
 
-tests/usb-wake.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), on a
+usb-wake.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), on a
 machine given a USB controller, which has root hubs at each speed. The kernel leaves each root
 hub's wakeup off, so finding the 12 and 480 Mbit/s ones enabled shows the module's setting took,
 and the SuperSpeed ones left off shows it took no more. The booted machine's hubs are a fixture,

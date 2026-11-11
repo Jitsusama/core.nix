@@ -321,10 +321,10 @@ let
     vm-webcam-microphones-yield = import ./tests/vm/sound/microphones.nix { inherit pkgs; };
     # A light plugged back in is uhid, hidraw, udev's nodes in /dev and the
     # lights' watches together, which only a running machine has.
-    vm-the-desk-lights-come-back = import ./tests/desk-lights.nix { inherit self pkgs; };
+    vm-the-desk-lights-come-back = import ./tests/vm/devices/desk-lights.nix { inherit self pkgs; };
     # A card plugged in and pulled out is the kernel's uevents and its USB
     # audio driver together, which only a running machine has.
-    vm-desk-facts-follow-a-replug = import ./tests/desk-facts.nix { inherit self pkgs; };
+    vm-desk-facts-follow-a-replug = import ./tests/vm/devices/desk-facts.nix { inherit self pkgs; };
     # The desktop, in areas of a minute or two each on one machine
     # (tests/desktop.nix).
     vm-desktop-starts-clean = import ./tests/desktop.nix {
@@ -523,10 +523,12 @@ let
     vm-libvirt-stops-quickly = import ./tests/libvirt.nix { inherit self pkgs; };
     # Whether the IR camera opens only while it's read, and hands each reader
     # its frames and none of the last one's, shows only with cameras there.
-    vm-ir-camera-opens-for-readers = import ./tests/ir-camera.nix { inherit self pkgs; };
+    vm-ir-camera-opens-for-readers = import ./tests/vm/devices/ir-camera.nix { inherit self pkgs; };
     # Whether the programs holding a loopback camera are named shows only with
     # a loopback there and another account's programs holding it.
-    vm-loopback-says-who-holds-it = import ./tests/loopback-holders.nix { inherit self pkgs; };
+    vm-loopback-says-who-holds-it = import ./tests/vm/devices/loopback-holders.nix {
+      inherit self pkgs;
+    };
     # Whether the swap comes down while udev probes its device shows only with
     # the device there and held open.
     # Whether systemd-oomd ends the work that filled swap before the kernel's
@@ -565,15 +567,17 @@ let
     };
     # Whether logind and the compositor hear the lid's own switch or
     # lid-hinge's shows only with udev, uinput and logind there.
-    vm-lid-shuts-with-the-hinge = import ./tests/lid-hinge.nix { inherit self pkgs; };
+    vm-lid-shuts-with-the-hinge = import ./tests/vm/devices/lid-hinge.nix { inherit self pkgs; };
     # What logind makes of a shut lid shows only with logind watching one.
-    vm-lid-stays-at-the-desk = import ./tests/lid.nix { inherit self pkgs; };
+    vm-lid-stays-at-the-desk = import ./tests/vm/devices/lid.nix { inherit self pkgs; };
     # What logind makes of an idle machine shows only with logind counting
     # its sessions, its locks and the charger.
-    vm-idle-sleep-comes-only-on-battery = import ./tests/idle-sleep.nix { inherit self pkgs; };
+    vm-idle-sleep-comes-only-on-battery = import ./tests/vm/devices/idle-sleep.nix {
+      inherit self pkgs;
+    };
     # Whether udev turns a root hub's wakeup on shows only with a USB
     # controller and udev there.
-    vm-plugging-in-wakes-it = import ./tests/usb-wake.nix { inherit self pkgs; };
+    vm-plugging-in-wakes-it = import ./tests/vm/devices/usb-wake.nix { inherit self pkgs; };
     # Whether polkit lets an account switch the machine shows only with
     # polkit, systemd and a system to switch to.
     vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };

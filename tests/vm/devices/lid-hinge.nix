@@ -11,7 +11,7 @@
 # for it, as the sensor hub's devices come at a real boot, so lid-hinge
 # must find it later. The script is lid-hinge-vm-test.py.
 { self, pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "lid-hinge";
 
   nodes.machine =
@@ -23,7 +23,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       ];
 
       boot.extraModulePackages = [
-        (config.boot.kernelPackages.callPackage ./stand-in-lid { })
+        (config.boot.kernelPackages.callPackage ../../stand-in-lid { })
       ];
       boot.kernelModules = [
         "stand-in-lid"

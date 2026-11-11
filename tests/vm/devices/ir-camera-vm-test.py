@@ -1,6 +1,6 @@
 """A stand-in IR camera relayed to the programs that read it, and to no others.
 
-tests/ir-camera.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+ir-camera.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what has to hold. Each test asks for the state it starts from as a
 fixture: the relay booted, or the stand-in camera sending its pattern. A test that reads what
 the relay said counts only what came after it began, so any test runs alone with `-k`. The
