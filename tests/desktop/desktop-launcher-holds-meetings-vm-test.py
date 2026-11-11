@@ -686,8 +686,8 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
         # reminder.
         machine.wait_until_succeeds(
             desktop.in_session(
-                "jq -e 'any(.notices[]; .summary == \"Design Review now\")"
-                " and all(.notices[]; tostring | contains(\"Design Review in 1 min\") | not)'"
+                'jq -e \'any(.notices[]; .summary == "Design Review now")'
+                ' and all(.notices[]; tostring | contains("Design Review in 1 min") | not)\''
                 f" {desktop.NOTICES_KEPT}"
             ),
             timeout=dt.timedelta(seconds=10),

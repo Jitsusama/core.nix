@@ -116,9 +116,13 @@ Scope {
 
     // When each arrived, by id, for the footer's time, which rests longest
     // and the held list's order (HeldNotices.qml), as the daemon's
-    // records say it.
-    readonly property var arrived: Object.fromEntries(
-        tracked.map(one => [one.id, Notices.made[one.id]?.at ?? 0]))
+    // records say it. Quickshell's JavaScript has no Object.fromEntries.
+    readonly property var arrived: {
+        const at = {};
+        for (const one of tracked)
+            at[one.id] = Notices.made[one.id]?.at ?? 0;
+        return at;
+    }
 
     function arrivedAt(id) {
         return root.arrived[id] ?? 0;
