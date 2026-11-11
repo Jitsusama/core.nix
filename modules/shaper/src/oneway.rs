@@ -195,6 +195,11 @@ pub struct Ours {
     /// last second, in kbit/s: what TCP sends again of it never crossed
     /// our link the first time, so it's no router's.
     pub dropped: u64,
+    /// What the link's CAKE sent over the last second, in kbit/s: what
+    /// crossed the line, since traffic to the home network goes around it.
+    /// None where the shaper didn't count it.
+    #[serde(default)]
+    pub sent: Option<u64>,
 }
 
 impl Ours {
@@ -219,6 +224,7 @@ impl Ours {
             waiting,
             resent,
             dropped,
+            sent: None,
         })
     }
 }
@@ -228,6 +234,11 @@ impl Ours {
 /// showed it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Learned {
+    /// Kept as `line` since 11 November: a base kept before counted what
+    /// the link sent, a transfer across the home network included, and
+    /// held 282 Mbit/s of a 12 Mbit/s upload, so each network learns its
+    /// bases once more and keeps its plateaus.
+    #[serde(rename = "line", default)]
     pub base: Option<f64>,
     pub plateau: Option<f64>,
 }
@@ -529,8 +540,13 @@ impl Way {
         // moment, not a climb all through it.
         let dt = self.last_at.map_or(0.0, |last| (at - last).clamp(0.0, 1.0));
         self.last_at = Some(at);
-        self.prove(at, delay_ms, carried);
-        self.reach(at, carried);
+        // What crossed the line is what CAKE sent, where the shaper
+        // counted it: the link sends the home network's traffic too.
+        let line = ours
+            .and_then(|o| o.sent)
+            .map_or(carried, |sent| carried.min(crate::rate::float(sent)));
+        self.prove(at, delay_ms, line);
+        self.reach(at, line);
         let crowded = delay_ms > LATE_MS
             && self
                 .connection()
@@ -1474,6 +1490,44 @@ mod tests {
         assert!(early.down < Some(10_000), "cut to the least: {early:?}");
         let limits = run(&mut c, 29.0, 30.2, queued(40.0, 150_000.0));
         assert_eq!(limits.down, Some(200_000));
+    }
+
+    // On 11 November a transfer across the home network sent 300 to 757
+    // Mbit/s on the link, which never reached the 12 Mbit/s line, and a
+    // clear spell took it for the line: the upload kept a base of 282
+    // Mbit/s.
+    #[test]
+    fn a_clear_spell_proves_only_what_cake_sent() {
+        let mut way = Way::from_learned(Learned {
+            base: Some(11_148.0),
+            plateau: None,
+        });
+        let ours = Ours {
+            sent: Some(11_000),
+            ..Ours::default()
+        };
+        for i in 0..100_u32 {
+            way.step(f64::from(i) * 0.1, 0.0, 300_000.0, Some(ours), false);
+        }
+        let base = way.learned().base.expect("a base");
+        assert!(base < 12_000.0, "proved {base} of a home transfer");
+        let plateau = way.reached;
+        assert!(plateau < 12_000.0, "reached {plateau} of a home transfer");
+    }
+
+    #[test]
+    fn a_base_kept_before_cake_was_counted_is_learned_again() {
+        let old = r#"{"base": 282090.8, "plateau": 11325.1}"#;
+        let learned: Learned = serde_json::from_str(old).expect("a learned");
+        assert_eq!(learned.base, None, "kept a base a home transfer taught");
+        assert_eq!(learned.plateau, Some(11_325.1), "forgot the plateau");
+        let kept = Learned {
+            base: Some(11_148.0),
+            plateau: None,
+        };
+        let again: Learned =
+            serde_json::from_str(&serde_json::to_string(&kept).expect("json")).expect("back");
+        assert_eq!(again, kept, "a base kept now is read back");
     }
 
     #[test]
