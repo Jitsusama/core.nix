@@ -4142,6 +4142,25 @@ onLinux {
       touch $out
     '';
 
+  # The launcher keeps the rows a daemon serves ready in the order each
+  # row says, placing each a change names and letting those gone go, as
+  # tests/placed.qml holds launcher/Placed.js to rows made up there.
+  the-launcher-places-each-row-it-is-served =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-places-each-row-it-is-served" { } ''
+      mkdir launcher
+      cp ${../../tests/placed.qml} placed.qml
+      cp ${./launcher/Placed.js} launcher/Placed.js
+      cp ${../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml placed.qml
+      touch $out
+    '';
+
   # Now's own pieces say in their drawers all their source holds, in the
   # order every drawer keeps, as tests/piece-drawers.qml holds
   # pieces/Drawers.js to what the disk guards, Notices, lag-watch, niri,

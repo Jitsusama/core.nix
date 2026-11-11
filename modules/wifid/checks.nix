@@ -15,6 +15,14 @@ onLinux {
   # that wants a sign-in. They ran before only inside a machine's build.
   wifid-reads-the-air = pkgs.callPackage ./package.nix { };
 
+  # wifid words the launcher's Wi-Fi rows from the vocabulary the shell
+  # hands it, so its tests read the launcher's own here: a word renamed or
+  # gone there fails this rather than blanking a row. wifid itself isn't
+  # built with it, or every change to the words would start it again.
+  wifid-reads-the-launchers-words = pkgs.callPackage ./package.nix {
+    words = ../quickshell/launcher/words.json;
+  };
+
   # The sign-in window's tests run as it builds: its page's proxy lets on
   # only the window and only connects, and it reads from wifid which card
   # wants a sign-in until none does.

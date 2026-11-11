@@ -10683,6 +10683,18 @@
       "glyph": "signIn"
     },
     {
+      "id": "wifi:network",
+      "in": "wifi",
+      "said": {
+        "connected": "connected",
+        "saved": "saved",
+        "bars": "{n} of 4 bars",
+        "open": "open",
+        "password": "a password",
+        "account": "an account"
+      }
+    },
+    {
       "id": "wifi:card",
       "in": "wifi",
       "name": "Card {n}"

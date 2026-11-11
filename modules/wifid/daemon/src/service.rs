@@ -475,19 +475,51 @@ fn stopping() -> Refused {
     }
 }
 
-/// The socket systemd holds for wifid, if it passed one, as the first of
-/// the files it hands a service.
-pub fn listener() -> io::Result<Option<Listener>> {
+/// The sockets systemd holds for wifid, as it hands them over.
+pub struct Handed {
+    /// Where varlink is answered.
+    pub varlink: Option<Listener>,
+    /// Where the launcher's rows are served (face.rs).
+    pub rows: Option<tokio::net::UnixListener>,
+}
+
+/// The sockets systemd passed, each by the name its unit gives it: varlink
+/// and rows. A lone socket with no name is varlink's, as systemd passed it
+/// before the rows had one.
+pub fn handed() -> io::Result<Handed> {
+    let mut handed = Handed {
+        varlink: None,
+        rows: None,
+    };
     let ours = env::var("LISTEN_PID").ok().and_then(|pid| pid.parse().ok()) == Some(process::id());
-    if !ours || env::var("LISTEN_FDS").as_deref() != Ok("1") {
-        return Ok(None);
+    let count: i32 = env::var("LISTEN_FDS")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0);
+    if !ours {
+        return Ok(handed);
     }
-    // SAFETY: systemd handed this process the socket as file 3, its first,
-    // and nothing else in wifid takes it.
-    let socket = unsafe { OwnedFd::from_raw_fd(3) };
-    let listener =
-        Listener::try_from(socket).map_err(|error| io::Error::other(error.to_string()))?;
-    Ok(Some(listener))
+    let names = env::var("LISTEN_FDNAMES").unwrap_or_else(|_| "varlink".into());
+    for (at, name) in (0..count).zip(names.split(':')) {
+        // SAFETY: systemd handed this process its sockets as files 3 on, in
+        // the order LISTEN_FDNAMES names them, and nothing else in wifid
+        // takes them.
+        let socket = unsafe { OwnedFd::from_raw_fd(3 + at) };
+        match name {
+            "varlink" => {
+                let listener = Listener::try_from(socket)
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                handed.varlink = Some(listener);
+            }
+            "rows" => {
+                let listener = std::os::unix::net::UnixListener::from(socket);
+                listener.set_nonblocking(true)?;
+                handed.rows = Some(tokio::net::UnixListener::from_std(listener)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(handed)
 }
 
 #[cfg(test)]
