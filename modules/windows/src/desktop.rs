@@ -1,7 +1,9 @@
 //! What niri says of the desktop, heard event by event from its event
 //! stream, and the records the shell draws from it: a `window` record of
 //! each window, a `workspace` record of each workspace, and one `desktop`
-//! record of what holds the keys.
+//! record of what holds the keys; and for the few readers that draw them,
+//! a `cast` record of each screen or window niri casts, a `layout` record
+//! of each window's tile, and one `screenshot` record of the last taken.
 //!
 //! A record holds only what a row draws, or places it by, so a change
 //! niri tells that no row shows changes no record: a window resizing, or
@@ -36,6 +38,12 @@ pub struct Desktop {
     focused: Option<u64>,
     overview: bool,
     settings_failed: bool,
+    /// Every cast by its stream's id.
+    casts: BTreeMap<u64, Value>,
+    /// The last screenshot's path, and how many have been taken, so a
+    /// reader hears of a new one even where it's saved to the same path.
+    screenshot: Value,
+    screenshots: u64,
 }
 
 fn id_of(value: &Value) -> Option<u64> {
@@ -165,6 +173,31 @@ impl Desktop {
                 }
             }
             "ConfigLoaded" => self.settings_failed = said["failed"] == true,
+            "CastsChanged" => {
+                self.casts = said["casts"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|cast| cast.is_object())
+                    .filter_map(|cast| Some((id_of(&cast["stream_id"])?, cast.clone())))
+                    .collect();
+            }
+            "CastStartedOrChanged" => {
+                let cast = &said["cast"];
+                let Some(id) = id_of(&cast["stream_id"]).filter(|_| cast.is_object()) else {
+                    return Heard::Nothing;
+                };
+                self.casts.insert(id, cast.clone());
+            }
+            "CastStopped" => {
+                if let Some(id) = id_of(&said["stream_id"]) {
+                    self.casts.remove(&id);
+                }
+            }
+            "ScreenshotCaptured" => {
+                self.screenshot = said["path"].clone();
+                self.screenshots += 1;
+            }
             _ => return Heard::Nothing,
         }
         Heard::Changed
@@ -288,7 +321,38 @@ impl Desktop {
             "overview": self.overview,
             "settings_failed": self.settings_failed,
         }));
+        self.kept_records(&mut records);
         records
+    }
+
+    /// The records only a few readers draw from: each cast as niri says
+    /// it; each window's tile as laid out, which moves at every resize and
+    /// scroll, so a watch is told it only when it names `layout`; and the
+    /// last screenshot.
+    fn kept_records(&self, records: &mut Vec<Value>) {
+        records.extend(self.casts.iter().map(|(id, cast)| {
+            let mut record = cast.clone();
+            record["key"] = json!(format!("cast:{id}"));
+            record["order"] = json!(id);
+            record
+        }));
+        records.extend(
+            self.windows
+                .iter()
+                .filter(|(_, window)| window["layout"].is_object())
+                .map(|(id, window)| {
+                    let mut record = window["layout"].clone();
+                    record["key"] = json!(format!("layout:{id}"));
+                    record["order"] = json!(id);
+                    record["id"] = json!(id);
+                    record
+                }),
+        );
+        records.push(json!({
+            "key": "screenshot",
+            "path": self.screenshot,
+            "taken": self.screenshots,
+        }));
     }
 
     /// Each workspace's record, with the programs on it (`inside`, each
@@ -557,19 +621,69 @@ mod tests {
     }
 
     #[test]
-    fn a_layout_change_that_moves_no_column_changes_nothing() {
+    fn a_layout_change_that_moves_no_column_changes_only_its_tile() {
         let mut desktop = heard(BEGINNING);
         let before = records(&desktop);
         hear(
             &mut desktop,
             r#"{"WindowLayoutsChanged":{"changes":[[10,{"pos_in_scrolling_layout":[1,1],"tile_size":[900,800],"tile_pos_in_workspace_view":[-200,0]}]]}}"#,
         );
-        assert_eq!(changed(&before, &records(&desktop)), Vec::<String>::new());
+        let after = records(&desktop);
+        assert_eq!(changed(&before, &after), ["layout:10"]);
+        assert_eq!(after["layout:10"]["tile_size"], json!([900, 800]));
+        assert_eq!(
+            after["layout:10"]["tile_pos_in_workspace_view"],
+            json!([-200, 0])
+        );
         hear(
             &mut desktop,
             r#"{"WindowLayoutsChanged":{"changes":[[11,{"pos_in_scrolling_layout":[3,1],"tile_size":[640,800]}]]}}"#,
         );
-        assert_eq!(changed(&before, &records(&desktop)), ["window:11"]);
+        assert_eq!(
+            changed(&before, &records(&desktop)),
+            ["layout:10", "layout:11", "window:11"]
+        );
+    }
+
+    #[test]
+    fn each_cast_is_kept_as_niri_says_it() {
+        let mut desktop = heard(BEGINNING);
+        hear(
+            &mut desktop,
+            r#"{"CastsChanged":{"casts":[{"stream_id":3,"kind":"PipeWire","is_active":true,"target":{"Output":{"name":"eDP-1"}},"pid":200}]}}"#,
+        );
+        let said = records(&desktop);
+        assert_eq!(said["cast:3"]["kind"], "PipeWire");
+        assert_eq!(said["cast:3"]["target"]["Output"]["name"], "eDP-1");
+        let before = said;
+        hear(
+            &mut desktop,
+            r#"{"CastStartedOrChanged":{"cast":{"stream_id":4,"kind":"WlrScreencopy","is_active":true,"target":{"Window":{"id":11}}}}}"#,
+        );
+        assert_eq!(changed(&before, &records(&desktop)), ["cast:4"]);
+        hear(&mut desktop, r#"{"CastStopped":{"stream_id":3}}"#);
+        let after = records(&desktop);
+        assert!(!after.contains_key("cast:3"));
+        assert_eq!(after["cast:4"]["target"]["Window"]["id"], 11);
+        assert_eq!(
+            desktop.hear(&json!({"CastStartedOrChanged": {"cast": null}})),
+            Heard::Nothing
+        );
+    }
+
+    #[test]
+    fn each_screenshot_is_counted_even_at_the_same_path() {
+        let mut desktop = heard(BEGINNING);
+        let before = records(&desktop);
+        assert_eq!(before["screenshot"]["taken"], 0);
+        hear(&mut desktop, r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#);
+        let once = records(&desktop);
+        assert_eq!(changed(&before, &once), ["screenshot"]);
+        assert_eq!(once["screenshot"]["path"], "/tmp/a.png");
+        hear(&mut desktop, r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#);
+        let twice = records(&desktop);
+        assert_eq!(changed(&once, &twice), ["screenshot"]);
+        assert_eq!(twice["screenshot"]["taken"], 2);
     }
 
     #[test]
@@ -697,7 +811,7 @@ mod tests {
     fn an_event_it_doesnt_follow_changes_nothing() {
         let mut desktop = heard(BEGINNING);
         assert_eq!(
-            desktop.hear(&json!({"ScreenshotCaptured": {"path": "/tmp/a.png"}})),
+            desktop.hear(&json!({"KeyboardLayoutsChanged": {"keyboard_layouts": {}}})),
             Heard::Nothing
         );
         assert_eq!(desktop.hear(&json!({"Ok": "Handled"})), Heard::Nothing);

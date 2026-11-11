@@ -9,7 +9,8 @@ It hears niri's event stream on `NIRI_SOCKET` for as long as it runs and
 works every record out again at each event, which takes microseconds
 here. A watch is told only the records that changed and the keys gone,
 so a focus moving tells the two windows it moved between, a window
-resizing or the view scrolling tells nothing, and the shell remakes only
+resizing or the view scrolling tells only a watch that names `layout`,
+and the shell remakes only
 the rows a change names. Before it, each event niri sent woke the
 shell's main thread to walk every window, look each one's program up and
 make its row again, shut or open (Joel's shell, 2026-11-10: 657 window
@@ -35,6 +36,13 @@ rows made in four minutes with the launcher shut).
 |                     | `inside`: its programs, each once with its count, `new`: niri's empty last one | Move to Workspace's rows |
 | `desktop`           | the window the keys were in, with its title and program, the workspace and output in front, the overview, whether niri's settings failed to load | Capture |
 |                     | `spaces`: each output's workspaces, in order    | Move to Workspace's order     |
+| `cast:<stream id>`  | each cast as niri says it: its kind, whether it's active, its session, process and target | the recorder, the bar's sharing mark, a call |
+| `layout:<niri id>`  | each window's tile as niri lays it out: its place in the view, its size and the window's | where a notice opens below, the recorder's size |
+| `screenshot`        | the last screenshot's path, and `taken`: how many so far | the recorder |
+
+A watch or list that names no kind gets every kind but `layout`, which
+changes at every resize and scroll, so only a watch that draws tiles is
+woken by them.
 
 A window's program is the desktop entry its app id names, as Quickshell's
 `heuristicLookup` finds it: by its id, its id in any case, its class,
@@ -44,8 +52,9 @@ whose own page it opened deeper in (BrowserWindows.js said it so).
 
 ## Left Out, and Why
 
-- **Its tile's size and place in the view.** They change at every resize
-  and scroll, and no row draws them.
+- **A row's tile.** A window's record says its column and how far down,
+  not its tile's size or place, which change at every resize and scroll;
+  those are its `layout` record's, for the few that draw them.
 - **Words.** "workspace 2", "3rd column" and the rest are the shell's,
   from what each record says.
 - **Acting on a window.** The shell asks niri itself, on niri's own

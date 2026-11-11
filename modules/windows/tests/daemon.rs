@@ -3,7 +3,7 @@
 //! socket systemd hands it; a watch is answered with every window named
 //! by its program, the one used last first; a retitle tells only its
 //! window, a focus moving only the two it moved between, and a resize
-//! nothing; a window closed is told gone; an entry added names its
+//! nothing but a watch naming layouts; a window closed is told gone; an entry added names its
 //! windows' program; niri gone and back describes the desktop again;
 //! and an ask or kind it doesn't know is refused.
 
@@ -257,6 +257,36 @@ fn a_focus_moving_tells_only_its_two_windows_and_a_resize_nothing() {
     let said = client.heard();
     assert_eq!(keys(&said), ["window:11"]);
     assert_eq!(said["changed"][0]["order"], 1_100_000);
+}
+
+#[test]
+fn a_resize_is_told_only_to_a_watch_naming_layouts() {
+    let running = Running::new("layouts");
+    running.watching();
+    let mut unnamed = running.daemon.client();
+    let said = unnamed.ask(&json!({"id": 1, "ask": "watch"}));
+    let kinds: Vec<&str> = said["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|record| record["key"].as_str())
+        .collect();
+    assert!(kinds.contains(&"screenshot"), "{kinds:?}");
+    assert!(!kinds.iter().any(|key| key.starts_with("layout:")), "{kinds:?}");
+    let mut tiles = running.daemon.client();
+    let said = tiles.ask(&json!({"id": 2, "ask": "watch", "kind": "layout"}));
+    assert_eq!(said["records"].as_array().map(Vec::len), Some(3));
+    running
+        .niri
+        .says(&json!({"WindowLayoutsChanged": {"changes": [
+        [10, {"pos_in_scrolling_layout": [1, 1], "tile_size": [900, 800]}]]}}));
+    let said = tiles.heard();
+    assert_eq!(keys(&said), ["layout:10"]);
+    assert_eq!(said["changed"][0]["tile_size"], json!([900, 800]));
+    // The watch naming no kind hears the next thing that isn't a tile,
+    // and not the resize before it.
+    running.niri.says(&window(11, "Calendar", "google-chrome", 1, 2, 900));
+    assert!(!keys(&unnamed.heard()).contains(&"layout:10".to_owned()));
 }
 
 #[test]

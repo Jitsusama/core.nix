@@ -8,16 +8,33 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 3] = ["window", "workspace", "desktop"];
+pub const KINDS: [&str; 6] = ["window", "workspace", "desktop", "cast", "layout", "screenshot"];
+
+/// The kinds of which there's one record, keyed by its kind alone.
+const SOLE: [&str; 2] = ["desktop", "screenshot"];
+
+/// The kinds an ask gets only by naming them: a window's tile moves at
+/// every resize and scroll, which would wake every watch that names no
+/// kind, where only the few that draw tiles want it.
+const NAMED_ONLY: [&str; 1] = ["layout"];
 
 /// The kind a key names: `window` for `window:12`, and `desktop` for the
 /// one record of its kind, keyed by its kind alone.
 pub fn kind_of(key: &str) -> Option<&str> {
-    if key == "desktop" {
-        return Some("desktop");
+    if let Some(sole) = SOLE.iter().find(|sole| **sole == key) {
+        return Some(sole);
     }
     let (kind, rest) = key.split_once(':')?;
-    (KINDS.contains(&kind) && kind != "desktop" && !rest.is_empty()).then_some(kind)
+    (KINDS.contains(&kind) && !SOLE.contains(&kind) && !rest.is_empty()).then_some(kind)
+}
+
+/// The kinds an ask that names none gets.
+fn unnamed() -> Vec<String> {
+    KINDS
+        .iter()
+        .filter(|kind| !NAMED_ONLY.contains(kind))
+        .map(|kind| (*kind).to_owned())
+        .collect()
 }
 
 /// What a client asked, one line of it.
@@ -60,11 +77,11 @@ pub enum Ask {
     },
 }
 
-/// The kinds an ask names, as one or a list, or every kind when it names
-/// none; or the first it doesn't keep.
+/// The kinds an ask names, as one or a list, or every kind but those
+/// named only when it names none; or the first it doesn't keep.
 fn kinds(said: &Value) -> Result<Vec<String>, String> {
     let named: Vec<String> = match said.get("kind") {
-        None | Some(Value::Null) => return Ok(KINDS.iter().map(|k| (*k).to_owned()).collect()),
+        None | Some(Value::Null) => return Ok(unnamed()),
         Some(Value::String(kind)) => vec![kind.clone()],
         Some(Value::Array(kinds)) => kinds
             .iter()
@@ -136,10 +153,37 @@ mod tests {
             ask(r#"{"id":1,"ask":"watch","keys":["window:12","desktop"]}"#),
             Ask::Watch {
                 id: json!(1),
-                kinds: KINDS.iter().map(|k| (*k).to_owned()).collect(),
+                kinds: vec![
+                    "window".into(),
+                    "workspace".into(),
+                    "desktop".into(),
+                    "cast".into(),
+                    "screenshot".into()
+                ],
                 keys: Some(vec!["window:12".into(), "desktop".into()])
             }
         );
+    }
+
+    #[test]
+    fn layouts_are_listed_only_when_named() {
+        assert_eq!(
+            ask(r#"{"id":4,"ask":"watch","kind":["window","layout"]}"#),
+            Ask::Watch {
+                id: json!(4),
+                kinds: vec!["window".into(), "layout".into()],
+                keys: None
+            }
+        );
+        assert!(!unnamed().contains(&"layout".to_owned()));
+    }
+
+    #[test]
+    fn the_screenshot_is_keyed_by_its_kind_alone() {
+        assert_eq!(kind_of("screenshot"), Some("screenshot"));
+        assert_eq!(kind_of("screenshot:1"), None);
+        assert_eq!(kind_of("cast:3"), Some("cast"));
+        assert_eq!(kind_of("layout:12"), Some("layout"));
     }
 
     #[test]
