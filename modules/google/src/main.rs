@@ -93,9 +93,15 @@ fn main() -> ExitCode {
         }
     };
     if let Some(words) = args.next().map(PathBuf::from) {
+        // Said, never silent: a place whose words didn't read serves no
+        // rows, and the rest serve theirs.
         match vocabulary(&words) {
-            Ok(words) => daemon.words(words),
-            // Said, never silent: the launcher falls back to its own rows.
+            Ok((read, lacking)) => {
+                for lack in lacking {
+                    eprintln!("<3>serving no rows of {lack}, in {}", words.display());
+                }
+                daemon.words(read);
+            }
             Err(error) => eprintln!("<3>serving no rows, {}: {error}", words.display()),
         }
     }
@@ -204,10 +210,10 @@ fn places() -> Places {
 }
 
 /// The words rows are said in, read from the launcher's vocabulary.
-fn vocabulary(path: &Path) -> Result<Vocabulary, String> {
+fn vocabulary(path: &Path) -> Result<(Vocabulary, Vec<String>), String> {
     let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
     let whole = serde_json::from_str(&text).map_err(|error| error.to_string())?;
-    Vocabulary::read(&whole)
+    Ok(Vocabulary::read(&whole))
 }
 
 /// Whether an ask last made then is due again, a wait on; never made, it is.

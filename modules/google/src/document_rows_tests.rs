@@ -1,27 +1,9 @@
 //! Documents' rows' cases, as tests/drive.qml says Drive.js's and
-//! DrivePlaces.js's of the shell's rows today.
+//! DrivePlaces.js's of the shell's rows today, said in the launcher's own
+//! vocabulary.
 
 use super::*;
-
-fn vocabulary() -> Value {
-    json!({"things": [
-        {"id": "docs:document", "name": "Document", "glyph": "googleDocument",
-         "states": {"untitled": {"name": "A Document Without a Title"}}},
-        {"id": "sheets:spreadsheet", "name": "Spreadsheet", "glyph": "googleSpreadsheet",
-         "states": {"untitled": {"name": "A Spreadsheet Without a Title"}}},
-        {"id": "slides:presentation", "name": "Presentation", "glyph": "googlePresentation",
-         "states": {"untitled": {"name": "A Presentation Without a Title"}}},
-        {"id": "drive:file", "name": "File", "glyph": "path",
-         "states": {"untitled": {"name": "A File Without a Name"},
-                    "folder": {"name": "Folder", "glyph": "folder"},
-                    "drive": {"name": "Shared Drive", "glyph": "folder"}},
-         "said": {"in": "in {place}", "onDrive": "{drive} (shared drive)",
-                  "opened": "opened {when}"}},
-        {"id": "drive:mine", "name": "My Drive"},
-        {"id": "drive:place:shared", "name": "Shared with Me"},
-        {"id": "drive:place:drives", "name": "Shared Drives"}
-    ]})
-}
+use crate::rows::marked::{marked, vocabulary, written_in};
 
 fn words() -> Words {
     Words::read(&vocabulary()).expect("documents' words didn't read")
@@ -55,11 +37,36 @@ fn document(id: &str, kind: Is) -> Document {
 
 #[test]
 fn documents_words_are_read_or_the_lack_is_said() {
-    let mut lacking = vocabulary();
-    lacking["things"].as_array_mut().unwrap().remove(4);
-    assert!(
-        Words::read(&lacking).is_err_and(|lack| lack.contains("drive:mine")),
+    let without = |id: &str| {
+        let mut lacking = vocabulary();
+        lacking["things"]
+            .as_array_mut()
+            .expect("the vocabulary has no things")
+            .retain(|thing| thing["id"] != id);
+        Words::read(&lacking)
+    };
+    assert_eq!(
+        without("drive:mine"),
+        Err("the vocabulary has no drive:mine".to_owned()),
         "a vocabulary without My Drive read as whole"
+    );
+    assert_eq!(
+        without("drive:fact:sharer"),
+        Err("the vocabulary has no drive:fact:sharer".to_owned())
+    );
+    let mut folderless = vocabulary();
+    let file = folderless["things"]
+        .as_array_mut()
+        .and_then(|things| things.iter_mut().find(|thing| thing["id"] == "drive:file"))
+        .expect("the vocabulary has no drive:file");
+    file["states"]
+        .as_object_mut()
+        .expect("drive:file has no states")
+        .remove("folder");
+    assert_eq!(
+        Words::read(&folderless),
+        Err("the vocabulary's drive:file has no states.folder.name".to_owned()),
+        "a folder would have been named blank"
     );
 }
 
@@ -81,7 +88,7 @@ fn a_document_is_a_row_keyed_as_the_launcher_keys_it_in_the_order_held() {
     assert_eq!(row["drawer"], "drawer:documents:s");
     assert_eq!(
         row["side"],
-        json!([{"at": 5_000, "as": "opened", "keep": 1, "stays": true}])
+        json!([{"at": 5_000, "as": "opened", "keep": 1}])
     );
     let link = "https://docs.google.com/document/d/s/edit";
     assert_eq!(
@@ -115,21 +122,16 @@ fn its_drawer_says_what_changes_most_first_and_where_it_is() {
     assert_eq!(
         drawers[0].1,
         json!({
+            "eyebrow": "in Shared with Me \u{b7} Document",
             "title": "Plan",
             "facts": [
-                {"label": "Changed", "at": 4_000, "as": "moment"},
-                {"label": "Changed By", "value": "Grace Hopper"},
-                {"label": "Owner", "value": "Ada Lovelace"},
-                {"label": "Shared", "at": 3_000, "as": "moment"},
-                {"label": "Shared By", "value": "Grace Hopper"},
-                {"label": "ID", "value": "d", "identifies": true}
+                {"name": "Changed", "at": 4_000, "as": "moment"},
+                {"name": "Changed By", "said": "Grace Hopper"},
+                {"name": "Owner", "said": "Ada Lovelace"},
+                {"name": "Shared", "at": 3_000, "as": "moment"},
+                {"name": "Shared By", "said": "Grace Hopper"},
+                {"name": "ID", "said": "d", "identifies": true}
             ],
-            "eyebrow": "in Shared with Me \u{b7} Document",
-            "eyebrowItems": [
-                {"said": "in Shared with Me", "keep": 2},
-                {"said": "Document", "keep": 1}
-            ],
-            "eyebrowNames": true,
             "body": "The engine's plan."
         })
     );
@@ -154,7 +156,7 @@ fn a_file_is_said_by_its_ending_measure_and_length_on_its_shared_drive() {
     assert!(
         drawer["facts"]
             .as_array()
-            .is_some_and(|facts| facts.contains(&json!({"label": "Size", "value": "48 MB"}))),
+            .is_some_and(|facts| facts.contains(&json!({"name": "Size", "said": "48 MB"}))),
         "its size wasn't said in decimal units: {drawer}"
     );
     let mut lost = document("x", Is::Other);
@@ -162,4 +164,122 @@ fn a_file_is_said_by_its_ending_measure_and_length_on_its_shared_drive() {
     lost.drive = Some("gone".into());
     let drawer = &drawers(&[lost], &[], &words())[0].1;
     assert_eq!(drawer["eyebrow"], "in Shared Drives \u{b7} Form");
+    let mut unknown = document("u", Is::Other);
+    unknown.mime = "application/vnd.google-apps.unheardof".into();
+    let drawer = &drawers(&[unknown], &[], &words())[0].1;
+    assert_eq!(
+        drawer["eyebrow"], "in My Drive \u{b7} File",
+        "a kind of Google's the vocabulary doesn't name is said as a file"
+    );
+}
+
+/// Documents of every shape a row or drawer words: each kind, untitled,
+/// in each place, with every fact, a size in each unit, measured and
+/// lasting both short and long, and each of Google's other kinds.
+fn spread() -> (Vec<Document>, Vec<Document>) {
+    let mut held: Vec<Document> = [
+        Is::Document,
+        Is::Spreadsheet,
+        Is::Presentation,
+        Is::Folder,
+        Is::Drive,
+        Is::File,
+        Is::Other,
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(at, kind)| {
+        let mut each = document(&format!("k{at}"), kind);
+        each.title = String::new();
+        each
+    })
+    .collect();
+    for (at, size) in [12, 3_400, 5_600_000, 78_000_000_000]
+        .into_iter()
+        .enumerate()
+    {
+        let mut file = document(&format!("s{at}"), Is::File);
+        file.title = format!("take{at}.mov");
+        file.size = Some(size);
+        file.across = Some(1920);
+        file.down = Some(1080);
+        file.lasts = Some(if at % 2 == 0 { 221_400 } else { 3_723_000 });
+        file.changed_by = Some("Grace".into());
+        file.changed_by_me = Some(3_500);
+        file.created = Some(1_000);
+        file.shared_with_me = Some(3_000);
+        file.shared_by = Some("Grace".into());
+        file.drive = [None, Some("dr".into()), Some("gone".into()), None][at].clone();
+        file.about = Some("About".into());
+        held.push(file);
+    }
+    for (at, other) in ["form", "drawing", "map", "site", "script", "vid"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut google = document(&format!("g{at}"), Is::Other);
+        google.mime = format!("application/vnd.google-apps.{other}");
+        held.push(google);
+    }
+    let mut design = document("dr", Is::Drive);
+    design.title = "Design".into();
+    (held, vec![design])
+}
+
+#[test]
+fn every_word_a_document_shows_is_the_vocabularys() {
+    let words = Words::read(&marked(&vocabulary())).expect("the marked words didn't read");
+    let (held, drives) = spread();
+    let mut shown = Vec::new();
+    for row in documents(&held, &words) {
+        let key = row["key"].as_str().unwrap_or_default().to_owned();
+        shown.push((
+            format!("{key} name"),
+            row["name"].as_str().unwrap_or_default().to_owned(),
+        ));
+    }
+    for (key, drawer) in drawers(&held, &drives, &words) {
+        for field in ["eyebrow", "title"] {
+            let said = drawer[field].as_str().unwrap_or_default().to_owned();
+            shown.push((format!("{key} {field}"), said));
+        }
+        for fact in drawer["facts"].as_array().into_iter().flatten() {
+            for field in ["name", "said"] {
+                if let Some(said) = fact[field].as_str() {
+                    shown.push((format!("{key} fact {field}"), said.to_owned()));
+                }
+            }
+        }
+    }
+    assert!(
+        shown.len() > 100,
+        "only {} words were shown, so the spread reaches too little",
+        shown.len()
+    );
+    // What Drive says of a file itself, which no vocabulary words: its
+    // title and ending, who changed, owns and shared it, its id and its
+    // owner's words, and the shared drive it's on.
+    let own: Vec<String> = held
+        .iter()
+        .chain(&drives)
+        .flat_map(|file| {
+            let ending = file.title.rsplit('.').next().map(str::to_uppercase);
+            [
+                Some(file.title.clone()),
+                ending,
+                file.owner.clone(),
+                file.changed_by.clone(),
+                file.shared_by.clone(),
+                Some(file.id.clone()),
+                file.about.clone(),
+            ]
+        })
+        .flatten()
+        .collect();
+    let written = written_in(&shown, &own);
+    assert!(
+        written.is_empty(),
+        "words written in document_rows.rs, not the vocabulary:\n{}",
+        written.join("\n")
+    );
 }

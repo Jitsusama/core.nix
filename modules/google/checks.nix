@@ -63,8 +63,15 @@ onLinux {
   # fetched again only once Drive changes it, the longest unused let go,
   # and a save staged by the picker goes up once it settles, as a new file
   # and then new versions of it, never a second file for one it may not
-  # replace. A stand-in on the machine answers for Google.
-  google-reads-the-calendar = pkgs.callPackage ./package.nix { };
+  # replace. A stand-in on the machine answers for Google. Its rows are
+  # said in the account's own vocabulary, every word of them its, so a
+  # word the vocabulary lacks or one written into the program fails here
+  # rather than leaving the launcher with no rows.
+  google-reads-the-calendar = pkgs.callPackage ./package.nix {
+    words =
+      pkgs.writeText "words.json"
+        (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+  };
   # clippy finds nothing in google, its tests included.
   google-passes-clippy = passesClippy "google-passes-clippy" (pkgs.callPackage ./package.nix { });
 

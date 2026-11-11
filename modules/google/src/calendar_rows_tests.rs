@@ -1,38 +1,28 @@
 //! Calendar's rows' cases, as tests/calendar.qml says Calendar.js's and
-//! Repeats.js's of the shell's rows today.
+//! Repeats.js's of the shell's rows today, said in the launcher's own
+//! vocabulary, which the check hands them (package.nix's `words`).
 
 use jiff::tz::{self, TimeZone};
 use serde_json::{Value, json};
 
 use super::{Words, drawers, meetings};
 use crate::calendar::{Answer, Attachment, Dial, Every, Guest, Meeting, Person, Repeats, Weekday};
+use crate::rows::marked::vocabulary;
 
-const MINUTE: i64 = 60_000;
-const HOUR: i64 = 60 * MINUTE;
+pub(super) const MINUTE: i64 = 60_000;
+pub(super) const HOUR: i64 = 60 * MINUTE;
 // Monday 26 October 2026, 14:00 at four hours behind UTC.
-const MONDAY: i64 = 1_793_037_600_000;
+pub(super) const MONDAY: i64 = 1_793_037_600_000;
 
-fn zone() -> TimeZone {
+pub(super) fn zone() -> TimeZone {
     TimeZone::fixed(tz::offset(-4))
-}
-
-fn vocabulary() -> Value {
-    json!({"things": [
-        {"id": "calendar:meeting", "glyph": "meeting",
-         "states": {"untitled": {"name": "A Meeting Without a Title"}},
-         "said": {"earlier": "{count} in the past 30 days"}},
-        {"id": "verb:calendar:cancel", "sure": "Cancel It Now"},
-        {"id": "verb:calendar:move", "sure": "Move It"},
-        {"id": "meet:held", "glyph": "joinCall",
-         "said": {"two": "{first} and {second}", "others": "{first} and {count} others"}}
-    ]})
 }
 
 fn words() -> Words {
     Words::read(&vocabulary()).expect("calendar's words didn't read")
 }
 
-fn one(id: &str, start: i64) -> Meeting {
+pub(super) fn one(id: &str, start: i64) -> Meeting {
     Meeting {
         id: id.into(),
         title: format!("Meeting {id}"),
@@ -76,10 +66,22 @@ fn acted(row: &Value) -> Vec<&str> {
 #[test]
 fn calendars_words_are_read_from_the_vocabulary_or_the_lack_is_said() {
     assert_eq!(words().cancel_sure, "Cancel It Now");
-    let lacking = json!({"things": [{"id": "calendar:meeting", "glyph": "meeting"}]});
+    let mut lacking = vocabulary();
+    let meeting = lacking["things"]
+        .as_array_mut()
+        .and_then(|things| {
+            things
+                .iter_mut()
+                .find(|thing| thing["id"] == "calendar:meeting")
+        })
+        .expect("the vocabulary has no calendar:meeting");
+    meeting["said"]
+        .as_object_mut()
+        .expect("calendar:meeting says nothing")
+        .remove("pin");
     assert_eq!(
         Words::read(&lacking),
-        Err("the vocabulary's calendar:meeting has no states.untitled.name".to_owned())
+        Err("the vocabulary's calendar:meeting has no said.pin".to_owned())
     );
 }
 
@@ -302,26 +304,33 @@ fn its_drawer_says_everything_known_of_it_and_a_series_how_many_came_before() {
     let keys: Vec<&str> = drawn.iter().map(|(key, _)| key.as_str()).collect();
     assert_eq!(keys, ["drawer:held:weekly-2", "drawer:meet:abc-defg-hij"]);
     assert_eq!(
-        drawn[1].1["facts"][2]["label"], "Where",
+        drawn[1].1["facts"][2]["name"], "Where",
         "a call's drawer counts nothing that came before"
+    );
+    assert_eq!(
+        drawn[1].1["eyebrow"], "on Meet \u{b7} call",
+        "a call's eyebrow says where it is and what"
     );
     assert_eq!(
         drawn[0].1,
         json!({
+            "eyebrow": "on Calendar \u{b7} meeting",
             "title": "A Meeting Without a Title",
             "facts": [
-                {"label": "When", "value": "Monday 26 October \u{b7} 12:00 to 12:30"},
-                {"label": "Repeats",
-                    "value": "Every 2 weeks on Monday and Wednesday, until 31 December 2026"},
-                {"label": "Earlier", "value": "1 in the past 30 days"},
-                {"label": "Where", "value": "Room 4"},
-                {"label": "Call", "value": "https://meet.google.com/abc-defg-hij"},
-                {"label": "Dial In", "value": "+1 555-010-0199, PIN 123456789"},
-                {"label": "Your Answer", "value": "going"},
-                {"label": "Holds It", "value": "Ada Lovelace"},
-                {"label": "Answers", "value": "1 going, 1 not going"},
-                {"label": "Asked",
-                    "value": "Grace Hopper \u{b7} not going; alan@example.com \u{b7} going"},
+                {"name": "When", "said": "Monday 26 October", "qualifier": "12:00 to 12:30"},
+                {"name": "Repeats",
+                    "said": "every 2 weeks on Monday and Wednesday, until 31 December 2026"},
+                {"name": "Earlier", "said": "1 in the past 30 days"},
+                {"name": "Where", "said": "Room 4"},
+                {"name": "Call", "said": "https://meet.google.com/abc-defg-hij",
+                    "identifies": true},
+                {"name": "Dial In", "said": "+1 555-010-0199", "qualifier": "PIN 123456789",
+                    "identifies": true},
+                {"name": "Your Answer", "said": "going"},
+                {"name": "Holds It", "said": "Ada Lovelace"},
+                {"name": "Answers", "said": "1 going, 1 not going"},
+                {"name": "Asked",
+                    "said": "Grace Hopper \u{b7} not going; alan@example.com \u{b7} going"},
             ],
             "body": "What we'll do.",
         })
@@ -423,12 +432,13 @@ fn a_series_says_how_it_repeats_as_one_would() {
                 until: None,
             },
             &zone(),
+            &words(),
         )
     };
     let plain = |day| Weekday { day, nth: None };
     assert_eq!(
         said(Every::Week, 1, (1..=5).map(plain).collect(), vec![], None),
-        "Every weekday"
+        "every weekday"
     );
     assert_eq!(
         said(
@@ -441,7 +451,7 @@ fn a_series_says_how_it_repeats_as_one_would() {
             vec![],
             None
         ),
-        "Every month on the last Friday"
+        "every month on the last Friday"
     );
     assert_eq!(
         said(
@@ -454,11 +464,25 @@ fn a_series_says_how_it_repeats_as_one_would() {
             vec![],
             Some(4)
         ),
-        "Every month on the second last Tuesday, 4 times"
+        "every month on the second last Tuesday, 4 times"
     );
     assert_eq!(
         said(Every::Month, 3, vec![], vec![1, 22, -1], None),
-        "Every 3 months on the 1st, the 22nd and the last day"
+        "every 3 months on the 1st, the 22nd and the last day"
     );
-    assert_eq!(said(Every::Day, 1, vec![], vec![], None), "Every day");
+    assert_eq!(said(Every::Day, 1, vec![], vec![], None), "every day");
+    assert_eq!(
+        said(
+            Every::Month,
+            1,
+            vec![Weekday {
+                day: 4,
+                nth: Some(7)
+            }],
+            vec![11, 23],
+            None
+        ),
+        "every month on the 7th Thursday, the 11th and the 23rd",
+        "past the fifth, which day is said as a figure"
+    );
 }

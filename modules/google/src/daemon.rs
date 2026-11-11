@@ -133,44 +133,37 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
 /// Every ready row the state makes, in each place's order, as records
 /// keyed as rows.rs keys them, each its row under `row`, at `now` on
 /// Joel's clock, which says which meetings are over.
+/// A place whose words didn't read makes none, and the rest make theirs.
 fn rows_of(state: &State, words: &Vocabulary, now: i64) -> Vec<(String, Value)> {
     let zone = TimeZone::system();
     let (meetings, held) = (&state.meetings, &state.held);
-    let rows = rows::mail(&state.mail, &words.mail)
-        .into_iter()
-        .chain(rows::lately(&state.lately, &state.mail, &words.mail))
-        .chain(document_rows::documents(&state.documents, &words.documents))
-        .chain(calendar_rows::meetings(
-            meetings,
-            held,
-            now,
-            &zone,
-            &words.calendar,
-        ))
-        .map(|row| {
-            let key = row["key"].as_str().unwrap_or_default().to_owned();
-            let record = json!({"key": key, "kind": "row", "row": row});
-            (key, record)
-        });
     let drives = &state.drive.places.drives.files;
-    let drawers = rows::mail_drawers(&state.mail, &state.lately, &words.mail)
-        .into_iter()
-        .chain(document_rows::drawers(
-            &state.documents,
-            drives,
-            &words.documents,
-        ))
-        .chain(calendar_rows::drawers(
-            meetings,
-            held,
-            now,
-            &zone,
-            &words.calendar,
-        ))
-        .map(|(key, drawer)| {
-            let record = json!({"key": key, "kind": "drawer", "drawer": drawer});
-            (key, record)
-        });
+    let mut rows = Vec::new();
+    let mut drawers = Vec::new();
+    if let Some(mail) = &words.mail {
+        rows.extend(rows::mail(&state.mail, mail));
+        rows.extend(rows::lately(&state.lately, &state.mail, mail));
+        drawers.extend(rows::mail_drawers(&state.mail, &state.lately, mail));
+    }
+    if let Some(documents) = &words.documents {
+        rows.extend(document_rows::documents(&state.documents, documents));
+        drawers.extend(document_rows::drawers(&state.documents, drives, documents));
+    }
+    if let Some(calendar) = &words.calendar {
+        rows.extend(calendar_rows::meetings(
+            meetings, held, now, &zone, calendar,
+        ));
+        drawers.extend(calendar_rows::drawers(meetings, held, now, &zone, calendar));
+    }
+    let rows = rows.into_iter().map(|row| {
+        let key = row["key"].as_str().unwrap_or_default().to_owned();
+        let record = json!({"key": key, "kind": "row", "row": row});
+        (key, record)
+    });
+    let drawers = drawers.into_iter().map(|(key, drawer)| {
+        let record = json!({"key": key, "kind": "drawer", "drawer": drawer});
+        (key, record)
+    });
     rows.chain(drawers).collect()
 }
 
@@ -634,7 +627,7 @@ mod tests {
             went: Vec::new(),
             at: 1_000,
             page: "https://mail.google.com/mail/u/0/#inbox/m1".into(),
-            body: String::new(),
+            body: "On the engine.".into(),
             attachments: Vec::new(),
             done: None,
         }];
@@ -649,11 +642,11 @@ mod tests {
         );
         assert_eq!(unworded["records"], json!([]), "rows made without words");
         daemon.words(Vocabulary {
-            mail: rows::Words {
+            mail: Some(rows::Words {
                 untitled: "Mail Without a Subject".into(),
                 glyph: "mail".into(),
                 ..rows::Words::default()
-            },
+            }),
             ..Vocabulary::default()
         });
         let ask = |line: &str| {
@@ -678,11 +671,87 @@ mod tests {
         let drawer =
             ask(r#"{"id": 4, "ask": "watch", "kind": "drawer", "keys": ["drawer:mail:m1"]}"#);
         assert_eq!(drawer["records"][0]["drawer"]["title"], "Engines");
+        assert_eq!(drawer["records"][0]["drawer"]["body"], "On the engine.");
         assert!(
-            heard["changed"][0]["row"]["body"].is_null()
+            !heard.to_string().contains("On the engine.")
                 && heard["changed"][0]["row"]["drawer"] == "drawer:mail:m1",
             "a row carried its drawer: {heard}"
         );
+    }
+
+    fn document(id: &str, title: &str) -> crate::drive::Document {
+        crate::drive::Document {
+            id: id.into(),
+            title: title.into(),
+            kind: crate::drive::Is::Document,
+            link: format!("https://docs.google.com/document/d/{id}/edit"),
+            viewed: Some(5_000),
+            changed: Some(4_000),
+            owner: Some("Ada Lovelace".into()),
+            mime: "application/vnd.google-apps.document".into(),
+            size: None,
+            created: None,
+            changed_by: None,
+            changed_by_me: None,
+            shared_with_me: None,
+            shared_by: None,
+            shared: false,
+            starred: false,
+            drive: None,
+            about: None,
+            across: None,
+            down: None,
+            lasts: None,
+        }
+    }
+
+    #[test]
+    fn documents_rows_reach_their_places_watch_and_a_drawer_watch_hears_only_its_changes() {
+        let daemon = Daemon {
+            held: Arc::new(Mutex::new(Held::default())),
+        };
+        let (words, lacking) = Vocabulary::read(&rows::marked::vocabulary());
+        assert_eq!(
+            lacking,
+            Vec::<String>::new(),
+            "the launcher's words lack some"
+        );
+        daemon.words(words);
+        let mut state = State::without(Standing::Ready);
+        state.documents = vec![document("a", "Plan"), document("b", "Budget")];
+        let (told, lines) = mpsc::channel();
+        let (asks, _) = mpsc::channel();
+        daemon.say(&state, 1);
+        let ask = |line: &str| {
+            daemon.answer(line, 1, &told, &asks);
+            serde_json::from_str::<Value>(&lines.recv().unwrap()).unwrap()
+        };
+        let listed = ask(r#"{"id": 1, "ask": "watch", "kind": "row", "place": "documents"}"#);
+        let keys: Vec<&str> = listed["records"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|record| record["key"].as_str())
+            .collect();
+        assert_eq!(keys, ["row:documents:a", "row:documents:b"], "{listed}");
+        let drawn = ask(r#"{"id": 2, "ask": "watch", "kind": "drawer",
+                "keys": ["drawer:documents:a", "drawer:documents:b"]}"#);
+        assert_eq!(drawn["records"][1]["drawer"]["facts"][1]["name"], "Owner");
+        state.documents[1].owner = Some("Grace Hopper".into());
+        daemon.say(&state, 2);
+        let heard: Value = serde_json::from_str(&lines.recv().unwrap()).unwrap();
+        assert_eq!(
+            heard["id"], 2,
+            "the row watch heard a drawer's change: {heard}"
+        );
+        let changed: Vec<&str> = heard["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|record| record["key"].as_str())
+            .collect();
+        assert_eq!(changed, ["drawer:documents:b"], "{heard}");
+        assert!(lines.try_recv().is_err(), "more was said than b's drawer");
     }
 
     #[test]
