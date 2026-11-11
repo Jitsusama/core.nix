@@ -61,7 +61,6 @@
   "modules/quickshell/timers/src/main.rs"
   "modules/reader/src/gl.rs"
   "modules/reader/src/keys.rs"
-  "modules/reader/src/main.rs"
   "modules/reader/src/page.rs"
   "modules/reader/src/select.rs"
   "modules/reader/src/walk.rs"

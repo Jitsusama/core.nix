@@ -1,0 +1,133 @@
+//! Opening the reader: App made with each of its fields, from what `main()`
+//! starts.
+
+use super::REFERENCE_SCALE;
+use crate::painter::Painter;
+use crate::{App, Measure, Opening, Senders, Surface, keys, menu};
+use smithay_client_toolkit::output::OutputState;
+use smithay_client_toolkit::reexports::calloop::LoopHandle;
+use smithay_client_toolkit::registry::RegistryState;
+use smithay_client_toolkit::seat::SeatState;
+use std::collections::{HashMap, HashSet, VecDeque};
+use wayland_client::{Connection, QueueHandle};
+
+impl App {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "it starts each of the reader's fields, a line each"
+    )]
+    pub(crate) fn new(
+        globals: &wayland_client::globals::GlobalList,
+        qh: QueueHandle<App>,
+        conn: &Connection,
+        loop_handle: LoopHandle<'static, App>,
+        surface: Surface,
+        senders: Senders,
+        opening: Opening,
+    ) -> App {
+        App {
+            seats: SeatState::new(globals, &qh),
+            registry: RegistryState::new(globals),
+            outputs: OutputState::new(globals, &qh),
+            window: surface.window,
+            qh,
+            display: conn.backend().display_ptr().cast(),
+            presentation: surface.presentation,
+            viewport: surface.viewport,
+            gl: None,
+            painter: Painter::new(opening.page, REFERENCE_SCALE / 0.75, senders.done),
+            size: (960, 900),
+            scale: opening.scale,
+            fractional: surface.fractional,
+            offset: 0.0,
+            zoom: 1.0,
+            textures: HashMap::new(),
+            loader: None,
+            made_to: senders.made_to,
+            loading: HashSet::new(),
+            made: Vec::new(),
+            fresh: HashSet::new(),
+            asked: HashSet::new(),
+            arrived: VecDeque::new(),
+            frame_pending: false,
+            shown: false,
+            opened: opening.born,
+            settled_pt: f64::INFINITY,
+            held_pt: None,
+            whole: opening.whole,
+            stale: HashSet::new(),
+            jump: None,
+            reduced_motion: std::env::var_os("READER_REDUCED_MOTION").is_some_and(|v| v == "1"),
+            measure: opening
+                .measuring
+                .then(|| Measure::new(opening.set_ms, opening.set_parts)),
+            exit: false,
+            keyboard: None,
+            loop_handle,
+            keys: keys::Machine::default(),
+            ctrl: false,
+            shift: false,
+            marks: HashMap::new(),
+            start_pt: opening.start_pt,
+            kept_marks: opening.kept_marks,
+            jumps: Vec::new(),
+            jump_at: 0,
+            last_jump: None,
+            selected: None,
+            words: None,
+            incoming: None,
+            next_version: 1,
+            reloaded: false,
+            width: opening.width,
+            words_to: senders.words_to,
+            typing: None,
+            searched: None,
+            found: Vec::new(),
+            current: None,
+            highlighting: false,
+            lit: None,
+            prompt: None,
+            prompt_to: senders.prompt_to,
+            prompt_serial: 0,
+            prompt_shown: false,
+            prompt_set: None,
+            prompt_canvas: None,
+            keys_shown: false,
+            keys_px: 0.0,
+            keys_width_pt: 0.0,
+            keys_scroll: 0.0,
+            keys_set: None,
+            keys_canvas: None,
+            file: opening.file,
+            following: None,
+            reload_to: None,
+            watch: None,
+            measuring: opening.measuring,
+            labelling: None,
+            labels_set: None,
+            label_canvases: Vec::new(),
+            layout: None,
+            layout_to: senders.layout_to,
+            selection: None,
+            flash: None,
+            chosen: None,
+            rule: None,
+            bare: None,
+            heading_lines: None,
+            aim: None,
+            leapt: false,
+            commanding: None,
+            menu: None,
+            menu_away: false,
+            menu_entries: menu::entries(),
+            earlier: Vec::new(),
+            said: None,
+            outline: None,
+            outline_typing: None,
+            outline_set: None,
+            outline_canvas: None,
+            reads_on: None,
+            word_search: false,
+        }
+    }
+}
