@@ -114,7 +114,7 @@
  import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
  import { getModelSearchText } from "./model-search.ts";
  import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
-@@ -449,8 +454,31 @@
+@@ -449,8 +454,37 @@
  	initialThemeSetting?: string;
  	/** Terminal implementation. Defaults to the current process terminal. */
  	terminal?: Terminal;
@@ -132,6 +132,12 @@
 +		 * it could. Without it, or when it can't, suspend is refused.
 +		 */
 +		suspend?: () => boolean;
++		/**
++		 * Asked before any quit of a hosted screen (Ctrl+D, a double Ctrl+C, /quit, an
++		 * extension's shutdown), within the handling of the key that asked: whether the
++		 * quit holds. Without it, every quit holds.
++		 */
++		quit?: () => Promise<boolean>;
 +	};
  }
  
@@ -146,17 +152,19 @@
  interface ExtensionChangelogUpdate {
  	name: string;
  	version: string;
-@@ -458,6 +486,9 @@
+@@ -458,6 +492,11 @@
  }
  
  export class InteractiveMode {
 +	/** Lets a host reject an unpatched pi before constructing a shared screen. */
 +	static readonly hostedLifecycleVersion = 1;
++	/** Says a host this pi asks before a hosted quit (hosted.quit). */
++	static readonly hostedQuit = true;
 +
  	private runtimeHost: AgentSessionRuntime;
  	private renderer: TuiMainScreen | TuiAltScreen;
  	private ui: TUI;
-@@ -616,6 +647,9 @@
+@@ -616,6 +655,9 @@
  	}
  
  	constructor(runtimeHost: AgentSessionRuntime, options: InteractiveModeOptions = {}) {
@@ -166,7 +174,7 @@
  		this.runtimeHost = runtimeHost;
  		setCapabilityOverrides(this.settingsManager.getTerminalCapabilityOverrides());
  		const tuiMode = options.tuiMode ?? this.settingsManager.getTuiMode();
-@@ -637,6 +671,7 @@
+@@ -637,6 +679,7 @@
  			onRightClickPaste: this.onRightClickPaste,
  			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
  			fullscreenWheelScrollLines: this.settingsManager.getFullscreenWheelScrollLines(),
@@ -174,7 +182,7 @@
  		});
  		this.ui = createInteractiveTuiReference(() => this.renderer);
  		this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
-@@ -946,6 +981,7 @@
+@@ -946,6 +989,7 @@
  			onRightClickPaste: this.onRightClickPaste,
  			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
  			fullscreenWheelScrollLines: this.settingsManager.getFullscreenWheelScrollLines(),
@@ -182,7 +190,7 @@
  		});
  		nextUi.setClearOnShrink(clearOnShrink);
  		nextUi.onDebug = onDebug;
-@@ -972,7 +1008,8 @@
+@@ -972,7 +1016,8 @@
  	}
  
  	async init(): Promise<void> {
@@ -192,7 +200,7 @@
  
  		this.registerSignalHandlers();
  
-@@ -984,7 +1021,10 @@
+@@ -984,7 +1029,10 @@
  		// after exit. Fullscreen shows the notice in the header instead (#11508).
  		if (this.renderer.mode !== "fullscreen") {
  			const modelScopeNotice = this.getModelScopeNotice();
@@ -204,7 +212,7 @@
  		}
  
  		// Keep one component tree and remount it when changing renderers.
-@@ -1028,6 +1068,7 @@
+@@ -1028,6 +1076,7 @@
  		// The header and startup notices bake theme colors into their text, so build them once the terminal
  		// reported its colors. This ends at the terminal's DA1 reply, or after 100 ms if it answers nothing.
  		await this.themeController.waitForTerminalColors();
@@ -212,7 +220,7 @@
  
  		// Add header with keybindings from config (unless silenced)
  		if (this.shouldShowStartupHeader()) {
-@@ -1115,6 +1156,7 @@
+@@ -1115,6 +1164,7 @@
  			ensureTool("rg", (status) => this.showManagedToolStatus(status)),
  		]);
  		this.fdPath = fdPath;
@@ -220,7 +228,7 @@
  
  		// Enable the remaining input handlers only after managed-tool setup completes.
  		this.setupKeyHandlers();
-@@ -1123,12 +1165,13 @@
+@@ -1123,12 +1173,13 @@
  
  		// Initialize extensions first so resources are shown before messages
  		await this.rebindCurrentSession();
@@ -235,7 +243,7 @@
  			this.ui.invalidate();
  			this.updateEditorBorderColor();
  			this.ui.requestRender();
-@@ -1141,6 +1184,7 @@
+@@ -1141,6 +1192,7 @@
  
  		// Initialize available provider count for footer display
  		await this.updateAvailableProviderCount();
@@ -243,7 +251,7 @@
  
  		// Flush the completed startup state before loading the remaining syntax grammars.
  		this.ui.renderNow();
-@@ -1170,6 +1214,7 @@
+@@ -1170,6 +1222,7 @@
  	 */
  	async run(): Promise<void> {
  		await this.init();
@@ -251,7 +259,7 @@
  
  		if (!process.env.PI_OFFLINE) {
  			const controller = new AbortController();
-@@ -1264,6 +1309,8 @@
+@@ -1264,6 +1317,8 @@
  
  		if (initialMessages) {
  			for (const message of initialMessages) {
@@ -260,7 +268,7 @@
  				try {
  					await this.session.prompt(message);
  				} catch (error: unknown) {
-@@ -1274,8 +1321,9 @@
+@@ -1274,8 +1329,9 @@
  		}
  
  		// Main interactive loop
@@ -271,7 +279,7 @@
  			try {
  				await this.session.prompt(userInput);
  			} catch (error: unknown) {
-@@ -2203,7 +2251,8 @@
+@@ -2203,7 +2259,8 @@
  
  		await this.bindCurrentSessionExtensions();
  
@@ -281,7 +289,7 @@
  			return;
  		}
  
-@@ -2216,7 +2265,7 @@
+@@ -2216,7 +2273,7 @@
  		this.updateTerminalTitle();
  	}
  
@@ -290,7 +298,7 @@
  		const message = error instanceof Error ? error.message : String(error);
  		this.showError(`${prefix}: ${message}`);
  		const extensionHint = this.getCrashExtensionHint(error);
-@@ -2227,6 +2276,10 @@
+@@ -2227,6 +2284,10 @@
  			const instructions = this.crashReportInstructions();
  			this.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), this.outputPad, 0));
  		}
@@ -301,7 +309,7 @@
  		stopThemeWatcher();
  		this.stop("transcript");
  		process.exit(1);
-@@ -2501,6 +2554,8 @@
+@@ -2501,6 +2562,8 @@
  		content: string[] | ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined,
  		options?: ExtensionWidgetOptions,
  	): void {
@@ -310,7 +318,7 @@
  		const placement = options?.placement ?? "aboveEditor";
  		const removeExisting = (map: Map<string, Component & { dispose?(): void }>) => {
  			const existing = map.get(key);
-@@ -2625,6 +2680,7 @@
+@@ -2625,6 +2688,7 @@
  			| ((tui: TUI, thm: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
  			| undefined,
  	): void {
@@ -318,7 +326,7 @@
  		// Dispose existing custom footer
  		if (this.customFooter?.dispose) {
  			this.customFooter.dispose();
-@@ -2649,7 +2705,7 @@
+@@ -2649,7 +2713,7 @@
  	 */
  	private setExtensionHeader(factory: ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined): void {
  		// Header may not be initialized yet if called during early initialization
@@ -327,7 +335,7 @@
  			return;
  		}
  
-@@ -2691,6 +2747,7 @@
+@@ -2691,6 +2755,7 @@
  	private addExtensionTerminalInputListener(
  		handler: (data: string) => { consume?: boolean; data?: string } | undefined,
  	): () => void {
@@ -335,7 +343,7 @@
  		const subscription = { handler, unsubscribe: this.ui.addInputListener(handler) };
  		this.extensionTerminalInputSubscriptions.add(subscription);
  		return () => {
-@@ -2923,6 +2980,7 @@
+@@ -2923,6 +2988,7 @@
  				() => finish(undefined),
  				undefined,
  				this.settingsManager.getExternalEditorCommand(),
@@ -343,7 +351,7 @@
  			);
  			this.pushExtensionDialog(editor, { kind: "question", message: title });
  		});
-@@ -2933,6 +2991,7 @@
+@@ -2933,6 +2999,7 @@
  	 * Pass undefined to restore the default editor.
  	 */
  	private setCustomEditorComponent(factory: EditorFactory | undefined): void {
@@ -351,7 +359,7 @@
  		this.editorComponentFactory = factory;
  
  		// Save text from current editor before switching
-@@ -3043,6 +3102,11 @@
+@@ -3043,6 +3110,11 @@
  	): Promise<T> {
  		const savedText = this.editor.getText();
  		const isOverlay = options?.overlay ?? false;
@@ -363,7 +371,7 @@
  
  		return new Promise((resolve, reject) => {
  			let component: ExtensionDialogComponent | undefined;
-@@ -3059,8 +3123,10 @@
+@@ -3059,8 +3131,10 @@
  				if (closed) return;
  				closed = true;
  				// Remove this overlay, not the topmost one: another overlay may have opened above it.
@@ -376,7 +384,7 @@
  				// Note: both branches above already call requestRender
  				resolve(result);
  				try {
-@@ -3089,10 +3155,11 @@
+@@ -3089,10 +3163,11 @@
  							return w ? { width: w } : undefined;
  						};
  						overlayHandle = this.ui.showOverlay(c, resolveOptions());
@@ -389,7 +397,7 @@
  					}
  				})
  				.catch((err) => {
-@@ -4340,6 +4407,7 @@
+@@ -4340,6 +4415,7 @@
  	}
  
  	async getUserInput(): Promise<string> {
@@ -397,7 +405,7 @@
  		const queuedInput = this.pendingUserInputs.shift();
  		if (queuedInput !== undefined) {
  			return queuedInput;
-@@ -4383,8 +4451,73 @@
+@@ -4383,8 +4459,78 @@
  	 * repaint the final frame while the process is exiting.
  	 */
  	private isShuttingDown = false;
@@ -467,11 +475,16 @@
 +	}
  
  	private async shutdown(options?: { fromSignal?: boolean }): Promise<void> {
-+		if (this.options.hosted) return this.exitHosted(0);
++		if (this.options.hosted) {
++			if (this.hostedExit) return this.hostedExit;
++			// Called before the first await, so the host can tell which viewer's key asked.
++			if (!(await (this.options.hosted.quit?.() ?? true))) return;
++			return this.exitHosted(0);
++		}
  		if (this.isShuttingDown) return;
  		this.isShuttingDown = true;
  		// Keep signal handlers registered until terminal cleanup has completed.
-@@ -4425,7 +4558,11 @@
+@@ -4425,7 +4571,11 @@
  		process.exit(0);
  	}
  
@@ -484,7 +497,7 @@
  		this.isShuttingDown = true;
  		this.unregisterSignalHandlers();
  		killTrackedDetachedChildren();
-@@ -4445,7 +4582,11 @@
+@@ -4445,7 +4595,11 @@
  	 * call ui.stop() to restore cooked mode, the cursor, and disable bracketed
  	 * paste / Kitty / modifyOtherKeys sequences.
  	 */
@@ -497,7 +510,7 @@
  		// A dead terminal is not a pi crash. Do not try to restore it or record it.
  		if (isDeadTerminalError(error)) {
  			this.emergencyTerminalExit();
-@@ -4482,6 +4623,8 @@
+@@ -4482,6 +4636,8 @@
  	}
  
  	private registerSignalHandlers(): void {
@@ -506,7 +519,7 @@
  		this.unregisterSignalHandlers();
  
  		const signals: NodeJS.Signals[] = ["SIGTERM"];
-@@ -4532,6 +4675,11 @@
+@@ -4532,6 +4688,11 @@
  	}
  
  	private handleCtrlZ(): void {
@@ -518,7 +531,7 @@
  		if (process.platform === "win32") {
  			this.showStatus("Suspend to background is not supported on Windows");
  			return;
-@@ -4692,6 +4840,14 @@
+@@ -4692,6 +4853,14 @@
  	private async handleOpenExternalEditor(): Promise<void> {
  		const editorCmd = this.settingsManager.getExternalEditorCommand();
  		const content = this.editor.getExpandedText?.() ?? this.editor.getText();
@@ -533,7 +546,7 @@
  		this.ui.stop();
  		try {
  			const result = await editInExternalEditor({
-@@ -5797,7 +5953,7 @@
+@@ -5797,7 +5966,7 @@
  					return;
  				}
  				try {
@@ -542,7 +555,7 @@
  					this.showStatus("Copied selected message to clipboard");
  				} catch (error) {
  					this.showError(error instanceof Error ? error.message : String(error));
-@@ -6731,11 +6887,43 @@
+@@ -6731,11 +6900,43 @@
  				keybindings: this.keybindings,
  				showStatus: (message) => this.showStatus(message),
  				showError: (message) => this.showError(message),
@@ -586,7 +599,7 @@
  	private async handleCopyCommand(
  		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
  	): Promise<void> {
-@@ -6756,7 +6944,7 @@
+@@ -6756,7 +6957,7 @@
  		}
  
  		try {
@@ -595,7 +608,7 @@
  			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
  				this.ui.flash("Copied!");
  			} else {
-@@ -7196,6 +7384,8 @@
+@@ -7196,6 +7397,8 @@
  		}
  		this.clearStatusIndicator();
  		this.themeController.disableAutoSync();

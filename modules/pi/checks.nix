@@ -394,7 +394,8 @@ in
   # own: a copy reaches them, a viewer who joins late is sent the images on
   # the screen, every frame is drawn within its terminal's render scope, so
   # as the conversation it shows, the external editor opens where the viewer
-  # who asked is, and
+  # who asked is, a quit asks its host first, with the key that asked still
+  # in hand, and
   # an extension's own component says it waits on the person, so its host
   # can let a viewer attach to answer it.
   pi-hosted-screen-reaches-its-viewers =
