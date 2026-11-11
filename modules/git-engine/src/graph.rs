@@ -438,7 +438,10 @@ mod tests {
         known.insert(Key::Graph(1), [Key::Graph(2), Key::Graph(3)], 3);
         known.insert(Key::Graph(2), [], 1);
         known.insert(Key::Object(Oid([7; 20])), [Key::Graph(1)], 4);
-        assert_eq!(parents(&known, Key::Graph(1)), [Key::Graph(2), Key::Graph(3)]);
+        assert_eq!(
+            parents(&known, Key::Graph(1)),
+            [Key::Graph(2), Key::Graph(3)]
+        );
         assert_eq!(parents(&known, Key::Graph(2)), []);
         assert_eq!(parents(&known, Key::Object(Oid([7; 20]))), [Key::Graph(1)]);
         assert_eq!(known.nodes[&Key::Object(Oid([7; 20]))].generation, 4);
@@ -463,7 +466,10 @@ mod tests {
             position += 1;
         }
         known.keep_within_budget();
-        assert!(known.nodes.is_empty());
+        assert!(
+            known.nodes.is_empty(),
+            "no commit should stay past the budget"
+        );
         assert_eq!(known.bytes(), 0);
     }
 }
