@@ -128,3 +128,16 @@ function spacesFrom(said, workspace) {
         .map((id) => said[`workspace:${id}`])
         .filter((space) => space !== undefined);
 }
+
+// What a workspace has on it, as its row's side says it: each program
+// once, as the daemon counts them (`inside`), with how many of its
+// windows when more than one, in the words Words.qml gives (`words`:
+// `empty`, and `counted` with {program} and {count}).
+function insideSaid(inside, words) {
+    if (inside.length === 0) {
+        return words.empty;
+    }
+    const said = (one) =>
+        words.counted.replace("{program}", one.program).replace("{count}", String(one.count));
+    return inside.map((one) => (one.count === 1 ? one.program : said(one))).join(", ");
+}

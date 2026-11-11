@@ -169,7 +169,31 @@ Provider {
     // so every terminal's show from home would ask twice, for counts the
     // daemon answers within a frame.
     function noted() {
-        return daemon.state === "not answering" ? Words.of("windows").said.silent : "";
+        return windowsUnanswered ? Words.of("windows").said.silentFrom : "";
+    }
+    // Whether the windows daemon has been silent a second, as Windows.qml
+    // waits too, so a restart doesn't blink it (VKCF3Z, 2026-11-10).
+    property bool windowsUnanswered: false
+    Connections {
+        target: daemon
+        function onStateChanged() {
+            if (daemon.state === "not answering") {
+                windowsQuiet.restart();
+            } else {
+                windowsQuiet.stop();
+                provider.windowsUnanswered = false;
+            }
+        }
+    }
+    Timer {
+        id: windowsQuiet
+
+        interval: 1000
+        onTriggered: provider.windowsQuietFor()
+    }
+    // The second's silence over: said if the daemon is silent still.
+    function windowsQuietFor() {
+        windowsUnanswered = daemon.state === "not answering";
     }
 
     Daemon {

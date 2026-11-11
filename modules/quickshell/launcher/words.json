@@ -10233,11 +10233,16 @@
       "ask": "which window?",
       "empty": "No other windows.",
       "said": {
-        "silent": "windows not answering"
+        "silent": "not answering",
+        "silentFrom": "windows not answering",
+        "empty": "empty",
+        "counted": "{program} \u00d7{count}",
+        "here": "here",
+        "nextTime": "next time {chord}"
       },
       "states": {
         "silent": {
-          "empty": "The windows program isn't answering."
+          "empty": "Not answering."
         }
       }
     },

@@ -139,7 +139,9 @@ ShellRoot {
             // doesn't watch workspaces, so only Windows is told.
             const madeBefore = windows.tally.rows;
             windows.windowsDaemon.said(JSON.stringify({ changed: [
-                space(1, { inside: ["tester", "tester"] }), space(2, { inside: ["tester"] }),
+                space(1, { inside: [{ program: "tester", count: 2 }] }),
+                space(2, { inside: [{ program: "tester", count: 2 },
+                    { program: "foot", count: 1 }] }),
                 space(3, { new: true }), space(4, { output: "HDMI-A-1" }),
                 Object.assign(desktop(logbook),
                     { spaces: { "eDP-1": [1, 2, 3], "HDMI-A-1": [4] } })] }));
@@ -147,7 +149,7 @@ ShellRoot {
             const offered = windows.workspacesFor(windows.held.windows["window:11"]);
             Expect.same("Move to Workspace offers the others on its screen, saying what's on each",
                 offered.map(row => `${row.name}: ${row.side}`).join("; "),
-                "Workspace 2: tester; A new workspace: ");
+                "Workspace 2: tester \u00d72, foot; A new workspace: ");
             Expect.same("and hearing the workspaces makes no window's row", madeHearing, 0);
 
             // Super+Tab, Return on Draft: the keys move as the launcher
@@ -222,17 +224,27 @@ ShellRoot {
             Expect.same("once answered, the desktop record says it",
                 fixedNamed("capture:window"), "This Window \u00b7 Notes");
 
-            // The daemon gone: its rows say so, rather than reading on or
-            // saying there are none.
+            // The daemon gone a second: its rows say so, rather than
+            // reading on or saying there are none, but not before, since a
+            // restart answers within it. The rows stay as last listed.
             windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             Expect.same("answering, Windows' row notes nothing", windows.noted(), "");
+            const listed = names(windows.things);
             windows.windowsDaemon.gone();
-            Expect.same("a down daemon is said on Windows' row", windows.noted(),
-                "windows not answering");
-            Expect.same("and inside", windows.collection.empty,
-                "The windows program isn't answering.");
+            Expect.same("a daemon just gone isn't said yet", windows.noted(), "");
+            windows.quietFor();
+            Expect.same("gone a second, it's said on Windows' row", windows.noted(),
+                "not answering");
+            Expect.same("and in the head while inside", windows.pressing, "not answering");
+            Expect.same("and with none ever listed, the empty line", windows.collection.empty,
+                "Not answering.");
+            Expect.same("while the rows stay as last listed", names(windows.things), listed);
             windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             Expect.same("and no more once it answers", windows.noted(), "");
+            windows.windowsDaemon.gone();
+            windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
+            windows.quietFor();
+            Expect.same("nor for a restart answered within the second", windows.noted(), "");
 
             // Only the newest wanted waits for file-preview, so one it
             // replaces is asked again when its drawer is next shown.

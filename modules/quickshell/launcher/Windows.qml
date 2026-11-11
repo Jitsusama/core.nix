@@ -48,17 +48,49 @@ Provider {
     // Before the daemon's first answer it holds no windows it can say are
     // all there are, so it says it's still reading rather than none; and
     // with the daemon down it says so, rather than reading forever or
-    // saying there are none (Daemon.qml's gone).
-    readonly property bool silent: daemon.state === "not answering"
+    // saying there are none (Daemon.qml's gone). The rows stay as last
+    // listed through the gap, so the empty line speaks only when none
+    // ever were.
+    readonly property bool silent: unanswered
     collection: Words.collection("windows", Object.assign({ searched: false },
         silent ? { empty: Words.of("windows", "silent").empty }
             : daemon.answered ? {} : { empty: "\u2026" }))
 
-    // Its row says so too while the daemon is down, since the rows it
-    // keeps through the gap may no longer be true.
-    function noted() {
-        return silent ? Words.of("windows").said.silent : "";
+    // Whether the daemon has been silent a second, so it's said: a restart
+    // or a reconnect answers within it, and saying so at once blinked it
+    // across Windows, Programs and Capture (VKCF3Z, 2026-11-10).
+    property bool unanswered: false
+    Connections {
+        target: daemon
+        function onStateChanged() {
+            if (daemon.state === "not answering") {
+                quiet.restart();
+            } else {
+                quiet.stop();
+                provider.unanswered = false;
+            }
+        }
     }
+    Timer {
+        id: quiet
+
+        interval: 1000
+        onTriggered: provider.quietFor()
+    }
+    // The second's silence over: said if the daemon is silent still.
+    function quietFor() {
+        unanswered = daemon.state === "not answering";
+    }
+
+    // Its row says so too while the daemon is down, since the rows it
+    // keeps through the gap may no longer be true; the row's name already
+    // says Windows.
+    function noted() {
+        return pressing;
+    }
+    // What the head says of Windows while it's entered, where a find's
+    // count is, as home's row says it (Launcher.qml reads it).
+    readonly property string pressing: silent ? Words.of("windows").said.silent : ""
     stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
 
     // An open list follows windows opening, closing and being renamed, and
@@ -496,18 +528,18 @@ Provider {
             const action = Shortcuts.actions.find(a => a.does === does);
             return action ? action.chord.map(key => key.text).join("+") : "";
         };
+        const words = Words.of("windows").said;
         return HeldWindows.spacesFrom(said, window.workspace_id).map(space => {
             const chord = window.id === current ? chordTo(space.idx) : "";
             return thing({
                 key: `workspace:${space.idx}`,
                 verb: "move",
                 name: space.new ? "A new workspace" : space.name ?? `Workspace ${space.idx}`,
-                count: space.focused ? "here" : "",
+                count: space.focused ? words.here : "",
                 glyph: space.new ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
                 hue: "machine",
-                side: space.new ? ""
-                    : space.inside.length === 0 ? "empty" : space.inside.join(", "),
-                note: chord === "" ? "" : `next time ${chord}`,
+                side: space.new ? "" : HeldWindows.insideSaid(space.inside, words),
+                note: chord === "" ? "" : words.nextTime.replace("{chord}", chord),
                 run: () => Niri.act({
                     MoveWindowToWorkspace: {
                         window_id: window.id,

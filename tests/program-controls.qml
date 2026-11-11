@@ -596,6 +596,16 @@ ShellRoot {
             same("the programs' windows heard draw their rows again", root.redrawn - redrawn, 1);
             windowsChanged();
             same("and the same windows again don't", root.redrawn - redrawn, 1);
+            // The windows daemon gone a second is said on Programs' row,
+            // naming it, since the row is Programs'; not before, since a
+            // restart answers within it.
+            applications.windowsDaemon.gone();
+            same("a windows daemon just gone isn't said yet", applications.noted(), "");
+            applications.windowsQuietFor();
+            same("gone a second, Programs says so", applications.noted(),
+                "windows not answering");
+            applications.windowsDaemon.said(JSON.stringify({ id: "hello" }));
+            same("and no more once it answers", applications.noted(), "");
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
             const tester = program("tester").verbs();
