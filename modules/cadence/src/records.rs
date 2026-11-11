@@ -374,14 +374,20 @@ pub fn last_machine_oom_kill(kernel: &str) -> Option<i64> {
         .max()
 }
 
-/// The net's round from its `state.json`: the head it tests, when testing.
+/// The net's place from its `state.json`: the head its round tests, and
+/// true, or between rounds the last head it saw, and false.
 #[must_use]
-pub fn net_round(state: &str) -> Option<String> {
+pub fn net_round(state: &str) -> Option<(String, bool)> {
     #[derive(Deserialize)]
     struct State {
         round: Option<String>,
+        seen: Option<String>,
     }
-    serde_json::from_str::<State>(state).ok()?.round
+    let state = serde_json::from_str::<State>(state).ok()?;
+    match state.round {
+        Some(round) => Some((round, true)),
+        None => state.seen.map(|seen| (seen, false)),
+    }
 }
 
 /// The net's hold on switching, from its `hold.json`: the test a merge
@@ -633,11 +639,21 @@ mod tests {
     }
 
     #[test]
-    fn the_nets_round_is_read_when_testing() {
+    fn the_nets_round_is_read_when_testing_and_what_it_saw_between() {
         assert_eq!(
-            net_round("{\"round\":\"cb5b\",\"passed\":\"61b0\"}"),
-            Some("cb5b".into())
+            net_round("{\"round\":\"cb5b\",\"seen\":\"61b0\"}"),
+            Some(("cb5b".into(), true)),
+            "a round's head wasn't read"
         );
-        assert_eq!(net_round("{\"passed\":\"61b0\"}"), None);
+        assert_eq!(
+            net_round("{\"passed\":\"61b0\",\"seen\":\"7ee4\"}"),
+            Some(("7ee4".into(), false)),
+            "between rounds, what the net last saw wasn't read"
+        );
+        assert_eq!(
+            net_round("{\"passed\":\"61b0\"}"),
+            None,
+            "a head came of nothing"
+        );
     }
 }

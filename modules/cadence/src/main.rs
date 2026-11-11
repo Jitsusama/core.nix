@@ -24,6 +24,7 @@
 mod card;
 mod idle;
 mod mesh;
+mod net;
 mod records;
 mod revive;
 mod start;
@@ -41,7 +42,8 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use mesh::{Mesh, Message};
-use watch::{Landing, Round, Snapshot, State, To};
+use net::Round;
+use watch::{Landing, Snapshot, State, To};
 
 /// The address cadence's questions come from.
 const FROM: &str = "CADENCE";
@@ -293,9 +295,10 @@ impl Core {
         Ok(landings)
     }
 
-    /// The net's round, read from its state, against main.
+    /// The net's round, read from its state, against main; none when it
+    /// tests nothing and has seen main's head.
     fn round(&self, net_state: &str) -> Option<Round> {
-        let head = records::net_round(net_state)?;
+        let (head, testing) = records::net_round(net_state)?;
         let merged = self.number(&["show", "-s", "--format=%ct", &head])?;
         let behind = self.number(&[
             "rev-list",
@@ -303,10 +306,14 @@ impl Core {
             "--first-parent",
             &format!("{head}..main"),
         ])?;
+        if !testing && behind == 0 {
+            return None;
+        }
         Some(Round {
             head,
             merged,
             behind: usize::try_from(behind).ok()?,
+            testing,
         })
     }
 }

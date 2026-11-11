@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::net::{Round, lag};
 use crate::records::{Follower, Look, Merge, NetHold, Run};
 use crate::stats::spread;
 
@@ -20,8 +21,6 @@ pub const VM_WAIT_MEDIAN_MIN: f64 = 5.0;
 /// times carried by the agents' jobs, which rank behind him by design,
 /// while his own slices waited under 1%, so no answer changed anything.
 pub const JOEL_CPU_AVG300: f64 = 10.0;
-/// The net's round this many hours behind main's head.
-pub const NET_BEHIND_H: f64 = 3.0;
 /// The net holding main with no revert under way this long, in minutes:
 /// every merge waits off the machine until the merge that broke a test is
 /// fixed forward or reverted by hand, and on 6 November a revert that
@@ -44,15 +43,6 @@ const REMEMBER: i64 = 2 * 86_400;
 pub struct Landing {
     pub merge: Merge,
     pub on: Option<Look>,
-}
-
-/// The net's round: the head it tests, when that head merged, and how many
-/// merges main has past it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Round {
-    pub head: String,
-    pub merged: i64,
-    pub behind: usize,
 }
 
 /// Everything the watch and the card read, gathered at one moment.
@@ -140,25 +130,8 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
             ),
         });
     }
-    if let Some(round) = &s.round {
-        #[expect(clippy::cast_precision_loss, reason = "seconds within a lifetime")]
-        let hours = (s.now - round.merged) as f64 / 3600.0;
-        if hours > NET_BEHIND_H {
-            // Said at three hours and again each time its age doubles: a long
-            // search is known once it's said.
-            let mut tier = NET_BEHIND_H;
-            while tier * 2.0 <= hours {
-                tier *= 2.0;
-            }
-            let short: String = round.head.chars().take(9).collect();
-            out.push(Breach {
-                key: format!("net:{short}:{tier}"),
-                text: format!(
-                    "the net's round at {short} is {hours:.1} h old, {} merges behind main",
-                    round.behind
-                ),
-            });
-        }
+    if let Some(breach) = s.round.as_ref().and_then(|round| lag(round, s.now)) {
+        out.push(breach);
     }
     if let Some(hold) = s
         .net_hold
@@ -676,20 +649,15 @@ mod tests {
     }
 
     #[test]
-    fn the_nets_lag_is_said_at_three_hours_then_at_each_doubling() {
+    fn the_nets_lag_is_among_what_is_said() {
         let mut s = calm(100_000);
         s.round = Some(Round {
             head: "cb5b9b12dce0".into(),
             merged: 100_000 - 4 * 3600,
             behind: 5,
+            testing: true,
         });
         assert_eq!(breaches(&s)[0].key, "net:cb5b9b12d:3");
-        s.round = Some(Round {
-            head: "cb5b9b12dce0".into(),
-            merged: 100_000 - 7 * 3600,
-            behind: 9,
-        });
-        assert_eq!(breaches(&s)[0].key, "net:cb5b9b12d:6");
     }
 
     #[test]

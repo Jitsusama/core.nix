@@ -131,9 +131,14 @@ fn machine(out: &mut String, s: &Snapshot) {
 fn net(out: &mut String, s: &Snapshot, clock: &impl Fn(i64) -> String) {
     match &s.round {
         Some(round) => {
+            let what = if round.testing {
+                "tests"
+            } else {
+                "tests nothing now; it last saw"
+            };
             let _ = writeln!(
                 out,
-                "The net tests {} ({} merges behind main), merged {} min ago.",
+                "The net {what} {} ({} merges behind main), merged {} min ago.",
                 round.head.chars().take(9).collect::<String>(),
                 round.behind,
                 (s.now - round.merged) / 60
@@ -238,5 +243,22 @@ mod tests {
         ] {
             assert!(text.contains(want), "missing {want:?} in\n{text}");
         }
+    }
+
+    #[test]
+    fn a_net_between_rounds_behind_main_is_not_said_caught_up() {
+        let s = Snapshot {
+            now: 100_000,
+            round: Some(crate::net::Round {
+                head: "7ee4bf22c8fa".into(),
+                merged: 100_000 - 3 * 3600,
+                behind: 40,
+                testing: false,
+            }),
+            ..Snapshot::default()
+        };
+        let text = card(&s, |t| format!("t{t}"));
+        let want = "The net tests nothing now; it last saw 7ee4bf22c (40 merges behind main)";
+        assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
 }
