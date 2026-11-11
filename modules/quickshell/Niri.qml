@@ -52,7 +52,11 @@ Singleton {
     // only `focused` and `current`, which say so themselves: nothing lists
     // by a window's is_focused, yet those were nearly half of what niri said
     // as Joel worked (17 of 36 events in a minute, 2026-11-10), and each
-    // made every list again, Sessions' every session among them.
+    // made every list again, Sessions' every session among them. A window
+    // used, which niri says a moment after the keys stay in it, is kept in
+    // place and said to nothing: what puts the window used last first reads
+    // it from the windows daemon (modules/windows), and what reads it here
+    // reads it when it's asked, as Forward.js does.
     property var windows: ({})
     property var workspaces: ({})
     property var focused: null
@@ -182,8 +186,6 @@ Singleton {
             const change = event.WindowFocusTimestampChanged;
             if (windows[change.id])
                 windows[change.id].focus_timestamp = change.focus_timestamp;
-            // Lists of windows put the one used last first.
-            revision++;
         } else if (event.WindowUrgencyChanged) {
             const change = event.WindowUrgencyChanged;
             if (windows[change.id])

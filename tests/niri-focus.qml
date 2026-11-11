@@ -1,9 +1,10 @@
 // Drives the shell's niri (modules/quickshell/Niri.qml) through Quickshell
 // itself, telling it niri's events as its stream would. The keys moving,
 // to another window or to a workspace's other window while a layer holds
-// them, move `focused` and `current` and make no list again (`revision`),
-// while a window retitled, opened, closed or used still does. It exits 0
-// once every case holds, and otherwise 1, saying which didn't.
+// them, move `focused` and `current` and make no list again (`revision`);
+// a window used is kept, and makes no list again either;
+// and a window retitled, opened or closed still makes them again. It exits
+// 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -53,12 +54,11 @@ ShellRoot {
 
         Niri.hear({ WindowFocusTimestampChanged: { id: 2,
             focus_timestamp: { secs: 300, nanos: 0 } } });
-        Expect.expect("a window used is listed again", Niri.revision > listed,
-            "the revision stayed at " + listed);
-        const used = Niri.revision;
+        Expect.same("a list made again as a window was used", Niri.revision, listed);
+        Expect.same("its use kept", Niri.windows[2].focus_timestamp.secs, 300);
         Niri.hear({ WindowOpenedOrChanged: { window: window(2, "Letters", false, 300) } });
-        Expect.expect("a window retitled is listed again", Niri.revision > used,
-            "the revision stayed at " + used);
+        Expect.expect("a window retitled is listed again", Niri.revision > listed,
+            "the revision stayed at " + listed);
         const retitled = Niri.revision;
         Niri.hear({ WindowClosed: { id: 2 } });
         Expect.expect("a window closed is listed again", Niri.revision > retitled,

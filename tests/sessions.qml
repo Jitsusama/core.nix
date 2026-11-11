@@ -1,8 +1,8 @@
 pragma ComponentBehavior: Bound
 // Drives pi's sessions (modules/quickshell/Sessions.qml) through Quickshell
 // itself, with the machine's mycelium node stood in for over the daemon
-// interface it speaks, and niri, kitty's kitten and the notices stood in
-// too, over what sessions-state.sh lays out. The sessions are the
+// interface it speaks, the windows daemon told as its watch is, and niri,
+// kitty's kitten and the notices stood in too, over what sessions-state.sh lays out. The sessions are the
 // node's and nothing else's: a node not listening as the shell starts, as
 // when a switch restarts it, is said as not answering, with no session
 // guessed in its place, and is watched once it listens. Every window niri
@@ -31,6 +31,8 @@ pragma ComponentBehavior: Bound
 // of the node, its refusal said. One the node says is gone goes; a
 // change saying only what differs keeps the rest of what the node said,
 // and one to a running session tells nothing of the parked or closed;
+// the one whose window the windows daemon says was used last goes first,
+// and a window retitled makes no session's window again;
 // one the node says has ended goes; and a node lost leaves what it said
 // shown. It exits 0 once every case holds, and otherwise 1, saying which
 // didn't.
@@ -105,6 +107,27 @@ ShellRoot {
 
     Component.onCompleted: Qt.callLater(check)
 
+    // A window as the windows daemon serves it (modules/windows), with only
+    // what Sessions reads of it, and the title a row would say.
+    function windowRecord(id, pid, opened, fields) {
+        return Object.assign({ key: `window:${id}`, id, pid, opened,
+            title: "\u03c0 - Lighthouse", workspace: null, column: null, down: null, order: 0 },
+            fields ?? {});
+    }
+    // Tells Sessions' watch of the windows daemon, as the daemon does: its
+    // whole answer, or a change.
+    function windowsTell(said) {
+        Sessions.windowsFrom.said(JSON.stringify(Object.assign({ id: "all" }, said)));
+    }
+    // How often Sessions made its windows by process and app id again.
+    property int windowsMade: 0
+    Connections {
+        target: Sessions
+        function onNiriWindowsChanged() {
+            root.windowsMade += 1;
+        }
+    }
+
     function check() {
         try {
             if (stage === "unanswered")
@@ -134,6 +157,9 @@ ShellRoot {
         if (Sessions.node?.state !== "not answering")
             return;
         expect("no session while the node doesn't answer", addresses() === "", addresses());
+        // The same three windows niri's stand-in lists (checks.nix).
+        windowsTell({ records: [windowRecord(10, 500, "kitty"), windowRecord(20, 600, "kitty"),
+            windowRecord(21, 600, "pi-session.7", { workspace: 3, column: 2, down: 1 })] });
         stage = "listed";
         node.active = true;
     }
@@ -516,14 +542,33 @@ ShellRoot {
             + `${retold.closed - retoldBefore.closed}`);
         PiSource.showing = false;
         // niri opening OTHER2's window anew, by the app id its record names,
-        // changes its windows in place and says so by its revision alone, as
-        // Niri.qml does, and the session's window follows.
+        // is told by the windows daemon, and the session's window follows.
         const windows = Niri.windows;
         delete windows["21"];
         windows["23"] = { id: 23, pid: 600, title: "\u03c0 - Lighthouse", opened: "pi-session.7" };
-        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(23, 600, "pi-session.7")], gone: ["window:21"] });
         expect("a window opened anew by its app id is its session's once niri says so",
             find("OTHER2")?.window?.id === 23, JSON.stringify(find("OTHER2")?.window));
+        // A window used is told with when, and the one used last goes
+        // first.
+        const before = () => {
+            const order = Sessions.running.map(session => session.address);
+            return order.indexOf("NOWIN6") < order.indexOf("OTHER2");
+        };
+        const nowin = find("NOWIN6").window;
+        windowsTell({ changed: [Object.assign({}, nowin, { order: 200000 }),
+            windowRecord(23, 600, "pi-session.7", { order: 300000 })] });
+        expect("the session whose window was used last goes first", !before(),
+            Sessions.running.map(session => session.address).join(" "));
+        windowsTell({ changed: [Object.assign({}, nowin, { order: 400000 })] });
+        expect("and the other once its window is used", before(),
+            Sessions.running.map(session => session.address).join(" "));
+        // A window retitled, or the keys leaving it, makes nothing again.
+        const made = root.windowsMade;
+        windowsTell({ changed: [Object.assign({}, nowin, { order: 400000, title: "renamed",
+            focused: false })] });
+        expect("a window retitled makes no session's window again", root.windowsMade === made,
+            `made ${root.windowsMade - made} times`);
         stage = "ended";
         tell({ changed: [{ key: "session:s-OTHER2", state: "ended", standing: "closed",
             told: "0000000000000002" }] });

@@ -3189,8 +3189,8 @@ onLinux {
     '';
 
   # The shell's niri, told niri's events as its stream would, moves the keys
-  # without making any list again, and still lists a window retitled,
-  # opened, closed or used (tests/niri-focus.qml).
+  # and says a window used without making any list again, and still lists
+  # a window retitled, opened or closed (tests/niri-focus.qml).
   niri-moving-the-keys-makes-no-list-again =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
@@ -3308,7 +3308,8 @@ onLinux {
       # Three windows of the same title, one of kitty 500's and two of 600's,
       # the second opened as pi-session.7 and laid out in workspace 3's
       # second column, each with the app id it opened with kept, as Niri.qml
-      # keeps it.
+      # keeps it; the windows daemon tells of the same three
+      # (tests/sessions.qml).
       niri = singleton "Niri.qml" ''
         property var windows: ({
           "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse", opened: "kitty" },
@@ -3352,6 +3353,7 @@ onLinux {
       ${lib.getExe pkgs.bash} ${./tests/stand-ins/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./SessionWindows.js} SessionWindows.js
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
@@ -3419,6 +3421,7 @@ onLinux {
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${./tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./SessionWindows.js} SessionWindows.js
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml

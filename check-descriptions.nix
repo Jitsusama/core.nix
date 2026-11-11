@@ -1195,8 +1195,9 @@
     niri's unit asks for a laptop panel's saturation only where a machine sets one, by the name its patch reads
   '';
   niri-moving-the-keys-makes-no-list-again = ''
-    The shell's niri moves the keys, to a window or to a workspace's other window, without making
-    any list again, and still lists again a window retitled, opened, closed or used
+    The shell's niri moves the keys, to a window or to a workspace's other window, and keeps a
+    window used, without making any list again, and still lists again a window retitled, opened or
+    closed
   '';
   niri-names-each-screen-once = ''
     niri's config names each screen in one output block, the panel's holding srgb-gamut, and refuses a

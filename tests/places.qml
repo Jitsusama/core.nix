@@ -337,17 +337,16 @@ QtObject {
             [Places.mayBegin("", 5010), Places.mayBegin("{", 5010)], [true, true]);
 
         // A session moving onto pi's host keeps where its window was, as
-        // niri lays it out, so its viewer opens there once it runs hosted;
-        // one with no window, or none laid out yet, keeps nothing.
-        const laid = (workspace, column) => ({ id: 7, workspace_id: workspace,
-            layout: { pos_in_scrolling_layout: [column, 1] } });
+        // the windows daemon's record of it says, so its viewer opens there
+        // once it runs hosted; one with no window, or none laid out yet,
+        // keeps nothing.
+        const laid = (workspace, column) => ({ id: 7, workspace, column, down: 1 });
         expect("a window's place kept", Places.placeOf(laid(4, 3), 100),
             { workspace: 4, column: 3, at: 100 });
-        expect("a window floating keeps its workspace alone", Places.placeOf(
-            { id: 7, workspace_id: 4, layout: { pos_in_scrolling_layout: null } }, 100),
-            { workspace: 4, column: null, at: 100 });
+        expect("a window floating keeps its workspace alone",
+            Places.placeOf(laid(4, null), 100), { workspace: 4, column: null, at: 100 });
         expect("no window keeps nothing", [Places.placeOf(null, 100),
-            Places.placeOf({ id: 7, workspace_id: null }, 100)], [null, null]);
+            Places.placeOf(laid(null, null), 100)], [null, null]);
 
         // Each kept place is one viewer to open once its session runs
         // hosted with words to view it by, and then kept no more; one whose
