@@ -1,7 +1,9 @@
 //! What niri says of the desktop, heard event by event from its event
 //! stream, and the records the shell draws from it: a `window` record of
 //! each window, a `workspace` record of each workspace, and one `desktop`
-//! record of what holds the keys.
+//! record of what holds the keys; and for the few readers that draw them,
+//! a `cast` record of each screen or window niri casts, a `layout` record
+//! of each window's tile, and one `screenshot` record of the last taken.
 //!
 //! A record holds only what a row draws, or places it by, so a change
 //! niri tells that no row shows changes no record: a window resizing, or
@@ -13,6 +15,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde_json::{Value, json};
 
+use crate::capture::Captures;
 use crate::entries::{Entries, tidy};
 
 /// What hearing one event did.
@@ -36,6 +39,8 @@ pub struct Desktop {
     focused: Option<u64>,
     overview: bool,
     settings_failed: bool,
+    /// What's cast and shot of the screen.
+    captures: Captures,
 }
 
 fn id_of(value: &Value) -> Option<u64> {
@@ -165,7 +170,7 @@ impl Desktop {
                 }
             }
             "ConfigLoaded" => self.settings_failed = said["failed"] == true,
-            _ => return Heard::Nothing,
+            _ => return self.captures.hear(name, said),
         }
         Heard::Changed
     }
@@ -288,7 +293,28 @@ impl Desktop {
             "overview": self.overview,
             "settings_failed": self.settings_failed,
         }));
+        self.kept_records(&mut records);
         records
+    }
+
+    /// The records only a few readers draw from: each cast and the last
+    /// screenshot (`Captures`), and each window's tile as laid out, which
+    /// moves at every resize and scroll, so a watch is told it only when
+    /// it names `layout`.
+    fn kept_records(&self, records: &mut Vec<Value>) {
+        self.captures.records(records);
+        records.extend(
+            self.windows
+                .iter()
+                .filter(|(_, window)| window["layout"].is_object())
+                .map(|(id, window)| {
+                    let mut record = window["layout"].clone();
+                    record["key"] = json!(format!("layout:{id}"));
+                    record["order"] = json!(id);
+                    record["id"] = json!(id);
+                    record
+                }),
+        );
     }
 
     /// Each workspace's record, with the programs on it (`inside`, each
@@ -557,19 +583,48 @@ mod tests {
     }
 
     #[test]
-    fn a_layout_change_that_moves_no_column_changes_nothing() {
+    fn a_layout_change_that_moves_no_column_changes_only_its_tile() {
         let mut desktop = heard(BEGINNING);
         let before = records(&desktop);
         hear(
             &mut desktop,
             r#"{"WindowLayoutsChanged":{"changes":[[10,{"pos_in_scrolling_layout":[1,1],"tile_size":[900,800],"tile_pos_in_workspace_view":[-200,0]}]]}}"#,
         );
-        assert_eq!(changed(&before, &records(&desktop)), Vec::<String>::new());
+        let after = records(&desktop);
+        assert_eq!(changed(&before, &after), ["layout:10"]);
+        assert_eq!(after["layout:10"]["tile_size"], json!([900, 800]));
+        assert_eq!(
+            after["layout:10"]["tile_pos_in_workspace_view"],
+            json!([-200, 0])
+        );
         hear(
             &mut desktop,
             r#"{"WindowLayoutsChanged":{"changes":[[11,{"pos_in_scrolling_layout":[3,1],"tile_size":[640,800]}]]}}"#,
         );
-        assert_eq!(changed(&before, &records(&desktop)), ["window:11"]);
+        assert_eq!(
+            changed(&before, &records(&desktop)),
+            ["layout:10", "layout:11", "window:11"]
+        );
+    }
+
+    #[test]
+    fn a_cast_or_a_screenshot_changes_its_own_record_alone() {
+        // What each says is capture.rs's to prove; here, that the desktop
+        // hears them and changes no window for them.
+        let mut desktop = heard(BEGINNING);
+        let before = records(&desktop);
+        hear(
+            &mut desktop,
+            r#"{"CastStartedOrChanged":{"cast":{"stream_id":4,"kind":"WlrScreencopy","is_active":true,"target":{"Window":{"id":11}}}}}"#,
+        );
+        hear(
+            &mut desktop,
+            r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#,
+        );
+        assert_eq!(
+            changed(&before, &records(&desktop)),
+            ["cast:4", "screenshot"]
+        );
     }
 
     #[test]
@@ -606,10 +661,10 @@ mod tests {
         let before = records(&desktop);
         hear(&mut desktop, r#"{"WindowClosed":{"id":13}}"#);
         // A window closed elsewhere changes no other window's record, only
-        // what its workspace says is on it.
+        // what its workspace says is on it, and its tile goes with it.
         assert_eq!(
             changed(&before, &records(&desktop)),
-            ["workspace:2", "window:13"]
+            ["workspace:2", "layout:13", "window:13"]
         );
         hear(
             &mut desktop,
@@ -663,14 +718,18 @@ mod tests {
         );
         // A window opened on the empty last one makes it no longer new,
         // and changes no other workspace. Its title is its own, so no
-        // other window's column count (`alike`) moves.
+        // other window's column count (`alike`) moves; it comes with its
+        // tile.
         let before = said;
         hear(
             &mut desktop,
             r#"{"WindowOpenedOrChanged":{"window":{"id":14,"title":"~/notes","app_id":"foot","pid":103,"workspace_id":3,"is_focused":false,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[640,800]},"focus_timestamp":null}}}"#,
         );
         let after = records(&desktop);
-        assert_eq!(changed(&before, &after), ["window:14", "workspace:3"]);
+        assert_eq!(
+            changed(&before, &after),
+            ["layout:14", "window:14", "workspace:3"]
+        );
         assert_eq!(after["workspace:3"]["new"], false);
     }
 
@@ -697,7 +756,7 @@ mod tests {
     fn an_event_it_doesnt_follow_changes_nothing() {
         let mut desktop = heard(BEGINNING);
         assert_eq!(
-            desktop.hear(&json!({"ScreenshotCaptured": {"path": "/tmp/a.png"}})),
+            desktop.hear(&json!({"KeyboardLayoutsChanged": {"keyboard_layouts": {}}})),
             Heard::Nothing
         );
         assert_eq!(desktop.hear(&json!({"Ok": "Handled"})), Heard::Nothing);
