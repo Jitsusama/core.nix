@@ -193,7 +193,7 @@ fn run(
 /// hand needn't resume and pause again around its ask, which would let the
 /// follower in if the asker died between them.
 fn paused(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
-    following().then(|| held::paused(config)).flatten()
+    held::paused(config).filter(|_| following())
 }
 
 /// A built system whose switch waits for a hold to be given.
