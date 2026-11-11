@@ -40,7 +40,9 @@ function nested(groups, held, changed, gone) {
     }
     for (const key of changed.filter(named => rows[named])) {
         const parent = rows[key].parent ?? "";
-        const keys = now[parent] === groups[parent] ? now[parent].slice() : now[parent] ?? [];
+        // A list kept from before is copied, so the one before stays as it was.
+        const keys = now[parent] === undefined ? []
+            : now[parent] === groups[parent] ? now[parent].slice() : now[parent];
         keys.splice(after(keys, rows, rows[key].order), 0, key);
         now[parent] = keys;
     }

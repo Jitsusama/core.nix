@@ -139,10 +139,7 @@ impl Say<'_> {
 
     /// A count a second, whole once it's past ten.
     fn often(&self, count: f64) -> String {
-        format!(
-            "{}/s",
-            self.words.number(count, if count < 10.0 { 1 } else { 0 })
-        )
+        format!("{}/s", self.words.number(count, usize::from(count < 10.0)))
     }
 
     /// Two rates running opposite ways, each named, or none while both
