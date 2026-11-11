@@ -1,8 +1,9 @@
 // The disks the guard keeps from filling (modules/disk-guard): how much room
-// the worst of them has left and how the guard stands. It reads the status
-// files the account's guard and the machine's write in their runtime
-// directories, so it asks nothing, and a disk both watch is as the worse of
-// them says. While a disk is filling the guard is only doing its routine
+// the worst of them has left and how the guard stands. It hears what the
+// account's guard and the machine's write in their status files from the
+// machine daemon (Watchers.qml), so it reads no file and asks nothing, and a
+// disk both watch is as the worse of them says. While a disk is filling the
+// guard is only doing its routine
 // work, so the piece just says how much is free, unless the disk will be
 // nearly full within a day, when it's true and Now shows it with when
 // (Joel, 2026-10-26: Now shows a filling disk with its forecast). Any disk
@@ -22,7 +23,6 @@
 // holds what the guards measured filling the disks, for the launcher's
 // Disk to list.
 import qs
-import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../FileFacts.js" as FileFacts
@@ -31,7 +31,6 @@ import "Drawers.js" as Drawers
 Piece {
     id: piece
 
-    readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
     readonly property var bands: ["healthy", "filling", "nearly-full", "critically-full"]
     readonly property var said: [account.said, machine.said].filter(status => status !== null)
     readonly property var disks: {
@@ -251,17 +250,23 @@ Piece {
         return Drawers.span(seconds, Words.of("on:disk").said ?? {});
     }
 
-    // Each guard's status, the account's and the machine's.
-    StatusFile {
-        id: account
-        path: piece.settings.account ?? `${piece.runtime}/disk-guard/status.json`
-        silence: piece.settings.silence ?? 120
+    // Each guard's status, the account's and the machine's, as the machine
+    // daemon tells it: what it says, and whether it's gone quiet.
+    component Status: QtObject {
+        property var said: null
+        property bool silent: false
     }
 
-    StatusFile {
+    Status {
+        id: account
+        said: Watchers.guard
+        silent: Watchers.guardSilent
+    }
+
+    Status {
         id: machine
-        path: piece.settings.machine ?? "/run/disk-guard/status.json"
-        silence: piece.settings.silence ?? 120
+        said: Watchers.machineGuard
+        silent: Watchers.machineGuardSilent
     }
 
     // Each guard's unit, asked once each time its status goes quiet.

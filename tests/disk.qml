@@ -1,6 +1,7 @@
 // Drives the disk piece (modules/quickshell/pieces/Disk.qml) through
-// Quickshell itself, over status files written where the test tells the
-// piece the guards write theirs, with niri stood in for: healthy disks are
+// Quickshell itself, over status files written where the guards write
+// theirs on a machine of the check's own (MACHINE_ROOT), which the machine
+// daemon tells the piece, with niri stood in for: healthy disks are
 // shown but not true, a filling disk says how much is free and the pass
 // that left it short but asks for nothing, a nearly full one is a warning
 // that still asks for nothing, a critically full one wants Joel with
@@ -27,6 +28,7 @@ ShellRoot {
     id: root
 
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
+    readonly property string machineRoot: Quickshell.env("MACHINE_ROOT")
     readonly property real gib: 2 ** 30
     readonly property real now: Date.now() / 1000
 
@@ -206,8 +208,6 @@ ShellRoot {
     Disk {
         id: piece
         settings: ({
-            account: `${root.runtime}/account.json`,
-            machine: `${root.runtime}/machine.json`,
             accountUnit: ["cat", `${root.runtime}/account-unit`],
             machineUnit: ["cat", `${root.runtime}/machine-unit`]
         })
@@ -230,13 +230,13 @@ ShellRoot {
 
     FileView {
         id: account
-        path: `${root.runtime}/account.json`
+        path: `${root.machineRoot}/run/user/1000/disk-guard/status.json`
         printErrors: false
     }
 
     FileView {
         id: machine
-        path: `${root.runtime}/machine.json`
+        path: `${root.machineRoot}/run/disk-guard/status.json`
         printErrors: false
     }
 

@@ -2,9 +2,10 @@
 // one word for it, listed last in Machine, after Disk, since what it
 // points at is the processor, the memory and the disk (Joel,
 // 2026-10-28). lag-watch (modules/lag-watch) writes its last ten
-// seconds to a file as each ends; it's read when asked, so nothing is
-// spawned, and watched only until its first ten seconds are written. A
-// machine without lag-watch has no Waits (home.nix).
+// seconds to a file as each ends, which the machine daemon tells the
+// shell as it's renamed in (Watchers.qml), so nothing is spawned or read
+// here, and it's answered again only until its first ten seconds are
+// told. A machine without lag-watch has no Waits (home.nix).
 //
 // Joel, 2026-10-25: "computer lag is confusing as well, i don't really
 // understand what it is trying to say or what i can do about it." So it
@@ -16,8 +17,6 @@
 // builds and jobs are running, which goes to the queue. Nothing is named
 // by a program's name, and no figure needs knowing what a percentile is.
 import qs
-import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Numbers.js" as Numbers
 
@@ -89,7 +88,7 @@ Provider {
     property bool first: false
 
     function told() {
-        const window = parsed(read(status));
+        const window = Watchers.lag;
         provider.first = !window || !Array.isArray(window.trouble);
         if (provider.first)
             return { headline: said("first"), copy: "", rows: [], whole: true, gone: true };
@@ -121,12 +120,12 @@ Provider {
         return { headline: headline, rows: rows, note: note };
     }
 
-    FileView {
-        id: status
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/lag-watch/status.json`
-        blockLoading: true
-        printErrors: false
-        watchChanges: provider.first
-        onFileChanged: provider.answered()
+    Connections {
+        target: Watchers
+        enabled: provider.first
+
+        function onLagChanged() {
+            provider.answered();
+        }
     }
 }

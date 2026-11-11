@@ -213,6 +213,7 @@ let
     "Notices.qml"
     "Forward.js"
     "Daemon.qml"
+    "Watchers.qml"
     "AgentSources.qml"
     "PiSource.qml"
     "PiSource.js"
