@@ -1,6 +1,6 @@
 """Hold each list the launcher shows to its kind's one order (docs/design.md, Lists).
 
-modules/quickshell/checks.nix runs this with the folders the launcher's places are in: the
+modules/quickshell/checks/core.nix runs this with the folders the launcher's places are in: the
 launcher's own and the people module's. Each place named below sorts its rows by its kind's order
 from launcher/Order.js, which tests/order.qml holds to the rule. No sort in those folders breaks a
 tie A to Z by hand, since A to Z is only ever Order.js's last tie (RSCH-20261030-GB56HX found

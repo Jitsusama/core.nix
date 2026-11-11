@@ -1,20 +1,19 @@
 """The account's whole shell on a nested niri, for checks that type into the launcher.
 
-modules/quickshell/checks.nix runs a file of tests through pytest inside
-tests/nested-niri.sh, in the build sandbox: the shell's own QML on niri's real
-surfaces, typed at through wtype, in seconds rather than a machine booted for
-it. wtype's keys reach the surface holding the keyboard, the launcher's or the
-held notices', but never niri's binds, so what a bind runs is run instead, and
-nothing of a machine's is here: no battery, backlight, system services or
-other programs, only the machine daemon over the sandbox's own /proc when
-the check gives it as MACHINE, the programs daemon over the entries here when
-it gives that as PROGRAMS, warp holding WARP's link when it gives that
-as WARP, and the meaning daemon's stand-in when it gives that as MEANING.
-A case needing any of those stays in the
-desktop's VM tests (tests/desktop/); one that only types and reads the
-launcher comes here. The helpers keep desktop_session.Desktop's names, so a
-case moves between the two with few words changed: keys are pressed on the
-shell, since there's no machine.
+modules/quickshell/checks/helpers.nix's launcherOnNiri runs a file of tests
+through pytest inside tests/nested-niri.sh, in the build sandbox: the shell's
+own QML on niri's real surfaces, typed at through wtype, in seconds rather than
+a machine booted for it. wtype's keys reach the surface holding the keyboard,
+the launcher's or the held notices', but never niri's binds, so what a bind runs
+is run instead, and nothing of a machine's is here: no battery, backlight,
+system services or other programs, only the machine daemon over the sandbox's
+own /proc when the check gives it as MACHINE, the programs daemon over the
+entries here when it gives that as PROGRAMS, warp holding WARP's link when it
+gives that as WARP, and the meaning daemon's stand-in when it gives that as
+MEANING. A case needing any of those stays in the desktop's VM tests
+(tests/desktop/); one that only types and reads the launcher comes here. The
+helpers keep desktop_session.Desktop's names, so a case moves between the two
+with few words changed: keys are pressed on the shell, since there's no machine.
 """
 
 from __future__ import annotations

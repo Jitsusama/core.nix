@@ -1,6 +1,6 @@
 """Super+V's paste lands while the shell's thread is busy, on niri.
 
-modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh, with the
+modules/quickshell/checks/clipboard.nix runs this through pytest in tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run and the store's own clipboard history beside it.
 After an opening, the shell's thread can be busy for seconds, and a paste waited on it twice:
 the window pasted into read the copy from Qt's clipboard, which the shell's thread fills, and
