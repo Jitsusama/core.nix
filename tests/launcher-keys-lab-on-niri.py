@@ -118,34 +118,57 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     """
     root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
     places: dict[str, str] = {}
+    # The launcher's search function, whose every call is a span of its own, `search`, beside
+    # those the shell marks, since the profiler's own trace may keep no message.
+    searching: set[str] = set()
     for event in root.iter("event"):
         where = Path(event.findtext("filename") or "").name
         kind = event.findtext("type") or ""
         details = (event.findtext("details") or "").replace("\n", " ")[:60]
         places[event.get("index", "")] = f"{kind} {where}:{event.findtext('line')} {details}"
+        if where == "Launcher.qml" and details == "search":
+            searching.add(event.get("index", ""))
     spans: dict[str, dict[str, Spent]] = defaultdict(lambda: defaultdict(Spent))
     span = ""
-    # The ranges still open where the next starts: when each ends, and its place's tally.
-    held: list[tuple[int, Spent | None]] = []
+    search_ends = 0
+    # The ranges still open where the next starts: when each ends, and its places' tallies.
+    held: list[tuple[int, list[Spent]]] = []
     for each in sorted(root.iter("range"), key=lambda one: int(one.get("startTime", "0"))):
         start = int(each.get("startTime", "0"))
         text = each.get("text")
         if text is not None:
             span = text.split()[1] if text.startswith("lab-span ") else ""
             continue
+        index = each.get("eventIndex", "")
+        ends = start + int(each.get("duration", "0"))
         took = int(each.get("duration", "0")) / 1e6
         while held and held[-1][0] <= start:
             held.pop()
-        if held and held[-1][1] is not None:
-            held[-1][1].own -= took
-        tally = None
-        if span:
-            tally = spans[span][places.get(each.get("eventIndex", ""), "?")]
+        for parent in held[-1][1] if held else []:
+            parent.own -= took
+        named = [name for name in (span, "search" if start < search_ends else "") if name]
+        tallies = [spans[name][places.get(index, "?")] for name in named]
+        for tally in tallies:
             tally.count += 1
             tally.own += took
             tally.whole += took
-        held.append((start + int(each.get("duration", "0")), tally))
+        if index in searching and start >= search_ends:
+            search_ends = ends
+        held.append((ends, tallies))
     return spans
+
+
+def census(trace: Path) -> list[str]:
+    """Give how many events and ranges of each kind the trace holds, and a range of each."""
+    root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
+    kinds = {one.get("index", ""): one.findtext("type") or "" for one in root.iter("event")}
+    counted: dict[str, int] = defaultdict(int)
+    sample: dict[str, str] = {}
+    for each in root.iter("range"):
+        kind = kinds.get(each.get("eventIndex", ""), "?")
+        counted[kind] += 1
+        sample.setdefault(kind, str(each.attrib))
+    return [f"{kind}: {count} ranges, as {sample[kind]}" for kind, count in counted.items()]
 
 
 def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str]) -> None:
@@ -156,6 +179,8 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
     """
     spans = profiled(trace) if trace.exists() else {}
     with capsys.disabled():
+        for line in census(trace) if trace.exists() else []:
+            print(f"lab-profile held {line}", flush=True)
         if not spans:
             for line in said:
                 print(f"lab-profile said: {line}", flush=True)
