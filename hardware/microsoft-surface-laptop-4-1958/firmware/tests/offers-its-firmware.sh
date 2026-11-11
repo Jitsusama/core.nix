@@ -46,7 +46,7 @@ env HOME="$PWD" FWUPD_SYSCONFDIR="$PWD/etc" FWUPD_LOCALSTATEDIR="$PWD/state" \
   CACHE_DIRECTORY="$PWD/cache" FWUPD_SYSFSFWDIR="$PWD/firmware" \
   FWUPD_UEFI_ESP_PATH="$PWD/esp" FWUPD_UEFI_TEST=1 \
   "$fwupd/bin/fwupdtool" --plugins uefi_capsule get-updates --json >updates.json 2>fwupd.log ||
-  fail "fwupdtool found no updates: $(cat fwupd.log)"
+  fail "fwupdtool found no updates: $(< fwupd.log)"
 
 offered=$("$jq" -r '[.Devices[] | select(.Releases | length > 0)
   | "\(.Guid[0]) \(.Version) \(.Releases[0].Version) \(.Releases[0].Flags | sort | join(","))"]

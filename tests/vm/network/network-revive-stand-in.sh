@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2310 # reaches is a test, read in a condition.
 # Stands in for a service that needs the network: it starts only while the
 # uplink reaches 10.0.0.53, then runs until stopped. QEMU's own network is
 # on another link networkd keeps up throughout, with a default route, so the
@@ -25,7 +26,9 @@ LOOKS=1000
 ASK_AGAIN=100
 
 reaches() {
-  [[ $(ip -o route get 10.0.0.53 2> /dev/null) == *" dev uplink "* ]]
+  local route
+  route=$(ip -o route get 10.0.0.53 2> /dev/null) || return 1
+  [[ $route == *" dev uplink "* ]]
 }
 
 # Asks systemd to execute itself again, without waiting, since it answers
