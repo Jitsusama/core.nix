@@ -26,6 +26,8 @@ COPYING = timedelta(minutes=1)
 # How long root's prover may take to drop a builder it never reaches: two proofs, a minute
 # apart, each failing within 45 s.
 PROVING = timedelta(minutes=3)
+# How long the keeper may take to end once idle: a minute unasked.
+KEEPER_IDLES = timedelta(minutes=2)
 
 
 def carried(key: str) -> str:
@@ -128,6 +130,40 @@ def test_root_alone_says_how_the_standing_builder_stands(
     assert owners == ["root", "root"], owners
     lending.fail(f"runuser -u someone -- sh -c ': >> {said}'")
     lending.fail("runuser -u someone -- touch /run/nix-offload-standing/health.writing")
+
+
+def test_what_passed_is_kept_where_the_account_can_remove_none_of_it(
+    lending: BaseMachine, values: dict[str, Any]
+) -> None:
+    """The account has the keeper keep what passed, reads it, and can remove only a commit's."""
+    kept, socket = "/var/lib/nix-offload-passed", "/run/nix-offload-keep.sock"
+    first, second = "a" * 40, "b" * 40
+    lending.wait_for_unit("nix-offload-keep.socket")
+
+    def ask(asked: str) -> str:
+        command = f"printf %s {shlex.quote(asked)} | {values['socat']} -t5 - UNIX-CONNECT:{socket}"
+        return lending.succeed(f"runuser -u someone -- sh -c {shlex.quote(command)}")
+
+    for commit in (first, second):
+        said = ask(f'{{"keep":"{commit}","lines":[{{"check":"checks.x.a"}}]}}')
+        assert said == "ok\n", said
+    said = ask('{"keep":"abc","lines":[{"check":"checks.x.a"}]}')
+    assert said.startswith("refused"), said
+    # Readers take the keeper's folder while its socket's unit is there.
+    lending.succeed("test -e /etc/systemd/system/nix-offload-keep.socket")
+    record = lending.succeed(f"runuser -u someone -- cat {kept}/{first}")
+    assert record == '{"check":"checks.x.a"}\n', record
+    owners = lending.succeed(f"stat -c %U {kept} {kept}/{first}").split()
+    assert owners == ["nix-offload-passed", "nix-offload-passed"], owners
+
+    lending.fail(f"runuser -u someone -- rm -rf {kept}/{first} {kept}/{second}")
+    lending.fail(f"runuser -u someone -- sh -c ': > {kept}/{first}'")
+    lending.succeed(f"test -s {kept}/{first} && test -s {kept}/{second}")
+
+    lending.succeed(f"runuser -u someone -- {values['offload']} passed forget {first}")
+    lending.succeed(f"test ! -e {kept}/{first} && test -s {kept}/{second}")
+    # Asked nothing for a minute, it ends, and its socket starts it again when next asked.
+    lending.wait_until_fails("systemctl is-active nix-offload-keep.service", timeout=KEEPER_IDLES)
 
 
 def test_nothing_lent_takes_the_lent_line_away(lending: BaseMachine, standing: str) -> None:

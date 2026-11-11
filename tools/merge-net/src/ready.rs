@@ -6,12 +6,13 @@
 //! named each at its merge, but one branch was built before main gained
 //! what it collided with, and the others built only some of what was named,
 //! or nothing. Both show in nix-offload's record of what passed at each
-//! commit (`~/.local/state/nix-offload/passed/COMMIT`), which keeps a line
+//! commit (`/var/lib/nix-offload-passed/COMMIT` where its keeper stands,
+//! else `~/.local/state/nix-offload/passed/COMMIT`), which keeps a line
 //! for each changed-checks run sent that passed, with its arguments.
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::apart::{apart, checks_apart, descriptions_apart};
 
@@ -301,12 +302,29 @@ pub fn recent_records() -> Vec<String> {
     kept.into_iter().map(|(_, name)| name).collect()
 }
 
-/// The file nix-offload keeps what passed at `commit` in.
-pub fn record_of(commit: &str) -> Option<PathBuf> {
+/// Where nix-offload's keeper keeps what passed, which only it may change,
+/// as nix-offload's `keep::FOLDER` names it.
+const KEPT: &str = "/var/lib/nix-offload-passed";
+
+/// The keeper's socket unit, as `keep::UNIT` names it: there while the
+/// machine runs the keeper, so a folder one left behind isn't read.
+const KEEPER: &str = "/etc/systemd/system/nix-offload-keep.socket";
+
+/// nix-offload's folder under the account's state.
+pub fn offload_state() -> Option<PathBuf> {
     let state = env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))?;
-    Some(state.join("nix-offload/passed").join(commit))
+    Some(state.join("nix-offload"))
+}
+
+/// The file nix-offload keeps what passed at `commit` in: its keeper's,
+/// where the machine has one, else the account's own.
+pub fn record_of(commit: &str) -> Option<PathBuf> {
+    if Path::new(KEEPER).exists() {
+        return Some(Path::new(KEPT).join(commit));
+    }
+    Some(offload_state()?.join("passed").join(commit))
 }
 
 /// What nix-offload kept as passed at `commit`, or nothing.

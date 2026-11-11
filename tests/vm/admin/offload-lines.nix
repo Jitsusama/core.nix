@@ -4,7 +4,9 @@
 # cloud (a stand-in, offload-lines-gcloud.sh) whether the lent instance is
 # as its maker made it and for its host key, and passes root only the
 # lines naming a builder it trusts, in a file the lender's account can't
-# write. The tests are offload-lines-vm-test.py,
+# write. The account asks nix-offload's keeper to keep what passed, in a
+# folder it reads and can't remove a record from. The tests are
+# offload-lines-vm-test.py,
 # which pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
@@ -19,9 +21,13 @@ let
     runtimeInputs = [ pkgs.jq ];
     text = builtins.readFile ./offload-lines-gcloud.sh;
   };
-  # What the tests need from Nix, in one file, their `values` fixture.
+  nixOffload = pkgs.callPackage ../../../modules/nix-offload/offload/package.nix { };
+  # What the tests need from Nix, in one file, their `values` fixture: the
+  # account's nix-offload, and socat to ask the keeper as anything could.
   values = pkgs.writeText "offload-lines-values.json" (
     builtins.toJSON {
+      offload = pkgs.lib.getExe nixOffload;
+      socat = pkgs.lib.getExe pkgs.socat;
       inherit
         lentKey
         standingKey

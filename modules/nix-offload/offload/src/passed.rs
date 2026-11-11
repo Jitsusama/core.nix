@@ -13,15 +13,20 @@
 //!
 //! A commit names every input of a flake at it, its lock included, so a
 //! check that passed at it passes there again. Each commit has a file of
-//! its own in `nix-offload/passed` under XDG's state folder, a line of
-//! JSON for each pass, and its folder in the repository where it's not
-//! the top; nothing that failed is kept. Subtests run again copy the
-//! pictures from where the last run put them, while those are there.
-//! Removing a commit's file has it built again.
+//! its own, a line of JSON for each pass, and its folder in the repository
+//! where it's not the top; nothing that failed is kept. Subtests run again
+//! copy the pictures from where the last run put them, while those are
+//! there. The files are the keeper's where the machine runs it
+//! (`keep.rs`), which no session can remove or rewrite, and otherwise in
+//! `nix-offload/passed` under XDG's state folder.
+//! `nix-offload passed forget COMMIT` has a commit's checks built again.
 
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use crate::keep;
 
 /// Where a flake is in a repository: the commit, and the folder within it
 /// when not its top.
@@ -71,16 +76,50 @@ impl At {
     }
 }
 
-/// The record of what passed, in its folder.
+/// The record of what passed, in its folder, and the keeper that writes
+/// it, where one does.
 pub struct Passed {
     folder: PathBuf,
+    keeper: Option<PathBuf>,
 }
 
 impl Passed {
-    /// The record under the state folder `state`.
+    /// The record this machine keeps: its keeper's where it runs one, else
+    /// the one under the state folder `state`.
+    pub fn here(state: &Path) -> Self {
+        if keep::stands() {
+            Self::kept(Path::new(keep::FOLDER), Path::new(keep::SOCKET))
+        } else {
+            Self::under(state)
+        }
+    }
+
+    /// The record under the state folder `state`, written here.
     pub fn under(state: &Path) -> Self {
         Self {
             folder: state.join("nix-offload/passed"),
+            keeper: None,
+        }
+    }
+
+    /// The record in `folder`, which the keeper at `socket` writes.
+    pub fn kept(folder: &Path, socket: &Path) -> Self {
+        Self {
+            folder: folder.to_owned(),
+            keeper: Some(socket.to_owned()),
+        }
+    }
+
+    /// Remove what passed at `commit`, so its checks build again.
+    pub fn forget(&self, at: &At) -> Result<(), String> {
+        match &self.keeper {
+            Some(keeper) => keep::ask(keeper, &serde_json::json!({ "forget": at.commit })),
+            None => match fs::remove_file(self.file(at)) {
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                    Err(error.to_string())
+                }
+                _ => Ok(()),
+            },
         }
     }
 
@@ -172,6 +211,16 @@ impl Passed {
         if lines.is_empty() {
             return;
         }
+        if let Some(keeper) = &self.keeper {
+            let asked = serde_json::json!({ "keep": at.commit, "lines": lines });
+            if let Err(why) = keep::ask(keeper, &asked) {
+                eprintln!(
+                    "nix-offload: couldn't keep what passed at {}: {why}",
+                    at.short()
+                );
+            }
+            return;
+        }
         let mut text = String::new();
         for line in lines {
             text.push_str(&line.to_string());
@@ -187,6 +236,63 @@ impl Passed {
                 file.display()
             );
         }
+    }
+}
+
+/// `nix-offload passed forget COMMIT`: have a commit's checks built again.
+pub fn forgetting(state: &Path, commit: &str) -> ExitCode {
+    let Some(at) = At::new(commit, None) else {
+        eprintln!("nix-offload: passed forget needs a whole commit, not {commit}");
+        return ExitCode::from(64);
+    };
+    match Passed::here(state).forget(&at) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(why) => {
+            eprintln!(
+                "nix-offload: couldn't forget what passed at {}: {why}",
+                at.short()
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `nix-offload passed import`: hand the keeper, once it stands, the
+/// records kept under the state folder before it did, those it lacks.
+pub fn importing(state: &Path) -> ExitCode {
+    let kept = Passed::here(state);
+    let Some(keeper) = &kept.keeper else {
+        eprintln!("nix-offload: this machine runs no keeper to hand records to");
+        return ExitCode::from(69);
+    };
+    let own = Passed::under(state);
+    let (mut handed, mut failed) = (0, false);
+    for entry in fs::read_dir(&own.folder).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(at) = At::new(&name, None) else {
+            continue;
+        };
+        if kept.file(&at).exists() {
+            continue;
+        }
+        let lines: Vec<serde_json::Value> = fs::read_to_string(entry.path())
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect();
+        match keep::ask(keeper, &serde_json::json!({ "keep": name, "lines": lines })) {
+            Ok(()) => handed += 1,
+            Err(why) => {
+                eprintln!("nix-offload: couldn't hand over {}: {why}", at.short());
+                failed = true;
+            }
+        }
+    }
+    println!("nix-offload: handed the keeper {handed} commits' records");
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
     }
 }
 
@@ -279,5 +385,42 @@ mod tests {
         );
         fs::remove_dir(&first).unwrap();
         assert_eq!(passed.subtests(&at, "run a"), None, "none is left");
+    }
+
+    #[test]
+    fn a_kept_record_is_written_and_forgotten_by_its_keeper_alone() {
+        let place = tempfile::tempdir().unwrap();
+        let (socket, folder) = (place.path().join("keep.sock"), place.path().join("kept"));
+        fs::create_dir(&folder).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let answers = folder.clone();
+        let keeper = std::thread::spawn(move || {
+            keep::serve(&listener, &answers, std::time::Duration::from_millis(500));
+        });
+        let passed = Passed::kept(&folder, &socket);
+        let at = At::new(COMMIT, None).unwrap();
+        passed.keep_checks(&at, &["checks.x.a".to_owned()]);
+        assert_eq!(
+            passed.checks(&at),
+            ["checks.x.a"],
+            "the keeper didn't keep it"
+        );
+        assert_eq!(passed.forget(&at), Ok(()), "the keeper didn't forget it");
+        assert_eq!(
+            passed.checks(&at),
+            [] as [String; 0],
+            "a forgotten commit still had its checks"
+        );
+        keeper.join().unwrap();
+    }
+
+    #[test]
+    fn a_forgotten_record_here_is_built_again() {
+        let state = tempfile::tempdir().unwrap();
+        let passed = Passed::under(state.path());
+        let at = At::new(COMMIT, None).unwrap();
+        passed.keep_checks(&at, &["checks.x.a".to_owned()]);
+        assert_eq!(passed.forget(&at), Ok(()), "it wasn't forgotten");
+        assert!(!passed.file(&at).exists(), "its file stayed");
     }
 }

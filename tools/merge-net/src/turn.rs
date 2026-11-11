@@ -241,7 +241,7 @@ fn ticks(pid: u32) -> Option<u64> {
 
 /// The folder nix-offload says its gates going in.
 pub fn folder() -> Option<PathBuf> {
-    Some(crate::ready::record_of("")?.parent()?.join("running"))
+    Some(crate::ready::offload_state()?.join("running"))
 }
 
 #[cfg(test)]

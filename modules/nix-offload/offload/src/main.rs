@@ -156,6 +156,7 @@ mod finishing;
 mod freeing;
 mod held;
 mod journal;
+mod keep;
 mod kept;
 mod lines;
 mod machines;
@@ -260,6 +261,8 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload lines --config PATH \
                     | nix-offload prove-standing --config PATH \
+                    | nix-offload keep --folder DIR \
+                    | nix-offload passed (forget COMMIT | import) \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload progress HOST \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
@@ -515,6 +518,23 @@ fn main() -> ExitCode {
     }
     if arguments.first().map(String::as_str) == Some("prove-standing") {
         return proving_standing(given("--config"));
+    }
+    if arguments.first().map(String::as_str) == Some("keep") {
+        return keep::keeping(given("--folder"));
+    }
+    match arguments
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["passed", "forget", commit] => return passed::forgetting(&state(), commit),
+        ["passed", "import"] => return passed::importing(&state()),
+        ["passed", ..] => {
+            eprintln!("nix-offload: passed takes forget COMMIT or import\n{USED}");
+            return ExitCode::from(64);
+        }
+        _ => {}
     }
     if arguments.first().map(String::as_str) == Some("stand") {
         let (standing, beside) = (given("--standing"), given("--beside"));
@@ -1107,7 +1127,7 @@ struct Kept {
 impl Kept {
     fn of(asked: &there::Asked) -> Self {
         Self {
-            passed: passed::Passed::under(&state()),
+            passed: passed::Passed::here(&state()),
             checks: asked.kept_at(),
             subtests: asked.subtests_at(),
         }
@@ -1123,10 +1143,11 @@ impl Kept {
             if same || there::copied(&before, out) == 0 {
                 eprintln!(
                     "nix-offload: these subtests passed at {} already, so they aren't run again; \
-                     their pictures are copied from {}, and removing {} has them run again",
+                     their pictures are copied from {}, and `nix-offload passed forget {}` \
+                     has them run again",
                     at.short(),
                     before.display(),
-                    self.passed.file(at).display()
+                    at.commit
                 );
                 there::note_already(journal, now(), &asked, asked.attributes());
                 return None;
@@ -1152,8 +1173,8 @@ impl Kept {
             );
         }
         eprintln!(
-            "nix-offload: removing {} has it built again",
-            self.passed.file(at).display()
+            "nix-offload: `nix-offload passed forget {}` has it built again",
+            at.commit
         );
         there::note_already(journal, now(), &asked, &already);
         asked.without(&already)
@@ -1376,7 +1397,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let arguments = arguments.as_slice();
     // The same run at a commit where it passed passes again, so it's said
     // again rather than evaluated and built anew (`passed.rs`).
-    let passed = passed::Passed::under(&state());
+    let passed = passed::Passed::here(&state());
     let at = there::at_of(&source);
     if let Some(at) = &at
         && let Some(printed) = passed.run(at, arguments)
@@ -1385,10 +1406,10 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         print!("{printed}");
         eprintln!(
             "nix-offload: changed-checks {} passed at {} already, so nothing is evaluated \
-             or built again; removing {} has it run again",
+             or built again; `nix-offload passed forget {}` has it run again",
             arguments.join(" "),
             at.short(),
-            passed.file(at).display()
+            at.commit
         );
         return ExitCode::SUCCESS;
     }
