@@ -1123,6 +1123,24 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's selection, and the list's scroll with it, lands within
+  # 50 ms of its key: tests/glide.qml holds Glide.js to it in Qt's own
+  # engine.
+  the-selection-lands-within-50-ms-of-its-key =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-selection-lands-within-50-ms-of-its-key" { } ''
+      cp ${../../tests/glide.qml} glide.qml
+      cp ${./Glide.js} Glide.js
+      cp ${../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml glide.qml
+      touch $out
+    '';
+
   # For You's :filter narrows to a kind and a source, by their words, as
   # VKCF3Z ruled it; tests/for-you-filter.qml holds launcher/ForYouFilter.js
   # to it in Qt's own engine.

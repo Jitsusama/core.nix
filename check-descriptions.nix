@@ -2319,6 +2319,10 @@
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
     only what changed: nothing on a refresh in the place they stay in, each change once on a step
   '';
+  the-selection-lands-within-50-ms-of-its-key = ''
+    the launcher's selection glides 30 ms after a key just pressed, shorter after one already late,
+    and not at all after one too late for a frame of glide, so however late it lands within 50 ms
+  '';
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
     newest, none already shown above it, an undated source after the dated in its own order, and

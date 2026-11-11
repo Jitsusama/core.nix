@@ -58,6 +58,7 @@ import "Fuzzy.js" as Fuzzy
 import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Finding.js" as Finding
+import "Glide.js" as Glide
 import "Confirm.js" as Confirm
 import "Changes.js" as Changes
 import "QueryKeys.js" as QueryKeys
@@ -9275,10 +9276,18 @@ Scope {
 
                             // The launcher's one motion is the selection
                             // moving to its row, the list scrolling with it
-                            // on the same timing, the theme's medium on its
-                            // curve (the launcher audit's finding 33, Joel's
-                            // yes on 2026-10-26: it jumped, and the list
-                            // snapped a row at a time). Only a move among the
+                            // on the same timing, on the theme's curve (the
+                            // launcher audit's finding 33, Joel's yes on
+                            // 2026-10-26: it jumped, and the list snapped a
+                            // row at a time). The launcher's selection, and
+                            // the list's scroll with it, lands within 50 ms
+                            // of the key, a short glide on the curve, since a
+                            // highlight still moving once Joel has read its
+                            // row is lag (2026-11-10): Glide.js says how
+                            // long, shorter for a key already late, and none
+                            // for one too late for a frame of it, where the
+                            // theme's medium, 150 ms, ended 100 ms past the
+                            // bar. Only a move among the
                             // same rows glides: rows made afresh, by a letter,
                             // a step or a refresh, are a new list, and its
                             // selection is where it is at once, so typing
@@ -9365,22 +9374,36 @@ Scope {
                                 return Math.max(least, Math.min(to, most));
                             }
 
+                            // How long a glide set going now runs, from
+                            // when the key moving it was pressed and the
+                            // panel's frame (Glide.js): none for a key too
+                            // late for a frame of glide.
+                            function lasting() {
+                                const pressed = KeyTimes.pressed();
+                                const rate = card.Screen.refreshRate;
+                                return Glide.lasting(pressed > 0 ? KeyTimes.now() - pressed : 0,
+                                    1000 / (rate > 0 ? rate : 60));
+                            }
+
                             function pick(glide) {
                                 const to = list.fillAt(root.current);
                                 picking.stop();
-                                if (glide && to !== list.pickY) {
-                                    Report.say(`glides ${Math.round(list.pickY)} to ${Math.round(to)}`);
+                                const lasts = glide && to !== list.pickY ? list.lasting() : 0;
+                                if (lasts > 0) {
+                                    Report.say(`glides ${Math.round(list.pickY)} to `
+                                        + `${Math.round(to)} in ${lasts} ms`);
+                                    picking.duration = lasts;
                                     picking.to = to;
                                     picking.start();
                                 } else
                                     list.pickY = to;
                             }
 
+                            // Its duration is set by each glide (pick).
                             NumberAnimation {
                                 id: picking
                                 target: list
                                 property: "pickY"
-                                duration: Theme.motion.medium
                                 easing.type: Easing.BezierSpline
                                 easing.bezierCurve: Theme.motion.curve
                             }
@@ -9464,13 +9487,19 @@ Scope {
                                 const from = scrolling.running ? scrolling.to : list.contentY;
                                 if (to === from)
                                     return;
-                                if (!list.settled) {
+                                // On the selection's timing, so the two land
+                                // together; a key too late for a frame of
+                                // glide scrolls at once.
+                                const lasts = list.settled ? list.lasting() : 0;
+                                if (lasts === 0) {
                                     scrolling.stop();
+                                    list.aim = null;
                                     list.contentY = to;
                                     return;
                                 }
                                 list.aim = aim;
                                 scrolling.stop();
+                                scrolling.duration = lasts;
                                 scrolling.to = to;
                                 scrolling.start();
                             }
@@ -9513,11 +9542,12 @@ Scope {
                                 list.glide({ shown: at }, list.showing(at, from));
                             }
 
+                            // Its duration is set by each glide (glide), and
+                            // a glide aimed again keeps it.
                             NumberAnimation {
                                 id: scrolling
                                 target: list
                                 property: "contentY"
-                                duration: Theme.motion.medium
                                 easing.type: Easing.BezierSpline
                                 easing.bezierCurve: Theme.motion.curve
                                 // Ended within the rows, should they have
