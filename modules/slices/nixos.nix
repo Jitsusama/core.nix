@@ -457,9 +457,12 @@ in
           # Its capability can't turn to taking real time.
           RestrictRealtime = true;
           ProtectSystem = "strict";
-          # Where the account's niri listens, and the stamps of when each
-          # window was last read back.
-          ReadWritePaths = [ "/run/user" ];
+          # Root's own stamps of when each window was last read back, out of
+          # its account's reach. Every instance shares the one folder, so
+          # one instance ending mustn't take it from the others.
+          RuntimeDirectory = "memory-swap-in";
+          RuntimeDirectoryMode = "0700";
+          RuntimeDirectoryPreserve = true;
           PrivateTmp = true;
           PrivateDevices = true;
           PrivateNetwork = true;
