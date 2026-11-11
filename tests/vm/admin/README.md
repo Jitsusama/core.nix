@@ -2,13 +2,14 @@
 
 What a machine lets its administrators do and how it keeps itself in hand,
 on machines booted in QEMU: switching and updating its system, tuning its
-memory and its slices, tracing niri, stopping libvirt at once, putting a
-check's VM ahead of the builds beside it, and giving root only the builders
-it trusts. Each test's opening comment says what it proves and what stands
-in for what a VM lacks.
+memory and its slices, asking before firmware is written, tracing niri,
+stopping libvirt at once, putting a check's VM ahead of the builds beside
+it, and giving root only the builders it trusts. Each test's opening
+comment says what it proves and what stands in for what a VM lacks.
 
 | File                                | Holds                                                           |
 | ----------------------------------- | --------------------------------------------------------------- |
+| `firmware-asks.nix`, `-vm-test.py`  | writing firmware asking an administrator, even at the seat      |
 | `libvirt.nix`, `-vm-test.py`        | libvirt's daemon stopping at once while its udev thread waits   |
 | `memory-tune.nix`, `-vm-test.py`    | four memory settings an administrator sets with no password     |
 | `niri-off-cpu.nix`, `-vm-test.py`   | an account in wheel tracing its own niri, and nobody else       |

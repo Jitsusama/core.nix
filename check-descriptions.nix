@@ -3166,6 +3166,12 @@
   v4l2loopback-holders-passes-clippy = ''
     clippy finds nothing in the cameras' holders watcher or its tests
   '';
+  vm-firmware-asks-an-administrator = ''
+    in an administrator's active, local session, writing firmware, changing a device's settings and
+    restarting into the firmware's setup need an administrator's answer, kept a few minutes, and a
+    security fix or undo one each time; a plain restart still needs none; and the password typed
+    through polkit's sign-in, with a YubiKey named but not there, answers for that action alone
+  '';
   vm-admins-switch-unasked = ''
     an account in wheel switches to another system the machine has run and back with no password, and
     to one it never ran only by authenticating; one outside wheel, and what isn't a NixOS system in

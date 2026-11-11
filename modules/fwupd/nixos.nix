@@ -19,6 +19,19 @@ in
 {
   services.fwupd.enable = true;
 
+  # fwupd lets anyone in the seat's session write signed firmware with no
+  # answer, and an administrator any firmware, and logind lets them set
+  # the next boot to open the firmware's setup; so would anything running
+  # as the account, an agent included. Writing firmware, changing a device's
+  # settings and restarting into the setup ask an administrator instead,
+  # which in the session is a YubiKey's touch or the password
+  # (modules/yubikey/administers.nix), kept for a few minutes so an update
+  # of several devices asks once. The rules sit in 10-nixos.rules, which
+  # polkit reads before fwupd's own, so these answer first. A plain restart
+  # still asks nothing.
+  security.polkit.enable = true;
+  security.polkit.extraConfig = builtins.readFile ./firmware-asks.rules;
+
   # The refresh asks polkit, and a switch that changes polkit's settings
   # restarts it, so a refresh its timer starts in that gap fails and the
   # switch with it. It tries again a minute later, three times in an hour
