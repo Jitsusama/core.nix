@@ -1724,8 +1724,9 @@
     each ask comes while it names a process that never told, asks what a file shows of one
     file-preview it keeps, again only once the file changed, says a file that file-preview doesn't
     answer within its deadline as not answering, stopping it and what it waits on, and goes on to
-    the next, follows a data folder through each link a switch replaces, and refuses an ask or a
-    kind it doesn't know
+    the next, serves Programs' rows open first, counting the windows the windows daemon says each
+    has open and going to the latest, and again as those change, follows a data folder through
+    each link a switch replaces, and refuses an ask or a kind it doesn't know
   '';
   programs-passes-clippy = ''
     clippy finds nothing in the programs daemon or its tests
@@ -1837,8 +1838,8 @@
   '';
   ready-rows-keeps-each-rows-place = ''
     a row moved among a daemon's ready rows takes an order midway and the rest keep theirs, a
-    making is told only what reads differently and what went, and each figure is said as
-    numbers.json's cases say
+    making is told only what reads differently and what went, names go A to Z with case alike
+    and numbers by their worth, and each figure is said as numbers.json's cases say
   '';
   ready-rows-passes-clippy = ''
     clippy finds nothing in ready-rows, the form every daemon serves the launcher's rows in
@@ -2470,8 +2471,10 @@
     Notifications, in order and only where they apply, each reaching only that program, with what
     another provider gives it to copy last, and a hidden program another provider gives acts to is
     listed and steps in rather than starting; the list programs share heard again unchanged
-    changes nothing, an act another provider gives makes its own row and no program's, and a
-    step asked again makes none of its Recent's rows again
+    changes nothing, an act another provider gives makes its own row and no program's, a step
+    asked again makes none of its Recent's rows again, and a row the programs daemon serves is
+    the program's, going to the window served or starting it, its windows left to a say that
+    counts what it holds
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
