@@ -8,6 +8,7 @@ use std::ffi::{CString, c_void};
 use std::pin::Pin;
 
 use pipewire as pw;
+use pw::context::Context;
 use pw::registry::RegistryRc;
 use pw::spa::pod::Pod;
 use pw::spa::spa_interface_call_method;
@@ -25,6 +26,24 @@ pub struct Profiler {
     hook: Pin<Box<spa_hook>>,
     _events: Pin<Box<pw_profiler_events>>,
     _heard: Box<Heard>,
+}
+
+/// Teaches a context the profiler's protocol, as pw-top does before it
+/// binds: the marshal that makes its proxy lives in the profiler's
+/// module, which a context doesn't load by itself, so without it every
+/// bind comes back empty. False where the module isn't there.
+pub fn taught(context: &Context) -> bool {
+    // SAFETY: the context is live while it's borrowed, and owns the
+    // module it loads, which goes when the context does.
+    let module = unsafe {
+        pw::sys::pw_context_load_module(
+            context.as_raw_ptr(),
+            c"libpipewire-module-profiler".as_ptr(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+        )
+    };
+    !module.is_null()
 }
 
 impl Profiler {
