@@ -10,6 +10,7 @@ use zbus::zvariant::{OwnedValue, Value};
 use zlink::introspect::{CustomType, Type};
 
 use crate::air::Heard;
+use crate::nl80211::{self, Rate, Traffic, Tuning};
 use crate::radio::{self, Band, Load, Protection};
 use crate::state;
 
@@ -93,6 +94,46 @@ pub struct Joined {
     /// As the driver says it, as 80 MHz.
     pub width: Option<String>,
     pub frequency: Option<u32>,
+    /// What the kernel says of the link that wpa_supplicant doesn't read;
+    /// none until it's read.
+    pub station: Option<Station>,
+}
+
+/// What the kernel says of a card's link beyond wpa_supplicant's poll:
+/// the antennas, the beacons, what went wrong, and how it's framed. Each
+/// is none where the driver doesn't say.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub struct Station {
+    /// The signal now at each antenna, and of the access point's beacons on
+    /// average, in dBm.
+    pub chains: Vec<i32>,
+    pub beacons: Option<i32>,
+    /// What the card transmits at, in dBm.
+    pub power: Option<f64>,
+    /// Frames sent again and never sent, beacons missed and frames heard
+    /// but dropped, since the card joined.
+    pub retries: Option<u32>,
+    pub failed: Option<u32>,
+    pub missed: Option<u32>,
+    pub dropped: Option<u64>,
+    /// How long it's been joined, in seconds.
+    pub connected: Option<u32>,
+    /// Whether its management frames are protected, and it sorts traffic
+    /// by kind (WMM).
+    pub protected: Option<bool>,
+    pub wmm: Option<bool>,
+    /// How often the access point's beacons come, in its time units, and
+    /// one in how many says what it holds for a card asleep (DTIM).
+    pub interval: Option<u16>,
+    pub dtim: Option<u8>,
+    /// Whether frames open with the short preamble and wait the short slot.
+    pub short_preamble: Option<bool>,
+    pub short_slot: Option<bool>,
+    /// The channel it's tuned to, and whether it's one older than Wi-Fi 4.
+    pub channel: Option<u16>,
+    pub legacy: bool,
 }
 
 /// One way of a card's link, as its driver last read it: the rate, how it
@@ -105,7 +146,10 @@ pub struct Joined {
 pub struct Way {
     /// In Mb/s.
     pub mbps: Option<u32>,
-    /// 4 to 6, as the coding says it: HE is Wi-Fi 6, VHT 5 and HT 4.
+    /// In MHz, as the kernel says it.
+    pub width: Option<u16>,
+    /// 4 to 7, as the coding says it: EHT is Wi-Fi 7, which only the
+    /// kernel reads, HE 6, VHT 5 and HT 4.
     pub generation: Option<u8>,
     /// The modulation and coding, and on how many streams.
     pub mcs: Option<u32>,
@@ -137,6 +181,10 @@ pub struct Best {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Polled {
     pub point: String,
+    /// What the kernel read of the station and what the card's tuned to,
+    /// when it answered.
+    pub station: Option<nl80211::Station>,
+    pub tuning: Option<Tuning>,
     pub signal: Option<i32>,
     pub average: Option<i32>,
     pub noise: Option<i32>,
@@ -170,6 +218,7 @@ impl Polled {
             let (generation, mcs, streams) = coding(|figure| unsigned(&key(figure)));
             Way {
                 mbps: unsigned(rate).map(mbps).or(speed),
+                width: None,
                 generation,
                 mcs,
                 streams,
@@ -199,7 +248,53 @@ impl Polled {
             idle: unsigned("inactive-time"),
             width,
             frequency: unsigned("frequency"),
+            station: None,
+            tuning: None,
         }
+    }
+}
+
+/// One way of a card's link, as the kernel read it where it did, and as
+/// wpa_supplicant polled it where it didn't.
+fn way(polled: &Way, read: Option<(&Rate, &Traffic)>) -> Way {
+    let Some((rate, traffic)) = read else {
+        return polled.clone();
+    };
+    Way {
+        mbps: rate.kbps.map(mbps).or(polled.mbps),
+        width: rate.width.or(polled.width),
+        generation: rate.generation.or(polled.generation),
+        mcs: rate.mcs.or(polled.mcs),
+        streams: rate.streams.or(polled.streams),
+        guard: rate.guard.or(polled.guard),
+        dcm: rate.dcm.or(polled.dcm),
+        bytes: traffic.bytes.or(polled.bytes),
+        packets: traffic.packets.or(polled.packets),
+    }
+}
+
+/// What the kernel says beyond wpa_supplicant's poll, as the shell is
+/// sent it.
+fn beyond(station: &nl80211::Station, tuning: Option<&Tuning>) -> Station {
+    Station {
+        chains: station.chains.clone(),
+        beacons: station.beacons,
+        power: tuning.and_then(|tuning| tuning.power),
+        retries: station.retries,
+        failed: station.failed,
+        missed: station.missed,
+        dropped: station.dropped,
+        connected: station.connected,
+        protected: station.protected,
+        wmm: station.wmm,
+        interval: station.interval,
+        dtim: station.dtim,
+        short_preamble: station.short_preamble,
+        short_slot: station.short_slot,
+        channel: tuning
+            .and_then(|tuning| tuning.frequency)
+            .map(radio::channel),
+        legacy: tuning.is_some_and(|tuning| tuning.legacy),
     }
 }
 
@@ -273,6 +368,7 @@ pub fn detail<'a>(
     let joined = polled.iter().map(|(card, polled)| {
         let on = of.iter().find(|(path, _)| *path == polled.point);
         let noise = polled.noise;
+        let station = polled.station.as_ref();
         Joined {
             card: (*card).into(),
             bssid: on.map(|(_, heard)| heard.bssid.clone()),
@@ -283,12 +379,23 @@ pub fn detail<'a>(
                 .signal
                 .zip(noise)
                 .map(|(signal, noise)| signal - noise),
-            receive: polled.receive.clone(),
-            send: polled.send.clone(),
-            expected: polled.expected,
-            idle: polled.idle,
+            receive: way(
+                &polled.receive,
+                station.map(|station| (&station.receive, &station.received)),
+            ),
+            send: way(
+                &polled.send,
+                station.map(|station| (&station.send, &station.sent)),
+            ),
+            expected: polled
+                .expected
+                .or(station.and_then(|station| station.expected.map(mbps))),
+            idle: polled.idle.or(station.and_then(|station| station.idle)),
             width: polled.width.clone(),
-            frequency: polled.frequency,
+            frequency: polled
+                .frequency
+                .or(polled.tuning.as_ref().and_then(|tuning| tuning.frequency)),
+            station: station.map(|station| beyond(station, polled.tuning.as_ref())),
         }
     });
     let joined = joined.collect();
@@ -487,12 +594,15 @@ mod tests {
             idle: Some(12),
             width: Some("40 MHz".into()),
             frequency: Some(5200),
+            station: None,
+            tuning: None,
         }
     }
 
     fn way(mbps: u32, mcs: u32) -> Way {
         Way {
             mbps: Some(mbps),
+            width: None,
             generation: Some(6),
             mcs: Some(mcs),
             streams: Some(2),
@@ -681,6 +791,68 @@ mod tests {
     }
 
     #[test]
+    fn what_the_kernel_read_wins_and_the_poll_fills_what_it_did_not() {
+        let hotel = hotel();
+        let mut on = polled(1);
+        on.station = Some(nl80211::Station {
+            chains: vec![-60, -63],
+            send: Rate {
+                kbps: Some(2_882_000),
+                generation: Some(7),
+                mcs: Some(13),
+                width: Some(320),
+                ..Rate::default()
+            },
+            retries: Some(17),
+            dtim: Some(3),
+            ..nl80211::Station::default()
+        });
+        on.tuning = Some(Tuning {
+            frequency: Some(6_115),
+            width: Some(320),
+            legacy: false,
+            power: Some(22.0),
+        });
+
+        let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
+
+        let joined = &detail.joined[0];
+        let send = &joined.send;
+        assert_eq!(
+            (
+                send.mbps,
+                send.generation,
+                send.mcs,
+                send.width,
+                send.streams
+            ),
+            (Some(2_882), Some(7), Some(13), Some(320), Some(2))
+        );
+        assert_eq!(joined.receive, way(458, 9));
+        let station = joined.station.as_ref().expect("the kernel's reading");
+        assert_eq!(
+            (
+                &station.chains,
+                station.power,
+                station.retries,
+                station.dtim,
+                station.channel
+            ),
+            (&vec![-60, -63], Some(22.0), Some(17), Some(3), Some(33))
+        );
+    }
+
+    #[test]
+    fn a_card_the_kernel_has_not_answered_for_has_no_station() {
+        let hotel = hotel();
+        let on = polled(1);
+
+        let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
+
+        assert_eq!(detail.joined[0].station, None);
+    }
+
+    #[test]
     fn a_card_hearing_the_noise_says_how_far_its_signal_stands_above_it() {
         let hotel = hotel();
         let mut on = polled(1);
@@ -736,6 +908,7 @@ mod tests {
                 // Each rate to the nearest Mb/s, as iw's are shown.
                 receive: Way {
                     mbps: Some(459),
+                    width: None,
                     generation: Some(6),
                     mcs: Some(9),
                     streams: Some(2),
@@ -746,6 +919,7 @@ mod tests {
                 },
                 send: Way {
                     mbps: Some(287),
+                    width: None,
                     generation: Some(6),
                     mcs: Some(7),
                     streams: Some(1),
@@ -758,6 +932,8 @@ mod tests {
                 idle: Some(1),
                 width: Some("40 MHz".into()),
                 frequency: Some(5200),
+                station: None,
+                tuning: None,
             }
         );
     }

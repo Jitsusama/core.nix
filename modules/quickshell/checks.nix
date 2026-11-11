@@ -1599,7 +1599,7 @@ onLinux {
   # the keyboards in the kernel's list of input devices, how each Bluetooth
   # link is doing from what bluetooth-links writes, what Sound makes of a
   # sound device's properties, the machine's connections from what ip, the
-  # routing tables, resolv.conf and iw say, and how WARP's link stands from
+  # routing tables, resolv.conf and wifid say, and how WARP's link stands from
   # the record warp prints (modules/warp/warp.json), as tests/answers.qml
   # lists them, and leaves alone what isn't one, in Qt's own JavaScript
   # engine.

@@ -27,14 +27,12 @@
 // nothing here sorts, weighs or words them. What's done to them still asks
 // wifid over varlink (Wifi.qml), as does each network's detail, until both
 // are asks of the rows' own socket, by 13 November. The cards look for
-// networks only while the launcher is open. What wifid doesn't say of a
-// link (each antenna, transmit power, retries, how long it's been on, each
-// way's width, Wi-Fi 7's coding, the beacons' timing, the preamble, slot
-// time and WMM) iw reads, every few seconds while the network joined is
-// shown, by one spawn of the `iw` setting's script, and never for a key.
-// What the card carries a second is Traffic's, so it isn't said here too.
+// networks only while the launcher is open. A link's figures beyond its
+// rates (each antenna, transmit power, retries, how long it's been on, the
+// beacons' timing, the preamble, slot time and WMM) wifid reads from the
+// kernel with the rest, only while the network joined is shown. What the
+// card carries a second is Traffic's, so it isn't said here too.
 import qs
-import Quickshell.Io
 import QtQuick
 import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
@@ -439,7 +437,7 @@ Provider {
                 }
             } : undefined,
             state: () => provider.said(network, note),
-            // The one connected says all wifid and iw read of it, under the
+            // The one connected says all wifid reads of it, under the
             // row, while it's selected (`looking`).
             drawer: network.connected ? () => provider.drawerOf(network) : null,
             // Joining or leaving keeps the launcher, which says how it went;
@@ -472,8 +470,9 @@ Provider {
         return JSON.stringify([present, on, looking, served.revision,
             !detail ? null : [detail.name, detail.points.length > 0,
                 detail.joined.map(link => link.card)],
-            !linkRead ? null : [linkRead.card, Object.keys(linkRead.said)
-                .filter(said => linkRead.said[said] !== null).sort()]]);
+            !detail ? null : detail.joined.map(link => !link.station ? null
+                : Object.keys(link.station).filter(said => link.station[said] !== null)
+                    .sort())]);
     }
 
     // The network stepped into, asked about in detail for as long as it,
@@ -502,16 +501,13 @@ Provider {
     }
     onLookingChanged: {
         order = [];
-        linkRead = null;
-        linkAnswered = false;
         signalSeen = [];
         Wifi.watch(looking);
     }
 
-    // Whether the network looked at waits on wifid's detail of it, or on
-    // iw's first read of its card, so what it says is still "not read
-    // yet" (Provider.stillReading). Each look is read afresh: Wifi.watch
-    // lets the last detail go, and a new look forgets iw's read. It asks
+    // Whether the network looked at waits on wifid's detail of it, so what
+    // it says is still "not read yet" (Provider.stillReading). Each look is
+    // read afresh: Wifi.watch lets the last detail go. It asks
     // whether wifid has answered at all rather than detailOf, which is
     // null for an answer with no points too, as the joined network hiding
     // its name gets, and which would hold every show of it for the wait.
@@ -521,13 +517,12 @@ Provider {
     // wifid not answering, not at all. A list already heard is said at
     // once, and the look freshens it for the next ask. With the launcher
     // open, its own looks keep the list, and a terminal asks for none.
-    stillReading: looking !== "" && (Wifi.detail?.name !== looking
-        || looked !== "" && reader !== "" && !linkAnswered)
+    stillReading: looking !== "" && Wifi.detail?.name !== looking
         || terminalLooks && !(launcher?.open ?? false) && on && Wifi.described
             && Wifi.nearby.length === 0 && (lookedFrom === -1 || lookedFrom === Wifi.looks)
 
-    // Its rows change as wifid hears more of it. Without iw to read the
-    // signal, wifid's own reading draws its spark.
+    // Its rows change as wifid hears more of it, each of its polls drawing
+    // the signal's spark a step on.
     Connections {
         target: Wifi
 
@@ -535,62 +530,21 @@ Provider {
             if (provider.looking === "")
                 return;
             const detail = Wifi.detail;
-            if (provider.reader === "" && detail && detail.joined.length > 0
-                && detail.joined[0].signal !== null)
+            if (detail && detail.joined.length > 0 && detail.joined[0].signal !== null)
                 provider.saw(detail.joined[0].signal);
             provider.changed();
         }
     }
 
-    // The card on the network shown, whose link iw reads while it's shown.
+    // The card on the network shown, and the signal it's read since the
+    // network was shown, each from 0 to 1, the newest last.
     readonly property string looked: looking === "" ? ""
         : (Wifi.cards.find(card => card.network === looking) ?? { name: "" }).name
-    readonly property string reader: settings.iw ?? ""
-
-    // What iw last read of that card's link (WifiLink.radio), as
-    // { card, said }, and the signal it's read since the network was shown,
-    // each from 0 to 1, the newest last.
-    property var linkRead: null
-    // Whether iw has answered this look at all, read or not, so a card iw
-    // can't read holds no terminal up.
-    property bool linkAnswered: false
     property var signalSeen: []
     readonly property int graphed: 20
 
     function saw(dbm) {
         signalSeen = signalSeen.concat([Interfaces.level(dbm)]).slice(-graphed);
-    }
-
-    Timer {
-        interval: 3000
-        repeat: true
-        triggeredOnStart: true
-        running: provider.looked !== "" && provider.reader !== ""
-        onTriggered: {
-            if (iw.running)
-                return;
-            iw.command = [provider.reader, provider.looked];
-            iw.running = true;
-        }
-    }
-
-    Process {
-        id: iw
-        stdout: StdioCollector {
-            id: iwSaid
-            onStreamFinished: provider.readOf(iw.command[1] ?? "", iwSaid.text)
-        }
-    }
-
-    function readOf(card, text) {
-        if (card !== looked)
-            return;
-        linkAnswered = true;
-        const said = WifiLink.radio(text);
-        linkRead = said ? { card: card, said: said } : null;
-        if (said && said.signal !== null)
-            saw(said.signal);
-        changed();
     }
 
     // The access points in the order they were first shown, fastest first,
@@ -640,7 +594,7 @@ Provider {
 
     // A part holding more, which copies its value on Return and steps in
     // by the right arrow, wearing Wi-Fi's glyph dimmed. What it holds is made as it's opened,
-    // from what wifid and iw say then, so it follows them while shown.
+    // from what wifid says then, so it follows it while shown.
     function holds(key, id, side, fields, inside) {
         return holderRow(Object.assign({
             key: key,
@@ -660,14 +614,17 @@ Provider {
         return detail && detail.name === name && detail.points.length > 0 ? detail : null;
     }
 
-    // A card's link as wifid says it, and as iw last read it, or null.
+    // A card's link as wifid says it, or null.
     function linkOf(name, card) {
         const detail = detailOf(name);
         return detail ? detail.joined.find(link => link.card === card) ?? null : null;
     }
 
+    // What the kernel says of a card's link beyond its rates
+    // (WifiLink.station), or null until wifid has read it.
     function readOfCard(card) {
-        return linkRead && linkRead.card === card ? linkRead.said : null;
+        const detail = Wifi.detail;
+        return WifiLink.station(detail ? detail.joined.find(link => link.card === card) : null);
     }
 
     // A network in detail, after what can be done to it: the link of the
@@ -692,8 +649,8 @@ Provider {
                     .concat(provider.connectedRows(link.card))));
         rows.push(guardRow(name));
         rows.push(heardRow(name));
-        // iw says how long it's been on a moment after the rest arrive, so
-        // it comes last, where it lands whenever it's read.
+        // How long it's been on comes last, where it lands whenever the
+        // kernel's read.
         if (detail.joined.length === 1)
             rows = rows.concat(connectedRows(detail.joined[0].card));
         rows[0].gap = true;
@@ -717,7 +674,7 @@ Provider {
                 note: link.margin !== null ? `${link.margin} dB over the noise`
                     : "while it's shown"
             }, () => provider.signalParts(name, card))];
-        const rates = speeds(link, read);
+        const rates = speeds(link);
         rows.push(holds(key("speed"), "speed", rates.side !== "" ? rates.side : "not read yet",
             { note: rates.note },
             () => provider.speedParts(name, card)));
@@ -727,12 +684,11 @@ Provider {
         return rows;
     }
 
-    // Each way of a card's link, as wifid and iw together read it
-    // (WifiLink.way).
-    function waysOf(link, read) {
+    // Each way of a card's link, as wifid reads it (WifiLink.way).
+    function waysOf(link) {
         return {
-            in: WifiLink.way(link.receive, read?.receive),
-            out: WifiLink.way(link.send, read?.send)
+            in: WifiLink.way(link.receive),
+            out: WifiLink.way(link.send)
         };
     }
 
@@ -742,7 +698,7 @@ Provider {
         const link = linkOf(name, card);
         if (link === null)
             return null;
-        const ways = waysOf(link, readOfCard(card));
+        const ways = waysOf(link);
         const side = WifiLink.eachWay(ways.in.bytes, ways.out.bytes, FileFacts.weighed);
         if (side === "")
             return null;
@@ -755,7 +711,7 @@ Provider {
         const link = linkOf(name, card);
         if (link === null)
             return [];
-        const ways = waysOf(link, readOfCard(card));
+        const ways = waysOf(link);
         const key = id => `wifi:link:${card}:carried:${id}`;
         const packets = count => `${number(count)} ${count === 1 ? "packet" : "packets"}`;
         const rows = [["received", ways.in], ["sent", ways.out]]
@@ -774,7 +730,7 @@ Provider {
         return rows;
     }
 
-    // How long the card's been on the network, as iw says.
+    // How long the card's been on the network, as the kernel says.
     function connectedRows(card) {
         const read = readOfCard(card);
         if (!read || read.connected === null)
@@ -787,7 +743,7 @@ Provider {
     }
 
     // The network connected's drawer (WifiLink.drawer), from wifid's detail
-    // of it and iw's last read of the card on it, each figure as its part
+    // of it and the card on it, each figure as its part
     // says it: none until wifid has answered.
     function drawerOf(network) {
         const name = network.name;
@@ -797,7 +753,7 @@ Provider {
         if (link === null)
             return null;
         const read = readOfCard(card);
-        const ways = waysOf(link, read);
+        const ways = waysOf(link);
         const each = (figure, say) => WifiLink.eachWay(ways.in[figure], ways.out[figure], say);
         const point = detail.points.find(one => one.joined) ?? null;
         const frequency = link.frequency ?? read?.frequency ?? null;
@@ -806,7 +762,7 @@ Provider {
         const protection = protectionOf(name);
         const lasted = read && read.connected !== null ? read.connected : null;
         // The width as ours, and a radio older than Wi-Fi 4 said by its
-        // generation rather than iw's "(no HT)" (VKCF3Z, 2026-11-09).
+        // generation rather than "(no HT)" (VKCF3Z, 2026-11-09).
         const widthTold = WifiLink.widthOf(link.width);
         const drawerWords = Words.of("wifi:drawer").said;
         return WifiLink.drawer({
@@ -815,7 +771,7 @@ Provider {
             signal: signal !== null
                 ? `${Numbers.wholeReading(signal, settings.group, settings.point)} dBm` : "",
             margin: link.margin,
-            speed: speeds(link, read).side,
+            speed: speeds(link).side,
             expected: link.expected !== null ? `${link.expected} Mb/s` : "",
             carried: WifiLink.eachWay(ways.in.bytes, ways.out.bytes, FileFacts.weighed),
             retries: read && read.retries !== null
@@ -840,11 +796,11 @@ Provider {
         }, id => named(id), drawerWords);
     }
 
-    // The rates each way, as wifid reads them or else as iw does, in Mb/s,
+    // The rates each way, as wifid reads them, in Mb/s,
     // and what's said of them at a glance: the generation, the width and
     // what the link's expected to carry.
-    function speeds(link, read) {
-        const ways = waysOf(link, read);
+    function speeds(link) {
+        const ways = waysOf(link);
         const rx = ways.in.mbps !== null ? Math.round(ways.in.mbps) : null;
         const tx = ways.out.mbps !== null ? Math.round(ways.out.mbps) : null;
         const generation = ways.in.generation ?? ways.out.generation;
@@ -916,7 +872,7 @@ Provider {
             return [];
         const read = readOfCard(card);
         const key = id => `wifi:link:${card}:speed:${id}`;
-        const rates = speeds(link, read);
+        const rates = speeds(link);
         const rows = [];
         if (rates.in !== null)
             rows.push(fact(key("in"), "in", `${rates.in} Mb/s`));
@@ -927,7 +883,7 @@ Provider {
             rows.push(fact(key("expected"), "expected", `${link.expected} Mb/s`, {
                 note: "what the card expects to get through, after the air's own overhead"
             }));
-        const ways = waysOf(link, read);
+        const ways = waysOf(link);
         const generation = ways.in.generation ?? ways.out.generation;
         if (generation !== null)
             rows.push(fact(key("generation"), "generation", WifiLink.eachWay(
@@ -1193,7 +1149,7 @@ Provider {
         if (!key)
             return verbs(network, locked);
         return Placed.madeOnce(verbsOf, key,
-            [network.served, SignIn.network, Wifi.detail, linkRead, signalSeen],
+            [network.served, SignIn.network, Wifi.detail, signalSeen],
             () => verbs(network, locked));
     }
 
