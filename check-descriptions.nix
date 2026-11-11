@@ -1825,7 +1825,8 @@
     are each time, only ever reading; finds their conversation with Joel in plain words, only
     what's in a direct message with them, newest last; asks ahead only after a step-in, finding
     their conversation once and never how they are; handed the launcher's words, says their
-    drawer's facts and Write in Slack ready; and asks nobody once Slack refuses the
+    drawer's facts, Write in Slack and their conversation's row and drawer ready, or as a
+    fact that one it knows nobody by is not in Slack; and asks nobody once Slack refuses the
     sign-in or with none at all, saying so; and slack-unreads holds over its socket the direct
     messages with unreads, the channels mentioning Joel, his mentions in threads and channels
     merely unread, each named once a run and opening in Slack, and what Joel read last and how
