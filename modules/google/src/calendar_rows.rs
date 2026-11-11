@@ -279,12 +279,12 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
     let id = &meeting.id;
     let mut acts = Vec::new();
     if let Some(link) = &meeting.link {
-        acts.push(json!({"key": "verb:calendar:join", "ask": {"open": {"link": link}}}));
+        acts.push(json!({"key": "verb:calendar:join", "open": link}));
     }
     let emails = guest_emails(meeting);
     let writing = compose::writing(&emails, &meeting.title, &[]);
     if !writing.is_empty() {
-        acts.push(json!({"key": "verb:calendar:write", "ask": {"open": {"link": writing}}}));
+        acts.push(json!({"key": "verb:calendar:write", "open": writing}));
     }
     acts.push(json!({"key": "verb:calendar:see", "step": "see"}));
     // Only a call is written down, and call-transcripts says whether it was.
