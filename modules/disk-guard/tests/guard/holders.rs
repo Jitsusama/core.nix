@@ -212,6 +212,7 @@ fn a_kept_holder_says_his_reason_and_says_the_guard_s_own_once_let_go() {
         Keep {
             reason: "the release builds".to_owned(),
             at: 5.0,
+            declared: false,
         },
     );
     mark(&mut said, &keeps, &[], Some(home));

@@ -209,8 +209,13 @@ or launchd, and [`home.nix`][2] the account's.
   while `clearable` and `clears` stay what the guard judged of it. The
   command marks the status file's holders itself before it ends, and
   every writer of the file marks what it writes the same way, so the
-  holder has changed by the time the answer is heard. `src/keeps.rs`
-  holds it.
+  holder has changed by the time the answer is heard. A machine declares
+  its own keeps in the guard's config, `keep`, a reason by path: the
+  daemon writes them into `keeps.json` marked `declared` as it starts,
+  takes back those the config stops naming, and leaves a hand keep on
+  the same folder as it is. A survey counts them even before a daemon
+  wrote them, so a plan does too, and `unkeep` refuses one, since only
+  the config lets it go. `src/keeps.rs` holds it.
 - **Clears.** `disk-guard clear FOLDER` asks the account's guard to clear
   what it may of a folder now, without waiting for its band or for it to
   sit idle. Each ask is a file of its own in the state folder's `clears/`,

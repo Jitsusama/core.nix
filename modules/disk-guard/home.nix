@@ -107,7 +107,9 @@ in
     default = { };
     description = ''
       The account's guard's config: its bands, its sources and how it treats
-      the account's Nix generations. A source set to null is dropped.
+      the account's Nix generations. A source set to null is dropped. `keep`
+      names what the machine keeps, a reason by path, which the guard never
+      offers to clear or asks about.
     '';
   };
 

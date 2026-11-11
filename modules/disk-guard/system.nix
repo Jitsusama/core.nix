@@ -28,7 +28,8 @@ in
       description = ''
         The machine's guard's config: its bands, its sources, and its policy
         for Nix's garbage, generations and linking. A source set to null is
-        dropped.
+        dropped. `keep` names what the machine keeps, a reason by path, which
+        the guard never offers to clear or asks about.
       '';
     };
     configFile = lib.mkOption {
