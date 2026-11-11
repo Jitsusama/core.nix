@@ -22,10 +22,10 @@ QtObject {
 
     // The rows the steps leave, and those they drew afresh, as ListModel's
     // remove, move and insert would.
-    function done(was, now) {
+    function done(was, now, most) {
         const rows = was.slice();
         const drawn = [];
-        for (const step of RowsKept.steps(was, now)) {
+        for (const step of RowsKept.steps(was, now, most)) {
             if (step.remove !== undefined) {
                 rows.splice(step.remove, step.count);
             } else if (step.move !== undefined) {
@@ -138,6 +138,15 @@ QtObject {
                 ended.rows, now.join(" "));
             Expect.same(`${was.join("")} to ${now.join("")} draws only rows it didn't hold`,
                 ended.drawn.split(" ").filter(key => key !== "").sort(), fresh.sort());
+            // Held to as many moving rows, it ends where it's listed too,
+            // and listed afresh or moving no more than it was held to.
+            const most = next(3);
+            const steps = RowsKept.steps(was, now, most);
+            const afresh = steps.some(step => step.remove === 0 && step.count === was.length);
+            Expect.same(`${was.join("")} to ${now.join("")} past ${most} ends where it's listed`,
+                done(was, now, most).rows, now.join(" "));
+            Expect.same(`${was.join("")} to ${now.join("")} moves no more than ${most}`,
+                afresh || steps.filter(step => step.move !== undefined).length <= most, true);
         }
 
         Qt.exit(0);
