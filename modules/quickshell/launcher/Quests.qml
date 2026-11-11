@@ -264,7 +264,7 @@ Provider {
         const session = quest.session;
         const row = member({
             thing: true,
-            key: served.row,
+            key: served.thing,
             rich: 1,
             // Return does the first of its acts (verbs), so it says that
             // act's verb, and a step in lifts no second act before them.

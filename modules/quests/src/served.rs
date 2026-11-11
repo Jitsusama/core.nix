@@ -80,7 +80,7 @@ fn row(
         "session": session, "parent": parent,
     });
     json!({
-        "key": format!("row:{PLACE}:{}", quest.id()), "row": format!("quest:{}", quest.id()),
+        "key": format!("row:{PLACE}:{}", quest.id()), "thing": format!("quest:{}", quest.id()),
         "place": PLACE, "kind": "quest", "name": quest.name(), "glyph": quest.glyph(),
         "hue": "program", "side": side, "note": quest.id(), "reads": quest.summary(),
         "unfinished": open, "held": held,
@@ -171,7 +171,7 @@ mod tests {
         assert_eq!(said, "2 open, 1 driving");
         let b = &rows[1];
         assert_eq!(b["key"], "row:quests:B");
-        assert_eq!(b["row"], "quest:B");
+        assert_eq!(b["thing"], "quest:B");
         assert_eq!(b["side"], json!([{"said": "subquest"}, {"said": "queued"}]));
         assert_eq!(b["held"]["parent"], json!({"id": "A", "name": "Title A"}));
         assert_eq!(b["held"]["folder"], "/w");
