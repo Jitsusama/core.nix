@@ -1026,6 +1026,69 @@ pub fn round_beside(
     Ok(Round::Passed(head))
 }
 
+/// How long the quick look rests between looks at main's head.
+pub const QUICK_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// One quick look: run the checks other than VM tests that main's head
+/// moved since the last head they ran at, beside the round, and search for
+/// and revert the merge that broke one as the round does. A round keeps
+/// one head for its hour or two of VM tests, so on 11 November a merge at
+/// 06:33 that broke the-launcher-names-the-parts-it-builds, a check of
+/// seconds, waited behind the round begun at 06:01 with nothing running
+/// it, while each gate that included it failed on main's defect. The VM
+/// tests stay the round's. It gives the head it looked at, or none when
+/// there was nothing new, it was held, or a check wasn't taken, so the
+/// next look asks again from the same base.
+pub fn quick_beside(
+    world: &dyn World,
+    state: &State,
+    settler: &Settler,
+) -> Result<Option<String>, String> {
+    if world.held().is_some() {
+        return Ok(None);
+    }
+    let head = world.head()?;
+    let Some(base) = state.quick().or_else(|| state.heads().0) else {
+        return Ok(None);
+    };
+    if base == head {
+        return Ok(None);
+    }
+    let checks: Vec<String> = world
+        .changed(&base, &head)?
+        .moved
+        .into_iter()
+        .filter(|name| !name.starts_with("vm-"))
+        .collect();
+    let hold = state.hold();
+    let quarantined = world.quarantined(&head);
+    let left_be = |test: &str| {
+        quarantined.iter().any(|kept| kept == test)
+            || hold.as_ref().is_some_and(|hold| hold["test"] == test)
+            || listed_on_main(world, &head, test)
+    };
+    let breaking = Breaking::new(world, state, settler, &base, &head, left_be);
+    let outcomes = attempt_all(world, state, &head, &checks, &|test, ran| {
+        breaking.heard(test, ran);
+    });
+    if outcomes.contains(&Outcome::Unsent) {
+        return Ok(None);
+    }
+    state.set_quick(&head)?;
+    let failed = outcomes
+        .iter()
+        .filter(|&&ran| ran == Outcome::Failed)
+        .count();
+    state.say(&format!(
+        "a quick look at {} ran the {} checks besides VM tests it moved since {}: {failed} \
+         failed",
+        short(&head),
+        checks.len(),
+        short(&base)
+    ));
+    Ok(Some(head))
+}
+
 /// A test that fails for real has its merge found and reverted the moment
 /// it does, while the round's other tests still run. On 7 November
 /// vm-checks-go-first failed twice at 12:46, but the search for its merge
@@ -2096,6 +2159,83 @@ mod tests {
     #[test]
     fn the_checks_other_than_vm_tests_go_first() {
         assert_eq!(changed("vm-a b vm-c d").checks(), names("b d vm-a vm-c"));
+    }
+
+    /// One quick look, with what it found settled before it answers.
+    fn quick(world: &dyn World, state: &State) -> Option<String> {
+        let settler = Settler::new(world, state);
+        let looked = std::thread::scope(|scope| {
+            settler.start(scope);
+            let looked = quick_beside(world, state, &settler);
+            settler.close();
+            looked
+        });
+        assert_eq!(settler.error(), None, "settling what it found failed");
+        looked.expect("the quick look failed")
+    }
+
+    #[test]
+    fn a_quick_look_reverts_a_merge_that_breaks_a_check_and_leaves_vm_tests_be() {
+        let state = state("quick");
+        state.set_heads("s", "s").unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("each-mark-means-one-thing vm-b"),
+            ..Stand::default()
+        }
+        .exits("h", "each-mark-means-one-thing", &[1, 1]);
+        assert_eq!(quick(&world, &state), Some("h".into()));
+        assert!(
+            world.built().iter().all(|(_, check)| check != "vm-b"),
+            "a quick look ran a VM test: {:?}",
+            world.built()
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("h"),
+            "the merge that broke the check wasn't reverted"
+        );
+        assert_eq!(
+            state.quick(),
+            Some("h".into()),
+            "the head looked at isn't kept"
+        );
+        assert_eq!(
+            state.heads(),
+            (Some("s".into()), Some("s".into())),
+            "a quick look moved the round's heads"
+        );
+        let built = world.built().len();
+        assert_eq!(
+            quick(&world, &state),
+            None,
+            "a head looked at was looked at again"
+        );
+        assert_eq!(
+            world.built().len(),
+            built,
+            "a second look at one head ran something"
+        );
+    }
+
+    #[test]
+    fn a_quick_look_with_a_check_no_builder_took_asks_again_from_its_base() {
+        let state = state("quick-unsent");
+        state.set_heads("s", "s").unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("b"),
+            ..Stand::default()
+        }
+        .exits("h", "b", &[UNSENT]);
+        assert_eq!(quick(&world, &state), None);
+        assert_eq!(
+            state.quick(),
+            None,
+            "a look with a check not taken was kept"
+        );
     }
 
     #[test]

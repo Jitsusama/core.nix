@@ -279,6 +279,10 @@ PRs that list its flaky tests, settle beside the rounds after it, each kept in
 again. A switch leaves the net running, since stopping it mid-round loses
 every run in flight; it starts its new build between rounds, once what it
 was settling is done.
+A round keeps one head for its VM tests, an hour or two, so beside it a quick
+look every five minutes runs the other checks main's newest head moved since
+the last head it looked at, and searches for and reverts a merge that breaks
+one as a round does; it keeps that head in `~/.local/state/net/quick.json`.
 The net starts nothing while a hold on the whole machine stands, or while
 `~/.local/state/net/pause` is there, and `merge-net status` says where it
 is.

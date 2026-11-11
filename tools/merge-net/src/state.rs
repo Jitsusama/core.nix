@@ -4,6 +4,8 @@
 //!
 //! - `state.json`: the last head every changed check passed at, which the
 //!   next head is compared with, and the last head it finished looking at.
+//! - `quick.json`: the last head the quick look ran every changed check
+//!   but the VM tests at, which its next look compares main's head with.
 //! - `results.jsonl`: a line for each run of a check at a commit, with its
 //!   exit and its log, so no check that passed at a commit runs there again.
 //! - `hold.json`: while a merge broke a test and its revert isn't on main,
@@ -139,6 +141,20 @@ impl State {
         write_json(
             &self.root.join("state.json"),
             &json!({ "passed": passed, "seen": seen, "at": now() }),
+        )
+    }
+
+    /// The last head the quick look ran its checks at, if any.
+    pub fn quick(&self) -> Option<String> {
+        read_json(&self.root.join("quick.json"))
+            .and_then(|quick| quick["head"].as_str().map(str::to_owned))
+    }
+
+    /// Write down the head the quick look ran its checks at.
+    pub fn set_quick(&self, head: &str) -> Result<(), String> {
+        write_json(
+            &self.root.join("quick.json"),
+            &json!({ "head": head, "at": now() }),
         )
     }
 
