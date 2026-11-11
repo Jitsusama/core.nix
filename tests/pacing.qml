@@ -127,6 +127,11 @@ QtObject {
             read({ held: [{ row: { from: people } }] }), false);
         check(failures, "though in a place that reads them they are",
             read({ held: [{ row: { from: now } }] }), true);
+        const warming = { saysAtHome: false, warming: true };
+        check(failures, "shut, one warming for home is", wanted({ open: false }, warming), true);
+        check(failures, "and no other", wanted({ open: false }, people), false);
+        check(failures, "nor one home doesn't name",
+            wanted({ open: false }, { saysAtHome: true, warming: true }), false);
     }
 
     // A kept opening's sources wake in the order home's rows read them,

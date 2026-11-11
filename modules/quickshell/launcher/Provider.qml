@@ -237,6 +237,9 @@ Scope {
     // sources a frame (Launcher.qml's wakeNext). Its own, so waking it
     // makes no other source's wanted again.
     property bool asleep: false
+    // Whether its home rows are made with the launcher shut, a source a
+    // turn as the shell starts (Launcher.qml's warmNext).
+    property bool warming: false
 
     // Whether its rows are wanted now: walked from outside, searched, held,
     // named at home, or an act of theirs waiting to be agreed (Launcher.qml's

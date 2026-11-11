@@ -10,13 +10,15 @@
 // walked from outside (`cataloguing`), whether it's `open`, the steps
 // `held`, each with the row it stepped into, the acts `becoming`, each with
 // the source whose rows it waits on, and what's `typed`. A source is
-// `asleep` while it waits its turn to wake as a kept opening fills in.
+// `asleep` while it waits its turn to wake as an opening fills in, and
+// `warming` while its home rows are made shut, so the first opening after
+// a start draws from what's kept.
 function wanted(stands, source) {
     // Walked from outside, every row is read.
     if (stands.cataloguing) {
         return true;
     }
-    if (!stands.open) {
+    if (!(stands.open || source.warming)) {
         return false;
     }
     // Held, or with an act of its own waiting to be agreed, its rows are
