@@ -75,10 +75,16 @@ current; a device no card's routes play, as a USB or a Bluetooth one,
 is always listed. Only the ports going its way, for its device, in the
 profile the card is in count, as `wpctl` counts them.
 
+Inside each device's row come the parts served of it (`src/parts.rs`),
+a step in, in the order the launcher lists them: using it, where it
+isn't the one chosen; whether it's Muted, one switch; its Volume, or a
+microphone's Gain, with Louder, Quieter and four levels a step in; and
+its Port, where its card offers more than one, with each it can move
+to. Each part's act asks the daemon's own act, so the shell runs no
+process to do it.
+
 ## What Comes Next
 
-The launcher's Sound lists these rows rather than making its own, so
-it no longer reads desk-facts' file and its service's control group to
-list, nor `pw-dump` for ports and `wpctl` to choose one; then each
-device's parts and programs are served ready too, so `pw-top`,
-`pw-metadata` and the per-move processes go.
+The launcher's Sound lists these rows rather than making its own. The
+rest of each device's parts and its programs are served ready next, so
+`pw-top`, `pw-metadata` and the per-move processes go.
