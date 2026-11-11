@@ -152,16 +152,32 @@ function weighingAmong(held, key, measure, place) {
 // it opened took 129 to 202 ms of its 245 to 373 ms opening on a builder
 // (2026-11-11).
 function toWeigh(rows, selected) {
-    const weighed = [];
+    return weighedWith(rows, weighedAt(rows), selected);
+}
+
+// Where in `rows` the rows weighed with no selection stand. Only the row
+// before says whether one is, so a selection adds itself and moves none,
+// and a list shown again keeps these whatever is selected in it.
+function weighedAt(rows) {
+    const at = [];
     let alike = "";
-    for (const row of rows) {
+    rows.forEach((row, place) => {
         const like = row.keysAlike ?? "";
-        if (like === "" || like !== alike || row === selected) {
-            weighed.push(row);
+        if (like === "" || like !== alike) {
+            at.push(place);
         }
         alike = like;
-    }
-    return weighed;
+    });
+    return at;
+}
+
+// The rows standing `at` in `rows`, and the `selected` in its place among
+// them where it's listed.
+function weighedWith(rows, at, selected) {
+    const chosen = selected ? rows.indexOf(selected) : -1;
+    const places = chosen < 0 || at.includes(chosen) ? at
+        : at.filter(place => place < chosen).concat([chosen], at.filter(place => place > chosen));
+    return places.map(place => rows[place]);
 }
 
 // A row's keys and widths, as `kept` holds them or as `weigh` weighs them

@@ -3034,10 +3034,10 @@ Scope {
             return weigh(row);
         };
         // A run of rows alike in their keys, as Emoji's, is weighed once.
-        const weighable = RowsKept.said(listedLately, matches, "weighable",
-            () => ({ selected, rows: Pacing.toWeigh(matches, selected) }));
-        const alike = weighable.selected === selected ? weighable.rows
-            : Pacing.toWeigh(matches, selected);
+        // Where they stand is kept with a list shown again, as a backspace
+        // back to Emoji's whole list shows it (RowsKept.said).
+        const alike = Pacing.weighedWith(matches, RowsKept.said(listedLately, matches,
+            "weighedAt", () => Pacing.weighedAt(matches)), selected);
         const listed = asking ? alike.concat([asking]) : alike;
         const said = listed.map(row => row === selected || visual ? afresh(row)
             : Pacing.weighedRow(kept, row, weigh)).filter(one => one.keys.length > 0);
