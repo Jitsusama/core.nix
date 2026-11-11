@@ -10,12 +10,10 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use daemon_serve::watch::{Held, follow};
-use quests::quest;
 use quests::served::{self, Inputs};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -52,14 +50,6 @@ fn args() -> Option<Args> {
         node: named("--node")?,
         socket: named("--socket")?,
     })
-}
-
-/// The year it is, by the clock.
-fn this_year() -> i64 {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs());
-    quest::year_of(i64::try_from(seconds / 86_400).unwrap_or(0))
 }
 
 fn main() -> ExitCode {
@@ -103,7 +93,6 @@ fn main() -> ExitCode {
             ended: &ended,
             sessions: &sessions,
             home: &home,
-            this_year: this_year(),
         });
         if !kept
             .take(rows, vec![served::summary_record(&said)])

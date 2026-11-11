@@ -177,6 +177,26 @@ Provider {
         return rowsKind?.held?.[`row:quests:${id}`]?.row?.name;
     }
 
+    // A side item as the shell says it: its words, or a time in the
+    // ready-row form, which no daemon words since the day depends on the
+    // clock and the zone it's read by (KP0L6A, 2026-11-10). Here until
+    // ReadyRows.qml words every place's times.
+    function sideSaid(item) {
+        if (typeof item.said === "string")
+            return item.said;
+        return item.as === "day" ? dayOf(item.at) : "";
+    }
+
+    // A moment's day by this calendar, "22 Oct", its year when not this
+    // one, "5 Jan 2025"; nothing where there's none.
+    function dayOf(at) {
+        if (typeof at !== "number")
+            return "";
+        const when = new Date(at);
+        const thisYear = when.getFullYear() === new Date().getFullYear();
+        return Qt.formatDate(when, thisYear ? "d MMM" : "d MMM yyyy");
+    }
+
     // What a row's acts need of its quest, from what the daemon holds
     // under its `held`.
     function questOf(served) {
@@ -188,7 +208,7 @@ Provider {
             status: held.status,
             priority: held.priority,
             updated: held.updated,
-            day: held.day,
+            day: dayOf(held.touched),
             folder: held.folder,
             open: held.open,
             parent: held.parent ?? null,
@@ -254,7 +274,7 @@ Provider {
             unfinished: served.unfinished === true,
             glyph: Theme.glyph[served.glyph] ?? Theme.glyph.pending,
             hue: served.hue ?? "program",
-            side: (served.side ?? []).map(item => item.said).join(" \u00b7 "),
+            side: (served.side ?? []).map(sideSaid).join(" \u00b7 "),
             note: served.note ?? "",
             reads: served.reads ?? "",
             later: true,

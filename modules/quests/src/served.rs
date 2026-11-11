@@ -11,6 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use daemon_serve::watch::Held;
+use ready_rows::time::{self, Form};
 use serde_json::{Value, json};
 
 use crate::holder::{self, Holder};
@@ -23,13 +24,13 @@ pub const PLACE: &str = "quests";
 pub const SUMMARY: &str = "summary:quests";
 
 /// What every row is made from: the quests open and ended, by the node's
-/// key, the sessions, the folder at home and the year it is.
+/// key, the sessions and the folder at home. Never the clock: a day is
+/// sent as its moment, for the shell to word.
 pub struct Inputs<'a> {
     pub open: &'a Held,
     pub ended: &'a Held,
     pub sessions: &'a Held,
     pub home: &'a str,
-    pub this_year: i64,
 }
 
 /// Every quest once, the open one where a quest is in both lists, as it
@@ -53,26 +54,27 @@ fn row(
     inputs: &Inputs,
 ) -> Value {
     let open = quest.open();
-    let day = quest::day(quest.updated(), inputs.this_year);
-    let kind = if quest.kind() == "quest" {
-        ""
+    let touched = quest::moment(quest.updated());
+    let said = |words: &str| (!words.is_empty()).then(|| json!({ "said": words }));
+    let kind = (quest.kind() != "quest")
+        .then_some(quest.kind())
+        .and_then(said);
+    // An open quest says its priority; one ended, the day it was last
+    // touched, as the shell's calendar says it.
+    let when = if open {
+        said(quest.priority())
     } else {
-        quest.kind()
+        touched.map(|ms| time::at(ms, Form::Day))
     };
-    let when = if open { quest.priority() } else { day.as_str() };
-    let address = holder.map_or("", |holder| holder.address.as_str());
-    let side: Vec<Value> = [kind, when, address]
-        .into_iter()
-        .filter(|part| !part.is_empty())
-        .map(|said| json!({"said": said}))
-        .collect();
+    let address = holder.and_then(|holder| said(holder.address.as_str()));
+    let side: Vec<Value> = [kind, when, address].into_iter().flatten().collect();
     let parent = named
         .get(quest.parent())
         .map(|name| json!({"id": quest.parent(), "name": name}));
     let session = holder.map(|holder| json!({"address": holder.address, "parked": holder.parked}));
     let held = json!({
         "id": quest.id(), "kind": quest.kind(), "status": quest.status(),
-        "priority": quest.priority(), "updated": quest.updated(), "day": day,
+        "priority": quest.priority(), "updated": quest.updated(), "touched": touched,
         "folder": quest.folder(inputs.home), "open": open,
         "also": format!("{} {}", quest.id(), quest.kind()),
         "session": session, "parent": parent,
@@ -147,7 +149,6 @@ mod tests {
             ended: &ended,
             sessions: &sessions,
             home: "/home/joel",
-            this_year: 2026,
         })
     }
 
@@ -204,7 +205,12 @@ mod tests {
             rows[0]["held"]["session"],
             json!({"address": "S", "parked": false})
         );
-        assert_eq!(rows[1]["side"], json!([{"said": "5 Jan 2025"}]));
+        assert_eq!(
+            rows[1]["side"],
+            json!([{"at": 20_093 * 86_400_000_i64 + 43_200_000, "as": "day"}]),
+            "its day as a moment, for the shell to word by its own calendar"
+        );
+        assert_eq!(rows[1]["held"]["touched"], rows[1]["side"][0]["at"]);
         assert_eq!(rows[1]["glyph"], "done");
         assert_eq!(rows[1]["unfinished"], false);
     }

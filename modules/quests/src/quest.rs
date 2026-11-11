@@ -2,7 +2,8 @@
 //! kinds, the harness's two lists): read the way the launcher's
 //! `Quests.qml` read it, its own kind under `quest.kind` since the node's
 //! kind stands over it, the folder a session on it starts in, and how its
-//! status and the day it was last touched are said.
+//! status is said, and the moment it was last touched, which the shell
+//! words as a day by its own calendar.
 
 use serde_json::Value;
 
@@ -104,56 +105,69 @@ impl<'a> Quest<'a> {
     }
 }
 
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+const MS_A_DAY: i64 = 86_400_000;
 
-/// A day as a clock's calendar says it, from a date or a time as the
-/// harness writes either: `22 Oct`, with its year where it isn't
-/// `this_year`'s, `5 Jan 2025`; nothing where it doesn't read as a day.
-pub fn day(updated: &str, this_year: i64) -> String {
-    let date = updated.get(..10).unwrap_or("");
-    let mut parts = date.splitn(3, '-');
-    let (Some(year), Some(month), Some(of)) = (parts.next(), parts.next(), parts.next()) else {
-        return String::new();
-    };
-    let (Ok(year), Ok(month), Ok(of)) = (
-        year.parse::<i64>(),
-        month.parse::<usize>(),
-        of.parse::<u32>(),
-    ) else {
-        return String::new();
-    };
-    let Some(month) = month.checked_sub(1).and_then(|at| MONTHS.get(at)) else {
-        return String::new();
-    };
-    if !(1..=31).contains(&of) {
-        return String::new();
+/// The moment a quest was last touched, in milliseconds since 1970, from
+/// a date or a time as the harness writes either: a time by its own zone,
+/// `2026-10-21T09:00:00.000Z`, and a date alone at its noon in UTC,
+/// which is that day by any calendar within eleven hours of it. Nothing
+/// where it doesn't read as one. Only the moment travels, never its day
+/// in words, since what day it is depends on the clock and the zone the
+/// shell reads it by (KP0L6A, 2026-11-10).
+pub fn moment(updated: &str) -> Option<i64> {
+    let mut date = updated.get(..10)?.splitn(3, '-');
+    let year: i64 = date.next()?.parse().ok()?;
+    let month: i64 = date.next()?.parse().ok()?;
+    let of: i64 = date.next()?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&of) {
+        return None;
     }
-    if year == this_year {
-        format!("{of} {month}")
-    } else {
-        format!("{of} {month} {year}")
-    }
+    let day = days_since_1970(year, month, of) * MS_A_DAY;
+    let Some(time) = updated.get(10..).filter(|rest| !rest.is_empty()) else {
+        return Some(day + MS_A_DAY / 2);
+    };
+    let time = time.strip_prefix('T')?;
+    let zone_at = time.find(['Z', '+', '-']).unwrap_or(time.len());
+    let (clock, zone) = time.split_at(zone_at);
+    Some(day + ms_of_clock(clock)? - ms_of_zone(zone)?)
 }
 
-/// The year it is, by the clock, from the days since 1970 began
-/// (Howard Hinnant's civil calendar), so the daemon needs no calendar of
-/// its own. In UTC, so for a few hours as a year turns a day may say its
-/// year a little early or late.
-pub fn year_of(days: i64) -> i64 {
-    let shifted = days + 719_468;
-    let era = shifted.div_euclid(146_097);
-    let of_era = shifted.rem_euclid(146_097);
-    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
-    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let month_shifted = (5 * of_year + 2) / 153;
-    let month = if month_shifted < 10 {
-        month_shifted + 3
-    } else {
-        month_shifted - 9
-    };
-    year_of_era + era * 400 + i64::from(month <= 2)
+/// The days from 1970's first to a day of the civil calendar (Howard
+/// Hinnant's), so the daemon needs no calendar of its own.
+fn days_since_1970(year: i64, month: i64, of: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let of_era = year - era * 400;
+    let of_year = (153 * ((month + 9) % 12) + 2) / 5 + of - 1;
+    let days_of_era = of_era * 365 + of_era / 4 - of_era / 100 + of_year;
+    era * 146_097 + days_of_era - 719_468
+}
+
+/// A clock's `09:00`, `09:00:30` or `09:00:30.250`, in milliseconds.
+fn ms_of_clock(clock: &str) -> Option<i64> {
+    let mut parts = clock.splitn(3, ':');
+    let hours: i64 = parts.next()?.parse().ok()?;
+    let minutes: i64 = parts.next()?.parse().ok()?;
+    let seconds: f64 = parts.next().map_or(Some(0.0), |s| s.parse().ok())?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a minute's seconds, in milliseconds, fit"
+    )]
+    let ms = (seconds * 1000.0).round() as i64;
+    Some((hours * 60 + minutes) * 60_000 + ms)
+}
+
+/// A zone's `Z`, `+02:00` or `-05:00`, or none (taken as UTC), as how
+/// far ahead of UTC it is, in milliseconds.
+fn ms_of_zone(zone: &str) -> Option<i64> {
+    if zone.is_empty() || zone == "Z" {
+        return Some(0);
+    }
+    let ahead = if zone.starts_with('-') { -1 } else { 1 };
+    let mut parts = zone.get(1..)?.splitn(2, ':');
+    let hours: i64 = parts.next()?.parse().ok()?;
+    let minutes: i64 = parts.next().map_or(Some(0), |m| m.parse().ok())?;
+    Some(ahead * (hours * 60 + minutes) * 60_000)
 }
 
 #[cfg(test)]
@@ -189,19 +203,27 @@ mod tests {
     }
 
     #[test]
-    fn a_day_says_its_year_only_when_it_isnt_this_one() {
-        assert_eq!(day("2026-10-22", 2026), "22 Oct");
-        assert_eq!(day("2026-10-21T09:00:00.000Z", 2026), "21 Oct");
-        assert_eq!(day("2025-01-05", 2026), "5 Jan 2025");
-        assert_eq!(day("soon", 2026), "");
-        assert_eq!(day("2026-13-01", 2026), "");
+    fn a_time_is_its_moment_by_its_own_zone() {
+        assert_eq!(moment("2026-10-21T09:00:00.000Z"), Some(1_792_573_200_000));
+        assert_eq!(
+            moment("2026-10-21T04:00:00-05:00"),
+            moment("2026-10-21T09:00:00Z"),
+            "five hours behind UTC"
+        );
+        assert_eq!(moment("1970-01-01T00:00:00.250Z"), Some(250));
     }
 
     #[test]
-    fn the_year_is_read_from_the_days_since_1970() {
-        assert_eq!(year_of(0), 1970);
-        assert_eq!(year_of(20_767), 2026, "2026-11-10");
-        assert_eq!(year_of(20_453), 2025, "2025-12-31");
-        assert_eq!(year_of(20_454), 2026, "2026-01-01");
+    fn a_date_alone_is_its_noon_and_anything_else_none() {
+        assert_eq!(moment("1970-01-01"), Some(43_200_000));
+        assert_eq!(moment("2026-11-10"), Some(20_767 * MS_A_DAY + 43_200_000));
+        assert_eq!(
+            moment("2024-03-01"),
+            Some(19_783 * MS_A_DAY + 43_200_000),
+            "after a leap day"
+        );
+        assert_eq!(moment("soon"), None);
+        assert_eq!(moment("2026-13-01"), None);
+        assert_eq!(moment("2026-10-21 09:00"), None, "a time is after a T");
     }
 }
