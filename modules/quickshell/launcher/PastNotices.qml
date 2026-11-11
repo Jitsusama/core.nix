@@ -113,11 +113,14 @@ Provider {
         // so Return steps in among its acts, as the right arrow does,
         // rather than doing the next act: copying is never first (Joel,
         // 2026-10-28: "having the separate copy option at the top is very
-        // confusing"), nor is marking it read.
+        // confusing"), nor is marking it read. Its command is then no
+        // act's, so Return from the find steps in rather than landing, as
+        // one that would mark it read does (Launcher.lands).
         if ((row.acts ?? [])[0]?.step === "drawer"
             && typeof provider.launcher?.intoDrawer !== "function") {
             Object.assign(one, { verb: "more", now: false, later: false, stays: true,
-                targets: one.verbs, run: () => provider.launcher?.enter(one) });
+                targets: one.verbs, wordsId: undefined,
+                run: () => provider.launcher?.enter(one) });
         }
         Object.defineProperty(one, "also", {
             enumerable: true,
