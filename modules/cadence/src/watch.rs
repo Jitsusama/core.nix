@@ -53,6 +53,10 @@ pub struct Round {
     pub head: String,
     pub merged: i64,
     pub behind: usize,
+    /// Whether a round tests `head` now, or the net, between rounds, last
+    /// saw it: on 10 November the net tested nothing past 19:56's head for
+    /// hours while a search ran, and the card said it was caught up.
+    pub testing: bool,
 }
 
 /// Everything the watch and the card read, gathered at one moment.
@@ -151,10 +155,15 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
                 tier *= 2.0;
             }
             let short: String = round.head.chars().take(9).collect();
+            let what = if round.testing {
+                format!("the net's round at {short}")
+            } else {
+                format!("the net, between rounds, last saw {short}, which")
+            };
             out.push(Breach {
                 key: format!("net:{short}:{tier}"),
                 text: format!(
-                    "the net's round at {short} is {hours:.1} h old, {} merges behind main",
+                    "{what} is {hours:.1} h old, {} merges behind main",
                     round.behind
                 ),
             });
@@ -682,14 +691,23 @@ mod tests {
             head: "cb5b9b12dce0".into(),
             merged: 100_000 - 4 * 3600,
             behind: 5,
+            testing: true,
         });
         assert_eq!(breaches(&s)[0].key, "net:cb5b9b12d:3");
         s.round = Some(Round {
             head: "cb5b9b12dce0".into(),
             merged: 100_000 - 7 * 3600,
             behind: 9,
+            testing: false,
         });
-        assert_eq!(breaches(&s)[0].key, "net:cb5b9b12d:6");
+        let said = &breaches(&s)[0];
+        assert_eq!(said.key, "net:cb5b9b12d:6");
+        assert!(
+            said.text
+                .starts_with("the net, between rounds, last saw cb5b9b12d"),
+            "a net testing nothing was said to be in a round: {}",
+            said.text
+        );
     }
 
     #[test]
