@@ -9,7 +9,10 @@
 // `stands` is what the launcher says of itself: whether its catalogue is
 // walked from outside (`cataloguing`), whether it's `open`, the steps
 // `held`, each with the row it stepped into, the acts `becoming`, each with
-// the source whose rows it waits on, and what's `typed`. A source is
+// the source whose rows it waits on, and whether anything's typed
+// (`typing`), never what, so a source's wanted is asked again only as that
+// turns rather than on every key: 65 sources' were, about a millisecond of
+// each key before it searched (2026-11-11). A source is
 // `asleep` while it waits its turn to wake as an opening fills in, and
 // `warming` while its home rows are made shut, so the first opening after
 // a start draws from what's kept. The source a chord opens into is
@@ -44,7 +47,7 @@ function wanted(stands, source) {
     // At home, what's typed searches every place, and home names what each
     // holds, unless it says what it holds itself, as Agents does; while a
     // kept opening fills in, only once it's woken (wakingOrder).
-    return stands.typed !== "" || !(source.saysAtHome || source.asleep);
+    return stands.typing || !(source.saysAtHome || source.asleep);
 }
 
 // Whether rows home shows, or a few places read (`readers`), are read now:

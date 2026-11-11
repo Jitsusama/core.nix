@@ -196,7 +196,7 @@ QtObject {
         const agents = { saysAtHome: true };
         const people = { saysAtHome: false };
         const at = fields => Object.assign({ cataloguing: false, open: true, held: [],
-            becoming: [], typed: "", entering: null }, fields);
+            becoming: [], typing: false, entering: null }, fields);
         const wanted = (fields, source) => Wanted.wanted(at(fields), source);
         check(failures, "closed, no source's rows are wanted", wanted({ open: false }, people),
             false);
@@ -205,12 +205,12 @@ QtObject {
         check(failures, "at home, a place home names is", wanted({}, people), true);
         check(failures, "and one saying what it holds itself isn't", wanted({}, agents), false);
         check(failures, "what's typed at home searches every place",
-            wanted({ typed: "ma" }, agents), true);
+            wanted({ typing: true }, agents), true);
         const inAgents = [{ row: { from: agents } }];
         check(failures, "held, its own are", wanted({ held: inAgents }, agents), true);
         check(failures, "and another place's aren't", wanted({ held: inAgents }, people), false);
         check(failures, "nor with something typed there",
-            wanted({ held: inAgents, typed: "ma" }, people), false);
+            wanted({ held: inAgents, typing: true }, people), false);
         check(failures, "held deeper, in one of its rows, its own still are",
             wanted({ held: inAgents.concat([{ row: { from: null } }]) }, agents), true);
         check(failures, "an act of its own waiting to be agreed keeps them wanted elsewhere",
@@ -220,7 +220,7 @@ QtObject {
         check(failures, "as a kept opening fills in, one not yet woken isn't",
             wanted({}, asleep), false);
         check(failures, "what's typed searches every place, woken or not",
-            wanted({ typed: "ma" }, asleep), true);
+            wanted({ typing: true }, asleep), true);
         check(failures, "and one held is wanted though not woken",
             wanted({ held: [{ row: { from: asleep } }] }, asleep), true);
         const now = { saysAtHome: false };
