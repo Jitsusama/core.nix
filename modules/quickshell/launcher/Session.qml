@@ -302,14 +302,14 @@ Provider {
     // any act to be agreed, so a slow answer's why still reaches the foot.
     readonly property int profileAsksAfter: 1000
 
-    // The daemon's answer for the pick it was asked about; one a newer
-    // pick has overtaken is let be, its own read already timed.
-    function profileToldBack(text) {
+    // The daemon's answer for the pick it was asked about, by its own
+    // name, "" while it doesn't answer; one a newer pick has overtaken is
+    // let be, its own read already timed.
+    function profileToldBack(heard) {
         const picked = provider.profileReadFor;
         provider.profileReadFor = null;
         if (picked === null || picked !== provider.profilePicked)
             return;
-        const heard = Power.activeProfile(text);
         const why = Power.profileRefusal(picked.daemon, heard, {
             holds: Array.from(PowerProfiles.holds ?? []).map(hold => ({
                 profile: profileChoices.find(choice => choice.profile === hold.profile)?.daemon
@@ -337,27 +337,22 @@ Provider {
         id: profileAsking
         interval: provider.profileAsksAfter
         onTriggered: {
-            if (profileDaemon.running) {
-                profileAsking.restart();
-                return;
-            }
             provider.profileReadFor = provider.profilePicked;
-            profileDaemon.running = true;
+            provider.profileToldBack(profileDaemon.revision >= 0
+                ? profileDaemon.held["profile:main"]?.active ?? "" : "");
         }
     }
 
-    // What power-profiles-daemon says it's on, asked of it on the system
-    // bus rather than read from Quickshell's copy, so what's said back is
-    // the daemon's own. One short busctl runs per pick, a key Joel
-    // pressed, never on a clock, so it costs nothing while he's away.
-    Process {
+    // What power-profiles-daemon says it's on, as the machine daemon hears
+    // it on the system bus each time it says it changed
+    // (modules/machine/src/kept.rs), rather than Quickshell's copy, which
+    // says what was asked, so what's judged is the daemon's own. Nothing
+    // is started per pick, and the watch wakes nothing between changes.
+    Daemon {
         id: profileDaemon
-        command: ["busctl", "get-property", "org.freedesktop.UPower.PowerProfiles",
-            "/org/freedesktop/UPower/PowerProfiles", "org.freedesktop.UPower.PowerProfiles",
-            "ActiveProfile"]
-        stdout: StdioCollector {
-            onStreamFinished: provider.profileToldBack(text)
-        }
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "profile"
     }
     readonly property var profileChosen: {
         const choice = profileChoices.find(each => provider.profileOn(each));

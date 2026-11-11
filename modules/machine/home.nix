@@ -11,7 +11,9 @@ in
 {
   # It isn't in background.slice: what it holds is what the launcher shows
   # as Joel opens it, so it answers ahead of the work behind. It reads
-  # nothing while nobody watches, so it costs nothing idle.
+  # nothing while nobody watches, so it costs nothing idle; what it hears
+  # from its start, a sleep, Keep Awake's files, the chosen profile and
+  # power-profiles-daemon, wakes it only as they change.
   systemd.user.services.machine = {
     Unit = {
       Description = "Holds how this machine is doing ready for the shell";

@@ -6,8 +6,9 @@
 //! the machine most, its sensors, thermal zones and cooling, each power
 //! supply, how it sleeps, its firmware, the screen's backlight and the
 //! room's light, the brightness and warmth the backlight program
-//! steers the built-in screen to, and who has each camera open, each a
-//! record whose figures are
+//! steers the built-in screen to, who has each camera open, and Keep
+//! Awake's locks and the power profile (kept.rs), each a record whose
+//! figures are
 //! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
@@ -31,7 +32,11 @@
 //! program's files are heard as it writes them while their kinds are
 //! watched, so a switch turned in the launcher reads turned within a
 //! frame, not at the next second's read, and so are the cameras' holders,
-//! so a program opening a camera is said as it does.
+//! so a program opening a camera is said as it does. Keep Awake's files and the
+//! machine's chosen profile are heard as they're written, and
+//! power-profiles-daemon as it says it changed, from the daemon's start,
+//! since the shell watches them while the launcher's shut: neither is
+//! read on a clock, so watching them wakes nothing until they change.
 //!
 //! It acts as well as answers, so the shell spawns and writes nothing of
 //! its own: `charge-limit` moves a battery's charge limit, and the supply
@@ -51,8 +56,8 @@ use std::time::{Duration, Instant};
 
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use machine::{
-    Root, boot, camera, clock_ms, disk, firmware, heat, light, memory, now_ms, processor, rounded,
-    sleep, steered, supply, tree, using, written::Written,
+    Root, boot, camera, clock_ms, disk, firmware, heat, kept, light, memory, now_ms, processor,
+    rounded, sleep, steered, supply, tree, using, written::Written,
 };
 use serde_json::{Value, json};
 
@@ -84,6 +89,13 @@ const HEARD: [&str; 3] = ["brightness", "warmth", "camera"];
 /// How often a watch on files heard looks to see whether it's still
 /// wanted, once every folder is watched.
 const RESTING: Duration = Duration::from_secs(60);
+/// The kinds read as their files are written or their bus says they
+/// changed (`kept_loop`, `profile_loop`).
+const KEPT: [&str; 2] = ["kept", "profile"];
+/// How long `kept_loop` waits on its files before looking again for a
+/// folder that isn't there, as `/run/power-profile` isn't while its
+/// service starts again.
+const KEPT_LOOKS_AGAIN: Duration = Duration::from_secs(10);
 /// How many of the last reads' times health says.
 const TIMES: usize = 32;
 /// How many lines a connection may have waiting to be written before
@@ -129,6 +141,8 @@ struct Reader {
     /// Where the backlight program says what it steers the screen to, or
     /// none for a session with no runtime folder.
     steered: Option<steered::Files>,
+    /// The session's runtime folder, where Keep Awake leaves its files.
+    runtime: Option<String>,
 }
 
 impl Reader {
@@ -227,6 +241,12 @@ impl Reader {
         if wants("awake") {
             records.push(sleep::awake(&buses.logind));
         }
+        if wants("kept") {
+            records.extend(kept::locks(&self.root, self.runtime.as_deref()));
+        }
+        if wants("profile") {
+            records.push(kept::profile(&self.root, &buses.profile));
+        }
         if wants("supply") {
             for name in supply::supplies(&self.root) {
                 let said = buses.upower.get(&name).cloned().unwrap_or(Value::Null);
@@ -263,6 +283,7 @@ struct Buses {
     logind: Value,
     firmware: Vec<Value>,
     light: Vec<Value>,
+    profile: Value,
 }
 
 /// Everything the threads share.
@@ -283,6 +304,8 @@ struct Daemon {
     firmware: Vec<Value>,
     /// The light sensors' records, as `light_loop` last read them.
     light: Vec<Value>,
+    /// What power-profiles-daemon last said, as `profile_loop` heard it.
+    profile: Value,
     /// The kinds whose source said they changed, to be asked again now.
     hurried: HashSet<String>,
     /// When the last sleep began and ended, as logind's signal said.
@@ -355,6 +378,15 @@ fn main() {
     }
     {
         let shared = Arc::clone(&shared);
+        let root = root.clone();
+        std::thread::spawn(move || kept_loop(&shared, &root));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || profile_loop(&shared));
+    }
+    {
+        let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
@@ -382,6 +414,7 @@ fn shared(root: &Root) -> Shared {
             logind: Value::Null,
             firmware: Vec::new(),
             light: Vec::new(),
+            profile: Value::Null,
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
@@ -398,6 +431,9 @@ fn shared(root: &Root) -> Shared {
             programs: None,
             sensors: heat::Kept::default(),
             steered: steered::Files::of_session(),
+            runtime: std::env::var("XDG_RUNTIME_DIR")
+                .ok()
+                .filter(|folder| !folder.is_empty()),
         }),
         woken: Condvar::new(),
     }
@@ -477,6 +513,7 @@ fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
             logind: daemon.logind.clone(),
             firmware: daemon.firmware.clone(),
             light: daemon.light.clone(),
+            profile: daemon.profile.clone(),
         };
         (buses, trees)
     };
@@ -570,10 +607,10 @@ fn watch_loop(shared: &Shared) {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
         let mut kinds = watched(&daemon);
-        kinds.retain(|kind| !HEARD.contains(&kind.as_str()));
+        kinds.retain(|kind| !HEARD.contains(&kind.as_str()) && !KEPT.contains(&kind.as_str()));
         // Only kinds heard as they're written are watched, as the bar's
-        // camera always is, so nothing is due on the second until a watch
-        // of another kind wakes this.
+        // camera and Keep Awake always are, so nothing is due on the
+        // second until a watch of another kind wakes this.
         if kinds.is_empty() {
             drop(
                 shared
@@ -759,6 +796,139 @@ fn heard_loop(shared: &Shared, kinds: &[&str], folders: &[PathBuf], ours: impl F
             }
         }
     }
+}
+
+/// Reads these of the kinds heard by a thread of their own, those of them
+/// watched, and tells what changed; unwatched, they're read afresh by the
+/// next watch's first answer.
+fn heard(shared: &Shared, kinds: &[&str]) {
+    let watching = watched(&lock(&shared.daemon));
+    let kinds: HashSet<String> = kinds
+        .iter()
+        .map(|kind| (*kind).to_owned())
+        .filter(|kind| watching.contains(kind))
+        .collect();
+    if !kinds.is_empty() {
+        read(shared, &kinds, &[]);
+    }
+}
+
+/// Hears Keep Awake's files come and go in the runtime folder, and the
+/// machine's chosen profile written, from the daemon's start, and tells
+/// what changed at once. The shell watches both while the launcher's
+/// shut, so they're never read on a clock: only a write wakes it, and a
+/// folder not there, or taken away as systemd does a service's runtime
+/// folder, is looked for again every few seconds.
+fn kept_loop(shared: &Shared, root: &Root) {
+    let runtime = lock(&shared.reader).runtime.clone();
+    let runtime = runtime.map(|folder| root.path(&folder));
+    let folders = runtime.into_iter().chain([root.path(kept::CHOSEN)]);
+    let Some(mut written) = Written::on(folders) else {
+        // With no watch the kernel will give, they're read by each watch's
+        // first answer and each get alone.
+        return;
+    };
+    loop {
+        let names = written.wait(KEPT_LOOKS_AGAIN);
+        let locks = names
+            .iter()
+            .any(|name| name.is_empty() || kept::names_a_lock(name));
+        let choice = names
+            .iter()
+            .any(|name| name.is_empty() || kept::names_the_choice(name));
+        match (locks, choice) {
+            (true, true) => heard(shared, &KEPT),
+            (true, false) => heard(shared, &["kept"]),
+            (false, true) => heard(shared, &["profile"]),
+            (false, false) => {}
+        }
+    }
+}
+
+const PROFILES: &str = "org.freedesktop.UPower.PowerProfiles";
+const PROFILES_PATH: &str = "/org/freedesktop/UPower/PowerProfiles";
+
+/// Hears power-profiles-daemon from the daemon's start, as long as it
+/// runs: what it's on, offers and is held to, asked again each time it
+/// says one changed or it starts again, and told at once. It waits on the
+/// bus alone, so it wakes for nothing else.
+fn profile_loop(shared: &Shared) {
+    loop {
+        if let Ok(connection) = system_bus() {
+            profiles_heard(&connection, shared);
+        }
+        std::thread::sleep(SLEEPS_AGAIN);
+    }
+}
+
+/// Asks power-profiles-daemon what it's on now and each time it says
+/// something changed, or a new one takes its name, until the connection
+/// ends.
+fn profiles_heard(connection: &zbus::blocking::Connection, shared: &Shared) {
+    let Ok(daemon) = proxy(connection, PROFILES, PROFILES_PATH, PROFILES) else {
+        return;
+    };
+    let Ok(properties) = zbus::blocking::fdo::PropertiesProxy::builder(connection)
+        .destination(PROFILES)
+        .and_then(|builder| builder.path(PROFILES_PATH))
+        .and_then(zbus::blocking::proxy::Builder::build)
+    else {
+        return;
+    };
+    let (Ok(changes), Ok(owners)) = (
+        properties.receive_properties_changed(),
+        daemon.receive_owner_changed(),
+    ) else {
+        return;
+    };
+    let ask = || {
+        let said = power_profiles(&daemon);
+        lock(&shared.daemon).profile = said;
+        heard(shared, &["profile"]);
+    };
+    ask();
+    std::thread::scope(|scope| {
+        scope.spawn(|| owners.for_each(|_| ask()));
+        changes.for_each(|_| ask());
+    });
+}
+
+/// What power-profiles-daemon says: the profile it's on, those it
+/// offers, each hold a program has on one, with why, and why the
+/// performance profile's slowed, if it is; null while it doesn't answer.
+fn power_profiles(daemon: &zbus::blocking::Proxy<'_>) -> Value {
+    type Dicts = Vec<HashMap<String, zbus::zvariant::OwnedValue>>;
+    let Ok(active) = daemon.get_property::<String>("ActiveProfile") else {
+        return Value::Null;
+    };
+    let field = |dict: &HashMap<String, zbus::zvariant::OwnedValue>, name: &str| {
+        dict.get(name).map_or(Value::Null, |value| plain(value))
+    };
+    let profiles = daemon.get_property::<Dicts>("Profiles").ok().map(|all| {
+        all.iter()
+            .map(|profile| field(profile, "Profile"))
+            .collect::<Vec<_>>()
+    });
+    let holds = daemon
+        .get_property::<Dicts>("ActiveProfileHolds")
+        .ok()
+        .map(|all| {
+            all.iter()
+                .map(|hold| {
+                    json!({
+                        "profile": field(hold, "Profile"),
+                        "app": field(hold, "ApplicationId"),
+                        "why": field(hold, "Reason"),
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
+    // Empty while it isn't slowed.
+    let degraded = daemon
+        .get_property::<String>("PerformanceDegraded")
+        .ok()
+        .filter(|why| !why.is_empty());
+    json!({"active": active, "profiles": profiles, "holds": holds, "degraded": degraded})
 }
 
 /// Lets go of what each light sensor last heard, keeping the sensor and

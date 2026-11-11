@@ -6,9 +6,10 @@
 //! watched; the programs are ranked by their share and their memory; a
 //! disk's file systems are found through what's mapped over it; the
 //! brightness and warmth the backlight program steers the screen to are
-//! told as it writes them; who has each camera is told as its file is;
-//! a charge limit set is told before it's answered; and an ask, act or
-//! kind it doesn't know is refused.
+//! told as it writes them, as are Keep Awake's locks and the machine's
+//! chosen profile; who has each camera is told as its file is; a charge
+//! limit set is told before it's answered; and an ask, act or kind it
+//! doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -179,6 +180,9 @@ fn machine(root: &Path) {
     process(root, 1, 0, "systemd", 10, 100);
     process(root, 2, 1, ".kitty-wrapped", 50, 1000);
     process(root, 3, 2, ".kitty-wrapped", 30, 500);
+    // The session's runtime folder, and follow.sh's, with what it chose.
+    std::fs::create_dir_all(root.join("run/user/1000")).unwrap();
+    write("/run/power-profile/wanted", "performance\n");
 }
 
 /// The processors' counters, `busy` ticks of `all` on each core.
@@ -764,6 +768,30 @@ fn who_has_each_camera_is_told_as_its_file_is_written() {
     // Unplugged, its file goes, and so does the camera.
     std::fs::remove_file(folder.join("obs")).unwrap();
     assert_eq!(client.gone(), [json!("camera:obs")]);
+}
+
+#[test]
+fn keep_awakes_locks_and_the_chosen_profile_are_told_as_theyre_written() {
+    let running = Running::new("kept");
+    let root = running.root();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": ["kept", "profile"]}));
+    let records = &said["records"];
+    assert_eq!(record(records, "kept:idle")["held"], json!(false));
+    assert_eq!(record(records, "kept:lid")["held"], json!(false));
+    // No power-profiles-daemon answers here, but the machine's choice is
+    // said all the same.
+    assert_eq!(record(records, "profile:main")["active"], Value::Null);
+    assert_eq!(record(records, "profile:main")["wanted"], "performance");
+    // Kept awake from the launcher, its service leaves its file, which
+    // is told as it's made, and as it goes.
+    std::fs::write(root.join("run/user/1000/kept-awake"), "").unwrap();
+    assert_eq!(client.changed("kept:idle")["held"], json!(true));
+    std::fs::remove_file(root.join("run/user/1000/kept-awake")).unwrap();
+    assert_eq!(client.changed("kept:idle")["held"], json!(false));
+    // On battery, follow.sh writes its new choice in place.
+    std::fs::write(root.join("run/power-profile/wanted"), "balanced\n").unwrap();
+    assert_eq!(client.changed("profile:main")["wanted"], "balanced");
 }
 
 #[test]
