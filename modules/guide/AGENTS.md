@@ -515,8 +515,10 @@ driven on; the installed machine's steps come later.
 | `src/rescue.rs`       | the rescue bundle: a machine's Secure Boot keys sealed, made and opened |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
 | `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
-| `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
+| `src/recover/`        | recovering a machine from a stick: found, opened, mounted, then each repair |
 | `src/github.rs`       | an account's keys in the TPM added to GitHub after a sign-in on the phone |
+| `src/main.rs`         | which command runs, and those that run anywhere           |
+| `src/commands/`       | the program's commands, a file for each place they run in |
 | `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a stick carries for one machine            |
@@ -525,10 +527,11 @@ driven on; the installed machine's steps come later.
 | `theme.nix`           | the theme as the guide and the stick's console draw it    |
 | `fixtures/<hardware>/` | what each tool printed on a real machine, as it printed it |
 | `tests/journey.rs`    | the journey's promises, with toy steps                    |
+| `tests/install/`      | the install's rules that guard a disk, a file for each area |
 | `tests/stick.rs`      | whole sticks written into files, judged by sfdisk, fsck.fat and sbverify |
 | `tests/sign.rs`       | signatures compared byte for byte with sbsign's           |
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
-| `tests/writer.rs`       | the one stick written, never another disk              |
+| `tests/writer/`       | the one stick written, never another disk, a file for each part |
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
 | `../../tests/vm/guide/guide-writer.nix` | a stick written through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN, then written again for every machine whose bundle the person keeps |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |

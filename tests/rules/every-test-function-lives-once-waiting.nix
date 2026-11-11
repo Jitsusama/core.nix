@@ -34,8 +34,6 @@
   "modules/firmware-settings/tests/the-firmware-takes-what-is-declared.sh" = 1;
   "modules/google/src/calendar_rows_tests.rs" = 1;
   "modules/google/tests/daemon.rs" = 1;
-  "modules/guide/src/screen/run_tests.rs" = 1;
-  "modules/guide/src/screen/view_tests.rs" = 1;
   "modules/guide/src/vault/vault_tests.rs" = 1;
   "modules/guide/tests/finish.rs" = 1;
   "modules/guide/tests/github.rs" = 1;
