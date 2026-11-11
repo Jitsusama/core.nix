@@ -309,6 +309,12 @@ in
   };
 
   config = {
+    # A unit an agent starts with systemd-run stays in the agent's slice,
+    # rather than landing among Joel's apps, as systemd-run.sh says.
+    environment.systemPackages = [
+      (pkgs.callPackage ./systemd-run.nix { real = "${config.systemd.package}/bin/systemd-run"; })
+    ];
+
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
