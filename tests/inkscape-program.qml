@@ -134,8 +134,16 @@ ShellRoot {
                 dated: true
             }]
         })
-        onThingsChanged: root.ready()
+        // Every list it says holds only rows made, even as it's made itself
+        // beside Inkscape, which opts its acts in.
+        onThingsChanged: {
+            root.holes += things.filter(row => row === undefined).length;
+            root.ready();
+        }
     }
+
+    // The rows not yet made Applications listed, from its first list on.
+    property int holes: 0
 
     Connections {
         target: applications.recents
@@ -199,6 +207,7 @@ ShellRoot {
             return;
         root.waiting = "its step";
         try {
+            same("every list of programs holds only rows made", root.holes, 0);
             sums();
             HeardWindows.told(applications.windowsDaemon, Niri.windows,
                 id => DesktopEntries.heuristicLookup(id), Niri.current);
