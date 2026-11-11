@@ -286,29 +286,33 @@ Provider {
     // Its answer comes a moment after the key, which the launcher waits
     // for a little (`awaits`, Launcher.qml's answersWaitedFor); until it
     // comes, what's typed finds no notice, and once it does, the launcher
-    // is told it found more. An answer asked again since the notices
-    // changed is listed meanwhile, its rows as they are now.
+    // is told it found more. One kept from before the notices changed is
+    // asked again and not listed meanwhile: it can list a notice the
+    // daemon no longer finds, which stays, with the selection on it, once
+    // the new answer lands what it does find under it.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const asked = words.join(" ");
         answers.wanted = asked;
-        const kept = answers.kept.find(one => one.words === asked) ?? null;
-        if (kept === null || kept.at !== mixed.placings)
+        const kept = answers.kept.find(one => one.words === asked
+            && one.at === mixed.placings) ?? null;
+        if (kept === null) {
             searchAsked(asked);
-        if (kept === null)
             return { rows: [], grade: 3 };
+        }
         all();
         const rows = kept.keys.map(key => mixed.rowAt(key)).filter(row => row !== null);
         return { rows: listed(rows, words), grade: rows.length > 0 ? 0 : 3 };
     }
 
     // Whether a search of these letters waits on the daemon's answer, asked
-    // now if it isn't yet: none is kept for them, and the daemon is there
-    // to ask.
+    // now if it isn't yet: none is kept for them as the notices are now,
+    // and the daemon is there to ask.
     function awaits(letters) {
         const asked = Fuzzy.words(letters).join(" ");
         answers.wanted = asked;
-        if (asked === "" || answers.kept.some(one => one.words === asked))
+        if (asked === "" || answers.kept.some(one => one.words === asked
+            && one.at === mixed.placings))
             return false;
         return searchAsked(asked);
     }
