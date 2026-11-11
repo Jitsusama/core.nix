@@ -342,15 +342,18 @@ def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> No
     assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
 
 
-def test_the_closed_launcher_draws_nothing_as_its_spots_are_made_again(shell: Shell) -> None:
-    """Closed, the launcher draws no frame as its closing's spots are made, and freshened.
+def test_the_closed_launcher_draws_nothing_as_it_lets_its_closing_go(shell: Shell) -> None:
+    """Closed inside a place, the launcher draws no frame as it lets go of what the closing held.
 
-    A closing makes its spots half a second after it, and their figures a minute after that,
-    each while the card is off the screen but for a pixel, where nothing it draws is seen.
-    Counted from once home is kept, since putting it back follows the closing.
+    A closing lets its steps go a quarter of a second after it (leaveSteps), makes its spots
+    half a second after it, and their figures a minute after that, each while the card is off
+    the screen but for a pixel, where nothing it draws is seen. Counted from once home is
+    kept, since putting it back follows the closing at once.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
     since = shell.mark()
     shell.close_launcher()
     shell.launcher_until(lambda shown: shown.get("kept"))
