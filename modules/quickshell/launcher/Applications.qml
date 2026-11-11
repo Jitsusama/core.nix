@@ -263,7 +263,9 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
         kind: "window"
-        live: provider.wanted
+        // Watched while the launcher is open too, as Windows' are, so a
+        // step home asks for no window again (Windows.qml).
+        live: provider.wanted || provider.launcher?.open === true
         paced: provider.launcher
         answersWhole: true
         onHeard: (changed, gone) => provider.hearWindows(changed, gone)

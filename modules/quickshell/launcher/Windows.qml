@@ -228,7 +228,13 @@ Provider {
         // The workspaces and the desktop too, which a window's Move to
         // Workspace offers from (workspacesFor).
         kind: ["window", "workspace", "desktop"]
-        live: provider.wanted
+        // Watched while the launcher is open too, wanted or not, so a step
+        // home from a place listing no window asks the daemon for none
+        // again: its whole answer was refreshed a quarter second after the
+        // key, by the pace, 253 ms from Joel's key to its frame (ZINAWZ,
+        // 2026-11-11). Rows a change makes while unwanted are those of the
+        // windows it names alone.
+        live: provider.wanted || provider.launcher?.open === true
         paced: provider.launcher
         answersWhole: true
         onHeard: (changed, gone) => provider.hear(changed, gone)
@@ -263,7 +269,7 @@ Provider {
         socket: daemon.socket
         kind: "window"
         watching: ({ fields: ["order", "focused"] })
-        live: !provider.wanted
+        live: !daemon.live
         answersWhole: true
         onHeard: (changed, gone) => provider.heardUsed(changed, gone)
         onTold: answer => provider.toldUsed(answer)

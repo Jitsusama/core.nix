@@ -1385,6 +1385,30 @@ def stepped_out(shell: Shell) -> None:
     shell.launcher_until(lambda shown: shown["typed"] == "")
 
 
+def test_a_step_home_asks_the_windows_daemon_nothing_again(shell: Shell) -> None:
+    """Stepping home from a place listing no window takes no windows answer after the key.
+
+    Windows' rows were watched only while wanted, so a step home asked the daemon for every
+    window again, and its answer was refreshed a quarter second after the key, by the pace:
+    253 ms from Joel's key to its frame (ZINAWZ, 2026-11-11).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("emoji", selecting="Emoji")
+    shell.step_in()
+    assert shell.held_still(), "Emoji never held still"
+    shell.normal()
+    mark = shell.mark()
+    stepped_out(shell)
+    assert shell.held_still(), "home never held still"
+    # The span a paced refresh would come in, four times over, not a wait for an end.
+    time.sleep(1)
+    reports, _ = shell.said_since(mark)
+    shell.close_launcher()
+    late = [report for report in reports if report.startswith("refresh of windows")]
+    assert not late, f"the step home refreshed Windows from a new answer: {late}"
+
+
 def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell) -> None:
     """A collection changing while home is shown leaves the selection and the list still.
 
