@@ -1,4 +1,4 @@
-// The machine's administrators may start the memory module's four tuning
+// The machine's administrators may start the memory module's five tuning
 // units with a value from these lists, without a password, and nothing
 // else: modules/memory/nixos.nix says why. polkit's own engine reads this,
 // in the JavaScript it knows.
@@ -9,6 +9,7 @@ var listed = new RegExp(
       "hugepages@(always|madvise|never)",
       "lru-gen@(y|n)",
       "swappiness@(20|60|100|140|180)",
+      "page-cluster@(0|1|2|3)",
     ].join("|") +
     ")\\.service$"
 );
