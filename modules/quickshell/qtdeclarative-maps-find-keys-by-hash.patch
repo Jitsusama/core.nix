@@ -1,0 +1,292 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Find a Map's or a Set's string and number keys by hash
+
+Qt 6.12.0's ESTable, behind Map, Set, WeakMap and WeakSet, finds a key
+by comparing it with every key held, so has, get and set are linear and
+filling one is quadratic: 1914 string keys took 11 to 22 ms to put in a
+Set. String and number keys are now indexed by their hash as well as
+held in insertion order; other keys, whose equality may be their own,
+are compared in turn as before, and only while any are held.
+
+---
+--- a/src/qml/jsruntime/qv4estable.cpp
++++ b/src/qml/jsruntime/qv4estable.cpp
+@@ -4,6 +4,9 @@
+ 
+ #include "qv4estable_p.h"
+ #include "qv4object_p.h"
++#include "qv4string_p.h"
++
++#include <cstring>
+ 
+ using namespace QV4;
+ 
+@@ -11,8 +14,11 @@
+ // is a little different from most; it requires nonlinear access, and must also
+ // preserve the order of insertion of items in a deterministic way.
+ //
+-// This class implements those requirements, except for fast access: that
+-// will be addressed in a followup patch.
++// Keys and values are held in insertion order. String and number keys are
++// also indexed by their hash, in an open-addressed table of positions, so
++// finding one takes a probe or two rather than a comparison with every key.
++// Every other key is compared in turn, as before, since a managed key may
++// define its own equality.
+ 
+ ESTable::ESTable()
+     : m_capacity(8)
+@@ -27,10 +33,91 @@
+ {
+     free(m_keys);
+     free(m_values);
++    free(m_index);
+     m_size = 0;
+     m_capacity = 0;
+     m_keys = nullptr;
+     m_values = nullptr;
++    m_index = nullptr;
++    m_indexCapacity = 0;
++}
++
++// Gives the hash of a string or number key, consistent with sameValueZero:
++// a string by its text, a number by its value as a double, so 1 and 1.0 and
++// +0 and -0 hash alike. Returns false for any other key.
++bool ESTable::hashOf(const Value &key, uint *hash)
++{
++    if (const String *s = key.stringValue()) {
++        *hash = s->hashValue();
++        return true;
++    }
++    if (key.isNumber()) {
++        double d = key.asDouble();
++        if (d == 0)
++            d = 0;
++        quint64 bits;
++        std::memcpy(&bits, &d, sizeof bits);
++        bits ^= bits >> 33;
++        bits *= Q_UINT64_C(0xff51afd7ed558ccd);
++        bits ^= bits >> 33;
++        *hash = uint(bits);
++        return true;
++    }
++    return false;
++}
++
++// Puts the key at \a position in the index, which has room.
++void ESTable::indexAt(uint position, uint hash)
++{
++    const uint mask = m_indexCapacity - 1;
++    uint slot = hash & mask;
++    while (m_index[slot] != 0)
++        slot = (slot + 1) & mask;
++    m_index[slot] = position + 1;
++}
++
++// Makes the index afresh with room for \a capacity slots, a power of two,
++// and counts the keys it can't hold.
++void ESTable::reindex(uint capacity)
++{
++    if (capacity != m_indexCapacity) {
++        free(m_index);
++        m_index = static_cast<uint *>(malloc(capacity * sizeof(uint)));
++        m_indexCapacity = capacity;
++    }
++    memset(m_index, 0, m_indexCapacity * sizeof(uint));
++    m_others = 0;
++    for (uint i = 0; i < m_size; ++i) {
++        uint hash;
++        if (hashOf(m_keys[i], &hash))
++            indexAt(i, hash);
++        else
++            ++m_others;
++    }
++}
++
++// Gives the position of \a key, or -1 when it isn't held.
++int ESTable::find(const Value &key) const
++{
++    uint hash;
++    if (hashOf(key, &hash)) {
++        if (!m_index)
++            return -1;
++        const uint mask = m_indexCapacity - 1;
++        for (uint slot = hash & mask; m_index[slot] != 0; slot = (slot + 1) & mask) {
++            const uint position = m_index[slot] - 1;
++            if (m_keys[position].sameValueZero(key))
++                return int(position);
++        }
++        return -1;
++    }
++    if (m_others == 0)
++        return -1;
++    for (uint i = 0; i < m_size; ++i) {
++        if (m_keys[i].sameValueZero(key))
++            return int(i);
++    }
++    return -1;
+ }
+ 
+ void ESTable::markObjects(MarkStack *s, bool isWeakMap)
+@@ -47,6 +134,9 @@
+ void ESTable::clear()
+ {
+     m_size = 0;
++    if (m_index)
++        memset(m_index, 0, m_indexCapacity * sizeof(uint));
++    m_others = 0;
+ 
+     std::for_each(m_observers.begin(), m_observers.end(), [](ShiftObserver* ob){
+         Q_ASSERT(ob);
+@@ -58,11 +148,10 @@
+ // normalized, as required by the ES spec.
+ void ESTable::set(const Value &key, const Value &value)
+ {
+-    for (uint i = 0; i < m_size; ++i) {
+-        if (m_keys[i].sameValueZero(key)) {
+-            m_values[i] = value;
+-            return;
+-        }
++    const int found = find(key);
++    if (found >= 0) {
++        m_values[found] = value;
++        return;
+     }
+ 
+     if (m_capacity == m_size) {
+@@ -83,59 +172,69 @@
+     m_keys[m_size] = nk;
+     m_values[m_size] = value;
+ 
++    uint hash;
++    if (hashOf(nk, &hash)) {
++        // Kept at most half full, so a probe ends soon.
++        if (2 * (m_size + 1) > m_indexCapacity) {
++            uint capacity = m_indexCapacity ? m_indexCapacity : 16;
++            while (2 * (m_size + 1) > capacity)
++                capacity *= 2;
++            reindex(capacity);
++        }
++        indexAt(m_size, hash);
++    } else {
++        ++m_others;
++    }
++
+     m_size++;
+ }
+ 
+ // Returns true if the table contains \a key, false otherwise.
+ bool ESTable::has(const Value &key) const
+ {
+-    for (uint i = 0; i < m_size; ++i) {
+-        if (m_keys[i].sameValueZero(key))
+-            return true;
+-    }
+-
+-    return false;
++    return find(key) >= 0;
+ }
+ 
+ // Fetches the value for the given \a key, and if \a hasValue is passed in,
+ // it is set depending on whether or not the given key was found.
+ ReturnedValue ESTable::get(const Value &key, bool *hasValue) const
+ {
+-    for (uint i = 0; i < m_size; ++i) {
+-        if (m_keys[i].sameValueZero(key)) {
+-            if (hasValue)
+-                *hasValue = true;
+-            return m_values[i].asReturnedValue();
+-        }
+-    }
+-
++    const int found = find(key);
+     if (hasValue)
+-        *hasValue = false;
+-    return Encode::undefined();
++        *hasValue = found >= 0;
++    if (found < 0)
++        return Encode::undefined();
++    return m_values[found].asReturnedValue();
+ }
+ 
+ // Removes the given \a key from the table
+ bool ESTable::remove(const Value &key)
+ {
+-    for (uint index = 0; index < m_size; ++index) {
+-        if (m_keys[index].sameValueZero(key)) {
+-            // Remove the element at |index| by moving all elements to the right
+-            // of |index| one place to the left.
+-            size_t count = (m_size - (index + 1)) * sizeof(Value);
+-            memmove(m_keys + index, m_keys + index + 1, count);
+-            memmove(m_values + index, m_values + index + 1, count);
+-            m_size--;
+-
+-            std::for_each(m_observers.begin(), m_observers.end(), [index](ShiftObserver* ob) {
+-                Q_ASSERT(ob);
+-                if (index <= ob->pivot && ob->pivot != ShiftObserver::OUT_OF_TABLE)
+-                    ob->pivot = ob->pivot == 0 ? ShiftObserver::OUT_OF_TABLE : ob->pivot - 1;
+-            });
++    const int found = find(key);
++    if (found < 0)
++        return false;
++    const uint index = uint(found);
++
++    // Remove the element at |index| by moving all elements to the right
++    // of |index| one place to the left.
++    size_t count = (m_size - (index + 1)) * sizeof(Value);
++    memmove(m_keys + index, m_keys + index + 1, count);
++    memmove(m_values + index, m_values + index + 1, count);
++    m_size--;
++    // Every later key moved, so the index is made again, as the move
++    // already walked them.
++    if (m_index)
++        reindex(m_indexCapacity);
++    else if (m_others > 0)
++        --m_others;
+ 
+-            return true;
+-        }
+-    }
+-    return false;
++    std::for_each(m_observers.begin(), m_observers.end(), [index](ShiftObserver* ob) {
++        Q_ASSERT(ob);
++        if (index <= ob->pivot && ob->pivot != ShiftObserver::OUT_OF_TABLE)
++            ob->pivot = ob->pivot == 0 ? ShiftObserver::OUT_OF_TABLE : ob->pivot - 1;
++    });
++
++    return true;
+ }
+ 
+ // Returns the size of the table. Note that the size may not match the underlying allocation.
+@@ -169,4 +268,10 @@
+         }
+     }
+     m_size = toIdx;
++    // A weak table's keys are objects, which the index never holds, but
++    // it's made again if it holds any, as positions moved.
++    if (m_index)
++        reindex(m_indexCapacity);
++    else
++        m_others = m_size;
+ }
+--- a/src/qml/jsruntime/qv4estable_p.h
++++ b/src/qml/jsruntime/qv4estable_p.h
+@@ -79,6 +79,19 @@
+     uint m_size = 0;
+     uint m_capacity = 0;
+ 
++    // Where each string or number key sits, by its hash, so finding one
++    // needn't compare it with every key held; other keys, whose equality
++    // may be their own (a QObject's wrappers are one key), are looked for
++    // in turn, and only while there are some.
++    uint *m_index = nullptr;
++    uint m_indexCapacity = 0;
++    uint m_others = 0;
++
++    static bool hashOf(const Value &key, uint *hash);
++    int find(const Value &key) const;
++    void indexAt(uint position, uint hash);
++    void reindex(uint capacity);
++
+     std::vector<ShiftObserver*> m_observers;
+ };
+ 

@@ -1,0 +1,66 @@
+From 8c92fe01338c76885f412a68fd39238147e21a81 Mon Sep 17 00:00:00 2001
+From: Ulf Hermann <ulf.hermann@qt.io>
+Date: Mon, 14 Sep 2026 09:25:10 +0200
+Subject: [PATCH] QtQml: Don't mix up extendsBitmap after allocation-on-sweep
+
+If some object allocates in its destroy() call, the extends bits it
+consumes would erroneously still get added to the free run in some
+cases.
+
+Task-number: QTBUG-149512
+Pick-to: 6.8
+Change-Id: I222922416a4918201afba58dcf63c32af6e45d41
+Reviewed-by: Sami Shalayel <sami.shalayel@qt.io>
+(cherry picked from commit 059ee9db91507b8b86cdf4bf033985c9ea41e0d4)
+Reviewed-by: Qt Cherry-pick Bot <cherrypick_bot@qt-project.org>
+
+Taken from Qt's 6.12 branch, where it follows 6.12.0, with its test's
+changes left out, since the tests aren't built.
+
+---
+ src/qml/memory/qv4mm.cpp           |  22 ++--
+ tests/auto/qml/qv4mm/tst_qv4mm.cpp | 165 +++++++++++++++++++++++++++++
+ 2 files changed, 180 insertions(+), 7 deletions(-)
+
+diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
+index 31634ed0e01..2fb7ad8cf98 100644
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -262,9 +262,16 @@ bool Chunk::sweep(ExecutionEngine *engine)
+     HeapItem *o = realBase();
+     bool lastSlotFree = false;
+     for (uint i = 0; i < Chunk::EntriesInBitmap; ++i) {
+-        quintptr toFree = objectBitmap[i] ^ blackBitmap[i];
++        // Snapshots. The destructors below may allocate, and setAllocatedSlots() then
++        // sets object and extends bits in this very word. We have to remember what we
++        // decided to free, so that we can clear exactly that further down rather than
++        // assigning the words wholesale and dropping those bits again.
++        const quintptr objectsToFree = objectBitmap[i] ^ blackBitmap[i];
++        const quintptr extendsBefore = extendsBitmap[i];
++
++        quintptr toFree = objectsToFree;
+         Q_ASSERT((toFree & objectBitmap[i]) == toFree); // check all black objects are marked as being used
+-        quintptr e = extendsBitmap[i];
++        quintptr e = extendsBefore;
+         SDUMP() << "   index=" << i;
+         SDUMP() << "        toFree      =" << binary(toFree);
+         SDUMP() << "        black       =" << binary(blackBitmap[i]);
+@@ -300,12 +307,13 @@ bool Chunk::sweep(ExecutionEngine *engine)
+             heaptrack_report_free(itemToFree);
+ #endif
+         }
+-        Q_V4_PROFILE_DEALLOC(engine, qPopulationCount((objectBitmap[i] | extendsBitmap[i])
+-                                                      - (blackBitmap[i] | e)) * Chunk::SlotSize,
++        const quintptr extendsToFree = extendsBefore & ~e;
++        Q_V4_PROFILE_DEALLOC(engine,
++                             qPopulationCount(objectsToFree | extendsToFree) * Chunk::SlotSize,
+                              Profiling::RegularItem);
+-        objectBitmap[i] = blackBitmap[i];
+-        hasUsedSlots |= (blackBitmap[i] != 0);
+-        extendsBitmap[i] = e;
++        objectBitmap[i] &= ~objectsToFree;
++        extendsBitmap[i] &= ~extendsToFree;
++        hasUsedSlots |= (objectBitmap[i] != 0);
+         lastSlotFree = !((objectBitmap[i]|extendsBitmap[i]) >> (sizeof(quintptr)*8 - 1));
+         SDUMP() << "        new extends =" << binary(e);
+         SDUMP() << "        lastSlotFree" << lastSlotFree;

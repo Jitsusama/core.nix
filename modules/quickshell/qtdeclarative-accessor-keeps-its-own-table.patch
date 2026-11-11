@@ -1,0 +1,45 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] V4: give a member turned into an accessor a table of its own
+
+InternalClass::changeMember, turning a data property into an accessor
+whose setter has no slot yet, wrote the setter's index into the entry
+findEntry gave it. That entry lives in the property table the class
+shares with every class grown from it and with the class being made, so
+each of them then read its own setter as living at that index. In a
+longer class that index is one of its fields, or past the object's end:
+the next such turn there stored its setter over the field, which then
+read as the setter function, or wrote past the object and corrupted the
+heap.
+
+The class being made now takes a table of its own before its entry is
+given the setter's index, and the dummy entry is a copy of that one, so
+no other class's table changes.
+
+---
+diff --git a/src/qml/jsruntime/qv4internalclass.cpp b/src/qml/jsruntime/qv4internalclass.cpp
+--- a/src/qml/jsruntime/qv4internalclass.cpp
++++ b/src/qml/jsruntime/qv4internalclass.cpp
+@@ -455,11 +455,21 @@
+     if (data.isAccessor() && e->setterIndex == UINT_MAX) {
+         Q_ASSERT(!propertyData.at(idx).isAccessor());
+ 
++        // The entry found is in a table this class shares with every
++        // class grown from it and with the new one. Writing the setter's
++        // index there would tell each of those classes that its own setter
++        // lives at that index, which in a longer class is one of its
++        // fields, or past its end. So the new class takes a table of its
++        // own first, and only its own entry says where its setter is.
++        newClass->propertyTable.detach(false, newClass->size);
++        PropertyHash::Entry *own = newClass->findEntry(identifier);
++        Q_ASSERT(own && own->index == idx);
++
+         // add a dummy entry for the accessor
+         if (entry)
+             entry->setterIndex = newClass->size;
+-        e->setterIndex = newClass->size;
+-        addDummyEntry(newClass, *e);
++        own->setterIndex = newClass->size;
++        addDummyEntry(newClass, *own);
+     }
+ 
+     newClass->propertyData.set(idx, data);

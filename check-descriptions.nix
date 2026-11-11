@@ -47,6 +47,10 @@
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
   '';
+  a-getter-turned-leaves-other-shapes-whole = ''
+    in the shell's own Qt, turning a field into a getter in objects whose shapes grow one from
+    another leaves every other field of each reading what it was given
+  '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
     settling back to it in at most a fifth of a second at each end, never stepping back; and words
@@ -1060,6 +1064,11 @@
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
+  '';
+  maps-keep-their-meaning = ''
+    in the shell's own Qt, a Map or a Set finds keys equal by value and only those, objects by
+    who they are, in the order they came through deletes, clears and walks that change it, and
+    every one of forty thousand keys it holds
   '';
   marks-past-the-basic-plane = ''
     a mark past U+FFFF reaches the shell whole
