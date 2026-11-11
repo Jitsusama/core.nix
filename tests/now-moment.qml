@@ -309,6 +309,10 @@ ShellRoot {
             stepIn();
             expect("stepped into again, it makes none of the notices' rows again",
                 since(before)[0] === 0, JSON.stringify(since(before)));
+            pastNotices.search("notice");
+            const pool = pastNotices.poolFor(pastNotices.looksThrough(), "notice 1");
+            expect("a key typed on looks through only the notices the last one found",
+                pool === pastNotices.lastMatched.rows, `${pool.length} looked through`);
         }))
             return;
         const read = told.map(one => one.id === 2

@@ -209,7 +209,22 @@ Provider {
     // does what it does here. `sent` says whether a sender's name is the
     // program.
     function sentBy(sent) {
-        return lined(mixed.rows().filter(row => sent(row.sender)), []);
+        return lined(all().filter(row => sent(row.sender)), []);
+    }
+
+    // Every notice's row, one list until the daemon's places move. A
+    // search goes on from the last one's matches only while it looks
+    // through the very list that one did (Provider's poolFor), and the
+    // daemon's rows() gives a new list each time: so each key looked
+    // through every notice, as "ba" spent 45 of its 63 ms on Joel's
+    // (2026-11-11).
+    readonly property var everyRow: ({ at: -1, rows: [] })
+    function all() {
+        if (everyRow.at !== mixed.placings) {
+            everyRow.rows = mixed.rows();
+            everyRow.at = mixed.placings;
+        }
+        return everyRow.rows;
     }
 
     // The notices of `ids`, in the daemon's order, as For You's Desktop
@@ -225,7 +240,7 @@ Provider {
     // read one is Desktop's only once it's been watched, so it's told.
     function rowsOf(ids, where) {
         if (where !== "desktop")
-            return lined(mixed.rows().filter(row => ids.includes(row.notice)), []);
+            return lined(all().filter(row => ids.includes(row.notice)), []);
         return lined(ids.map(id => desktop.rowAt(`row:${desktop.place}:${id}`)
             ?? [mixed.rowAt(`row:${mixed.place}:${id}`)].find(row => row?.unread === true))
             .filter(row => !!row), []);
@@ -250,8 +265,8 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        const all = mixed.rows();
-        for (const row of poolFor(all, typed)) {
+        const every = all();
+        for (const row of poolFor(every, typed)) {
             if ((row.also.mask & need) !== need)
                 continue;
             const byName = Fuzzy.match(row.prepared, words, false);
@@ -259,7 +274,7 @@ Provider {
             if (m.score >= 0)
                 found.push({ score: m.score, grade: m.grade, row: row });
         }
-        matchedIn(all, typed, found.map(f => f.row));
+        matchedIn(every, typed, found.map(f => f.row));
         // The closest first, and newest first among equals, since a notice
         // is wanted by when it came.
         let finest = 3;
@@ -271,17 +286,17 @@ Provider {
     }
 
     function everything() {
-        return lined(mixed.rows(), []);
+        return lined(all(), []);
     }
 
     function looksThrough() {
-        return mixed.rows();
+        return all();
     }
 
     function counted() {
-        const all = mixed.rows().length;
+        const held = all().length;
         return Notices.waiting.length > 0 ? `${Notices.waiting.length} missed`
-            : all === 0 ? "none" : countedAs(all);
+            : held === 0 ? "none" : countedAs(held);
     }
 
     function opened() {
