@@ -535,10 +535,7 @@ fn unreads_from(
 ) -> Child {
     // Rows only where a case hands it words, as the unit does, so the
     // others hear the records they always have.
-    if !command
-        .get_envs()
-        .any(|(name, _)| name == "LAUNCHER_WORDS")
-    {
+    if !command.get_envs().any(|(name, _)| name == "LAUNCHER_WORDS") {
         command.env_remove("LAUNCHER_WORDS");
     }
     command
@@ -925,7 +922,9 @@ fn handed_the_launchers_words_it_serves_each_conversation_as_its_row() {
             .clone()
     };
     until("no row was served", || {
-        rows("slack-unread").as_array().is_some_and(|all| !all.is_empty())
+        rows("slack-unread")
+            .as_array()
+            .is_some_and(|all| !all.is_empty())
     });
     let unread = rows("slack-unread");
     assert_eq!(

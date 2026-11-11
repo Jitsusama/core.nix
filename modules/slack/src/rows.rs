@@ -8,12 +8,14 @@
 //! `slack-unread` or `slack-recent`, whose `row` is the launcher's own key
 //! for the conversation, `slack:conversation:<id>`, so one in both places
 //! is one thing. SlackUnreads.js and SlackProgram.qml make the same rows
-//! today; these take their place as the shell reads them.
+//! today; these take their place as the shell reads them. Each message
+//! wanting Joel is a row too, of `slack-messages` (`message_rows.rs`).
 
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
+use crate::message_rows;
 use crate::unreads::{Conversation, Kind, Said, State};
 
 /// The place of each conversation unread, in Slack's order: direct
@@ -41,6 +43,8 @@ pub struct Words {
     pub count: String,
     /// Each kind's note, as "a direct message", by the kind's own word.
     pub kinds: BTreeMap<String, String>,
+    /// The words messages' rows are said in.
+    pub messages: message_rows::Words,
 }
 
 impl Words {
@@ -50,7 +54,8 @@ impl Words {
     ///
     /// # Errors
     ///
-    /// The first word the vocabulary's `slack:conversation` lacks.
+    /// The first word the vocabulary's `slack:conversation`, or a
+    /// message's, lacks.
     pub fn read(vocabulary: &Value) -> Result<Words, String> {
         let conversation = vocabulary["things"]
             .as_array()
@@ -80,8 +85,27 @@ impl Words {
             glyph: word(&["glyph"])?,
             count: word(&["said", "count"])?,
             kinds,
+            messages: message_rows::Words::read(vocabulary)?,
         })
     }
+}
+
+/// Every record of a row what Slack last said makes, keyed as the
+/// launcher watches them: each conversation's row, then each message's
+/// row and its drawer. A message is said through Slack refusing or out
+/// of reach, as `daemon::records` holds it, since one unread stays
+/// unread until Slack says it was read.
+#[must_use]
+pub fn records(said: &Said, words: &Words) -> Vec<(String, Value)> {
+    let mut made: Vec<(String, Value)> = rows(said, words)
+        .into_iter()
+        .map(|row| {
+            let key = row["key"].as_str().unwrap_or_default().to_owned();
+            (key.clone(), json!({"key": key, "kind": "row", "row": row}))
+        })
+        .collect();
+    made.extend(message_rows::records(&said.messages, &words.messages));
+    made
 }
 
 /// Every row what Slack last said makes, unread first and then Recent,
@@ -155,6 +179,7 @@ mod tests {
                 .iter()
                 .map(|kind| ((*kind).to_owned(), format!("a {kind}")))
                 .collect(),
+            messages: message_rows::Words::default(),
         }
     }
 
@@ -219,20 +244,31 @@ mod tests {
 
     #[test]
     fn no_row_is_made_while_slack_doesnt_answer() {
-        assert_eq!(rows(&said(State::Unreachable), &words()), Vec::<Value>::new());
+        assert_eq!(
+            rows(&said(State::Unreachable), &words()),
+            Vec::<Value>::new()
+        );
         assert_eq!(rows(&said(State::SignedOut), &words()), Vec::<Value>::new());
     }
 
     #[test]
     fn the_words_are_read_from_the_vocabulary_and_one_missing_is_named() {
-        let mut said: serde_json::Map<String, Value> =
-            KINDS.iter().map(|kind| ((*kind).to_owned(), json!(*kind))).collect();
+        let mut said: serde_json::Map<String, Value> = KINDS
+            .iter()
+            .map(|kind| ((*kind).to_owned(), json!(*kind)))
+            .collect();
         said.insert("count".to_owned(), json!("{count} to read"));
         let mut vocabulary = json!({"things": [
             {"id": "slack:conversation", "glyph": "chat", "said": said},
+            {"id": "slack:message", "glyph": "chat",
+             "said": {"you": "you", "where": "in {place}", "direct": "direct message"}},
+            {"id": "slack:message:sent", "name": "Sent"},
         ]});
         let read = Words::read(&vocabulary).unwrap();
-        assert_eq!((read.glyph.as_str(), read.kinds["thread"].as_str()), ("chat", "thread"));
+        assert_eq!(
+            (read.glyph.as_str(), read.kinds["thread"].as_str()),
+            ("chat", "thread")
+        );
         vocabulary["things"][0]["said"]
             .as_object_mut()
             .unwrap()
@@ -254,5 +290,9 @@ mod tests {
         let read = Words::read(&vocabulary).unwrap();
         assert_eq!(read.count, "{count} to read");
         assert_eq!(read.kinds["dm"], "a direct message");
+        assert_eq!(
+            (read.messages.you.as_str(), read.messages.sent.as_str()),
+            ("You", "Sent")
+        );
     }
 }

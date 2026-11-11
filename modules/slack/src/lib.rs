@@ -27,6 +27,7 @@ use serde_json::Value;
 use ureq::Agent;
 
 pub mod daemon;
+pub mod message_rows;
 pub mod messages;
 pub mod rows;
 pub mod search;

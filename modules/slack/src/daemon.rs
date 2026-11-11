@@ -22,9 +22,11 @@
 //!
 //! Handed the launcher's vocabulary (`Daemon::words`), each conversation
 //! unread and each read last is also a `row:<place>:<id>` record, the
-//! row Slack's Unread or Recent shows for it (rows.rs), so the shell
-//! makes no rows of its own; a `list` or `watch` of rows names its
-//! `place`, one or a list, to hear only those. Without a vocabulary, no
+//! row Slack's Unread or Recent shows for it, and each message wanting
+//! him a row of `slack-messages` with its `drawer:` record beside it
+//! (rows.rs), so the shell makes no rows of its own; a `list` or `watch`
+//! of rows names its `place`, one or a list, to hear only those, and a
+//! drawer is watched by its key while it shows. Without a vocabulary, no
 //! rows are made.
 //!
 //! Each ask is answered on a thread of its own, so a search waiting on
@@ -54,13 +56,14 @@ pub const VERSION: u64 = 1;
 /// is asked of Slack each time and never held; those held are the
 /// messages wanting Joel, which Search Slack's watch, kept for how Slack
 /// stands (SlackSearch.qml), passes over.
-const KINDS: [&str; 6] = [
+const KINDS: [&str; 7] = [
     "slack-unread",
     "slack-recent",
     "slack-account",
     "slack-message",
     "slack-read",
     "row",
+    "drawer",
 ];
 
 /// Every record what Slack last said makes, in its order: what's unread,
@@ -126,19 +129,6 @@ pub fn records(said: Option<&Said>) -> Vec<(String, Value)> {
     }
     made.push(record("slack-account", "slack", account));
     made
-}
-
-/// Every ready row what Slack last said makes, in each place's order, as
-/// records keyed as rows.rs keys them, each its row under `row`, as
-/// Google's daemon's are.
-fn row_records(said: &Said, words: &Words) -> Vec<(String, Value)> {
-    rows::rows(said, words)
-        .into_iter()
-        .map(|row| {
-            let key = row["key"].as_str().unwrap_or_default().to_owned();
-            (key.clone(), json!({"key": key, "kind": "row", "row": row}))
-        })
-        .collect()
 }
 
 /// What the account's `messages` says once every message wanting Joel is
@@ -335,7 +325,7 @@ impl Daemon {
         let mut kept = BTreeMap::new();
         let mut made = records(said);
         if let (Some(words), Some(said)) = (held.words.as_ref(), said) {
-            made.extend(row_records(said, words));
+            made.extend(rows::records(said, words));
         }
         for (key, mut record) in made {
             let heard = match held.records.get(&key) {
@@ -631,7 +621,7 @@ fn unknown(id: &Value, kind: &str) -> Value {
         "unknown-kind",
         &format!(
             "this daemon keeps slack-unread, slack-recent, slack-account, slack-message, \
-             slack-read and row, not {kind}"
+             slack-read, row and drawer, not {kind}"
         ),
     )
 }
@@ -913,9 +903,15 @@ mod tests {
             daemon.answer(&asked.to_string(), 1, &told);
             serde_json::from_str::<Value>(&heard.recv().unwrap()).unwrap()
         };
-        let unread = watch(json!({"id": 2, "ask": "watch", "kind": "row", "place": "slack-unread"}));
-        let recent = watch(json!({"id": 3, "ask": "watch", "kind": "row", "place": ["slack-recent"]}));
-        assert_eq!(unread["records"], json!([]), "rows said before Slack answered again");
+        let unread =
+            watch(json!({"id": 2, "ask": "watch", "kind": "row", "place": "slack-unread"}));
+        let recent =
+            watch(json!({"id": 3, "ask": "watch", "kind": "row", "place": ["slack-recent"]}));
+        assert_eq!(
+            unread["records"],
+            json!([]),
+            "rows said before Slack answered again"
+        );
         assert_eq!(recent["records"], json!([]));
         daemon.say(Some(&said), 20);
         let lines: Vec<Value> = heard
@@ -934,7 +930,10 @@ mod tests {
             ],
             "{lines:?}"
         );
-        assert_eq!(lines[0]["changed"][0]["row"]["side"], json!([{"said": "2 to read"}]));
+        assert_eq!(
+            lines[0]["changed"][0]["row"]["side"],
+            json!([{"said": "2 to read"}])
+        );
         // Asked again with nothing new, Slack's answer tells no watch.
         daemon.say(Some(&said), 30);
         assert!(heard.try_recv().is_err(), "a row unchanged was said again");
@@ -944,6 +943,45 @@ mod tests {
         );
         assert_eq!(listed["records"][0]["key"], "row:slack-recent:C1");
         assert_eq!(listed["records"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn a_messages_drawer_is_heard_only_by_a_watch_of_its_key() {
+        let daemon = Daemon::new(PathBuf::new(), String::new());
+        daemon.words(Words::default());
+        let mut said = ok(vec![], vec![]);
+        said.messages = vec![message("D1", "1730300001.000100", None)];
+        // Said through Slack out of reach too, as the message is.
+        said.state = State::Unreachable;
+        let (told, heard) = mpsc::channel();
+        let drawer = "drawer:slack-messages:D1:1730300001.000100";
+        let rows = json!({"id": "rows", "ask": "watch", "kind": "row"});
+        let drawers = json!({"id": "drawer", "ask": "watch", "kind": "drawer", "keys": [drawer]});
+        daemon.answer(&rows.to_string(), 1, &told);
+        daemon.answer(&drawers.to_string(), 1, &told);
+        daemon.say(Some(&said), 10);
+        let lines: Vec<Value> = heard
+            .try_iter()
+            .map(|line: String| serde_json::from_str(&line).unwrap())
+            .filter(|line: &Value| line.get("changed").is_some())
+            .collect();
+        let heard: Vec<(Value, Value)> = lines
+            .iter()
+            .map(|line| (line["id"].clone(), line["changed"][0]["key"].clone()))
+            .collect();
+        assert_eq!(
+            heard,
+            [
+                (
+                    json!("rows"),
+                    json!("row:slack-messages:D1:1730300001.000100")
+                ),
+                (json!("drawer"), json!(drawer))
+            ],
+            "{lines:?}"
+        );
+        assert_eq!(lines[0]["changed"].as_array().map(Vec::len), Some(1));
+        assert_eq!(lines[1]["changed"][0]["drawer"]["body"], "hi");
     }
 
     #[test]
