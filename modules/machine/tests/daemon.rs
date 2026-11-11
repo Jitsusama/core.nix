@@ -1369,6 +1369,86 @@ fn a_watchers_status_is_told_as_it_writes_it_and_said_silent_once_its_heartbeat_
     assert_eq!(client.changed("status:lag-watch")["silent"], true);
 }
 
+// A guard long silent is told with how its unit stands, asked of
+// systemd's bus; with no bus to ask, as here, it's taken as stopped.
+#[test]
+fn a_silent_guard_says_how_its_unit_stands() {
+    let nowhere = "unix:path=/nowhere";
+    let running = Running::with(
+        "unit",
+        &[
+            ("DBUS_SYSTEM_BUS_ADDRESS", nowhere),
+            ("DBUS_SESSION_BUS_ADDRESS", nowhere),
+        ],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "status"}));
+    // Written beside and renamed into place, as the guard writes it, with
+    // a heartbeat from long ago.
+    let folder = running.root().join("run/disk-guard");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(
+        folder.join(".status"),
+        r#"{"heartbeat": 1, "filesystems": []}"#,
+    )
+    .unwrap();
+    std::fs::rename(folder.join(".status"), folder.join("status.json")).unwrap();
+    let guard = client.changed("status:disk-guard-machine");
+    assert_eq!(guard["silent"], true, "{guard}");
+    assert_eq!(
+        guard["unit"],
+        json!({"stopped": true, "state": "", "result": ""}),
+        "{guard}"
+    );
+}
+
+// Keep, Release and Clear are the guard's own keep, unkeep and clear,
+// run by the daemon, answered with what it printed, done or not.
+#[test]
+fn the_guards_acts_run_it_and_say_what_it_printed() {
+    use std::os::unix::fs::PermissionsExt;
+    let folder = std::env::temp_dir().join(format!("machine-disk-guard-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let asked = folder.join("asked");
+    let guard = folder.join("disk-guard");
+    std::fs::write(
+        &guard,
+        format!(
+            "#!{}\necho \"$*\" >> {}\n\
+             [ \"$1\" = keep ] && echo \"kept $2\" && exit 0\n\
+             echo \"disk-guard: $2 isn't kept\" >&2\nexit 2\n",
+            shell().display(),
+            asked.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&guard, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let running = Running::with(
+        "guard-acts",
+        &[("MACHINE_DISK_GUARD", &guard.to_string_lossy())],
+    );
+    let mut client = running.client();
+    let kept = client.ask(&json!({"id": 1, "ask": "act", "act": "disk-keep",
+        "path": "/home/joel/src", "reason": "the build's"}));
+    assert_eq!(
+        kept,
+        json!({"id": 1, "done": true, "said": "kept /home/joel/src"})
+    );
+    let unkept = client.ask(&json!({"id": 2, "ask": "act", "act": "disk-unkeep",
+        "path": "/srv"}));
+    assert_eq!(unkept["error"]["code"], "refused", "{unkept}");
+    assert_eq!(unkept["error"]["message"], "disk-guard: /srv isn't kept");
+    let reasonless = client.ask(&json!({"id": 3, "ask": "act", "act": "disk-keep",
+        "path": "/srv"}));
+    assert_eq!(reasonless["error"]["code"], "bad-act", "{reasonless}");
+    assert_eq!(
+        std::fs::read_to_string(&asked).unwrap(),
+        "keep /home/joel/src the build's\nunkeep /srv\n",
+        "a refused act never reaches the guard"
+    );
+}
+
 #[test]
 fn a_disk_taken_out_is_said_gone() {
     let running = Running::new("gone");

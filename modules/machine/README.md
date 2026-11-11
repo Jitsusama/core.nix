@@ -109,6 +109,10 @@ ends.
 | `firmware-undo`    | `attribute`, `patience_s`  | fwupd puts that fix back                             |
 | `firmware-setup`   | `patience_s`               | logind restarts into the firmware's own setup        |
 | `restart-unit`     | `unit`                     | restarts a user unit the shell may, once queued      |
+| `disk-keep`        | `path`, `reason`           | the account's guard keeps the folder from clearing   |
+| `disk-unkeep`      | `path`                     | the guard lets the folder go again                   |
+| `disk-clear`       | `path`                     | the guard clears what it would take of it, now       |
+| `disk-thaw`        |                            | the guard lets the writers it froze carry on         |
 
 An install never restarts, which stays Joel's. It runs the fwupdmgr
 `MACHINE_FWUPDMGR` names, which the shell's home configuration hands the
@@ -122,8 +126,16 @@ which refuses a start at or above the stop.
 
 A restart goes through systemd's user bus, never a spawned `systemctl`,
 and is answered once systemd has queued it. Only the units in
-`src/units.rs`'s `RESTARTABLE` are restarted, spend-watch's alone now,
-for Spend's Start the Watch; any other is refused `not-allowed`.
+`src/units.rs`'s `RESTARTABLE` are restarted, spend-watch's for Spend's
+Start the Watch and the account's disk guard for Disk's Start the Guard;
+any other is refused `not-allowed`.
+
+The disk guard's four are its own `keep`, `unkeep`, `clear` and `thaw`,
+run here on the act (`src/guard.rs`) so the shell spawns nothing, from
+`disk-guard` on the service's path or the program `MACHINE_DISK_GUARD`
+names. Each answers `said`, the sentence the guard printed, for Disk's
+foot, or is refused with it. The guard marks its status before it ends,
+so the status the shell hears has moved by the time the act answers.
 
 ## Every Figure, and Where It Shows
 
@@ -239,6 +251,7 @@ units, or named here as left out with the reason.
 | `layer:keyboard` | the board's layer, whether it's locked there | Layer, Keyboard's layers, the map        |
 | `counts:<board>` | its presses and holds, the keys pressed most, each layer's and modifiers' presses, when counting began | a keyboard's drawer |
 | `status:<watcher>` | what its status file says, but its heartbeat; whether it's gone silent | the margin's Lag and Disk, Waits |
+|                 | a silent guard's unit: stopped, its state and result | Disk's guard stopped, and why |
 | `link:<name>`   | its index, flags, MTU, type, hardware addresses, what made it, its bus, its addresses, in ip's own names | Network's connections and their parts |
 |                 | whether it's wireless, where its hardware address came from | Network's Wi-Fi, Hardware address |
 
@@ -262,6 +275,11 @@ heartbeat has come for its silence (30 seconds for lag-watch, 120 for a
 guard), counted on the clock a suspend stops. All of them are heard as
 they're written while watched, through inotify, and read at no other
 time, but for a status read again once its watcher's silence runs out.
+A guard fallen silent may only be restarting, as every switch restarts
+it, so its unit is asked once as it falls silent, over systemd's bus
+(the session's for the account's guard, the system's for the machine's),
+and its record carries `unit`, `{stopped, state, result}`, until it's
+heard again; a unit that can't be asked is taken as stopped.
 Keep Awake's locks are the files its services leave in the runtime folder
 (modules/quickshell/home.nix), and the machine's choice is follow.sh's
 file in `/run/power-profile` (modules/power-profiles-daemon): both are

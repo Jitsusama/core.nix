@@ -19,7 +19,8 @@
 //! worded through [`words`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before. What Firmware asks the
-//! machine to do is done through [`acts`].
+//! machine to do is done through [`acts`], and what the shell asks of the
+//! disk guard through [`guard`].
 //!
 //! A record names every figure its source has, as the source counts it,
 //! with its unit in its key (`_b` bytes, `_khz`, `_c` degrees Celsius,
@@ -39,6 +40,7 @@ pub mod disk;
 pub mod disk_rows;
 pub mod firmware;
 pub mod firmware_rows;
+pub mod guard;
 pub mod heat;
 pub mod heat_rows;
 pub mod interface;

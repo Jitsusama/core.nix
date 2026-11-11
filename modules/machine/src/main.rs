@@ -89,9 +89,10 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, heat,
-    heat_rows, kept, keyboards, light, links, machine_rows, memory, now_ms, power_rows, processor,
-    rounded, rows, sleep, status, steered, supply, telemetry, tree, units, using, written::Written,
+    Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
+    heat, heat_rows, kept, keyboards, light, links, machine_rows, memory, now_ms, power_rows,
+    processor, rounded, rows, sleep, status, steered, supply, telemetry, tree, units, using,
+    written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -698,7 +699,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
                 .filter(|folder| !folder.is_empty()),
             layer: keyboards::layer_file(),
             watchers: status::of_session(),
-            statuses: status::Kept::default(),
+            statuses: status::Kept::asking(units::standing),
         }),
         woken: Condvar::new(),
     }
@@ -2245,6 +2246,12 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
         "restart-unit" => match units::restart(said["unit"].as_str().unwrap_or("")) {
             Ok(()) => json!({"id": id, "done": true}),
             Err(unrestarted) => error(id, unrestarted.code, &unrestarted.message),
+        },
+        // The guard rewrites its status as it ends, which is heard as any
+        // write of it is.
+        "disk-keep" | "disk-unkeep" | "disk-clear" | "disk-thaw" => match guard::told(act, said) {
+            Ok(told) => json!({"id": id, "done": true, "said": told}),
+            Err(untold) => error(id, untold.code, &untold.message),
         },
         _ => error(id, "unknown-act", &format!("no act {act:?} here")),
     }
