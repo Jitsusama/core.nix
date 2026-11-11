@@ -3586,9 +3586,10 @@ onLinux {
       {"sources": [{"name": "tuple", "stands": $(cat ${../tuple/stands.json}),
         "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]}]}
       EOF
-      ${lib.getExe people} $XDG_RUNTIME_DIR/daemons/people.sock $PWD/sources.json \
-        ${./launcher/words.json} &
-      # The last step stops the daemon, to see People say so.
+      export PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json WORDS=${./launcher/words.json}
+      $PEOPLE $XDG_RUNTIME_DIR/daemons/people.sock $SOURCES $WORDS &
+      # The last steps stop the daemon and start it again, to see People
+      # say so and then stop saying so.
       echo $! > $XDG_RUNTIME_DIR/people.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

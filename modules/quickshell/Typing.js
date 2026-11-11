@@ -1,7 +1,8 @@
 // What the launcher's field's keys do to the line itself, apart from which
-// key does what (QueryKeys.js): the word Ctrl+W takes, and where the caret goes as a mode is entered and where it rests in
-// normal, each as Vim does it. Read apart from the field (Prompt.qml) so
-// tests/query-keys.qml can hold it in Qt's own engine.
+// key does what (QueryKeys.js): the word Ctrl+W takes, and where the caret
+// goes as a mode is entered and where it rests in normal, each as Vim does
+// it; and the note the line says after what's typed. Read apart from the
+// field (Prompt.qml) so tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
 
 // What Vim's iskeyword counts as a word's: letters, digits, the underscore
@@ -56,4 +57,16 @@ function caretAfter(act, text, at) {
 // Where the caret may rest in normal: on a letter, never past the last.
 function resting(text, at) {
     return Math.max(0, Math.min(at, text.length - 1));
+}
+
+// The note on the line's baseline after what's typed: how the place it's
+// in stands where that presses, as "not answering", or else how far a find
+// narrowed the rows where that's said (`narrowing`). Pressing comes first,
+// since a found count from a place that can't answer would claim more than
+// it knows (VKCF3Z, 2026-11-10).
+function noteOf(pressing, narrowed, narrowing) {
+    if (pressing !== "") {
+        return pressing;
+    }
+    return narrowing ? narrowed : "";
 }

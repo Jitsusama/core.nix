@@ -129,6 +129,12 @@ Item {
     property string narrowed
     readonly property bool narrowSaid: modal && mode === "normal" && narrowed !== ""
         && input.text !== ""
+    // How the place the head is in stands where that presses, as "not
+    // answering": said where a find's count is, ahead of it, in every mode,
+    // since it's so whatever's typed (VKCF3Z, 2026-11-10).
+    property string placeStands
+    // The note on the head's baseline after what's typed or asked.
+    readonly property string noteSaid: Typing.noteOf(placeStands, narrowed, narrowSaid)
     readonly property bool capitals: secret && Lights.caps
     readonly property string said: capitals ? "caps lock" : aside
     // How wide an aside is at Note, a pixel to spare, so what's measured to
@@ -1378,7 +1384,9 @@ Item {
             anchors.baseline: parent.baseline
             textFormat: Text.PlainText
             text: prompt.hint
-            visible: input.text === "" && text !== ""
+            // A place that can't answer says so in its question's stead, so
+            // the head keeps to two levels.
+            visible: input.text === "" && text !== "" && prompt.placeStands === ""
             color: Theme.muted
             font.family: Theme.level.voice.family
             font.italic: Theme.level.voice.italic
@@ -1394,7 +1402,7 @@ Item {
             anchors.baseline: parent.baseline
             textFormat: Text.PlainText
             text: prompt.ghost
-            visible: input.text !== "" && text !== "" && !prompt.secret && !prompt.narrowSaid
+            visible: input.text !== "" && text !== "" && !prompt.secret && prompt.noteSaid === ""
             color: prompt.ghostFlashed ? Theme.on_accent : Theme.muted
             font.family: Theme.level.figure.family
             font.italic: Theme.level.figure.italic
@@ -1402,17 +1410,17 @@ Item {
             font.variableAxes: Theme.level.figure.variableAxes
         }
 
-        // The narrowed find's count, apart from what's typed, muted at
-        // the typed letters' own Figure, so the line holds two levels at
-        // most, a place's name and what's typed (VKCF3Z, 2026-11-06: one
-        // calm head).
+        // The narrowed find's count, or how the place stands, apart from
+        // what's typed, muted at the typed letters' own Figure, so
+        // the line holds two levels at most, a place's name and what's typed
+        // (VKCF3Z, 2026-11-06: one calm head).
         Text {
-            x: input.contentWidth + Theme.space.rung.apart
+            x: (input.text !== "" ? input.contentWidth : hintText.x) + Theme.space.rung.apart
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.baseline: parent.baseline
-            visible: prompt.narrowSaid
-            text: `\u00b7 ${prompt.narrowed}`
+            visible: prompt.noteSaid !== ""
+            text: `\u00b7 ${prompt.noteSaid}`
             color: Theme.muted
             font.family: Theme.level.figure.family
             font.pointSize: Theme.level.figure.pointSize

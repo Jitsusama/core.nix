@@ -137,6 +137,11 @@ Provider {
     // a restart or a reconnect answers within it, and saying so at once
     // would blink the count away and back (VKCF3Z, 2026-11-10).
     property bool unanswered: false
+    // What the head says of People while it's entered, as home's row says
+    // it: the same words in both places, ahead of a find's count, and every
+    // person's row as last listed, since a row that isn't someone would
+    // throw off the rows' numbers (VKCF3Z, 2026-11-10).
+    readonly property string pressing: unanswered ? Words.of("people").said.silent : ""
     Timer {
         id: quiet
 
@@ -794,8 +799,8 @@ Provider {
     // Home says the people daemon isn't answering rather than a count of
     // whom it last listed, so a down daemon is never silent.
     function homeSays() {
-        if (unanswered)
-            return Words.of("people").said.silent;
+        if (pressing !== "")
+            return pressing;
         const count = listedPersons().length;
         return count === 0 && (collection.none ?? "") !== "" ? null : countedAs(count);
     }
