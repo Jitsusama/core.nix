@@ -264,7 +264,8 @@ mod tests {
 
     #[test]
     fn over_its_socket_a_watch_hears_each_change_and_its_end() {
-        let folder = std::env::temp_dir().join(format!("daemon-serve-watch-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("daemon-serve-watch-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder for the socket");
         let socket = folder.join("node.sock");
         let _ = std::fs::remove_file(&socket);

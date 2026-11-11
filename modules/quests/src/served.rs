@@ -1,0 +1,245 @@
+//! What the daemon serves, record by record, in the launcher's one form
+//! for every daemon's rows (Y2YBTS's ready-rows.md): one kind, `row`, each
+//! record keyed `row:quests:<id>` with the row's fields under `row`,
+//! placed by a spaced `order` the shell never sorts, and how many are
+//! open a record of its own kind, `summary`, read by its key. What only
+//! Quests reads, what its acts and facts need, is under the row's `held`.
+//! Each making is held against the last by ready-rows' `Kept`, so a
+//! change sends only the records that read differently and the keys gone:
+//! a list the harness writes again, every quest told anew, sends nothing.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use daemon_serve::watch::Held;
+use serde_json::{Value, json};
+
+use crate::holder::{self, Holder};
+use crate::order;
+use crate::quest::{self, Quest};
+
+/// The launcher's place the rows are in.
+pub const PLACE: &str = "quests";
+/// The key of the record saying how many quests are open and driving.
+pub const SUMMARY: &str = "summary:quests";
+
+/// What every row is made from: the quests open and ended, by the node's
+/// key, the sessions, the folder at home and the year it is.
+pub struct Inputs<'a> {
+    pub open: &'a Held,
+    pub ended: &'a Held,
+    pub sessions: &'a Held,
+    pub home: &'a str,
+    pub this_year: i64,
+}
+
+/// Every quest once, the open one where a quest is in both lists, as it
+/// ends or reopens, until both are written.
+fn every<'a>(inputs: &Inputs<'a>) -> Vec<Quest<'a>> {
+    let mut seen = BTreeSet::new();
+    inputs
+        .open
+        .records()
+        .chain(inputs.ended.records())
+        .map(|(_, record)| Quest(record))
+        .filter(|quest| seen.insert(quest.id()))
+        .collect()
+}
+
+/// A quest's row in the launcher's form, not yet given its `order`.
+fn row(
+    quest: Quest,
+    holder: Option<&Holder>,
+    named: &BTreeMap<&str, &str>,
+    inputs: &Inputs,
+) -> Value {
+    let open = quest.open();
+    let day = quest::day(quest.updated(), inputs.this_year);
+    let kind = if quest.kind() == "quest" {
+        ""
+    } else {
+        quest.kind()
+    };
+    let when = if open { quest.priority() } else { day.as_str() };
+    let address = holder.map_or("", |holder| holder.address.as_str());
+    let side: Vec<Value> = [kind, when, address]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .map(|said| json!({"said": said}))
+        .collect();
+    let parent = named
+        .get(quest.parent())
+        .map(|name| json!({"id": quest.parent(), "name": name}));
+    let session = holder.map(|holder| json!({"address": holder.address, "parked": holder.parked}));
+    let held = json!({
+        "id": quest.id(), "kind": quest.kind(), "status": quest.status(),
+        "priority": quest.priority(), "updated": quest.updated(), "day": day,
+        "folder": quest.folder(inputs.home), "open": open,
+        "also": format!("{} {}", quest.id(), quest.kind()),
+        "session": session, "parent": parent,
+    });
+    json!({
+        "key": format!("row:{PLACE}:{}", quest.id()), "row": format!("quest:{}", quest.id()),
+        "place": PLACE, "kind": "quest", "name": quest.name(), "glyph": quest.glyph(),
+        "hue": "program", "side": side, "note": quest.id(), "reads": quest.summary(),
+        "unfinished": open, "held": held,
+    })
+}
+
+/// How many are open and how many of those drive, or that none is.
+fn summary(quests: &[Quest]) -> String {
+    let open = quests.iter().filter(|quest| quest.open()).count();
+    let driving = quests
+        .iter()
+        .filter(|quest| quest.open() && quest.priority() == "driving")
+        .count();
+    match (open, driving) {
+        (0, _) => "empty".to_owned(),
+        (open, 0) => format!("{open} open"),
+        (open, driving) => format!("{open} open, {driving} driving"),
+    }
+}
+
+/// Every row in Quests' order, and the summary's words.
+pub fn made(inputs: &Inputs) -> (Vec<Value>, String) {
+    let quests = every(inputs);
+    let holders = holder::holders(inputs.sessions.records().map(|(_, record)| record));
+    let named: BTreeMap<&str, &str> = quests
+        .iter()
+        .map(|quest| (quest.id(), quest.name()))
+        .collect();
+    let rows = order::sorted(&quests)
+        .into_iter()
+        .map(|quest| row(quest, holders.get(quest.id()), &named, inputs))
+        .collect();
+    (rows, summary(&quests))
+}
+
+/// The record saying how many quests are open, served beside the rows.
+pub fn summary_record(said: &str) -> Value {
+    json!({"key": SUMMARY, "kind": "summary", "summary": {"place": PLACE, "said": said}})
+}
+
+#[cfg(test)]
+mod tests {
+    use ready_rows::kept::Kept;
+
+    use super::*;
+
+    fn listed(records: &[Value]) -> Held {
+        let mut held = Held::default();
+        held.took(&json!({"records": records}));
+        held
+    }
+
+    fn quest(id: &str, fields: &Value) -> Value {
+        let mut record = json!({"key": format!("quest:{id}"), "kind": "quest", "heard": 1,
+            "id": id, "title": format!("Title {id}"), "quest.kind": "quest"});
+        if let (Some(record), Some(fields)) = (record.as_object_mut(), fields.as_object()) {
+            record.extend(fields.clone());
+        }
+        record
+    }
+
+    fn making(open: &[Value], ended: &[Value], sessions: &[Value]) -> (Vec<Value>, String) {
+        let (open, ended, sessions) = (listed(open), listed(ended), listed(sessions));
+        made(&Inputs {
+            open: &open,
+            ended: &ended,
+            sessions: &sessions,
+            home: "/home/joel",
+            this_year: 2026,
+        })
+    }
+
+    #[test]
+    fn a_row_says_its_kind_priority_and_session() {
+        let open = [
+            quest(
+                "A",
+                &json!({"status": "active", "priority": "driving", "rank": 1}),
+            ),
+            quest(
+                "B",
+                &json!({"quest.kind": "subquest", "parent": "A", "status": "active",
+                "priority": "queued", "start": "/w"}),
+            ),
+        ];
+        let sessions = [json!({"key": "session:S", "standing": "parked",
+            "presence": {"addresses": ["S"], "owns": ["B"]}})];
+        let (rows, said) = making(&open, &[], &sessions);
+        assert_eq!(said, "2 open, 1 driving");
+        let b = &rows[1];
+        assert_eq!(b["key"], "row:quests:B");
+        assert_eq!(b["row"], "quest:B");
+        assert_eq!(b["side"], json!([{"said": "subquest"}, {"said": "queued"}]));
+        assert_eq!(b["held"]["parent"], json!({"id": "A", "name": "Title A"}));
+        assert_eq!(b["held"]["folder"], "/w");
+        assert_eq!(
+            rows[0]["held"]["folder"], "/home/joel",
+            "home where none is said"
+        );
+        assert_eq!(
+            b["held"]["session"],
+            Value::Null,
+            "a session owning no quest id holds none"
+        );
+    }
+
+    #[test]
+    fn one_ended_says_its_day_and_one_loaded_its_session() {
+        let open = [quest(
+            "QEST-A",
+            &json!({"status": "active", "priority": "bench"}),
+        )];
+        let ended = [quest(
+            "QEST-E",
+            &json!({"kind": "ended-quest", "status": "concluded", "updated": "2025-01-05"}),
+        )];
+        let sessions = [json!({"key": "session:S", "standing": "running",
+            "presence": {"addresses": ["S"], "owns": ["QEST-A"]}})];
+        let (rows, said) = making(&open, &ended, &sessions);
+        assert_eq!(said, "1 open");
+        assert_eq!(rows[0]["side"], json!([{"said": "bench"}, {"said": "S"}]));
+        assert_eq!(
+            rows[0]["held"]["session"],
+            json!({"address": "S", "parked": false})
+        );
+        assert_eq!(rows[1]["side"], json!([{"said": "5 Jan 2025"}]));
+        assert_eq!(rows[1]["glyph"], "done");
+        assert_eq!(rows[1]["unfinished"], false);
+    }
+
+    #[test]
+    fn a_quest_in_both_lists_is_the_open_one() {
+        let open = [quest("A", &json!({"status": "active"}))];
+        let ended = [quest("A", &json!({"status": "concluded"}))];
+        let (rows, _) = making(&open, &ended, &[]);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["unfinished"], true);
+        assert_eq!(making(&[], &[], &[]).1, "empty");
+    }
+
+    #[test]
+    fn only_what_reads_differently_is_sent_again() {
+        let mut served = Kept::default();
+        let mut take =
+            |(rows, said): (Vec<Value>, String)| served.take(rows, vec![summary_record(&said)]);
+        let open = [
+            quest("A", &json!({"status": "active"})),
+            quest("B", &json!({"status": "active"})),
+        ];
+        assert_eq!(take(making(&open, &[], &[])).changed.len(), 3);
+        let mut again = open.clone();
+        again[0]["heard"] = json!(2);
+        assert!(
+            take(making(&again, &[], &[])).is_empty(),
+            "a list written again, only when heard moved, sends nothing"
+        );
+        let moved = take(making(&open[1..], &[], &[]));
+        let keys: Vec<_> = moved.changed.iter().map(|one| one["key"].clone()).collect();
+        assert_eq!(keys, [json!(SUMMARY)], "B keeps its order");
+        assert_eq!(moved.gone, ["row:quests:A"]);
+        let b = served.get("row:quests:B").expect("B is served");
+        assert_eq!(b["row"]["order"], 2048);
+    }
+}

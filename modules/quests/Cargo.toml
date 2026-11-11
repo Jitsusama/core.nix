@@ -1,0 +1,22 @@
+# The quests daemon makes Quests' rows ready for the launcher: every
+# quest open and ended, in Quests' order, with the session holding each
+# (src/lib.rs says how).
+[package]
+name = "quests"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# The serving side every daemon of the shell shares, and following the
+# node's watches (../daemon-serve).
+daemon-serve = { path = "../daemon-serve" }
+# The one form every daemon's rows take, kept so one row moving sends one
+# (../ready-rows).
+ready-rows = { path = "../ready-rows" }
+serde_json = "1"
+
+[dev-dependencies]
+# Starts the daemon for its test and asks it (../daemon-client).
+daemon-client = { path = "../daemon-client" }

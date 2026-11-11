@@ -1302,6 +1302,7 @@ gather (
     ./modules/programs/checks.nix
     ./modules/prompt/checks.nix
     ./modules/qt/checks.nix
+    ./modules/quests/checks.nix
     ./modules/quickshell/checks.nix
     ./modules/reader/checks.nix
     ./modules/ready-rows/checks.nix
