@@ -148,8 +148,8 @@
 
   # The launcher's Screens draws each screen's row as the windows daemon
   # serves it, makes again only the row a change names, and asks the daemon
-  # to look again once it's changed a screen itself (tests/displays.qml),
-  # with the daemon and niri stood in.
+  # a screen's Return rather than niri (tests/displays.qml), with the
+  # daemon and niri stood in.
   the-launcher-remakes-only-the-screens-that-changed =
     let
       # niri as Screens still asks it, a change to a screen answered.

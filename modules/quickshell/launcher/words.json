@@ -8555,8 +8555,6 @@
         "not-unplugged": "{thing} not unplugged \u00b7 {why}",
         "off": "off",
         "focused": "focused",
-        "focus": "focus",
-        "turnOn": "turn on",
         "scaleAt": "scale {scale}",
         "setTo": "set the screen to {share}%",
         "now": "now {share}%",
@@ -8674,11 +8672,19 @@
       }
     },
     {
+      "id": "displays:focus",
+      "in": "displays",
+      "name": "Focus It",
+      "verb": "focus",
+      "glyph": "display"
+    },
+    {
       "id": "verb:display-on",
       "command": "setlocal",
       "argument": "power",
       "in": "displays",
       "name": "Turn It On",
+      "verb": "turn on",
       "glyph": "display"
     },
     {

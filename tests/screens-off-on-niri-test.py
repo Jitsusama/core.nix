@@ -6,8 +6,9 @@ niri to power its monitors off, which keeps every output connected and enabled, 
 hub and network card stay powered (Joel, 2026-10-24: "is there a way to turn my external
 display off without shutting down its hub or network card or anything? i want the laptop to be
 able to keep going without blinding me in my sleep"). A nested niri draws nothing once its
-monitors are off and says nothing of it, so the shell's requests are read on their way to niri,
-through a proxy on niri's socket that the shell is started on.
+monitors are off and says nothing of it, so the requests are read on their way to niri, through a
+proxy on niri's socket that the shell and the windows daemon, which turns every screen off since
+11 November 2026, are started on.
 
 The shell is started as on a niri that powers one output off by name
 (modules/niri/powers-off-each-output.patch), so a screen's own Turn It Off asks for that one by

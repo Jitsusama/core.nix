@@ -4,9 +4,9 @@ pragma ComponentBehavior: Bound
 // serving a panel's and a monitor's rows ready, each holding niri's record
 // of its screen, as modules/windows' screens.rs does. Screens draws each
 // row as it's served; a change to the monitor's row makes its row again
-// and keeps the panel's; a change Screens makes to a screen asks niri and
-// then asks the daemon to look again, since niri's stream says nothing of
-// it; and what its spots are made of holds while a level or a lux moves.
+// and keeps the panel's; a screen's Return asks the daemon the act it
+// serves, and niri nothing; and what its spots are made of holds while a
+// level or a lux moves.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -58,6 +58,9 @@ ShellRoot {
     // ready-rows crate's Kept wraps each.
     function screen(name, said, order, lit) {
         const key = `row:displays:display:${name}`;
+        const act = lit ? { key: "displays:focus", ask: { ask: "screen", do: "focus",
+            output: name } } : { key: "verb:display-on", ask: { ask: "screen", do: "on",
+            output: name } };
         return { key: key, kind: "row", row: {
             key: key, thing: `display:${name}`, place: "displays", kind: "screen",
             order: order, name: said, glyph: "display", hue: "machine", depth: 0,
@@ -65,20 +68,22 @@ ShellRoot {
             note: lit ? "2880 \u00d7 1800 \u00b7 60 Hz \u00b7 scale 2\u00d7" : "off",
             held: { output: name, standing: lit ? "lit" : "off", builtIn: name === "eDP-1",
                 niri: root.niri(name, name === "eDP-1" ? "LG Display" : "Dell Inc.",
-                    name === "eDP-1" ? "0x07C6" : "U2723QE", lit) }
+                    name === "eDP-1" ? "0x07C6" : "U2723QE", lit) },
+            acts: [act]
         } };
     }
 
     readonly property var sleep: ({ key: "row:displays:sleep", kind: "row", row: {
             key: "row:displays:sleep", thing: "displays:sleep", place: "displays",
             kind: "action", order: 3072, name: "Turn Every Screen Off", glyph: "displayOff",
-            hue: "action", depth: 0, side: [], note: "a key wakes them"
+            hue: "action", depth: 0, side: [], note: "a key wakes them",
+            acts: [{ key: "displays:sleep", ask: { ask: "screen", do: "sleep" } }]
         } })
 
-    // The shell's watch, so the stand-in can tell it more, and the looks
-    // it was asked.
+    // The shell's watch, so the stand-in can tell it more, and the acts it
+    // was asked.
     property var watch: null
-    property int looks: 0
+    property var acted: []
 
     function tell(records) {
         root.watch.socket.write(`${JSON.stringify({ id: root.watch.id, changed: records })}\n`);
@@ -86,7 +91,7 @@ ShellRoot {
     }
 
     // A stand-in for the windows daemon: hello, a watch of the displays'
-    // rows answered whole, and a look answered once it's counted.
+    // rows answered whole, and an act on a screen done once it's kept.
     SocketServer {
         active: true
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
@@ -105,9 +110,9 @@ ShellRoot {
                         answer = { id: ask.id, records: [
                             root.screen("eDP-1", "Built-in Screen", 1024, true),
                             root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep] };
-                    } else if (ask.ask === "look") {
-                        root.looks += 1;
-                        answer = { id: ask.id, looked: true };
+                    } else if (ask.ask === "screen") {
+                        root.acted = root.acted.concat([ask]);
+                        answer = { id: ask.id, done: true };
                     } else {
                         answer = { id: ask.id, ok: true };
                     }
@@ -154,8 +159,8 @@ ShellRoot {
             served();
         else if (waiting === "the monitor's change" && monitorChanged())
             changedHere();
-        else if (waiting === "a look" && looks === 1)
-            looked();
+        else if (waiting === "the act" && acted.length === 1)
+            done();
         else if (waiting === "the monitor lit again" && displays.spotsStamp !== made) {
             waiting = "done";
             Qt.exit(0);
@@ -183,20 +188,22 @@ ShellRoot {
     }
 
     // The monitor's row told off makes its row again and keeps the panel's;
-    // then turning it on here asks niri, then the daemon to look.
+    // then its Return asks the daemon to turn it on.
     function changedHere() {
         const now = screens();
         Expect.expect("the panel's row, unchanged, is the one it was", now[0] === first[0], "");
         Expect.expect("the monitor told off says so and offers to turn it on",
             now[1].side === "off" && now[1].verb !== first[1].verb,
             JSON.stringify({ side: now[1].side, verb: now[1].verb }));
-        waiting = "a look";
+        waiting = "the act";
         now[1].run();
     }
 
-    function looked() {
-        Expect.expect("turning it on asked niri", Niri.asked.length === 1,
-            JSON.stringify(Niri.asked));
+    function done() {
+        Expect.expect("turning it on asked the daemon to turn that one on",
+            JSON.stringify(acted.map(ask => [ask.do, ask.output])) === '[["on","DP-1"]]',
+            JSON.stringify(acted));
+        Expect.expect("and niri nothing", Niri.asked.length === 0, JSON.stringify(Niri.asked));
         // The panel's Room Light, its sensor known but what it hears not
         // read yet, as a walk of the catalogue finds it with no watch
         // running: it says it's being read, so Return has a reason to only

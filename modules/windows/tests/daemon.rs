@@ -34,11 +34,13 @@ const BEGINNING: [&str; 3] = [
 /// A stand-in for niri's socket, which answers an event stream with
 /// `BEGINNING` and then whatever the test sends it, and hangs up when the
 /// test says to, and answers an ask for its outputs with those the test
-/// set, each connection on its own, as niri does.
+/// set, each connection on its own, as niri does. Any other ask, as an
+/// act on a screen, is kept and answered handled.
 struct Niri {
     send: Sender<Option<String>>,
     streams: Arc<Mutex<usize>>,
     outputs: Arc<Mutex<Value>>,
+    acts: Arc<Mutex<Vec<Value>>>,
 }
 
 impl Niri {
@@ -48,7 +50,12 @@ impl Niri {
         let lines = Arc::new(Mutex::new(lines));
         let streams = Arc::new(Mutex::new(0));
         let outputs = Arc::new(Mutex::new(json!({})));
-        let (counted, shown) = (Arc::clone(&streams), Arc::clone(&outputs));
+        let acts = Arc::new(Mutex::new(Vec::new()));
+        let (counted, shown, done) = (
+            Arc::clone(&streams),
+            Arc::clone(&outputs),
+            Arc::clone(&acts),
+        );
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let mut stream = stream.expect("the stand-in takes each connection");
@@ -61,11 +68,12 @@ impl Niri {
                     writeln!(stream, "{}", json!({"Ok": {"Outputs": outputs}})).unwrap();
                     continue;
                 }
-                assert_eq!(
-                    asked.trim(),
-                    "\"EventStream\"",
-                    "it asks niri for its events or its outputs"
-                );
+                if asked.trim() != "\"EventStream\"" {
+                    let act = serde_json::from_str(&asked).expect("what's asked of niri is JSON");
+                    done.lock().unwrap().push(act);
+                    writeln!(stream, "{{\"Ok\":\"Handled\"}}").unwrap();
+                    continue;
+                }
                 let (counted, lines) = (Arc::clone(&counted), Arc::clone(&lines));
                 std::thread::spawn(move || {
                     writeln!(stream, "{{\"Ok\":\"Handled\"}}").unwrap();
@@ -86,7 +94,13 @@ impl Niri {
             send,
             streams,
             outputs,
+            acts,
         }
+    }
+
+    /// What's been asked of it besides its events and its outputs.
+    fn acts(&self) -> Vec<Value> {
+        self.acts.lock().unwrap().clone()
     }
 
     /// The outputs it answers with from now on.
@@ -586,6 +600,42 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
     assert_eq!(
         row["held"]["niri"]["logical"]["scale"], 1.5,
         "the shell's acts read niri's record as it is now: {said}"
+    );
+}
+
+#[test]
+fn a_screens_return_is_served_and_done_on_niri() {
+    let running = Running::worded("act", &json!({"eDP-1": screen("BOE", Some(2.0))}));
+    let mut client = running.daemon.client();
+    let row = loop {
+        let said = client.ask(&json!({"id": 1, "ask": "list", "kind": "row",
+            "place": "displays"}));
+        let found = said["records"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|record| record["key"] == "row:displays:display:eDP-1");
+        if let Some(record) = found {
+            break record["row"].clone();
+        }
+    };
+    let act = &row["acts"][0];
+    assert_eq!(
+        act["key"], "displays:focus",
+        "a lit screen's Return focuses it: {row}"
+    );
+    let mut asked = act["ask"].clone();
+    asked["id"] = json!(2);
+    let done = client.ask(&asked);
+    assert_eq!(
+        done,
+        json!({"id": 2, "done": true}),
+        "the act was answered otherwise"
+    );
+    assert_eq!(
+        running.niri.acts(),
+        [json!({"Action": {"FocusMonitor": {"output": "eDP-1"}}})],
+        "niri was asked otherwise"
     );
 }
 

@@ -44,13 +44,14 @@ use std::time::{Duration, Instant};
 use programs::notify::Notify;
 use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
-use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
 use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, placed, tells, trimmed};
 use windows::light::{Held, Seen};
 use windows::screens;
+use windows::screens::acts::{self, Act};
+use windows::screens::vocabulary::{numbered, worded};
 
 /// How many of the last events' times health says.
 const TIMES: usize = 32;
@@ -213,47 +214,6 @@ fn main() {
         };
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
-    }
-}
-
-/// The words a screen's row is said in, from the launcher's words.json,
-/// each it lacks said by its id and warned of once, here.
-fn worded(path: &Path) -> screens::Words {
-    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
-    let vocabulary =
-        read.and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string()));
-    let (words, lacked) = screens::Words::read(vocabulary.as_ref().unwrap_or(&Value::Null));
-    if let Err(why) = &vocabulary {
-        eprintln!(
-            "<4>couldn't read the words in {}, so Screens says ids: {why}",
-            path.display()
-        );
-    } else if !lacked.is_empty() {
-        eprintln!(
-            "<4>the words in {} lack {}, said by id",
-            path.display(),
-            lacked.join(", ")
-        );
-    }
-    words
-}
-
-/// The account's number settings, or the comma and the full stop where
-/// it's handed none, or none it can read, which it says once, here.
-fn numbered(path: Option<&Path>) -> Numbers {
-    let Some(path) = path else {
-        return Numbers::default();
-    };
-    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
-    match read.and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string())) {
-        Ok(settings) => Numbers::read(&settings),
-        Err(why) => {
-            eprintln!(
-                "<4>couldn't read the number settings in {}, so Screens says the usual: {why}",
-                path.display()
-            );
-            Numbers::default()
-        }
     }
 }
 
@@ -686,6 +646,22 @@ fn held(
     }
 }
 
+/// Asks niri for its screens again, where rows are made, before the lock
+/// is taken so no other ask waits on niri; what moved is told each watch
+/// before the ask is answered, so a client watching on the same
+/// connection holds the new rows once it is. Whether rows are made.
+fn looked(shared: &Shared) -> bool {
+    let rowed = lock(&shared.daemon).words.is_some();
+    if let Some(outputs) = rowed.then(|| screens::asked(&shared.niri)).flatten() {
+        let mut daemon = lock(&shared.daemon);
+        if daemon.outputs != outputs {
+            daemon.outputs = outputs;
+            refresh(&mut daemon);
+        }
+    }
+    rowed
+}
+
 fn sources(daemon: &Daemon) -> Value {
     json!({
         "niri": {"state": daemon.niri, "events": daemon.events},
@@ -770,20 +746,35 @@ fn answer(
                 "took_us": daemon.took.iter().collect::<Vec<_>>(),
             })
         }
-        Ask::Look { id } => {
-            // Asked before the lock is taken, so no other ask waits on
-            // niri, and only where rows are made. What moved is told each
-            // watch before this answer, so a client watching on the same
-            // connection holds the new rows once it's answered.
-            let rowed = lock(&shared.daemon).words.is_some();
-            if let Some(outputs) = rowed.then(|| screens::asked(&shared.niri)).flatten() {
-                let mut daemon = lock(&shared.daemon);
-                if daemon.outputs != outputs {
-                    daemon.outputs = outputs;
-                    refresh(&mut daemon);
-                }
+        Ask::Look { id } => json!({"id": id, "looked": looked(shared)}),
+        Ask::Screen { id, said } => {
+            let Some(act) = Act::asked(&said) else {
+                return Some(error(
+                    &id,
+                    "unknown-act",
+                    &format!("no act on a screen in {said}"),
+                ));
+            };
+            // Every screen goes dark once the key that asked is up, on a
+            // thread of its own so no other ask waits, with nothing to
+            // show a refusal by then.
+            if act == Act::Sleep {
+                let shared = Arc::clone(shared);
+                std::thread::spawn(move || {
+                    std::thread::sleep(acts::KEY_UP);
+                    acts::done(&shared.niri, &act);
+                    looked(&shared);
+                });
+                return Some(json!({"id": id, "done": true}));
             }
-            json!({"id": id, "looked": rowed})
+            let answer = acts::done(&shared.niri, &act);
+            looked(shared);
+            let daemon = lock(&shared.daemon);
+            let Some(words) = daemon.words.as_ref() else {
+                return Some(error(&id, "no-rows", "no rows are made, so no acts"));
+            };
+            let named = screens::named_of(&daemon.outputs, act.output().unwrap_or(""), words);
+            acts::answered(&id, &act, answer.as_ref(), &named, words)
         }
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
