@@ -112,6 +112,47 @@ QtObject {
             RowsKept.whole(emoji, RowsKept.steps(emoji, narrowed, 8)), false);
         Expect.same("nor a first list", RowsKept.whole([], RowsKept.steps([], emoji)), false);
 
+        // Keys named as Object's own are rows like any other.
+        const own = ["__proto__", "constructor", "toString", "hasOwnProperty", "0"];
+        Expect.same("keys named as Object's own end where they're listed",
+            done(own, own.slice().reverse().concat(["valueOf"])),
+            { rows: own.slice().reverse().concat(["valueOf"]).join(" "), drawn: "valueOf" });
+        Expect.same("and repeat as any key does",
+            done(["__proto__", "a"], ["a", "__proto__", "__proto__"]),
+            { rows: "a __proto__ __proto__", drawn: "__proto__" });
+
+        // Working Emoji's steps out costs a few walks over its rows, never a
+        // walk for each row: a Map or a Set in Qt's engine looks a key up by
+        // walking every key it holds, which took Emoji's first letter 26 to
+        // 39 ms and a narrowing 67 to 104, against a walk's 0.5 (2026-11-11). Each is held to a
+        // multiple of one walk making and reading an object of its keys,
+        // the fastest of five batches each, since a slower one is the
+        // builder's other work or the collector.
+        const fastest = work => {
+            let least = Infinity;
+            for (let batch = 0; batch < 5; batch += 1) {
+                const began = Date.now();
+                for (let round = 0; round < 10; round += 1) {
+                    work();
+                }
+                least = Math.min(least, (Date.now() - began) / 10);
+            }
+            return least;
+        };
+        const walk = fastest(() => {
+            const places = Object.create(null);
+            emoji.forEach((key, at) => { places[key] = at; });
+            return ranked.filter(key => places[key] !== undefined).length;
+        });
+        for (const [what, was, now] of [["a first letter", emoji, ranked],
+            ["a narrowing", emoji, narrowed], ["a narrowing of a ranking", ranked,
+                ranked.filter((_, at) => at % 11 === 0)]]) {
+            const took = fastest(() => RowsKept.steps(was, now, 8));
+            console.info(`${what} took ${took} ms against a walk's ${walk}`);
+            Expect.same(`${what} takes ${took} ms, at most ten walks of ${walk} ms`,
+                took <= 10 * walk + 1, true);
+        }
+
         // Lists drawn from a seeded sequence (Park and Miller's), the same
         // every run, each ending where it's listed and drawing only the
         // rows it didn't hold.
