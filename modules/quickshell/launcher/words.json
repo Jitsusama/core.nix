@@ -9203,7 +9203,13 @@
       "empty": "Nobody you've met or written lately.",
       "none": "nobody lately",
       "said": {
-        "silent": "not answering"
+        "silent": "not answering",
+        "available": "available",
+        "active": "active",
+        "huddle": "in a huddle",
+        "call": "in a call",
+        "away": "away",
+        "offline": "offline"
       }
     },
     {

@@ -23,12 +23,13 @@ use crate::{Book, LISTING, Record, address};
 pub const ORDER: &str = "people:order";
 
 /// How a source's entry says someone stands, as its module tells the
-/// daemon in the sources file: the entry's field that says it, People's
-/// words and order for each word it says, whether a word it says that
-/// isn't among them is said as it is (Slack's presence) or not at all
-/// (Tuple's "unknown"), and the field holding a mark to say after it
-/// (Slack's status emoji). A source with none says nothing of how anyone
-/// stands, as Google doesn't.
+/// daemon in the sources file: the entry's field that says it, which of
+/// People's words each word it says is and its order, whether a word it
+/// says that isn't among them is said as it is (Slack's presence) or not
+/// at all (Tuple's "unknown"), and the field holding a mark to say after
+/// it (Slack's status emoji). A source with none says nothing of how
+/// anyone stands, as Google doesn't. People's words themselves are the
+/// launcher's (words.json), handed to the daemon, so no module words them.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct Stands {
     pub field: String,
@@ -38,14 +39,48 @@ pub struct Stands {
     pub others: bool,
     #[serde(default)]
     pub mark: Option<String>,
+    /// People's words, by the names `words` gives them (`worded`).
+    #[serde(skip)]
+    pub said: BTreeMap<String, String>,
 }
 
-/// A word as People says it, and its place in the order of who can be
+impl Stands {
+    /// These stands, saying People's words as the launcher words them.
+    #[must_use]
+    pub fn worded(mut self, said: &BTreeMap<String, String>) -> Stands {
+        self.said.clone_from(said);
+        self
+    }
+}
+
+/// Which of People's words a source's word is, by its name in words.json
+/// (`available`, `call`), and its place in the order of who can be
 /// reached first: available 0, busy 1, away 2, offline 3.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Said {
-    pub said: String,
+    pub word: String,
     pub order: u8,
+}
+
+/// People's words as the launcher's vocabulary (words.json) says them:
+/// what its `people` thing says, by name, and none when it says nothing.
+pub fn words(vocabulary: &Value) -> BTreeMap<String, String> {
+    vocabulary
+        .get("things")
+        .and_then(Value::as_array)
+        .and_then(|things| {
+            things
+                .iter()
+                .find(|thing| thing.get("id").and_then(Value::as_str) == Some("people"))
+        })
+        .and_then(|people| people.get("said"))
+        .and_then(Value::as_object)
+        .map(|said| {
+            said.iter()
+                .filter_map(|(name, word)| Some((name.clone(), word.as_str()?.to_owned())))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// How someone stands, as Person.js's `standing` says it.
@@ -112,7 +147,14 @@ pub fn stood(entry: &Value, stands: &Stands) -> Option<Stood> {
         return None;
     }
     let (said, order) = match word.map(|word| (word, stands.words.get(word))) {
-        Some((_, Some(said))) => (said.said.clone(), said.order),
+        Some((_, Some(said))) => (
+            stands
+                .said
+                .get(&said.word)
+                .cloned()
+                .unwrap_or_else(|| said.word.clone()),
+            said.order,
+        ),
         Some((word, None)) if stands.others => (word.to_owned(), UNSAID),
         _ => (String::new(), UNSAID),
     };
@@ -438,31 +480,68 @@ impl Told {
 mod tests {
     use super::*;
 
+    /// The launcher's vocabulary as far as People's words go.
+    fn vocabulary() -> Value {
+        json!({"things": [
+            {"id": "person:recent", "said": {"none": "none"}},
+            {"id": "people", "said": {
+                "silent": "not answering", "available": "available", "active": "active",
+                "huddle": "in a huddle", "call": "in a call", "away": "away",
+                "offline": "offline", "count": 3
+            }}
+        ]})
+    }
+
     fn tuple() -> Stands {
-        serde_json::from_value(json!({
+        serde_json::from_value::<Stands>(json!({
             "field": "status",
             "words": {
-                "online": {"said": "available", "order": 0},
-                "busy": {"said": "in a call", "order": 1},
-                "unavailable": {"said": "away", "order": 2},
-                "offline": {"said": "offline", "order": 3}
+                "online": {"word": "available", "order": 0},
+                "busy": {"word": "call", "order": 1},
+                "unavailable": {"word": "away", "order": 2},
+                "offline": {"word": "offline", "order": 3}
             }
         }))
         .unwrap()
+        .worded(&words(&vocabulary()))
     }
 
     fn slack() -> Stands {
-        serde_json::from_value(json!({
+        serde_json::from_value::<Stands>(json!({
             "field": "presence",
             "words": {
-                "active": {"said": "active", "order": 0},
-                "in a huddle": {"said": "in a huddle", "order": 1},
-                "away": {"said": "away", "order": 2}
+                "active": {"word": "active", "order": 0},
+                "in a huddle": {"word": "huddle", "order": 1},
+                "away": {"word": "away", "order": 2}
             },
             "others": true,
             "mark": "emoji"
         }))
         .unwrap()
+        .worded(&words(&vocabulary()))
+    }
+
+    #[test]
+    fn peoples_words_are_the_launchers() {
+        let said = words(&vocabulary());
+        assert_eq!(
+            (said.get("call").map(String::as_str), said.get("count")),
+            (Some("in a call"), None),
+            "People's own words, and nothing that isn't a word"
+        );
+        assert!(
+            words(&json!({"things": []})).is_empty(),
+            "no People, no words"
+        );
+        let unworded: Stands = serde_json::from_value(json!({
+            "field": "status", "words": {"busy": {"word": "call", "order": 1}}
+        }))
+        .unwrap();
+        assert_eq!(
+            stood(&json!({"status": "busy"}), &unworded).map(|stood| stood.said),
+            Some("call".to_owned()),
+            "a word the launcher doesn't say is said by its name, never as nothing"
+        );
     }
 
     fn sources() -> Vec<(String, Option<Stands>)> {

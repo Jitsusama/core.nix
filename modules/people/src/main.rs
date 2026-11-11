@@ -1,4 +1,4 @@
-//! people SOCKET SOURCES
+//! people SOCKET SOURCES [WORDS]
 //!
 //! Everyone Joel deals with, held ready for the shell and anything else
 //! that asks, over SOCKET in the shell's daemon interface (lib.rs). Each
@@ -29,7 +29,8 @@
 //!
 //! A `list` or `watch` of kind `listing` is those People lists with
 //! nothing typed, as it shows them (listing.rs): a record for each, as
-//! one person, with how they stand by each source's `stands`, and a
+//! one person, with how they stand by each source's `stands` in People's
+//! words as WORDS, the launcher's words.json, says them, and a
 //! `people:order` record of their keys in order. A watch of it is told
 //! again only once the book changed, or the clock reached a meeting's
 //! start or end, and then only the persons that changed, so the shell
@@ -46,7 +47,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use people::listing::{Stands, Told};
+use people::listing::{self, Stands, Told};
 use people::{Ask, Book, Heard, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -121,9 +122,21 @@ type Shared = Arc<(Mutex<Daemon>, Condvar)>;
 fn main() {
     let mut args = std::env::args().skip(1);
     let (Some(socket), Some(sources)) = (args.next(), args.next()) else {
-        eprintln!("usage: people SOCKET SOURCES");
+        eprintln!("usage: people SOCKET SOURCES [WORDS]");
         std::process::exit(64);
     };
+    let said = args.next().map_or_else(Default::default, |words| {
+        match std::fs::read_to_string(&words)
+            .map_err(|error| error.to_string())
+            .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|e| e.to_string()))
+        {
+            Ok(vocabulary) => listing::words(&vocabulary),
+            Err(why) => {
+                eprintln!("<4>couldn't read the launcher's words, so each is said by name: {why}");
+                Default::default()
+            }
+        }
+    });
     let sources: Vec<Source> = match std::fs::read_to_string(&sources)
         .map_err(|error| error.to_string())
         .and_then(|text| serde_json::from_str::<Sources>(&text).map_err(|error| error.to_string()))
@@ -155,7 +168,10 @@ fn main() {
             since: now(),
             sources: sources
                 .iter()
-                .map(|source| (source.name.clone(), source.stands.clone()))
+                .map(|source| {
+                    let stands = source.stands.clone().map(|stands| stands.worded(&said));
+                    (source.name.clone(), stands)
+                })
                 .collect(),
             revision: 0,
         }),

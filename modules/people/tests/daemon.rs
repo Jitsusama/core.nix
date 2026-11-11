@@ -130,6 +130,11 @@ impl Running {
             .collect();
         let config = folder.join("sources.json");
         std::fs::write(&config, json!({"sources": listed}).to_string()).unwrap();
+        // The launcher's vocabulary, as far as People's words go, worded
+        // apart from any source's own word so a test sees whose it says.
+        let words = folder.join("words.json");
+        let vocabulary = json!({"things": [{"id": "people", "said": {"available": "around"}}]});
+        std::fs::write(&words, vocabulary.to_string()).unwrap();
         let socket = folder.join("daemons").join("people.sock");
         // Made here, since a launcher listens there before the daemon runs.
         std::fs::create_dir_all(folder.join("daemons")).unwrap();
@@ -145,7 +150,11 @@ impl Running {
             }
             None => Command::new(people),
         };
-        command.arg(&socket).arg(&config).stderr(Stdio::null());
+        command
+            .arg(&socket)
+            .arg(&config)
+            .arg(&words)
+            .stderr(Stdio::null());
         Running {
             daemon: Daemon::start(&mut command, socket, folder),
         }
@@ -465,7 +474,8 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
 
 #[test]
 fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
-    let stands = json!({"field": "status", "words": {"online": {"said": "available", "order": 0}}});
+    let stands =
+        json!({"field": "status", "words": {"unknown": {"word": "available", "order": 0}}});
     let running = Running::started("listing", &[("tuple", ROSTER)], &[("tuple", stands)], &[]);
     let mut client = running.client();
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -484,6 +494,10 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
     );
     assert_eq!(records[0]["person"]["name"], "Ada Brightwater", "{said}");
     assert_eq!(records[0]["person"]["stood"]["favourite"], true, "{said}");
+    assert_eq!(
+        records[0]["person"]["stood"]["said"], "around",
+        "how they stand, in the launcher's words: {said}"
+    );
     assert_eq!(
         records[0]["sources"]["tuple"]["id"], 1,
         "with what each source said: {said}"

@@ -89,24 +89,28 @@ PersonSource {
     }))
 
     // How each stands in Slack, by address, for their note: active, away
-    // or in a huddle, and their status's emoji as its mark, which People
-    // weighs with what other sources say (Person.standing).
+    // or in a huddle in People's words (words.json), a presence it doesn't
+    // know said as it is, and their status's emoji as its mark, which
+    // People weighs with what other sources say (Person.standing).
     stands: {
         const by = {};
+        const words = Words.of("people").said;
         for (const said of Object.values(known)) {
-            if (said.id && (said.presence || said.emoji))
+            if (said.id && (said.presence || said.emoji)) {
+                const presence = presences[said.presence];
                 by[said.email] = {
-                    said: said.presence,
-                    order: presenceOrder[said.presence] ?? 4,
+                    said: presence ? words[presence.word] : said.presence,
+                    order: presence?.order ?? 4,
                     mark: said.emoji
                 };
+            }
         }
         return by;
     }
-    readonly property var presenceOrder: ({
-        active: 0,
-        "in a huddle": 1,
-        away: 2
+    readonly property var presences: ({
+        active: { word: "active", order: 0 },
+        "in a huddle": { word: "huddle", order: 1 },
+        away: { word: "away", order: 2 }
     })
 
     function acts(person, provider) {
