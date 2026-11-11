@@ -27,6 +27,7 @@ use ready_rows::time::{self, Form};
 use serde_json::Value;
 
 use crate::rows::{Made, Ready, bar, figure, item};
+use crate::telemetry::Heard;
 use crate::words::Words;
 
 /// The place the launcher shows these rows in.
@@ -42,14 +43,15 @@ const BYTES: [&str; 6] = ["B", "kB", "MB", "GB", "TB", "PB"];
 const DOT: &str = " \u{b7} ";
 
 /// What Machine's rows are made of: the processor's record, the
-/// memory's, this boot's, and the programs using each most, where they
-/// were read just now.
+/// memory's, this boot's, the programs using each most, where they
+/// were read just now, and the processor's telemetry, while it's asked.
 #[derive(Clone, Copy, Default)]
 pub struct Held<'a> {
     pub processor: Option<&'a Value>,
     pub memory: Option<&'a Value>,
     pub boot: Option<&'a Value>,
     pub using: Option<&'a [Value]>,
+    pub telemetry: Option<&'a Heard>,
 }
 
 /// Machine's rows from what's held, `now` being the milliseconds since
@@ -58,10 +60,19 @@ pub struct Held<'a> {
 pub fn read(held: Held, now: u64, words: &Words) -> Ready {
     let say = Say { words };
     let mut made = Vec::new();
-    made.extend(
-        held.processor
-            .and_then(|p| crate::processor_rows::row(p, held.using, words)),
-    );
+    let processor = held
+        .processor
+        .and_then(|p| crate::processor_rows::row(p, held.using, words));
+    // What the telemetry says goes among the processor's other parts, in
+    // their words' order.
+    made.extend(processor.map(|mut cpu| {
+        if let Some(heard) = held.telemetry {
+            let mut inside = std::mem::take(&mut cpu.inside);
+            inside.extend(crate::telemetry_rows::rows(&say, heard));
+            cpu.inside = ordered(words, "machine:cpu", inside);
+        }
+        cpu
+    }));
     if let Some(memory) = held
         .memory
         .filter(|m| m["total_b"].as_f64().is_some_and(|t| t > 0.0))

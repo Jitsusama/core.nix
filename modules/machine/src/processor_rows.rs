@@ -7,9 +7,9 @@
 //! daemons need to be the data layer").
 //!
 //! What held it back and what kept it from resting come from the
-//! processor's telemetry, which this daemon hears only while Heat is
-//! watched, so the shell still makes those two and places them among
-//! these by the same words' order, until the daemon serves them too.
+//! processor's telemetry, asked only while they can be seen, so they're
+//! made apart (`telemetry_rows.rs`) and placed among these by the same
+//! words' order (`machine_rows.rs`).
 //!
 //! The programs using the processor most are read only while the
 //! launcher asks for them, so Using It says them only while they were

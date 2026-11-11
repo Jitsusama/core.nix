@@ -54,7 +54,11 @@
 //! changed. Machine's are made again as the programs using them are read
 //! too, though watching its rows doesn't read them, since that reads
 //! every process's files: the shell watches `using` while it's looked at.
-//! The processor's own telemetry is asked only while Heat's are watched.
+//! The processor's own telemetry is asked only while Heat's rows are
+//! watched, or `telemetry` is, as the shell watches it while a Processor
+//! answer can be seen; Machine's rows are made again with each of its
+//! seconds then, for what held the processor back and kept it from
+//! resting (`telemetry_rows.rs`).
 //! Handed no words, it makes no rows.
 //!
 //! It acts as well as answers, so the shell spawns and writes nothing of
@@ -128,9 +132,10 @@ const HEARD: [&str; 8] = [
 /// How often a watch on files heard looks to see whether it's still
 /// wanted, once every folder is watched.
 const RESTING: Duration = Duration::from_secs(60);
-/// The kinds read as their files are written or their bus says they
-/// changed (`kept_loop`, `profile_loop`).
-const KEPT: [&str; 2] = ["kept", "profile"];
+/// The kinds read as their files are written, their bus says they
+/// changed or their reader tells a second (`kept_loop`, `profile_loop`,
+/// `telemetry_loop`).
+const KEPT: [&str; 3] = ["kept", "profile", "telemetry"];
 /// How long `kept_loop` waits on its files before looking again for a
 /// folder that isn't there, as `/run/power-profile` isn't while its
 /// service starts again.
@@ -175,7 +180,7 @@ const FIRMWARE: Place = Place {
 const MACHINE: Place = Place {
     name: "machine",
     sources: &["processor", "memory", "boot"],
-    heard: &["using"],
+    heard: &["using", "telemetry"],
 };
 const PLACES: [Place; 4] = [HEAT, POWER, FIRMWARE, MACHINE];
 /// How lately the programs must have been read for Machine's rows to say
@@ -380,6 +385,13 @@ impl Reader {
         if wants("profile") {
             records.push(kept::profile(&self.root, &buses.profile));
         }
+        if wants("telemetry") {
+            records.push(json!({
+                "key": "telemetry:processor",
+                "kind": "telemetry",
+                "state": buses.telemetry,
+            }));
+        }
         if wants("supply") {
             for name in supply::supplies(&self.root) {
                 let said = buses.upower.get(&name).cloned().unwrap_or(Value::Null);
@@ -417,6 +429,9 @@ struct Buses {
     firmware: Vec<Value>,
     light: Vec<Value>,
     profile: Value,
+    /// How the processor's telemetry stands, as `telemetry:processor`
+    /// says it: asking, heard, refused or missing.
+    telemetry: &'static str,
 }
 
 /// Everything the threads share.
@@ -453,8 +468,8 @@ struct Daemon {
     /// alone, where ordering siblings by where they stood sent every one
     /// after it again (FEH1HE, 2026-11-10).
     kept: BTreeMap<&'static str, Kept>,
-    /// The processor's telemetry's temperatures, as last told.
-    telemetry: Vec<Value>,
+    /// What the processor's telemetry last told, while it's asked.
+    telemetry: telemetry::Heard,
     /// The kinds whose source said they changed, to be asked again now.
     hurried: HashSet<String>,
     /// When the last sleep began and ended, as logind's signal said.
@@ -644,7 +659,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             power: power_rows::Power::default(),
             acting: firmware_rows::Acting::default(),
             kept: BTreeMap::new(),
-            telemetry: Vec::new(),
+            telemetry: telemetry::Heard::default(),
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
@@ -775,7 +790,6 @@ fn let_go(daemon: &mut Daemon) {
         }
         if place == HEAT {
             daemon.heat.forget();
-            daemon.telemetry.clear();
         } else if place == POWER {
             daemon.power.forget();
         } else {
@@ -786,6 +800,16 @@ fn let_go(daemon: &mut Daemon) {
         daemon.kept.remove(place.name);
         daemon.held.retain(|key, _| !place.holds(key));
     }
+    if !telemetry_asked(daemon) {
+        daemon.telemetry.dropped();
+    }
+}
+
+/// Whether the processor's telemetry is asked: while Heat's rows are
+/// watched, for its temperatures, or `telemetry` is, for what held the
+/// processor back and kept it from resting.
+fn telemetry_asked(daemon: &Daemon) -> bool {
+    makes(daemon, HEAT) || watched(daemon).contains("telemetry")
 }
 
 /// The records of one kind held.
@@ -798,6 +822,7 @@ fn held_of(held: &BTreeMap<String, Value>, kind: &str) -> Vec<Value> {
 
 /// A place's rows and headline as they read now, from what's held.
 fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
+    let asked = telemetry_asked(daemon);
     let Daemon {
         held,
         heat,
@@ -829,6 +854,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
             memory,
             boot: boot.as_ref(),
             using: fresh.then_some(using.as_slice()),
+            telemetry: asked.then_some(&*telemetry),
         };
         return machine_rows::read(said, clock_ms(), words);
     }
@@ -838,12 +864,13 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
         held_of(held, "cooling"),
     );
     let processor = held_of(held, "processor").into_iter().next();
+    let temperatures = telemetry.temperatures();
     let said = heat_rows::Held {
         sensors: &sensors,
         zones: &zones,
         cooling: &cooling,
         processor: processor.as_ref(),
-        telemetry,
+        telemetry: &temperatures,
     };
     heat.read(said, clock_ms(), words)
 }
@@ -871,15 +898,18 @@ fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
     (moved.changed, moved.gone)
 }
 
-/// Asks the processor's telemetry at `path` for its temperatures while
-/// Heat's rows are watched, and nothing otherwise, since the reader reads
-/// the processor's counters only while asked; asked again a second after
-/// it goes, or later where it was never reached.
+/// Asks the processor's telemetry at `path` while it's asked
+/// (`telemetry_asked`), and nothing otherwise, since the reader reads the
+/// processor's counters only while asked; asked again a second after it
+/// goes, or later where it was never reached. Each second it tells is
+/// read as `telemetry`, so its standing is told as it changes and
+/// Machine's rows are made again where they're watched.
 fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
+    let kinds = HashSet::from(["telemetry".to_owned()]);
     loop {
         {
             let mut daemon = lock(&shared.daemon);
-            while !makes(&daemon, HEAT) {
+            while !telemetry_asked(&daemon) {
                 daemon = shared
                     .woken
                     .wait(daemon)
@@ -888,11 +918,17 @@ fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
         }
         let stop = AtomicBool::new(false);
         let reached = telemetry::watch(path, &stop, |said| {
-            let mut daemon = lock(&shared.daemon);
-            daemon.telemetry = said.unwrap_or_default();
-            if !makes(&daemon, HEAT) {
-                stop.store(true, Ordering::Relaxed);
+            {
+                let mut daemon = lock(&shared.daemon);
+                // Once nothing asks, what it said was let go, and its
+                // last word, the connection ending, is no refusal.
+                if !telemetry_asked(&daemon) {
+                    stop.store(true, Ordering::Relaxed);
+                    return;
+                }
+                daemon.telemetry.heard(said);
             }
+            read(shared, &kinds, &[]);
         });
         std::thread::sleep(if reached { EVERY } else { TELEMETRY_AGAIN });
     }
@@ -921,6 +957,7 @@ fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], place
             firmware: daemon.firmware.clone(),
             light: daemon.light.clone(),
             profile: daemon.profile.clone(),
+            telemetry: daemon.telemetry.standing().name(),
         };
         (buses, trees)
     };

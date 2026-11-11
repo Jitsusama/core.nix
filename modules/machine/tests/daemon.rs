@@ -12,7 +12,8 @@
 //! write them; a watcher's status is told as it writes it, and silent
 //! once its heartbeat is late; a charge limit set is told before it's
 //! answered; Heat's rows are made for a watch of their place and told as
-//! they move; a firmware install is answered once fwupdmgr is done, the
+//! they move; the processor's telemetry is asked only once it's watched,
+//! and what it hears becomes Held Back and Kept From Resting; a firmware install is answered once fwupdmgr is done, the
 //! connection answering meanwhile and a second act refused as busy; and
 //! an ask, act or kind it doesn't know is refused.
 //!
@@ -630,6 +631,105 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
         side.starts_with("kitty "),
         "the program using most: {named}"
     );
+}
+
+/// A processor-telemetry reader at its place under `root`, which answers
+/// a watch with one second's reading and then holds the connection, as
+/// the reader does between seconds.
+fn telemetry_reader(root: &Path) {
+    use std::io::{Read, Write};
+    let path = root.join("run/processor-telemetry/io.jitsusama.ProcessorTelemetry");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+    std::thread::spawn(move || {
+        let (mut client, _) = listener.accept().unwrap();
+        let mut asked = [0_u8; 256];
+        let _ = client.read(&mut asked);
+        let reading = json!({ "parameters": {
+            "temperatures": [],
+            "heldBack": [{ "by": "pl1", "share": 0.4 }],
+            "clusters": [{ "cpus": "0-1", "heldBack": [{ "by": "power", "share": 0.4 }] }],
+            "keptFromResting": { "kept": 0.3, "by": [{ "by": "npu", "share": 0.3 }] }
+        } });
+        let mut said = reading.to_string().into_bytes();
+        said.push(0);
+        client.write_all(&said).unwrap();
+        // Held until the daemon lets go, when the read says it ended.
+        let _ = client.read(&mut asked);
+    });
+}
+
+#[test]
+fn the_processors_telemetry_is_asked_only_while_watched_and_made_into_its_rows() {
+    let words = json!({ "things": [
+        { "id": "machine:cpu", "name": "Processor", "glyph": "processor",
+            "parts": ["machine:cpu:held-back", "machine:cpu:kept-from-resting",
+                "machine:cpu:load"],
+            "said": { "head": "{busy} busy" } },
+        { "id": "machine:cpu:load", "name": "Load" },
+        { "id": "machine:cpu:held-back", "name": "Held Back", "said": {
+            "note": "by {limit}, over the last second", "core": "by {limit}",
+            "limit-pl1": "its power limit, PL1", "limit-power": "power" } },
+        { "id": "machine:cpu:held-back-core", "name": "Core {n}" },
+        { "id": "machine:cpu:kept-from-resting", "name": "Kept From Resting",
+            "said": { "by": "by {keeper}" } },
+        { "id": "machine:cpu:kept-by-npu", "name": "NPU", "said": { "by": "the NPU" } }
+    ] });
+    let running = Running::worded("telemetry", &words);
+    telemetry_reader(&running.root());
+    let mut client = running.client();
+    let said =
+        client.ask(&json!({"id": "machine", "ask": "watch", "kind": "row", "place": "machine"}));
+    let unasked: Vec<&Value> = said["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|record| record["key"] == "row:machine:cpu:held-back")
+        .collect();
+    assert!(
+        unasked.is_empty(),
+        "nothing asks the telemetry yet: {unasked:?}"
+    );
+    let mut shown = running.client();
+    let standing = shown.ask(&json!({"id": "telemetry", "ask": "watch", "kind": "telemetry"}));
+    let first = record(&standing["records"], "telemetry:processor")["state"].clone();
+    assert!(
+        first == "asking" || first == "heard",
+        "asked, and heard only if the reader was quicker than the answer: {first}"
+    );
+    // Kept From Resting may be told first holding its place; the second
+    // heard tells both rows at once.
+    let changed = loop {
+        let said = client.heard();
+        let has = |key: &str| {
+            said["changed"]
+                .as_array()
+                .is_some_and(|records| records.iter().any(|record| record["key"] == key))
+        };
+        if has("row:machine:cpu:held-back") {
+            break said["changed"].clone();
+        }
+    };
+    let row = &record(&changed, "row:machine:cpu:held-back")["row"];
+    assert_eq!(row["side"][0]["said"], "40%", "the strongest limit's share");
+    assert_eq!(row["note"], "by its power limit, PL1, over the last second");
+    assert_eq!(row["parent"], "row:machine:cpu", "a part of the processor");
+    let core = &record(&changed, "row:machine:cpu:held-back-core:1")["row"];
+    assert_eq!(
+        (&core["name"], &core["note"]),
+        (&json!("Core 1"), &json!("by power")),
+        "each core its cluster's limit"
+    );
+    let kept = &record(&changed, "row:machine:cpu:kept-from-resting")["row"];
+    assert_eq!(kept["side"][0]["said"], "30%");
+    assert_eq!(kept["note"], "by the NPU", "the part that kept it longest");
+    if first == "asking" {
+        assert_eq!(
+            shown.changed("telemetry:processor")["state"],
+            "heard",
+            "a second was heard"
+        );
+    }
 }
 
 /// A battery, a charger and a USB-C port with a charger in it, and the
