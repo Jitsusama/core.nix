@@ -5,7 +5,8 @@
 // shortcuts stood in for. With nothing written there's no piece and no
 // collection; what the watch wrote is drawn as it says, with a way to see
 // where it went; a cap near its end wants Joel, in the alert colour, with
-// the finding's action first; while the screen is shared the amounts go; a
+// none of the watch's actions while its socket isn't there to do them
+// (tests/spend-told.qml asks them of it); while the screen is shared the amounts go; a
 // watch that stopped writing is a warning with a way to start it; a file of another version is no piece, and nor is one taken away
 // again. The collection, with nothing written, starts the watch by asking
 // the machine daemon, spawning nothing; it answers "spend", "cap" and a
@@ -15,8 +16,9 @@
 // is shared, draws nothing from a file of another version, opens a drawer
 // of every fact budgets.json holds of a budget's row and a window's, and
 // puts a
-// finding that wants a look first, going to its session and stepping into
-// marking it expected; read from the file, its figures are said to be the
+// finding that wants a look first, whose going to its session and
+// marking it expected run nothing and say so with no socket to ask; read
+// from the file, its figures are said to be the
 // last ones, since the file is read only while spend-watch's socket isn't
 // answering (tests/spend-told.qml drives the socket). The tokens piece
 // (pieces/Tokens.qml), over the same file, is there only while the watch's `tokens` warns: as the watch words
@@ -157,21 +159,13 @@ ShellRoot {
             && piece.title === "AI spend" && piece.context === ""
             && piece.actions.some(action => action.name === "Show where it went"
                 && action.chord.map(key => key.text).join("+") === "Super+U")
-            && piece.actions.some(action => action.name === "Read this week's report")
     }, {
         what: "a cap close to its end",
         status: root.alert,
         holds: piece => piece.active && piece.role === "alert" && piece.wants
             && piece.value === "$3,642 of $4,000 this week"
             && piece.hint === "The weekly cap is 91% spent"
-            && piece.actions[0].name === "Go to the session"
-            && piece.actions[0].glyph === Theme.glyph.windows
-            && piece.actions[1].glyph === Theme.glyph.fine
-    }, {
-        what: "the actions run what the watch says",
-        status: root.alert,
-        act: piece => piece.actions[0].run(),
-        holds: piece => Niri.spawned.join(" ") === "spend-watch go s1"
+            && piece.actions.map(action => action.name).join(", ") === "Show where it went"
     }, {
         what: "a cap close to its end, while sharing",
         status: root.alert,
@@ -224,9 +218,15 @@ ShellRoot {
 
         property bool wanting: true
         property bool open: true
+        // Each act refused, as its row's key and why.
+        property var refusals: []
 
         function wants(source) {
             return wanting;
+        }
+
+        function becameNot(key, why) {
+            refusals.push(`${key} ${why}`);
         }
 
         function afterFrame(then) {
@@ -735,14 +735,16 @@ ShellRoot {
             const answered = spend.answer("spend").rows;
             expect("the answer's finding first", answered[0].name === "A burn in Aquifer",
                 answered.map(row => row.name).join(", "));
-            burn.run();
-            expect("going to its session", Niri.spawned.join(" ") === "spend-watch go s1",
-                Niri.spawned.join(" "));
-            const expected = burn.verbs().find(row => row.name === "It's Expected");
-            expected.run();
-            expect("marking it expected",
-                Niri.spawned.join(" ") === "spend-watch findings expect burn:s1",
-                Niri.spawned.join(" "));
+            // With no socket to ask, acting on it runs nothing and says
+            // the watch isn't answering.
+            Niri.spawned = [];
+            const told = shutSpend.everything()[0];
+            told.run();
+            told.verbs().find(row => row.name === "It's Expected").run();
+            const refused = "spend:finding:burn:s1 not answering";
+            expect("acting with no socket runs nothing and says so", Niri.spawned.length === 0
+                && shutLauncher.refusals.join(", ") === `${refused}, ${refused}`,
+                [Niri.spawned.join(" ")].concat(shutLauncher.refusals).join(", "));
             root.shut();
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {

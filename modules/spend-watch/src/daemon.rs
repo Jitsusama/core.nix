@@ -422,6 +422,7 @@ pub fn pass(
     let collection = crate::collection::collection(&picture, &findings, config);
     writer.write(&config.runtime()?, &shown, &collection, Some(&standing))?;
     hub.publish(&collection, Some(&standing));
+    hub.offer(&shown.actions);
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.
     if config.notices.enable

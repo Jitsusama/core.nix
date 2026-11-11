@@ -79,6 +79,7 @@ Provider {
         note: Words.of("spend").said?.down ?? "",
         role: "warning",
         verb: Words.verb("spend:start"),
+        // As the command line would start it; the machine daemon does.
         run: ["systemctl", "--user", "restart", "spend-watch.service"]
     })
 
@@ -146,14 +147,16 @@ Provider {
         sharing: provider.sharing
     })
 
-    // Does what a row offers through the watch's socket, which spawns
-    // nothing; only while its rows are read from the file, with no socket
-    // to ask, is the command line run as it was. Starting the watch, which
-    // isn't there to ask, is the machine daemon's to do.
-    function act(what, key, command) {
+    // Does what a row offers through the watch's socket, and nothing else:
+    // with no socket to ask, as while its rows are read from the file, the
+    // row says it isn't answering and nothing runs (Y2YBTS, 2026-11-10).
+    // Starting the watch, which isn't there to ask, is the machine
+    // daemon's to do.
+    function act(what, key) {
         const then = answer => {
-            if (answer === null)
-                Niri.spawn(command);
+            const unanswered = answer === null || answer.error?.code === "not-answering";
+            provider.refused(`spend:${key}`, unanswered ? Words.of("spend").said?.down ?? ""
+                : answer.error?.message ?? "");
         };
         if (key === downLine.key)
             machine.ask({ ask: "act", act: "restart-unit", unit: "spend-watch.service" }, then);
@@ -198,7 +201,7 @@ Provider {
             ? thing(Object.assign(fields, {
                 verb: given.verb || "run",
                 later: true,
-                run: () => act("run", given.key, given.run)
+                run: () => act("run", given.key)
             }))
             : copyRow(Object.assign(fields, { copy: report ? report.markdown : given.copy }));
         const nested = given.rows ?? [];
@@ -222,7 +225,7 @@ Provider {
                 verb: Words.verb("spend:expect"),
                 glyph: Theme.glyph.fine,
                 hue: "action",
-                run: () => act("expect", given.key, given.expect)
+                run: () => act("expect", given.key)
             }));
         if (doing.length + nested.length + inside.length > 0) {
             row.verbs = () => doing.concat(nested.map(build), inside.map(build));

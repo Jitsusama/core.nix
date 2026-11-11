@@ -9,7 +9,8 @@
 // isn't watched while the socket answers; a change to a session's
 // figure makes none of the rows and a change to one row makes that row
 // alone; going to a finding's session and marking it expected are asked
-// of the socket, spawning nothing; and a watch that never answers is drawn from what's held while
+// of the socket, spawning nothing, from the launcher's rows and the bar's
+// piece alike; and a watch that never answers is drawn from what's held while
 // it's still reading, with no row made twice. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
@@ -62,6 +63,18 @@ ShellRoot {
     FileView {
         id: realBudgets
         path: `${root.runtime}/written/budgets.json`
+    }
+
+    // The bar's piece, over a status this writes.
+    Spend {
+        id: bar
+        settings: ({ status: `${root.runtime}/spend-watch/bar.json` })
+    }
+
+    FileView {
+        id: barStatus
+        path: `${root.runtime}/spend-watch/bar.json`
+        printErrors: false
     }
 
     // spend-watch's socket as its daemon serves it (its src/interface.rs):
@@ -286,6 +299,43 @@ ShellRoot {
                     root.acts.join(", "));
                 Expect.expect("acting spawns nothing", Niri.spawned.length === 0,
                     Niri.spawned.join(" "));
+                barActed();
+            });
+        });
+    }
+
+    // The bar's piece asks the socket for an action the watch offers, by
+    // its key, as the launcher's rows do.
+    function barActed() {
+        const said = (value, hint) => ({ value: value, badge: "91%", hint: hint, context: "" });
+        barStatus.setText(JSON.stringify({
+            v: 1, heartbeat: Date.now() / 1000, active: true, role: "alert", wants: true,
+            title: "AI spend",
+            open: said("$3,642 of $4,000 this week", "The weekly cap is 91% spent"),
+            quiet: said("the weekly cap is close", "The weekly cap is close"),
+            actions: [{
+                kind: "go", key: "status:finding:burn:s1", name: "Go to the session",
+                run: ["spend-watch", "go", "s1"]
+            }, {
+                kind: "mark", key: "status:mark:burn:s1", name: "It's expected",
+                run: ["spend-watch", "findings", "expect", "burn:s1"]
+            }]
+        }));
+        until("the bar's actions offered", () => bar.actions.length === 3, () => {
+            Expect.expect("the bar offers the watch's actions first, each with its mark",
+                bar.actions.map(action => action.name).join(", ")
+                === "Go to the session, It's expected, Show where it went"
+                && bar.actions[0].glyph === Theme.glyph.windows
+                && bar.actions[1].glyph === Theme.glyph.fine,
+                bar.actions.map(action => action.name).join(", "));
+            root.acts = [];
+            bar.actions[0].run();
+            bar.actions[1].run();
+            until("the bar's acts asked", () => root.acts.length === 2, () => {
+                Expect.expect("the bar's actions ask the watch by their keys, spawning nothing",
+                    root.acts.join(", ") === "run status:finding:burn:s1, run status:mark:burn:s1"
+                    && Niri.spawned.length === 0,
+                    [Niri.spawned.join(" ")].concat(root.acts).join(", "));
                 unanswered();
             });
         });

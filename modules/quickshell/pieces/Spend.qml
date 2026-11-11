@@ -2,7 +2,8 @@
 // spend against usual in the overview, and in the margin while something
 // wants a look, a cap near or reached, a burn, an override ending. The
 // daemon works every figure out and writes each string ready to draw, so
-// this reads its status file, asks nothing and formats nothing. While the
+// this reads its status file and formats nothing, and asks the daemon's
+// socket only to do an action it offers. While the
 // screen is shared it draws the quiet strings, which hold no amounts. It's
 // true as well when the daemon has stopped writing, since then nothing
 // watches the spend; with no file at all there's no piece.
@@ -47,10 +48,13 @@ Piece {
     // the top finding's, else today's, the quiet one's while the screen is
     // shared. None while nothing watches.
     drawnBy: !silent && shown?.row ? { place: "spend", key: `spend:${shown.row}` } : null
-    actions: (silent ? [] : (said?.actions ?? []).map(action => ({
+    // What the watch offers is asked of its socket by the action's key,
+    // which spawns nothing, and is offered only while the socket answers,
+    // so there's no second way of acting (Y2YBTS, 2026-11-10).
+    actions: (silent || SpendWatch.fromFile ? [] : (said?.actions ?? []).map(action => ({
         glyph: Theme.glyph[marks[action.kind] ?? "ask"],
         name: action.name,
-        run: () => Niri.spawn(action.run)
+        run: () => SpendWatch.act("run", action.key, () => {})
     }))).concat([{
         glyph: Theme.glyph.trend,
         name: "Show where it went",
@@ -60,8 +64,19 @@ Piece {
     }]).concat(silent ? [{
         glyph: Theme.glyph.resume,
         name: "Start the watch",
-        run: () => Niri.spawn(["systemctl", "--user", "restart", "spend-watch.service"])
+        run: () => machine.ask({ ask: "act", act: "restart-unit", unit: "spend-watch.service" },
+            () => {})
     }] : [])
+
+    // The machine daemon, asked only to start the watch again, since the
+    // watch isn't there to ask; nothing of it is watched.
+    Daemon {
+        id: machine
+
+        socket: `${piece.runtime}/daemons/machine.sock`
+        kind: "unit"
+        live: false
+    }
 
     // Says the status the daemon wrote, or nothing when it wrote none that
     // reads or one of a version this doesn't know.
