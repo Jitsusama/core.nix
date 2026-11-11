@@ -133,6 +133,12 @@ go: each builder nix-offload lends starts with an empty store, so a check
 built again on the next was paid in full (716 s, then 790 s, for one on
 2026-11-03). nix-offload keeps each check `there` built that passed, and
 each `there --changed` run that passed with what it named, by commit, in
+`/var/lib/nix-offload-passed/<commit>`. A keeper of its own, run as a
+system account through a socket only the person's account reaches, alone
+writes there: it adds whole lines and forgets one commit's record when
+asked, so no session can remove or rewrite what passed, as one stray `rm`
+did to every gate's record on 2026-11-11. A record untouched for 30 days
+ages out. Where no keeper is installed, the records stay in
 `nix-offload/passed/<commit>` under XDG's state folder. The same run again
 at that commit says what it named and builds nothing, and one asking for
 more tells the far side's changed-checks which checks passed, as
@@ -140,7 +146,8 @@ more tells the far side's changed-checks which checks passed, as
 commit runs nothing and copies the pictures from where the last run put
 them, while they're still there. A failure, any other build whose output is
 wanted back (`--apply`, `--out`, `--print-out-paths`) and anything but a
-check are never kept. Removing the commit's file has it all built again.
+check are never kept. `nix-offload passed forget <commit>` has it all built
+again.
 
 `--keep-going` lets every check finish when one fails, so the run names all
 the failures rather than the first. Determinate Nix needs it besides: when a
