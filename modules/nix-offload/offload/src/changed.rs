@@ -9,7 +9,9 @@
 //! or the commits since as a bundle of a few kilobytes. The far side keeps
 //! a mirror of the repository, checks the commit out beside origin's main,
 //! and runs that commit's own changed-checks, so what it names is what the
-//! tree's dev shell would have named.
+//! tree's dev shell would have named. A run kept to the lent builders
+//! runs this machine's instead ([`OWN`]), sent up ahead of it, since a
+//! fenced session's commit is the session's to write.
 //!
 //! Where: a lent builder while one stands, which evaluates and builds in
 //! one place, every other run trying the second first and asking for it
@@ -73,6 +75,35 @@ pub fn evaluating_longest() -> Duration {
 /// sends itself on, and so the far side's slices treat it as other work.
 const HERE: &str = "CHANGED_CHECKS_HERE=1 WORK_RUNS_ELSEWHERE=1";
 
+/// The changed-checks this nix-offload was built beside, by the program's
+/// store path, as `package.nix` names it, which a run kept to the lent
+/// builders runs rather than the commit's own. A fenced session writes
+/// its commits, and the commit's own changed-checks would run whatever
+/// the session put there, on the builder and as the person, and print
+/// what the record of passing keeps (12 November).
+pub const OWN: Option<&str> = option_env!("NIX_OFFLOAD_CHANGED_CHECKS");
+
+/// The changed-checks a run runs by its store path rather than the
+/// commit's own: none, unless the run is kept to the lent builders
+/// (`lent_only`), which runs [`OWN`] and no other, so it's refused
+/// without one.
+pub fn run_by(lent_only: bool) -> Result<Option<&'static str>, String> {
+    match (lent_only, OWN) {
+        (false, _) => Ok(None),
+        (true, Some(own)) => Ok(Some(own)),
+        (true, None) => {
+            Err("this nix-offload was built without a changed-checks of its own".to_owned())
+        }
+    }
+}
+
+/// The store path holding the program `own`, which goes up to the builder
+/// ahead of a run that names it: `/nix/store/HASH-NAME` of
+/// `/nix/store/HASH-NAME/bin/changed-checks`.
+pub fn package_of(own: &str) -> String {
+    own.splitn(5, '/').take(4).collect::<Vec<_>>().join("/")
+}
+
 /// A machine that evaluates, from a line of `nix-offload/evaluators`:
 /// `ADDRESS HOST OWNER,OWNER`, where the address is what a quick
 /// connection is tried at, `host:port`, the host is what ssh is given, and
@@ -118,7 +149,14 @@ pub fn evaluators(text: &str) -> Vec<Evaluator> {
 /// checks, by name, `passed` at that commit already, as
 /// `CHANGED_CHECKS_PASSED`, the commit and then each name, so it builds
 /// none of them again; a changed-checks from before that builds them.
-pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sending {
+/// It's the commit's own changed-checks, unless `own` names a store path
+/// to run instead ([`OWN`]).
+pub fn sending(
+    source: Source,
+    arguments: &[String],
+    passed: &[String],
+    own: Option<&str>,
+) -> Sending {
     let commit = match &source {
         Source::Pushed { commit, .. } | Source::Bundled { commit, .. } => commit.clone(),
     };
@@ -142,7 +180,8 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
     };
     Sending {
         command: format!(
-            "{checkout}{told}{HERE} {first}nix run .#changed-checks -- {}",
+            "{checkout}{told}{HERE} {first}{} {}",
+            own.map_or_else(|| "nix run .#changed-checks --".to_owned(), there::quoted),
             words.join(" ")
         ),
         bundle,
@@ -563,6 +602,7 @@ mod tests {
             },
             &words("--build --system x86_64-linux"),
             &[],
+            None,
         );
         assert!(sent.bundle.is_none());
         for part in [
@@ -586,6 +626,38 @@ mod tests {
     }
 
     #[test]
+    fn a_run_given_its_own_changed_checks_runs_that_and_never_the_commits() {
+        let own = "/nix/store/abc-changed-checks-0.1.0/bin/changed-checks";
+        let sent = sending(
+            Source::Pushed {
+                github: "someone/thing".to_owned(),
+                commit: "abc123".to_owned(),
+                dir: None,
+            },
+            &words("--build --system x86_64-linux"),
+            &[],
+            Some(own),
+        );
+        assert!(
+            sent.command.contains(&format!(
+                "CHANGED_CHECKS_HERE=1 WORK_RUNS_ELSEWHERE=1 {own} --build --system x86_64-linux"
+            )),
+            "run by its store path: {}",
+            sent.command
+        );
+        assert!(
+            !sent.command.contains("nix run"),
+            "nothing the commit names runs: {}",
+            sent.command
+        );
+        assert_eq!(
+            package_of(own),
+            "/nix/store/abc-changed-checks-0.1.0",
+            "what goes up ahead of it"
+        );
+    }
+
+    #[test]
     fn runs_at_once_take_the_kept_mirror_in_turn() {
         let sent = sending(
             Source::Pushed {
@@ -595,6 +667,7 @@ mod tests {
             },
             &words("--build"),
             &[],
+            None,
         );
         let at = |part: &str| {
             sent.command
@@ -634,6 +707,7 @@ mod tests {
             },
             &words("--build"),
             &words("a vm-b"),
+            None,
         );
         assert!(
             sent.command.contains(
@@ -658,6 +732,7 @@ mod tests {
             },
             &words("--base 'odd ref'"),
             &[],
+            None,
         );
         assert_eq!(sent.bundle, Some(PathBuf::from("/b")));
         for part in [
