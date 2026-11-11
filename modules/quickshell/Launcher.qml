@@ -5446,7 +5446,7 @@ Scope {
     function keyTimed(typed, began, heard, pressed) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began,
             searched: Date.now() - began, parts: searchParts, begun: null,
-            rendered: null }]);
+            rendered: null, pressed: pressed > 0 ? pressed : heard }]);
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
         // Its handler is done once it's searched or moved, all a key's own
@@ -5458,8 +5458,10 @@ Scope {
     // when, on the monotonic clock.
     function keysFrameBegun() {
         const begun = KeyTimes.now();
-        for (const key of keysDrawing.waiting)
+        for (const key of keysDrawing.waiting) {
             key.begun = begun;
+            presentedAwait(key.pressed, at => keyPresented(key.pressed, at));
+        }
         keysDrawing = Pacing.frameBegun(keysDrawing);
     }
 
@@ -6482,6 +6484,12 @@ Scope {
         // JSON (openingsTimed).
         function openings(): string {
             return JSON.stringify(root.openingsTimed);
+        }
+
+        // Each key presented since it opened, from its press and when
+        // niri presented it, on the monotonic clock, as JSON.
+        function keysPresented(): string {
+            return JSON.stringify(root.keysPresented);
         }
 
         // The command line over a viewer, by its name, where it is and the
@@ -7673,6 +7681,8 @@ Scope {
             commanding = null;
         }
         madeSince(open ? "opening" : "closing");
+        if (!open)
+            keysPresentedSaid();
         if (open)
             traces.opened({});
         else
@@ -7821,6 +7831,7 @@ Scope {
             openSettled = -1;
             openBegun = -1;
             openKept = false;
+            presentedBegin(openAsked);
         }
     }
     // When the ask that opened it was done, every binding the opening
@@ -7955,10 +7966,14 @@ Scope {
 
     // Its first frame drawn, the opening is timed to it; drawn at its size,
     // it's filled in.
-    function openShown() {
+    function openShown(begun, frame) {
         if (!opening)
             return;
         openFramesSized = drawnAsAsked() ? openFramesSized + 1 : 0;
+        // The first frame at its size is the first Joel can see the card
+        // in, which the fill's second frame is drawn a frame after.
+        if (openFramesSized === 1)
+            presentedSized(frame);
         openFramesWaited += 1;
         if (openFirstDrawn < 0) {
             openFirstDrawn = KeyTimes.now();
@@ -8066,7 +8081,7 @@ Scope {
             + ` working (${Pacing.openingParts(fillParts)}) and the rest waking`);
     }
 
-    function openDrawn() {
+    function openDrawn(beganAt, frame) {
         const asked = openAsked;
         openAsked = -1;
         if ((!open && !opening) || asked < 0)
@@ -8118,6 +8133,9 @@ Scope {
                 + ` and ${after.sizing} ms` : "")
             + (first ? ", the first since the shell started" : "")
             + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
+        // Once its record is made, so niri's answer, which may already
+        // have come, is kept with this opening.
+        presentedDrawn(feltFrom, feltFromChord, frame);
     }
 
     // How long Joel waited for an opening to be usable, from his chord (or
@@ -8128,6 +8146,151 @@ Scope {
     // after his chord, when the thread came free (Joel, 2026-11-10: "It
     // takes 7 seconds for me to see the launcher window"). It ticks only
     // from an opening's first frame until then, or 15 s, never while shut.
+    // When niri showed Joel the opening, from his chord (or the ask): the
+    // first frame niri presented that was the opening's first frame or
+    // after it, as frame-presentation.patch says (Joel, 2026-11-10: "we
+    // need 50ms launch ... that is time from trigger to visible on the
+    // screen"). Each frame from the ask asks again, so the frame the
+    // opening drew is told even when the thread is busy after it; the
+    // answer is niri's own time, however late the thread reads it. It asks
+    // only while an opening waits to be shown, never while shut.
+    property real presentedFrom: -1
+    property bool presentedFromChord: false
+    property int presentedFrame: -1
+    // When niri presented the opening's frame, held until the opening is
+    // timed and its record made, since a frame drawn at the card's size
+    // can be presented before the fill's second frame times it.
+    property real presentedAt: -1
+    property bool presentedTimed: false
+    function presentedBegin(from) {
+        if (!surface.FramePresentation.available)
+            return;
+        presentedFrom = from;
+        presentedFromChord = false;
+        presentedFrame = -1;
+        presentedAt = -1;
+        presentedTimed = false;
+        surface.FramePresentation.ask();
+    }
+    // The frame begun with the card first drawn at its size, numbered as
+    // the window counts them.
+    function presentedSized(frame) {
+        if (presentedFrom >= 0 && presentedFrame < 0 && typeof frame === "number")
+            presentedFrame = frame;
+    }
+    function presentedDrawn(from, fromChord, frame) {
+        if (presentedFrom < 0)
+            return;
+        presentedFrom = from;
+        presentedFromChord = fromChord;
+        presentedTimed = true;
+        if (presentedFrame < 0)
+            presentedFrame = typeof frame === "number" ? frame
+                : surface.FramePresentation.framesBegun;
+        if (presentedAt >= 0)
+            presentedSaid(Math.round(presentedAt - presentedFrom));
+    }
+    function framePresented(frame, at) {
+        presentedDue(frame, at);
+        if (presentedFrom < 0)
+            return;
+        // An opening is shown from when its card is asked up, before it's
+        // open, so only a card put down has nothing left to present.
+        if (!cardUp) {
+            presentedSaid(-1);
+            return;
+        }
+        if (presentedFrame < 0 || frame < presentedFrame) {
+            surface.FramePresentation.ask();
+            return;
+        }
+        if (!presentedTimed) {
+            presentedAt = at;
+            return;
+        }
+        presentedSaid(Math.round(at - presentedFrom));
+    }
+    function frameDiscarded(frame) {
+        if (presentedWaiting.length > 0) {
+            if (cardUp)
+                surface.FramePresentation.ask();
+            else
+                presentedWaiting = [];
+        }
+        if (presentedFrom < 0)
+            return;
+        if (cardUp)
+            surface.FramePresentation.ask();
+        else
+            presentedSaid(-1);
+    }
+    function presentedSaid(ms) {
+        const from = presentedFromChord ? "the chord" : "the ask";
+        presentedFrom = -1;
+        const last = openingsTimed[openingsTimed.length - 1];
+        if (last)
+            openingsTimed = openingsTimed.slice(0, -1)
+                .concat([Object.assign({}, last, { presented: ms })]);
+        console.info(ms >= 0
+            ? `launcher: opening presented ${ms} ms from ${from}`
+            : "launcher: opening closed before niri presented it");
+    }
+
+    // What a key changed, timed as the opening is, from its press (or,
+    // for a key a program typed with no time, from when it was heard) to
+    // the frame niri presented with it: each waits for the frame about to
+    // begin, numbered as the window counts them, and is told by the first
+    // presented at or after it, a frame niri dropped being shown by the
+    // next. Asked for only while a key's frame waits, never while shut.
+    property var presentedWaiting: []
+    function presentedAwait(from, said) {
+        if (!surface.FramePresentation.available)
+            return;
+        presentedWaiting = presentedWaiting.concat([{ from, said,
+            frame: surface.FramePresentation.framesBegun + 1 }]);
+        surface.FramePresentation.ask();
+    }
+    function presentedDue(frame, at) {
+        if (presentedWaiting.length === 0)
+            return;
+        const due = presentedWaiting.filter(one => frame >= one.frame);
+        presentedWaiting = presentedWaiting.filter(one => frame < one.frame);
+        for (const one of due)
+            one.said(at);
+        if (presentedWaiting.length > 0)
+            surface.FramePresentation.ask();
+    }
+
+    // Each key presented since the launcher opened, from its press and
+    // when niri presented it, on the monotonic clock, for the check that
+    // sets it against niri's screen; said in the journal as it closes.
+    property var keysPresented: []
+    function keyPresented(from, at) {
+        keysPresented = keysPresented.concat([{ from, at }]).slice(-keysKept);
+    }
+    function keysPresentedSaid() {
+        const took = keysPresented.map(one => Math.round(one.at - one.from))
+            .sort((a, b) => a - b);
+        keysPresented = [];
+        // A frame shut takes nothing a key changed to the screen.
+        presentedWaiting = [];
+        if (took.length === 0)
+            return;
+        const within = took.filter(ms => ms <= 50).length;
+        console.info(`launcher: ${took.length} keys presented a median `
+            + `${took[(took.length - 1) >> 1]} ms from the key, the slowest `
+            + `${took[took.length - 1]} ms, ${within} within 50 ms`);
+    }
+
+    // What a key changed in a place, presented: said when slow enough to
+    // feel, as its frame is (actsDrawn).
+    function actPresented(one, at) {
+        const took = Math.round(at - one.heard);
+        if (took > 50)
+            console.info(`launcher: what a key changed in ${one.source.settings.name} `
+                + `was presented ${took} ms from the key`);
+    }
+
     readonly property var feltPace: ({ every: 16, within: 17, calmFor: 100 })
     property var feltTicks: Pacing.feltBegun(0)
     property real feltFrom: -1
@@ -8420,6 +8583,9 @@ Scope {
         WlrLayershell.keyboardFocus: root.cardUp && !root.lettingGo ? Niri.asksForKeys
             : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
+        // When niri showed an opening's frames (presentedBegin).
+        FramePresentation.onPresented: (frame, at) => root.framePresented(frame, at)
+        FramePresentation.onDiscarded: frame => root.frameDiscarded(frame)
 
         Connections {
             target: card.Window.window
@@ -8457,8 +8623,12 @@ Scope {
             enabled: root.actsDrawing.waiting.length + root.actsDrawing.framing.length > 0
 
             function onAfterAnimating() {
-                if (root.actsDrawing.waiting.length > 0)
-                    root.actsDrawing = Pacing.frameBegun(root.actsDrawing);
+                if (root.actsDrawing.waiting.length === 0)
+                    return;
+                for (const one of root.actsDrawing.waiting.filter(each => each.heard
+                    === root.keyHeardAt))
+                    root.presentedAwait(one.heard, at => root.actPresented(one, at));
+                root.actsDrawing = Pacing.frameBegun(root.actsDrawing);
             }
 
             function onFrameSwapped() {
@@ -8478,11 +8648,13 @@ Scope {
             // much of it waited for its frame and how much drew it.
             function onAfterAnimating() {
                 const begun = KeyTimes.now();
+                // The frame about to begin, as FramePresentation will number it.
+                const frame = surface.FramePresentation.framesBegun + 1;
                 if ((root.afterFrames.includes(root.openDrawn)
                         || root.afterFrames.includes(root.openShown)) && root.openBegun < 0)
                     root.openBegun = begun;
                 root.afterFramesDrawing = root.afterFramesDrawing
-                    .concat(root.afterFrames.map(then => () => then(begun)));
+                    .concat(root.afterFrames.map(then => () => then(begun, frame)));
                 root.afterFrames = [];
             }
 

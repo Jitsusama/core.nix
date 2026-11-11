@@ -660,7 +660,8 @@ def opened_timed(desktop: Desktop) -> Json:
 
     Its first frame isn't what Joel sees, so it's kept open until it says when it was usable,
     the shell's thread answering on time (Joel, 2026-11-10: "It takes 7 seconds for me to see
-    the launcher window").
+    the launcher window"), and until niri says it presented the opening's frame, which is what
+    he sees (Joel, 2026-11-10: "time from trigger to visible on the screen").
     """
     timed = latest(openings(desktop))
     desktop.as_account("qs ipc call launcher toggle")
@@ -669,11 +670,16 @@ def opened_timed(desktop: Desktop) -> Json:
 
     def drawn(_: bool) -> bool:
         each[:] = openings(desktop)
-        return latest(each) > timed and "usable" in each[-1]
+        return latest(each) > timed and "usable" in each[-1] and "presented" in each[-1]
 
     retry(drawn, timeout=REACHING)
     desktop.close_launcher()
-    return each[-1]
+    opening = each[-1]
+    # Software painting under a deliberate load makes the machine's own figure no measure of
+    # Joel's 50 ms, which his shell's journal gives; here niri must have presented the
+    # frame, and no sooner than the launcher drew it.
+    assert opening["presented"] >= opening["took"], f"niri never presented the opening: {opening}"
+    return opening
 
 
 @pytest.mark.usefixtures("loaded")

@@ -1,0 +1,376 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] wayland: tell when the compositor showed a window's frame
+
+A frame Qt drew is not a frame the compositor showed. One drawn at a size
+the compositor hasn't configured yet, or whose commit waits behind a
+busy GUI thread, can reach the screen seconds later or never, and nothing
+in Qt says when it did: Qt Wayland 6.12 binds no presentation-time.
+
+FramePresentation, attached to any window, asks wp_presentation for
+feedback on the first frame begun after ask(), from the render thread
+just before that frame is drawn and committed, and answers with which
+frame it was (counted as framesBegun counts) and when it was shown on
+the monotonic clock, or that it was discarded. Asking again on each
+answer follows every frame. With no wp_presentation global, available is
+false and every ask is answered as discarded.
+
+---
+diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt
+index 7bd6c15..b8881e0 100644
+--- a/src/wayland/CMakeLists.txt
++++ b/src/wayland/CMakeLists.txt
+@@ -136,6 +136,9 @@ list(APPEND WAYLAND_MODULES Quickshell.Wayland._IdleNotify)
+ add_subdirectory(shortcuts_inhibit)
+ list(APPEND WAYLAND_MODULES Quickshell.Wayland._ShortcutsInhibitor)
+ 
++add_subdirectory(presentation)
++list(APPEND WAYLAND_MODULES Quickshell.Wayland._Presentation)
++
+ add_subdirectory(windowmanager)
+ 
+ # widgets for qmenu
+diff --git a/src/wayland/presentation/CMakeLists.txt b/src/wayland/presentation/CMakeLists.txt
+new file mode 100644
+index 0000000..1455538
+--- /dev/null
++++ b/src/wayland/presentation/CMakeLists.txt
+@@ -0,0 +1,22 @@
++qt_add_library(quickshell-wayland-presentation STATIC
++	qml.cpp
++)
++
++qt_add_qml_module(quickshell-wayland-presentation
++	URI Quickshell.Wayland._Presentation
++	VERSION 0.1
++	DEPENDENCIES QtQml
++)
++
++install_qml_module(quickshell-wayland-presentation)
++
++wl_proto(wlp-presentation presentation-time "${WAYLAND_PROTOCOLS}/stable/presentation-time")
++
++target_link_libraries(quickshell-wayland-presentation PRIVATE
++	Qt::Quick Qt::WaylandClient Qt::WaylandClientPrivate wayland-client
++	wlp-presentation
++)
++
++qs_module_pch(quickshell-wayland-presentation)
++
++target_link_libraries(quickshell PRIVATE quickshell-wayland-presentationplugin)
+diff --git a/src/wayland/presentation/qml.cpp b/src/wayland/presentation/qml.cpp
+new file mode 100644
+index 0000000..4b3f5c5
+--- /dev/null
++++ b/src/wayland/presentation/qml.cpp
+@@ -0,0 +1,173 @@
++#include "qml.hpp"
++#include <cstdint>
++#include <ctime>
++#include <utility>
++
++#include <private/qwaylandwindow_p.h>
++#include <qcoreapplication.h>
++#include <qobject.h>
++#include <qpointer.h>
++#include <qquickwindow.h>
++#include <qtmetamacros.h>
++#include <qwayland-presentation-time.h>
++#include <qwaylandclientextension.h>
++
++#include "../../window/proxywindow.hpp"
++#include "../../window/windowinterface.hpp"
++
++using QtWaylandClient::QWaylandWindow;
++
++namespace qs::wayland::presentation {
++
++namespace impl {
++
++namespace {
++
++double milliseconds(const timespec& time) {
++	return static_cast<double>(time.tv_sec) * 1000.0 + static_cast<double>(time.tv_nsec) / 1e6;
++}
++
++} // namespace
++
++Presentation::Presentation(): QWaylandClientExtensionTemplate(1) { this->initialize(); }
++
++void Presentation::wp_presentation_clock_id(uint32_t clockId) {
++	this->mClock = static_cast<clockid_t>(clockId);
++}
++
++Presentation* Presentation::instance() {
++	static auto* instance = new Presentation(); // NOLINT
++	return instance->isInitialized() ? instance : nullptr;
++}
++
++Feedback::Feedback(struct ::wp_presentation_feedback* object, clockid_t clock, Done done)
++    : QtWayland::wp_presentation_feedback(object)
++    , clock(clock)
++    , done(std::move(done)) {}
++
++Feedback::~Feedback() {
++	// The feedback has no destructor request: the compositor lets it go once
++	// it has said presented or discarded, and the proxy is freed here.
++	if (this->isInitialized()) wp_presentation_feedback_destroy(this->object());
++}
++
++void Feedback::wp_presentation_feedback_presented(
++    uint32_t secondsHigh,
++    uint32_t secondsLow,
++    uint32_t nanoseconds,
++    uint32_t /*refresh*/,
++    uint32_t /*sequenceHigh*/,
++    uint32_t /*sequenceLow*/,
++    uint32_t /*flags*/
++) {
++	auto seconds = (static_cast<uint64_t>(secondsHigh) << 32) | secondsLow;
++	auto at = static_cast<double>(seconds) * 1000.0 + static_cast<double>(nanoseconds) / 1e6;
++
++	// Said on the compositor's clock, which is the monotonic one on every
++	// compositor in use; another is moved onto it by how far each is now.
++	if (this->clock != CLOCK_MONOTONIC) {
++		timespec theirs {};
++		timespec ours {};
++		clock_gettime(this->clock, &theirs);
++		clock_gettime(CLOCK_MONOTONIC, &ours);
++		at += milliseconds(ours) - milliseconds(theirs);
++	}
++
++	this->finish(at);
++}
++
++void Feedback::wp_presentation_feedback_discarded() { this->finish(-1); }
++
++void Feedback::finish(double at) {
++	auto done = std::move(this->done);
++	// Freed after this event's handler has returned, as it still runs in it.
++	QMetaObject::invokeMethod(
++	    QCoreApplication::instance(),
++	    [this]() { delete this; },
++	    Qt::QueuedConnection
++	);
++	if (done) done(at);
++}
++
++} // namespace impl
++
++FramePresentation* FramePresentation::qmlAttachedProperties(QObject* object) {
++	auto* proxyWindow = qobject_cast<ProxyWindowBase*>(object);
++
++	if (!proxyWindow) {
++		if (auto* iface = qobject_cast<WindowInterface*>(object)) {
++			proxyWindow = iface->proxyWindow();
++		}
++	}
++
++	if (!proxyWindow) return nullptr;
++	return new FramePresentation(proxyWindow);
++}
++
++FramePresentation::FramePresentation(ProxyWindowBase* window)
++    : QObject(window)
++    , proxyWindow(window) {
++	QObject::connect(
++	    window,
++	    &ProxyWindowBase::windowConnected,
++	    this,
++	    &FramePresentation::onWindowConnected
++	);
++
++	// The protocol's global is bound here, on the thread its events are
++	// read on, never first from the render thread.
++	impl::Presentation::instance();
++
++	if (window->backingWindow()) this->onWindowConnected();
++}
++
++bool FramePresentation::available() { return impl::Presentation::instance() != nullptr; }
++
++void FramePresentation::ask() {
++	this->asked = true;
++	if (this->mWindow) this->mWindow->update();
++}
++
++void FramePresentation::onWindowConnected() {
++	auto* window = this->proxyWindow ? this->proxyWindow->backingWindow() : nullptr;
++	if (window == this->mWindow) return;
++
++	if (this->mWindow) QObject::disconnect(this->mWindow, nullptr, this, nullptr);
++	this->mWindow = window;
++	if (!window) return;
++
++	QObject::connect(
++	    window,
++	    &QQuickWindow::beforeRendering,
++	    this,
++	    &FramePresentation::onBeforeRendering,
++	    Qt::DirectConnection
++	);
++}
++
++void FramePresentation::onBeforeRendering() {
++	auto frame = ++this->begun;
++	if (!this->asked.exchange(false)) return;
++
++	auto* manager = impl::Presentation::instance();
++	auto* window = this->mWindow ? dynamic_cast<QWaylandWindow*>(this->mWindow->handle()) : nullptr;
++	auto* surface = window ? window->wlSurface() : nullptr;
++
++	if (!manager || !surface) {
++		QMetaObject::invokeMethod(
++		    this,
++		    [this, frame]() { emit this->discarded(frame); },
++		    Qt::QueuedConnection
++		);
++		return;
++	}
++
++	auto self = QPointer(this);
++	new impl::Feedback(manager->feedback(surface), manager->clock(), [self, frame](double at) {
++		if (!self) return;
++		if (at < 0) emit self->discarded(frame);
++		else emit self->presented(frame, at);
++	});
++}
++
++} // namespace qs::wayland::presentation
+diff --git a/src/wayland/presentation/qml.hpp b/src/wayland/presentation/qml.hpp
+new file mode 100644
+index 0000000..1e911f1
+--- /dev/null
++++ b/src/wayland/presentation/qml.hpp
+@@ -0,0 +1,132 @@
++#pragma once
++
++#include <atomic>
++#include <cstdint>
++#include <ctime>
++#include <functional>
++
++#include <qobject.h>
++#include <qpointer.h>
++#include <qqmlintegration.h>
++#include <qquickwindow.h>
++#include <qtmetamacros.h>
++#include <qwayland-presentation-time.h>
++#include <qwaylandclientextension.h>
++
++#include "../../window/proxywindow.hpp"
++
++namespace qs::wayland::presentation {
++
++namespace impl {
++
++class Presentation
++    : public QWaylandClientExtensionTemplate<Presentation>
++    , public QtWayland::wp_presentation {
++	Q_OBJECT;
++
++public:
++	explicit Presentation();
++
++	[[nodiscard]] clockid_t clock() const { return this->mClock; }
++
++	static Presentation* instance();
++
++protected:
++	void wp_presentation_clock_id(uint32_t clockId) override;
++
++private:
++	std::atomic<clockid_t> mClock = CLOCK_MONOTONIC;
++};
++
++// One frame's feedback, which deletes itself once the compositor says
++// whether it was shown.
++class Feedback: public QtWayland::wp_presentation_feedback {
++public:
++	// Given the time it was shown on CLOCK_MONOTONIC in milliseconds, or -1
++	// when it never was.
++	using Done = std::function<void(double at)>;
++
++	Feedback(struct ::wp_presentation_feedback* object, clockid_t clock, Done done);
++	~Feedback() override;
++	Q_DISABLE_COPY_MOVE(Feedback);
++
++protected:
++	void wp_presentation_feedback_presented(
++	    uint32_t secondsHigh,
++	    uint32_t secondsLow,
++	    uint32_t nanoseconds,
++	    uint32_t refresh,
++	    uint32_t sequenceHigh,
++	    uint32_t sequenceLow,
++	    uint32_t flags
++	) override;
++	void wp_presentation_feedback_discarded() override;
++
++private:
++	void finish(double at);
++
++	clockid_t clock;
++	Done done;
++};
++
++} // namespace impl
++
++///! When the compositor showed a window's next frame.
++/// Tells, as an attached object on a @@Quickshell.QsWindow or subclass, when
++/// the compositor actually put on screen the first frame drawn after `ask()`,
++/// using the [presentation-time] Wayland protocol. A frame Qt drew is not a
++/// frame the compositor showed: one drawn at a size it hasn't been given yet,
++/// or behind a busy thread, may wait seconds to be shown, or never be.
++///
++/// `presented` gives which frame it was and the time on the monotonic clock
++/// in milliseconds, the clock QElapsedTimer reads, so it can be set against
++/// when something asked for it. Asks made before a frame begins are answered
++/// by it once; asking again on each answer follows every frame.
++///
++/// [presentation-time]: https://wayland.app/protocols/presentation-time
++class FramePresentation: public QObject {
++	Q_OBJECT;
++	/// Whether the compositor tells when frames are shown.
++	Q_PROPERTY(bool available READ available CONSTANT);
++	/// How many frames have begun since the window was made, the newest
++	/// being the one a frameSwapped handler was told of. Read when needed,
++	/// as it changes every frame and notifies nothing.
++	Q_PROPERTY(int framesBegun READ framesBegun);
++	QML_ELEMENT;
++	QML_UNCREATABLE("FramePresentation can only be used as an attached object.");
++	QML_ATTACHED(FramePresentation);
++
++public:
++	explicit FramePresentation(ProxyWindowBase* window);
++
++	[[nodiscard]] static bool available();
++	[[nodiscard]] int framesBegun() const { return this->begun; }
++
++	/// Asks to be told when the next frame begun from now is shown, and asks
++	/// for that frame.
++	Q_INVOKABLE void ask();
++
++	static FramePresentation* qmlAttachedProperties(QObject* object);
++
++signals:
++	/// The frame asked for, counted as `framesBegun` counts, was shown at
++	/// `at`, in monotonic milliseconds.
++	void presented(int frame, double at);
++	/// The frame asked for was never shown, as one drawn while hidden isn't.
++	void discarded(int frame);
++
++private slots:
++	void onWindowConnected();
++
++private:
++	// Runs on the render thread, before the frame it draws is committed, so
++	// the feedback is for that frame's commit.
++	void onBeforeRendering();
++
++	QPointer<ProxyWindowBase> proxyWindow;
++	QPointer<QQuickWindow> mWindow;
++	std::atomic<bool> asked = false;
++	std::atomic<int> begun = 0;
++};
++
++} // namespace qs::wayland::presentation

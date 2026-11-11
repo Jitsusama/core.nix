@@ -185,16 +185,19 @@ let
   # finds the types Quickshell's core declares, and the actions as a list of
   # the module's own NotificationAction. The launcher's maths and key times
   # sit beside them, as the machine's Quickshell finds them
-  # (modules/quickshell/nixos.nix).
+  # (modules/quickshell/nixos.nix). They're read from the machine's own
+  # Quickshell, its patches laid on, so a type a patch adds, as
+  # FramePresentation, is known.
   quickshellTypes = pkgs.runCommandLocal "quickshell-types" { } ''
     mkdir -p $out/lib/qt-6/qml
-    cp -r ${pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
+    cp -r ${graphical.pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
     cp -r ${pkgs.callPackage ./modules/quickshell/maths/package.nix { }}/lib/qt-6/qml/Maths \
       $out/lib/qt-6/qml/
     cp -r ${pkgs.callPackage ./modules/quickshell/key-times/package.nix { }}/lib/qt-6/qml/KeyTimes \
       $out/lib/qt-6/qml/
     chmod -R u+w $out
     echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir
+    echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_Presentation/qmldir
     substituteInPlace $out/lib/qt-6/qml/Quickshell/_Window/quickshell-window.qmltypes \
       --replace-fail 'exports: ["Quickshell._Window/PanelWindow 0.0"]
             isCreatable: false' 'exports: ["Quickshell._Window/PanelWindow 0.0"]'
