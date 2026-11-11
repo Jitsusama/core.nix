@@ -399,11 +399,38 @@ in
     # requirement would have boot wait out the device's timeout.
     systemd.slices.system.sliceConfig.MemoryLow = "${toString systemFloor}M";
 
+    # Every move of a process between cgroups, which the sorter makes for
+    # each piece of work, takes the hierarchy's write lock, and without
+    # favordynmods that lock first waits out an RCU grace period, longer the
+    # more CPUs are busy, while the process asking waits. On 11 November, in
+    # two VMs alike but for it, under a load of forks, a move's median went
+    # from 106 µs to 49 and its p99 from 596 to 240, while a fork's stayed
+    # at 439 and went from 1,096 to 1,112. A boot takes it from the kernel's
+    # command line.
+    boot.kernelParams = [ "cgroup_favordynmods=true" ];
+
     systemd.services = {
       # Every account's manager, user@<uid>.service, beside its slice.
       "user@".serviceConfig = limits // {
         MemoryMin = account;
         MemoryLow = agents;
+      };
+      # A machine already up takes favordynmods at the switch that brings it,
+      # from a remount, which keeps the hierarchy's other flags; it can't be
+      # turned off again until the next boot.
+      cgroups-favor-moves = {
+        description = "Has cgroups favour moving processes over forking them";
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = lib.escapeShellArgs [
+            (lib.getExe' pkgs.util-linux "mount")
+            "-o"
+            "remount,favordynmods"
+            "/sys/fs/cgroup"
+          ];
+        };
       };
     }
     // lib.mapAttrs (_: floor: { serviceConfig.MemoryLow = "${toString floor.mib}M"; }) systemFloors

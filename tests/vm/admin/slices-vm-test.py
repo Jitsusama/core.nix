@@ -225,7 +225,14 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     Agents' sessions keep a hard floor only as large as the sessions' kitty's own.
     Every slice above both claims them too. system.slice claims what its
     services' floors add up to, at least those running now, so theirs hold.
+    The remount that turns favordynmods on keeps memory_recursiveprot, without
+    which none of these floors would reach the slices below.
     """
+    account.machine.wait_for_unit("cgroups-favor-moves.service")
+    account.machine.succeed("systemctl restart cgroups-favor-moves.service")
+    flags = account.machine.succeed("findmnt -no OPTIONS /sys/fs/cgroup").strip().split(",")
+    for flag in ("favordynmods", "nsdelegate", "memory_recursiveprot", "memory_hugetlb_accounting"):
+        assert flag in flags, f"cgroup2 lacks {flag} after the remount: {flags}"
     total = account.memory()
     above = [ACCOUNT, "/sys/fs/cgroup/user.slice/user-1000.slice", "/sys/fs/cgroup/user.slice"]
     for path, share in [(f"{ACCOUNT}/app.slice", APPS_SHARE)] + [(p, ABOVE_SHARE) for p in above]:
