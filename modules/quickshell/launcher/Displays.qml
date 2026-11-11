@@ -7,10 +7,14 @@
 // "colour depth", "refresh rate" and the like ask the focused display's
 // part, or each display's while several are on. niri forgets these
 // choices when its configuration is next read, so they last the session,
-// and what lasts belongs in the configuration. Everything goes over
-// niri's socket, asked again whenever the launcher opens or the workspaces
-// change, as they do when a display comes or goes, since niri sends no
-// event for a display itself. What a display's EDID says of itself, who
+// and what lasts belongs in the configuration. Each screen's row comes
+// ready from the windows daemon (modules/windows, screens.rs), its name,
+// how it stands and what it runs said there, with niri's record of it,
+// which its settings, its drawer and its acts read here; the daemon asks
+// niri for its screens as a display comes or goes, so the shell asks
+// niri nothing of them itself. A change made here goes over niri's
+// socket, which says nothing of it in niri's stream, so the daemon is
+// asked to look again (refresh). What a display's EDID says of itself, who
 // made it and when, its size, native mode, refresh range, colour depth,
 // colours, white point, primaries and HDR, desk-facts writes to a file
 // (modules/desk-facts), and the right arrow lists after the settings,
@@ -67,8 +71,31 @@ Provider {
 
     collection: Words.collection("displays")
 
-    // What niri says of each display, by its connector's name.
-    property var outputs: ({})
+    // The screens' rows as the windows daemon serves them, each holding
+    // niri's record of its screen; Turn Every Screen Off is the daemon's
+    // row too, while one is lit.
+    ReadyRows {
+        id: ready
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
+        place: "displays"
+        make: (row, key) => provider.madeFrom(row, key)
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+    }
+
+    // What niri says of each display, by its connector's name, as its
+    // served row holds it.
+    readonly property var outputs: {
+        void ready.placings;
+        const out = {};
+        for (const key of ready.keys) {
+            const held = ready.served(key)?.held;
+            if (held?.niri)
+                out[held.output] = Object.assign({ name: held.output }, held.niri);
+        }
+        return out;
+    }
 
     // :set brightness=60 sets the screen as its Brightness row does, on a
     // machine with a backlight, and :set nowarmth gives it its own white by
@@ -119,49 +146,17 @@ Provider {
         }
     })
 
-    // niri is asked at every workspace change and opening, and answers the
-    // same while no screen changed; taking that answer anew made every
-    // screen's rows again, 46 at nearly every closing on Joel's shell
-    // (2026-11-09), so it's taken only when it reads otherwise. niri
-    // collects its screens into a map afresh at each ask, so the same ones
-    // may come in any order, and are read sorted by name.
+    // A change made to a screen here says nothing in niri's stream, so the
+    // windows daemon is asked to look at niri's screens again, and tells
+    // the rows that moved.
     function refresh() {
-        Niri.request("Outputs", answer => {
-            const outputs = answer.Outputs ?? {};
-            const said = JSON.stringify(Object.keys(outputs).sort()
-                .map(name => [name, outputs[name]]));
-            if (said === outputsSaid)
-                return;
-            outputsSaid = said;
-            provider.outputs = answer.Outputs;
-        });
+        ready.link?.ask({ ask: "look" }, null);
     }
-    property string outputsSaid: ""
 
     // The lights are read once as the shell starts too, though the
     // launcher is closed, since what's inside a screen is made from what's
     // held while it's closed (Daemon.qml's refresh).
-    Component.onCompleted: {
-        refresh();
-        lights.refresh();
-    }
-
-    Connections {
-        target: Niri
-
-        function onWorkspacesChanged() {
-            provider.refresh();
-        }
-    }
-
-    Connections {
-        target: provider.launcher
-
-        function onOpenChanged() {
-            if (provider.launcher.open)
-                provider.refresh();
-        }
-    }
+    Component.onCompleted: lights.refresh()
 
     // Tells niri what to change, then asks again how things stand.
     // `refusal` is what the row did, as { thing, done }, for the words
@@ -536,19 +531,9 @@ Provider {
         return output.current_mode === null ? null : output.modes[output.current_mode];
     }
 
-    function described(output) {
-        const now = mode(output);
-        if (now === null || output.logical === null)
-            return partSaid("", "off");
-        // The scale as its part and its drawer say it, "1.75\u00d7".
-        return `${now.width} \u00d7 ${now.height} \u00b7 ${Screens.hertz(now.refresh_rate)} \u00b7 `
-            + partSaid("", "scaleAt").replace("{scale}", Screens.scale(output.logical.scale));
-    }
-
-    // Screens are choices: the built-in first, as it's always there, then by
-    // name, and the one in use never moves for being chosen.
-    readonly property var shown: Order.sorted(Object.values(outputs), Order.choices({
-        natural: (a, b) => Number(builtIn(b)) - Number(builtIn(a)), name: output => output.name }))
+    // Screens in the order the daemon serves them: the built-in first, as
+    // it's always there, then by connector.
+    readonly property var shown: Object.values(outputs)
     readonly property var lit: shown.filter(output => output.logical !== null)
 
     readonly property string focusedOutput: {
@@ -557,22 +542,20 @@ Provider {
         return workspace ? workspace.output : "";
     }
 
-    // How a screen stands, beside its name: dark, off, or focused where
-    // more than one is lit.
-    function sideOf(stands, focused) {
-        if (stands === "dark")
-            return screenSaid.dark;
-        if (stands === "off")
-            return partSaid("", "off");
-        return focused ? partSaid("", "focused") : "";
+    // What a served row is made into: a screen's, by the niri record it
+    // holds, or Turn Every Screen Off.
+    function madeFrom(row, key) {
+        if (key === "row:displays:sleep")
+            return sleepRow(row);
+        const output = outputs[row.held?.output];
+        return output ? made(output, row) : null;
     }
 
-    // A screen dark by name is still in niri's outputs, so it's turned on
-    // by name, and says only that its hub is on, "dark" beside it saying
-    // the rest.
-    function made(output) {
+    // A screen's row as the daemon says it, its name, how it stands and
+    // what it runs, with its acts here: a screen dark by name is still in
+    // niri's outputs, so it's turned on by name.
+    function made(output, row) {
         const stands = Screens.standing(output);
-        const focused = lit.length > 1 && output.name === focusedOutput;
         const turnsOn = stands === "dark" ? () => provider.ask({
             Action: { PowerOnMonitor: { output: output.name } }
         }, { thing: named(output), done: "on" }, output)
@@ -581,15 +564,12 @@ Provider {
             thing: true,
             key: `display:${output.name}`,
             verb: partSaid("", stands === "lit" ? "focus" : "turnOn"),
-            name: named(output),
+            name: row.name,
             keywords: output.name,
-            // A screen, built in or not, wears the screen's mark, its
-            // eyebrow saying it's built in; `computer` is Machine's (VKCF3Z,
-            // 2026-11-08: one mark, one meaning).
-            glyph: Theme.glyph.display,
-            hue: "machine",
-            side: sideOf(stands, focused),
-            note: stands === "dark" ? screenSaid.hubOn : described(output),
+            glyph: Theme.glyph[row.glyph] ?? Theme.glyph.display,
+            hue: row.hue ?? "machine",
+            side: ready.sideOf(row),
+            note: ready.noteOf(row),
             run: stands === "lit" ? () => Niri.act({ FocusMonitor: { output: output.name } })
                 : turnsOn,
             verbs: () => provider.verbs(output),
@@ -685,15 +665,19 @@ Provider {
     // to turn my external display off without shutting down its hub or
     // network card or anything? i want the laptop to be able to keep going
     // without blinding me in my sleep"). Any key or the pointer wakes them.
-    readonly property var sleepRow: thing({
-        key: "displays:sleep",
-        verb: Words.verb("displays:sleep"),
-        name: Words.name("displays:sleep"),
-        glyph: Words.glyph("displays:sleep"),
-        hue: "action",
-        note: Words.of("displays:sleep").said?.note ?? "",
-        run: () => provider.sleepAll()
-    })
+    // Its row is the daemon's, served while a screen is lit; its act is
+    // made here.
+    function sleepRow(row) {
+        return thing({
+            key: "displays:sleep",
+            verb: Words.verb("displays:sleep"),
+            name: row.name,
+            glyph: Theme.glyph[row.glyph] ?? "",
+            hue: row.hue ?? "action",
+            note: ready.noteOf(row),
+            run: () => provider.sleepAll()
+        });
+    }
 
     // What the vocabulary says of a screen, by the part it's of and its
     // own word: displays:modes' "preferred".
@@ -798,8 +782,7 @@ Provider {
         };
     }
 
-    readonly property var all: shown.map(output => made(output))
-        .concat(lit.length > 0 ? [sleepRow] : [])
+    readonly property var all: ready.rows()
     onAllChanged: changed()
 
     // niri wakes the screens at any key, so the one that asked, still held
@@ -864,7 +847,7 @@ Provider {
     // level, a lux or a warmth's figure, which move while nothing else
     // does. modules/windows' display kind takes this over, serving the
     // screens' rows ready, by 12 November.
-    property string spotsStamp: JSON.stringify([outputsSaid,
+    property string spotsStamp: JSON.stringify([ready.placings,
         light === null ? false : light.connector ?? "", roomSensor !== null,
         warmth === null ? null : warmth.seesColour === true,
         Niri.powersOffEach, Object.keys(facts).sort().map(name => [name,
@@ -923,9 +906,6 @@ Provider {
             return ways.concat(factRows(output));
         return setUp(output).concat(ways, factRows(output));
     }
-
-    // Words a screen's standing is said in, from the vocabulary.
-    readonly property var screenSaid: Words.of("displays").said ?? {}
 
     // One way a screen turns off or on, as a choice: its words the
     // vocabulary's, its note why it matters, and the last lit screen's

@@ -57,7 +57,11 @@ The rows are made only where the shell hands the daemon the launcher's
 words (`--words`, its words.json). niri says nothing as a screen comes,
 goes or turns off, so the daemon asks niri for its outputs as the stream
 begins and at each workspace change, which each of those makes, and
-tells a watch only the rows that moved.
+tells a watch only the rows that moved. A change the shell makes to a
+screen, its scale or its mode, makes no event at all, so the shell then
+asks the daemon to `look` (`{"id": 1, "ask": "look"}`): it asks niri
+again, and tells each watch what moved before answering
+`{"id": 1, "looked": true}`, or `false` where it makes no rows.
 
 A window's program is the desktop entry its app id names, as Quickshell's
 `heuristicLookup` finds it: by its id, its id in any case, its class,
@@ -75,5 +79,6 @@ whose own page it opened deeper in (BrowserWindows.js said it so).
   served ready as Screens' are.
 - **Acting on a window or a screen.** The shell asks niri itself, on
   niri's own socket, so an act never waits on this daemon. A screen's row
-  holds its connector and how it stands (`held`) for those acts until
-  they move here.
+  holds its connector, how it stands and niri's whole record of it
+  (`held`) for those acts, its settings and its drawer until they move
+  here, so the shell asks niri nothing of a screen itself.
