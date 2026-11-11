@@ -66,6 +66,10 @@
 //! niri's event stream says, and those he was at in the last minutes, rank
 //! as his own programs do, as `src/focus.rs` says why and how.
 //!
+//! With `--hosts` and `--background`, each pi host's unit under that
+//! prefix ranks as the sessions it holds would in windows of their own, as
+//! `src/hosts.rs` says why and how.
+//!
 //! Terminals sit in each `--under` slice: Joel's apps' and, apart from
 //! them, the agents' sessions'.
 //!
@@ -76,11 +80,12 @@
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
 //!        [--revive jobs.slice] [--door jobs.slice] [--calls pw-dump]
-//!        [--orchestrators DIR] [--niri niri]
+//!        [--orchestrators DIR] [--niri niri] [--hosts PREFIX]
 
 mod calls;
 mod door;
 mod focus;
+mod hosts;
 mod keep;
 mod low;
 mod oom;
@@ -121,6 +126,7 @@ struct Settings {
     door: Option<String>,
     calls: Option<PathBuf>,
     niri: Option<PathBuf>,
+    hosts: Option<String>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -518,6 +524,8 @@ struct Windows<'a> {
     weight: u64,
     /// niri's focus, when it's followed.
     focus: Option<&'a focus::Following>,
+    /// The prefix of the pi hosts' units, when they're ranked.
+    hosts: Option<&'a str>,
 }
 
 /// How each window ranks, as last set: its weight, whether it's kept as
@@ -530,6 +538,10 @@ struct Ranks {
     /// Each held window's scope, by niri's id for it, or when it was last
     /// looked for and not found.
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
+    /// Each pi host's rank, as last set.
+    hosts: hosts::Hosts,
+    /// The orchestrators each pid holds, as the presences last said.
+    orchestrating: HashMap<u32, usize>,
 }
 
 /// The windows a sorter before this one held, to give back those not
@@ -689,14 +701,18 @@ fn starting(pis: &[Sample], now: u64) -> bool {
 /// failure is said once, and tried again on the next look.
 fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
     let held = hold_windows(windows, ranks);
-    let weighing = &mut ranks.weighing;
     let Windows {
         under,
         prefixes,
         dir,
         weight,
         focus: _,
+        hosts: _,
     } = *windows;
+    if let Some(prefix) = windows.hosts {
+        rank_hosts(windows, prefix, &held, ranks);
+    }
+    let weighing = &mut ranks.weighing;
     let now = uptime_ticks();
     let windows: Vec<(String, u64)> = under
         .iter()
@@ -751,21 +767,129 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
     }
 }
 
+/// Ranks each pi host's unit under `prefix` as its conversations would
+/// rank in windows, from the windows `held` as ones Joel is at and the
+/// orchestrators last counted. A failure is said once, and tried again on
+/// the next look.
+fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &mut Ranks) {
+    let viewers: Vec<String> = windows
+        .under
+        .iter()
+        .flat_map(|slice| held.iter().map(|unit| slice.join(unit)))
+        .flat_map(|scope| samples(&scope))
+        .filter_map(|proc| {
+            let words = fs::read(format!("/proc/{}/cmdline", proc.pid)).ok()?;
+            let words: Vec<String> = words
+                .split(|byte| *byte == 0)
+                .map(|word| String::from_utf8_lossy(word).into_owned())
+                .collect();
+            hosts::viewed(&words, prefix)
+        })
+        .collect();
+    let now = std::time::Instant::now();
+    let total = memory_total();
+    let units: Vec<PathBuf> = windows
+        .under
+        .iter()
+        .flat_map(|slice| hosts::units(slice, prefix))
+        .collect();
+    let mut seen = Vec::new();
+    for path in units {
+        let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let procs: Vec<(u32, u32)> = samples(&path)
+            .iter()
+            .map(|proc| (proc.pid, proc.ppid))
+            .collect();
+        let Some(pid) = hosts::host_of(&procs) else {
+            continue;
+        };
+        seen.push(unit.to_owned());
+        let own = ranks.hosts.own(unit, pid, now, || {
+            let output = Command::new("systemctl")
+                .args(["--user", "cat", "--", unit])
+                .stderr(Stdio::null())
+                .output()
+                .ok()?;
+            output
+                .status
+                .success()
+                .then(|| hosts::own(&String::from_utf8_lossy(&output.stdout), total))
+        });
+        let signs = hosts::Signs {
+            viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
+            orchestrators: ranks.orchestrating.get(&pid).copied().unwrap_or(0),
+            marked: windows.dir.join(pid.to_string()).exists(),
+        };
+        let rank = hosts::wanted(&own, signs, windows.weight);
+        if !ranks.hosts.changed(unit, &rank) {
+            continue;
+        }
+        match Command::new("busctl")
+            .args(hosts::rank_call(unit, &rank))
+            .stdout(Stdio::null())
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                eprintln!(
+                    "Ranked {unit} at weight {}, floor {}, for {} windows Joel is at and {} orchestrators.",
+                    rank.weight, rank.floor, signs.viewed, signs.orchestrators
+                );
+                ranks.hosts.done(unit, rank);
+            }
+            Ok(output) => {
+                if !std::mem::replace(&mut ranks.hosts.failed, true) {
+                    eprintln!(
+                        "Couldn't rank {unit}: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    );
+                }
+            }
+            Err(error) => {
+                if !std::mem::replace(&mut ranks.hosts.failed, true) {
+                    eprintln!("Couldn't run busctl to rank {unit}: {error}");
+                }
+            }
+        }
+    }
+    ranks.hosts.keep_only(&seen);
+}
+
+/// The machine's memory in bytes, as /proc/meminfo says, which a floor
+/// given as a percentage is of; none when it can't be read.
+fn memory_total() -> u64 {
+    fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|text| {
+            let line = text.lines().find(|line| line.starts_with("MemTotal:"))?;
+            let kib: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+            kib.checked_mul(1024)
+        })
+        .unwrap_or(0)
+}
+
 /// Keeps each window holding an orchestrator, as `dir`'s presences name
 /// them, gives back each that no longer holds one, and puts each pi at
 /// the adjustment it wants. A failure is said once, and tried again on
 /// the next look.
 fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, ranks: &mut Ranks) {
     let Ranks {
-        keeping, holding, ..
+        keeping,
+        holding,
+        orchestrating,
+        ..
     } = ranks;
     let Ok(boot) = fs::read_to_string("/proc/sys/kernel/random/boot_id") else {
         return;
     };
     let proc = Path::new("/proc");
-    let orchestrators = keep::orchestrators(&keep::read(dir), boot.trim(), |pid| {
-        proc.join(pid.to_string()).exists()
-    });
+    let runs = |pid: u32| proc.join(pid.to_string()).exists();
+    let presences = keep::read(dir);
+    let orchestrators = keep::orchestrators(&presences, boot.trim(), runs);
+    // A host holds many sessions under its one pid, so it's counted by
+    // each, for `rank_hosts`.
+    *orchestrating = hosts::orchestrating(&presences, boot.trim(), runs);
     let mut warned = keeping.failed;
     let windows: Vec<(String, bool)> = under
         .iter()
@@ -1043,6 +1167,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         door: None,
         calls: None,
         niri: None,
+        hosts: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
@@ -1061,6 +1186,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--door" => settings.door = Some(value()?),
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
+            "--hosts" => settings.hosts = Some(value()?),
             "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
             "--low-weight" => {
                 settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
@@ -1198,6 +1324,7 @@ fn run() -> Result<(), String> {
                     dir,
                     weight: settings.low_weight,
                     focus: following.as_ref(),
+                    hosts: settings.hosts.as_deref(),
                 };
                 rest(watch, settings.every, &windows, &mut ranks);
             }
@@ -1367,6 +1494,7 @@ mod tests {
             door: None,
             calls: None,
             niri: None,
+            hosts: None,
         }
     }
 
