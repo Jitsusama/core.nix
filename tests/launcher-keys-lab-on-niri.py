@@ -7,9 +7,8 @@ search before searching, where a later one spent 6 to 9 (2026-11-11), so this on
 after round and types each word a letter at a time, each letter once the one before is shown, as
 he types, then prints each key's line and each part's median by key. Given LAB_PROFILE, it holds
 Qt's profiler on the shell (QMLPROFILER, the shell started with `--debug`), and says which
-bindings, handlers and functions took the time inside each span the shell marks with `lab-span
-<name> <letters>` and `lab-span-end` lines, which only a lab's own patch to the shell writes. It
-fails only when a key is never shown.
+bindings, handlers and functions took the most of their own time in the launcher's searches and
+each of their parts, as the key's line splits them. It fails only when a key is never shown.
 """
 
 from __future__ import annotations
@@ -118,27 +117,19 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     """
     root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
     places: dict[str, str] = {}
-    # The launcher's search function, whose every call is a span of its own, `search`, beside
-    # those the shell marks, since the profiler's own trace may keep no message.
-    searching: set[str] = set()
+    parts = Parts()
     for event in root.iter("event"):
         where = Path(event.findtext("filename") or "").name
         kind = event.findtext("type") or ""
         details = (event.findtext("details") or "").replace("\n", " ")[:60]
         places[event.get("index", "")] = f"{kind} {where}:{event.findtext('line')} {details}"
-        if where == "Launcher.qml" and details == "search":
-            searching.add(event.get("index", ""))
+        if where == "Launcher.qml" and details in parts.functions:
+            parts.functions[details].add(event.get("index", ""))
     spans: dict[str, dict[str, Spent]] = defaultdict(lambda: defaultdict(Spent))
-    span = ""
-    search_ends = 0
     # The ranges still open where the next starts: when each ends, and its places' tallies.
     held: list[tuple[int, list[Spent]]] = []
     for each in sorted(root.iter("range"), key=lambda one: int(one.get("startTime", "0"))):
         start = int(each.get("startTime", "0"))
-        text = each.get("text")
-        if text is not None:
-            span = text.split()[1] if text.startswith("lab-span ") else ""
-            continue
         index = each.get("eventIndex", "")
         ends = start + int(each.get("duration", "0"))
         took = int(each.get("duration", "0")) / 1e6
@@ -146,16 +137,47 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
             held.pop()
         for parent in held[-1][1] if held else []:
             parent.own -= took
-        named = [name for name in (span, "search" if start < search_ends else "") if name]
-        tallies = [spans[name][places.get(index, "?")] for name in named]
+        tallies = [spans[name][places.get(index, "?")] for name in parts.at(index, start, ends)]
         for tally in tallies:
             tally.count += 1
             tally.own += took
             tally.whole += took
-        if index in searching and start >= search_ends:
-            search_ends = ends
         held.append((ends, tallies))
     return spans
+
+
+class Parts:
+    """Which part of a launcher's search a range of the trace falls in, as it's read in order.
+
+    Each call of its search is a span, `search`, and so is each of its parts, `search-<part>`:
+    `before` it gathers its lists, `lists` while gathering them, `rows` until it composes its
+    answers, and `answers` from then on, as the key's line splits it.
+    """
+
+    def __init__(self) -> None:
+        """Begin outside any search, knowing none of its functions yet."""
+        self.functions: dict[str, set[str]] = {
+            "search": set(),
+            "gathering": set(),
+            "compose": set(),
+        }
+        self.ends = 0
+        self.part = ""
+        self.gathered = 0
+
+    def at(self, index: str, start: int, ends: int) -> list[str]:
+        """Give the spans a range of this event, starting and ending so, falls in."""
+        if start >= self.ends:
+            if index in self.functions["search"]:
+                self.ends, self.part = ends, "before"
+            return []
+        if index in self.functions["gathering"] and self.part == "before":
+            self.part, self.gathered = "lists", ends
+        elif self.part == "lists" and start >= self.gathered:
+            self.part = "rows"
+        if index in self.functions["compose"] and self.part in {"lists", "rows"}:
+            self.part = "answers"
+        return ["search", f"search-{self.part}"]
 
 
 def census(trace: Path) -> list[str]:
@@ -185,13 +207,8 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
             for line in said:
                 print(f"lab-profile said: {line}", flush=True)
             whole = ET.parse(trace).getroot() if trace.exists() else None  # noqa: S314
-            each = list(whole.iter("range")) if whole is not None else []
-            texts = [one.get("text") for one in each if one.get("text")]
-            ranges = len(each)
-            print(
-                f"lab-profile: no span profiled, of {ranges} ranges; messages {texts[:5]}",
-                flush=True,
-            )
+            ranges = len(list(whole.iter("range"))) if whole is not None else 0
+            print(f"lab-profile: no search profiled, of {ranges} ranges", flush=True)
         for span, places in spans.items():
             ordered = sorted(places.items(), key=lambda one: one[1].own, reverse=True)
             for place, spent in ordered[:COSTLIEST]:

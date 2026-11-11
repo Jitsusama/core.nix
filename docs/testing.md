@@ -426,9 +426,10 @@ making and spots, with how many choices were looked at, so the part a key
 spends on more than its letters is named. Its sides run as the openings'
 do. A run given `LAB_PROFILE = "1"; QS_GIVEN = "--debug 3768";` holds Qt's
 profiler on the shell and prints the bindings, handlers and functions that
-took the most of their own time inside each span the shell marks with
-`lab-span <name> <letters>` and `lab-span-end` lines, which only a lab's own
-patch to `Launcher.qml` writes, never a merged one. The home it types into
+took the most of their own time in the launcher's searches and in each of
+their parts, before, lists, rows and answers, as the key's line splits them.
+The profiler is asked for its trace while the shell still runs, since a
+shell stopped as it records sends none. The home it types into
 holds this niri's few windows and programs, where Joel's holds about a
 thousand rows, so its rows part runs smaller than his.
 
