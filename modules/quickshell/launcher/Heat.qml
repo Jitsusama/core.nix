@@ -60,45 +60,23 @@ Provider {
         && ready.state !== "not answering"
 
     // Heat's rows and headline as the machine daemon serves them, watched
-    // only while they can be seen.
+    // only while they can be seen, since the daemon reads Heat's sensors
+    // each second while they're watched; its rows are held meanwhile.
     ReadyRows {
         id: ready
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         place: "heat"
         beside: ["head"]
-        active: provider.seen && !!Quickshell.env("XDG_RUNTIME_DIR")
+        live: provider.seen
         maker: provider
-        make: (row, key) => ready.thing(row, key, provider.drawnAs(row))
+        // Each row in Heat's own ink where it doesn't warn.
+        make: (row, key) => ready.thing(row, key, { hue: row.hue || "machine" })
         drawn: provider.launcher?.open ?? false
     }
     // What the daemon serves, for a reader told of each change it hears.
     readonly property alias served: ready
     readonly property string headKey: "head:heat"
-
-    // What a row is drawn with beyond what every place's are: Heat's own
-    // ink where the row doesn't warn. The rest is a stopgap until
-    // ReadyRows.qml's thing carries it for every place (Y2YBTS, #3136, by
-    // 2026-11-11 05:30): the row's graph, its side's items with what each
-    // keeps and warns in, and a row whose Return copies made as
-    // Provider.copyRow makes one, closing once it has.
-    function drawnAs(row) {
-        const fields = {
-            hue: row.hue || "machine",
-            graph: row.graph,
-            sideItems: row.side ?? []
-        };
-        const copy = row.acts?.[0]?.copy;
-        if (typeof copy === "string")
-            Object.assign(fields, {
-                figure: true,
-                plain: true,
-                now: true,
-                stays: false,
-                copies: () => copy
-            });
-        return fields;
-    }
 
     // Heat's answer: its headline and its own rows, a step in each holding
     // what's inside it; none until the daemon has served a row.
