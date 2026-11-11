@@ -18,7 +18,8 @@ from pathlib import Path
 
 # Each place that lists things with nothing typed, by its file in the folders given, and the kind
 # of list it is. A fixed set keeps the order it was designed in and sorts nothing, so none is here.
-# Nor is Wi-Fi's list, which wifid serves in a live list's order (modules/wifid/daemon/src/rows.rs).
+# Nor is Wi-Fi's list, which wifid serves in a live list's order (modules/wifid/daemon/src/rows.rs),
+# nor Agents' and Quests', which their daemons order (modules/agents, modules/quests).
 PLACES = {
     "Accessories.qml": "live",
     "Applications.qml": "returned",
@@ -28,7 +29,6 @@ PLACES = {
     "Networks.qml": "live",
     "Orchestrators.qml": "stream",
     "Person.js": "returned",
-    "Quests.qml": "returned",
     "RealmMachines.js": "live",
     "Recent.js": "stream",
     "Runs.qml": "stream",

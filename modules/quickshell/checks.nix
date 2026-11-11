@@ -2042,12 +2042,12 @@ onLinux {
     '';
 
   # The launcher's quests find pi's quests in the harness's two lists, open
-  # and ended, as a stand-in for the realm's node serves them, and open pi
-  # on one or go to its session (tests/quests.qml), with niri and pi's
-  # sessions stood
-  # in.
+  # and ended, as the quests daemon makes their rows from a stand-in for
+  # the realm's node, and open pi on one or go to its session
+  # (tests/quests.qml), with niri and pi's sessions stood in.
   the-launcher-finds-the-quests =
     let
+      quests = lib.getExe (pkgs.callPackage ../quests/package.nix { });
       niri = singleton "Niri.qml" ''
         property var spawned: []
         property var acted: null
@@ -2085,7 +2085,6 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
-      cp ${./PiSource.js} PiSource.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/RealmMachines.js} launcher/RealmMachines.js
       cp ${./launcher/Machine.js} launcher/Machine.js
@@ -2099,9 +2098,13 @@ onLinux {
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       # At home here, so a folder here reads from ~.
       export HOME=$PWD
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
+      # The daemon follows the node the shell stands in, trying again
+      # until it listens.
+      ${quests} --node $XDG_RUNTIME_DIR/mycelium/harbour.sock \
+        --socket $XDG_RUNTIME_DIR/daemons/quests.sock &
       timeout 60 ${qs} -p shell.qml
       touch $out
     '';

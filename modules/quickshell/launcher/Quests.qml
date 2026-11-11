@@ -1,13 +1,14 @@
-// pi's quests, a collection: every quest in the store, as the realm's
-// mycelium node serves the two lists the harness keeps of them, the open
-// ones and the ended ones, each heard as the harness writes it. The
-// open ones are all of it with nothing typed, the one driving first, as
-// the quest workflow ranks them; a concluded or retired one comes as
-// typing finds it, after the open ones that match as well. Each wears its
-// status's glyph, and says its kind unless it's a quest, its priority while
-// it's open or when it was last touched once it's not, and the session
-// that has it loaded, if one does. The selected one reads its summary's
-// first paragraph below the rows, for what it's about.
+// pi's quests, a collection: every quest in the store, its rows made
+// ready by the quests daemon (modules/quests) from the realm's mycelium
+// node's two lists of them, the open ones and the ended ones, and its
+// sessions. The open ones are all of it with nothing typed, the one
+// driving first, as the quest workflow ranks them; a concluded or retired
+// one comes as typing finds it, after the open ones that match as well.
+// Each wears its status's glyph, and says its kind unless it's a quest,
+// its priority while it's open or when it was last touched once it's not,
+// and the session that has it loaded, if one does, all as the daemon
+// says it. The selected one reads its summary's first paragraph below the
+// rows, for what it's about.
 // Return goes to that session's window, or opens pi on it in a new
 // terminal, autoloaded as the harness's spawn does, in the folder the
 // harness picks and its lists say; the right arrow steps into what's known
@@ -18,7 +19,6 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "../PiSource.js" as Pi
 import "../When.js" as When
 import "Order.js" as Order
 import "RealmMachines.js" as Listed
@@ -31,32 +31,37 @@ Provider {
 
     collection: Words.collection("quests")
 
-    // The open quests and the ended ones, as the node serves each list, or
-    // none while it hasn't answered.
-    readonly property var openKind: openLink.item
-    readonly property var endedKind: endedLink.item
+    // Every quest's row, in Quests' order, as the quests daemon makes them
+    // ready: the order, open before ended by priority and rank, then the
+    // newest, then A to Z, and every word a row says are the daemon's, so
+    // nothing here sorts, words or lays out a quest (Joel, 2026-11-10: "the
+    // daemons need to be the data layer, and they need to serve the
+    // launcher"). Sorting Joel's 1,084 quests here, with their titles in
+    // pieces and their rows laid out, was a third of the stall after an
+    // opening's frame (H6EDLC's profile, 2026-11-10). Its rows are held by
+    // key as the daemon tells each change (rowsKind), each wrapped with its
+    // acts only as it changes, and laid out only while they're wanted
+    // (Provider.qml's wanted), giving those last laid out otherwise.
+    readonly property var all: provider.wanted ? laidOut() : lastLaidOut.rows ?? []
+    readonly property var lastLaidOut: ({})
+
+    // The daemon's rows of Quests, each record held by its key, its fields
+    // under `row` (Y2YBTS's ready-rows.md), watched whether or not the
+    // launcher's open, so it opens on rows already held.
+    readonly property var rowsKind: rowsLink.item
     LazyLoader {
-        id: openLink
-        active: Sessions.nodePath !== ""
+        id: rowsLink
+        active: !!Quickshell.env("XDG_RUNTIME_DIR")
 
         Daemon {
-            socket: Sessions.nodePath
-            kind: "quest"
-            changesDiffer: true
+            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/quests.sock`
+            kind: ["row", "summary"]
+            watching: ({ place: "quests" })
             answersWhole: true
+            onHeard: (changed, gone) => provider.placed(changed, gone)
         }
     }
-    LazyLoader {
-        id: endedLink
-        active: Sessions.nodePath !== ""
-
-        Daemon {
-            socket: Sessions.nodePath
-            kind: "ended-quest"
-            changesDiffer: true
-            answersWhole: true
-        }
-    }
+    readonly property string summaryKey: "summary:quests"
 
     // The realm's machines, as Machines reads them, so a machine Start a
     // Session offers says how it stands in the same words.
@@ -97,202 +102,57 @@ Provider {
         };
     }
 
-    // Every quest, open first, each as its record says it (questOf). A
-    // quest in both lists, as it ends or reopens, is the open one until
-    // both are written. Said anew only when a quest heard reads otherwise
-    // than it did, so a list the harness writes again, which tells every
-    // quest anew with only when it was heard moved, changes nothing here.
-    property var quests: []
+    // The keys of its rows in the order the daemon gives them, each put in
+    // its place by its `order` as it changes, never the list sorted; and
+    // each row as last wrapped, by key. Plain, so keeping them notifies
+    // nothing; `placings` says they moved. As Agents.qml holds its rows,
+    // until ReadyRows.qml (Y2YBTS, due 2026-11-11) holds every place's.
+    readonly property var placing: ({ keys: [] })
+    readonly property var wrapped: ({})
+    property int placings: 0
 
-    // What each list's records made, by the record's key: the record and
-    // its quest. Each change remakes only the keys it names (Daemon.qml's
-    // heard), where every quest of both lists, 1,063 on Joel's shell, was
-    // copied field by field at each list written, the launcher shut too
-    // (2026-11-10). Plain objects, so keeping one notifies nothing.
-    readonly property var openMade: ({})
-    readonly property var endedMade: ({})
-
-    // A quest as its record says it, without what the node adds: its key,
-    // when it was heard, which moves for every quest each time a list is
-    // written, and the node's own kind, which stands over the quest's, so
-    // the harness says that again as quest.kind.
-    function questOf(record) {
-        const quest = {};
-        for (const field of Object.keys(record)) {
-            if (!["key", "heard", "kind", "quest.kind", "start"].includes(field))
-                quest[field] = record[field];
+    // Takes what the daemon said moved: each key gone or changed let go,
+    // and each changed row put back where its order places it. Its lists
+    // come through the signal converted, so they're read by index.
+    function placed(changed, gone) {
+        const held = rowsKind?.held ?? {};
+        const placedKeys = placing.keys;
+        const moved = [];
+        for (let at = 0; at < changed.length; at += 1)
+            moved.push(changed[at]);
+        for (let at = 0; at < gone.length; at += 1)
+            moved.push(gone[at]);
+        for (const key of moved) {
+            delete wrapped[key];
+            const at = placedKeys.indexOf(key);
+            if (at >= 0)
+                placedKeys.splice(at, 1);
         }
-        quest.kind = record["quest.kind"] ?? "quest";
-        quest.folder = record.start ?? Sessions.home;
-        return quest;
-    }
-
-    // Takes what a list said of these keys into what it made, a key whose
-    // record reads the same but for when it was heard keeping its quest,
-    // and lists the quests again if any changed.
-    function took(list, made, changed, gone) {
-        let moved = false;
-        for (const key of changed) {
-            const record = list.held[key];
-            const before = made[key];
-            if (!record || before && Pi.fieldsAlike(before.record, record, ["heard"]))
+        for (let at = 0; at < changed.length; at += 1) {
+            const key = changed[at];
+            const order = held[key]?.row?.order;
+            if (typeof order !== "number")
                 continue;
-            made[key] = { record: record, quest: questOf(record) };
-            moved = true;
-        }
-        for (const key of gone) {
-            if (key in made) {
-                delete made[key];
-                moved = true;
+            let low = 0;
+            let high = placedKeys.length;
+            while (low < high) {
+                const middle = (low + high) >> 1;
+                if ((held[placedKeys[middle]]?.row?.order ?? 0) < order)
+                    low = middle + 1;
+                else
+                    high = middle;
             }
+            placedKeys.splice(low, 0, key);
         }
-        if (moved)
-            listed();
+        placings += 1;
     }
 
-    function listed() {
-        const seen = new Set();
-        const all = [];
-        for (const made of [openMade, endedMade]) {
-            for (const key in made) {
-                const quest = made[key].quest;
-                if (seen.has(quest.id))
-                    continue;
-                seen.add(quest.id);
-                all.push(quest);
-            }
-        }
-        quests = all;
-    }
-
-    // A list's link made again, as the node's socket moves, starts it
-    // afresh from what the new one holds.
-    function linked(list, made) {
-        for (const key of Object.keys(made))
-            delete made[key];
-        if (list)
-            took(list, made, Object.keys(list.held), []);
-        listed();
-    }
-    onOpenKindChanged: linked(openKind, openMade)
-    onEndedKindChanged: linked(endedKind, endedMade)
-    Connections {
-        target: provider.openKind
-        function onHeard(changed, gone) {
-            provider.took(provider.openKind, provider.openMade, changed, gone);
-        }
-    }
-    Connections {
-        target: provider.endedKind
-        function onHeard(changed, gone) {
-            provider.took(provider.endedKind, provider.endedMade, changed, gone);
-        }
-    }
-
-    // The status glyph each status wears.
-    readonly property var marks: ({
-        active: "active",
-        blocked: "pending",
-        paused: "stopped",
-        concluded: "done",
-        retired: "cancelled"
-    })
-    readonly property var priorities: ["driving", "active", "queued", "bench", "someday"]
-
-    function isOpen(quest) {
-        return quest.status !== "concluded" && quest.status !== "retired";
-    }
-
-    // The session that has each quest loaded, the one used last: its
-    // address and what it is (Sessions.isOf), a running one before one
-    // parked. Said as text first, which changes only when they do, since
-    // the sessions are listed again whenever a window does.
-    readonly property string holding: {
-        const by = {};
-        for (const session of Sessions.running.concat(Sessions.parked)) {
-            const owns = session.presence.owns ?? [];
-            const quest = owns.find(owned => /^QEST-/.test(owned));
-            if (quest && !by[quest])
-                by[quest] = {
-                    address: session.address,
-                    is: Sessions.isOf(session),
-                    parked: Sessions.parked.includes(session)
-                };
-        }
-        return JSON.stringify(by);
-    }
-    readonly property var loaded: JSON.parse(holding)
-
-    // Each quest's row as last made, by its id, with what it was made from:
-    // its record and the session that has it loaded. The quests are all
-    // told again each time the harness writes a list of them, and every
-    // quest's row was once made again at each change, about 824 on Joel's
-    // shell (2026-11-03); a row is now kept while nothing it says changed.
-    // A plain object, so keeping one notifies nothing. What it was made
-    // from is compared in place rather than as text, since the text of
-    // Joel's 1,063 quests, about a million characters, started a garbage
-    // collection at every list the harness wrote (2026-11-10).
-    readonly property var kept: ({})
-
-    // Open first, by priority and then rank; the rest, last touched first.
-    // Made only while they're wanted (Provider.qml's wanted), giving those
-    // last made otherwise and reading nothing else, so a list the harness
-    // writes with the launcher shut makes none: Joel's shut launcher made
-    // 184 in 240 s, 128 in one burst (YQZGPC, 2026-11-10). Asked for while
-    // not wanted, as Start a Session steps in, they're laid out then
-    // (laidOut), keeping those that read the same.
-    readonly property var all: provider.wanted ? laidOut() : kept.rows ?? []
-
-    // Each quest's title broken into the pieces A to Z reads (Order.js's
-    // pieces), by its id, with the title they were made from. Sorted by
-    // name alone, both titles were broken apart at each comparison, about
-    // 10,000 for Joel's 1,063 quests: 20% of the stall after an opening's
-    // frame (H6EDLC's profile, 2026-11-10). Now each is broken once, and
-    // again only when its title changes. A stopgap: Quests' ready rows, from
-    // a quests daemon of their own by Thu 12 (RCTRF8), take the sort out of
-    // the launcher. A plain object, so keeping one notifies nothing.
-    readonly property var named: ({})
-    function piecesKept() {
-        const next = {};
-        for (const quest of quests) {
-            const title = quest.title || quest.id;
-            const before = provider.named[quest.id];
-            next[quest.id] = before && before.title === title
-                ? before : { title: title, pieces: Order.pieces(title) };
-        }
-        for (const id of Object.keys(provider.named))
-            delete provider.named[id];
-        Object.assign(provider.named, next);
-        return next;
-    }
-
+    // Every quest's row, in the daemon's order.
     function laidOut() {
-        const bucket = q => {
-            const at = priorities.indexOf(q.priority);
-            return at < 0 ? priorities.length : at;
-        };
-        const named = piecesKept();
-        const sorted = Order.sorted(quests, Order.returned({
-            first: isOpen,
-            placed: (a, b) => bucket(a) - bucket(b)
-                || (Number(a.rank) || 1e9) - (Number(b.rank) || 1e9),
-            last: q => String(q.updated ?? ""),
-            pieces: q => named[q.id].pieces
-        }));
-        const sessions = loaded;
-        const next = {};
-        const rows = sorted.map(quest => {
-            const from = [quest, sessions[quest.id] ?? null];
-            const before = provider.kept[quest.id];
-            next[quest.id] = before && Pi.alike(before.from, from)
-                ? before : { from: from, row: made(quest) };
-            return next[quest.id].row;
-        });
-        for (const id of Object.keys(provider.kept))
-            delete provider.kept[id];
-        Object.assign(provider.kept, next);
-        // Not a quest's id, which begins with QEST-.
-        provider.kept.rows = rows;
+        void placings;
+        const held = rowsKind?.held ?? {};
+        const rows = placing.keys.map(key => rowOf(key, held)).filter(row => row !== null);
+        lastLaidOut.rows = rows;
         return rows;
     }
     function rowsNow() {
@@ -300,18 +160,50 @@ Provider {
     }
     onAllChanged: changedTo(all)
 
-    // A day as a clock's calendar says it, with its year when it isn't this
-    // one, from a date or a time, as the harness writes either.
-    function day(updated) {
-        const when = new Date(`${String(updated).slice(0, 10)}T12:00:00`);
-        if (isNaN(when))
-            return "";
-        const thisYear = when.getFullYear() === new Date().getFullYear();
-        return Qt.formatDate(when, thisYear ? "d MMM" : "d MMM yyyy");
+    // A row of the daemon's, wrapped with what doing it needs, as it was
+    // last wrapped while the daemon told no change to it.
+    function rowOf(key, held) {
+        const served = held[key]?.row;
+        if (!served)
+            return null;
+        if (!(key in wrapped))
+            wrapped[key] = made(served);
+        return wrapped[key];
+    }
+
+    // A quest's title by its id, as its row says it, for a place naming
+    // the quest a session has loaded.
+    function titleOf(id) {
+        return rowsKind?.held?.[`row:quests:${id}`]?.row?.name;
+    }
+
+    // What a row's acts need of its quest, from what the daemon holds
+    // under its `held`.
+    function questOf(served) {
+        const held = served.held ?? {};
+        return {
+            id: held.id,
+            title: served.name,
+            kind: held.kind,
+            status: held.status,
+            priority: held.priority,
+            updated: held.updated,
+            day: held.day,
+            folder: held.folder,
+            open: held.open,
+            parent: held.parent ?? null,
+            session: held.session ?? null
+        };
+    }
+
+    // The session a quest's row names, by its address, running or parked.
+    function sessionAt(address) {
+        return Sessions.running.find(one => one.address === address)
+            ?? Sessions.parked.find(one => one.address === address) ?? null;
     }
 
     function go(quest) {
-        const session = loaded[quest.id];
+        const session = quest.session;
         const ongoing = session
             ? Sessions.running.find(one => one.address === session.address) : undefined;
         // One parked is woken in its own window, never joined by a second.
@@ -347,29 +239,24 @@ Provider {
         });
     }
 
-    function made(quest) {
-        const session = loaded[quest.id];
+    function made(served) {
+        const quest = questOf(served);
+        const session = quest.session;
         const row = member({
             thing: true,
-            key: `quest:${quest.id}`,
-            // A quest a session has loaded is that session's window, which
-            // its Agents row says more of (Launcher.qml's compose).
-            is: session ? session.is : `quest:${quest.id}`,
+            key: served.row,
             rich: 1,
             // Return does the first of its acts (verbs), so it says that
             // act's verb, and a step in lifts no second act before them.
             verb: session ? (session.parked ? Words.verb("verb:quest:wake") : "go to")
                 : Words.verb("verb:quest:open"),
-            name: quest.title || quest.id,
-            unfinished: isOpen(quest),
-            glyph: Theme.glyph[marks[quest.status] ?? "pending"],
-            hue: "program",
-            side: [quest.kind !== "quest" ? quest.kind : "",
-                isOpen(quest) ? quest.priority : day(quest.updated),
-                session ? session.address : ""]
-                .filter(part => part !== "").join(" \u00b7 "),
-            note: quest.id,
-            reads: quest.summary ?? "",
+            name: served.name,
+            unfinished: served.unfinished === true,
+            glyph: Theme.glyph[served.glyph] ?? Theme.glyph.pending,
+            hue: served.hue ?? "program",
+            side: (served.side ?? []).map(item => item.said).join(" \u00b7 "),
+            note: served.note ?? "",
+            reads: served.reads ?? "",
             later: true,
             run: () => provider.go(quest),
             verbs: () => provider.verbs(quest),
@@ -377,19 +264,28 @@ Provider {
             // list them.
             operands: () => [copyOperand("fact:quest:id", quest.id)]
         });
+        // A quest a session has loaded is that session's window, which its
+        // Agents row says more of (Launcher.qml's compose), read as it's
+        // asked, since the window can change while the row doesn't.
+        Object.defineProperty(row, "is", {
+            enumerable: true,
+            get: () => {
+                const one = session ? provider.sessionAt(session.address) : null;
+                return one ? Sessions.isOf(one) : `quest:${quest.id}`;
+            }
+        });
         // Its id and kind, made ready to match when first searched, as its
-        // name is, and kept while they read the same (Fuzzy.kept), for a
-        // row made again when its quest is written.
+        // name is, and kept while they read the same (Fuzzy.kept).
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
-            get: () => also ?? (also = Fuzzy.kept(`${quest.id} ${quest.kind}`))
+            get: () => also ?? (also = Fuzzy.kept(served.held?.also ?? quest.id))
         });
         return row;
     }
 
     function verbs(quest) {
-        const session = loaded[quest.id];
+        const session = quest.session;
         // Each fact a part, named first (quests:id and the rest), saying its
         // value and copying it, or what `copy` gives.
         const fact = (key, side, note, copy) => copyRow({
@@ -404,7 +300,6 @@ Provider {
         const home = Sessions.home;
         const homely = quest.folder === home || quest.folder.startsWith(`${home}/`)
             ? `~${quest.folder.slice(home.length)}` : quest.folder;
-        const parent = quest.parent ? quests.find(other => other.id === quest.parent) : null;
         // Start a Session says where its Return starts one, and, where the
         // realm has another machine, the right arrow steps into each.
         const choosing = !session && Sessions.choosesMachine;
@@ -443,10 +338,10 @@ Provider {
             run: () => provider.go(quest)
         }), orchestrate,
             fact("id", quest.id),
-            fact("status", [quest.status, isOpen(quest) ? quest.priority : ""]
+            fact("status", [quest.status, quest.open ? quest.priority : ""]
                 .filter(part => part !== "").join(" \u00b7 ")),
-            quest.updated ? fact("updated", day(quest.updated)) : null,
-            parent ? fact("parent", parent.title || parent.id, parent.id) : null,
+            quest.updated ? fact("updated", quest.day) : null,
+            quest.parent ? fact("parent", quest.parent.name, quest.parent.id) : null,
             fact("folder", homely, "where a session starts", quest.folder)
         ].filter(row => row !== null);
     }
@@ -526,14 +421,11 @@ Provider {
         return rowsNow();
     }
 
-    // Counted from the quests themselves, so saying how many makes no row.
+    // How many are open and driving, as the daemon says it, so saying how
+    // many makes no row.
     function counted() {
-        const open = quests.filter(quest => isOpen(quest)).length;
-        if (open === 0)
-            return "empty";
-        const driving = quests.filter(quest => isOpen(quest) && quest.priority === "driving").length;
-        return [`${open} open`, driving > 0 ? `${driving} driving` : ""]
-            .filter(part => part !== "").join(", ");
+        void rowsKind?.revision;
+        return String(rowsKind?.held?.[summaryKey]?.summary?.said ?? "");
     }
 
     Connections {
