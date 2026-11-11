@@ -511,7 +511,8 @@ ShellRoot {
                 ["send", "stream:94", deskSpeakers.name]];
             expect("each stream is sent, an ask of the daemon each",
                 sends === JSON.stringify(meant), sends);
-            for (const record of programsServed())
+            // The drawer first, as the case runs once the rows are heard.
+            for (const record of [spotifyDrawn].concat(programsServed()))
                 tell(record);
             when("the programs served", () => partOf("programs")?.targets().length === 1,
                 programmed);
@@ -523,6 +524,14 @@ ShellRoot {
     // choice, the speakers themselves.
     readonly property string programs: `row:sound:${deskSpeakers.name}:programs`
     readonly property string spotify: `${programs}:program:Spotify`
+    readonly property string spotifyDrawer: `drawer:sound:${deskSpeakers.name}:program:Spotify`
+
+    // Spotify's drawer, as drawer.rs serves it beside the row naming it.
+    readonly property var spotifyDrawn: ({
+        key: spotifyDrawer, kind: "drawer",
+        drawer: { eyebrow: "on Desk Speakers \u00b7 stream", eyebrowNames: true,
+            title: "Spotify", facts: [{ name: "Format", said: "48 kHz \u00b7 32 bit float" }] }
+    })
 
     function programsServed() {
         const speakers = deskSpeakers.name;
@@ -536,7 +545,7 @@ ShellRoot {
         }), part("programs:program:Spotify", {
             thing: `sound:${speakers}:program:Spotify`, kind: "program", order: 1401,
             parent: programs, depth: 2, name: "Spotify", glyph: { code: "f1bc" },
-            hue: "machine", side: [{ said: "40%" }],
+            hue: "machine", side: [{ said: "40%" }], drawer: spotifyDrawer,
             acts: [{ key: "verb:more", step: "rows" }],
             held: Object.assign({ sink: true, muted: false, volume: 0.4 }, held)
         }), part("programs:program:Spotify:plays-on", {
@@ -566,9 +575,12 @@ ShellRoot {
         expect("its drawer's Playing says how loud each plays, in the daemon's words",
             drawn?.value === "Spotify 40%", JSON.stringify(drawn));
         const program = playing.targets()[0];
-        expect("a program's row is a thing, with a drawer", program.key
+        const drawer = program.drawer?.();
+        expect("a program's row is a thing, with the drawer served beside it", program.key
             === `sound:${deskSpeakers.name}:program:Spotify` && program.thing === true
-            && program.drawer()?.title === "Spotify", `${program.key}, ${program.thing}`);
+            && drawer?.title === "Spotify"
+            && drawer?.facts?.[0]?.value === "48 kHz \u00b7 32 bit float",
+            `${program.key}, ${program.thing}, ${JSON.stringify(drawer)}`);
         const options = program.options;
         expect("it says how it stands to :setl", options.mute?.now() === false
             && options.volume?.now() === 40, Object.keys(options).join(", "));

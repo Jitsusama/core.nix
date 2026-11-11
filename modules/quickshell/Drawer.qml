@@ -2185,9 +2185,12 @@ Floating {
                                 leading: drawer.pitch
                                 // A fact that warns, as an entry's weak
                                 // password does, says so in the warning's
-                                // role, as a stroke past its limit does.
+                                // role, as a stroke past its limit does; a
+                                // served one names the role it warns in,
+                                // its hue (ready-rows.md's drawers).
                                 ink: !fact.known || drawer.listsKeys ? Theme.muted
-                                    : fact.modelData.warns === true ? Theme.warning : Theme.text
+                                    : fact.modelData.warns === true ? Theme.warning
+                                    : fact.modelData.hue ? Theme[fact.modelData.hue] : Theme.text
                                 font: drawer.faceOf(fact.modelData).font
                                 // A right-to-left script's words start at the
                                 // column too, as every other value's do,

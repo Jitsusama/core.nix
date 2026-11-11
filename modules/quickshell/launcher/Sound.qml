@@ -82,8 +82,9 @@ Provider {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/sound.sock`
         place: "sound"
-        // Where each program's stream is sent, as one record.
-        beside: ["targets"]
+        // Where each program's stream is sent, as one record, and each
+        // program's drawer, which its row names.
+        beside: ["drawer", "targets"]
         // A device's row is made with its parts, a program's with what's
         // still made here of it, and a part the daemon serves inside one, as
         // its Volume, as every place's rows are (made).
@@ -778,19 +779,17 @@ Provider {
 
     // The programs Playing through an output, or Recording from an input,
     // are served: each program's row, its Muted, Louder and Quieter, its
-    // Plays On and its figures. Its drawer and its :setl options are made
-    // here, the drawer from its streams as Quickshell has them, until the
-    // daemon serves it, timings and all, by 13 November.
+    // Plays On, its figures and its drawer, timings and all. Its :setl
+    // options are made here until the daemon takes them as asks.
 
-    // A program's row as the daemon serves it, with its drawer and its
-    // options, each read from the row as it's served when they're asked
-    // for, so neither is made again as it moves.
+    // A program's row as the daemon serves it, its drawer the one the
+    // daemon serves beside it, with its options, read from the row as it's
+    // served when they're asked for, so they're never made again as it
+    // moves.
     function programRow(row, key) {
         const held = () => (ready.served(key) ?? row).held;
-        return gotten(ready.thing(row, key, {
-            thing: true,
-            drawer: () => provider.programDrawn(held())
-        }), { options: () => provider.programOptions(held()) });
+        return gotten(ready.thing(row, key),
+            { options: () => provider.programOptions(held()) });
     }
 
     // A program as a send takes one: its name, and its streams by their
@@ -872,122 +871,6 @@ Provider {
 
     function hushed(streams) {
         return streams.every(stream => !stream.audio || stream.audio.muted);
-    }
-
-    // A stream's Sample Rate, as it asks for one, and its Delay: how long
-    // it waits first, a measure by the one rule, and how that's asked for,
-    // in the footer.
-    function streamFigures(key, stream) {
-        const rows = [];
-        const rate = Sounds.rate(stream.properties["node.rate"]);
-        if (rate !== "")
-            rows.push(figureRow({
-                key: `${key}:rate`,
-                name: Words.name("sound:rate"),
-                side: rate
-            }));
-        const asked = Sounds.fraction(stream.properties["node.latency"]);
-        if (asked)
-            rows.push(figureRow({
-                key: `${key}:delay`,
-                name: Words.name("sound:delay"),
-                side: `${Numbers.significant(asked.ms, settings.group, settings.point)} ms`,
-                note: said("delay-note", {
-                    frames: asked.frames,
-                    rate: Sounds.kilohertz(asked.hertz)
-                })
-            }));
-        return rows;
-    }
-
-    // A program's drawer, playing through a device or recording from one
-    // (VKCF3Z, 2026-11-08): each of its streams, loudest then newest
-    // first (by its graph ID, which pipewire gives out rising but reuses,
-    // so newest only roughly), a group headed by what it plays where it has more than one,
-    // or that said as its Stream where it has one. Under it, how it keeps
-    // time, which moves most; its Format; its Sample Rate and Delay, its
-    // parts, the rate only where its Format doesn't open with it; its
-    // Role, in pipewire's word as given; the filter it plays through or
-    // records from, where one stands in front of the device; and what
-    // identifies it, ending its group: its Process ID, Graph ID and Client
-    // ID. Its name is the row's, and so is whether it's paused or muted,
-    // so neither is said again; its eyebrow says where it plays and that
-    // it's a stream, in Note since it names the device, as Media's "on
-    // Spotify \u00b7 track" does (VKCF3Z, 2026-11-09). It's read as it's
-    // drawn, from the streams its served row holds as Quickshell has them
-    // now; a program gone has none, its old streams' nodes perhaps gone
-    // with it, so its drawer shuts.
-    function programDrawn(held) {
-        const node = deviceNamed(held?.node);
-        if (node === null)
-            return null;
-        const ids = held.streams ?? [];
-        const live = (node.isSink ? streams : recorders).filter(stream => ids.includes(stream.id));
-        return programPlate(node, { name: held.program ?? "", streams: live });
-    }
-
-    function programPlate(node, live) {
-        const key = `sound:${node.name}:program:${live.name}`;
-        const loudness = stream => stream.audio ? stream.audio.volume : 0;
-        const streams = Order.sorted(live.streams.slice(),
-            (a, b) => loudness(b) - loudness(a) || b.id - a.id);
-        const headed = streams.length > 1;
-        return {
-            eyebrow: Plate.runs([said(node.isSink ? "stream-on" : "stream-from",
-                { device: named(node) }), said("plate-stream")]),
-            eyebrowNames: true,
-            title: live.name,
-            facts: [].concat(...streams.map(stream => provider.streamFacts(node, key, stream,
-                headed, live.name)))
-        };
-    }
-
-    // What a stream plays says something only where it isn't empty, "-"
-    // (pw-cat's, playing what it's given), or the program's own name
-    // again (VKCF3Z, 2026-11-09); a group goes by the stream's own name
-    // then. Its end is said only where it's a filter in front of the
-    // device, since the eyebrow names the device.
-    function streamFacts(node, key, stream, headed, program) {
-        const properties = stream.properties;
-        const given = String(properties["media.name"] ?? "").trim();
-        const programNames = [program, String(properties["application.name"] ?? "")]
-            .map(name => name.toLowerCase());
-        const plays = given === "-" || programNames.includes(given.toLowerCase()) ? ""
-            : given;
-        // One of several is headed by what it plays, else its own name, and
-        // goes unheaded where it has neither; one alone says it as Stream.
-        const called = plays || String(stream.name ?? "");
-        let head = [];
-        if (headed && called !== "")
-            head = [{ heading: called }];
-        else if (!headed && plays !== "")
-            head = [{ label: Words.name("sound:stream"), value: plays }];
-        const format = Sounds.graphFormat(stream.audio?.format);
-        const rate = Sounds.rate(properties["node.rate"]);
-        const opensWithRate = format !== "" && Sounds.sameFormat(rate, format);
-        return head.concat(keepingOf(stream),
-            format === "" ? [] : [{ label: Words.name("sound:format"), value: format }],
-            Plate.facts(streamFigures(key, stream)
-                .filter(row => !(opensWithRate && row.key === `${key}:rate`))),
-            known([["role", String(properties["media.role"] ?? "")],
-                [node.isSink ? "plays-on" : "records-from", endOf(stream, node)]], false),
-            known([["process", String(properties["application.process.id"] ?? "")],
-                ["graph-id", String(stream.id ?? "")],
-                ["client", String(properties["client.id"] ?? "")]], true));
-    }
-
-    // The filter in front of the device a stream is linked to, by the
-    // filter's name; "" while it's linked to the device itself, which the
-    // eyebrow names, or to neither.
-    function endOf(stream, node) {
-        const ends = filtersOf(node);
-        for (const group of Pipewire.linkGroups.values) {
-            const from = node.isSink ? group.source : group.target;
-            const end = node.isSink ? group.target : group.source;
-            if (from === stream && ends.includes(end))
-                return named(end);
-        }
-        return "";
     }
 
     // The Tuning in front of an output, or the Voice processing in front of
