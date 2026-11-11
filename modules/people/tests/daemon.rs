@@ -429,6 +429,12 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
     // Ada's listed, so first; Gus is found by his name, by Tuple's id.
     let said = client.ask(&json!({"id": 1, "ask": "search", "words": "ada"}));
     assert_eq!(keys(&said), ["person:ada@example.com", "person:tuple:7"]);
+    // Each comes with the row it's found as, saying nothing of how they stand.
+    let row = &said["records"][0]["row"];
+    assert_eq!(
+        (&row["key"], &row["side"]),
+        (&json!("person:ada@example.com"), &json!(""))
+    );
     let said = client.ask(&json!({"id": 2, "ask": "search", "words": "ada", "limit": 1}));
     assert_eq!(keys(&said), ["person:ada@example.com"]);
     assert_eq!(

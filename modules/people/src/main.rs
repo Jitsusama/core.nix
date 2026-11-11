@@ -593,7 +593,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 .book
                 .search(&words, limit)
                 .into_iter()
-                .map(Record::json)
+                .map(|record| listing::found(record, &daemon.sources))
                 .collect();
             json!({"id": id, "records": records})
         }
