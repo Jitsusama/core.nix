@@ -3,7 +3,9 @@
 // pastes it into the window the launcher opened over (Pasting.qml), or
 // copies it with no window there; a step in are Paste and Copy. The list is Unicode's, with CLDR's English keywords, built at
 // build time into `list` in the skin tone `tone` names, and read once,
-// a moment after the shell starts, so no keystroke waits on it.
+// a moment after the shell starts, so no keystroke waits on it. Once the
+// clipboard's history, which pastes them, has been silent a second, its
+// row and its head say so, as Copies' do (Pasting.qml's pressing).
 import qs
 import Quickshell
 import Quickshell.Io
@@ -27,6 +29,13 @@ Provider {
     // The last search, so a longer query looks only among what it found.
     property string lastTyped: ""
     property var lastFound: []
+
+    // What its row and its head say of the history that pastes emoji.
+    readonly property string pressing: Pasting.pressing
+    onPressingChanged: changed()
+    function homeSays() {
+        return pressing !== "" ? pressing : null;
+    }
 
     function loaded() {
         if (all === null) {
@@ -98,7 +107,7 @@ Provider {
             });
             e.row = made;
         }
-        return Pasting.saysUnhelped(e.row);
+        return e.row;
     }
 
     function search(typed) {

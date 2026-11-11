@@ -7914,7 +7914,12 @@
       "name": "Clipboard",
       "term": "Desktop/clipboard",
       "noun": "copies",
-      "said": { "one": "{count} copy", "many": "{count} copies" },
+      "said": {
+        "one": "{count} copy",
+        "many": "{count} copies",
+        "silent": "not answering",
+        "unpasted": "didn't paste"
+      },
       "glyph": "clipboard",
       "ask": "which copy?"
     },
