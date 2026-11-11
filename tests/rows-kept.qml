@@ -120,6 +120,41 @@ QtObject {
             RowsKept.whole(emoji, RowsKept.steps(emoji, narrowed, 8)), false);
         Expect.same("nor a first list", RowsKept.whole([], RowsKept.steps([], emoji)), false);
 
+        // A backspace back to a place's whole list lists the rows it listed
+        // before, row for row, so it's that list again, and what each key
+        // works out over every row of it is worked out once.
+        const rowsOf = keys => keys.map(key => ({ key }));
+        const whole = rowsOf(emoji);
+        const first = rowsOf(narrowed);
+        let lately = RowsKept.lately(RowsKept.lately([], whole), first);
+        const back = whole.slice();
+        Expect.same("a list listed lately is listed again",
+            RowsKept.again(lately, back, first) === whole, true);
+        Expect.same("but never as the list shown now",
+            RowsKept.again(lately, whole.slice(), whole) === whole, false);
+        const other = whole.slice();
+        other[5] = { key: other[5].key };
+        Expect.same("and a row made again makes it another list",
+            RowsKept.again(lately, other, first) === other, true);
+        let made = 0;
+        const counting = () => {
+            made += 1;
+            return whole.map(row => row.key);
+        };
+        RowsKept.said(lately, whole, "keys", counting);
+        lately = RowsKept.lately(lately, whole);
+        Expect.same("what's worked out of a list listed again is kept",
+            RowsKept.said(lately, whole, "keys", counting) === RowsKept.said(lately, whole,
+                "keys", counting) && made === 1, true);
+        Expect.same("and of a list not listed lately is worked out each time",
+            RowsKept.said(lately, other, "keys", counting) !== RowsKept.said(lately, other,
+                "keys", counting), true);
+        for (let more = 0; more < 8; more += 1) {
+            lately = RowsKept.lately(lately, rowsOf([`${more}`]));
+        }
+        Expect.same("only a few lists are kept", RowsKept.again(lately, back, first) === whole,
+            false);
+
         // Keys named as Object's own are rows like any other.
         const own = ["__proto__", "constructor", "toString", "hasOwnProperty", "0"];
         Expect.same("keys named as Object's own end where they're listed",
