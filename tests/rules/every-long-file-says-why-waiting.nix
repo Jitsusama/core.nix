@@ -68,7 +68,6 @@
   "modules/spend-watch/src/series.rs"
   "modules/spend-watch/src/standing.rs"
   "modules/spend-watch/src/tokens.rs"
-  "modules/theme/home.nix"
   "modules/tuple/people.rs"
   "modules/update-to-main/src/run.rs"
   "modules/update-to-main/src/system.rs"
