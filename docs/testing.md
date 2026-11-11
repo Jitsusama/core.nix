@@ -368,8 +368,9 @@ niri idle, so coming back needs a VM.
 Every launcher change quotes its openings' presented time, from the ask to
 the frame niri presents, the same way on both sides. The lab is the `lab` of
 `the-launcher-opens-on-what-it-kept-on-niri`, which no gate runs
-(`tests/launcher-lab-on-niri.py`). It opens home and every chord's place in
-turn from shut, once home is kept, round after round, and prints each
+(`tests/launcher-lab-on-niri.py`). After one untimed opening, which pays a
+fresh niri's first blur as his never does, it opens home and every chord's
+place in turn from shut, once home is kept, round after round, and prints each
 opening's presented time, whether it was kept, and the rows it made, then
 each place's median and p90.
 
