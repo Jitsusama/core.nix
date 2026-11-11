@@ -49,6 +49,13 @@ pub enum Ask {
     Health {
         id: Value,
     },
+    /// Joel's word on a to-do, by its identity: `done`, or `notNow`, put
+    /// off until it says something new.
+    Act {
+        id: Value,
+        act: String,
+        item: String,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -118,6 +125,14 @@ pub fn ask(line: &str) -> Ask {
         },
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
+        "act" => {
+            let field = |name: &str| said.get(name).and_then(Value::as_str).unwrap_or("");
+            Ask::Act {
+                act: field("act").to_owned(),
+                item: field("item").to_owned(),
+                id,
+            }
+        }
         _ => Ask::Unknown { id, ask: asked },
     }
 }
@@ -164,6 +179,19 @@ mod tests {
             panic!("a watch of every kind wasn't read as a watch");
         };
         assert_eq!(kinds.len(), KINDS.len(), "a watch naming none watches all");
+    }
+
+    #[test]
+    fn an_act_names_what_joel_said_and_of_which_to_do() {
+        assert_eq!(
+            ask(r#"{"id":4,"ask":"act","act":"done","item":"QEST-1:sign-in"}"#),
+            Ask::Act {
+                id: json!(4),
+                act: "done".into(),
+                item: "QEST-1:sign-in".into()
+            },
+            "an act on a to-do"
+        );
     }
 
     #[test]

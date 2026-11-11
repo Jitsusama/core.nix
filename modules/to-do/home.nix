@@ -21,9 +21,10 @@
 #
 # It holds what waits on Joel for the shell too, over
 # $XDG_RUNTIME_DIR/daemons/to-do.sock in the shell's daemon interface:
-# each to-do with what it found and Joel's word on it from the shell's
-# mission/settled.json, each look the agents left him in the harness's
-# looks folder, and all of it counted, for the bar's For You mark.
+# each to-do worded for For You, with what it found and Joel's word on it
+# from mission/settled.json, which it keeps as he says it, each look the
+# agents left him in the harness's looks folder, and all of it counted,
+# for the bar's For You mark.
 #
 # It reads Linux's inotify, /proc and sysfs, so it runs only there.
 {
@@ -35,6 +36,9 @@
 let
   package = pkgs.callPackage ./package.nix { };
   mission = "${config.xdg.stateHome}/mission";
+  # The launcher's words, where the shell's module is imported, so each
+  # to-do reaches For You worded; without it they're served unworded.
+  words = config.jitsusama.quickshell.launcher.words or null;
 in
 lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
   home.packages = [ package ];
@@ -48,25 +52,31 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       After = [ "to-do.socket" ];
     };
     Service = {
-      ExecStart = lib.escapeShellArgs [
-        (lib.getExe package)
-        "${mission}/waiting"
-        "${mission}/verdicts.json"
-        "${mission}/signins"
-        "${config.xdg.stateHome}/to-do/core.git"
-        "--git"
-        (lib.getExe pkgs.git)
-        "--journalctl"
-        "${pkgs.systemd}/bin/journalctl"
-        "--systemctl"
-        "${pkgs.systemd}/bin/systemctl"
-        "--socket"
-        "%t/daemons/to-do.sock"
-        "--looks"
-        "${config.xdg.stateHome}/pi/agentic-harness.pi/looks"
-        "--settled"
-        "${mission}/settled.json"
-      ];
+      ExecStart = lib.escapeShellArgs (
+        [
+          (lib.getExe package)
+          "${mission}/waiting"
+          "${mission}/verdicts.json"
+          "${mission}/signins"
+          "${config.xdg.stateHome}/to-do/core.git"
+          "--git"
+          (lib.getExe pkgs.git)
+          "--journalctl"
+          "${pkgs.systemd}/bin/journalctl"
+          "--systemctl"
+          "${pkgs.systemd}/bin/systemctl"
+          "--socket"
+          "%t/daemons/to-do.sock"
+          "--looks"
+          "${config.xdg.stateHome}/pi/agentic-harness.pi/looks"
+          "--settled"
+          "${mission}/settled.json"
+        ]
+        ++ lib.optionals (words != null) [
+          "--words"
+          (pkgs.writeText "words.json" (builtins.toJSON words))
+        ]
+      );
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";

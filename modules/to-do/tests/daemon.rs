@@ -5,7 +5,8 @@
 //! restart; a check run only for an owner outside every sandbox; a
 //! check no longer run leaving the daemon idle; a
 //! check finding what the session's PATH holds; and over its socket, each
-//! to-do, look and word of Joel's told to a watch as it changes.
+//! to-do, look and word of Joel's told to a watch as it changes, and
+//! Joel's word kept as he asks, each to-do worded for For You.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -77,7 +78,9 @@ fn served(dir: PathBuf) -> Daemon {
         .arg("--looks")
         .arg(dir.join("looks"))
         .arg("--settled")
-        .arg(dir.join("settled.json"));
+        .arg(dir.join("settled.json"))
+        .arg("--words")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/words.json"));
     Daemon::start(&mut command, socket, dir)
 }
 
@@ -553,5 +556,72 @@ fn a_watch_is_told_each_to_do_look_and_word_of_joels_as_it_changes() {
     assert_eq!(
         refused["error"]["code"], "unknown-kind",
         "a kind kept elsewhere is refused"
+    );
+}
+
+#[test]
+fn joels_word_is_kept_as_he_asks_and_each_to_do_is_worded() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    fs::create_dir_all(dir.join("waiting")).unwrap();
+    to_dos(
+        &dir,
+        "QEST-10",
+        r#"{"id":"plug","title":"Plug it in","ready":true,"minutes":1,
+            "doneWhen":{"by":"person"}},
+           {"id":"later","title":"Later","ready":true,"doneWhen":{"by":"person"}}"#,
+    );
+    let daemon = served(dir);
+    let mut client = daemon.client();
+    let mut held = BTreeMap::new();
+    take(
+        &mut held,
+        &client.ask(&json!({"id": 1, "ask": "watch", "kind": "to-do"})),
+    );
+    told(&mut client, &mut held, |held| {
+        held.contains_key("to-do:QEST-10:later")
+    });
+    let plug = &held["to-do:QEST-10:plug"];
+    assert_eq!(
+        (&plug["name"], &plug["hue"], &plug["side"]),
+        (
+            &json!("Plug it in"),
+            &json!("strong"),
+            &json!([{"said": "1 min"}])
+        ),
+        "a to-do worded for For You: {plug}"
+    );
+    // Answered before the change it makes, which the daemon's watch on
+    // Joel's word hears after.
+    let mut asked = plug["acts"][0]["ask"].clone();
+    asked["id"] = json!(2);
+    assert_eq!(
+        client.ask(&asked),
+        json!({"id": 2, "done": true}),
+        "its act, asked as it says"
+    );
+    told(&mut client, &mut held, |held| {
+        held["to-do:QEST-10:plug"]["state"] == "done"
+    });
+    let put_off = client.ask(&json!({"id": 3, "ask": "act", "act": "notNow",
+        "item": "QEST-10:later"}));
+    assert_eq!(put_off["done"], true, "put off: {put_off}");
+    told(&mut client, &mut held, |held| {
+        held["to-do:QEST-10:later"]["state"] == "later"
+    });
+    let settled: Value =
+        serde_json::from_str(&fs::read_to_string(daemon.folder().join("settled.json")).unwrap())
+            .unwrap();
+    assert!(
+        settled["done"]["QEST-10:plug"].is_u64(),
+        "done, kept with when: {settled}"
+    );
+    assert_eq!(
+        held["to-do:QEST-10:later"]["joel"]["current"], true,
+        "put off while it says what it said: {settled}"
+    );
+    let unknown = client.ask(&json!({"id": 4, "ask": "act", "act": "done", "item": "Q:none"}));
+    assert_eq!(
+        unknown["error"]["code"], "unknown-item",
+        "an act on no to-do held is refused"
     );
 }

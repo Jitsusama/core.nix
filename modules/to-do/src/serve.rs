@@ -3,7 +3,9 @@
 //! (interface.rs). The daemon's loop hands it every record whole each
 //! time something changes (stream.rs makes them), and each watch is told
 //! only the records that changed and the keys that went, in one line.
-//! Nothing is read for an ask: everything said is already held.
+//! Nothing is read for an ask: everything said is already held. Joel's
+//! word on a to-do is an ask too, kept in settled.json (settle.rs), which
+//! the daemon's watch on it then tells every watch as it tells any write.
 //!
 //! Each connection is served on a thread of its own, its lines written by
 //! another, so a client that stops reading holds no other back; one with
@@ -15,7 +17,7 @@ use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -23,6 +25,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use crate::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
+use crate::settle::settle;
+use crate::stream::said;
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -64,6 +68,8 @@ struct Held {
 /// What every connection shares with the daemon's loop.
 pub struct Shared {
     held: Mutex<Held>,
+    /// Where Joel's word is kept, if anywhere.
+    settled: Option<PathBuf>,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -82,8 +88,9 @@ fn now_ms() -> u64 {
 }
 
 impl Shared {
-    pub fn new() -> Arc<Self> {
+    pub fn new(settled: Option<PathBuf>) -> Arc<Self> {
         Arc::new(Shared {
+            settled,
             held: Mutex::new(Held {
                 records: BTreeMap::new(),
                 sources: json!({}),
@@ -219,7 +226,11 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
         let mut held = lock(shared);
-        let answer = answer(&mut held, ask(&line), connection, &told, &hangup);
+        let asked = ask(&line);
+        let answer = match asked {
+            Ask::Act { id, act, item } => acted(&held, shared.settled.as_deref(), &id, &act, &item),
+            asked => answer(&mut held, asked, connection, &told, &hangup),
+        };
         // Queued while the lock is held, so a change can't be queued before
         // the answer it follows; one that can't be queued is hung up on, as
         // a change would hang up on it.
@@ -254,6 +265,21 @@ fn records_of(held: &Held, kinds: &[String], keys: Option<&[String]>) -> Vec<Val
                 .map(|(_, record)| record.clone())
         })
         .collect()
+}
+
+/// What an act on a to-do is answered with, once Joel's word is kept:
+/// done, or why not.
+fn acted(held: &Held, settled: Option<&Path>, id: &Value, act: &str, item: &str) -> Value {
+    let Some(record) = held.records.get(&format!("to-do:{item}")) else {
+        return error(id, "unknown-item", &format!("no to-do {item} here"));
+    };
+    let Some(path) = settled else {
+        return error(id, "refused", "nowhere to keep Joel's word");
+    };
+    match settle(path, act, item, &said(&record["item"]), now_ms()) {
+        Ok(()) => json!({"id": id, "done": true}),
+        Err(refused) => error(id, refused.code, &refused.message),
+    }
 }
 
 /// What one ask is answered with.
@@ -296,6 +322,8 @@ fn answer(
             "since": held.since, "sources": held.sources,
             "watches": held.watches.len(), "records": held.records.len(),
         }),
+        // Answered by `acted`, which alone is handed where it's kept.
+        Ask::Act { id, .. } => error(&id, "refused", "an act is answered apart"),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }
