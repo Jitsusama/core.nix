@@ -188,7 +188,11 @@ mod tests {
         let mut notice = from("mail", Urgency::Normal);
         judge().judge(&mut notice, false);
         assert_eq!(notice.level, "card");
-        assert!(!notice.held && notice.missed && !notice.urgent);
+        // Held, missed and urgent.
+        assert_eq!(
+            (notice.held, notice.missed, notice.urgent),
+            (false, true, false)
+        );
     }
 
     #[test]
@@ -197,8 +201,9 @@ mod tests {
         let mut critical = from("mail", Urgency::Critical);
         judge().judge(&mut normal, true);
         judge().judge(&mut critical, true);
-        assert!(normal.held && normal.missed);
-        assert!(!critical.held && critical.urgent);
+        // Held and missed, then held and urgent.
+        assert_eq!((normal.held, normal.missed), (true, true));
+        assert_eq!((critical.held, critical.urgent), (false, true));
     }
 
     #[test]
@@ -207,8 +212,12 @@ mod tests {
         let mut counter = from("counter", Urgency::Normal);
         judge().judge(&mut chatty, false);
         judge().judge(&mut counter, false);
-        assert!(chatty.held && !chatty.missed && !chatty.urgent);
-        assert!(counter.held && counter.missed);
+        // Held, missed and urgent, then held and missed.
+        assert_eq!(
+            (chatty.held, chatty.missed, chatty.urgent),
+            (true, false, false)
+        );
+        assert_eq!((counter.held, counter.missed), (true, true));
     }
 
     #[test]

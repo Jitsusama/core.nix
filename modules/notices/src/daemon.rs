@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(keys, ["default", "read"]);
         assert_eq!(notice.reply.as_deref(), Some("Reply to Ana"));
         assert_eq!(notice.urgency, Urgency::Critical);
-        assert!(notice.urgent && notice.resident);
+        assert_eq!((notice.urgent, notice.resident), (true, true));
         assert_eq!(notice.entry, "slack");
         assert_eq!(notice.category, "im.received");
         assert_eq!(notice.picture, "file:///home/someone/ana.png");
@@ -403,7 +403,10 @@ mod tests {
         state.ask(&json!({ "ask": "quiet", "sharing": true }), 12);
         let shared = state.notify(sent("while shared", &[]), 13);
         let resting = |id| state.holding.get(id).expect("held").resting;
-        assert!(resting(held) && !resting(shown) && resting(shared));
+        assert_eq!(
+            (resting(held), resting(shown), resting(shared)),
+            (true, false, true)
+        );
     }
 
     #[test]
@@ -414,7 +417,10 @@ mod tests {
             with_hint(sent("passing", &[]), "transient", json!(true)),
             10,
         );
-        assert!(state.holding.get(id).is_none());
+        assert!(
+            state.holding.get(id).is_none(),
+            "a passing notice held back is closed, not kept"
+        );
         assert_eq!(state.owed, [Signal::Closed(id, 2)]);
     }
 
@@ -427,7 +433,10 @@ mod tests {
             11,
         );
         assert_eq!(answer, json!({ "done": true }));
-        assert!(changed);
+        assert!(
+            changed,
+            "an action done closes its notice, which changes it"
+        );
         assert_eq!(
             state.owed,
             [
@@ -460,7 +469,10 @@ mod tests {
             12,
         );
         assert_eq!(state.owed, [Signal::Invoked(id, "next".into())]);
-        assert!(state.holding.is_live(id));
+        assert!(
+            state.holding.is_live(id),
+            "a resident notice stays open once acted on"
+        );
     }
 
     #[test]
@@ -515,19 +527,29 @@ mod tests {
             with_hint(sent("to-do", &[]), "x-waiting", json!("todo:1")),
             1,
         );
-        assert!(state.ask(&json!({ "ask": "rest", "notice": id }), 2).1);
-        assert!(state.ask(&json!({ "ask": "wake", "notice": id }), 3).1);
-        assert!(state.ask(&json!({ "ask": "seen" }), 4).1);
-        assert!(state.ask(&json!({ "ask": "settle", "standing": [] }), 5).1);
-        assert!(state.holding.get(id).expect("held").read);
-        assert!(
-            state
-                .ask(&json!({ "ask": "mark", "notices": [id], "read": false }), 6)
-                .1
+        let mut changed = Vec::new();
+        for (at, ask) in [
+            json!({ "ask": "rest", "notice": id }),
+            json!({ "ask": "wake", "notice": id }),
+            json!({ "ask": "seen" }),
+            json!({ "ask": "settle", "standing": [] }),
+        ]
+        .iter()
+        .enumerate()
+        {
+            changed.push(state.ask(ask, 2 + i64::try_from(at).expect("few")).1);
+        }
+        assert_eq!(
+            changed,
+            [true, true, true, true],
+            "rest, wake, seen, settle"
         );
-        assert!(state.ask(&json!({ "ask": "raise", "notice": id }), 7).1);
-        let (unknown, changed) = state.ask(&json!({ "ask": "shout" }), 8);
+        assert_eq!(state.holding.get(id).map(|notice| notice.read), Some(true));
+        let unmarked = state.ask(&json!({ "ask": "mark", "notices": [id], "read": false }), 6);
+        let raised = state.ask(&json!({ "ask": "raise", "notice": id }), 7);
+        let (unknown, shouted) = state.ask(&json!({ "ask": "shout" }), 8);
         assert_eq!(unknown["error"]["code"], "unknown-ask");
-        assert!(!changed);
+        // Marked unread and raised change it; an unknown ask doesn't.
+        assert_eq!((unmarked.1, raised.1, shouted), (true, true, false));
     }
 }

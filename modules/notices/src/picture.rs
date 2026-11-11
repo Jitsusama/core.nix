@@ -177,7 +177,10 @@ mod tests {
         let theirs = folder.with_extension("theirs.png");
         std::fs::write(&theirs, b"theirs").expect("written");
         forget(&format!("file://{}", theirs.display()), &folder);
-        assert!(theirs.exists());
+        assert!(
+            theirs.exists(),
+            "a picture its sender named is left where it is"
+        );
         let _ = std::fs::remove_file(&theirs);
         let _ = std::fs::remove_dir_all(&folder);
     }

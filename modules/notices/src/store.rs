@@ -148,7 +148,10 @@ mod tests {
     fn what_was_written_is_read_back_but_not_what_passes_unkept() {
         let folder = folder("store");
         let file = folder.join("notices").join("notices.json");
-        assert!(read(&file).expect("none yet").is_none());
+        assert!(
+            read(&file).expect("none yet").is_none(),
+            "a history never written reads as none"
+        );
         let mut holding = Holding::default();
         let kept = holding.new_id();
         let passing = holding.new_id();
@@ -167,7 +170,10 @@ mod tests {
         assert_eq!(saved.next, 3);
         assert_eq!(saved.notices.len(), 1);
         assert_eq!(saved.notices[0].summary, "kept");
-        assert!(!folder.join("notices").join("notices.json.new").exists());
+        assert!(
+            !folder.join("notices").join("notices.json.new").exists(),
+            "the file written first is moved into place, not left beside it"
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -176,7 +182,10 @@ mod tests {
         let folder = folder("unread");
         let file = folder.join("notices.json");
         std::fs::write(&file, "{ not json").expect("written");
-        assert!(read(&file).is_err());
+        assert!(
+            read(&file).is_err(),
+            "a history that isn't JSON is an error"
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -202,9 +211,10 @@ mod tests {
         assert_eq!(slack.urgency, Urgency::Low);
         assert_eq!(slack.read_how.as_deref(), Some("readInSlack"));
         assert_eq!(slack.left.as_deref(), Some("expired"));
-        assert!(!slack.live && !tea.live);
+        assert_eq!((slack.live, tea.live), (false, false));
         assert_eq!(tea.urgency, Urgency::Critical);
-        assert!(tea.urgent && tea.missed && !tea.read);
+        // Urgent, missed and read.
+        assert_eq!((tea.urgent, tea.missed, tea.read), (true, true, false));
         assert_eq!(tea.hint("x-waiting"), "todo:3");
         assert_eq!(
             tea.left.as_deref(),

@@ -173,9 +173,11 @@ mod tests {
             read: true,
             ..Notice::default()
         };
-        assert!(desktop.awaits());
-        assert!(!slack.awaits());
-        assert!(!read.awaits());
+        // The desktop's unread, Slack's unread and a read one.
+        assert_eq!(
+            (desktop.awaits(), slack.awaits(), read.awaits()),
+            (true, false, false)
+        );
     }
 
     #[test]

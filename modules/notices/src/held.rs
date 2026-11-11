@@ -331,8 +331,8 @@ mod tests {
         assert_eq!(holding.arrive(notice(1, "first")), None);
         assert_eq!(holding.arrive(notice(2, "second")), None);
         assert_eq!(held(&holding), [2, 1]);
-        assert!(holding.is_live(1) && holding.is_live(2));
-        assert!(!holding.get(1).expect("held").resting);
+        assert_eq!((holding.is_live(1), holding.is_live(2)), (true, true));
+        assert_eq!(holding.get(1).map(|one| one.resting), Some(false));
     }
 
     #[test]
@@ -342,7 +342,7 @@ mod tests {
             held: true,
             ..notice(1, "quiet")
         });
-        assert!(holding.get(1).expect("held").resting);
+        assert_eq!(holding.get(1).map(|one| one.resting), Some(true));
     }
 
     #[test]
@@ -379,7 +379,7 @@ mod tests {
         let said = holding.get(1).expect("held");
         assert_eq!(said.summary, "Tokens at 90%");
         assert_eq!(said.actions.len(), 1);
-        assert!(said.read);
+        assert!(said.read, "one said again stays read");
     }
 
     #[test]
@@ -387,22 +387,28 @@ mod tests {
         let mut holding = Holding::default();
         holding.arrive(notice(1, "expired"));
         holding.arrive(notice(2, "put away"));
-        assert!(holding.close(1, Closed::Expired, 10));
-        assert!(holding.close(2, Closed::Dismissed, 10));
+        assert_eq!(
+            (
+                holding.close(1, Closed::Expired, 10),
+                holding.close(2, Closed::Dismissed, 10)
+            ),
+            (true, true),
+            "both were open"
+        );
         let (expired, away) = (holding.get(1).expect("held"), holding.get(2).expect("held"));
-        assert!(expired.missed && !expired.live);
+        assert_eq!((expired.missed, expired.live), (true, false));
         assert_eq!(expired.left.as_deref(), Some("expired"));
         assert_eq!(expired.left_at, Some(10));
-        assert!(!away.missed && !away.read);
+        assert_eq!((away.missed, away.read), (false, false));
     }
 
     #[test]
     fn one_withdrawn_by_its_program_was_read_there() {
         let mut holding = Holding::default();
         holding.arrive(notice(1, "read in chat"));
-        assert!(holding.close(1, Closed::Withdrawn, 10));
+        assert!(holding.close(1, Closed::Withdrawn, 10), "it was open");
         let withdrawn = holding.get(1).expect("held");
-        assert!(withdrawn.read && !withdrawn.missed);
+        assert_eq!((withdrawn.read, withdrawn.missed), (true, false));
         assert!(
             !holding.close(1, Closed::Withdrawn, 20),
             "one closed isn't again"
@@ -417,7 +423,7 @@ mod tests {
             ..notice(1, "passing")
         });
         assert_eq!(holding.kept().count(), 0);
-        assert!(holding.close(1, Closed::Expired, 10));
+        assert!(holding.close(1, Closed::Expired, 10), "it was open");
         assert_eq!(
             holding.notices().len(),
             0,
@@ -429,14 +435,14 @@ mod tests {
     fn one_rests_wakes_and_is_raised_unread() {
         let mut holding = Holding::default();
         holding.arrive(notice(1, "resting"));
-        assert!(holding.rest(1));
+        assert!(holding.rest(1), "one open rests");
         assert!(!holding.rest(1), "one resting doesn't rest again");
-        assert!(holding.wake(1));
+        assert!(holding.wake(1), "one resting wakes");
         holding.mark(&[1], true, Some("readInSlack"), 5);
         holding.rest(1);
-        assert!(holding.raise(1, 9));
+        assert!(holding.raise(1, 9), "one open is raised");
         let raised = holding.get(1).expect("held");
-        assert!(!raised.read && !raised.resting);
+        assert_eq!((raised.read, raised.resting), (false, false));
         assert_eq!(raised.read_how, None);
         assert_eq!(raised.raised_at, Some(9));
     }
@@ -446,19 +452,31 @@ mod tests {
         let mut holding = Holding::default();
         holding.arrive(notice(1, "in slack"));
         holding.arrive(notice(2, "gone stale"));
-        assert!(holding.mark(&[1], true, Some("readInSlack"), 7));
-        assert!(holding.mark(&[2], true, Some("withdrawn"), 8));
+        assert_eq!(
+            (
+                holding.mark(&[1], true, Some("readInSlack"), 7),
+                holding.mark(&[2], true, Some("withdrawn"), 8)
+            ),
+            (true, true),
+            "both were unread"
+        );
         let (slack, stale) = (holding.get(1).expect("held"), holding.get(2).expect("held"));
         assert_eq!(slack.read_how.as_deref(), Some("readInSlack"));
         assert_eq!(slack.read_at, Some(7));
-        assert!(stale.withdrawn && stale.read_how.is_none());
+        assert_eq!((stale.withdrawn, stale.read_how.as_deref()), (true, None));
         assert!(
             !holding.mark(&[1], true, Some("other"), 9),
             "one read keeps how it was"
         );
-        assert!(holding.mark(&[1], false, None, 9));
+        assert!(
+            holding.mark(&[1], false, None, 9),
+            "one read is marked unread"
+        );
         let unread = holding.get(1).expect("held");
-        assert!(!unread.read && unread.read_at.is_none() && unread.read_how.is_none());
+        assert_eq!(
+            (unread.read, unread.read_at, unread.read_how.as_deref()),
+            (false, None, None)
+        );
     }
 
     #[test]
@@ -472,11 +490,14 @@ mod tests {
         holding.arrive(standing);
         holding.arrive(notice(3, "plain"));
         let still = BTreeSet::from(["todo:2".to_owned()]);
-        assert!(holding.settle(&still));
-        assert!(holding.get(1).expect("held").read);
-        assert!(!holding.get(2).expect("held").read);
-        assert!(holding.seen());
-        assert!(holding.notices().iter().all(|notice| !notice.missed));
+        assert!(holding.settle(&still), "one no longer stands");
+        let read = |id| holding.get(id).map(|one| one.read);
+        assert_eq!((read(1), read(2)), (Some(true), Some(false)));
+        assert!(holding.seen(), "some were missed");
+        assert!(
+            holding.notices().iter().all(|notice| !notice.missed),
+            "none is missed once seen"
+        );
         assert!(!holding.seen(), "nothing left to see");
     }
 
