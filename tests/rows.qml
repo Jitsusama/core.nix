@@ -766,12 +766,41 @@ ShellRoot {
     // what it draws: its chord's keys kept where it's given as many, each
     // saying its new key, as a home row's Super+O becomes Super+E, and its
     // side laid out once, never again for a count it doesn't show.
+    // Every visible Text under an item saying these words.
+    function textsOf(item, words, into) {
+        for (const child of item.children) {
+            if (child.visible && child.text === words)
+                into.push(child);
+            textsOf(child, words, into);
+        }
+        return into;
+    }
+
     function reusedRowLaysOutWhatItDraws() {
         const key = textItem(countedChord, "0");
         countedChord.chord = [{ text: "Super" }, { text: "9" }];
         const again = textItem(countedChord, "9");
         expect("a row given as many keys keeps their Texts", key !== null && again === key,
             `${key} then ${again}`);
+        // A key first made pressed after the one before, as neovim's
+        // Space f f makes its last, stands a tie from it with no +; kept
+        // for one pressed with it, as Ctrl+Shift+T is when a find narrows
+        // to it, it takes its + a + wide from the key before.
+        countedChord.chord = [{ text: "Space" }, { text: "f", after: true },
+            { text: "g", after: true }];
+        const after = textItem(countedChord, "g");
+        expect("a key pressed after another stands a tie from it", after !== null
+            && Math.abs(after.leftPadding - Theme.space.rung.tie) < 0.5
+            && textItem(countedChord, "+") === null,
+            `${after} at ${after?.leftPadding}, a + ${textItem(countedChord, "+")}`);
+        countedChord.chord = [{ text: "Ctrl" }, { text: "Shift" }, { text: "T" }];
+        const kept = textItem(countedChord, "T");
+        const pluses = textsOf(countedChord, "+", []);
+        expect("a key kept for one pressed with another takes its +", kept === after
+            && pluses.length === 2 && pluses.every(p => p.width > Theme.space.rung.tie)
+            && Math.abs(kept.leftPadding - pluses[0].width) < 0.5,
+            `${kept} at ${kept?.leftPadding}, +s ${pluses.map(p => p.width)}`);
+        countedChord.chord = [{ text: "Super" }, { text: "9" }];
         const laid = textsSaying(saying, saying.side, []);
         expect("a side said with no chord is laid out once", laid.length === 1,
             `${laid.length} Texts say ${saying.side}`);
