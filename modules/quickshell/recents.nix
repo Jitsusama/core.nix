@@ -43,6 +43,11 @@
       Chrome's downloads are: the programs daemon holds the lines its
       `list` prints as they are, under `listed:` and its `app` and `name`,
       read as that key is watched, so the page starts no process for it.
+      One with a `name` may give `folders` in place of `list`: the daemon
+      reads what's in them itself, a file a line newest first, its time in
+      seconds, its size and its path, a tab between, as find's
+      `%T@\t%s\t%p` prints them, and again on every change in one, as
+      what was taken lately is (Taken.qml).
     '';
   };
 }

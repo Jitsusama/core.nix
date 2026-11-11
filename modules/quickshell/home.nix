@@ -1338,6 +1338,19 @@ in
   };
 
   config = {
+    # What was taken lately (Taken.qml): the folders screenshots and
+    # recordings land in, which the programs daemon reads itself as Taken
+    # watches them, under listed:shared:taken, so the shell runs no find.
+    jitsusama.quickshell.launcher.recents = [
+      {
+        name = "taken";
+        folders = [
+          "${config.home.homeDirectory}/Pictures/Screenshots"
+          "${config.home.homeDirectory}/Videos/Recordings"
+        ];
+      }
+    ];
+
     # A thing found by name ranks a little ahead of an action matching as
     # well, and an action ahead of ending the session.
     jitsusama.quickshell.launcher.providers = lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {

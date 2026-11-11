@@ -3,6 +3,9 @@
 //! commands print made into `recent` and `opened` records, and a
 //! program page's own lists, as Chrome's downloads, into `listed` ones.
 
+use std::fmt::Write;
+use std::time::UNIX_EPOCH;
+
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -32,6 +35,12 @@ pub struct Source {
     /// The command printing its paths, newest first.
     #[serde(default)]
     pub list: Vec<String>,
+    /// The folders a page's own list is of, read by this daemon rather
+    /// than a command, as what was taken lately is (Taken.qml): every
+    /// change in one reads it again, and one that isn't there holds
+    /// nothing, as Recordings before the first recording.
+    #[serde(default)]
+    pub folders: Vec<String>,
     /// Whether each line ends in a tab and when, in seconds since 1970.
     #[serde(default)]
     pub dated: bool,
@@ -64,6 +73,11 @@ impl Source {
     pub fn opened_key(&self) -> Option<String> {
         let app = self.app.as_deref()?;
         (!self.opened.is_empty()).then(|| format!("opened:{app}"))
+    }
+
+    /// Whether it has a list to read, by a command or of its folders.
+    pub fn lists(&self) -> bool {
+        !self.list.is_empty() || !self.folders.is_empty()
     }
 
     fn site(&self) -> bool {
@@ -143,6 +157,44 @@ pub fn recent(source: &Source, printed: &str) -> Value {
         record["paths"] = json!(paths);
     }
     record
+}
+
+/// What's in these folders, a file a line, newest first, as find's
+/// `%T@\t%s\t%p` prints them: when it last changed in seconds since 1970
+/// to the millisecond, its size in bytes and its whole path. Hidden
+/// files, what isn't a file, and a folder that isn't there are left out.
+pub fn files_in(folders: &[String]) -> String {
+    let mut files: Vec<(u128, u64, String)> = Vec::new();
+    for folder in folders {
+        let Ok(read) = std::fs::read_dir(folder) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let Ok(about) = entry.metadata() else {
+                continue;
+            };
+            if !about.is_file() {
+                continue;
+            }
+            let at = about
+                .modified()
+                .ok()
+                .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
+                .map_or(0, |at| at.as_millis());
+            let path = format!("{folder}/{}", entry.file_name().to_string_lossy());
+            files.push((at, about.len(), path));
+        }
+    }
+    files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
+    files
+        .iter()
+        .fold(String::new(), |mut printed, (at, size, path)| {
+            let _ = writeln!(printed, "{}.{:03}\t{size}\t{path}", at / 1000, at % 1000);
+            printed
+        })
 }
 
 /// The `opened` record of what a source's program has open, as its

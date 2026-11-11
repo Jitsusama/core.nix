@@ -2120,8 +2120,10 @@ onLinux {
       touch $out
     '';
 
-  # What was taken lately finds screenshots by their words (Taken.qml),
-  # asking a stand-in for the screen-text daemon
+  # What was taken lately reads its folder through the programs daemon,
+  # handed a source for it as modules/quickshell/home.nix hands one, and
+  # finds screenshots by their words (Taken.qml), asking a stand-in for the
+  # screen-text daemon
   # (tests/desktop/stand-in-screen-text.py) over one connection made on the
   # first search and let go at rest, each text once, the last few kept,
   # none for fewer than three letters, a ragged line given as one short
@@ -2138,6 +2140,7 @@ onLinux {
       mkdir -p runtime/daemons shots && chmod 700 runtime
       touch shots/2026-10-{29,30,31}\ 09-00-00.png
       substitute ${./tests/stand-ins/taken-texts.json} texts.json --subst-var-by shots "$PWD/shots"
+      printf '[{"name": "taken", "folders": ["%s"]}]' "$PWD/shots" > sources.json
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Taken.qml} Taken.qml
       cp ${./Fuzzy.js} Fuzzy.js
@@ -2145,6 +2148,7 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} SHOTS=$PWD/shots
       ${standIn} runtime/daemons/screen-text.sock texts.json &
+      ${lib.getExe programs} runtime/daemons/programs.sock sources.json &
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out

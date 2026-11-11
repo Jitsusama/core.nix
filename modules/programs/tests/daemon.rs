@@ -59,6 +59,8 @@ fn fixture(folder: &Path) -> PathBuf {
         ),
     );
     write("lists/folders", "/home/joel/src\n/home/joel\n");
+    write("shots/2026-11-10 09-00-00.png", "shot");
+    write("shots/.hidden.png", "");
     write("lists/playing", "412\t/films/a.mkv\n");
     let at = |path: &str| folder.join(path).to_string_lossy().into_owned();
     // Each list says it was read, so a test counts its reads.
@@ -76,6 +78,9 @@ fn fixture(folder: &Path) -> PathBuf {
         at("lists/download-reads")
     );
     let sources = json!([
+        // What was taken lately, of a folder that's there and one that
+        // isn't yet, read with no command.
+        {"name": "taken", "folders": [at("shots"), at("recordings")]},
         {
             "app": "browser",
             "name": "downloads",
@@ -308,6 +313,47 @@ fn a_pages_own_list_is_read_only_as_its_key_is_watched() {
     assert_eq!(
         listed["lines"],
         json!(["/d/a.pdf\t12\t1793000000\thttps://a.example"])
+    );
+}
+
+#[test]
+fn a_list_of_folders_is_read_with_no_command_and_again_as_a_file_comes() {
+    let running = Running::new("folders");
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "keys": ["listed:shared:taken"]}));
+    let shots = running.path("shots").to_string_lossy().into_owned();
+    let paths = |listed: &Value| -> Vec<String> {
+        listed["lines"]
+            .as_array()
+            .expect("a list of folders said no lines")
+            .iter()
+            .map(|line| {
+                let fields: Vec<&str> = line.as_str().unwrap_or_default().split('\t').collect();
+                assert_eq!(
+                    fields.len(),
+                    3,
+                    "a file's line isn't its time, size and path: {line}"
+                );
+                assert!(
+                    fields[0].parse::<f64>().is_ok(),
+                    "a file's time isn't seconds: {line}"
+                );
+                fields[2].to_owned()
+            })
+            .collect()
+    };
+    let listed = client.changed("listed:shared:taken");
+    assert!(
+        listed.get("refused").is_none(),
+        "a folder not there refused the list: {listed}"
+    );
+    assert_eq!(paths(&listed), [format!("{shots}/2026-11-10 09-00-00.png")]);
+    std::fs::write(running.path("shots/2026-11-11 01-00-00.png"), "shot").unwrap();
+    let again = client.changed("listed:shared:taken");
+    assert_eq!(
+        paths(&again).len(),
+        2,
+        "a file made in a watched folder wasn't heard: {again}"
     );
 }
 
