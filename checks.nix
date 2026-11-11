@@ -453,12 +453,6 @@ let
       inherit self pkgs;
       area = "keep-the-launcher";
     };
-    # Only a key plugged into a machine shows which sign-ins take its touch.
-    vm-a-yubikey-answers-only-once-in = import ./tests/yubikey-touch.nix { inherit self pkgs; };
-    # Whether root is given only the builders nix-offload's lines trust,
-    # in files the lender's account can't write, shows only with systemd
-    # running the service as its own account.
-    vm-root-builds-only-where-it-trusts = import ./tests/offload-lines.nix { inherit self pkgs; };
   };
   vmTests = vmTestsOn vmHostPkgs;
 

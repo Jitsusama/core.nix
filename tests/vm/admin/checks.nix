@@ -36,4 +36,8 @@ onLinux {
   # Whether a niri's kernel stacks are traced for its account and nobody
   # else shows only with polkit, bpftrace and a kernel to trace.
   vm-niri-is-traced-by-its-own = import ./niri-off-cpu.nix { inherit self pkgs; };
+  # Whether root is given only the builders nix-offload's lines trust,
+  # in files the lender's account can't write, shows only with systemd
+  # running the service as its own account.
+  vm-root-builds-only-where-it-trusts = import ./offload-lines.nix { inherit self pkgs; };
 }

@@ -9,9 +9,9 @@
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
-  inherit (import ./vm/guide/canokeys.nix { inherit pkgs; }) qemu;
+  inherit (import ../guide/canokeys.nix { inherit pkgs; }) qemu;
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "yubikey-touch";
   # The machine's qemu, which checks.nix wraps to wait for its sockets.
   qemu.package = qemu;
