@@ -49,7 +49,8 @@ ShellRoot {
     // since Machine asks it only while one of its answers is shown, and a
     // place is made once: Processor holds its place there with the parts
     // to come, and holding it asks the daemon. Power's Kept From Resting
-    // is the telemetry's, so a place holding it alone asks nothing.
+    // is listed whole while it waits, and asked once it's listed, so a
+    // place holding it alone asks nothing.
     Component.onCompleted: {
         try {
             theLauncher.placed = ["energy", "machine:cpu:kept-from-resting"];

@@ -1,9 +1,9 @@
 // The processor's own telemetry, as processor-telemetry tells it over
 // varlink on the socket systemd holds for it: the temperatures no hwmon
 // chip gives (its NPU's, image processor's and media and display
-// engines'), and what held the processor, each core cluster and the NPU
-// back over the last second, and what kept the package from resting,
-// averaged over about ten seconds (launcher/Machine.js says how). It's asked only
+// engines'), for Heat. What held the processor back and what kept it
+// from resting are the machine daemon's to say (modules/machine's
+// telemetry_rows.rs), which asks the reader itself. It's asked only
 // while something shown watches it, since the reader reads the
 // processor's counters once a second for as long as it's asked and
 // nothing otherwise; the reading is dropped when it isn't, so nothing
@@ -14,7 +14,6 @@ pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import QtQuick
-import "launcher/Machine.js" as Machine
 
 Singleton {
     id: root
@@ -28,14 +27,6 @@ Singleton {
     // clusters, npu, keptFromResting }, or null while it isn't asked or
     // hasn't answered.
     property var reading: null
-
-    // The readings of what kept the package from resting, oldest first,
-    // the last ten seconds' at most, and what they say together, as
-    // Machine.kept says it ({ share, by }), or null while nothing
-    // has said it. Both go with the reading.
-    property var rested: []
-    property var kept: null
-    readonly property int remembered: 10
 
     // Whether the reader has failed to answer since it was last heard:
     // refused, gone, or saying it has no telemetry. A row already shown
@@ -56,8 +47,6 @@ Singleton {
 
     function dropped() {
         reading = null;
-        rested = [];
-        kept = null;
     }
 
     // The reader didn't answer: it refused, went, or has no telemetry. A
@@ -88,11 +77,6 @@ Singleton {
         refused = false;
         missing = false;
         heardOnce = true;
-        const resting = reading?.keptFromResting ?? null;
-        if (resting !== null) {
-            rested = rested.concat([resting]).slice(-remembered);
-            kept = Machine.kept(rested);
-        }
     }
 
     onWatchingChanged: {

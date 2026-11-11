@@ -1250,7 +1250,24 @@
       "id": "machine:cpu:held-back",
       "in": "machine:cpu",
       "name": "Held Back",
-      "term": "Machine/held back"
+      "term": "Machine/held back",
+      "said": {
+        "note": "by {limit}, over the last second",
+        "none": "nothing holds it back now",
+        "core": "by {limit}",
+        "limit-pl1": "its power limit, PL1",
+        "limit-pl2": "its short power limit, PL2",
+        "limit-pl3": "its peak power limit, PL3",
+        "limit-platformPl1": "the whole machine's power limit, PL1",
+        "limit-platformPl2": "the whole machine's short power limit, PL2",
+        "limit-platformPl3": "the whole machine's peak power limit, PL3",
+        "limit-prochot": "being told to slow down",
+        "limit-regulatorHot": "a regulator running hot",
+        "limit-heat": "heat",
+        "limit-power": "power",
+        "limit-current": "current",
+        "limit-other": "something else"
+      }
     },
     {
       "id": "machine:cpu:held-back-core",
@@ -1395,60 +1412,93 @@
       "question": "kept from resting",
       "answers": [
         "kept from resting"
-      ]
+      ],
+      "said": {
+        "by": "by {keeper}",
+        "quiet": "nothing keeps it from resting now",
+        "spread": "by no one part for long",
+        "refused": "can't be read"
+      }
     },
     {
       "id": "machine:cpu:kept-by-npu",
       "in": "machine:cpu:kept-from-resting",
       "name": "NPU",
-      "term": "Machine/NPU"
+      "term": "Machine/NPU",
+      "said": {
+        "by": "the NPU"
+      }
     },
     {
       "id": "machine:cpu:kept-by-image-processor",
       "in": "machine:cpu:kept-from-resting",
       "name": "Image Processor",
-      "term": "Machine/image processor"
+      "term": "Machine/image processor",
+      "said": {
+        "by": "the image processor"
+      }
     },
     {
       "id": "machine:cpu:kept-by-media-engine",
       "in": "machine:cpu:kept-from-resting",
       "name": "Media Engine",
-      "term": "Machine/media engine"
+      "term": "Machine/media engine",
+      "said": {
+        "by": "the media engine"
+      }
     },
     {
       "id": "machine:cpu:kept-by-graphics",
       "in": "machine:cpu:kept-from-resting",
       "name": "Graphics",
-      "term": "Machine/graphics"
+      "term": "Machine/graphics",
+      "said": {
+        "by": "the graphics"
+      }
     },
     {
       "id": "machine:cpu:kept-by-display-engine",
       "in": "machine:cpu:kept-from-resting",
       "name": "Display Engine",
-      "term": "Machine/display engine"
+      "term": "Machine/display engine",
+      "said": {
+        "by": "the display engine"
+      }
     },
     {
       "id": "machine:cpu:kept-by-chipset",
       "in": "machine:cpu:kept-from-resting",
       "name": "Chipset",
-      "term": "Machine/chipset"
+      "term": "Machine/chipset",
+      "said": {
+        "by": "the chipset's devices"
+      }
     },
     {
       "id": "machine:cpu:kept-by-cores",
       "in": "machine:cpu:kept-from-resting",
       "name": "Cores",
-      "term": "Machine/core"
+      "term": "Machine/core",
+      "said": {
+        "by": "busy cores"
+      }
     },
     {
       "id": "machine:cpu:kept-by-power-controller",
       "in": "machine:cpu:kept-from-resting",
       "name": "Power Controller",
-      "term": "Machine/power controller"
+      "term": "Machine/power controller",
+      "said": {
+        "by": "the processor's own power controller"
+      }
     },
     {
       "id": "machine:cpu:kept-by-other",
       "in": "machine:cpu:kept-from-resting",
-      "name": "Something Else"
+      "name": "Something Else",
+      "said": {
+        "by": "something else"
+      }
     },
     {
       "id": "machine:uptime",

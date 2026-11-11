@@ -13,7 +13,7 @@
 //   its range, base, driver, governor, preference and turbo, what Held it
 //   Back over the last second and each core held, and what Kept it From
 //   Resting over the last ten seconds and each part that did (as its own
-//   telemetry says, ProcessorTelemetry.qml), the Temperature, the
+//   telemetry says, which the daemon hears), the Temperature, the
 //   programs Using it, the Load, how many tasks are Running, the NPU's
 //   Load, the Kinds of core and the Model with its family, microcode and
 //   caches. Both telemetry rows stand whenever the telemetry answers, at
@@ -177,18 +177,20 @@ Provider {
     // stays there dimmed, saying so. On a machine with no reader it's left
     // out.
     function awaited(whole, name) {
-        if (ProcessorTelemetry.missing)
+        const state = telemetryWatch.held["telemetry:processor"]?.state ?? "asking";
+        if (state === "missing")
             return null;
+        const refused = state === "refused";
         return {
-            headline: ProcessorTelemetry.refused ? "" : "\u2026",
+            headline: refused ? "" : "\u2026",
             copy: "",
             glyph: whole.glyph,
             hue: "machine",
             title: name,
             rows: [],
-            note: ProcessorTelemetry.refused ? "can't be read" : "",
-            asking: !ProcessorTelemetry.refused,
-            gone: ProcessorTelemetry.refused,
+            note: refused ? says("cpu:kept-from-resting", "refused") : "",
+            asking: !refused,
+            gone: refused,
             whole: true,
             about: kinds.cpu,
             live: provider
@@ -393,65 +395,11 @@ Provider {
 
     // The processors.
 
-    // The processor, as the daemon serves it ready, with what held it back
-    // and what kept it from resting beside its served parts.
+    // The processor, as the daemon serves it ready, what held it back and
+    // what kept it from resting among its parts while its telemetry is
+    // watched.
     function cpu() {
-        return servedAnswer("cpu", kinds.cpu, telemetryRows);
-    }
-
-    // What held the processor back and what kept it from resting, from its
-    // telemetry, which the daemon hears only while Heat is watched. They're
-    // made here, and placed among the served parts by their words' order,
-    // until the daemon serves them too.
-    function telemetryRows() {
-        const chip = Words.glyph(kinds.cpu);
-        const rows = [];
-        // Held Back stands while the telemetry answers, held or not, so the
-        // rows under it never move under Joel's selection (VKCF3Z).
-        const telemetry = ProcessorTelemetry.reading;
-        const held = Machine.heldBack(telemetry);
-        if (held && held.cores.length > 0)
-            rows.push(holderRow({
-                name: named("cpu:held-back"),
-                side: percent(held.share),
-                graph: bar(held.share),
-                glyph: chip,
-                note: `by ${Machine.limit(held.by)}, over the last second`
-            }, () => held.cores.map(core => figure({
-                name: named("cpu:held-back-core", { n: core.n }),
-                side: percent(core.share),
-                graph: bar(core.share),
-                note: `by ${Machine.limit(core.by)}`
-            }))));
-        else if (telemetry)
-            rows.push(figure({
-                name: named("cpu:held-back"),
-                side: percent(held ? held.share : 0),
-                graph: bar(held ? held.share : 0),
-                note: held ? `by ${Machine.limit(held.by)}, over the last second`
-                    : "nothing holds it back now"
-            }));
-        // Kept From Resting stands while the telemetry says it, kept from
-        // resting or not, as Held Back does, and beside it.
-        const resting = ProcessorTelemetry.kept;
-        if (resting) {
-            const most = resting.by[0];
-            const fields = {
-                name: named("cpu:kept-from-resting"),
-                side: percent(resting.share),
-                graph: bar(resting.share),
-                note: most ? `by ${Machine.keeper(most.by).said}`
-                    : resting.quiet ? "nothing keeps it from resting now"
-                    : "by no one part for long"
-            };
-            rows.push(resting.by.length > 0 ? holderRow(Object.assign({ glyph: chip }, fields),
-                () => resting.by.map(part => figure({
-                    name: named(`cpu:kept-by-${Machine.keeper(part.by).id}`),
-                    side: percent(part.share),
-                    graph: bar(part.share)
-                }))) : figure(fields));
-        }
-        return rows;
+        return servedAnswer("cpu", kinds.cpu);
     }
 
     // The memory.
@@ -489,10 +437,9 @@ Provider {
     })
 
     // A top row the daemon serves, as the answer the launcher asks for by
-    // its words: its side the headline, its parts a step in, with any rows
-    // `more` makes here placed among them by its words' order; held in its
+    // its words: its side the headline, its parts a step in; held in its
     // place while it hasn't been served.
-    function servedAnswer(id, kind, more) {
+    function servedAnswer(id, kind) {
         const top = served.revision >= 0 ? served.held[`row:machine:${id}`] ?? null : null;
         if (!top)
             return unheld(id);
@@ -504,8 +451,7 @@ Provider {
             title: said.name,
             about: kind,
             note: said.note
-        }, () => more ? ordered(kind, servedRows(top.key).concat(more()))
-            : servedRows(top.key));
+        }, () => servedRows(top.key));
     }
 
     // The rows served inside one, each a figure or, holding more, a step
@@ -1069,8 +1015,8 @@ Provider {
     // parts, which come from the records, so a place holding one of
     // Machine's whole answers (the launcher's `placed`, from its words
     // alone) watches too, or Machine's own place would wait for a read
-    // nothing asks. Kept From Resting, which Power holds, is read from
-    // the telemetry rather than the daemon, so it isn't one of them.
+    // nothing asks. Kept From Resting, which Power holds on battery, is
+    // listed whole while it waits (`awaited`), so it's asked once listed.
     // A terminal's `launcher show` sees them too, with the launcher closed,
     // while the rows it walked through or listed are Machine's
     // (Launcher.qml's terminalSees), so a place asked cold is read.
@@ -1129,7 +1075,6 @@ Provider {
         ...launcher.held.map(step => step.row), ...launcher.matches]
         .some(row => row?.live === provider && row.about === kinds.cpu)
         || launcher.placed.includes("machine:cpu:kept-from-resting"))
-    onWatchedChanged: ProcessorTelemetry.watching += watched ? 1 : -1
 
     // The uptime moves with the clock, a minute at a time, while shown.
     Timer {
@@ -1158,6 +1103,21 @@ Provider {
         keptThroughGap: false
         answersWhole: true
         onHeard: (changed, gone) => provider.take(changed, gone)
+    }
+
+    // The processor's telemetry, asked of the daemon only while it's
+    // watched: its one record says whether it's asking, heard, refused or
+    // missing, so Kept From Resting holds its place until it's served,
+    // and each second heard comes as Machine's rows, remade.
+    Daemon {
+        id: telemetryWatch
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "telemetry"
+        live: provider.watched
+        paced: provider.launcher
+        keptThroughGap: false
+        answersWhole: true
     }
 
     Daemon {
