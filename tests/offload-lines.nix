@@ -1,9 +1,10 @@
 # A machine whose root reads its builders from nix-offload's lines rather
 # than from the lender's own files: the service starts with its settings as
 # its own account, reads the token the lender's account leaves it, asks the
-# cloud (a stand-in, offload-lines-gcloud.sh) for the lent instance's host
-# key, and passes root only the lines naming a builder it trusts, in a file
-# the lender's account can't write. The tests are offload-lines-vm-test.py,
+# cloud (a stand-in, offload-lines-gcloud.sh) whether the lent instance is
+# as its maker made it and for its host key, and passes root only the
+# lines naming a builder it trusts, in a file the lender's account can't
+# write. The tests are offload-lines-vm-test.py,
 # which pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
@@ -15,6 +16,7 @@ let
   standingUri = "ssh-ng://builder@nearby";
   gcloud = pkgs.writeShellApplication {
     name = "gcloud";
+    runtimeInputs = [ pkgs.jq ];
     text = builtins.readFile ./offload-lines-gcloud.sh;
   };
   # What the tests need from Nix, in one file, their `values` fixture.
@@ -45,6 +47,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         project = "a-lab";
         prefix = "a-builder-";
         zones = [ "a-zone" ];
+        startupScript = pkgs.writeText "startup-script" "echo a builder\n";
+        images = [ "https://compute.example/images/a-" ];
         lent = [
           {
             uri = lentUri;

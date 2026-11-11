@@ -49,7 +49,14 @@ let
     into = linesFolder;
     files = lineFiles;
     key = "/etc/nix/offload_ed25519";
-    inherit (lines) project prefix zones;
+    inherit (lines)
+      project
+      prefix
+      zones
+      images
+      ;
+    startupScript = if lines.startupScript == null then null else "${lines.startupScript}";
+    hookKey = "/etc/nix/offload_ed25519.pub";
     standing = map (builder: {
       inherit (builder) uri key hostKey;
     }) lines.standing;
@@ -97,6 +104,23 @@ in
             type = lib.types.listOf lib.types.str;
             description = "The zones a lent builder may be made in.";
           };
+          startupScript = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            description = ''
+              The startup script every lent builder is made with. An instance
+              running any other, or started again since root first trusted
+              it, lends nothing. Unset, a lent builder is trusted on its host
+              key alone, which anything able to change the instance can get
+              round, and the machine warns so.
+            '';
+          };
+          images = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            example = [ "https://compute.example/projects/debian-cloud/global/images/debian-12-" ];
+            description = "What a lent builder's boot disk's source image may start with.";
+          };
           lent = lib.mkOption {
             type = lib.types.listOf (
               lib.types.submodule {
@@ -141,12 +165,20 @@ in
       What may reach root's Nix of the lender's lines. Set, root reads them
       from ${linesFolder}, which only an account of their own writes,
       passing a line only when it names one of these builders, a lent one
-      with the host key the cloud gives for its instance. Unset, root reads
+      with the host key the cloud gives for its instance, while the cloud
+      says that instance is still as its maker made it: the startup script
+      and image named here, no metadata that makes accounts, and root's
+      own key for its hook. Unset, root reads
       the lender's own, and the lender's account must be trusted.
     '';
   };
 
   config = {
+    warnings = lib.optional (lines != null && lines.startupScript == null) ''
+      jitsusama.nix-offload.lines.startupScript is unset, so root trusts a
+      lent builder on its host key alone, whatever its instance became.
+    '';
+
     assertions =
       let
         account = config.jitsusama.nix-offload.account;
