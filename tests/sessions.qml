@@ -165,7 +165,8 @@ ShellRoot {
             windowRecord(17, 900, "pi-session.7", { workspace: 11, column: 1, down: 1 }),
             windowRecord(18, 900, "pi-spawned.9", { workspace: 11, column: 2, down: 1 }),
             windowRecord(21, 600, "pi-session.7", { workspace: 3, column: 2, down: 1 }),
-            windowRecord(22, 800, "pi-spawned.9", { workspace: 5, column: 1, down: 1 })] });
+            windowRecord(22, 800, "pi-spawned.9", { workspace: 5, column: 1, down: 1 }),
+            windowRecord(23, 950, "kitty", { workspace: 8, column: 3, down: 1 })] });
         stage = "listed";
         node.active = true;
     }
@@ -287,8 +288,8 @@ ShellRoot {
     // place, and talking to it asks the node to steer its inbox, then,
     // once the node has, wakes it to read it.
     function parks() {
-        expect("only the one the node says is parked is parked",
-            parkedAs() === "NAPPER", parkedAs());
+        expect("only those the node says are parked are parked",
+            parkedAs() === "DOZER4 NAPPER", parkedAs());
         // Those the node says are closed, one whose record says parked
         // among them, the latest first, by id when they ended at once, each
         // saying when it ended as the node's number, never a time written
@@ -301,7 +302,7 @@ ShellRoot {
             closed.every(one => typeof one.ended === "number" && one.ended > 0
                 && one.endedAt === undefined) && closed[0].address === "ENDED3",
             JSON.stringify(closed[0]));
-        const napper = Sessions.parked[0];
+        const napper = Sessions.parkedAs("NAPPER");
         expect("one parked is named by its record, in the window its holder keeps",
             napper.title === "Napper" && napper.window?.id === 22, JSON.stringify(napper));
         // The cutover wakes a parked one to move it, so where its window
@@ -309,6 +310,12 @@ ShellRoot {
         expect("a parked session's window kept", Sessions.keepPlace("s-NAPPER") === "kept"
             && JSON.stringify(Sessions.keptPlaces["s-NAPPER"] ?? null).startsWith(
                 '{"workspace":5,"column":1,'), JSON.stringify(Sessions.keptPlaces));
+        // And one whose kitty opened its window with no app id, as the
+        // oldest sessions' did, by the one window niri shows of its kitty.
+        expect("a parked session's window kept by its kitty",
+            Sessions.keepPlace("s-DOZER4") === "kept"
+            && JSON.stringify(Sessions.keptPlaces["s-DOZER4"] ?? null).startsWith(
+                '{"workspace":8,"column":3,'), JSON.stringify(Sessions.keptPlaces));
         Sessions.keepPlaces({});
         Sessions.wake(napper);
         const woken = Niri.spawned;
@@ -765,6 +772,10 @@ ShellRoot {
                 title: "\u03c0 - Napper - core.nix" }, "parked"),
             { window: { terminal: "kitty", id: "1", within: "unix:@kitty-800",
                 app_id: "pi-spawned.9" } }),
+            // Parked in a kitty whose window was opened with no app id.
+            Object.assign(here("DOZER4", "ended", { state: "parked", busy: false,
+                title: "\u03c0 - Dozer - core.nix" }, "parked"),
+            { window: { terminal: "kitty", id: "5", within: "unix:@kitty-950" } }),
             // Closed, though each record says parked: its marker gone, or
             // laid before this boot, which the node sees and the shell
             // needn't.
