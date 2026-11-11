@@ -20,11 +20,11 @@ from pathlib import Path
 # of list it is. A fixed set keeps the order it was designed in and sorts nothing, so none is here.
 # Nor is Wi-Fi's list, which wifid serves in a live list's order (modules/wifid/daemon/src/rows.rs),
 # nor Agents' and Quests', which their daemons order (modules/agents, modules/quests), nor
-# Sound's, which the sound daemon serves in a choice's order (modules/sound/src/rows.rs).
+# Sound's, which the sound daemon serves in a choice's order (modules/sound/src/rows.rs), nor
+# Screens', which the windows daemon serves in a choice's order (modules/windows/src/screens.rs).
 PLACES = {
     "Accessories.qml": "live",
     "Applications.qml": "returned",
-    "Displays.qml": "choices",
     "Machine.qml": "amounts",
     "Nearby.js": "live",
     "Networks.qml": "live",

@@ -82,9 +82,11 @@ class Shell:
         if "MACHINE" in os.environ:
             words = os.environ.get("MACHINE_WORDS")
             self.daemon("machine", os.environ["MACHINE"], *(["--words", words] if words else []))
-        # The windows come from the windows daemon, hearing this niri as the account's does.
+        # The windows come from the windows daemon, hearing this niri as the account's does, and
+        # the screens' rows with them, in the words the check gives as WINDOWS_WORDS.
         if "WINDOWS" in os.environ:
-            self.daemon("windows", os.environ["WINDOWS"])
+            words = os.environ.get("WINDOWS_WORDS")
+            self.daemon("windows", os.environ["WINDOWS"], *(["--words", words] if words else []))
         # WARP's link comes from warp, asking the check's stand-in warp-cli.
         if "WARP" in os.environ:
             self.daemon("warp", os.environ["WARP"])
