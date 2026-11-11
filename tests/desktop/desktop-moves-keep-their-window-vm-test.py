@@ -4,7 +4,8 @@ A session the launcher holds moves into pi's host in its own window, as the harn
 (its mesh-workflow's in-place.ts and scripts/host-join.ts): pi ends naming the join, the join
 names the host's viewer, or plain pi when the host won't take it, and each is a start of the
 same holder on the same terminal. A viewer whose host releases the session ends as attach does
-then, and what runs in the window carries on as plain pi, as the rollback asks. Joel was told
+then, and what runs in the window carries on as plain pi, as the rollback asks; a viewer its
+host refuses carries on as the join, which attaches again in that window. Joel was told
 the windows stay where they are (OSPHT4, 11 November), so the window keeps its id, workspace,
 column and size, takes no focus, never changes on his screen, and loses none of his keys; the
 node gives the session that window, so the launcher opens no second viewer and Go To goes to
@@ -161,6 +162,31 @@ def test_a_session_its_host_releases_carries_on_as_plain_pi_in_its_window(
         assert record["command"][:2] == ["pi", "--session"], record
     finally:
         cleaned(desktop, session)
+
+
+def test_a_session_whose_attach_its_host_refuses_keeps_its_window(desktop: Desktop) -> None:
+    """A viewer the host refuses, as QCXZEB's was on 11 November, leaves its window standing.
+
+    What runs in the window starts the join again, which says so in a line, so the frame
+    changes there, and attaches once more; the window stays where it sat, and every key reaches
+    the viewer that took over.
+    """
+    session = "01d1-refused-attach"
+    try:
+        window = opened_held(desktop, session)
+        _, watching = watched_while_typing(desktop, session, window["id"])
+        moved_to_the_join(desktop, session)
+        desktop.as_account(f"touch ~/refuse-attach-{session} ~/hosted-{session}")
+        started_as(desktop, session, "attach")
+        typed_past(desktop, session)
+        assert desktop.as_account(f"cat ~/refusals-{session}").split() == ["refused"]
+        typed = typed_by(desktop, session)
+        assert typed == [f"w{n}" for n in range(1, len(typed) + 1)], typed
+        assert_unmoved(desktop, window, watching)
+        assert programs_for(desktop, session) == 1, "more than one program runs for it"
+    finally:
+        cleaned(desktop, session)
+        desktop.as_account(f"rm -f ~/refusals-{session} ~/refuse-attach-{session}")
 
 
 def opened_held(desktop: Desktop, session: str) -> Json:

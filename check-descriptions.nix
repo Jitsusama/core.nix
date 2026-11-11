@@ -3518,8 +3518,8 @@
     a session the launcher holds moves into pi's host in its own window, or carries on as plain pi
     there when the host won't take it or later releases it, keeping the window's id, workspace,
     column and size, taking
-    no focus, changing no pixel and losing no key; the node gives the session that window, so no
-    second viewer opens and Go To goes to it
+    no focus, changing no pixel and losing no key; a viewer its host refuses attaches again in that
+    window; the node gives the session that window, so no second viewer opens and Go To goes to it
   '';
   vm-desktop-opens-and-sets = ''
     the launcher sets sound and opens its outputs' and microphones' parts, works a program's media,
