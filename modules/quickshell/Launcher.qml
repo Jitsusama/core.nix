@@ -2865,6 +2865,9 @@ Scope {
     // for the check that an act changing one row weighs none but it.
     property var footRowsWeighed: null
     property int rowsWeighed: 0
+    // How many times the foot weighed any row afresh, so an opening says
+    // how often it weighed its rows before its frame (openDrawn).
+    property int keysWeighings: 0
     // How many figures the chosen count holds room for: as many as the
     // place has rows, three while the drawer is out, and only ever more
     // within a place, so rows arriving with no key pressed, as a scan's,
@@ -2933,6 +2936,8 @@ Scope {
         const said = listed.map(row => row === selected || visual ? weigh(row)
             : Pacing.weighedRow(kept, row, weigh)).filter(one => one.keys.length > 0);
         rowsWeighed += kept.weighed - before;
+        if (kept.weighed > before)
+            keysWeighings += 1;
         // Room for the drawer's own only once the keys have gone in, so
         // the rows' foot never gives up room to keys they don't show.
         // Choosing, the drawer names no key, so it takes no room.
@@ -7840,6 +7845,13 @@ Scope {
             rowChanges = Changes.changes();
             lastChange = null;
             commanding = null;
+            // Shut in the mode it opens in, so what it keeps is weighed for
+            // that mode while shut, and the opening's take() changes no
+            // mode. Closed by :q from normal, each reopening weighed its
+            // rows' keys for normal as the kept rows landed, then again for
+            // the find as take() changed the mode, 5 and 4 ms of Super+Tab's
+            // opening over 40 windows on a builder (ZINAWZ, 2026-11-11).
+            prompt.mode = prompt.typingMode;
         }
         madeSince(open ? "opening" : "closing");
         if (!open)
@@ -8002,6 +8014,7 @@ Scope {
             openSettled = -1;
             openBegun = -1;
             openKept = false;
+            openAskedWeighings = keysWeighings;
             presentedBegin(openAsked);
             openChord = "";
         }
@@ -8013,6 +8026,10 @@ Scope {
     // a slow one says which held it (Joel, 2026-11-10: 6,184 ms to the
     // frame for 107 ms of its own work).
     property real openSettled: -1
+    // How many times the foot had weighed rows by the ask, and by the
+    // opening's first frame, or -1 before it.
+    property int openAskedWeighings: 0
+    property int openFirstWeighings: -1
     property real openBegun: -1
     function askDone() {
         if (openAsked >= 0 && openSettled < 0)
@@ -8186,7 +8203,9 @@ Scope {
         // Asked once opening, as the card's size follows what it shows.
         openSizedAtAsk = drawnAsAsked();
         keysHeld = false;
-        openMark.setText("open\n");
+        // The mark says open once it's filled in (onOpenChanged), a frame
+        // or two on: written here, its blocking write held the first frame
+        // 3 to 8 ms, once 54, and what reads it waits minutes on it.
         prompt.take();
         if (openAsked >= 0) {
             openWorked = KeyTimes.now() - openAsked;
@@ -8242,6 +8261,7 @@ Scope {
         if (openFirstDrawn < 0) {
             openFirstDrawn = KeyTimes.now();
             openFirstMade = tallies();
+            openFirstWeighings = keysWeighings;
         }
         if (openFramesSized < (openSizedAtAsk ? 1 : 2) && openFramesWaited < 20) {
             afterFrame(openShown);
@@ -8537,9 +8557,12 @@ Scope {
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
         const kept = openKept;
+        const weighings = (openFirstWeighings < 0 ? keysWeighings : openFirstWeighings)
+            - openAskedWeighings;
+        openFirstWeighings = -1;
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
-        const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows,
+        const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows, weighings,
             made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
             into: openChord };
