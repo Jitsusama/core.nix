@@ -494,7 +494,10 @@ impl Way {
 
     /// Take in a moment: this direction's own delay, with the air and the
     /// other direction's path taken off, and what it carried.
-    pub fn step(&mut self, at: f64, delay_ms: f64, carried: f64, ours: Option<Ours>) {
+    ///
+    /// `unseen` says the delay is the round trip through a VPN alone, a
+    /// queue the link's probes don't meet.
+    pub fn step(&mut self, at: f64, delay_ms: f64, carried: f64, ours: Option<Ours>, unseen: bool) {
         // A gap, while the connection was left unlimited or asleep, is one
         // moment, not a climb all through it.
         let dt = self.last_at.map_or(0.0, |last| (at - last).clamp(0.0, 1.0));
@@ -541,12 +544,17 @@ impl Way {
             // A queue the probes see is first come, first served, and the
             // delay says where it is better than any plateau, which is
             // kept only as where to climb back to once it has gone. A
-            // queue standing while our CAKE holds one, and no probe runs,
-            // stands for a hold over the line, so the line is no more than
-            // what got through, and the hold climbs back under it.
+            // queue only the VPN's round trip meets, standing while our
+            // CAKE holds one and no probe runs, stands for a hold over a
+            // router that buffers the VPN's flow, so the line is no more
+            // than what got through, and the hold climbs back under it. A
+            // queue the probes meet says nothing of the line: the air or
+            // another machine took the moment, and what got through in it
+            // would ratchet the plateau down with every cut.
             if self.probing_until.take().is_some() {
                 self.next_probe = at + PROBE_EVERY_S;
-            } else if ours.is_some_and(|ours| ours.queued)
+            } else if unseen
+                && ours.is_some_and(|ours| ours.queued)
                 && let Some(plateau) = self.plateau
             {
                 self.plateau = Some(plateau.min(carried));
@@ -710,17 +718,19 @@ impl Controller {
     /// The upload's queue in the router that only the VPN's flow waits in,
     /// in ms.
     /// It's what the VPN's round trip took over its least, past what the
-    /// probes on the link found each way, while our CAKE held a queue:
-    /// then the VPN sends as fast as it's let, and what it fills is the
-    /// upload's. With our CAKE holding nothing, the VPN's flow is filled by
-    /// what the shaper doesn't hold, and cutting drains none of it.
+    /// probes on the link found each way, while the VPN's CAKE held a
+    /// queue: then the VPN sends as fast as it's let, and what it fills is
+    /// the upload's. With our CAKE holding nothing, the VPN's flow is
+    /// filled by what the shaper doesn't hold, and cutting drains none of
+    /// it. With the link's CAKE holding one, the VPN's flow waits in it,
+    /// ours, which the link's own rate already settles.
     fn hidden(&mut self, seen: &Seen, dt: f64) -> f64 {
         let Some(vpn) = seen.vpn_ms else {
             return 0.0;
         };
         let base = self.vpn_base.map_or(vpn, |b| vpn.min(b + VPN_RISE_MS * dt));
         self.vpn_base = Some(base);
-        if !seen.up_ours.is_some_and(|ours| ours.queued) {
+        if !seen.up_ours.is_some_and(|ours| ours.in_vpn) {
             return 0.0;
         }
         let probes = seen.up_delay_ms.unwrap_or(0.0) + seen.down_delay_ms.unwrap_or(0.0);
@@ -773,15 +783,22 @@ impl Controller {
         let idle_down = self.down.idle(seen.down_kbit);
         if let Some(delay) = up {
             let beside = if idle_down { down.unwrap_or(0.0) } else { 0.0 };
-            let delay = (delay - beside).max(0.0).max(hidden);
-            self.up.step(at, delay, seen.up_kbit, seen.up_ours);
+            let seen_delay = (delay - beside).max(0.0);
+            let unseen = hidden > seen_delay;
+            self.up.step(
+                at,
+                seen_delay.max(hidden),
+                seen.up_kbit,
+                seen.up_ours,
+                unseen,
+            );
         }
         if let Some(delay) = down {
             let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
             // The download's queue at home is the cable's, first come,
             // first served, which the delay finds.
             self.down
-                .step(at, (delay - beside).max(0.0), seen.down_kbit, None);
+                .step(at, (delay - beside).max(0.0), seen.down_kbit, None, false);
         }
         for way in [&mut self.up, &mut self.down] {
             if way.misbehaving(at) {
@@ -1123,7 +1140,7 @@ mod tests {
         way.rate = 150_000.0;
         let mut at = 0.0;
         while at < 20.0 {
-            way.step(at, 1.0, 0.0, None);
+            way.step(at, 1.0, 0.0, None, false);
             at += 0.1;
         }
         let rate = way.limit().expect("held");
@@ -1132,7 +1149,7 @@ mod tests {
             "1% a second toward base: {rate}"
         );
         while at < 60.0 {
-            way.step(at, 1.0, 0.0, None);
+            way.step(at, 1.0, 0.0, None, false);
             at += 0.1;
         }
         assert_eq!(way.limit(), Some(100_000));
@@ -1480,6 +1497,59 @@ mod tests {
         assert!(
             (16_000.0..=17_500.0).contains(&vpn),
             "the VPN sent at {vpn} on a 20000 line"
+        );
+    }
+
+    /// Steps a controller as `behind_a_vpn` does, on a 12000 line that
+    /// the air takes a third of for two seconds in every twenty, as the
+    /// Wi-Fi does when a neighbour talks: the probes meet a queue, and
+    /// what the link carries falls. Answers the VPN's median rate over
+    /// the last minute.
+    fn behind_a_vpn_on_busy_air(c: &mut Controller, to: f64) -> f64 {
+        let mut sent = Vec::new();
+        let mut at = 0.0;
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let vpn = rate * crate::qdisc::VPN_SHARE;
+            if at >= to - 60.0 {
+                sent.push(vpn);
+            }
+            let busy = at % 20.0 >= 18.0;
+            let line = if busy { 8_000.0 } else { 12_000.0 };
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: vpn.min(line),
+                up_delay_ms: Some(if busy { 40.0 } else { 1.0 }),
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: true,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(30.0 + if busy { 40.0 } else { 0.0 }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        replay::median(sent.into_iter()).unwrap_or(0.0)
+    }
+
+    // A queue the probes see while the air is busy is cut, as any is, but
+    // what got through in that moment says nothing of the line, so the
+    // plateau the probes found stays, and the hold climbs back to it. Each
+    // cut lowering the plateau to what got through ratcheted the VPN down
+    // to the floor in a minute and a half of the live proof.
+    #[test]
+    fn a_busy_moment_on_the_air_doesn_t_lower_the_plateau() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(11_843.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let vpn = behind_a_vpn_on_busy_air(&mut c, 300.0);
+        assert!(
+            vpn >= 9_000.0,
+            "the VPN sent at {vpn} on a 12000 line busy a tenth of the time"
         );
     }
 
