@@ -506,13 +506,13 @@ function refusal(answer, said) {
 function foundOf(words, answer) {
     const rows = {};
     for (const [key, row] of Object.entries(answer?.rows ?? {})) {
-        rows[key] = { key: key, kind: "row", row: row };
+        rows[key] = { key, kind: "row", row };
     }
     return {
         words: answer ? words : null,
         keys: answer?.keys ?? [],
         marks: answer?.marks ?? {},
-        rows: rows
+        rows
     };
 }
 
@@ -528,7 +528,7 @@ function foundRecord(found, held, key) {
 // no order, one a search found that's ahead and so served whole, only
 // replaces the answer's copy, which stands, as a drawer served apart
 // changes no row's place.
-function reranks(before, after, moved) {
-    const placed = new Set(before.concat(after));
-    return moved.some(key => placed.has(key));
+function reranks(before, now, moved) {
+    const either = new Set(before.concat(now));
+    return moved.some(key => either.has(key));
 }

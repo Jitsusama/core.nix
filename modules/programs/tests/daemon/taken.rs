@@ -70,7 +70,7 @@ fn what_was_taken_is_searched_newest_first_past_recents_nine() {
     // list never reads one before its time is set.
     let apart = running.path("apart");
     std::fs::create_dir_all(&apart).unwrap();
-    let since = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+    let since = SystemTime::UNIX_EPOCH + Duration::from_hours(500_000);
     for at in 1..=11 {
         let file = apart.join(format!("zz {at:02}.png"));
         std::fs::write(&file, "shot").unwrap();
