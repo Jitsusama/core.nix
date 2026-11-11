@@ -283,7 +283,12 @@ Provider {
     }
 
     // A fresh connection each time, since one refused or dropped doesn't
-    // try again by itself. What it sends again replaces what was held.
+    // try again by itself. What it sends again replaces what was held. One
+    // refused is tried again as Daemon.qml's are, two seconds on and twice
+    // as long after each refusal, a minute at most, and one with nothing at
+    // its path only once the socket appears: tried every two seconds, a
+    // nested niri without the history woke the shut shell twice a second
+    // for nothing else (RO9YDD, 2026-11-11).
     LazyLoader {
         id: link
         active: true
@@ -296,21 +301,59 @@ Provider {
             }
             onConnectionStateChanged: {
                 provider.linked = connected;
-                if (connected)
+                if (connected) {
+                    provider.refusals = 0;
                     provider.all = [];
-                else
-                    again.restart();
+                } else {
+                    provider.tryAgain();
+                }
             }
-            onError: again.restart()
+            onError: failed => {
+                if (failed !== provider.serverNotFound)
+                    provider.tryAgain();
+            }
         }
+    }
+
+    // QLocalSocket::ServerNotFoundError: nothing at the socket's path.
+    readonly property int serverNotFound: 2
+
+    // The socket's file, watched and never read, so one made after the
+    // last try is tried at once; watched only while there's no connection,
+    // since the watch covers the whole runtime folder.
+    FileView {
+        path: provider.socket
+        preload: false
+        printErrors: false
+        watchChanges: !provider.linked
+        onFileChanged: {
+            if (!provider.linked)
+                provider.connectAgain();
+        }
+    }
+
+    function connectAgain() {
+        again.stop();
+        link.active = false;
+        link.active = true;
+    }
+
+    // How many times it's been refused since it last answered.
+    property int refusals: 0
+
+    // A connection dropped says so twice, as its state and as an error,
+    // so a try already waiting counts once.
+    function tryAgain() {
+        if (again.running)
+            return;
+        again.interval = Math.min(2000 * 2 ** refusals, 60000);
+        refusals += 1;
+        again.restart();
     }
 
     Timer {
         id: again
         interval: 2000
-        onTriggered: {
-            link.active = false;
-            link.active = true;
-        }
+        onTriggered: provider.connectAgain()
     }
 }
