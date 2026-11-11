@@ -208,6 +208,7 @@
         nix-offload = ./modules/nix-offload/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
         noise-cancelled = ./modules/noise-cancelled/home.nix;
+        notices = ./modules/notices/home.nix;
         onepassword = moduleFrom ./modules/onepassword/home.nix { inherit (self.homeModules) passwords; };
         open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;

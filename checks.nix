@@ -1144,6 +1144,7 @@ gather (
     ./modules/nix-daemon/checks.nix
     ./modules/nix-offload/checks.nix
     ./modules/noise-cancelled/checks.nix
+    ./modules/notices/checks.nix
     ./modules/onepassword/checks.nix
     ./modules/open-with/checks.nix
     ./modules/openssh/checks.nix

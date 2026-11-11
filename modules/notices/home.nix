@@ -1,0 +1,77 @@
+# The desktop's notices, held by a daemon of their own: the notices
+# daemon, a program of core's own (src/main.rs), is the session bus's
+# notifications server, keeps every notice and its history, and serves
+# each to the shell over $XDG_RUNTIME_DIR/daemons/notices.sock in the
+# shell's daemon interface, as one record its cards and the launcher's
+# rows read, so the launcher holds no notice of its own (Joel,
+# 2026-11-10: "the daemons need to be the data layer, and they need to
+# serve the launcher"). It judges each sender by the levels the shell's
+# senders option sets, and holds a notice back while Quiet's file says so.
+#
+# Only one server may hold the notifications name, and the shell's own
+# holds it today, so nothing starts this unit yet: it's wanted by no
+# target and named by no D-Bus service file, and it never takes the name
+# from another. The change that starts it takes the shell's server out.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  package = pkgs.callPackage ./package.nix { };
+  # Each sender's level by its name in lower case, as the shell reads
+  # them; an account without the shell sets none, and every sender
+  # reaches a card.
+  levels = pkgs.writeText "notices-levels.json" (
+    builtins.toJSON (
+      lib.mapAttrs' (name: sender: lib.nameValuePair (lib.toLower name) sender.level) (
+        config.jitsusama.quickshell.notices.senders or { }
+      )
+    )
+  );
+in
+lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+  systemd.user.services.notices = {
+    Unit = {
+      Description = "Holds the desktop's notices and serves them to the shell";
+      X-SwitchMethod = "restart";
+      # Its socket is systemd's, handed to it as it starts.
+      Requires = [ "notices.socket" ];
+      After = [ "notices.socket" ];
+    };
+    Service = {
+      ExecStart = lib.escapeShellArgs [
+        (lib.getExe package)
+        "--socket"
+        "%t/daemons/notices.sock"
+        "--state"
+        "%S/notices"
+        "--levels"
+        "${levels}"
+        "--senders"
+        "${./senders.json}"
+        "--quiet"
+        "%t/quiet"
+        "--shells"
+        "%S/quickshell/by-shell"
+      ];
+      # A notice sent while it's down waits on the bus for it, so it comes
+      # straight back.
+      Restart = "always";
+      RestartSec = 1;
+    };
+  };
+
+  # Its socket, held by systemd whether or not the daemon runs, so the
+  # shell asking while it starts, or starts again, waits on it rather than
+  # finding no socket.
+  systemd.user.sockets.notices = {
+    Unit.Description = "Where the shell asks for the desktop's notices";
+    Socket = {
+      ListenStream = "%t/daemons/notices.sock";
+      SocketMode = "0600";
+      DirectoryMode = "0700";
+    };
+  };
+}
