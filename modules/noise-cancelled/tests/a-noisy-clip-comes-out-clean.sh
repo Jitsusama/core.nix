@@ -58,17 +58,20 @@ for cleaner in deepfilternet deepfilternet-gentle rnnoise; do
   echo "$cleaner: cleaned $length s of sound in $took s"
   echo "  noise $after dB, and $first dB as it started"
   echo "  voice $heard dB through the noise, $alone dB with none"
-  if (($(echo "$before - $after < ${promised[$cleaner]}" | bc))); then
+  short=$(echo "$before - $after < ${promised[$cleaner]}" | bc)
+  if ((short)); then
     echo "  the noise is less than ${promised[$cleaner]} dB quieter"
     failed=1
   fi
-  if (($(echo "($heard - $spoken)^2 > 36" | bc))); then
+  moved=$(echo "($heard - $spoken)^2 > 36" | bc)
+  if ((moved)); then
     echo "  the voice came out more than 6 dB from how it was spoken"
     failed=1
   fi
 done
 
-if (($(echo "${left[deepfilternet-gentle]} <= ${left[deepfilternet]}" | bc))); then
+harsher=$(echo "${left[deepfilternet-gentle]} <= ${left[deepfilternet]}" | bc)
+if ((harsher)); then
   echo "the gentle cleaner kept no more of the room than the full one"
   failed=1
 fi
