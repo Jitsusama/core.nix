@@ -3686,19 +3686,26 @@ onLinux {
         kind = "user";
       };
       # Strangers between those Tuple knows, so their order is the search's.
+      # Fay comes only once Ada goes into a call, a stranger nobody lists,
+      # whom only the daemon's search finds.
       snapshot =
         ada:
         pkgs.writeText "contacts.json" (
-          builtins.toJSON [
-            (contact 101 "Eli Fenwick" null "eli@example.com" "unknown" false false)
-            (contact 102 "Ada Brook" "Ada" "ada@example.com" ada true false)
-            (contact 103 null null "gus@example.com" "unknown" false false)
-            (contact 104 "Ben Carrow" null "ben@example.com" "busy" true false)
-            (contact 105 "Cal Dunmore" null "cal@example.com" "offline" false true)
-            (contact 106 "Zoë \"Zed\" Quill" null "zoe@example.com" "unknown" false false)
-            (contact 107 "Dee Ellery" null "dee@example.com" "unavailable" true false)
-            (contact 108 "" "Hal" null "unknown" false false)
-          ]
+          builtins.toJSON (
+            [
+              (contact 101 "Eli Fenwick" null "eli@example.com" "unknown" false false)
+              (contact 102 "Ada Brook" "Ada" "ada@example.com" ada true false)
+              (contact 103 null null "gus@example.com" "unknown" false false)
+              (contact 104 "Ben Carrow" null "ben@example.com" "busy" true false)
+              (contact 105 "Cal Dunmore" null "cal@example.com" "offline" false true)
+              (contact 106 "Zoë \"Zed\" Quill" null "zoe@example.com" "unknown" false false)
+              (contact 107 "Dee Ellery" null "dee@example.com" "unavailable" true false)
+              (contact 108 "" "Hal" null "unknown" false false)
+            ]
+            ++ lib.optional (ada == "busy") (
+              contact 109 "Fay Gale" null "fay@example.com" "unknown" false false
+            )
+          )
           + "\n"
         );
       # Tuple's follow says everyone, then again once Ada goes into a call,
