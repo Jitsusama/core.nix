@@ -216,7 +216,7 @@ pub fn ask(line: &str) -> Ask {
     let of = match kind {
         KIND => Of::Entries,
         ROW if matches!(asked, "list" | "watch") => Of::Rows,
-        DRAWER if matches!(asked, "list" | "watch") => Of::Drawers(keys("drawer:entry:")),
+        DRAWER if matches!(asked, "list" | "watch") => Of::Drawers(keys("drawer:passwords:")),
         _ if matches!(asked, "list" | "watch" | "search") => {
             return Ask::UnknownKind {
                 id,
@@ -1068,10 +1068,11 @@ mod tests {
         );
         assert_eq!(
             ask(r#"{"id":9,"ask":"watch","kind":"drawer",
-                    "keys":["drawer:entry:onepassword:a","row:entry:onepassword:b"]}"#),
+                    "keys":["drawer:passwords:entry:onepassword:a",
+                             "row:passwords:entry:onepassword:b"]}"#),
             Ask::Watch {
                 id: json!(9),
-                of: Of::Drawers(vec!["drawer:entry:onepassword:a".to_owned()])
+                of: Of::Drawers(vec!["drawer:passwords:entry:onepassword:a".to_owned()])
             },
             "a drawer watch kept a key that names no drawer"
         );

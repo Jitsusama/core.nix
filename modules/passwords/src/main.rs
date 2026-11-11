@@ -64,9 +64,10 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use passwords::{
-    Ask, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, ROW, Said, Standing, VERSION, ask,
-    audit, cli, error, key, named, now, rows, said, standing,
+    Ask, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, Said, Standing, VERSION, ask, audit,
+    cli, error, key, named, now, rows, said, standing,
 };
+use ready_rows::kept::Kept;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -111,19 +112,25 @@ struct Watch {
 impl Watch {
     /// Whether a row or drawer by this key is one it watches.
     fn hears(&self, key: &str) -> bool {
-        match &self.of {
-            Of::Entries => false,
-            Of::Rows => key.starts_with("row:"),
-            Of::Drawers(keys) => keys.iter().any(|each| each == key),
-        }
+        hears(&self.of, key)
     }
 }
 
-/// What rows are made with, and the last each row watch was told.
+/// Whether a row or drawer by this key is among those `of` names.
+fn hears(of: &Of, key: &str) -> bool {
+    match of {
+        Of::Entries => false,
+        Of::Rows => key.starts_with("row:"),
+        Of::Drawers(keys) => keys.iter().any(|each| each == key),
+    }
+}
+
+/// What rows are made with, and the rows and drawers as last told, each
+/// row with its spaced order.
 struct Rows {
     shown: Vec<rows::Shown>,
     words: Option<rows::Words>,
-    told: HashMap<String, Value>,
+    kept: Kept,
 }
 
 /// Everything the threads share.
@@ -213,7 +220,7 @@ fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
             rows: Rows {
                 shown,
                 words: words.and_then(vocabulary),
-                told: HashMap::new(),
+                kept: Kept::default(),
             },
         }),
         Condvar::new(),
@@ -240,16 +247,14 @@ fn vocabulary(path: &str) -> Option<rows::Words> {
         .ok()
 }
 
-/// Every entry's row as it stands, as a record of kind `row`.
+/// Every entry's row as it stands, in the order shown, for what's kept
+/// to give each its order.
 fn rows_of(daemon: &Daemon) -> Vec<Value> {
-    // Rows are served only in the launcher's words, whole.
-    if daemon.rows.words.is_none() {
-        return Vec::new();
-    }
-    rows::rows(&daemon.held.records(), &daemon.rows.shown)
-        .into_iter()
-        .map(|row| json!({"key": row["key"], "kind": ROW, "row": row}))
-        .collect()
+    rows::rows(
+        &daemon.held.records(),
+        &daemon.rows.shown,
+        &daemon.rows.kept,
+    )
 }
 
 /// The drawers by these keys as they stand, as records of kind `drawer`,
@@ -263,8 +268,9 @@ fn drawers_of(daemon: &Daemon, keys: &[String]) -> Vec<Value> {
         .records()
         .into_iter()
         .filter(|record| {
-            let drawer = format!("drawer:{}", record["key"].as_str().unwrap_or_default());
-            keys.contains(&drawer)
+            keys.contains(&rows::drawer_key(
+                record["key"].as_str().unwrap_or_default(),
+            ))
         })
         .collect();
     rows::drawers(&shown, &daemon.rows.shown, words)
@@ -273,34 +279,43 @@ fn drawers_of(daemon: &Daemon, keys: &[String]) -> Vec<Value> {
         .collect()
 }
 
-/// The rows and drawers a watch is of, as they stand now.
-fn made_of(daemon: &Daemon, of: &Of) -> Vec<Value> {
-    match of {
-        Of::Entries => daemon.held.records(),
-        Of::Rows => rows_of(daemon),
-        Of::Drawers(keys) => drawers_of(daemon, keys),
+/// The entries, or the rows and drawers `of` names as they stand now,
+/// those told to every watch first where they changed, so what's kept is
+/// what's answered and the next change is told against it.
+fn made_of(daemon: &mut Daemon, of: &Of) -> Vec<Value> {
+    if *of == Of::Entries {
+        return daemon.held.records();
     }
-}
-
-fn keyed(made: Vec<Value>) -> impl Iterator<Item = (String, Value)> {
-    made.into_iter().map(|record| {
-        (
-            record["key"].as_str().unwrap_or_default().to_owned(),
-            record,
-        )
-    })
+    tell_rows(daemon, Some(of));
+    let mut made: Vec<Value> = daemon
+        .rows
+        .kept
+        .all()
+        .filter(|record| hears(of, record["key"].as_str().unwrap_or_default()))
+        .cloned()
+        .collect();
+    // Kept by key, rows are answered in their order, so a limit keeps the
+    // first shown.
+    made.sort_by_key(|record| record["row"]["order"].as_i64());
+    made
 }
 
 /// Tells each row or drawer watch what it watches that changed since it
-/// was last told, and what's gone: one entry changing can move every
-/// row's order, and a drawer changes with its entry. Nothing is made
-/// that nobody watches, and a watch nothing changed for is told nothing.
-fn tell_rows(daemon: &mut Daemon) {
-    let rowing = daemon.watches.iter().any(|watch| watch.of == Of::Rows);
-    let drawing: Vec<String> = daemon
+/// was last told, and what's gone: one entry moving is its row alone,
+/// its order spaced between its neighbours', and a drawer changes with
+/// its entry. Nothing is made that nobody watches nor `also` names, and a
+/// watch nothing changed for is told nothing.
+fn tell_rows(daemon: &mut Daemon, also: Option<&Of>) {
+    let wanted: Vec<&Of> = daemon
         .watches
         .iter()
-        .filter_map(|watch| match &watch.of {
+        .map(|watch| &watch.of)
+        .chain(also)
+        .collect();
+    let rowing = wanted.iter().any(|of| **of == Of::Rows);
+    let drawing: Vec<String> = wanted
+        .iter()
+        .filter_map(|of| match of {
             Of::Drawers(keys) => Some(keys.clone()),
             _ => None,
         })
@@ -308,40 +323,40 @@ fn tell_rows(daemon: &mut Daemon) {
         .collect();
     if !rowing && drawing.is_empty() {
         // Nobody is told against it, so the next watch starts it afresh.
-        daemon.rows.told.clear();
+        daemon.rows.kept.let_go();
         return;
     }
     let made = if rowing { rows_of(daemon) } else { Vec::new() };
-    let now: HashMap<String, Value> = keyed(made)
-        .chain(keyed(drawers_of(daemon, &drawing)))
-        .collect();
-    let changed: Vec<(&String, &Value)> = now
-        .iter()
-        .filter(|(key, record)| daemon.rows.told.get(*key) != Some(*record))
-        .collect();
-    let gone: Vec<&String> = daemon
-        .rows
-        .told
-        .keys()
-        .filter(|key| !now.contains_key(*key))
-        .collect();
+    let beside = drawers_of(daemon, &drawing);
+    let moved = daemon.rows.kept.take(made, beside);
     for watch in &daemon.watches {
-        let heard: Vec<&Value> = changed
+        let heard: Vec<&Value> = moved
+            .changed
             .iter()
-            .filter(|(key, _)| watch.hears(key))
-            .map(|(_, record)| *record)
+            .filter(|record| watch.hears(record["key"].as_str().unwrap_or_default()))
             .collect();
-        let ended: Vec<&String> = gone
-            .iter()
-            .copied()
-            .filter(|key| watch.hears(key))
-            .collect();
+        let ended: Vec<&String> = moved.gone.iter().filter(|key| watch.hears(key)).collect();
         if !(heard.is_empty() && ended.is_empty()) {
             let line = json!({"id": watch.id, "changed": heard, "gone": ended});
             let _ = watch.told.send(line.to_string());
         }
     }
-    daemon.rows.told = now;
+}
+
+/// Refuses a list or watch of rows or drawers where the launcher's words
+/// weren't read, since rows are served only in them, whole, saying so
+/// rather than answering none.
+fn wordless(shared: &Shared, asked: &Ask) -> Option<Value> {
+    let (Ask::List { id, of, .. } | Ask::Watch { id, of }) = asked else {
+        return None;
+    };
+    (*of != Of::Entries && lock(shared).rows.words.is_none()).then(|| {
+        error(
+            id,
+            "no-words",
+            "rows are said only in the launcher's words, and they didn't read",
+        )
+    })
 }
 
 /// Where what the checks found is kept: the account's state folder's
@@ -415,7 +430,7 @@ fn keep(daemon: &mut Daemon) {
         let _ = watch.told.send(line.to_string());
     }
     // What a check found is said on each row it found troubled.
-    tell_rows(daemon);
+    tell_rows(daemon, None);
 }
 
 /// The socket systemd holds for it (passwords.socket), so the shell never
@@ -568,7 +583,7 @@ fn took_in(shared: &Shared, manager: &str, line: &str) {
                     let line = json!({"id": watch.id, "changed": records, "gone": changes.gone});
                     let _ = watch.told.send(line.to_string());
                 }
-                tell_rows(&mut daemon);
+                tell_rows(&mut daemon, None);
             }
             // A list finding an entry changed or gone takes what a check
             // found of it.
@@ -674,7 +689,9 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
         let told = told.clone();
         std::thread::spawn(move || {
             let started = Instant::now();
-            let answer = answer(&shared, ask(&line), connection, &told);
+            let asked = ask(&line);
+            let answer = wordless(&shared, &asked)
+                .unwrap_or_else(|| answer(&shared, asked, connection, &told));
             if !answer.is_null() {
                 let _ = told.send(answer.to_string());
             }
@@ -796,12 +813,8 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
 /// change as it comes.
 fn watch(shared: &Shared, watch: Watch) {
     let mut daemon = lock(shared);
-    let records = made_of(&daemon, &watch.of);
-    // What it's told now is what the next change is told against, beside
-    // what the other watches were told.
-    if watch.of != Of::Entries {
-        daemon.rows.told.extend(keyed(records.clone()));
-    }
+    // What it's told now is kept, and the next change told against it.
+    let records = made_of(&mut daemon, &watch.of);
     let _ = watch.told.send(
         json!({"id": watch.id, "records": records,
                "sources": daemon.held.standings(), "state": daemon.held.state()})
@@ -813,8 +826,8 @@ fn watch(shared: &Shared, watch: Watch) {
 /// Every entry held, or its row or the drawers where `of` asks, at most
 /// `limit`, and how each manager stands.
 fn listed(shared: &Shared, id: &Value, limit: Option<usize>, of: &Of) -> Value {
-    let daemon = lock(shared);
-    let mut records = made_of(&daemon, of);
+    let mut daemon = lock(shared);
+    let mut records = made_of(&mut daemon, of);
     if let Some(limit) = limit {
         records.truncate(limit);
     }
@@ -1165,7 +1178,7 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
             let line = json!({"id": watch.id, "changed": records, "gone": []});
             let _ = watch.told.send(line.to_string());
         }
-        tell_rows(&mut daemon);
+        tell_rows(&mut daemon, None);
     }
     keep(&mut daemon);
     let troubled: Vec<Value> = daemon
