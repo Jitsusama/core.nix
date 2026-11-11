@@ -517,15 +517,47 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
                 {"name": "Time Zone", "zone": "Europe/London", "as": "zone"}
             ]),
             &serde_json::json!([{"key": "verb:person:slack",
-                "ask": {"open": {"link": "slack://user?team=T1&id=U1"}}}])
+                "open": "slack://user?team=T1&id=U1"}])
         )
     );
     // Who she is stays as the shell's source reads it.
     assert_eq!(ada[0]["zone"], "Europe/London");
+    // Nobody Slack knows has nothing to write to, and a fact says so.
     assert_eq!(
-        ada[1]["acts"],
-        serde_json::json!([{"key": "verb:person:slack", "gone": true,
-            "side": [{"said": "not in Slack"}]}])
+        (&ada[1]["facts"], &ada[1]["acts"]),
+        (
+            &serde_json::json!([{"name": "Slack", "said": "not in Slack"}]),
+            &serde_json::json!([])
+        )
+    );
+    // Lin, asked ahead, has her conversation with Joel as a row ready for
+    // her Recent, with its messages in its drawer.
+    let lin = said_to(
+        program(&stand_in.origin, &path).spawn().unwrap(),
+        "?lin@example.com\n",
+    );
+    let lin: serde_json::Value = serde_json::from_str(&lin[0]).unwrap();
+    assert_eq!(
+        lin["conversations"],
+        serde_json::json!([{
+            "at": 1_730_312_345_000_u64,
+            "key": "slack:conversation:D4",
+            "row": {
+                "name": "See you there & then",
+                "glyph": "chat",
+                "hue": "program",
+                "side": [{"said": "Slack"}, {"at": 1_730_312_345_000_u64, "as": "ago"}],
+                "acts": [
+                    {"key": "verb:slack:open", "open": "slack://channel?team=T1&id=D4"},
+                    {"key": "verb:slack:link", "copy": "https://slack.example/archives/D4/p2"}
+                ]
+            },
+            "drawer": {
+                "title": "Lin Chen",
+                "facts": [],
+                "body": "You: Lunch, @Lin Chen?\n\nLin Chen: See you there & then"
+            }
+        }])
     );
     forget(&path);
 }

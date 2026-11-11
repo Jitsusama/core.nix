@@ -9579,6 +9579,11 @@
       "name": "Time Zone"
     },
     {
+      "id": "slack:person:source",
+      "in": "people",
+      "name": "Slack"
+    },
+    {
       "id": "verb:slack:message:open",
       "command": "open",
       "in": "slack:message",

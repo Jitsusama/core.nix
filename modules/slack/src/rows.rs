@@ -132,7 +132,7 @@ fn row(one: &Conversation, place: &str, order: u64, words: &Words) -> Value {
         "depth": 0,
         "side": side,
         "note": words.kinds.get(kind).cloned().unwrap_or_default(),
-        "acts": [{"key": "verb:slack:open", "ask": {"open": {"link": one.link}}}],
+        "acts": [message_rows::open("verb:slack:open", &one.link)],
         "held": {"id": one.id, "count": one.count, "at": one.at},
     })
 }
@@ -208,8 +208,7 @@ mod tests {
                 "place": "slack-unread", "kind": "dm", "order": 1024, "name": "D1's",
                 "glyph": "chat", "hue": "program", "depth": 0,
                 "side": [{"said": "2 to read"}], "note": "a dm",
-                "acts": [{"key": "verb:slack:open",
-                          "ask": {"open": {"link": "slack://channel?team=T1&id=D1"}}}],
+                "acts": [{"key": "verb:slack:open", "open": "slack://channel?team=T1&id=D1"}],
                 "held": {"id": "D1", "count": 2, "at": "1730300000.000100"},
             })
         );

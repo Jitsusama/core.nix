@@ -56,6 +56,18 @@ impl Words {
     }
 }
 
+/// An act the shell does itself, opening `link` in what opens it, as
+/// ready-rows.md's acts name it: one of `{ key, ask }` sent back on the
+/// socket, `{ key, open }` or `{ key, copy }` (Y2YBTS, 2026-11-10).
+pub(crate) fn open(key: &str, link: &str) -> Value {
+    json!({"key": key, "open": link})
+}
+
+/// An act the shell does itself, copying `text` to the clipboard.
+pub(crate) fn copy(key: &str, text: &str) -> Value {
+    json!({"key": key, "copy": text})
+}
+
 /// The word at `at` in the vocabulary's thing `id`, or what's missing:
 /// the thing, or the word in it.
 pub(crate) fn word(vocabulary: &Value, id: &str, at: &[&str]) -> Result<String, String> {
@@ -122,10 +134,9 @@ fn row(one: &Raised, id: &str, order: u64, drawer: &str, words: &Words) -> Value
     } else {
         one.link.clone()
     };
-    let mut acts =
-        vec![json!({"key": "verb:slack:message:open", "ask": {"open": {"link": opens}}})];
+    let mut acts = vec![open("verb:slack:message:open", &opens)];
     if !one.link.is_empty() {
-        acts.push(json!({"key": "verb:slack:message:link", "ask": {"copy": one.link}}));
+        acts.push(copy("verb:slack:message:link", &one.link));
     }
     json!({
         "key": format!("row:{MESSAGES}:{id}"),
@@ -262,9 +273,9 @@ mod tests {
             made[0].1["row"]["acts"],
             json!([
                 {"key": "verb:slack:message:open",
-                 "ask": {"open": {"link": "https://ada.slack.com/archives/C1/p1.000100"}}},
+                 "open": "https://ada.slack.com/archives/C1/p1.000100"},
                 {"key": "verb:slack:message:link",
-                 "ask": {"copy": "https://ada.slack.com/archives/C1/p1.000100"}},
+                 "copy": "https://ada.slack.com/archives/C1/p1.000100"},
             ])
         );
     }
@@ -276,8 +287,7 @@ mod tests {
         let made = records(&[one], &words());
         assert_eq!(
             made[0].1["row"]["acts"],
-            json!([{"key": "verb:slack:message:open",
-                    "ask": {"open": {"link": "slack://channel?team=T1&id=C1"}}}])
+            json!([{"key": "verb:slack:message:open", "open": "slack://channel?team=T1&id=C1"}])
         );
     }
 
