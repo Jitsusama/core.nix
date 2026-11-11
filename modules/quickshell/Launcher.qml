@@ -5557,8 +5557,11 @@ Scope {
     // when, on the monotonic clock.
     function keysFrameBegun() {
         const begun = KeyTimes.now();
+        // The frame about to begin, as FramePresentation will number it.
+        const frame = surface.FramePresentation.framesBegun + 1;
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
+            key.frame = frame;
             presentedAwait(key.pressed, at => keyPresented(key.pressed, at, key));
         }
         keysDrawing = Pacing.frameBegun(keysDrawing);
@@ -5585,6 +5588,24 @@ Scope {
         keyDrawn(swapped.shown);
     }
 
+    // A key's drawing said apart by the render thread's own times of its
+    // frame (frame-presentation.patch's timesOf): from the frame's start to
+    // the end of its sync, the polish and sync the GUI thread does; then its
+    // render and swap; then how long the GUI thread, busy with other work,
+    // took to hear the swap, which the frame never waited on. Its swap is
+    // sent from the render thread and heard queued, so Joel's "meet" said
+    // 77 ms drawing with 3 rows new, and "me" 51 with 11 (2026-11-11). None
+    // where the frame had no sync or wasn't the one it was numbered.
+    function frameSplit(key, shown) {
+        const times = surface.FramePresentation.timesOf(key.frame ?? 0);
+        if (!times.swapped || !times.synchronized)
+            return null;
+        const split = { syncing: Math.round(times.synchronized - key.begun),
+            rendering: Math.round(times.swapped - times.synchronized),
+            heard: Math.round(shown - times.swapped) };
+        return split.syncing >= 0 && split.heard >= 0 ? split : null;
+    }
+
     function keyDrawn(drawnKeys) {
         const drawn = Date.now();
         const shown = KeyTimes.now();
@@ -5593,10 +5614,11 @@ Scope {
         // for the frame that drew it, then drawing it, so a key whose frame
         // came 80 ms after a 30 ms search says which held it (Joel's "ag",
         // 2026-11-11).
-        trials.timed(newest.searched, drawn - newest.began, newest.parts, newest.text, {
-            waiting: Math.round(newest.begun - newest.done),
-            drawing: Math.round(shown - newest.begun)
-        });
+        trials.timed(newest.searched, drawn - newest.began, newest.parts, newest.text,
+            Object.assign({
+                waiting: Math.round(newest.begun - newest.done),
+                drawing: Math.round(shown - newest.begun)
+            }, frameSplit(newest, shown)));
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
         for (const key of drawnKeys) {
@@ -8878,7 +8900,9 @@ Scope {
     // when the shell heard it and its frame began, to say where it went.
     property var keysPresented: []
     function keyPresented(from, at, key) {
-        const one = { from, at, heard: key.heard, begun: key.begun };
+        const times = surface.FramePresentation.timesOf(key.frame ?? 0);
+        const one = { from, at, heard: key.heard, begun: key.begun,
+            synchronized: times.synchronized ?? null, swapped: times.swapped ?? null };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
         // A key that set no glide going stood where it went at its first
         // frame, so it landed there.

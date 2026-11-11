@@ -65,7 +65,15 @@ Scope {
                     + ` rows ${parts.rows}, answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}` : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
-                    + " drawing it" : ""));
+                    + " drawing it" + drew(frame) : ""));
+    }
+
+    // What drawing it was, by the render thread's times of its frame where
+    // they were read: its polish and sync, its render and swap, and the GUI
+    // thread hearing the swap late, which the three add up to.
+    function drew(frame) {
+        return frame.syncing === undefined ? "" : ` (${frame.syncing} syncing,`
+            + ` ${frame.rendering} rendering, ${frame.heard} before the shell heard it)`;
     }
 
     // A drawer's time from the work begun for it to the frame that drew it,

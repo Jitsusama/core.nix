@@ -35,7 +35,9 @@
 # showed, and Qt binds no presentation-time to say when niri did, so
 # frame-presentation.patch adds FramePresentation, which asks niri for each
 # frame's presentation feedback and says when it was shown: the launcher
-# times Joel's every opening to it (Launcher.qml). All ten are laid over the
+# times Joel's every opening to it (Launcher.qml). It times each frame's
+# sync, render and swap on the render thread too, since the GUI thread
+# hears a swap only once it's free. All ten are laid over the
 # machine's packages, so the shell, the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the

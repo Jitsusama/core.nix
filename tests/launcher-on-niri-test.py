@@ -57,6 +57,14 @@ STRETCH = 4096
 # shows on Joel's own screen, where niri presents at the display's flip.
 COPIED_BEFORE_PRESENTED = timedelta(milliseconds=250)
 
+# How a key's line says its drawing, and what its render thread's times make of it (Trials.qml's
+# drew), each part rounded to a millisecond apart, so the three may miss the whole by two.
+DRAWING_SPLIT = re.compile(
+    r"(?P<drawing>\d+) drawing it \((?P<syncing>\d+) syncing, (?P<rendering>\d+) rendering,"
+    r" (?P<heard>\d+) before the shell heard it\)"
+)
+ROUNDED = 2
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -2209,11 +2217,14 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     Joel's bar is every key's change visible within 50 ms (2026-11-10), so each key is timed to
     niri's presentation feedback for the frame that drew it: niri's screen first shows what the
     key found no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and no
-    picture after it lacks it.
+    picture after it lacks it. Its frame's sync and swap are timed on the render thread, since
+    the shell hears a swap only once it's free, which made Joel's "meet" say 77 ms drawing with
+    3 rows new (2026-11-11).
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     before = screen()
+    since = shell.mark()
     shell.as_account("wtype w")
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     seen, unchanged = first_changed(before, deadline)
@@ -2229,6 +2240,21 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
         f"said {key}; niri's screen showed it at {seen:.0f}"
     )
     presented_after_unchanged(key["at"], unchanged, "the key")
+    # Its frame's sync and swap are read on the render thread as they happen, never when the
+    # shell hears of them, so they fall between its frame's start and niri showing it.
+    stamps = [key.get("begun"), key.get("synchronized"), key.get("swapped"), key.get("at")]
+    assert None not in stamps and stamps == sorted(stamps), (
+        f"its frame began, synced, swapped and was shown at {stamps}"
+    )
+    # And its line says its drawing so, the three adding up to it but for rounding.
+    said = shell.log.read_bytes()[since:].decode(errors="replace")
+    drew = DRAWING_SPLIT.search(said)
+    assert drew, f"its line never said its drawing apart:\n{said[-600:]}"
+    drawing, syncing, rendering, heard = (int(part) for part in drew.groups())
+    assert abs(syncing + rendering + heard - drawing) <= ROUNDED, (
+        f"{drawing} ms drawing, said as {syncing} syncing, {rendering} rendering"
+        f" and {heard} before the shell heard it"
+    )
     # A letter sets no glide going, so it landed at its first frame.
     landed = json.loads(shell.as_account(shell.ipc("keysLanded")))
     assert key in landed, f"the letter {key} didn't land at its first frame: {landed}"
