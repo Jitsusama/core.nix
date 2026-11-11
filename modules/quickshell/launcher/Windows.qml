@@ -347,8 +347,15 @@ Provider {
         if (!provider.reordered)
             return;
         provider.reordered = false;
+        provider.listed();
+    }
+    // The rows in the order held, This Window first. A window held whole
+    // while the rows weren't wanted has no row yet (unmade), so it's left
+    // out until it's made.
+    function listed() {
         provider.things = (provider.thisOne.row ? [provider.thisOne.row] : [])
-            .concat(provider.held.order.map(key => provider.kept[key]));
+            .concat(provider.held.order.map(key => provider.kept[key])
+                .filter(row => row !== undefined));
     }
 
     // Takes what the daemon said, making again only the rows of windows
@@ -402,8 +409,7 @@ Provider {
             else if (key === provider.thisOne.key)
                 Object.assign(provider.thisOne, { key: "", row: null });
         }
-        provider.things = (provider.thisOne.row ? [provider.thisOne.row] : [])
-            .concat(provider.held.order.map(key => provider.kept[key]));
+        provider.listed();
     }
 
     // A window's names, as its record says them: its program's entry by id,

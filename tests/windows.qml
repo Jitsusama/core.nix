@@ -340,6 +340,12 @@ ShellRoot {
                 records: [window(14, "Ledger", 1, 500000, false, 3)] }));
             Expect.same("the window asked whole while the rows aren't wanted makes no row",
                 windows.tally.rows - madeShut, 0);
+            used.said(JSON.stringify({ changed: [{ key: "window:15", order: 550000 }] }));
+            used.said(JSON.stringify({ id: `find-${used.asked}`,
+                records: [window(15, "Tally", 1, 550000, false, 3)] }));
+            used.said(JSON.stringify({ changed: [], gone: ["window:15"] }));
+            Expect.same("a window gone meanwhile lists no row for those not yet made",
+                windows.things.filter(row => row === undefined).length, 0);
             theLauncher.hiding = false;
             used.said(JSON.stringify({ changed: [{ key: "window:11", order: 600000 }] }));
             Niri.focused = 11;
