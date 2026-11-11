@@ -1284,6 +1284,32 @@ Provider {
             Array.from(node.audio.channels ?? []).length, carried(node),
             factsOf(node).map(fact => fact.name)]))
 
+    // And what one device's spots are made of, so a change to one device
+    // makes only its spots again as the launcher closes (Launcher.qml's
+    // heldSpots): its row and each part served inside it by key, name,
+    // mark and hue, and what spotsStamp says of its node; never a volume
+    // or a level. Joel's closing at 14:36 on 2026-11-11 made all 111 of
+    // Sound's rows again for one device's change. Null for a row not made
+    // of a device now, so it's made again. The daemon serving every part
+    // ready, by 13 November, ends it.
+    function spotsStampOf(thing) {
+        if (ready.stampOf(thing) === null)
+            return null;
+        const key = ready.madeOf[thing.key];
+        const row = ready.served(key);
+        const node = nodeOf(row);
+        if (!node?.audio)
+            return null;
+        const steady = one => [one.name ?? "", one.glyph ?? "", one.hue ?? ""];
+        const parts = ready.keys.filter(one => ready.served(one)?.parent === key)
+            .map(one => [one].concat(steady(ready.served(one))));
+        return JSON.stringify([key, steady(row), parts, named(node), kind(node), chosen(node),
+            switches(node), ready.served(`${key}:programs`)?.side ?? [],
+            filtersOf(node).map(filter => filter.name),
+            Array.from(node.audio.channels ?? []).length, carried(node),
+            factsOf(node).map(fact => fact.name)]);
+    }
+
     // A device's row as it's served now, for Now's Volume and Microphone,
     // which borrow its drawer while Now is held and these rows aren't
     // wanted. Where they're wanted, or for a key no device has, the

@@ -7,7 +7,8 @@
 // shut, a row served anew makes none of its rows, and Now's Volume borrows
 // a device's row as it's served; wanted again, they're made once, and a
 // device's row served anew remakes it alone; and what its spots are made
-// of moves only once a device comes or goes; and a device's Port, served
+// of moves only once a device comes or goes, and what one device's are
+// made of only once a part inside it does; and a device's Port, served
 // inside its row, steps into its choices, a choice's Return asking the
 // daemon to move it, as its option does; and its Use, Muted and Volume,
 // served, lead its parts in Sound's order, Muted's act named Unmute once
@@ -260,6 +261,10 @@ ShellRoot {
         expect("and home's count says them", sound.counted() === "1 out \u00b7 1 in",
             sound.counted());
         root.stamp = sound.spotsStamp;
+        root.first = rows[0];
+        root.thingStamp = sound.spotsStampOf(rows[0]) ?? "";
+        expect("a device says what its own spots are made of", root.thingStamp !== "",
+            root.thingStamp);
         asking.wanting = false;
         root.before = sound.tally.rows;
         tell(served(deskSpeakers.name, "Desk Speakers", 1024, true, 0.3));
@@ -269,6 +274,9 @@ ShellRoot {
 
     property string stamp: ""
     property int before: 0
+    // The speakers' row as first listed, and what its spots were made of.
+    property var first: null
+    property string thingStamp: ""
 
     function shut() {
         expect("shut, a row served anew makes none of its rows",
@@ -283,6 +291,10 @@ ShellRoot {
             names(wanted) === "sound:usb-desk-speakers, sound:usb-desk-microphone"
             && wanted[0].note === "volume 30%" && sound.tally.rows - made <= 2,
             `${sound.tally.rows - made} made, ${names(wanted)}`);
+        expect("a volume served anew leaves what the device's spots are made of",
+            sound.spotsStampOf(wanted[0]) === root.thingStamp, sound.spotsStampOf(wanted[0]));
+        expect("and a row left from before says nothing, so it's made again",
+            sound.spotsStampOf(root.first) === null, sound.spotsStampOf(root.first));
         root.wanted = wanted;
         root.before = sound.tally.rows;
         tell(served(deskMicrophone.name, "Desk Microphone", 2048, false, 0.7));
@@ -365,6 +377,9 @@ ShellRoot {
             .find(part => part.key === `sound:${deskSpeakers.name}:port`);
         expect("a served Port is a setting saying the one in use",
             port.offers === true && port.side === "Headphones", `${port.offers}, ${port.side}`);
+        expect("a part served inside a device moves what its spots are made of",
+            sound.spotsStampOf(sound.everything()[0]) !== root.thingStamp,
+            sound.spotsStampOf(sound.everything()[0]));
         const choices = port.targets();
         expect("it steps into each port to move to, as they were keyed",
             names(choices) === "verb:sound-port-1, verb:sound-port-2", names(choices));
