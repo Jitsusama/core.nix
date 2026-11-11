@@ -2439,6 +2439,15 @@
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
     boot, and says each as the agent source contract's record, leaving out what pi didn't say
   '';
+  pi-spawner-passes-clippy = ''
+    clippy finds nothing in pi-spawner or its tests, which starts pi's shell commands for it from
+    a process small enough to start them cheaply
+  '';
+  pi-spawner-starts-commands-for-pi = ''
+    pi-spawner passes on what a command writes and how it ends, runs it in the folder and with
+    only the variables pi gives, in a process group of its own, says why one couldn't start, stops
+    sending a dropped one, and kills every group still running once pi goes
+  '';
   pi-sorts-without-collecting = ''
     pi's sessions, as many and as large as Joel's, each changing its step with the launcher shut
     and then showing, start a garbage collection in fewer than one change in five, sorted and

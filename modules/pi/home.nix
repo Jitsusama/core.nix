@@ -337,9 +337,12 @@ in
     # the agent fence: a pid namespace of its own, so no other process's
     # /proc, and a runtime folder holding only the sockets pi lets through,
     # so no display, bus or password socket. Nothing runs under either
-    # until a session asks for a fence.
+    # until a session asks for a fence. pi-spawner starts the agent's
+    # commands for the harness, from a process small enough that starting
+    # one doesn't stall pi (spawner/src/main.rs).
     home.packages =
       lib.optional (!onClaude) piClaude
+      ++ [ (pkgs.callPackage ./spawner/package.nix { }) ]
       ++ [
         (import ./ask.nix {
           inherit pkgs lib piClaude;
