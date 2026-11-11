@@ -192,10 +192,9 @@ pub fn paused(config: &Config) -> Option<String> {
 /// for to keep a change off the machine.
 #[must_use]
 pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String> {
-    let held = read(config);
-    for hold in &held.commits {
+    for hold in &read(config).commits {
         let mut unknown = None;
-        let mut holds = |seen: Result<bool, Failure>| match seen {
+        let mut judged = |seen: Result<bool, Failure>| match seen {
             Ok(true) => true,
             Ok(false) => false,
             Err(failure) => {
@@ -203,13 +202,13 @@ pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String>
                 false
             }
         };
-        let in_main = holds(match &config.hosted {
+        let in_main = judged(match &config.hosted {
             Some(hosted) => hosted::holds(config, hosted, &hold.commit, head),
             None => git::descends(&Repo::main(config), &hold.commit, head),
         });
         let in_followed = followed.iter().any(|(name, commit)| {
             config.follows.get(name).is_some_and(|follow| {
-                holds(git::descends(
+                judged(git::descends(
                     &Repo::followed(config, name, follow),
                     &hold.commit,
                     commit,
