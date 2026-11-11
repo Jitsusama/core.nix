@@ -1,6 +1,9 @@
 # The checks of the launcher's own machinery: its prompt, rows, keys, pacing and
 # answers, and the launcher on niri, which the folder's checks.nix gathers with
 # every other place's; its opening comment says why each place keeps its own.
+# Long because that comment keeps every check of the launcher's own
+# machinery here, the parts every place's rows pass through, rather than
+# with any one place.
 {
   account,
   copied,
