@@ -387,7 +387,9 @@ Singleton {
     function reopened(one, cwd, told, into) {
         const fresh = one.fresh === true;
         const quest = fresh && typeof one.quest === "string" && one.quest !== ""
-            ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
+            ? [`QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
+        const assigned = quest.concat(root.startedWith(one));
+        const env = assigned.length > 0 ? ["env"].concat(assigned) : [];
         const model = one.model ? ` --model ${one.model}` : "";
         const pi = (fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`) + model;
         const telling = typeof told === "string" && told !== "";
@@ -395,10 +397,32 @@ Singleton {
         // meanwhile isn't taken for it; one another session started opens
         // aside.
         const kind = one.quiet === true ? "pi-spawned" : "pi-session";
-        const classed = root.inSessions(kind, ["--directory", cwd].concat(quest,
+        const classed = root.inSessions(kind, ["--directory", cwd].concat(env,
             ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)], telling ? [told] : []), into);
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
         return classed;
+    }
+
+    // What a session was started with that it's started with again, from
+    // its record's `env` as the harness writes it in restore.json and hands
+    // it over (its #1345): the fence, PI_SANDBOX and PI_SPAWNER alone, each
+    // a plain word, so a fenced session never comes back unfenced (85PKB2,
+    // 2026-11-11, after Reopen Them All did so at 11:07). Anything else is
+    // left out, and said, since nothing fails silently.
+    readonly property var passedOn: ["PI_SANDBOX", "PI_SPAWNER"]
+    function startedWith(one) {
+        const given = one.env;
+        if (given === undefined || given === null)
+            return [];
+        const names = typeof given === "object" && !Array.isArray(given) ? Object.keys(given)
+            : [String(given)];
+        const kept = root.passedOn.filter(name => names.includes(name)
+            && typeof given[name] === "string" && /^[A-Za-z0-9._-]+$/.test(given[name]));
+        const left = names.filter(name => !kept.includes(name));
+        if (left.length > 0)
+            console.warn(`sessions: ${one.id} started without ${left.join(", ")} from its `
+                + "record, since only PI_SANDBOX and PI_SPAWNER, each a plain word, are passed on");
+        return kept.map(name => `${name}=${given[name]}`);
     }
 
     // The sessions the last boot's end took away, to reopen after a cold
@@ -1390,6 +1414,8 @@ Singleton {
                 // to pi as it's said, and dropped when it's anything but a name.
                 model: typeof one.model === "string" && /^[A-Za-z0-9._:/-]+$/.test(one.model)
                     ? one.model : "",
+                // What it was started with, passed on as reopened says.
+                env: one.env,
                 quiet: one.focus !== true }));
         if (given.length === 0)
             return "refused: no session with an id and a folder";
