@@ -8841,7 +8841,8 @@
         "none": "none",
         "in": "in {folder}",
         "picture": "picture",
-        "video": "video"
+        "video": "video",
+        "silent": "not answering"
       }
     },
     {
@@ -10044,7 +10045,8 @@
         "hidden": "hidden",
         "windows": "in {count} windows",
         "inWindow": "{count} in 1 window",
-        "inWindows": "{count} in {windows} windows"
+        "inWindows": "{count} in {windows} windows",
+        "silent": "not answering"
       }
     },
     {

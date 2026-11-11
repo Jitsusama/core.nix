@@ -24,7 +24,8 @@ QtObject {
     readonly property var said: ({
         in: "in {folder}",
         picture: "picture",
-        video: "video"
+        video: "video",
+        silent: "not answering"
     })
     readonly property var days: ({
         yesterday: "yesterday",
@@ -113,6 +114,15 @@ QtObject {
         expect("a recording says nothing of a picture before file-preview has",
             Captured.drawer({ path: video, name: "v.mp4", where: "~/Videos/Recordings" },
                 null, told).preview, null);
+        const silent = Object.assign({ silent: true }, told);
+        expect("where file-preview isn't answering, the fact it would say says so",
+            [Captured.drawer(file, null, silent), Captured.drawer({ path: video, name: "v.mp4",
+                where: "~/Videos/Recordings" }, null, silent)]
+                .map(drawn => drawn.facts.map(fact => `${fact.label} ${fact.value}`).pop()),
+            ["[dimensions] not answering", "[length] not answering"]);
+        expect("what it said before it fell silent is still drawn",
+            Captured.drawer(file, { picture: shot, across: 2, down: 1 }, silent).facts.pop(),
+            { label: "[dimensions]", value: "2\u00a0\u00d7\u00a01" });
         expect("a file neither a picture nor a video says where alone",
             Captured.drawer(Object.assign({}, file, { path: "/home/joel/notes.txt" }), null,
                 told).eyebrow, "in ~/Pictures/Screenshots");
