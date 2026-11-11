@@ -199,8 +199,12 @@ pub enum Key {
     Object(Oid),
 }
 
+/// A commit as a walk knows it: where its parents sit in `Known`'s list of
+/// them, and its generation.
+#[derive(Clone, Copy)]
 pub struct Node {
-    parents: Vec<Key>,
+    first: u32,
+    count: u32,
     generation: u64,
 }
 
@@ -209,7 +213,7 @@ pub struct Node {
 struct Walker<'a> {
     graph: &'a Graph,
     odb: &'a mut Odb,
-    nodes: &'a mut HashMap<Key, Node>,
+    known: &'a mut Known,
 }
 
 impl Walker<'_> {
@@ -220,24 +224,19 @@ impl Walker<'_> {
             .map_or(Key::Object(*oid), Key::Graph))
     }
 
-    fn node(&mut self, key: Key) -> io::Result<&Node> {
-        if !self.nodes.contains_key(&key) {
-            match key {
-                Key::Graph(position) => {
-                    let (parents, generation) = self.graph.commit(position)?;
-                    let parents = parents.into_iter().map(Key::Graph).collect();
-                    self.nodes.insert(
-                        key,
-                        Node {
-                            parents,
-                            generation,
-                        },
-                    );
-                }
-                Key::Object(oid) => self.read_objects(oid)?,
-            }
+    fn node(&mut self, key: Key) -> io::Result<Node> {
+        if let Some(node) = self.known.nodes.get(&key) {
+            return Ok(*node);
         }
-        Ok(&self.nodes[&key])
+        match key {
+            Key::Graph(position) => {
+                let (parents, generation) = self.graph.commit(position)?;
+                self.known
+                    .insert(key, parents.into_iter().map(Key::Graph), generation);
+            }
+            Key::Object(oid) => self.read_objects(oid)?,
+        }
+        Ok(self.known.nodes[&key])
     }
 
     /// Commits the graph doesn't have, from `start` down to where the graph
@@ -248,7 +247,7 @@ impl Walker<'_> {
         let mut parsed: HashMap<Oid, (Vec<Key>, i64)> = HashMap::new();
         let mut stack = vec![start];
         while let Some(&oid) = stack.last() {
-            if self.nodes.contains_key(&Key::Object(oid)) {
+            if self.known.nodes.contains_key(&Key::Object(oid)) {
                 stack.pop();
                 continue;
             }
@@ -271,20 +270,14 @@ impl Walker<'_> {
             let (parents, time) = parsed[&oid].clone();
             let time = u64::try_from(time).unwrap_or(0);
             if dated {
-                self.nodes.insert(
-                    Key::Object(oid),
-                    Node {
-                        parents,
-                        generation: time,
-                    },
-                );
+                self.known.insert(Key::Object(oid), parents, time);
                 stack.pop();
                 continue;
             }
             let waiting: Vec<Oid> = parents
                 .iter()
                 .filter_map(|key| match key {
-                    Key::Object(parent) if !self.nodes.contains_key(key) => Some(*parent),
+                    Key::Object(parent) if !self.known.nodes.contains_key(key) => Some(*parent),
                     _ => None,
                 })
                 .collect();
@@ -301,25 +294,66 @@ impl Walker<'_> {
             } else {
                 highest + 1
             };
-            self.nodes.insert(
-                Key::Object(oid),
-                Node {
-                    parents,
-                    generation,
-                },
-            );
+            self.known.insert(Key::Object(oid), parents, generation);
             stack.pop();
         }
         Ok(())
     }
 }
 
-/// How many commits `local` has that `upstream` doesn't, and the reverse.
 /// Commits already read, kept between walks for as long as the graph they
-/// were found through stands.
+/// were found through stands and they fit in `KNOWN_BUDGET`. Every commit's
+/// parents sit end to end in one list, rather than in an allocation each,
+/// so letting them go hands their memory back.
 #[derive(Default)]
-pub struct Known(HashMap<Key, Node>);
+pub struct Known {
+    nodes: HashMap<Key, Node>,
+    parents: Vec<Key>,
+}
 
+/// How many bytes of commits are kept between walks. A walk reads as many
+/// as its counts need, but what's past this goes once it's done: a branch
+/// 85,000 commits behind World's main walked millions of them and kept
+/// every one, about 700 MB an engine.
+const KNOWN_BUDGET: usize = 32 << 20;
+
+impl Known {
+    fn insert(&mut self, key: Key, parents: impl IntoIterator<Item = Key>, generation: u64) {
+        let first = self.parents.len();
+        self.parents.extend(parents);
+        let count = self.parents.len() - first;
+        self.nodes.insert(
+            key,
+            Node {
+                first: u32::try_from(first).expect("fewer than 2^32 parents"),
+                count: u32::try_from(count).expect("fewer than 2^32 parents"),
+                generation,
+            },
+        );
+    }
+
+    fn parents(&self, node: Node) -> &[Key] {
+        let first = node.first as usize;
+        &self.parents[first..first + node.count as usize]
+    }
+
+    /// The bytes its tables hold, as allocated.
+    fn bytes(&self) -> usize {
+        self.nodes.capacity() * (size_of::<(Key, Node)>() + 1)
+            + self.parents.capacity() * size_of::<Key>()
+    }
+
+    /// Lets every commit go once they're past the budget. A fresh table,
+    /// rather than a cleared one, gives the allocation back too.
+    fn keep_within_budget(&mut self) {
+        if self.bytes() > KNOWN_BUDGET {
+            *self = Known::default();
+        }
+    }
+}
+
+/// How many commits `local` has that `upstream` doesn't, and the reverse.
+/// What the walk read stays in `known` for the next, within its budget.
 pub fn ahead_behind(
     graph: &Graph,
     known: &mut Known,
@@ -330,14 +364,20 @@ pub fn ahead_behind(
     if local == upstream {
         return Ok((0, 0));
     }
-    if known.0.len() > 500_000 {
-        known.0.clear();
-    }
-    let mut walker = Walker {
-        graph,
-        odb,
-        nodes: &mut known.0,
-    };
+    known.keep_within_budget();
+    let counts = walk(graph, known, odb, local, upstream);
+    known.keep_within_budget();
+    counts
+}
+
+fn walk(
+    graph: &Graph,
+    known: &mut Known,
+    odb: &mut Odb,
+    local: &Oid,
+    upstream: &Oid,
+) -> io::Result<(usize, usize)> {
+    let mut walker = Walker { graph, odb, known };
     let mut flags: HashMap<Key, u8> = HashMap::new();
     let mut queue = BinaryHeap::new();
     let mut fresh = 0usize;
@@ -356,7 +396,8 @@ pub fn ahead_behind(
         if flag != 3 {
             fresh -= 1;
         }
-        let parents = walker.node(key)?.parents.clone();
+        let node = walker.node(key)?;
+        let parents = walker.known.parents(node).to_vec();
         for parent in parents {
             let before = flags.get(&parent).copied().unwrap_or(0);
             let after = before | flag;
@@ -381,4 +422,48 @@ pub fn ahead_behind(
     let ahead = flags.values().filter(|&&flag| flag == 1).count();
     let behind = flags.values().filter(|&&flag| flag == 2).count();
     Ok((ahead, behind))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parents(known: &Known, key: Key) -> Vec<Key> {
+        known.parents(known.nodes[&key]).to_vec()
+    }
+
+    #[test]
+    fn each_commit_keeps_its_own_parents() {
+        let mut known = Known::default();
+        known.insert(Key::Graph(1), [Key::Graph(2), Key::Graph(3)], 3);
+        known.insert(Key::Graph(2), [], 1);
+        known.insert(Key::Object(Oid([7; 20])), [Key::Graph(1)], 4);
+        assert_eq!(parents(&known, Key::Graph(1)), [Key::Graph(2), Key::Graph(3)]);
+        assert_eq!(parents(&known, Key::Graph(2)), []);
+        assert_eq!(parents(&known, Key::Object(Oid([7; 20]))), [Key::Graph(1)]);
+        assert_eq!(known.nodes[&Key::Object(Oid([7; 20]))].generation, 4);
+    }
+
+    #[test]
+    fn commits_within_the_budget_are_kept() {
+        let mut known = Known::default();
+        for position in 0..1000 {
+            known.insert(Key::Graph(position), [Key::Graph(position + 1)], 0);
+        }
+        known.keep_within_budget();
+        assert_eq!(known.nodes.len(), 1000);
+    }
+
+    #[test]
+    fn commits_past_the_budget_all_go_with_their_memory() {
+        let mut known = Known::default();
+        let mut position = 0;
+        while known.bytes() <= KNOWN_BUDGET {
+            known.insert(Key::Graph(position), [Key::Graph(position + 1)], 0);
+            position += 1;
+        }
+        known.keep_within_budget();
+        assert!(known.nodes.is_empty());
+        assert_eq!(known.bytes(), 0);
+    }
 }
