@@ -229,3 +229,21 @@ fn kills_every_group_still_running_when_pi_goes() {
     }
     assert!(!alive(pid), "the command is gone once stdin ends");
 }
+
+#[test]
+#[cfg(target_os = "linux")]
+fn keeps_its_requests_from_other_processes_of_the_same_user() {
+    let mut spawner = Spawner::start();
+    let pid = spawner.child.id();
+    // Answering a request, it has passed its start.
+    spawner.run("6", "/", &["-c", "true"], &[]);
+    spawner.until_done();
+
+    let opened = std::fs::read_link(format!("/proc/{pid}/fd/0"));
+
+    assert_eq!(
+        opened.map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::PermissionDenied),
+        "another process of the same user can't reach the spawner's stdin through /proc"
+    );
+}

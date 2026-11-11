@@ -68,6 +68,19 @@ enum Request {
 }
 
 fn main() {
+    // Whoever writes to stdin starts commands outside pi's own checks, so
+    // only pi may reach it. A process that can't be dumped keeps its
+    // /proc entries from other processes of the same user: without this,
+    // a command in a sandbox that shares the process namespace could
+    // open /proc/<spawner>/fd/0 and send requests of its own. What the
+    // spawner starts is dumpable again, as execve resets the flag. macOS
+    // has no /proc to reach it through.
+    // SAFETY: prctl with PR_SET_DUMPABLE takes plain integers and only
+    // changes a flag of this process.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0);
+    }
     let shared = Arc::new(Shared {
         out: Mutex::new(io::stdout()),
         running: Mutex::new(HashMap::new()),
