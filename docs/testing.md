@@ -363,6 +363,42 @@ lights, services or other programs needs a VM too. Nor does anything there end J
 away: sway's cursor moved and a virtual pointer through `wlrctl` both left
 niri idle, so coming back needs a VM.
 
+### Timing the Launcher
+
+Every launcher change quotes its openings' presented time, from the ask to
+the frame niri presents, the same way on both sides. The lab is the `lab` of
+`the-launcher-opens-on-what-it-kept-on-niri`, which no gate runs
+(`tests/launcher-lab-on-niri.py`). After one untimed opening, which pays a
+fresh niri's first blur as his never does, it opens home and every chord's
+place in turn from shut, once home is kept, round after round, and prints each
+opening's presented time, whether it was kept, and the rows it made, then
+each place's median and p90. Each place's line splits that time at the
+shell's swap of its frame: the shell's part, from the ask to the swap, and
+niri's, from the swap to the presented frame. The test niri draws on the
+processor, and once held about half its frames some 150 ms past the swap.
+On a loaded builder home's own part stayed at 6 to 9 ms while niri's ran 30
+to 160, moving 40 ms or more between runs with nothing changed
+(2026-11-11). So a change that moves only niri's part didn't move the
+launcher, and a change to the launcher is read in the shell's part.
+
+A side is one run, its round count and a tag naming the run, so each run
+builds anew:
+
+```sh
+nix-offload there -L --apply 'd: d.overrideAttrs { LAB_ROUNDS = "10"; LAB_RUN = "after-1"; }' \
+  . checks.x86_64-linux.the-launcher-opens-on-what-it-kept-on-niri.lab
+```
+
+`LAB_PLACES` narrows it to some places. The builder's load moves these
+figures more than most changes do: one run on main gave a median 56 ms for
+Windows on a quiet builder and 126 ms on one waiting on its processors 59%
+of the time (2026-11-11). So the sides run one at a time, never at once,
+alternating, before, after, before, after, two runs a side, 20 openings a
+place. A pair is compared only when both ran on the same builder, as each
+run's `building on` line names it. The lab gives the change between sides;
+what Joel feels is read from his machine's journal, `launcher: opening
+presented N ms from the chord`, after the switch that carries it.
+
 ### Virtual Machines
 
 Each boots a machine under QEMU, which takes minutes, so each covers what only
