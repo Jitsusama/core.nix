@@ -83,14 +83,15 @@ Provider {
     // in the launcher's words.
     readonly property var fileWords: FileFacts.wordsOf(id => Words.of(id),
         (at, format) => Qt.formatDate(at, format))
-    // What file-preview said of each file whose drawer was drawn, by its
-    // path (null where it couldn't), and which were asked, both forgotten
-    // as the launcher closes, since a file open in Neovim changes; the
-    // file asked of now, and the next wanted while it answers.
-    readonly property bool canPreview: (settings.preview ?? []).length > 0
-    property var previews: ({})
-    property var previewAsked: ({})
-    property string previewNext: ""
+    // What file-preview said of each file whose drawer was drawn, from the
+    // one kept, forgotten as the launcher closes, since a file open in
+    // Neovim changes.
+    readonly property var previews: previewing
+    Previewer {
+        id: previewing
+
+        command: provider.settings.preview ?? []
+    }
 
     Component.onCompleted: {
         Repositories.want(provider.settings, false);
@@ -172,8 +173,7 @@ Provider {
                 provider.look();
             } else {
                 provider.looked = false;
-                provider.previews = {};
-                provider.previewAsked = {};
+                previewing.forget();
                 provider.readAhead();
             }
         }
@@ -254,11 +254,7 @@ Provider {
     // first drawn, never while the drawer's binding reads, since that
     // would change what it reads; then what only Neovim knows of it.
     function plate(one, name) {
-        const shown = provider.previews[one.path];
-        if (shown === undefined && provider.canPreview && !provider.previewAsked[one.path]) {
-            provider.previewAsked[one.path] = true;
-            Qt.callLater(() => provider.preview(one.path));
-        }
+        const shown = previewing.shown(one.path);
         const file = { path: one.path, name: name, where: Files.within(one.path), entry: null };
         const drawn = FileFacts.plate(file, shown ?? null, provider.fileWords);
         const now = Date.now();
@@ -268,53 +264,6 @@ Provider {
             value: fact.value
         })));
         return drawn;
-    }
-
-    // Only the newest wanted waits, so one it replaces is no longer asked,
-    // and its drawer asks again when it's next drawn rather than never.
-    function preview(path) {
-        if (previewing.running) {
-            if (provider.previewNext !== "" && provider.previewNext !== path)
-                delete provider.previewAsked[provider.previewNext];
-            provider.previewNext = path;
-            return;
-        }
-        previewing.path = path;
-        previewing.command = provider.settings.preview.concat(["show", path]);
-        previewing.running = true;
-    }
-
-    function previewed(path, text) {
-        let shown = null;
-        try {
-            const parsed = JSON.parse(text);
-            shown = typeof parsed === "object" && parsed !== null && !parsed.error
-                ? parsed : null;
-        } catch (_unread) {
-            shown = null;
-        }
-        provider.previews = Object.assign({}, provider.previews, { [path]: shown });
-    }
-
-    Process {
-        id: previewing
-
-        property string path: ""
-
-        running: false
-        stdout: StdioCollector {
-            id: previewText
-
-            onStreamFinished: provider.previewed(previewing.path, previewText.text)
-        }
-        // The next is asked once this one has ended, its answer read.
-        onRunningChanged: {
-            if (previewing.running || provider.previewNext === "")
-                return;
-            const next = provider.previewNext;
-            provider.previewNext = "";
-            provider.preview(next);
-        }
     }
 
     // Goes to a file: its kitty window and the buffer inside it through

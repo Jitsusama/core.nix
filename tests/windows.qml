@@ -52,11 +52,13 @@ ShellRoot {
         settings: ({ name: "previews", camera: false, preview: [Quickshell.env("PREVIEWER")] })
     }
 
-    // Which of file-preview's answers the case waits for.
+    // Which of file-preview's answers the case waits for, and the one
+    // file-preview it keeps (Previewer.qml).
     property int previewing: 0
+    readonly property var kept: previewer.previews
 
     Connections {
-        target: previewer
+        target: root.kept
 
         function onPreviewsChanged() {
             root.previewed();
@@ -262,12 +264,12 @@ ShellRoot {
 
             // Only the newest wanted waits while file-preview starts, so one
             // it replaces is asked again when its drawer is next shown.
-            previewer.previewAsked = { "/a.png": true, "/b.png": true, "/c.png": true };
-            previewer.preview("/a.png");
-            previewer.preview("/b.png");
-            previewer.preview("/c.png");
+            kept.asked = { "/a.png": true, "/b.png": true, "/c.png": true };
+            kept.preview("/a.png");
+            kept.preview("/b.png");
+            kept.preview("/c.png");
             Expect.same("a picture replaced while file-preview starts is no longer asked",
-                Object.keys(previewer.previewAsked).join(", "), "/c.png");
+                Object.keys(kept.asked).join(", "), "/c.png");
             root.previewing = 1;
             root.waiting = "file-preview's first answer";
         } catch (error) {
@@ -280,21 +282,20 @@ ShellRoot {
     // for each.
     function previewed() {
         try {
-            const said = previewer.previews;
+            const said = kept.previews;
             if (root.previewing === 1 && "/c.png" in said) {
                 Expect.same("its answer is the picture's facts", [said["/c.png"].picture,
                     said["/c.png"].across, said["/c.png"].down].join(" "), "/c.png 4 3");
                 root.previewing = 2;
                 root.waiting = "file-preview's next answers";
-                previewer.previewAsked = Object.assign({}, previewer.previewAsked,
+                kept.asked = Object.assign({}, kept.asked,
                     { "/d.png": true, "/e.png": true, "/f.png": true });
-                previewer.preview("/d.png");
-                previewer.preview("/e.png");
-                previewer.preview("/f.png");
+                kept.preview("/d.png");
+                kept.preview("/e.png");
+                kept.preview("/f.png");
                 Expect.expect("a picture replaced while another is asked is no longer asked",
-                    !("/e.png" in previewer.previewAsked) && previewer.previewAsking === "/d.png"
-                        && previewer.previewNext === "/f.png",
-                    `asking ${previewer.previewAsking}, next ${previewer.previewNext}`);
+                    !("/e.png" in kept.asked) && kept.asking === "/d.png" && kept.next === "/f.png",
+                    `asking ${kept.asking}, next ${kept.next}`);
             } else if (root.previewing === 2 && "/d.png" in said && "/f.png" in said) {
                 Expect.same("each wanted is asked in turn", Object.keys(said).join(", "),
                     "/c.png, /d.png, /f.png");

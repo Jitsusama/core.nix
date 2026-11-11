@@ -32,7 +32,6 @@
 // their programs (VKCF3Z, 2026-10-29), and a picture taken holds what each
 // program that edits it gives (`fileActs`), as Edit in GIMP.
 import Quickshell
-import Quickshell.Io
 import qs
 import QtQuick
 import "../FileFacts.js" as FileFacts
@@ -493,11 +492,7 @@ Provider {
     // would change what it reads.
     function takenDrawer(path, name) {
         const read = Taken.files.find(file => file.path === path) ?? { path };
-        const shown = provider.previews[path];
-        if (shown === undefined && provider.canPreview && !provider.previewAsked[path]) {
-            provider.previewAsked[path] = true;
-            Qt.callLater(() => provider.preview(path));
-        }
+        const shown = previewing.shown(path);
         return Captured.drawer({
             path,
             name,
@@ -512,94 +507,12 @@ Provider {
         });
     }
 
-    // What file-preview said of each thing taken, by its path (null where
-    // it couldn't), and which were asked; the file it's asked of now, and
-    // the next wanted while it answers or starts.
-    readonly property bool canPreview: (settings.preview ?? []).length > 0
-    property var previews: ({})
-    property var previewAsked: ({})
-    property string previewAsking: ""
-    property string previewNext: ""
+    // What file-preview said of each thing taken, from the one kept.
+    readonly property var previews: previewing
+    Previewer {
+        id: previewing
 
-    // Only the newest wanted waits, so one it replaces is no longer asked,
-    // and its drawer asks again when it's next shown rather than never.
-    function preview(path) {
-        if (!previewer.ready || provider.previewAsking !== "") {
-            if (provider.previewNext !== "" && provider.previewNext !== path)
-                delete provider.previewAsked[provider.previewNext];
-            provider.previewNext = path;
-            Qt.callLater(provider.startPreviewer);
-            return;
-        }
-        provider.previewAsking = path;
-        // A path with a line end in it can't be asked as a line, so it has
-        // nothing to show.
-        if (path.includes("\n"))
-            Qt.callLater(provider.previewed, "");
-        else
-            previewer.write(`show ${path}\n`);
-    }
-
-    // file-preview's answer to the one asked, then the next wanted.
-    function previewed(line) {
-        const path = provider.previewAsking;
-        provider.previewAsking = "";
-        if (path !== "") {
-            provider.previews = Object.assign({}, provider.previews,
-                { [path]: Captured.shownFrom(line) });
-        }
-        provider.askNext();
-    }
-
-    // Started a frame later, never inside its own exit, and only while one
-    // is still wanted.
-    function startPreviewer() {
-        if (!previewer.ready && provider.previewNext !== "")
-            previewer.running = true;
-    }
-
-    function askNext() {
-        if (provider.previewNext === "" || provider.previewAsking !== "")
-            return;
-        const next = provider.previewNext;
-        provider.previewNext = "";
-        provider.preview(next);
-    }
-
-    // One file-preview, started as the first drawer wants it and kept, asked
-    // a line at a time, so nothing is started for each thing taken shown; it
-    // waits on its input, costing nothing, while the launcher's shut. One
-    // that stops is started again for what's wanted next; one that stops
-    // before answering anything is given up on for what's wanted, so one
-    // that can't start isn't started again and again.
-    Process {
-        id: previewer
-
-        property bool ready: false
-        property bool answered: false
-
-        command: (provider.settings.preview ?? []).concat(["serve"])
-        stdinEnabled: true
-        stdout: SplitParser {
-            onRead: line => {
-                previewer.answered = true;
-                provider.previewed(line);
-            }
-        }
-        onStarted: {
-            ready = true;
-            answered = false;
-            Qt.callLater(provider.askNext);
-        }
-        onExited: {
-            ready = false;
-            if (!answered)
-                provider.previewNext = "";
-            if (provider.previewAsking !== "")
-                provider.previewed("");
-            else
-                Qt.callLater(provider.startPreviewer);
-        }
+        command: provider.settings.preview ?? []
     }
 
     // A row's words, its name's and those beside it, made ready once.

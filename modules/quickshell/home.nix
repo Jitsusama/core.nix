@@ -250,6 +250,7 @@ let
     "launcher/Listed.qml"
     "launcher/Repositories.qml"
     "launcher/Repositories.js"
+    "launcher/Previewer.qml"
     "launcher/Machine.js"
     "launcher/Heat.js"
     "launcher/Power.js"

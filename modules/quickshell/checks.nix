@@ -3178,6 +3178,7 @@ onLinux {
       cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./launcher/Previewer.qml} launcher/Previewer.qml
       cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/Order.js} launcher/Order.js
@@ -4677,6 +4678,16 @@ onLinux {
       # What open-now says two Neovims in one kitty hold, as
       # tests/neovim-open-now.sh says.
       openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../../tests/neovim-open-now.sh);
+      # A stand-in for file-preview, kept (serve) or asked once (show), that
+      # says which process answered, so the case sees a kept one asked.
+      previewer = pkgs.writeShellScript "file-preview" ''
+        answer() { printf '{"kind": "text", "lines": 3, "by": %s}\n' "$$"; }
+        if [ "$1" = serve ]; then
+          while IFS= read -r _line; do answer; done
+        else
+          answer
+        fi
+      '';
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
       programs = pkgs.callPackage ../programs/package.nix { };
       # Chrome's downloads, as chrome-recent-sites prints them: one from a
@@ -4760,6 +4771,8 @@ onLinux {
       cp ${./launcher/Repositories.qml} launcher/Repositories.qml
       cp ${./launcher/Repositories.js} launcher/Repositories.js
       cp ${../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
+      cp ${./launcher/Previewer.qml} launcher/Previewer.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${../neovim/NeovimOpening.js} launcher/NeovimOpening.js
       cp ${../neovim/Neovim.js} launcher/Neovim.js
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
@@ -4782,7 +4795,7 @@ onLinux {
           pkgs.gnugrep
         ]
       }:$PATH
-      export OPEN_NOW=${openNow}
+      export OPEN_NOW=${openNow} PREVIEWER=${previewer}
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
       mkdir $XDG_RUNTIME_DIR/daemons
