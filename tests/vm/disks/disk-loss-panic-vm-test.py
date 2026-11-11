@@ -1,9 +1,10 @@
 """A virtual machine's second disk taken away under disk-loss-panic, which panics the kernel.
 
-tests/disk-loss-panic.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the test proves. The tests run in the file's order, since the
-last one ends the machine: a warning while the disk answers, then the disk gone. The disk the
-program watches is named in the machine the Nix builds, so the tests need no value from Nix.
+disk-loss-panic.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. The tests run in the
+file's order, since the last one ends the machine: a warning while the disk answers, then the disk
+gone. The disk the program watches is named in the machine the Nix builds, so the tests need no
+value from Nix.
 """
 
 from __future__ import annotations

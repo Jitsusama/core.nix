@@ -296,7 +296,7 @@ let
     vm-commits-are-signed = import ./tests/vm/keys/signing.nix { inherit self pkgs; };
     # Only a running machine attaches a loop device, mounts it, and says
     # whether Btrfs copies the image on write.
-    vm-cargo-builds-on-their-own-filesystem = import ./tests/cargo-builds.nix {
+    vm-cargo-builds-on-their-own-filesystem = import ./tests/vm/disks/cargo-builds.nix {
       inherit self pkgs;
     };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
@@ -477,10 +477,10 @@ let
       inherit self pkgs;
       area = "joins-when-asked";
     };
-    vm-disk-guard-keeps-the-disk = import ./tests/disk-guard.nix { inherit self pkgs; };
+    vm-disk-guard-keeps-the-disk = import ./tests/vm/disks/disk-guard.nix { inherit self pkgs; };
     # Whether the kernel panics once a disk is gone, and only then, shows
     # only with a disk to take away.
-    vm-disk-loss-panic-panics-once-the-disk-is-gone = import ./tests/disk-loss-panic.nix {
+    vm-disk-loss-panic-panics-once-the-disk-is-gone = import ./tests/vm/disks/disk-loss-panic.nix {
       inherit self pkgs;
     };
     # What an account's services make of the network coming late, changing
@@ -536,10 +536,10 @@ let
     # the device there and held open.
     # Whether systemd-oomd ends the work that filled swap before the kernel's
     # OOM killer picks a program shows only with swap filling for real.
-    vm-full-swap-ends-what-filled-it = import ./tests/full-swap.nix { inherit self pkgs; };
+    vm-full-swap-ends-what-filled-it = import ./tests/vm/disks/full-swap.nix { inherit self pkgs; };
     # Whether a machine comes back from hibernating with no resume= shows only
     # with systemd's initrd opening LUKS and reading the image it wrote.
-    vm-hibernation-comes-back = import ./tests/hibernate.nix { inherit self pkgs; };
+    vm-hibernation-comes-back = import ./tests/vm/disks/hibernate.nix { inherit self pkgs; };
     # Whether the kernel took a slice's disk latency shows only with the
     # account's manager starting it on a real drive.
     vm-apps-come-first = import ./tests/vm/admin/slices.nix { inherit self pkgs; };

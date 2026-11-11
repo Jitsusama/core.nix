@@ -6,7 +6,7 @@
 # warning is written to the kernel's log from the test, since nothing else
 # would say it on cue. The script is disk-loss-panic-vm-test.py.
 { self, pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "disk-loss-panic";
 
   nodes.machine = {

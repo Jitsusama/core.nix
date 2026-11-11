@@ -19,7 +19,7 @@ let
   # The initrd isn't given it, so it asks for the PIN.
   key = pkgs.writeText "disk.key" "a key for a test disk";
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "hibernate";
 
   nodes.machine =

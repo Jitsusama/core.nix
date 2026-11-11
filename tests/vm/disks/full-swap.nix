@@ -12,7 +12,7 @@ let
     builtins.readFile ./full-swap-grow.py
   );
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "full-swap";
 
   nodes.machine =

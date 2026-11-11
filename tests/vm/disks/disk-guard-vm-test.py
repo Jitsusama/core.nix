@@ -1,12 +1,11 @@
 """The disk guards, the machine's and an account's, driven through their bands in a VM.
 
-tests/disk-guard.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. Each test asks for the state it starts from as a
-fixture: the account up, then its guard on the test's bands with targets and a cache to take.
-What a test fills or starts it takes back as it ends, and the guard has to call /home healthy
-again before the next begins, so any test runs alone with `-k`. The drop-ins that give each
-guard the test's config, and the build script that waits, are disk-guard.nix's, given as the
-`values` fixture.
+disk-guard.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+and its opening comment says what the test proves. Each test asks for the state it starts from as a
+fixture: the account up, then its guard on the test's bands with targets and a cache to take. What a
+test fills or starts it takes back as it ends, and the guard has to call /home healthy again before
+the next begins, so any test runs alone with `-k`. The drop-ins that give each guard the test's
+config, and the build script that waits, are disk-guard.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations

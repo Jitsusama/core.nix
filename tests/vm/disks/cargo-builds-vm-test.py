@@ -1,7 +1,7 @@
 """cargo's own filesystem is made, attached, kept, and made again when it's past repairing.
 
-tests/cargo-builds.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), on a
-machine whose /var/cache is Btrfs and whose image is asked to be 600 MB. Each test starts from
+cargo-builds.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+on a machine whose /var/cache is Btrfs and whose image is asked to be 600 MB. Each test starts from
 the service up, and the ones that stop it start it again, so any test runs alone with `-k`. The
 tests need no value from Nix.
 """
