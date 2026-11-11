@@ -16,7 +16,8 @@
 //!   kept like a hold but leaving switches alone, since holding them keeps
 //!   only fixes off the machine.
 //! - `findings/`: a file for each failure, for a session to tell its owner.
-//! - `logs/`: each run's log, and the net's own in `net.log`.
+//! - `logs/`: each run's log, kept three days, and the net's own in
+//!   `net.log`.
 //! - `core/`: the net's own checkout of the repository it watches.
 //! - `drv/`: the derivation each check builds at a commit, named
 //!   `<commit>-<check>`, so a search evaluates each once.
@@ -27,7 +28,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -110,6 +111,29 @@ impl State {
         self.root
             .join("logs")
             .join(format!("{}-{check}-{attempt}.log", short(commit)))
+    }
+
+    /// Remove each run's log last written more than `LOGS_KEPT` before
+    /// `now`, leaving `net.log`, and say how many went. Nothing removed
+    /// them before: by 11 November the folder held 8,737 logs, 12 GiB,
+    /// growing by about 2 GiB a day on a disk three quarters full.
+    pub fn age_out_logs(&self, now: SystemTime) -> usize {
+        let Ok(entries) = fs::read_dir(self.root.join("logs")) else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .filter(|entry| entry.file_name() != "net.log")
+            .filter(|entry| {
+                entry
+                    .metadata()
+                    .and_then(|meta| meta.modified())
+                    .is_ok_and(|written| {
+                        now.duration_since(written).is_ok_and(|age| age > LOGS_KEPT)
+                    })
+            })
+            .filter(|entry| fs::remove_file(entry.path()).is_ok())
+            .count()
     }
 
     /// The head the next is compared with, and the last one looked at.
@@ -347,6 +371,11 @@ pub fn runs_in(text: &str, commit: &str, check: &str) -> Vec<Ran> {
         .collect()
 }
 
+/// How long a run's log is kept. A finding names its log for a session to
+/// read, which it does within the day, and a search reads only the logs of
+/// the runs it made; three days leaves a weekend's findings readable.
+const LOGS_KEPT: Duration = Duration::from_hours(72);
+
 /// A commit's first twelve characters, as names and logs give it.
 pub fn short(commit: &str) -> &str {
     commit.get(..12).unwrap_or(commit)
@@ -434,6 +463,26 @@ mod tests {
             log.ends_with("could not revert / hint: after resolving\n"),
             "its lines weren't joined on: {log:?}"
         );
+    }
+
+    #[test]
+    fn logs_past_three_days_go_and_the_nets_own_and_newer_ones_stay() {
+        let state = state("aged");
+        let now = SystemTime::now();
+        let written = |name: &str, age: Duration| {
+            let path = state.root.join("logs").join(name);
+            let file = fs::File::create(&path).expect("a log");
+            file.set_modified(now - age).expect("its time");
+            path
+        };
+        let day = Duration::from_hours(24);
+        let old = written("aaaa-vm-a-1.log", 4 * day);
+        let new = written("aaaa-vm-a-2.log", 2 * day);
+        let own = written("net.log", 9 * day);
+        assert_eq!(state.age_out_logs(now), 1, "not one log went");
+        assert!(!old.exists(), "a log four days old stayed");
+        assert!(new.exists(), "a log two days old went");
+        assert!(own.exists(), "the net's own log went");
     }
 
     #[test]
