@@ -1021,6 +1021,7 @@ fn run(command: &mut Command) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::git_in;
 
     #[test]
     fn a_pr_left_open_for_the_branch_is_taken_up_rather_than_failing() {
@@ -1390,33 +1391,15 @@ mod tests {
         );
     }
 
-    /// Runs git in `repo` as someone, with no user's or system's config.
-    fn git_at(repo: &Path, arguments: &[&str]) -> String {
-        let ran = Command::new("git")
-            .arg("-C")
-            .arg(repo)
-            .args(arguments)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_AUTHOR_NAME", "t")
-            .env("GIT_AUTHOR_EMAIL", "t@t")
-            .env("GIT_COMMITTER_NAME", "t")
-            .env("GIT_COMMITTER_EMAIL", "t@t")
-            .output()
-            .unwrap();
-        assert!(ran.status.success(), "git {arguments:?}: {ran:?}");
-        String::from_utf8_lossy(&ran.stdout).trim().to_owned()
-    }
-
     /// Writes `list` as the quarantine list in `repo` and commits it there
     /// as someone, giving the commit.
     fn listed(repo: &Path, list: &Value) -> String {
         let path = repo.join(QUARANTINE);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, serde_json::to_string_pretty(list).unwrap() + "\n").unwrap();
-        git_at(repo, &["add", QUARANTINE]);
-        git_at(repo, &["commit", "-qm", "listed"]);
-        git_at(repo, &["rev-parse", "HEAD"])
+        git_in(repo, &["add", QUARANTINE]);
+        git_in(repo, &["commit", "-qm", "listed"]);
+        git_in(repo, &["rev-parse", "HEAD"])
     }
 
     /// A net whose checkout is cloned from a repository of its own, with
@@ -1427,10 +1410,10 @@ mod tests {
         let origin = root.join("origin.git");
         let main = root.join("main");
         fs::create_dir_all(&origin).unwrap();
-        git_at(&origin, &["init", "-q", "--bare", "-b", "main"]);
-        git_at(&root, &["clone", "-q", "origin.git", "main"]);
+        git_in(&origin, &["init", "-q", "--bare", "-b", "main"]);
+        git_in(&root, &["clone", "-q", "origin.git", "main"]);
         listed(&main, held);
-        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
         let net = Real {
             state: root.join("net"),
             url: origin.display().to_string(),
@@ -1440,8 +1423,8 @@ mod tests {
         };
         fs::create_dir_all(&net.state).unwrap();
         net.cloned().unwrap();
-        git_at(&net.checkout(), &["config", "user.name", "net"]);
-        git_at(&net.checkout(), &["config", "user.email", "net@t"]);
+        git_in(&net.checkout(), &["config", "user.name", "net"]);
+        git_in(&net.checkout(), &["config", "user.email", "net@t"]);
         (net, root)
     }
 
@@ -1461,7 +1444,7 @@ mod tests {
         let branch = "merge-net/quarantine-broken";
         let sha = net.cut(branch, &cut_from, "quarantine", &change).unwrap();
         let newest = listed(&main, &json!([{"test": "kept"}]));
-        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
         let landed = net.onto_newest(branch, &cut_from, sha, "quarantine", &change);
         let (on, at) = landed.expect("a quarantine meeting another on main didn't land");
         assert_eq!(on, newest, "it wasn't put on main's newest head");
@@ -1477,7 +1460,7 @@ mod tests {
             "the list cut again lost main's change or its own"
         );
         assert_eq!(
-            git_at(&root.join("origin.git"), &["rev-parse", branch]),
+            git_in(&root.join("origin.git"), &["rev-parse", branch]),
             at,
             "what was cut again wasn't pushed"
         );
@@ -1499,7 +1482,7 @@ mod tests {
         let branch = "merge-net/revert-x";
         let sha = net.cut(branch, &cut_from, "revert", &change).unwrap();
         listed(&main, &json!([{"test": "kept"}, {"test": "new"}]));
-        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
         let landed = net.onto_newest(branch, &cut_from, sha.clone(), "revert", &change);
         assert!(
             landed.as_ref().is_err_and(|why| why.contains("CONFLICT")),
