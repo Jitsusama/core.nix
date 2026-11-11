@@ -1,6 +1,6 @@
 // What Copies and Emoji say of the clipboard's history, as Pasting.js works
 // it out, run in Qt's own JavaScript engine, the one the shell runs it in.
-// The `the-clipboard-says-once-its-history-is-silent` check copies
+// The `the-clipboard-says-once-it-is-silent` check copies
 // modules/quickshell/Pasting.js and tests/lib/Expect.js beside this file
 // and runs `qml -platform offscreen pasting.qml`: nothing while silent
 // under a second, "not answering" past it, nothing once it answers again,

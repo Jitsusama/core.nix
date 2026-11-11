@@ -1536,11 +1536,11 @@ onLinux {
   # it's been silent a second, so a restart never blinks their counts, and
   # a paste that never landed for a minute, as tests/pasting.qml holds
   # Pasting.js to it in Qt's own engine.
-  the-clipboard-says-once-its-history-is-silent =
+  the-clipboard-says-once-it-is-silent =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-clipboard-says-once-its-history-is-silent" { } ''
+    pkgs.runCommandLocal "the-clipboard-says-once-it-is-silent" { } ''
       cp ${../../tests/pasting.qml} pasting.qml
       cp ${./Pasting.js} Pasting.js
       cp ${../../tests/lib/Expect.js} Expect.js

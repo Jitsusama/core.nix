@@ -2013,7 +2013,7 @@
     a machine naming a click strength sets it as each hidraw device appears and after every sleep,
     and one naming none runs nothing
   '';
-  the-clipboard-says-once-its-history-is-silent = ''
+  the-clipboard-says-once-it-is-silent = ''
     Copies and Emoji say the clipboard's history is not answering only once it has been silent a
     second, and stop on its next answer, and say a paste that never landed for a minute after it
   '';
