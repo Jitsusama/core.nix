@@ -60,10 +60,9 @@ impl Places {
         Some(PathBuf::from(path.trim_start_matches('/')))
     }
 
-    /// This process's own cgroup's memory pressure file: its unit's, as
-    /// systemd runs it, which what it starts shares.
-    pub fn own_file(&self) -> Option<PathBuf> {
-        Some(self.cgroups.join(self.own()?).join("memory.pressure"))
+    /// This process's own cgroup: its unit's, as systemd runs it.
+    pub fn own_dir(&self) -> Option<PathBuf> {
+        Some(self.cgroups.join(self.own()?))
     }
 
     /// The memory pressure file of `slice`, a slice of the account's own

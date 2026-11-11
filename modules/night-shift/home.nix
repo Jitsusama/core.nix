@@ -14,7 +14,9 @@
 # desktop's slice passes 1% over ten seconds, agents' sessions' 10%, or the
 # machine's 25%. A job's log is its unit's journal; each sample it took is
 # in ~/.local/state/night-shift/NAME.samples, and NAME.done is written when
-# it succeeds.
+# it succeeds. The job's limits hold only the job: night-shift watches from
+# a cgroup beside it, so a job held at its limit never stalls its watcher.
+# The unit is delegated memory and io for that.
 {
   config,
   lib,
@@ -61,8 +63,26 @@ let
         (number job.stopMachine)
         "--rests"
         (number job.restsHours)
-        "--"
       ]
+      ++ lib.optionals (job.memoryHigh != null) [
+        "--memory-high"
+        job.memoryHigh
+      ]
+      ++ lib.optionals (job.memoryMax != null) [
+        "--memory-max"
+        job.memoryMax
+      ]
+      ++ lib.optionals (job.swapMax != null) [
+        "--swap-max"
+        job.swapMax
+      ]
+      ++ lib.concatLists (
+        lib.mapAttrsToList (disk: rate: [
+          "--reads-at-most"
+          "${disk}=${rate}"
+        ]) job.readsAtMost
+      )
+      ++ [ "--" ]
       ++ job.command
     );
 
@@ -125,22 +145,22 @@ let
         default = "1h";
       };
       memoryHigh = lib.mkOption {
-        description = "The memory past which the job is made to give some back, as systemd's MemoryHigh.";
+        description = "The memory past which the job is made to give some back, as systemd's MemoryHigh, on the job's own cgroup.";
         type = lib.types.nullOr lib.types.str;
         default = null;
       };
       memoryMax = lib.mkOption {
-        description = "The most memory the job may hold, as systemd's MemoryMax.";
+        description = "The most memory the job may hold, as systemd's MemoryMax, on the job's own cgroup.";
         type = lib.types.nullOr lib.types.str;
         default = null;
       };
       swapMax = lib.mkOption {
-        description = "The most swap the job may hold, as systemd's MemorySwapMax.";
+        description = "The most swap the job may hold, as systemd's MemorySwapMax, on the job's own cgroup.";
         type = lib.types.nullOr lib.types.str;
         default = null;
       };
       readsAtMost = lib.mkOption {
-        description = "How fast the job may read each disk, as systemd's IOReadBandwidthMax.";
+        description = "How fast the job may read each disk, as systemd's IOReadBandwidthMax, on the job's own cgroup.";
         type = lib.types.attrsOf lib.types.str;
         default = { };
         example = {
@@ -181,12 +201,11 @@ in
           IOWeight = 1;
           IOAccounting = true;
           RuntimeMaxSec = job.longest;
-          IOReadBandwidthMax = lib.mapAttrsToList (disk: rate: "${disk} ${rate}") job.readsAtMost;
+          # night-shift splits its cgroup, so the job's limits hold the job
+          # and never the watcher beside it.
+          Delegate = "memory io";
           Environment = lib.mapAttrsToList (variable: value: "${variable}=${value}") job.environment;
-        }
-        // lib.optionalAttrs (job.memoryHigh != null) { MemoryHigh = job.memoryHigh; }
-        // lib.optionalAttrs (job.memoryMax != null) { MemoryMax = job.memoryMax; }
-        // lib.optionalAttrs (job.swapMax != null) { MemorySwapMax = job.swapMax; };
+        };
       }
     ) jobs;
 
