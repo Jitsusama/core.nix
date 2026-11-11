@@ -130,6 +130,24 @@ def test_home_kept_is_drawn_as_it_stood(shell: Shell) -> None:
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
 
 
+def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> None:
+    """Kept at one scale and opened at a larger, the card fits inside the screen it opens on.
+
+    The kept card was drawn at the height it was kept at, so kept at 1 and opened at 1.5, its
+    foot ran 30 px off the bottom (vm-desktop-says-what-happens, 2026-11-10).
+    """
+    before = shell.showing()["card"]
+    shell.as_account("niri msg output winit scale 2")
+    try:
+        shell.launcher_until(lambda shown: shown["card"]["screen"] < before["screen"])
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        opened_from_kept(shell)
+        card = shell.showing()["card"]
+        assert card["foot"] < card["screen"], f"kept at 1, opened at 2, it's off the bottom: {card}"
+    finally:
+        shell.as_account("niri msg output winit scale 1")
+
+
 def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     """Reopened as the closing's spots come due, the kept opening makes none before its frame.
 
