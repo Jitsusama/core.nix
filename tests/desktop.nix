@@ -105,7 +105,9 @@ let
   # from the node alone, the looks areas, and looks-machine, which shoots
   # Machines from the record the node measures of its own machine, and
   # launcher-answers, whose Queue the node tells of the machine queue
-  # (Jobs.qml). Those two link nothing, so they need no key.
+  # (Jobs.qml). Those two link nothing, so they need no key. And
+  # moves-keep-their-window, whose sessions move in their holds, which only
+  # the node joins to the windows they're in.
   runsTheNode =
     isLooks
     || builtins.elem area [
@@ -117,6 +119,7 @@ let
       "launcher-goes-places"
       "launcher-keeps-up"
       "looks-machine"
+      "moves-keep-their-window"
     ];
   # The areas whose launcher has WARP, as a machine whose system installs
   # warp-cli does: where its looks are shot, and where a terminal is shown

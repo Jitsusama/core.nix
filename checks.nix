@@ -290,6 +290,10 @@ let
       inherit self pkgs;
       area = "launcher-finds-sessions";
     };
+    vm-desktop-moves-keep-their-window = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "moves-keep-their-window";
+    };
     vm-desktop-reopens-under-orchestrators = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "reopens-under-orchestrators";
