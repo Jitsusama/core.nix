@@ -4,8 +4,9 @@
 
 A test's function, fake or fixture copied into a second file drifts from the
 first the next time one of them is fixed, and a reader can't tell which copy is
-right. This reads TREE's test code, under a `tests` folder or in a file named
-as a test, in Python, shell, QML, JavaScript and Rust, and gathers each
+right. This reads TREE's test code, under a `tests` folder, in a file named as
+a test or in a Rust file's `#[cfg(test)]` module, in Python, shell, QML,
+JavaScript and Rust, and gathers each
 function's body of at least MINIMUM lines, with its blank lines and comments
 left out and its indentation evened. A body found in more than one file is a
 copy in each of them, whatever each copy is named. Python's are compared by
@@ -30,7 +31,9 @@ from pathlib import Path
 # way twice isn't taken for a copy.
 MINIMUM = 2
 # A test file's name, for test code outside a tests folder.
-TEST_NAME = re.compile(r"(^test_|[-_]test\.|-tests?\.|^tests?\.)")
+TEST_NAME = re.compile(r"(^test_|[-_]tests?\.|^tests?\.)")
+# The opening of a Rust module compiled only for its tests.
+TEST_MODULE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{\s*$")
 SKIPPED = {".git", "node_modules", "target", "result"}
 SHELL_START = re.compile(r"^\s*(?:function\s+)?([A-Za-z_][\w-]*)\s*\(\)\s*\{\s*$")
 BRACED_START = {
@@ -96,6 +99,34 @@ def functions(path: Path) -> list[tuple[str, int, str]]:
     return [entry for entry in found if entry[2].count("\n") + 1 >= MINIMUM]
 
 
+def test_modules(lines: list[str]) -> list[range]:
+    """Give the lines of each `#[cfg(test)]` module in a Rust file, by its indentation."""
+    spans = []
+    for index, line in enumerate(lines[:-1]):
+        if line.strip() != "#[cfg(test)]" or not TEST_MODULE.match(lines[index + 1]):
+            continue
+        opening = lines[index + 1]
+        indent = len(opening) - len(opening.lstrip())
+        for end in range(index + 2, len(lines)):
+            closing = lines[end]
+            if closing.strip().startswith("}") and len(closing) - len(closing.lstrip()) == indent:
+                spans.append(range(index + 3, end + 1))
+                break
+    return spans
+
+
+def tested(path: Path, relative: Path) -> list[tuple[str, int, str]]:
+    """Give a file's test functions: all of a test file's, or a Rust file's test modules'."""
+    if {"tests", "test"} & set(relative.parts) or TEST_NAME.search(path.name):
+        return functions(path)
+    if path.suffix != ".rs":
+        return []
+    spans = test_modules(path.read_text(errors="replace").splitlines())
+    if not spans:
+        return []
+    return [entry for entry in functions(path) if any(entry[1] in span for span in spans)]
+
+
 def copies(tree: Path) -> dict[str, list[str]]:
     """Give each file's functions whose bodies live in another file too."""
     where: dict[str, list[tuple[str, str, int]]] = {}
@@ -105,9 +136,7 @@ def copies(tree: Path) -> dict[str, list[str]]:
             continue
         if path.suffix not in {".py", ".sh", *BRACED_START}:
             continue
-        if not ({"tests", "test"} & set(relative.parts) or TEST_NAME.search(path.name)):
-            continue
-        for name, line, body in functions(path):
+        for name, line, body in tested(path, relative):
             digest = hashlib.sha256(f"{path.suffix}\n{body}".encode()).hexdigest()
             where.setdefault(digest, []).append((relative.as_posix(), name, line))
     found: dict[str, list[str]] = {}

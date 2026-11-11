@@ -460,8 +460,9 @@ A function, fake or fixture two tests need lives once, in the test
 library both import (`tests/lib/` for VM tests' Python), since a copy
 drifts from the first the next time one is fixed.
 `every-test-function-lives-once` finds a function's body of two lines or
-more in a second test file, whatever its name there, and the copies before
-the rule wait, counted by file, in
+more in a second test file, whatever its name there, reading a Rust file's
+`#[cfg(test)]` module as test code too, and the copies before the rule
+wait, counted by file, in
 `tests/rules/every-test-function-lives-once-waiting.nix`.
 
 The install test builds a disk image with disko and boots it with a software
