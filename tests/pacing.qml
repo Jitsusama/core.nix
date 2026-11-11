@@ -118,6 +118,15 @@ QtObject {
             wanted({ typed: "ma" }, asleep), true);
         check(failures, "and one held is wanted though not woken",
             wanted({ held: [{ row: { from: asleep } }] }, asleep), true);
+        const now = { saysAtHome: false };
+        const read = fields => Wanted.readAt(at(fields), [agents, now, null]);
+        check(failures, "rows home shows are read at home", read({}), true);
+        check(failures, "and walked from outside", read({ open: false, cataloguing: true }), true);
+        check(failures, "but not shut", read({ open: false }), false);
+        check(failures, "nor opened straight into another place",
+            read({ held: [{ row: { from: people } }] }), false);
+        check(failures, "though in a place that reads them they are",
+            read({ held: [{ row: { from: now } }] }), true);
     }
 
     // A kept opening's sources wake in the order home's rows read them,
