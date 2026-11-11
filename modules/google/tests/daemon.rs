@@ -1,7 +1,7 @@
 //! The daemon interface over what the program holds (daemon.rs), asked
 //! over its socket as the shell asks it: what a watch is told at first,
 //! then only the records a change touched and those that went; one kind
-//! watched alone; an act handed to the program's asks; and the program
+//! watched alone; one row moving heard as that row alone; an act handed to the program's asks; and the program
 //! itself taking the socket systemd hands it.
 
 use std::env;
@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use google::daemon::Daemon;
 use google::drive::{Document, Is, Kind};
+use google::rows::Vocabulary;
 use google::state::{Standing, State};
 use serde_json::{Value, json};
 
@@ -228,6 +229,36 @@ fn a_watch_of_one_kind_hears_only_that_kind() {
     assert_eq!(keys(&listed["records"]), ["file:one"]);
     let got = client.ask(&json!({"id": 4, "ask": "get", "keys": ["file:one", "file:none"]}));
     assert_eq!(keys(&got["records"]), ["file:one"]);
+}
+
+#[test]
+fn a_row_that_moves_alone_is_the_one_row_heard() {
+    let socket = folder("moves").join("google.sock");
+    let (asks, _asked) = mpsc::channel();
+    let daemon = Daemon::listen(&socket, asks, NOW).unwrap();
+    let path = env::var("LAUNCHER_WORDS")
+        .expect("LAUNCHER_WORDS names no vocabulary; google-reads-the-calendar hands it one");
+    let vocabulary = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    daemon.words(Vocabulary::read(&vocabulary).0);
+    let three = |ids: [&str; 3]| ready(Vec::from(ids.map(|id| document(id, id))), NOW);
+    daemon.say(&three(["a", "b", "c"]), NOW);
+    let mut client = Client::to(&socket);
+    let watch = json!({"id": 1, "ask": "watch", "kind": "row", "place": "documents"});
+    let watched = client.ask(&watch);
+    let orders: Vec<&Value> = watched["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|record| &record["row"]["order"])
+        .collect();
+    assert_eq!(orders, [1024, 2048, 3072], "spaced by 1024: {watched}");
+    // c, last looked at, now first: c alone moves, and a and b keep
+    // theirs, so the watch hears one row.
+    daemon.say(&three(["c", "a", "b"]), NOW + 1);
+    let moved = client.next();
+    assert_eq!(keys(&moved["changed"]), ["row:documents:c"], "{moved}");
+    assert_eq!(moved["changed"][0]["row"]["order"], 0);
+    assert_eq!(moved["gone"], json!([]));
 }
 
 #[test]

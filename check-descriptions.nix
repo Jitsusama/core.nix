@@ -737,8 +737,9 @@
     asks are, on the socket systemd hands it; and Calendar's, Documents' and Mail's rows and
     drawers, read in the account's own vocabulary each apart, so one lacking a word serves none
     and says so while the others serve on, say no word but the vocabulary's, a meeting's, a file's
-    or a mail's own and the clock's, and a documents watch hears its rows and a drawer watch only
-    the drawer a change touched
+    or a mail's own and the clock's, sizes to three figures, and a documents watch hears its rows
+    and a drawer watch only the drawer a change touched, each place's rows spaced 1024 apart, one
+    row moving told alone, midway, as the rest keep their order
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units

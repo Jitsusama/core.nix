@@ -113,11 +113,10 @@ fn meetings_to_come_are_listed_soonest_first_and_those_held_newest_first_a_serie
         ],
         "a declined meeting is held by nobody, and the standup once"
     );
-    let orders: Vec<i64> = rows
-        .iter()
-        .map(|row| row["order"].as_i64().unwrap())
-        .collect();
-    assert_eq!(orders, [0, 1, 2, 0], "each place counts its own order");
+    assert!(
+        rows.iter().all(|row| row["order"].is_null()),
+        "the daemon spaces each place's order, not the rows"
+    );
     assert_eq!(rows[0]["row"], "calendar:meeting:on");
     assert_eq!(rows[3]["held"]["earlier"], 1);
     assert_eq!(rows[3]["drawer"], "drawer:held:standup-2");
@@ -416,7 +415,6 @@ fn meets_recent_is_each_call_held_on_a_meet_link_once_by_code_saying_who_it_was_
         "nobody to name beside it"
     );
     assert_eq!(calls[1]["keywords"], Value::Null);
-    assert_eq!(calls[1]["order"], 1);
 }
 
 #[test]

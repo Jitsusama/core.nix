@@ -59,6 +59,7 @@ use crate::calendar_rows;
 use crate::document_rows;
 use crate::drive::Drive;
 use crate::files::Fetched;
+use crate::placed::placed;
 use crate::rows::{self, Vocabulary};
 use crate::state::{Meet, Standing, State};
 
@@ -132,9 +133,15 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
 
 /// Every ready row the state makes, in each place's order, as records
 /// keyed as rows.rs keys them, each its row under `row`, at `now` on
-/// Joel's clock, which says which meetings are over.
+/// Joel's clock, which says which meetings are over, each row's order
+/// kept from the records `told` where it can be (placed.rs).
 /// A place whose words didn't read makes none, and the rest make theirs.
-fn rows_of(state: &State, words: &Vocabulary, now: i64) -> Vec<(String, Value)> {
+fn rows_of(
+    state: &State,
+    words: &Vocabulary,
+    now: i64,
+    told: &BTreeMap<String, Value>,
+) -> Vec<(String, Value)> {
     let zone = TimeZone::system();
     let (meetings, held) = (&state.meetings, &state.held);
     let drives = &state.drive.places.drives.files;
@@ -155,7 +162,7 @@ fn rows_of(state: &State, words: &Vocabulary, now: i64) -> Vec<(String, Value)> 
         ));
         drawers.extend(calendar_rows::drawers(meetings, held, now, &zone, calendar));
     }
-    let rows = rows.into_iter().map(|row| {
+    let rows = placed(rows, told).into_iter().map(|row| {
         let key = row["key"].as_str().unwrap_or_default().to_owned();
         let record = json!({"key": key, "kind": "row", "row": row});
         (key, record)
@@ -285,7 +292,7 @@ impl Daemon {
         let before = word(held.state.as_ref());
         let mut made = records(state);
         if let Some(words) = &held.words {
-            made.extend(rows_of(state, words, now));
+            made.extend(rows_of(state, words, now, &held.records));
         }
         let mut changed = Vec::new();
         let mut order = Vec::with_capacity(made.len());

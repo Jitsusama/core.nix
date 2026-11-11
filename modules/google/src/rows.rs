@@ -152,8 +152,7 @@ pub fn mail(held: &[Mail], words: &Words) -> Vec<Value> {
     wanting.sort_by(|one, other| other.at.cmp(&one.at).then_with(|| one.id.cmp(&other.id)));
     wanting
         .iter()
-        .enumerate()
-        .map(|(order, mail)| row(mail, "mail", order, words))
+        .map(|mail| row(mail, "mail", words))
         .collect()
 }
 
@@ -192,8 +191,7 @@ fn had_lately<'a>(had: &'a [Mail], held: &[Mail]) -> Vec<&'a Mail> {
 pub fn lately(had: &[Mail], held: &[Mail], words: &Words) -> Vec<Value> {
     had_lately(had, held)
         .iter()
-        .enumerate()
-        .map(|(order, mail)| row(mail, "lately", order, words))
+        .map(|mail| row(mail, "lately", words))
         .collect()
 }
 
@@ -224,13 +222,14 @@ fn titled<'a>(mail: &'a Mail, words: &'a Words) -> &'a str {
     }
 }
 
-fn row(mail: &Mail, place: &str, order: usize, words: &Words) -> Value {
+/// A mail's row, in its place's order without an `order`, which the
+/// daemon spaces as each place's rows were last told (placed.rs).
+fn row(mail: &Mail, place: &str, words: &Words) -> Value {
     json!({
         "key": format!("row:{place}:{}", mail.id),
         "row": format!("mail:{}", mail.id),
         "place": place,
         "kind": "mail",
-        "order": order,
         "name": titled(mail, words),
         "glyph": words.glyph,
         "hue": "program",
@@ -445,12 +444,10 @@ mod tests {
         assert_eq!(first["row"], "mail:b");
         assert_eq!(first["place"], "mail");
         assert_eq!(first["kind"], "mail");
-        assert_eq!(first["order"], 0);
         assert_eq!(first["name"], "Engines");
         assert_eq!(first["glyph"], "mail");
         assert_eq!(first["hue"], "program");
         assert_eq!(first["depth"], 0);
-        assert_eq!(rows[2]["order"], 2);
     }
 
     #[test]
@@ -480,7 +477,6 @@ mod tests {
         assert_eq!(rows[0]["place"], "lately");
         assert_eq!(rows[0]["row"], "mail:newer");
         assert_eq!(rows[0]["drawer"], "drawer:lately:newer");
-        assert_eq!(rows[2]["order"], 2);
         let many: Vec<Mail> = (0..12)
             .map(|at| in_talk(&format!("m{at}"), at, &format!("t{at}")))
             .collect();

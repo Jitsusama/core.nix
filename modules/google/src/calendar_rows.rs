@@ -42,9 +42,6 @@ const BETWEEN: &str = " \u{b7} ";
 /// Between the members of a list whose members hold a dot of their own.
 const SEMICOLON: &str = "; ";
 
-/// The places meetings are listed in: Calendar, its Recent, and Meet's.
-const PLACES: [&str; 3] = ["calendar", "held", "meet"];
-
 /// A meeting as a place lists it: the place, what it's keyed by there (its
 /// id, or in Meet's Recent its call's code), the meeting, and for one of a
 /// series in Calendar's Recent, how many of it came before.
@@ -157,19 +154,9 @@ pub fn meetings(
     zone: &TimeZone,
     words: &Words,
 ) -> Vec<Value> {
-    let listed = listed(meetings, held, now);
-    let mut orders = [0usize; PLACES.len()];
-    listed
+    listed(meetings, held, now)
         .iter()
-        .map(|each| {
-            let at = PLACES
-                .iter()
-                .position(|place| *place == each.place)
-                .unwrap_or(0);
-            let order = orders[at];
-            orders[at] += 1;
-            row(each, order, now, zone, words)
-        })
+        .map(|each| row(each, now, zone, words))
         .collect()
 }
 
@@ -202,7 +189,9 @@ fn titled<'a>(meeting: &'a Meeting, words: &'a Words) -> &'a str {
 /// A meeting's row, or in Meet's Recent its call's (Meet.qml's
 /// `calledRow`): named for its meeting, who it was with and when it was
 /// held beside it, its times below, found by its guests' addresses too.
-fn row(listed: &Listed, order: usize, now: i64, zone: &TimeZone, words: &Words) -> Value {
+/// Its `order` is the daemon's, spaced as its place's rows were last told
+/// (placed.rs).
+fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
     let meeting = listed.meeting;
     let id = &meeting.id;
     let call = listed.place == "meet";
@@ -253,7 +242,6 @@ fn row(listed: &Listed, order: usize, now: i64, zone: &TimeZone, words: &Words) 
         "row": thing,
         "place": listed.place,
         "kind": kind,
-        "order": order,
         "name": titled(meeting, words),
         "glyph": glyph,
         "hue": "program",
