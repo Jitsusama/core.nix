@@ -823,10 +823,15 @@ fn powers_rows_are_made_for_its_watch_and_move_with_its_limit() {
 fn the_screens_light_and_the_rooms_are_said_as_they_move() {
     let running = Running::new("light");
     let root = running.root();
+    // Each written whole, beside it and then renamed, as sysfs reads
+    // whole: a file truncated and then written could be read empty
+    // between the two, and told as a room with no light.
     let write = |path: &str, text: &str| {
         let file = root.join(path);
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(file, text).unwrap();
+        let writing = file.with_extension("writing");
+        std::fs::write(&writing, text).unwrap();
+        std::fs::rename(writing, file).unwrap();
     };
     write("sys/class/backlight/panel/brightness", "60\n");
     write("sys/class/backlight/panel/max_brightness", "100\n");
