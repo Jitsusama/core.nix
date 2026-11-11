@@ -6,7 +6,7 @@
 //! Security, fwupd's rating of the machine's own firmware, each attribute
 //! the level is made of a step in, with what fixes it. The headline says
 //! "up to date" or how many updates are ready. They take the launcher's
-//! Firmware.qml and Firmware.js across whole (VKCF3Z's rulings,
+//! `Firmware.qml` and `Firmware.js` across whole (VKCF3Z's rulings,
 //! 2026-10-29 to 2026-11-09), and every word is words.json's.
 //!
 //! An act that can't be taken back (Install, Secure It, Undo It, Reboot
@@ -336,12 +336,25 @@ fn reason(said: &str) -> String {
 }
 
 /// How many minutes an install of a device's update is waited for: twice
-/// what fwupd says it takes, and never under INSTALL_PATIENCE_MIN.
+/// what fwupd says it takes, and never under `INSTALL_PATIENCE_MIN`.
 fn install_patience(device: &Device) -> u64 {
     let minutes = device.record["update"]["install_minutes"]
         .as_u64()
         .unwrap_or(0);
     INSTALL_PATIENCE_MIN.max(minutes.saturating_mul(2))
+}
+
+/// A figure a step in that Return copies.
+fn copy(id: String, name: String, said: &str) -> Made {
+    Made {
+        id,
+        kind: "figure",
+        name,
+        hue: "machine",
+        side: vec![item(said)],
+        copies: said.to_owned(),
+        ..Made::default()
+    }
 }
 
 /// Firmware's words, and how its acts stand.
@@ -430,7 +443,7 @@ impl Say<'_> {
         {
             inside.push(self.install(device, &key));
         }
-        inside.push(self.copy(
+        inside.push(copy(
             format!("{}:version", device.id),
             self.name("firmware:version", &[]),
             device.version,
@@ -461,19 +474,6 @@ impl Say<'_> {
         fact
     }
 
-    /// A figure a step in that Return copies.
-    fn copy(&self, id: String, name: String, said: &str) -> Made {
-        Made {
-            id,
-            kind: "figure",
-            name,
-            hue: "machine",
-            side: vec![item(said)],
-            copies: said.to_owned(),
-            ..Made::default()
-        }
-    }
-
     /// An act's row, saying `note`.
     fn act(&self, id: String, verb: &str, name: String, note: String) -> Made {
         Made {
@@ -489,7 +489,7 @@ impl Say<'_> {
 
     /// The one row inside an act that can't be taken back, asking Joel to
     /// be sure, its Return asking the daemon's act.
-    fn sure(&self, id: String, verb: &str, name: String, note: String, ask: Value) -> Made {
+    fn sure(&self, id: String, verb: &str, name: String, note: String, ask: &Value) -> Made {
         Made {
             id,
             kind: "act",
@@ -556,7 +556,7 @@ impl Say<'_> {
                 VERB,
                 self.words.sure(VERB, &fill),
                 said(last),
-                ask,
+                &ask,
             )];
             return row;
         };
@@ -572,92 +572,7 @@ impl Say<'_> {
     fn device_drawer(&self, device: &Device, key: &str) -> Value {
         let record = device.record;
         let update = &record["update"];
-        let mut facts = Vec::new();
-        let add = |facts: &mut Vec<Value>, id: &str, said: String, identifies: bool| {
-            if !said.is_empty() {
-                facts.push(self.fact(id, &said, identifies));
-            }
-        };
         let owned = |field: &Value| field.as_str().unwrap_or("").to_owned();
-        let count = |field: &Value| field.as_u64().map_or_else(String::new, |n| n.to_string());
-        add(
-            &mut facts,
-            "firmware:lowest",
-            owned(&record["version_lowest"]),
-            false,
-        );
-        let bootloader = owned(&record["version_bootloader"]);
-        add(&mut facts, "firmware:bootloader", bootloader, false);
-        add(
-            &mut facts,
-            "firmware:branch",
-            owned(&record["branch"]),
-            false,
-        );
-        let mut days = Vec::new();
-        if let Some(at) = record["last_update"]["updated_at_s"].as_u64() {
-            days.push(("firmware:last-updated", at, facts.len()));
-        }
-        let urgency = text(update, "urgency");
-        let urgency = if urgency == "unknown" { "" } else { urgency };
-        add(&mut facts, "firmware:urgency", urgency.to_owned(), false);
-        let size = update["size_b"].as_u64().filter(|b| *b > 0);
-        let size = size.map_or_else(String::new, |b| self.bytes(b));
-        add(&mut facts, "firmware:size", size, false);
-        if let Some(at) = update["released_at_s"].as_u64() {
-            days.push(("firmware:released", at, facts.len()));
-        }
-        let takes = update["install_minutes"].as_u64().filter(|m| *m > 0);
-        let takes = takes.map_or_else(String::new, |m| {
-            self.said("firmware:takes", "minutes", &[("count", &m.to_string())])
-        });
-        add(&mut facts, "firmware:takes", takes, false);
-        let problems = record["problems"].as_array().into_iter().flatten();
-        let held: Vec<String> = problems
-            .filter_map(Value::as_str)
-            .map(|problem| self.problem(problem))
-            .collect();
-        add(&mut facts, "firmware:held", held.join(DOT), false);
-        if device.offered.is_none() {
-            add(
-                &mut facts,
-                "firmware:none",
-                owned(&record["no_update"]),
-                false,
-            );
-        }
-        let failed = device.failed.unwrap_or("").to_owned();
-        add(&mut facts, "firmware:failed", failed, false);
-        add(
-            &mut facts,
-            "firmware:flashes",
-            count(&record["flashes_left"]),
-            false,
-        );
-        let battery = record["battery_pct"].as_u64();
-        let battery = battery.map_or_else(String::new, |pct| format!("{pct}%"));
-        add(&mut facts, "firmware:battery", battery, false);
-        let protocols = record["protocols"].as_array().into_iter().flatten();
-        let protocols: Vec<&str> = protocols.filter_map(Value::as_str).collect();
-        add(&mut facts, "firmware:protocols", protocols.join(DOT), false);
-        add(
-            &mut facts,
-            "firmware:plugin",
-            owned(&record["plugin"]),
-            true,
-        );
-        add(
-            &mut facts,
-            "firmware:serial",
-            owned(&record["serial"]),
-            true,
-        );
-        // A day reads the clock, so it travels as a time the shell words
-        // (ready-rows.md's Times), at its place among the facts.
-        for (id, at, place) in days.into_iter().rev() {
-            let day = json!({ "name": self.name(id, &[]), "at": at * 1000, "as": "day" });
-            facts.insert(place, day);
-        }
         let vendor = text(record, "vendor");
         let eyebrow = if vendor.is_empty() || vendor == UNKNOWN {
             self.said("firmware:vendor", "alone", &[])
@@ -675,8 +590,80 @@ impl Say<'_> {
             .into_iter()
             .filter(|part| !part.is_empty())
             .collect();
-        json!({ "eyebrow": eyebrow, "title": device.name, "facts": facts,
-            "body": body.join("\n\n") })
+        json!({ "eyebrow": eyebrow, "title": device.name,
+            "facts": self.device_facts(device), "body": body.join("\n\n") })
+    }
+
+    /// What a device's drawer says of it, in order, each fwupd doesn't
+    /// know left out.
+    fn device_facts(&self, device: &Device) -> Vec<Value> {
+        let record = device.record;
+        let update = &record["update"];
+        let said = |id: &str, said: &str| (!said.is_empty()).then(|| self.fact(id, said, false));
+        let names = |id: &str| {
+            (!text(record, id).is_empty())
+                .then(|| self.fact(&format!("firmware:{id}"), text(record, id), true))
+        };
+        let listed = |field: &str| {
+            let names = record[field].as_array().into_iter().flatten();
+            names.filter_map(Value::as_str).collect::<Vec<_>>()
+        };
+        // A day reads the clock, so it travels as a time the shell words
+        // (ready-rows.md's Times).
+        let day = |id: &str, at: &Value| {
+            let at = at.as_u64()?;
+            Some(json!({ "name": self.name(id, &[]), "at": at * 1000, "as": "day" }))
+        };
+        let count = |field: &Value| field.as_u64().map_or_else(String::new, |n| n.to_string());
+        let urgency = text(update, "urgency");
+        let size = update["size_b"].as_u64().filter(|b| *b > 0);
+        let takes = update["install_minutes"].as_u64().filter(|m| *m > 0);
+        let takes = takes.map_or_else(String::new, |m| {
+            self.said("firmware:takes", "minutes", &[("count", &m.to_string())])
+        });
+        let held: Vec<String> = listed("problems")
+            .into_iter()
+            .map(|problem| self.problem(problem))
+            .collect();
+        let none = if device.offered.is_none() {
+            text(record, "no_update")
+        } else {
+            ""
+        };
+        let battery = record["battery_pct"].as_u64();
+        [
+            said("firmware:lowest", text(record, "version_lowest")),
+            said("firmware:bootloader", text(record, "version_bootloader")),
+            said("firmware:branch", text(record, "branch")),
+            day(
+                "firmware:last-updated",
+                &record["last_update"]["updated_at_s"],
+            ),
+            said(
+                "firmware:urgency",
+                if urgency == "unknown" { "" } else { urgency },
+            ),
+            said(
+                "firmware:size",
+                &size.map_or_else(String::new, |b| self.bytes(b)),
+            ),
+            day("firmware:released", &update["released_at_s"]),
+            said("firmware:takes", &takes),
+            said("firmware:held", &held.join(DOT)),
+            said("firmware:none", none),
+            said("firmware:failed", device.failed.unwrap_or("")),
+            said("firmware:flashes", &count(&record["flashes_left"])),
+            said(
+                "firmware:battery",
+                &battery.map_or_else(String::new, |pct| format!("{pct}%")),
+            ),
+            said("firmware:protocols", &listed("protocols").join(DOT)),
+            names("plugin"),
+            names("serial"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 
     /// A count of bytes in the unit it reads best in, a thousand apart:
@@ -801,7 +788,7 @@ impl Say<'_> {
         let mut listed: Vec<&Attribute> = attributes.iter().collect();
         listed.sort_by_key(|one| (one.passed, one.level.unwrap_or(TOP_LEVEL + 1)));
         let mut inside: Vec<Made> = listed.into_iter().map(|one| self.attribute(one)).collect();
-        let mut rating = self.copy("security:level".to_owned(), self.name(ID, &[]), &code);
+        let mut rating = copy("security:level".to_owned(), self.name(ID, &[]), &code);
         rating.glyph = self.words.glyph(PLACE);
         inside.push(rating);
         Some(Made {
@@ -878,7 +865,7 @@ impl Say<'_> {
         if failing && attribute.fix == "setup" {
             inside.push(self.setup(attribute));
         }
-        inside.push(self.copy(
+        inside.push(copy(
             format!("security:{}:id", attribute.id),
             self.name("firmware:attribute", &[]),
             attribute.id,
@@ -931,7 +918,7 @@ impl Say<'_> {
             &verb,
             self.words.sure(&verb, &[("attribute", attribute.name)]),
             self.said(&verb, "final", &[]),
-            ask,
+            &ask,
         )];
         row
     }
@@ -965,7 +952,7 @@ impl Say<'_> {
             VERB,
             self.words.sure(VERB, &[]),
             self.said(VERB, "final", &[]),
-            ask,
+            &ask,
         )];
         row
     }
@@ -1089,7 +1076,7 @@ mod tests {
                 "USB-C Controller 2"
             ]
         );
-        let head = ready.head.unwrap();
+        let head = ready.head.as_ref().unwrap();
         assert_eq!(
             (head["said"].clone(), head["hue"].clone()),
             (json!("1 update ready"), json!("warning"))
