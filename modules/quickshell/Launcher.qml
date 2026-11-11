@@ -2930,10 +2930,14 @@ Scope {
         footRowsWeighed = kept;
         const before = kept.weighed;
         const weigh = row => weighedKeys(keysFor(row));
+        const afresh = row => {
+            Pacing.keptRow(kept, row);
+            return weigh(row);
+        };
         // A run of rows alike in their keys, as Emoji's, is weighed once.
         const alike = Pacing.toWeigh(matches, selected);
         const listed = asking ? alike.concat([asking]) : alike;
-        const said = listed.map(row => row === selected || visual ? weigh(row)
+        const said = listed.map(row => row === selected || visual ? afresh(row)
             : Pacing.weighedRow(kept, row, weigh)).filter(one => one.keys.length > 0);
         rowsWeighed += kept.weighed - before;
         if (kept.weighed > before)

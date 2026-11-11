@@ -82,12 +82,26 @@ QtObject {
         rows.forEach(row => Pacing.weighedRow(first, row, weigh));
         check(failures, "the first rows are each weighed", weighed, 3);
         const again = Pacing.weighing(first, "|find", words, face);
-        check(failures, "the same typed, steps, mode, words and face keep them", again, first);
+        check(failures, "the same typed, steps, mode, words and face keep them",
+            again.rows === first.seen, true);
         const changed = [rows[0], { name: "B" }, rows[2]];
         const said = changed.map(row => Pacing.weighedRow(again, row, weigh).keys).join("");
         check(failures, "a row changed is weighed, the rest kept", weighed, 4);
         check(failures, "each says its own keys", said, "aBc");
         check(failures, "and the count says so", again.weighed, 4);
+        // Home's key is the same across every opening, so what it held of
+        // a row replaced was held for the life of the shell.
+        const next = Pacing.weighing(again, "|find", words, face);
+        check(failures, "the next holds only the rows the last saw", next.rows.size, 3);
+        check(failures, "so a row replaced is let go", next.rows.has(rows[1]), false);
+        // The selected row is weighed afresh, as it says more, and kept so
+        // it isn't weighed again once it's left.
+        Pacing.keptRow(next, changed[1]);
+        changed.filter(row => row !== changed[1]).forEach(row => Pacing.weighedRow(next, row,
+            weigh));
+        const left = Pacing.weighing(next, "|find", words, face);
+        changed.forEach(row => Pacing.weighedRow(left, row, weigh));
+        check(failures, "a row selected, then left, isn't weighed again", weighed, 4);
         for (const [what, kept] of [["typed or a mode", Pacing.weighing(again, "x|find", words,
             face)], ["words", Pacing.weighing(again, "|find", {}, face)],
             ["a face", Pacing.weighing(again, "|find", words, {})]]) {
