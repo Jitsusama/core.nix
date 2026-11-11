@@ -471,6 +471,19 @@ at a time.
 A recorded terminal session is a player the reader drives (SKILL.md,
 Replays).
 
+- **Recorded or scripted, as an asciicast.** `asciinema rec` records a
+  real run, with `--cols` and `--rows` set to the size it will show at.
+  A scripted one runs the real commands from a script that types each at
+  a reader's pace and writes the cast itself (an `o` event per output, an
+  `i` per keystroke, an `m` per chapter), so the same script makes it
+  again after a change. Keep the script beside the site's source.
+- **Trimmed before it's shown**: idle gaps capped in the cast, not only in
+  the player; output no reader needs cut; and every line read for a
+  secret, a home path, a host name or an id before it's published.
+- **It can be a part's figure.** The gate counts drawings and tables, so a
+  part a replay carries says so on its section, as `data-figure="a replay
+  of the deploy"`.
+
 - **asciinema-player does half of it.** It takes `speed`, `idleTimeLimit`
   (cap idle gaps at about 2 s) and `markers`, the chapters, which it draws
   on its progress bar and jumps between with [ and ]. Give it
