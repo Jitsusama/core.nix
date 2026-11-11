@@ -85,6 +85,9 @@ Provider {
     // The limits a step into the charge limit offers; the daemon starts
     // charging again a little below each, as the firmware's own is set.
     readonly property var stops: [60, 70, 80, 90, 100]
+    // How far below its stop the daemon starts charging again (supply.rs's
+    // RESTART_PCT), so the row says the limit as it will be.
+    readonly property int restart: 5
 
     // A part's name, as the vocabulary says it.
     function named(id, state, fill) {
@@ -296,15 +299,25 @@ Provider {
         }, fields ?? {}));
     }
 
-    // Has the machine daemon move the charge limit to stop at `wanted`,
-    // starting again a little below it where the battery can (its
-    // supply.rs, which writes the kernel's files in the order it takes
-    // them). The row moves as the daemon tells the supply again.
-    function setLimit(name, wanted) {
-        daemon.ask({ ask: "act", act: "charge-limit", supply: name, stop_pct: wanted }, said => {
-            if (said?.error)
-                console.warn(`the charge limit stayed: ${said.error.message}`);
-        });
+    // Has the machine daemon move the battery's charge limit to stop at
+    // `wanted`, starting again `restart` below it where the battery can
+    // (its supply.rs, which writes the kernel's files in the order it takes
+    // them). The row says the new limit on the key's own frame, until the
+    // daemon tells the supply again; one refused goes back, and the foot
+    // says why in the limit's words, as every act asking a daemon does
+    // (Provider.qml's becomes), or that nothing answered.
+    function setLimit(record, wanted) {
+        const start = record.limit_start_pct === null || record.limit_start_pct === undefined
+            ? null : Math.max(0, wanted - restart);
+        const row = limitPart(Object.assign({}, record,
+            { limit_stop_pct: wanted, limit_start_pct: start }));
+        provider.becomes("power:limit", row, named("limit"), "set");
+        daemon.ask({ ask: "act", act: "charge-limit", supply: record.name, stop_pct: wanted },
+            said => {
+                if (said?.error)
+                    provider.refused("power:limit", says("limit", `refused:${said.error.code}`)
+                        || says("limit", "refused"));
+            });
     }
 
     // The Charge limit: where charging stops and starts again, a setting
@@ -334,7 +347,7 @@ Provider {
             hue: "action",
             side: stop === each ? says("limit:stop", "chosen") : "",
             stays: true,
-            run: () => provider.setLimit(record.name, each)
+            run: () => provider.setLimit(record, each)
         })));
     }
 

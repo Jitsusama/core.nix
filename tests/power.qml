@@ -6,6 +6,8 @@ pragma ComponentBehavior: Bound
 // before anything is read, as each key typed asks it, makes no row; the
 // battery told anew makes its own rows again and keeps the Charger's; and
 // the port told anew makes the Charger's again and keeps the battery's.
+// A charge limit set says the new limit on its row at once, and one the
+// daemon refuses is taken back, saying why in the limit's own words.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
@@ -34,6 +36,19 @@ ShellRoot {
         // No frame is drawn here, so what waits on one runs at once.
         function afterFrame(then) {
             then();
+        }
+
+        // What an act says its rows become, and why one was taken back,
+        // as the launcher hears them.
+        property var becoming: ({})
+        property var takenBack: null
+        function becomesAll(provider, holds, how) {
+            for (const one of holds)
+                becoming[one.key] = Object.assign({ row: one.row }, how);
+        }
+        function becameNot(key, why) {
+            takenBack = { key: key, why: why };
+            root.limitRefused();
         }
     }
 
@@ -70,6 +85,10 @@ ShellRoot {
                     } else if (ask.ask === "watch") {
                         root.watch = { socket: asked, id: ask.id };
                         answer = { id: ask.id, records: [root.battery(80), root.port(false)] };
+                    } else if (ask.ask === "act" && ask.act === "charge-limit") {
+                        root.asked = ask;
+                        answer = { id: ask.id, error: { code: "refused",
+                            message: "charge_control_end_threshold: Permission denied" } };
                     } else {
                         answer = { id: ask.id, ok: true };
                     }
@@ -88,6 +107,7 @@ ShellRoot {
     }
 
     property var before: []
+    property var asked: null
 
     // Power says it answered as the battery first comes, and each time the
     // daemon tells it something while its answer shows; each case waits
@@ -160,6 +180,31 @@ ShellRoot {
         root.waiting = "the end";
         Expect.expect("the battery's rows kept", answer.rows.slice(1).every((row, at) => row
             === root.before[at + 1]), "made anew");
+        root.waiting = "the charge limit refused";
+        const limited = Object.assign(root.battery(79),
+            { limit_stop_pct: 80, limit_start_pct: 75, limit_settable: true });
+        thePower.setLimit(limited, 70);
+        const becomes = theLauncher.becoming["power:limit"];
+        Expect.expect("the limit says where it will stop at once",
+            becomes?.row?.side === "stops at 70%, starts below 65%", becomes?.row?.side);
+        Expect.expect("as a set Charge Limit", becomes.name === "Charge Limit"
+            && becomes.act === "set", `${becomes.name} ${becomes.act}`);
+    }
+
+    // The daemon refused it: the row goes back, and the foot says why in
+    // the limit's own words rather than the kernel's.
+    function limitRefused() {
+        try {
+            Expect.expect("the daemon asked for that battery's stop", root.asked?.supply
+                === "BAT0" && root.asked?.stop_pct === 70, JSON.stringify(root.asked));
+            Expect.expect("taken back, saying why", theLauncher.takenBack.key === "power:limit"
+                && theLauncher.takenBack.why === "the battery wouldn't take it",
+                JSON.stringify(theLauncher.takenBack));
+        } catch (error) {
+            root.waiting = "a failure";
+            Expect.fail(error.message);
+            return;
+        }
         Qt.callLater(() => Qt.exit(0));
     }
 }
