@@ -100,6 +100,17 @@ QtObject {
         expect("a step's lists are its own and the place's", step.lists === 12
             && step.each.making === 5 && step.each.finding === 7 && step.each.holding === 1
             && step.rows === 3, JSON.stringify(step));
+        // Its search's time before searching is said apart, as a key's is,
+        // and of the rows left, the place's own come apart from what
+        // stepping in did after them: 30 ms after opening are 2 finding, 8
+        // answering, 4 before and 16 rows, 9 of them the place's.
+        const searched = Trials.stepped({ before: 4, lists: 2, rows: 9, answers: 8, each: {},
+            composing: null, beforeParts: { counting: 1, typed: 2, words: 0, readying: 1 } },
+        { began: 0, made: 3, pushed: 4, opened: 5, ended: 35 });
+        expect("a step says its search's before and the place's rows apart",
+            searched.before === 4 && searched.beforeParts?.typed === 2 && searched.rows === 16
+            && searched.placed?.rows === 9 && searched.placed?.after === 7,
+            JSON.stringify(searched));
         const bare = Trials.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
         expect("a step with no search said", bare.answers === 0 && bare.rows === 4
             && bare.composing === null, JSON.stringify(bare));
