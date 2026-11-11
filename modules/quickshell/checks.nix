@@ -2703,10 +2703,11 @@ onLinux {
       touch $out
     '';
 
-  # The launcher's Sound leaves out a jack with nothing plugged in and a
-  # display's output with no display, and never listens to a headset's
-  # microphone while the headset plays music (tests/sound.qml), deciding
-  # over stand-in devices, with niri and the music stood in for.
+  # The launcher's Sound never listens to a headset's microphone while the
+  # headset plays music, and makes a device's parts and drawer
+  # (tests/sound.qml), over stand-in devices, with niri and the music stood
+  # in for; and it lists the rows the sound daemon serves, from a stand-in
+  # serving them on its socket (tests/sound-served.qml).
   sound-hears-only-what-can-be-heard =
     let
       niri = singleton "Niri.qml" ''
@@ -2730,16 +2731,27 @@ onLinux {
       cp ${./launcher/Plate.js} launcher/Plate.js
       cp ${./launcher/Sound.qml} launcher/Sound.qml
       cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/ReadyRows.qml} launcher/ReadyRows.qml
+      cp ${./launcher/ReadyRows.js} launcher/ReadyRows.js
+      cp ${./launcher/Ago.js} launcher/Ago.js
+      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+      cp ${./When.js} When.js
+      cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
       cp ${music} Music.qml
       cp ${../../tests/sound.qml} shell.qml
+      cp ${../../tests/sound-served.qml} served.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      mkdir -p runtime/daemons
+      timeout 60 ${qs} -p served.qml
       touch $out
     '';
 
