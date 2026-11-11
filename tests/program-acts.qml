@@ -151,7 +151,8 @@ ShellRoot {
         launcher: theLauncher
         settings: ({
             folder: root.src,
-            openNow: Quickshell.env("OPEN_NOW")
+            openNow: Quickshell.env("OPEN_NOW"),
+            open: "listed:nvim:open"
         })
     }
 
@@ -271,20 +272,19 @@ ShellRoot {
             held.programOpen("vim").join(", "));
 
         // Programs asks the acts found from the top inside a binding
-        // (Applications.qml's optedActs), so asking them asks open-now
-        // nothing and makes no open file's row: Neovim doing both there
-        // looped that binding on Joel's shell at each opening and closing
+        // (Applications.qml's optedActs), so asking them makes no open
+        // file's row: Neovim doing that, and asking open-now, there looped
+        // that binding on Joel's shell at each opening and closing
         // (2026-11-09), and made every act found from the top again as a
-        // window was focused.
-        held.looked = false;
+        // window was focused. What's open is the programs daemon's now, so
+        // nothing found asks it.
         const made = held.tally.rows;
         const found = keys(held.foundActsOf("nvim"));
         expect("found from the top, it gives only the acts it lists there",
             JSON.stringify(found) === JSON.stringify(held.foundActs.map(one => one.key)),
             JSON.stringify(found));
-        expect("asking open-now nothing and making no file's row",
-            !held.looked && held.tally.rows - made === found.length,
-            JSON.stringify([held.looked, held.tally.rows - made]));
+        expect("making no file's row", held.tally.rows - made === found.length,
+            String(held.tally.rows - made));
         expect("and nothing for another program", held.foundActsOf("vim").length === 0, "");
     }
 

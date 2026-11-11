@@ -36,11 +36,14 @@
 // says over its own server and changes nothing of Neovim's, so the
 // editor stays the account's own.
 //
-// What's open is read ahead, as the shell starts and again as the
-// launcher closes, and again as Neovim is stepped into for what changed
-// since, as kitty's tabs are (Kitty.qml), so each row is there from the
-// first frame Neovim's page draws, never joining its end late. What each
-// says is read in Neovim.js.
+// What's open is read by the programs daemon, which runs open-now as its
+// `listed:nvim:open` list (home.nix), so the page starts no process to
+// read it (Joel, 2026-11-10: the daemons are the data layer): once as the
+// shell starts and again each time the launcher opens, so each row is there
+// from the first frame Neovim's page draws, never joining its end late,
+// what was read last showing until the daemon answers. What each says is
+// read in Neovim.js. The page still makes its rows from those lines, a
+// stopgap until Programs serves its own ready rows (Thu 11-12).
 pragma ComponentBehavior: Bound
 
 import qs
@@ -71,10 +74,8 @@ Provider {
     foundActs: (repositories ? [{ program: program, key: "verb:nvim:find" }] : [])
         .concat(place !== null ? [{ program: program, key: "verb:nvim:copied" }] : [])
 
-    // What each Neovim holds, as open-now last said, and whether it was
-    // asked since the launcher opened.
+    // What each Neovim holds, as open-now last said.
     property var neovims: []
-    property bool looked: false
     // What open-now last said, word for word, so an answer the same as the
     // last draws nothing again.
     property string lastHeard: ""
@@ -96,30 +97,6 @@ Provider {
     Component.onCompleted: {
         Repositories.want(provider.settings, false);
         Repositories.opened(provider.launcher?.open ?? false);
-        provider.readAhead();
-    }
-    // The settings name the programs each read runs, and may be given after
-    // the provider is made.
-    onSettingsChanged: provider.readAhead()
-
-    function start(readers) {
-        for (const reader of readers) {
-            if ((reader.command[0] ?? "") !== "" && !reader.running)
-                reader.running = true;
-        }
-    }
-
-    function readAhead() {
-        provider.start([asking]);
-    }
-
-    // Asked again once an opening, as the launcher opens or Neovim is
-    // stepped into, whichever comes first.
-    function look() {
-        if (looked)
-            return;
-        looked = true;
-        provider.start([asking]);
     }
 
     // Each answer draws Neovim's step again, once a frame however many
@@ -132,21 +109,22 @@ Provider {
         provider.changed();
     }
 
-    Process {
-        id: asking
+    // What open-now printed, as the programs daemon holds it under the key
+    // the settings name, read as the shell starts and each time the
+    // launcher opens.
+    Listed {
+        id: listing
 
-        command: [provider.settings.openNow ?? "", "neovim"]
-        running: false
-        stdout: StdioCollector {
-            id: asked
+        key: provider.settings.open ?? ""
+        wanted: (provider.launcher?.open ?? false) || !listing.read
 
-            onStreamFinished: {
-                if (asked.text === provider.lastHeard)
-                    return;
-                provider.lastHeard = asked.text;
-                provider.neovims = Neovim.heard(asked.text);
-                provider.heard();
-            }
+        onHeard: {
+            const text = listing.lines.join("\n");
+            if (text === provider.lastHeard)
+                return;
+            provider.lastHeard = text;
+            provider.neovims = Neovim.heard(text);
+            provider.heard();
         }
     }
 
@@ -159,30 +137,22 @@ Provider {
         }
     }
 
-    // The launcher opened, so each Neovim is asked at once, since one may
-    // have started since it closed and Neovim's row counts what's open
-    // (RTOIMQ, 2026-11-09, seen on the desktop); what was read ahead draws
-    // until it answers. Closed, the next step into Neovim asks it again,
-    // and what's open is read for the next opening.
+    // The repositories follow the launcher opening and closing, and the
+    // previews are let go as it closes; what's open is the programs
+    // daemon's, read through the listing above.
     Connections {
         target: provider.launcher
 
         function onOpenChanged() {
             Repositories.opened(provider.launcher.open);
-            if (provider.launcher.open) {
-                provider.look();
-            } else {
-                provider.looked = false;
+            if (!provider.launcher.open)
                 previewing.forget();
-                provider.readAhead();
-            }
         }
     }
 
     function programActs(asked) {
         if (asked !== program)
             return [];
-        provider.look();
         return foundActsOf(asked).concat(provider.openNow().map(one => provider.openRow(one)));
     }
 
