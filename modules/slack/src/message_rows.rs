@@ -53,6 +53,16 @@ impl Words {
     }
 }
 
+/// The launcher's own words for everything Slack's rows say, copied
+/// whole from words.json into tests/words.json, which the check
+/// `the-daemons-test-the-launchers-words` keeps the same as it, so a
+/// case holds a row to the words Joel reads.
+#[cfg(test)]
+#[must_use]
+pub(crate) fn launchers_vocabulary() -> Value {
+    serde_json::from_str(include_str!("../tests/words.json")).expect("the launcher's words parse")
+}
+
 /// An act the shell does itself, opening `link` in what opens it, as
 /// ready-rows.md's acts name it: one of `{ key, ask }` sent back on the
 /// socket, `{ key, open }` or `{ key, copy }` (Y2YBTS, 2026-11-10).
@@ -198,13 +208,7 @@ mod tests {
     }
 
     fn words() -> Words {
-        Words {
-            glyph: "chat".to_owned(),
-            you: "You".to_owned(),
-            place: "in {place} \u{b7} message".to_owned(),
-            direct: "direct message".to_owned(),
-            sent: "Sent".to_owned(),
-        }
+        Words::read(&launchers_vocabulary()).expect("the launcher's words say a message")
     }
 
     fn message(channel: &str, ts: &str, at: u64) -> Raised {
@@ -326,16 +330,22 @@ mod tests {
 
     #[test]
     fn the_words_are_read_from_the_vocabulary_and_one_missing_is_named() {
-        let mut vocabulary = json!({"things": [
-            {"id": "slack:message", "glyph": "chat",
-             "said": {"you": "you", "where": "in {place}", "direct": "direct message"}},
-            {"id": "slack:message:sent", "name": "Sent"},
-        ]});
-        let read = Words::read(&vocabulary).unwrap();
-        assert_eq!((read.you.as_str(), read.sent.as_str()), ("You", "Sent"));
-        vocabulary["things"][1]
-            .as_object_mut()
-            .unwrap()
+        let mut vocabulary = launchers_vocabulary();
+        let read = Words::read(&vocabulary).expect("the launcher's words say a message");
+        assert_eq!(
+            (read.you.as_str(), read.sent.as_str(), read.place.as_str()),
+            ("You", "Sent", "in {place} \u{b7} message"),
+            "a message's words, as the launcher says them"
+        );
+        vocabulary["things"]
+            .as_array_mut()
+            .and_then(|things| {
+                things
+                    .iter_mut()
+                    .find(|one| one["id"] == "slack:message:sent")
+            })
+            .and_then(Value::as_object_mut)
+            .expect("the launcher's words hold a sent message's")
             .remove("name");
         assert_eq!(
             Words::read(&vocabulary),

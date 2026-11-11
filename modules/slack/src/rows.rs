@@ -169,17 +169,10 @@ fn kind(kind: Kind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message_rows::launchers_vocabulary;
 
     fn words() -> Words {
-        Words {
-            glyph: "chat".to_owned(),
-            count: "{count} to read".to_owned(),
-            kinds: KINDS
-                .iter()
-                .map(|kind| ((*kind).to_owned(), format!("a {kind}")))
-                .collect(),
-            messages: message_rows::Words::default(),
-        }
+        Words::read(&launchers_vocabulary()).expect("the launcher's words say a conversation")
     }
 
     fn one(id: &str, kind: Kind, count: u64) -> Conversation {
@@ -228,7 +221,7 @@ mod tests {
                 "key": "row:slack-unread:D1", "thing": "slack:conversation:D1",
                 "place": "slack-unread", "kind": "dm", "order": 1024, "name": "D1's",
                 "glyph": "chat", "hue": "program", "depth": 0,
-                "side": [{"said": "2 to read"}], "note": "a dm",
+                "side": [{"said": "2 to read"}], "note": "a direct message",
                 "acts": [{"key": "verb:slack:open", "open": "slack://channel?team=T1&id=D1"}],
                 "held": {"id": "D1", "count": 2, "at": "1730300000.000100"},
             }})
@@ -274,46 +267,31 @@ mod tests {
 
     #[test]
     fn the_words_are_read_from_the_vocabulary_and_one_missing_is_named() {
-        let mut said: serde_json::Map<String, Value> = KINDS
-            .iter()
-            .map(|kind| ((*kind).to_owned(), json!(*kind)))
-            .collect();
-        said.insert("count".to_owned(), json!("{count} to read"));
-        let mut vocabulary = json!({"things": [
-            {"id": "slack:conversation", "glyph": "chat", "said": said},
-            {"id": "slack:message", "glyph": "chat",
-             "said": {"you": "you", "where": "in {place}", "direct": "direct message"}},
-            {"id": "slack:message:sent", "name": "Sent"},
-        ]});
-        let read = Words::read(&vocabulary).unwrap();
+        let mut vocabulary = launchers_vocabulary();
+        let read = Words::read(&vocabulary).expect("the launcher's words say a conversation");
         assert_eq!(
-            (read.glyph.as_str(), read.kinds["thread"].as_str()),
-            ("chat", "thread")
+            (
+                read.glyph.as_str(),
+                read.kinds["dm"].as_str(),
+                read.kinds["thread"].as_str(),
+                read.messages.sent.as_str()
+            ),
+            ("chat", "a direct message", "replies in threads", "Sent"),
+            "a conversation's words, as the launcher says them"
         );
-        vocabulary["things"][0]["said"]
-            .as_object_mut()
-            .unwrap()
+        vocabulary["things"]
+            .as_array_mut()
+            .and_then(|things| {
+                things
+                    .iter_mut()
+                    .find(|one| one["id"] == "slack:conversation")
+            })
+            .and_then(|one| one["said"].as_object_mut())
+            .expect("the launcher's words say a conversation")
             .remove("mention");
         assert_eq!(
             Words::read(&vocabulary),
             Err("the vocabulary's slack:conversation has no said.mention".to_owned())
-        );
-    }
-
-    // The launcher's own vocabulary, handed to the build as the unit
-    // hands it to the daemon (package.nix), so a word it renames is
-    // caught here rather than on Joel's screen.
-    #[test]
-    fn the_launchers_own_vocabulary_holds_every_word() {
-        let path = std::env::var("LAUNCHER_WORDS").expect("LAUNCHER_WORDS names words.json");
-        let text = std::fs::read_to_string(path).unwrap();
-        let vocabulary: Value = serde_json::from_str(&text).unwrap();
-        let read = Words::read(&vocabulary).unwrap();
-        assert_eq!(read.count, "{count} to read");
-        assert_eq!(read.kinds["dm"], "a direct message");
-        assert_eq!(
-            (read.messages.you.as_str(), read.messages.sent.as_str()),
-            ("You", "Sent")
         );
     }
 }

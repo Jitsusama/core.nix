@@ -1,0 +1,79 @@
+{
+  "things": [
+    {
+      "id": "slack:conversation",
+      "of": "program:slack",
+      "name": "Conversation",
+      "glyph": "chat",
+      "verb": "open",
+      "said": {
+        "count": "{count} to read",
+        "dm": "a direct message",
+        "mention": "mentions you",
+        "thread": "replies in threads",
+        "unread": "a channel",
+        "channel": "a channel"
+      }
+    },
+    {
+      "id": "slack:message",
+      "of": "program:slack",
+      "name": "Slack Message",
+      "term": "Programs/Slack message",
+      "glyph": "chat",
+      "verb": "open",
+      "said": {
+        "searching": "searching Slack",
+        "you": "you",
+        "where": "in {place} · message",
+        "direct": "direct message",
+        "readInSlack": "read in Slack",
+        "goneFromSlack": "gone from Slack"
+      },
+      "tells": {
+        "none": "Nothing in Slack says {words}.",
+        "busy": "Slack is busy; try again in a minute.",
+        "down": "Slack isn't answering.",
+        "failed": "Slack couldn't be reached."
+      }
+    },
+    {
+      "id": "slack:message:sent",
+      "in": "slack:message",
+      "name": "Sent"
+    },
+    {
+      "id": "slack:person:presence",
+      "in": "people",
+      "name": "Presence"
+    },
+    {
+      "id": "slack:person:source",
+      "in": "people",
+      "name": "Slack"
+    },
+    {
+      "id": "slack:person:status",
+      "in": "people",
+      "name": "Status"
+    },
+    {
+      "id": "slack:person:zone",
+      "in": "people",
+      "name": "Time Zone"
+    },
+    {
+      "id": "verb:person:slack",
+      "command": "compose",
+      "argument": "slack",
+      "in": "people",
+      "name": "Write in Slack",
+      "verb": "write",
+      "glyph": "chat",
+      "said": {
+        "looking": "looking in Slack",
+        "missing": "no one at this address"
+      }
+    }
+  ]
+}

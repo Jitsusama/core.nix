@@ -163,19 +163,11 @@ fn acts(found: &Found) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message_rows::launchers_vocabulary;
     use crate::{Conversation, Message};
 
     fn words() -> Words {
-        Words {
-            status: "Status".into(),
-            presence: "Presence".into(),
-            zone: "Time Zone".into(),
-            missing: "no one at this address".into(),
-            conversation: "Conversation".into(),
-            glyph: "chat".into(),
-            source: "Slack".into(),
-            you: "You".into(),
-        }
+        Words::read(&launchers_vocabulary()).expect("the launcher's words say a person")
     }
 
     fn ada() -> Found {
@@ -310,28 +302,16 @@ mod tests {
 
     #[test]
     fn the_words_are_read_from_the_vocabulary_and_one_missing_is_named() {
-        let vocabulary = json!({"things": [
-            {"id": "slack:person:status", "name": "Status"},
-            {"id": "slack:person:presence", "name": "Presence"},
-            {"id": "slack:person:zone", "name": "Time Zone"},
-            {"id": WRITE, "said": {"looking": "looking in Slack", "missing": "no one at this address"}},
-            {"id": "slack:conversation", "name": "Conversation", "glyph": "chat"},
-            {"id": "slack:person:source", "name": "Slack"},
-            {"id": "slack:message", "said": {"you": "you"}}
-        ]});
-        assert_eq!(Words::read(&vocabulary), Ok(words()));
+        let read = Words::read(&launchers_vocabulary()).expect("the launcher's words say a person");
+        assert_eq!(
+            (read.zone.as_str(), read.missing.as_str(), read.you.as_str()),
+            ("Time Zone", "no one at this address", "You"),
+            "a person's words, as the launcher says them"
+        );
         let without = json!({"things": [{"id": "slack:person:status", "name": "Status"}]});
         assert_eq!(
             Words::read(&without),
             Err("the vocabulary has no slack:person:presence".to_owned())
         );
-    }
-
-    #[test]
-    fn the_launchers_own_vocabulary_has_every_word() {
-        let path = std::env::var_os("LAUNCHER_WORDS").expect("LAUNCHER_WORDS names words.json");
-        let text = std::fs::read_to_string(path).expect("words.json reads");
-        let vocabulary: Value = serde_json::from_str(&text).expect("words.json is JSON");
-        assert_eq!(Words::read(&vocabulary), Ok(words()));
     }
 }

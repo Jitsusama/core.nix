@@ -12,6 +12,11 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// The launcher's own words (tests/words.json), which the check
+/// `the-daemons-test-the-launchers-words` holds to words.json, handed to
+/// a case's daemon as its unit hands it words.json itself.
+const WORDS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/words.json");
+
 /// One request the stand-in heard: its first line and its headers.
 #[derive(Clone, Debug)]
 struct Heard {
@@ -110,13 +115,10 @@ fn said_to(mut program: std::process::Child, lines: &str) -> Vec<String> {
 }
 
 /// The program, started over Slack at `origin` with this sign-in, and
-/// without the launcher's words the build hands slack-unreads' cases, so
-/// it says who they are alone, as each case but one hears it.
+/// without the launcher's words, so it says who they are alone, as each
+/// case but one hears it.
 fn started(origin: &str, credentials: &PathBuf) -> std::process::Child {
-    program(origin, credentials)
-        .env_remove("LAUNCHER_WORDS")
-        .spawn()
-        .unwrap()
+    program(origin, credentials).spawn().unwrap()
 }
 
 /// The program to run over Slack at `origin` with this sign-in.
@@ -496,11 +498,14 @@ fn a_refused_sign_in_is_said_once_and_nobody_more_is_asked_about() {
 fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
     let stand_in = StandIn::new(slack);
     let path = credentials("words");
-    // The vocabulary the build hands it, as the people daemon's unit does.
-    // Ada asked again says her status, which only Slack's profile of her
+    // The launcher's words, as the people daemon's unit hands them. Ada
+    // asked again says her status, which only Slack's profile of her
     // holds.
     let said = said_to(
-        program(&stand_in.origin, &path).spawn().unwrap(),
+        program(&stand_in.origin, &path)
+            .env("LAUNCHER_WORDS", WORDS)
+            .spawn()
+            .unwrap(),
         "ada@example.com\nada@example.com\nnobody@example.com\n",
     );
     let said: Vec<serde_json::Value> = said
@@ -533,7 +538,10 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
     // Lin, asked ahead, has her conversation with Joel as a row ready for
     // her Recent, with its messages in its drawer.
     let lin = said_to(
-        program(&stand_in.origin, &path).spawn().unwrap(),
+        program(&stand_in.origin, &path)
+            .env("LAUNCHER_WORDS", WORDS)
+            .spawn()
+            .unwrap(),
         "?lin@example.com\n",
     );
     let lin: serde_json::Value = serde_json::from_str(&lin[0]).unwrap();
@@ -617,11 +625,6 @@ fn unreads_from(
     credentials: &std::path::Path,
     run: &std::path::Path,
 ) -> Child {
-    // Rows only where a case hands it words, as the unit does, so the
-    // others hear the records they always have.
-    if !command.get_envs().any(|(name, _)| name == "LAUNCHER_WORDS") {
-        command.env_remove("LAUNCHER_WORDS");
-    }
     command
         .arg(credentials)
         .arg(socket(run))
@@ -992,10 +995,7 @@ fn handed_the_launchers_words_it_serves_each_conversation_as_its_row() {
     let path = credentials("unreads-rows");
     let run = path.with_extension("rows");
     let mut command = Command::new(env!("CARGO_BIN_EXE_slack-unreads"));
-    command.env(
-        "LAUNCHER_WORDS",
-        std::env::var_os("LAUNCHER_WORDS").expect("LAUNCHER_WORDS names words.json"),
-    );
+    command.env("LAUNCHER_WORDS", WORDS);
     let mut program = unreads_from(command, &stand_in, &path, &run);
     until("the socket never came", || socket(&run).exists());
     let rows = |place: &str| {
