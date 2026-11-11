@@ -751,13 +751,14 @@ ShellRoot {
     }
 
     // A row reused for another, as every row is on a step, lays out only
-    // what it draws: its chord's keys kept where the new ones are alike,
-    // and its side laid out once, never again for a count it doesn't show.
+    // what it draws: its chord's keys kept where it's given as many, each
+    // saying its new key, as a home row's Super+O becomes Super+E, and its
+    // side laid out once, never again for a count it doesn't show.
     function reusedRowLaysOutWhatItDraws() {
-        const key = textItem(countedChord, "Super");
-        countedChord.chord = [{ text: "Super" }, { text: "0" }];
-        const again = textItem(countedChord, "Super");
-        expect("a row given keys alike keeps their Texts", key !== null && again === key,
+        const key = textItem(countedChord, "0");
+        countedChord.chord = [{ text: "Super" }, { text: "9" }];
+        const again = textItem(countedChord, "9");
+        expect("a row given as many keys keeps their Texts", key !== null && again === key,
             `${key} then ${again}`);
         const laid = textsSaying(saying, saying.side, []);
         expect("a side said with no chord is laid out once", laid.length === 1,
