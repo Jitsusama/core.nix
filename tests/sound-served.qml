@@ -13,8 +13,12 @@
 // served, lead its parts in Sound's order, Muted's act named Unmute once
 // it's muted, the Volume its drawer's, and each Return asking the daemon;
 // and where each program's stream is sent is the daemon's targets record,
-// a send asking it once a stream. (tests/sound.qml holds the parts and drawers made here.) It exits 0 once every case holds, and otherwise 1,
-// saying which didn't.
+// a send asking it once a stream; and the programs playing through a
+// device are served inside it, the drawer's Playing saying the daemon's
+// words, each program's :setl asking the daemon on its streams and its
+// Plays On choices sending it as Sound does. (tests/sound.qml holds the
+// parts and drawers made here.) It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -474,7 +478,87 @@ ShellRoot {
                 ["send", "stream:94", deskSpeakers.name]];
             expect("each stream is sent, an ask of the daemon each",
                 sends === JSON.stringify(meant), sends);
-            Qt.exit(0);
+            for (const record of programsServed())
+                tell(record);
+            when("the programs served", () => partOf("programs")?.targets().length === 1,
+                programmed);
+        });
+    }
+
+    // Spotify playing through the speakers, as programs.rs serves it: the
+    // speakers' Playing, Spotify's row inside it, its Plays On and one
+    // choice, the speakers themselves.
+    readonly property string programs: `row:sound:${deskSpeakers.name}:programs`
+    readonly property string spotify: `${programs}:program:Spotify`
+
+    function programsServed() {
+        const speakers = deskSpeakers.name;
+        const held = { node: speakers, program: "Spotify", streams: [93, 94] };
+        const playsOn = `${spotify}:plays-on`;
+        return [part("programs", {
+            thing: `sound:${speakers}:programs`, kind: "programs", order: 1400,
+            name: "Playing", hue: "machine", side: [{ said: "Spotify" }],
+            acts: [{ key: "verb:more", step: "rows" }],
+            held: { node: speakers, playing: "Spotify 40%" }
+        }), part("programs:program:Spotify", {
+            thing: `sound:${speakers}:program:Spotify`, kind: "program", order: 1401,
+            parent: programs, depth: 2, name: "Spotify", glyph: { code: "f1bc" },
+            hue: "machine", side: [{ said: "40%" }],
+            acts: [{ key: "verb:more", step: "rows" }],
+            held: Object.assign({ sink: true, muted: false, volume: 0.4 }, held)
+        }), part("programs:program:Spotify:plays-on", {
+            thing: `sound:${speakers}:program:Spotify:plays-on`, kind: "setting",
+            order: 1402, parent: spotify, depth: 3, name: "Plays On", hue: "machine",
+            side: [{ said: "the default \u00b7 Desk Speakers" }],
+            acts: [{ key: "verb:more", step: "rows" }]
+        }), part(`programs:program:Spotify:plays-on:${speakers}`, {
+            thing: `verb:sound-plays-on:${speakers}`, kind: "send", order: 1403,
+            parent: playsOn, depth: 4, name: "Desk Speakers",
+            acts: [{
+                key: "verb:sound-sent",
+                ask: { ask: "act", act: "send", key: `program:${speakers}:Spotify`,
+                    streams: [93, 94], target: speakers }
+            }],
+            held: Object.assign({ to: speakers, state: "",
+                fill: { device: "Desk Speakers", value: "Desk Speakers" } }, held)
+        })];
+    }
+
+    function programmed() {
+        const playing = partOf("programs");
+        expect("the programs playing through it are its Playing, as served",
+            playing.side === "Spotify", playing.side);
+        const drawn = sound.drawerOf(deskSpeakers).facts
+            .find(fact => fact.label === "Playing");
+        expect("its drawer's Playing says how loud each plays, in the daemon's words",
+            drawn?.value === "Spotify 40%", JSON.stringify(drawn));
+        const program = playing.targets()[0];
+        expect("a program's row is a thing, with a drawer", program.key
+            === `sound:${deskSpeakers.name}:program:Spotify` && program.thing === true
+            && program.drawer()?.title === "Spotify", `${program.key}, ${program.thing}`);
+        const options = program.options;
+        expect("it says how it stands to :setl", options.mute?.now() === false
+            && options.volume?.now() === 40, Object.keys(options).join(", "));
+        options.volume.set(30, { how: "set" });
+        when("the program's volume asked", () => root.acted.length === 6, () => {
+            const asked = root.acted[5];
+            const ask = JSON.stringify([asked.act, asked.key, asked.streams, asked.volume,
+                asked.muted]);
+            const meant = JSON.stringify(["volume", `program:${deskSpeakers.name}:Spotify`,
+                [93, 94], 0.3, false]);
+            expect(":setl volume asks the daemon on every stream, unmuting it",
+                ask === meant, ask);
+            const choice = program.targets()[0].targets()[0];
+            choice.run();
+            when("the choice sent", () => root.acted.length === 8, () => {
+                const sends = JSON.stringify(root.acted.slice(6)
+                    .map(one => [one.act, one.key, one.target]));
+                const sent = [["send", "stream:93", deskSpeakers.name],
+                    ["send", "stream:94", deskSpeakers.name]];
+                expect("a Plays On choice sends its program as Sound does",
+                    sends === JSON.stringify(sent), sends);
+                Qt.exit(0);
+            });
         });
     }
 }
