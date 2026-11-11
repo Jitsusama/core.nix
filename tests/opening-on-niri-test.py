@@ -10,6 +10,10 @@ the rows land where the kept ones stood and the cursor stays on its row, so noth
 flashes in (Y2YBTS, 2026-11-10). Home is kept a few seconds after the shell starts too, so its
 first opening is drawn the same way. Every test starts with the launcher closed, and leaves it
 so.
+
+Long because every case here opens from what one shell kept, started once a run, through the
+fixture that keeps home after each case and the helpers that read its openings, so a second
+file would start a second shell and share them by import.
 """
 
 from __future__ import annotations
