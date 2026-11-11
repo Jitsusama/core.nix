@@ -6,9 +6,10 @@
 # to give a signal the ones below it don't, and docs/testing.md says which.
 #
 # Each check sits in the checks.nix of the folder whose promise it holds, a
-# module's or a hardware model's, given the helpers below by name. This file
-# keeps the helpers, the virtual machines and the checks about the
-# repository as a whole, and gathers every folder's.
+# module's, a hardware model's or a VM area's, given the helpers below by
+# name. This file keeps the helpers, the virtual machines not yet in an area
+# of tests/vm/, and the checks about the repository as a whole, and gathers
+# every folder's.
 {
   self,
   pkgs,
@@ -266,68 +267,11 @@ let
 
   # The virtual machine tests. Each has to show something nothing cheaper can.
   vmTestsOn = pkgs: {
-    # The disk layout and Secure Boot decide whether a machine starts at all.
-    vm-secure-boot-installs = import ./tests/vm/guide/secure-boot.nix { inherit self pkgs; };
-    # A keyboard at the disk prompt is the TPM, the boot stub, the initrd's
-    # BlueZ and the kernel's HID together, before any disk is open.
-    vm-bluetooth-types-at-the-disk-prompt = import ./tests/vm/boot/bluetooth-disk-prompt.nix {
-      inherit self pkgs;
-    };
-    # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
-    # a TPM together, driven by its keys as a person drives it.
-    vm-guide-installs = import ./tests/vm/guide/guide-install.nix { inherit self pkgs; };
-    # Whether the guide leaves another system's partitions as they were is
-    # a real disk's table, the kernel's view of it and the firmware's boot.
-    vm-guide-installs-beside-another-system = import ./tests/vm/guide/guide-beside.nix {
-      inherit self pkgs;
-    };
-    # Writing a stick on a host is UDisks2, polkit and a USB disk together,
-    # as the person rather than root, and a bundle sealed to a FIDO2 key
-    # opens only where the plugin, the key and its PIN meet.
-    vm-guide-writes-a-stick = import ./tests/vm/guide/guide-writer.nix { inherit self pkgs; };
-    # Recovering is a stick, a laid-out disk and its subvolumes together,
-    # with nothing of the machine's on the stick.
-    vm-guide-recovers = import ./tests/vm/guide/guide-recover.nix { inherit self pkgs; };
-    # Whether firmware boots a program signed by several machines' keys is
-    # the firmware's own to say, and only a running one says it.
-    vm-guide-signs-a-stick-for-two-machines = import ./tests/vm/guide/guide-one-stick.nix {
-      inherit self pkgs;
-    };
-    vm-commits-are-signed = import ./tests/vm/keys/signing.nix { inherit self pkgs; };
-    # Only a running machine attaches a loop device, mounts it, and says
-    # whether Btrfs copies the image on write.
-    vm-cargo-builds-on-their-own-filesystem = import ./tests/vm/disks/cargo-builds.nix {
-      inherit self pkgs;
-    };
-    # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
-    # together, and only a running machine has them all.
-    vm-passkeys-come-from-the-tpm = import ./tests/vm/keys/linux-id.nix { inherit self pkgs; };
-    vm-keyring-opens-without-asking = import ./tests/vm/keys/gnome-keyring.nix { inherit self pkgs; };
     # Only Chrome, started, says whether it installed what the preferences
     # file names, and writes a session file as it browses.
     vm-chrome-says-its-open-tabs = import ./tests/chrome-extension.nix {
       inherit self pkgs;
     };
-    vm-speakers-are-tuned = import ./tests/vm/sound/speakers.nix { inherit pkgs; };
-    # Only a running PipeWire, another account's, shows root reads it.
-    vm-a-call-is-on-reads-every-account = import ./tests/vm/sound/calls.nix { inherit pkgs; };
-    # Only a running PipeWire with a call in it shows what's recorded of each side.
-    vm-a-call-is-written-down = import ./tests/vm/sound/call-transcripts.nix { inherit self pkgs; };
-    # Only a running PipeWire shows a microphone offered, heard only while recorded.
-    vm-a-microphone-is-noise-cancelled = import ./tests/vm/sound/noise-cancelled.nix {
-      inherit self pkgs;
-    };
-    vm-pebble-speakers-are-tuned = import ./tests/vm/sound/pebble-x-plus.nix { inherit pkgs; };
-    vm-mv7-voice-is-levelled = import ./tests/vm/sound/shure-mv7-voice.nix { inherit pkgs; };
-    # Which input WirePlumber picks comes from the rank it gives each
-    # microphone as udev reports its card, so only a running machine shows it.
-    vm-webcam-microphones-yield = import ./tests/vm/sound/microphones.nix { inherit pkgs; };
-    # A light plugged back in is uhid, hidraw, udev's nodes in /dev and the
-    # lights' watches together, which only a running machine has.
-    vm-the-desk-lights-come-back = import ./tests/vm/devices/desk-lights.nix { inherit self pkgs; };
-    # A card plugged in and pulled out is the kernel's uevents and its USB
-    # audio driver together, which only a running machine has.
-    vm-desk-facts-follow-a-replug = import ./tests/vm/devices/desk-facts.nix { inherit self pkgs; };
     # The desktop, in areas of a minute or two each on one machine
     # (tests/desktop.nix).
     vm-desktop-starts-clean = import ./tests/desktop.nix {
@@ -461,44 +405,6 @@ let
         height = 1800;
       };
     };
-    # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
-    # together, and what it leaves of other programs' routing only shows
-    # once it has. Each area is a machine of its own, so they run side by
-    # side (tests/vm/network/wifi.nix).
-    vm-wifi-joins = import ./tests/vm/network/wifi.nix {
-      inherit self pkgs;
-      area = "joins";
-    };
-    vm-wifi-holds-on = import ./tests/vm/network/wifi.nix {
-      inherit self pkgs;
-      area = "holds-on";
-    };
-    vm-wifi-joins-when-asked = import ./tests/vm/network/wifi.nix {
-      inherit self pkgs;
-      area = "joins-when-asked";
-    };
-    vm-disk-guard-keeps-the-disk = import ./tests/vm/disks/disk-guard.nix { inherit self pkgs; };
-    # Whether the kernel panics once a disk is gone, and only then, shows
-    # only with a disk to take away.
-    vm-disk-loss-panic-panics-once-the-disk-is-gone = import ./tests/vm/disks/disk-loss-panic.nix {
-      inherit self pkgs;
-    };
-    # What an account's services make of the network coming late, changing
-    # and networkd restarting shows only with both managers running.
-    vm-network-revives-units = import ./tests/vm/network/network-revive.nix { inherit self pkgs; };
-    # Whether chrony hears the network's server, and sets the clock past it
-    # when it never answers, shows only on a network that names one.
-    vm-clock-keeps-time = import ./tests/vm/network/clock.nix { inherit self pkgs; };
-    # Whether mDNS gets through the firewall, and only on a trusted network,
-    # shows only with machines on a network asking each other.
-    vm-machines-find-each-other-at-home = import ./tests/vm/network/mdns.nix { inherit self pkgs; };
-    # Whether the name service keeps a family's addresses that resolved left
-    # out shows only with a neighbour whose other family answers first.
-    vm-names-give-ipv4-when-ipv6-answers-first = import ./tests/vm/network/name-service.nix {
-      inherit self pkgs;
-    };
-    # The greeter is all that stands between a logout and the desktop.
-    vm-greeter-signs-in = import ./tests/vm/boot/greeter.nix { inherit self pkgs; };
     # Whether the shell's surfaces come back after a screen goes shows only
     # with niri on the screen itself, not nested in Cage. Each area is a
     # machine of its own, so they run side by side (tests/screens.nix).
@@ -514,98 +420,12 @@ let
       inherit self pkgs;
       area = "keep-the-launcher";
     };
-    vm-boot-asks-in-the-theme = import ./tests/vm/boot/plymouth.nix { inherit self pkgs; };
-    # Whether the ask shows whole on screens of different sizes shows only
-    # with Plymouth drawing on two of them at once.
-    vm-boot-asks-on-every-screen = import ./tests/vm/boot/plymouth-screens.nix { inherit self pkgs; };
-    # What the screen shows while a hibernation's image is read shows only
-    # with Plymouth up and the kernel reading an image it wrote.
-    vm-boot-says-it-wakes-from-hibernation = import ./tests/vm/boot/plymouth-restore.nix {
-      inherit self pkgs;
-    };
-    # Whether libvirt's daemon stops in time shows only with the daemon
-    # running and its threads short of CPU, as at a busy shutdown.
-    vm-libvirt-stops-quickly = import ./tests/vm/admin/libvirt.nix { inherit self pkgs; };
-    # Whether the IR camera opens only while it's read, and hands each reader
-    # its frames and none of the last one's, shows only with cameras there.
-    vm-ir-camera-opens-for-readers = import ./tests/vm/devices/ir-camera.nix { inherit self pkgs; };
-    # Whether the programs holding a loopback camera are named shows only with
-    # a loopback there and another account's programs holding it.
-    vm-loopback-says-who-holds-it = import ./tests/vm/devices/loopback-holders.nix {
-      inherit self pkgs;
-    };
-    # Whether the swap comes down while udev probes its device shows only with
-    # the device there and held open.
-    # Whether systemd-oomd ends the work that filled swap before the kernel's
-    # OOM killer picks a program shows only with swap filling for real.
-    vm-full-swap-ends-what-filled-it = import ./tests/vm/disks/full-swap.nix { inherit self pkgs; };
-    # Whether a machine comes back from hibernating with no resume= shows only
-    # with systemd's initrd opening LUKS and reading the image it wrote.
-    vm-hibernation-comes-back = import ./tests/vm/disks/hibernate.nix { inherit self pkgs; };
-    # Whether the kernel took a slice's disk latency shows only with the
-    # account's manager starting it on a real drive.
-    vm-apps-come-first = import ./tests/vm/admin/slices.nix { inherit self pkgs; };
-    # Which of CAKE's tins a slice's traffic reaches shows only with the
-    # account's manager making the slices and packets crossing a real link.
-    vm-the-network-keeps-its-order = import ./tests/vm/network/shaper.nix { inherit self pkgs; };
-    # Whether the shaper finds a connection's rate, and keeps a ping near its
-    # own delay under a full upload, shows only with a real queue filling.
-    vm-the-connection-stays-quick = import ./tests/vm/network/shaper-rate.nix { inherit self pkgs; };
-    # Whether the shaper takes back a queue a router hides by sharing it flow
-    # by flow shows only with real TCP filling a real fq_codel.
-    vm-a-hidden-queue-is-taken-back = import ./tests/vm/network/shaper-owned.nix { inherit self pkgs; };
-    # Whether a check's VM goes ahead of the builds shows only with a build
-    # user's process in the daemon's own cgroup and the service's real rights.
-    vm-checks-go-first = import ./tests/vm/admin/vm-first.nix { inherit self pkgs; };
-    # Whether a reboot gets past what won't stop shows only by rebooting, with
-    # a watchdog there to reset the machine.
-    vm-reboot-cannot-hang = import ./tests/vm/boot/shutdown.nix { inherit self pkgs; };
-    # Whether dictation's chord is heard let go, and nothing else of the
-    # keys, shows only with a keyboard there and an account outside its group.
-    vm-dictation-hears-the-chord-let-go = import ./tests/vm/sound/dictation-chord.nix {
-      inherit self pkgs;
-    };
-    # When dictation says it's listening shows only with a sound server there,
-    # with a microphone and without.
-    vm-dictation-listens-once-it-hears = import ./tests/vm/sound/dictation-listening.nix {
-      inherit self pkgs;
-    };
-    # Whether logind and the compositor hear the lid's own switch or
-    # lid-hinge's shows only with udev, uinput and logind there.
-    vm-lid-shuts-with-the-hinge = import ./tests/vm/devices/lid-hinge.nix { inherit self pkgs; };
-    # What logind makes of a shut lid shows only with logind watching one.
-    vm-lid-stays-at-the-desk = import ./tests/vm/devices/lid.nix { inherit self pkgs; };
-    # What logind makes of an idle machine shows only with logind counting
-    # its sessions, its locks and the charger.
-    vm-idle-sleep-comes-only-on-battery = import ./tests/vm/devices/idle-sleep.nix {
-      inherit self pkgs;
-    };
-    # Whether udev turns a root hub's wakeup on shows only with a USB
-    # controller and udev there.
-    vm-plugging-in-wakes-it = import ./tests/vm/devices/usb-wake.nix { inherit self pkgs; };
-    # Whether polkit lets an account switch the machine shows only with
-    # polkit, systemd and a system to switch to.
-    vm-admins-switch-unasked = import ./tests/vm/admin/switch-system.nix { inherit self pkgs; };
     # Only a key plugged into a machine shows which sign-ins take its touch.
     vm-a-yubikey-answers-only-once-in = import ./tests/yubikey-touch.nix { inherit self pkgs; };
     # Whether root is given only the builders nix-offload's lines trust,
     # in files the lender's account can't write, shows only with systemd
     # running the service as its own account.
     vm-root-builds-only-where-it-trusts = import ./tests/offload-lines.nix { inherit self pkgs; };
-    # Whether a machine updates itself to signed main, and goes back when it
-    # isn't whole, shows only with systemd, a real switch and Nix building.
-    vm-updates-itself-to-signed-main = import ./tests/vm/admin/update-to-main.nix {
-      inherit self pkgs;
-    };
-    # Whether polkit lets an administrator tune the work slices shows only
-    # with polkit and systemd.
-    vm-admins-tune-the-work-slices = import ./tests/vm/admin/work-slices.nix { inherit self pkgs; };
-    # Whether polkit lets an administrator tune the kernel's memory, and
-    # only to the values listed, shows only with polkit, systemd and a kernel.
-    vm-admins-tune-memory = import ./tests/vm/admin/memory-tune.nix { inherit self pkgs; };
-    # Whether a niri's kernel stacks are traced for its account and nobody
-    # else shows only with polkit, bpftrace and a kernel to trace.
-    vm-niri-is-traced-by-its-own = import ./tests/vm/admin/niri-off-cpu.nix { inherit self pkgs; };
   };
   vmTests = vmTestsOn vmHostPkgs;
 
@@ -643,6 +463,7 @@ let
       shellFolderLint
       passesClippy
       onLinux
+      vmHostPkgs
       ;
   };
 
@@ -1344,5 +1165,13 @@ gather (
     ./modules/zoom/checks.nix
     ./modules/zoxide/checks.nix
     ./modules/zsh/checks.nix
+    ./tests/vm/admin/checks.nix
+    ./tests/vm/boot/checks.nix
+    ./tests/vm/devices/checks.nix
+    ./tests/vm/disks/checks.nix
+    ./tests/vm/guide/checks.nix
+    ./tests/vm/keys/checks.nix
+    ./tests/vm/network/checks.nix
+    ./tests/vm/sound/checks.nix
   ]
 )

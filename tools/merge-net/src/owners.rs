@@ -18,7 +18,8 @@ use crate::rules::matches;
 pub fn in_tree(root: &Path, files: &[String]) -> Option<Vec<String>> {
     let checks = fs::read_to_string(root.join("checks.nix")).ok()?;
     let folders = folders(&fs::read_to_string(root.join("flake.nix")).ok()?);
-    let tests: Vec<(String, Vec<String>)> = vm_tests(&checks)
+    let read = |file: &str| fs::read_to_string(root.join(file)).ok();
+    let tests: Vec<(String, Vec<String>)> = every_vm_test(&checks, read)
         .into_iter()
         .map(|(name, file)| {
             // A file it can't read still owns itself.
@@ -30,7 +31,39 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Vec<String>> {
     Some(owners(&tests, files))
 }
 
-/// Each VM test `checks.nix` names, with the file it imports for it.
+/// Each VM test the root `checks.nix`, holding `checks`, names, and each
+/// the folders' `checks.nix` it gathers name, with the file it imports for
+/// it from the repository's root. Only a folder's file the root names is
+/// read, through `read`, so one nothing gathers names no test, as in Nix.
+pub fn every_vm_test(checks: &str, read: impl Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+    let mut found = vm_tests(checks);
+    for gathered in gathered(checks) {
+        let Some(text) = read(&gathered) else {
+            continue;
+        };
+        let here = gathered.rsplit_once('/').map_or("", |(folder, _)| folder);
+        found.extend(
+            vm_tests(&text)
+                .into_iter()
+                .filter_map(|(name, file)| Some((name, joined(here, &file)?))),
+        );
+    }
+    found
+}
+
+/// The folders' `checks.nix` that `checks` gathers, one to a line of its
+/// list: `modules/zsh/checks.nix` for `./modules/zsh/checks.nix`.
+fn gathered(checks: &str) -> Vec<String> {
+    checks
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("./"))
+        .filter(|path| path.ends_with("/checks.nix"))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Each VM test one `checks.nix` names, with the file it imports for it
+/// from that file's folder.
 pub fn vm_tests(checks: &str) -> Vec<(String, String)> {
     checks
         .lines()
@@ -207,6 +240,33 @@ mod tests {
       script = ../modules/quickshell/tests/x.qml;
     ";
 
+    const GATHERING: &str = "
+    vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };
+    ++ map (file: import file given) [
+      ./modules/zsh/checks.nix
+      ./tests/vm/keys/checks.nix
+    ]
+    ";
+
+    const KEYS: &str = "
+    onLinux {
+      vm-commits-are-signed = import ./signing.nix { inherit self pkgs; };
+    }
+    ";
+
+    const SIGNING: &str = "
+      tests = ./signing-vm-test.py;
+      import ../../lib/pytest-vm-test.nix { inherit pkgs; } { }
+    ";
+
+    fn read_area(file: &str) -> Option<String> {
+        match file {
+            "tests/vm/keys/checks.nix" => Some(KEYS.to_owned()),
+            "tests/vm/loose/checks.nix" => Some("vm-loose = import ./loose.nix { };".to_owned()),
+            _ => None,
+        }
+    }
+
     fn words(text: &str) -> Vec<String> {
         text.split_whitespace().map(str::to_owned).collect()
     }
@@ -241,6 +301,49 @@ mod tests {
                     "tests/desktop.nix".to_owned()
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn a_folder_the_root_gathers_names_its_vm_tests_from_there() {
+        assert_eq!(
+            every_vm_test(GATHERING, read_area),
+            vec![
+                (
+                    "vm-apps-come-first".to_owned(),
+                    "tests/slices.nix".to_owned()
+                ),
+                (
+                    "vm-commits-are-signed".to_owned(),
+                    "tests/vm/keys/signing.nix".to_owned()
+                ),
+            ],
+            "tests/vm/loose/checks.nix is gathered by nothing, so names nothing"
+        );
+    }
+
+    #[test]
+    fn a_change_to_a_gathered_tests_file_names_that_test() {
+        let folders = folders(FLAKE);
+        let tests: Vec<(String, Vec<String>)> = every_vm_test(GATHERING, read_area)
+            .into_iter()
+            .map(|(name, file)| {
+                let text = if file == "tests/slices.nix" {
+                    SLICES
+                } else {
+                    SIGNING
+                };
+                let paths = owned(&file, text, &folders);
+                (name, paths)
+            })
+            .collect();
+        assert_eq!(
+            owners(&tests, &words("tests/vm/keys/signing-vm-test.py")),
+            words("vm-commits-are-signed")
+        );
+        assert_eq!(
+            owners(&tests, &words("tests/lib/pytest-vm-test.nix")),
+            words("vm-apps-come-first vm-commits-are-signed")
         );
     }
 

@@ -4,8 +4,9 @@ Each VM test boots one or more machines under QEMU and proves what
 only a running system shows: a boot, a stick written and installed, a
 desktop driven. A test is two files of one name, its `.nix` (the
 machines and how the driver runs) and its `-vm-test.py` (what it
-checks, through pytest), and the root `checks.nix` names it as a
-`vm-` check.
+checks, through pytest), and its area's `checks.nix` names it as a
+`vm-` check, given `vmHostPkgs` by the root `checks.nix`, which keeps
+the tests not yet in an area.
 
 They are grouped by what they prove, a folder an area:
 
