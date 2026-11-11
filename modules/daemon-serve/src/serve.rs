@@ -16,6 +16,10 @@
 //! again under its id for the same records, a watch keeps on at its new
 //! pace, telling at once what it held back rather than everything whole,
 //! as mycelium's node does (its PROTOCOL.md, The Daemon Interface).
+//!
+//! A daemon that serves something only while it's watched, as the notices
+//! daemon keeps a notice read while For You's Desktop is looked at, is
+//! told as each watch begins or ends, and asks which are watched.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Write};
@@ -25,7 +29,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::mpsc::{self, SyncSender};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -42,6 +46,11 @@ const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 /// What answers a daemon's own asks: the ask whole, and its answer
 /// without its id, or none for an ask it doesn't know.
 pub type Own = Box<dyn Fn(&Value) -> Option<Value> + Send + Sync>;
+
+/// What's told as a watch begins or ends. It's told with every record
+/// held, so it may only pass that on, as onto a channel, and never ask
+/// anything of what serves it.
+pub type Heed = Box<dyn Fn() + Send + Sync>;
 
 /// One watch a client holds.
 struct Watch {
@@ -123,15 +132,21 @@ struct Held {
 
 impl Held {
     /// Hangs up on these connections, which stopped reading, and drops
-    /// their watches.
-    fn hang_up(&mut self, stuck: &[u64]) {
+    /// their watches, answering whether any went.
+    fn hang_up(&mut self, stuck: &[u64]) -> bool {
         for watch in &self.watches {
             if stuck.contains(&watch.connection) {
                 let _ = watch.stream.shutdown(Shutdown::Both);
             }
         }
-        self.watches
-            .retain(|watch| !stuck.contains(&watch.connection));
+        self.drop_watches(|watch| stuck.contains(&watch.connection))
+    }
+
+    /// Drops the watches `going` holds of, answering whether any went.
+    fn drop_watches(&mut self, going: impl Fn(&Watch) -> bool) -> bool {
+        let before = self.watches.len();
+        self.watches.retain(|watch| !going(watch));
+        self.watches.len() != before
     }
 }
 
@@ -153,6 +168,8 @@ pub struct Shared {
     /// Woken as a paced watch first holds something back, so what tells
     /// it sleeps no longer than its pace.
     paced: Condvar,
+    /// What's told as a watch begins or ends, once the daemon says.
+    heed: OnceLock<Heed>,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -183,7 +200,32 @@ impl Shared {
                 since: now_ms(),
             }),
             paced: Condvar::new(),
+            heed: OnceLock::new(),
         })
+    }
+
+    /// Tells `heed` each time a watch begins or ends, from then on; only
+    /// the first a daemon gives is kept.
+    pub fn on_watches(&self, heed: Heed) {
+        let _ = self.heed.set(heed);
+    }
+
+    /// Whether any watch is of `kind` in `place`, or of every place.
+    pub fn watches(&self, kind: &str, place: &str) -> bool {
+        lock(self).watches.iter().any(|watch| {
+            watch.keys.is_none()
+                && watch.kinds.iter().any(|one| one == kind)
+                && watch
+                    .places
+                    .as_ref()
+                    .is_none_or(|places| places.iter().any(|one| one == place))
+        })
+    }
+
+    fn heeded(&self, moved: bool) {
+        if let Some(heed) = self.heed.get().filter(|_| moved) {
+            heed();
+        }
     }
 
     /// Holds `records` as every record there is, and tells each watch
@@ -261,7 +303,7 @@ impl Shared {
             }
         }
         held.records = now;
-        held.hang_up(&stuck);
+        self.heeded(held.hang_up(&stuck));
         if pacing {
             self.paced.notify_all();
         }
@@ -285,7 +327,7 @@ impl Shared {
                     stuck.push(watch.connection);
                 }
             }
-            held.hang_up(&stuck);
+            self.heeded(held.hang_up(&stuck));
             let next = held.watches.iter().filter_map(|watch| watch.due).min();
             guard = match next {
                 Some(due) => {
@@ -389,9 +431,8 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
             break;
         }
     }
-    lock(shared)
-        .watches
-        .retain(|watch| watch.connection != connection);
+    let went = lock(shared).drop_watches(|watch| watch.connection == connection);
+    shared.heeded(went);
 }
 
 /// The answer to one of the daemon's own asks, or a refusal of an ask
@@ -471,7 +512,9 @@ fn answer(
             moved: BTreeSet::new(),
             due: None,
         };
-        return Some(watched(domain, held, watch));
+        let answer = watched(domain, held, watch);
+        shared.heeded(true);
+        return Some(answer);
     }
     Some(match asked {
         Ask::Hello { id } => json!({
@@ -486,8 +529,8 @@ fn answer(
         }
         Ask::Watch { .. } => unreachable!("a watch is answered above"),
         Ask::Unwatch { id } => {
-            held.watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
+            let went = held.drop_watches(|watch| watch.connection == connection && watch.id == id);
+            shared.heeded(went);
             json!({"id": id, "unwatched": true})
         }
         Ask::Health { id } => json!({
@@ -700,6 +743,30 @@ mod tests {
             ),
             "at once again, it's told at once all it held back, in one line"
         );
+    }
+
+    #[test]
+    fn a_daemon_hears_each_watch_begin_and_end() {
+        let (shared, mut client, folder) = served("heeded", Box::new(|_| None));
+        let (telling, told) = channel();
+        shared.on_watches(Box::new(move || {
+            let _ = telling.send(());
+        }));
+        assert!(!shared.watches("row", "agents"), "nothing watches yet");
+        let watch = json!({"id": 1, "ask": "watch", "kind": "row", "place": "agents"});
+        client.ask(&watch);
+        assert!(told.recv().is_ok(), "told as it begins");
+        assert!(shared.watches("row", "agents"), "its place is watched");
+        assert!(!shared.watches("row", "mail"), "another isn't");
+        client.ask(&json!({"id": 1, "ask": "unwatch"}));
+        assert!(told.recv().is_ok(), "told as it's unwatched");
+        assert!(!shared.watches("row", "agents"), "unwatched, it isn't");
+        let mut another = Client::connect(&folder.0.join("daemon.sock"));
+        another.ask(&watch);
+        assert!(told.recv().is_ok(), "told as the other begins");
+        drop(another);
+        assert!(told.recv().is_ok(), "told as its connection ends");
+        assert!(!shared.watches("row", "agents"), "its watch went with it");
     }
 
     #[test]
