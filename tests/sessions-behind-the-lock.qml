@@ -99,7 +99,10 @@ ShellRoot {
         expect("of a kitty's two windows, neither named, the sender's isn't known",
             listed.window === null, JSON.stringify(listed.window));
         Sessions.behindTheLock = true;
-        const handed = { sessions: [{ id: "s-handed", cwd: "/tmp", from: "s-sender" }] };
+        // Handed over fenced, as the harness hands over what a session was
+        // started with (its #1345).
+        const handed = { sessions: [{ id: "s-handed", cwd: "/tmp", from: "s-sender",
+            env: { PI_SANDBOX: "fence", PI_SPAWNER: "on" } }] };
         const answer = Sessions.handedOver(JSON.stringify(handed));
         expect("handed over", answer === "taken", answer);
         stage = "opening";
@@ -114,6 +117,8 @@ ShellRoot {
         const classed = (/ --class (\S+)/.exec(spawn) ?? [])[1];
         expect("its window opens with an app id of its own, which its process is told",
             spawn.includes(`MYCELIUM_APP_ID=${classed} `), spawn);
+        expect("started again fenced, as it was handed over",
+            spawn.includes(" /tmp env PI_SANDBOX=fence PI_SPAWNER=on zsh -lic "), spawn);
         const window = { id: 22, pid: 600, workspace_id: 1, session: true, opened: classed };
         Niri.windows = Object.assign({}, Niri.windows, { "22": window });
         Niri.revision += 1;
