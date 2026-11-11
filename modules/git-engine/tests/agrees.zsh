@@ -269,6 +269,32 @@ git -C $r config branch.main.pushRemote origin
 agree "with a push remote" $r
 git -C $r push -q
 
+# Behind an upstream that only moves on, counted from the last count, then
+# one rewritten under it, which has to be walked whole again.
+local moving=$work/moving.git writer=$(fresh writer) still=$work/still
+rm -rf $moving; git init -q --bare $moving
+print w > $writer/w; git -C $writer add w; git -C $writer commit -qm w
+git -C $writer remote add origin $moving
+git -C $writer push -q -u origin main
+rm -rf $still; git clone -q $moving $still
+for i in 1 2; do print "on $i" >> $writer/w; git -C $writer commit -qam "on $i"; done
+git -C $writer push -q
+git -C $still fetch -q
+agree "behind an upstream" $still
+git -C $writer checkout -qb topic HEAD~1
+print topic > $writer/topic; git -C $writer add topic; git -C $writer commit -qm topic
+git -C $writer checkout -q main
+print more >> $writer/w; git -C $writer commit -qam more
+git -C $writer merge -q --no-edit topic
+git -C $writer push -q
+git -C $still fetch -q
+agree "behind an upstream that moved on through a merge" $still
+git -C $writer reset -q --hard HEAD~2
+print rewritten >> $writer/w; git -C $writer commit -qam rewritten
+git -C $writer push -qf
+git -C $still fetch -q
+agree "behind an upstream rewritten under it" $still
+
 # A conflict, a rebase stopped on one, and a detached HEAD.
 git -C $r checkout -qb side
 print side > $r/b; git -C $r commit -qam side
