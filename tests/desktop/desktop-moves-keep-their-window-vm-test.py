@@ -195,7 +195,15 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
     desktop.type_in(session.split("-")[1], selecting=title_of(session))
     # Return goes to the session only once the launcher knows its window, as the kitty it's in
     # says; until then the row offers Talk first.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "go to")
+    try:
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "go to")
+    except AssertionError as failed:
+        msg = (
+            f"the launcher offers no Go To: {desktop.showing()['selected']},"
+            f" while the node says {node_row(desktop, session)}"
+            f" and niri {desktop.as_account('niri msg --json windows')}"
+        )
+        raise AssertionError(msg) from failed
     began = time.monotonic()
     machine.send_key("ret")
     machine.wait_until_succeeds(
