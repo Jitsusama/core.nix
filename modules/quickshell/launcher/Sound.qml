@@ -32,8 +32,10 @@
 //
 // Its rows are the sound daemon's (modules/sound), served ready over its
 // socket: which devices there's something to hear through, what each is
-// called, the glyph it wears, its bar and its note, in its order. Their
-// parts and drawers are still made here, from the sound server through
+// called, the glyph it wears, its bar and its note, in its order; its
+// Use, Muted, Volume and Port parts; and where each program's stream is
+// sent, a send being an ask of it. Their other parts and drawers are
+// still made here, from the sound server through
 // Quickshell, until the daemon serves them too by 13 November, so nothing
 // is spawned for them, but for what a sound card says only to the kernel:
 // what it offers and runs at, its clock, USB speed and firmware, which
@@ -80,6 +82,8 @@ Provider {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/sound.sock`
         place: "sound"
+        // Where each program's stream is sent, as one record.
+        beside: ["targets"]
         // A device's row is made with its parts; a part the daemon serves
         // inside one, as its Volume, as every place's rows are.
         make: (row, key) => row.kind === "device" ? provider.servedRow(row, key)
@@ -598,9 +602,11 @@ Provider {
 
     // What a device's parts are made of, every figure they say included:
     // its row's words, its properties, channels and levels, its programs'
-    // and filters' levels, its ports and its facts.
+    // and filters' levels and where its programs are sent, its ports and
+    // its facts.
     function partsMadeOf(node) {
         const programs = programsOf(node).map(program => [program.name,
+            Targets.sentTo(program.streams, targets),
             program.streams.map(stream => [stream.audio?.volume, stream.audio?.muted,
                 stream.properties["pulse.corked"]])]);
         const filters = filtersOf(node).map(filter => [filter.name, filter.audio?.volume,
@@ -1125,10 +1131,6 @@ Provider {
         return servedPart(node, "port");
     }
 
-    // How a process says it ended of itself (QProcess's NormalExit), rather
-    // than being stopped, whose output is cut short.
-    readonly property int normalExit: 0
-
     // The device whose drawer is out, or a program's playing through it or
     // recording from it, by the device's node's name, or "". pw-top runs
     // only while one shows, since it asks the graph for its timing every
@@ -1191,35 +1193,11 @@ Provider {
     }
 
     // Which device each stream is sent to, by its id, as WirePlumber keeps
-    // it in the default metadata: heard while Sound is shown, which costs
-    // the graph nothing, since pw-metadata only listens, and set from what
-    // a send of the launcher's own did once it's done.
-    property var targets: ({})
-
-    // Whether the launcher is in Sound, by its own row or one of its
-    // devices' as a match from the top.
-    readonly property bool shownHere: launcher !== null && launcher.open
-        && (launcher.held ?? []).some(step => {
-            const key = String(step.row?.key ?? "");
-            return key === "collection:sound" || key.startsWith("sound:");
-        })
-
-    Process {
-        running: provider.shownHere
-        command: [provider.settings.pwMetadata ?? "pw-metadata", "-n", "default", "-m"]
-        onRunningChanged: {
-            if (!running)
-                provider.targets = ({});
-        }
-        stdout: SplitParser {
-            onRead: line => {
-                // Only a target's change is news: the rest of the default
-                // metadata, as the default's own, refreshes nothing.
-                const heard = Targets.heard(provider.targets, line);
-                if (heard !== provider.targets)
-                    provider.targets = heard;
-            }
-        }
+    // it in the default metadata and the sound daemon serves it, told of
+    // each change, a send of the launcher's own included.
+    readonly property var targets: {
+        void ready.placings;
+        return ready.held["targets:default"]?.targets ?? ({});
     }
 
     // A program's Plays On, or Records From for one recording: the device
@@ -1305,65 +1283,48 @@ Provider {
     }
 
     // Sends each of a program's streams to a device, or back to the
-    // default, given none, which it then follows wherever it moves, one
-    // pw-metadata at a time. Each done is held as sent; one refused says
-    // so and sends no more. Then, once the program's heard there, the
-    // launcher goes to it on its new device's path.
-    Process {
-        id: sender
-        property var left: []
-        property var sending: null
-        onExited: (code, status) => provider.sent(code === 0 && status === provider.normalExit)
-    }
-
+    // default, given none, which it then follows wherever it moves, each
+    // an ask of the sound daemon, which says it in the default metadata.
+    // One refused says so, and the rest are let be. Then, once the
+    // program's heard there, the launcher goes to it on its new device's
+    // path.
     function send(node, program, device) {
         const to = device ?? usualFor(node);
-        const sends = Targets.sending(settings.pwMetadata ?? "pw-metadata", program.streams,
-            device ? device.name : "");
-        if (sends.length === 0 || !to)
+        const ids = Targets.sendable(program.streams);
+        const link = ready.link;
+        if (ids.length === 0 || !to || !link)
             return;
-        const moving = { program: program.name, to: to, sink: node.isSink,
-            ids: sends.map(each => each.id) };
-        sender.left = sender.left.concat(sends.map(each => Object.assign(each, { moving })));
+        const moving = { program: program.name, to: to, sink: node.isSink, ids: ids,
+            left: ids.length, refused: false };
         if (to !== node) {
             following = moving;
             followFor.restart();
         }
-        sendNext();
+        for (const id of ids) {
+            link.ask({ ask: "act", act: "send", key: `stream:${id}`,
+                target: device ? device.name : "" }, answer => provider.sent(moving,
+                answer?.done === true));
+        }
     }
 
-    function sendNext() {
-        if (sender.running || sender.left.length === 0)
+    // What the daemon did with one stream's send: once each is done, the
+    // program is drawn where it lands, followed, or its part says so where
+    // it already plays; refused, the move stops and says so, once.
+    function sent(moving, done) {
+        if (moving.refused)
             return;
-        sender.sending = sender.left[0];
-        sender.command = sender.sending.command;
-        sender.left = sender.left.slice(1);
-        sender.running = true;
-    }
-
-    // What pw-metadata did with a send: done, it's held as sent, so the
-    // part the launcher lands on says so before the listener tells it
-    // back, without refreshing under the walk there; refused, the move
-    // stops and says so.
-    function sent(done) {
-        const was = sender.sending;
-        sender.sending = null;
-        if (was === null)
-            return;
-        if (done) {
-            targets = Targets.sentAs(targets, [{ id: was.id }], was.target);
-            // Followed, it's drawn where it lands, once it's there; sent
-            // where it already plays, its part says so now.
-            if (following === was.moving)
-                arrived();
-            else if (!stillSending(was.moving))
-                changed();
-            Qt.callLater(sendNext);
+        if (!done) {
+            moving.refused = true;
+            unmoved(moving);
             return;
         }
-        sender.left = sender.left.filter(each => each.moving !== was.moving);
-        unmoved(was.moving);
-        Qt.callLater(sendNext);
+        moving.left -= 1;
+        if (moving.left > 0)
+            return;
+        if (following === moving)
+            arrived();
+        else
+            changed();
     }
 
     function unmoved(moving) {
@@ -1403,8 +1364,7 @@ Provider {
     // Whether any of a move's sends is still to be done, so its part isn't
     // drawn naming where it was.
     function stillSending(moving) {
-        return sender.sending?.moving === moving
-            || sender.left.some(each => each.moving === moving);
+        return moving.left > 0 && !moving.refused;
     }
 
     function arrived() {

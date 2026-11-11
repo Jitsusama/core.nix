@@ -8,8 +8,9 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps: each device as PipeWire says
-/// it, and each of Sound's rows served ready (rows.rs).
-pub const KINDS: [&str; 2] = ["device", "row"];
+/// it, each of Sound's rows served ready (rows.rs), and where each
+/// program's stream is sent, as one `targets` record.
+pub const KINDS: [&str; 3] = ["device", "row", "targets"];
 
 /// The kind a key names: `device` for `device:alsa_output.pci`, `row`
 /// for `row:sound:alsa_output.pci`.
