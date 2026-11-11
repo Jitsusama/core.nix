@@ -3,7 +3,7 @@
 Each layer is given by its name, and on it each key where it sits, what its
 cap says, what it does in words and what holding it does. The shell draws
 the overlay and finds keys in the launcher from this
-(modules/quickshell/Keyboard.qml).
+(modules/quickshell/KeyboardLayout.qml).
 
     describe.py LAYOUT INFO NAME... > shell.json
 
