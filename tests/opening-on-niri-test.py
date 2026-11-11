@@ -56,6 +56,11 @@ SETTLING_S = 2
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
 FRESHENING = timedelta(seconds=75)
 
+# How long the closed launcher's frame count must hold to count as having drawn what it kept:
+# keeping home says so before the pixel left on the screen draws it, which a loaded builder
+# shows a frame late, and well inside the half second before a closing makes its spots.
+KEPT_DRAWN = timedelta(milliseconds=200)
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -129,6 +134,21 @@ def niri_held() -> Iterator[None]:
         yield
     finally:
         os.kill(held[0], signal.SIGCONT)
+
+
+def frames_once_kept(shell: Shell) -> int:
+    """Wait until home is kept and drawn, and give how many frames the launcher drew by then."""
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    drawn = shell.frames()
+    quiet = time.monotonic()
+    giving_up = quiet + 5
+    while time.monotonic() - quiet < KEPT_DRAWN.total_seconds():
+        assert time.monotonic() < giving_up, "closed, the launcher kept drawing"
+        # Polled, since a frame says nothing as it swaps but the count it adds to.
+        time.sleep(0.05)
+        if (now := shell.frames()) != drawn:
+            drawn, quiet = now, time.monotonic()
+    return drawn
 
 
 def settled(shell: Shell) -> Json:
@@ -329,8 +349,7 @@ def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> No
     only after a second, and Qt took the surface for hidden until then and drew it again once
     shown, so a pixel of it stays on the screen.
     """
-    shell.launcher_until(lambda shown: shown.get("kept"))
-    drawn = shell.frames()
+    drawn = frames_once_kept(shell)
     window = shell.opened("Godwit Notes")
     try:
         # The span measured, for the window's events to reach the shell, not a wait for an end.
@@ -348,7 +367,7 @@ def test_the_closed_launcher_draws_nothing_as_it_lets_its_closing_go(shell: Shel
     A closing lets its steps go a quarter of a second after it (leaveSteps), makes its spots
     half a second after it, and their figures a minute after that, each while the card is off
     the screen but for a pixel, where nothing it draws is seen. Counted from once home is
-    kept, since putting it back follows the closing at once.
+    kept and drawn, since putting it back follows the closing at once.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -356,8 +375,7 @@ def test_the_closed_launcher_draws_nothing_as_it_lets_its_closing_go(shell: Shel
     shell.step_in()
     since = shell.mark()
     shell.close_launcher()
-    shell.launcher_until(lambda shown: shown.get("kept"))
-    drawn = shell.frames()
+    drawn = frames_once_kept(shell)
     shell.reported("spots made while closed ", lambda _: True, since)
     shell.reported("spots freshened while closed ", lambda _: True, since, FRESHENING)
     assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
