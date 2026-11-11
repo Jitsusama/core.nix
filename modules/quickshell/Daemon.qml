@@ -367,15 +367,15 @@ Scope {
     readonly property int serverNotFound: 2
 
     // The socket's file, watched and never read, so one made after the
-    // last try is tried at once. Its folder, $XDG_RUNTIME_DIR/daemons, is
-    // there wherever a daemon is, made by the people daemon's socket unit,
-    // and the watch covers it, so only a socket made or taken away there
-    // wakes it.
+    // last try is tried at once. Watched only while there's no wire, since
+    // the watch covers the socket's folder too, and a folder such as the
+    // node's or spend-watch's holds files rewritten every few seconds,
+    // each a wake of the shut shell for nothing while the wire holds.
     FileView {
         path: daemon.socket
         preload: false
         printErrors: false
-        watchChanges: true
+        watchChanges: daemon.wire === null
         onFileChanged: {
             if (daemon.wire === null)
                 daemon.connectAgain();
