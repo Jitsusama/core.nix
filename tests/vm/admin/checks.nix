@@ -1,0 +1,39 @@
+# The admin VM tests' checks, which checks.nix gathers with every other
+# folder's; README.md beside this says what each test proves.
+{
+  self,
+  onLinux,
+  vmHostPkgs,
+  ...
+}:
+let
+  pkgs = vmHostPkgs;
+in
+onLinux {
+  # Whether libvirt's daemon stops in time shows only with the daemon
+  # running and its threads short of CPU, as at a busy shutdown.
+  vm-libvirt-stops-quickly = import ./libvirt.nix { inherit self pkgs; };
+  # Whether the kernel took a slice's disk latency shows only with the
+  # account's manager starting it on a real drive.
+  vm-apps-come-first = import ./slices.nix { inherit self pkgs; };
+  # Whether a check's VM goes ahead of the builds shows only with a build
+  # user's process in the daemon's own cgroup and the service's real rights.
+  vm-checks-go-first = import ./vm-first.nix { inherit self pkgs; };
+  # Whether polkit lets an account switch the machine shows only with
+  # polkit, systemd and a system to switch to.
+  vm-admins-switch-unasked = import ./switch-system.nix { inherit self pkgs; };
+  # Whether a machine updates itself to signed main, and goes back when it
+  # isn't whole, shows only with systemd, a real switch and Nix building.
+  vm-updates-itself-to-signed-main = import ./update-to-main.nix {
+    inherit self pkgs;
+  };
+  # Whether polkit lets an administrator tune the work slices shows only
+  # with polkit and systemd.
+  vm-admins-tune-the-work-slices = import ./work-slices.nix { inherit self pkgs; };
+  # Whether polkit lets an administrator tune the kernel's memory, and
+  # only to the values listed, shows only with polkit, systemd and a kernel.
+  vm-admins-tune-memory = import ./memory-tune.nix { inherit self pkgs; };
+  # Whether a niri's kernel stacks are traced for its account and nobody
+  # else shows only with polkit, bpftrace and a kernel to trace.
+  vm-niri-is-traced-by-its-own = import ./niri-off-cpu.nix { inherit self pkgs; };
+}
