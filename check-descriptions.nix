@@ -1367,10 +1367,24 @@
   nothing-spells-a-mark = ''
     no module but the theme's spells a mark's code point instead of naming it
   '';
+  notices-holds-what-the-bus-says = ''
+    the notices daemon judges each notice arriving by its sender's level and Quiet, keeps a thousand
+    with none waiting dropped, tells a watch each as one record, says an act on the bus with the
+    token first, never takes the name from another server, and keeps its history and ids over a
+    restart
+  '';
+  notices-passes-clippy = ''
+    clippy finds nothing in the notices daemon or its tests
+  '';
   notices-stand-on-the-cards-columns = ''
     a notice drawn on the one card, as the pop-up does and as the held list does with a gutter,
     holds its ink the inset from the frame on every side, at 2 and at 1.5, with its mark centred
     on the title's capitals and its text column moved by the gutter alone
+  '';
+  notices-starts-nowhere-yet = ''
+    no role starts the notices daemon, and imported it's wanted by no target, so the shell's server
+    alone holds the notifications name; imported, it reads the shell's levels, Quiet's file and its
+    socket
   '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes
