@@ -578,20 +578,71 @@ fn hub(config: &Config) -> Result<Arc<Hub>, String> {
 /// daemon tells them, ready rows and all, and nothing more: no pass, and
 /// every act refused as not answering. It's for fixtures: a check or a
 /// virtual machine writes the files to stand in for the daemon, and the
-/// shell reads them over the same wire (Y2YBTS, 2026-11-11).
+/// shell reads them over the same wire (Y2YBTS, 2026-11-11). Either file
+/// written again is told as a pass's changes are, so a fixture changes
+/// what's shown by writing it.
 pub fn serve(config: &Config) -> Result<(), String> {
     let hub = hub(config)?;
     hub.answering();
+    let runtime = config.runtime()?;
     let (wake, inbox) = mpsc::channel();
-    listen(&config.socket(), wake, hub)?;
-    // A word the command line asks, as refresh, has no pass to wait on.
+    listen(&config.socket(), wake.clone(), Arc::clone(&hub))?;
+    rewrites(&runtime, wake);
     for woken in inbox {
-        if let Wake::Asked(_, reply) = woken {
-            let _ = reply.send("spend-watch is serving only what was written".into());
+        match woken {
+            // A file written again is told as a pass would tell it, so a
+            // fixture can change what's shown without starting this again.
+            Wake::Moved => hub.rewritten(
+                &written(&runtime, "collection.json"),
+                &written(&runtime, "budgets.json"),
+            ),
+            // A word the command line asks, as refresh, has no pass to
+            // wait on.
+            Wake::Asked(_, reply) => {
+                let _ = reply.send("spend-watch is serving only what was written".into());
+            }
+            _ => {}
         }
     }
     Ok(())
 }
+
+/// Tells the loop whenever a file in the runtime directory is written or
+/// put in place, for `serve`.
+#[cfg(target_os = "linux")]
+fn rewrites(runtime: &std::path::Path, wake: Sender<Wake>) {
+    use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
+    let Ok(fd) = inotify::init(CreateFlags::CLOEXEC) else {
+        return;
+    };
+    let flags = WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO;
+    if inotify::add_watch(&fd, runtime, flags).is_err() {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut buffer = [0u8; 4096];
+        loop {
+            match rustix::io::read(&fd, &mut buffer) {
+                Ok(_) => {
+                    if wake.send(Wake::Moved).is_err() {
+                        return;
+                    }
+                }
+                Err(rustix::io::Errno::INTR) => {}
+                Err(_) => return,
+            }
+        }
+    });
+}
+
+/// A file of the runtime directory as it's written, or nothing.
+fn written(runtime: &std::path::Path, name: &str) -> String {
+    std::fs::read_to_string(runtime.join(name)).unwrap_or_default()
+}
+
+/// Where inotify can't be had, `serve` tells only what it read first.
+#[cfg(not(target_os = "linux"))]
+fn rewrites(_runtime: &std::path::Path, _wake: Sender<Wake>) {}
 
 pub fn run(config: &Config) -> Result<(), String> {
     let _lock = lock(&config.state)?;
