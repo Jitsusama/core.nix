@@ -8005,6 +8005,10 @@ Scope {
             afterFrame(openShown);
             return;
         }
+        // One never answered at its size is filled anyway, rather than
+        // left shut, and said, since it shows at a size it wasn't asked.
+        if (openFramesSized === 0)
+            Report.say(`filled an opening not at its size, after ${openFramesWaited} frames`);
         openDrawn();
         filled("frame");
     }

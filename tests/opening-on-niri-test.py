@@ -52,6 +52,10 @@ UNANSWERED_MS = 900
 # within a few milliseconds of each.
 SETTLING_S = 2
 
+# How long a closing's spots are given to be freshened: a minute after they're made
+# (Launcher.qml's spotsFreshened), and room for a loaded builder.
+FRESHENING = timedelta(seconds=75)
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -334,4 +338,22 @@ def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> No
         shell.close(window)
     # The same span, for its closing.
     time.sleep(SETTLING_S)
+    assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
+
+
+def test_the_closed_launcher_draws_nothing_as_its_spots_are_made_again(shell: Shell) -> None:
+    """Closed, the launcher draws no frame as its closing's spots are made, and freshened.
+
+    A closing makes its spots half a second after it, and their figures a minute after that,
+    each while the card is above the screen, where a frame drawn would wait a second for niri
+    to answer it. Counted from once home is kept, since putting it back follows the closing.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    since = shell.mark()
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    drawn = shell.frames()
+    shell.reported("spots made while closed ", lambda _: True, since)
+    shell.reported("spots freshened while closed ", lambda _: True, since, FRESHENING)
     assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
