@@ -12,7 +12,8 @@
 // Favourite switch after, and their address last; flipping Favourite
 // tells Tuple and moves their row at once; and a change of presence
 // changes how they stand, as Tuple says it, keeping the favourites
-// changed here until Tuple says them. It exits 0 once every case
+// changed here until Tuple says them. A guest asked after before the
+// daemon answers is named once it does. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -64,6 +65,17 @@ ShellRoot {
         })
     }
 
+    // A meeting's guest, asked after as Calendar's rows ask (guesting)
+    // before the daemon has answered, and how many merges People had
+    // once it was named.
+    QtObject {
+        id: guest
+
+        property bool asking: true
+        readonly property var named: asking ? people.whoIs("ada@example.com") : null
+        property int merges: 0
+    }
+
     // Tuple's next presence, which the stand-in waits for.
     Process {
         id: touching
@@ -111,6 +123,18 @@ ShellRoot {
 
     readonly property var steps: [
         {
+            // Who someone is was read with nothing to follow, so a guest
+            // or a sender drawn before People answered stayed unnamed
+            // (Y2YBTS, 2026-11-10), or known only by their address, as a
+            // page that names no one knows them.
+            what: "a guest asked after before People answers is named once it does",
+            holds: () => guest.named?.name === "Ada Brook",
+            check: () => {
+                guest.merges = people.merging.merges;
+                guest.asking = false;
+            }
+        },
+        {
             what: "with nothing typed, Tuple's favourites, then those called lately",
             holds: () => names(people.all) === "Ada Brook, Ben Carrow, Dee Ellery, Cal Dunmore",
             check: () => {
@@ -120,7 +144,7 @@ ShellRoot {
                 // thread 26 to 38 ms, and ordering them 19 more
                 // (2026-11-10).
                 expect("listed as the daemon lists them, with no one merged here",
-                    people.merging.merges === 0, `${people.merging.merges} merges`);
+                    people.merging.merges === guest.merges, `${people.merging.merges} merges`);
                 // Everything a row and its person hold read, as a whole
                 // copy reads it: a getter for their facts there, or for
                 // the row's drawer, merged everyone (Y2YBTS, 2026-11-10),
@@ -128,7 +152,8 @@ ShellRoot {
                 for (const held of [open[0], open[0].person])
                     for (const name of Object.getOwnPropertyNames(held))
                         void held[name];
-                expect("reading someone listed merges no one", people.merging.merges === 0,
+                expect("reading someone listed merges no one",
+                    people.merging.merges === guest.merges,
                     `${people.merging.merges} merges`);
                 expect("how each stands",
                     sides(open) === "available, in a call, away, offline", sides(open));

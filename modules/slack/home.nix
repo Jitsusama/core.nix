@@ -76,21 +76,22 @@ in
       credentials
     ];
     # How someone stands in Slack, as SlackSource.qml says it, for those
-    # the daemon lists in order: a presence People doesn't know is said as
-    # it is, and their status's emoji follows it.
+    # the daemon lists in order: which of People's words (words.json) each
+    # presence is, a presence People doesn't know said as it is, and their
+    # status's emoji after it.
     stands = {
       field = "presence";
       words = {
         active = {
-          said = "active";
+          word = "active";
           order = 0;
         };
         "in a huddle" = {
-          said = "in a huddle";
+          word = "huddle";
           order = 1;
         };
         away = {
-          said = "away";
+          word = "away";
           order = 2;
         };
       };

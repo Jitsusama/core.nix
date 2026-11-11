@@ -5,23 +5,27 @@ pragma Singleton
 // people daemon follows (tuple-people people, people.rs), never the shell,
 // so the shell holds none of the thousands Tuple can list. A contact is
 // as the daemon holds it: { email, id, name, status, favourite, recent }.
+import qs
 import Quickshell
 import QtQuick
 
 Singleton {
     id: root
 
-    // How each stands, in words and in the order of who can pair first.
-    // Tuple says "unknown" of anyone not a favourite, which says nothing.
+    // How each stands, as which of People's words (words.json) and in the
+    // order of who can pair first. Tuple says "unknown" of anyone not a
+    // favourite, which says nothing.
     readonly property var statuses: ({
-        online: { said: "available", order: 0 },
-        busy: { said: "in a call", order: 1 },
-        unavailable: { said: "away", order: 2 },
-        offline: { said: "offline", order: 3 }
+        online: { word: "available", order: 0 },
+        busy: { word: "call", order: 1 },
+        unavailable: { word: "away", order: 2 },
+        offline: { word: "offline", order: 3 }
     })
 
     function how(stands) {
-        return statuses[stands ? stands.status : ""] ?? { said: "", order: 4 };
+        const status = statuses[stands ? stands.status : ""];
+        return status ? { said: Words.of("people").said[status.word], order: status.order }
+            : { said: "", order: 4 };
     }
 
     // Tuple finds someone by their email; the id Tuple knows them by is

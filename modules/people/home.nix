@@ -30,6 +30,8 @@ let
   # Those the daemon runs, each by its program on People's line protocol.
   daemonSources = lib.filter (source: source.daemon != null) sources;
   people = pkgs.callPackage ./package.nix { };
+  # The launcher's words, so the daemon says how someone stands in them.
+  words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
   sourcesFile = pkgs.writeText "people-sources.json" (
     builtins.toJSON {
       sources = map (source: {
@@ -79,8 +81,10 @@ in
             description = ''
               How the daemon's source says someone stands, in People's
               words, for those the daemon lists in order: the `field` of its
-              lines saying it, `words` giving each word People's `said` and
-              its `order` (available 0, busy 1, away 2, offline 3), whether
+              lines saying it, `words` giving each word which of People's
+              words it is (`word`, by its name in the launcher's words.json,
+              as `call`) and its `order` (available 0, busy 1, away 2,
+              offline 3), whether
               `others` not among them are said as they are, and the `mark`
               field said after it. None for a source saying nothing of it.
             '';
@@ -142,7 +146,7 @@ in
         After = [ "people.socket" ];
       };
       Service = {
-        ExecStart = "${lib.getExe people} %t/daemons/people.sock ${sourcesFile}";
+        ExecStart = "${lib.getExe people} %t/daemons/people.sock ${sourcesFile} ${words}";
         Restart = "on-failure";
         RestartSec = 5;
       };
