@@ -444,6 +444,10 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         for supply in ["ac", "usb"]:
             self.machine.succeed(f"echo {state} > {parameters}/{supply}_online")
 
+    def lid(self, *, shut: bool) -> None:
+        """Shut the stand-in lid, or open it."""
+        self.machine.succeed(f"echo {int(shut)} > /sys/module/stand_in_lid/parameters/shut")
+
     def wait_for_surface(self, namespace: str) -> None:
         """Wait until niri lists one of the shell's surfaces by its namespace."""
         self.machine.wait_until_succeeds(

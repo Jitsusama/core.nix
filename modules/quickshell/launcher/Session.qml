@@ -44,8 +44,8 @@ Provider {
     readonly property var awake: awakeRow(KeepAwake.on, KeepAwake.lidShutToo)
 
     // Keep Awake as it stands, or as it will once systemd has started or
-    // stopped what keeps it so: kept, a shut lid goes on too wherever the
-    // machine's on the charger (KeepAwake.qml). A switch always says how
+    // stopped what keeps it so: kept, a shut lid goes on too, on battery as
+    // on the charger (KeepAwake.qml). A switch always says how
     // it stands, so off says "off" (VKCF3Z, 2026-11-08).
     function awakeRow(kept, lidToo) {
         const howKept = lidToo ? "awake, lid shut too" : "awake while open";
@@ -107,7 +107,7 @@ Provider {
     // Its row says so at once, until the services' files say so too
     // (launcher/Becoming.js).
     function keepAwake(kept) {
-        becomes("session:awake", awakeRow(kept, KeepAwake.plugged), Words.name("session:awake"),
+        becomes("session:awake", awakeRow(kept, kept), Words.name("session:awake"),
             kept ? "on" : "off");
         if (kept)
             KeepAwake.keep();

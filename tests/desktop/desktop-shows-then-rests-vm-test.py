@@ -178,7 +178,7 @@ class Room:
 
     def lid(self, *, shut: bool, said: str) -> None:
         """Shut or open the lid, and wait until the backlight says this of it."""
-        self.desktop.machine.succeed(f"echo {int(shut)} > /sys/module/stand_in_lid/parameters/shut")
+        self.desktop.lid(shut=shut)
         self.desktop.machine.wait_until_succeeds(
             self.desktop.in_session(
                 f"journalctl --user --unit=backlight --no-pager --output=cat | grep -qF '{said}'"
