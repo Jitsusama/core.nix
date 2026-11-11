@@ -227,8 +227,25 @@ Provider {
             provider.launcher?.tellOnOpen([told(cwd, startedIn)]));
     }
 
+    // Whether the quest index was written since it was last read, or
+    // never read. It's 321 KB, written again about twice a minute, and
+    // nothing a shut launcher shows is read from it, so it's read only
+    // where its rows are made: as the launcher opens or catalogues, or as
+    // it's written while either is (RO9YDD, 2026-11-11 [30210dd4]). The
+    // agents daemon takes it on Fri 13 Nov, serving the closed
+    // orchestrators' rows ready.
+    property bool questsUnread: true
+    function showing() {
+        return !!provider.launcher && (provider.launcher.open || provider.launcher.cataloguing);
+    }
+    function readQuests() {
+        if (questsUnread)
+            questIndex.reload();
+    }
+
     // Read again as the launcher opens too, since a file that wasn't there
-    // when the shell started can't be watched until it's read.
+    // when the shell started can't be watched until it's read. The closed
+    // ones are ordered again as it shuts, by what was read as it opened.
     Connections {
         target: provider.launcher
         ignoreUnknownSignals: true
@@ -236,10 +253,16 @@ Provider {
         function onOpenChanged() {
             if (provider.launcher.open) {
                 orchestrators.reload();
-                questIndex.reload();
+                provider.readQuests();
                 provider.orderClosed();
                 provider.lookForFolders();
+            } else {
+                provider.orderClosed();
             }
+        }
+        function onCataloguingChanged() {
+            if (provider.launcher.cataloguing)
+                provider.readQuests();
         }
     }
 
@@ -266,8 +289,14 @@ Provider {
         path: `${provider.harness}/quest-workflow/quests.json`
         watchChanges: true
         printErrors: false
-        onFileChanged: reload()
+        onFileChanged: {
+            provider.questsUnread = true;
+            if (provider.showing())
+                reload();
+        }
+        onLoadFailed: provider.questsUnread = true
         onLoaded: {
+            provider.questsUnread = false;
             try {
                 const out = {};
                 const resumes = {};
