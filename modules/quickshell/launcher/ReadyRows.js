@@ -256,9 +256,30 @@ function actForm(act) {
     return act.step === "drawer" || act.step === "rows" ? "step" : "";
 }
 
-// A row's acts the shell can do, in the order served, Return's first.
-function actsOf(row) {
-    return (row?.acts ?? []).filter(act => actForm(act) !== "");
+// The program an open act names its link opened in, by its desktop
+// entry's id (`in`), or "" for none, which opens as any link does.
+function openedIn(act) {
+    return actForm(act) === "open" && typeof act.in === "string" ? act.in : "";
+}
+
+// A row's acts the shell can do, in the order served, Return's first. One
+// opening in a program is offered only where `has` says that program is
+// here, never opened elsewhere in its place (Y2YBTS, de23ba21).
+function actsOf(row, has) {
+    return (row?.acts ?? []).filter(act => actForm(act) !== ""
+        && (openedIn(act) === "" || (has?.(openedIn(act)) ?? false)));
+}
+
+// What opens an open act's link: the command of the program it names,
+// `commandOf`'s, with the link after it, as a desktop entry's %u takes
+// it; xdg-open where it names none; or null where its program's gone.
+function opening(act, commandOf) {
+    const program = openedIn(act);
+    if (program === "") {
+        return ["xdg-open", act.open];
+    }
+    const command = commandOf(program);
+    return command ? Array.from(command).concat([act.open]) : null;
 }
 
 // A row's mark as drawn: words.json's glyph role it names (`roles`, the
