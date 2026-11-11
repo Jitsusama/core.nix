@@ -162,7 +162,8 @@ Scope {
 
     // Asks anything the daemon answers by id, as a domain's own ask does
     // (Slack's search), its records held as a get's are; `then` is given
-    // the answer, or null when the daemon isn't there to ask.
+    // the answer, or null when the daemon isn't there to ask, and each
+    // answer after one saying `done: false` too.
     function ask(said, then) {
         asked += 1;
         sent(said, then, `ask-${asked}`);
@@ -305,9 +306,12 @@ Scope {
             // the next connection's whole answer (greet).
             refreshing = false;
         }
+        // An answer saying it isn't done, as each of a join's steps is,
+        // keeps its place for the next.
         const then = awaited[answer.id];
         if (then) {
-            delete awaited[answer.id];
+            if (answer.done !== false)
+                delete awaited[answer.id];
             then(answer);
         }
         told(answer);

@@ -194,6 +194,8 @@ ShellRoot {
     property int left: 0
     property var answered: undefined
     property real heardBefore: 0
+    // The stages an ask answered in steps was given, in order.
+    property var stepsHeard: []
 
     readonly property var steps: [
         {
@@ -331,6 +333,17 @@ ShellRoot {
         {
             what: "a kind with no records is known to hold none once answered",
             holds: () => none.answered && Object.keys(none.held).length === 0
+        },
+        {
+            what: "an ask answered in steps is given each, until one says it's done",
+            run: () => {
+                root.stepsHeard = [];
+                kinds.ask({ ask: "steps" }, answer => {
+                    root.stepsHeard = root.stepsHeard.concat([answer?.stage ?? "none"]);
+                });
+            },
+            holds: () => root.stepsHeard.join(" ") === "joining gettingAddress online"
+                && Object.keys(kinds.awaited).length === 0
         },
         {
             what: "a whole answer after a gap lets go what went in it, heard as gone",
