@@ -165,7 +165,8 @@ fn main() -> ExitCode {
     shared.change(records, json!({}));
     // Everything changed meanwhile is taken at once, so a burst is told
     // and written once; each burst is written as it's told, so a notice
-    // that's arrived is never lost to a stop.
+    // that's arrived is never lost to a stop. It's written first, so a
+    // notice the shell has been told of is already kept.
     while let Ok(()) = heard.recv() {
         let _ = heard.try_iter().count();
         let (records, owed) = {
