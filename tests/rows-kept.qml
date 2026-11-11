@@ -101,6 +101,14 @@ QtObject {
         Expect.same("and narrowing moves none, however many go",
             RowsKept.steps(emoji, narrowed, 8).filter(step =>
                 step.move !== undefined || step.insert !== undefined), []);
+        // A backspace widens what's listed again, which put each run of rows
+        // between those held in one step, each shifting the rows after it.
+        Expect.same("a widening putting in more runs than the card shows is listed afresh",
+            RowsKept.steps(narrowed, emoji, 8),
+            [{ remove: 0, count: narrowed.length }, { insert: 0, keys: emoji }]);
+        Expect.same("and one putting in no more keeps its rows",
+            RowsKept.steps("a b c".split(" "), "a x b y c".split(" "), 2),
+            [{ insert: 1, keys: ["x"] }, { insert: 3, keys: ["y"] }]);
         // Rows all put in again stand from the list's start, so the launcher
         // puts the selection back in view; moved or narrowed, they stay put.
         Expect.same("rows listed afresh are said to be",
@@ -183,11 +191,15 @@ QtObject {
             // and listed afresh or moving no more than it was held to.
             const most = next(3);
             const steps = RowsKept.steps(was, now, most);
-            const afresh = steps.some(step => step.remove === 0 && step.count === was.length);
+            // A first list is put in as one run, as afresh puts it.
+            const afresh = was.length === 0
+                || steps.some(step => step.remove === 0 && step.count === was.length);
             Expect.same(`${was.join("")} to ${now.join("")} past ${most} ends where it's listed`,
                 done(was, now, most).rows, now.join(" "));
             Expect.same(`${was.join("")} to ${now.join("")} moves no more than ${most}`,
                 afresh || steps.filter(step => step.move !== undefined).length <= most, true);
+            Expect.same(`${was.join("")} to ${now.join("")} puts in no more runs than ${most}`,
+                afresh || steps.filter(step => step.insert !== undefined).length <= most, true);
         }
 
         Qt.exit(0);

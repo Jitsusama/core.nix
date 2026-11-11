@@ -1,10 +1,10 @@
 //! What the launcher's Screens asks done to a screen, done here on niri
 //! and answered in the launcher's words, so the shell asks niri nothing
 //! for it: a lit screen focused, a screen turned on, by name where it's
-//! only dark, and every screen turned off. A row serves its act as
-//! `{"ask": "screen", "do": <act>, "output": <connector>}`; `do` rather
-//! than `act`, since the shell would say an `act` in the row's becoming
-//! line (ReadyRows.qml's asked).
+//! only dark, turned off or unplugged, and every screen turned off. A
+//! row serves its acts as `{"ask": "screen", "do": <act>, "output":
+//! <connector>}`; `do` rather than `act`, since the shell would say an
+//! `act` in the row's becoming line (ReadyRows.qml's asked).
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -29,6 +29,15 @@ pub enum Act {
     On(String),
     /// The screen of this connector, dark but still niri's, lights again.
     Wake(String),
+    /// The screen of this connector goes dark by name, still connected
+    /// and laid out, so its hub stays powered.
+    Dark(String),
+    /// The screen of this connector leaves niri's outputs, as an older
+    /// niri, which darkens none by name, turns one off.
+    Off(String),
+    /// The screen of this connector leaves niri's outputs, its windows
+    /// moving to the others: the bigger step beside darkening it.
+    Unplug(String),
     /// Every screen goes dark, each still connected, so a monitor's hub
     /// and network card stay powered.
     Sleep,
@@ -48,6 +57,9 @@ impl Act {
             "focus" => output().map(Act::Focus),
             "on" => output().map(Act::On),
             "wake" => output().map(Act::Wake),
+            "dark" => output().map(Act::Dark),
+            "off" => output().map(Act::Off),
+            "unplug" => output().map(Act::Unplug),
             "sleep" => Some(Act::Sleep),
             _ => None,
         }
@@ -60,6 +72,9 @@ impl Act {
             Act::Focus(output) => ("focus", Some(output)),
             Act::On(output) => ("on", Some(output)),
             Act::Wake(output) => ("wake", Some(output)),
+            Act::Dark(output) => ("dark", Some(output)),
+            Act::Off(output) => ("off", Some(output)),
+            Act::Unplug(output) => ("unplug", Some(output)),
             Act::Sleep => ("sleep", None),
         };
         match output {
@@ -72,7 +87,12 @@ impl Act {
     #[must_use]
     pub fn output(&self) -> Option<&str> {
         match self {
-            Act::Focus(output) | Act::On(output) | Act::Wake(output) => Some(output),
+            Act::Focus(output)
+            | Act::On(output)
+            | Act::Wake(output)
+            | Act::Dark(output)
+            | Act::Off(output)
+            | Act::Unplug(output) => Some(output),
             Act::Sleep => None,
         }
     }
@@ -84,9 +104,55 @@ impl Act {
             Act::Focus(output) => json!({"Action": {"FocusMonitor": {"output": output}}}),
             Act::Wake(output) => json!({"Action": {"PowerOnMonitor": {"output": output}}}),
             Act::On(output) => json!({"Output": {"output": output, "action": "On"}}),
+            Act::Dark(output) => json!({"Action": {"PowerOffMonitor": {"output": output}}}),
+            Act::Off(output) | Act::Unplug(output) => {
+                json!({"Output": {"output": output, "action": "Off"}})
+            }
             Act::Sleep => json!({"Action": {"PowerOffMonitors": {}}}),
         }
     }
+}
+
+/// A screen's acts, as its row serves them, each `{key, ask}` with its
+/// note where it says one: Return's first, focusing a lit screen or
+/// turning any other on, then the ways a lit one turns off. `stands` is
+/// how it stands ("lit", "dark" or "off"), `last` whether no other
+/// screen is lit, and `each` whether niri darkens one screen by name.
+///
+/// Darkening comes before unplugging, the bigger step, and the last lit
+/// screen is never unplugged, or nothing would show the launcher; its
+/// darkening waits for the key that asked to come up, since niri lights
+/// every screen at any key once all are off by name, so it's served
+/// `waits` and the launcher closes for it. An older niri only unplugs,
+/// as its Turn It Off, as Displays.qml offered them.
+#[must_use]
+pub fn of(name: &str, stands: &str, last: bool, each: bool, words: &Words) -> Vec<Value> {
+    let act = |key: &str, act: &Act| json!({"key": key, "ask": act.ask()});
+    let name = name.to_owned();
+    match stands {
+        "off" => return vec![act("verb:display-on", &Act::On(name))],
+        "dark" => return vec![act("verb:display-on", &Act::Wake(name))],
+        _ => {}
+    }
+    let mut acts = vec![act("displays:focus", &Act::Focus(name.clone()))];
+    if each {
+        let mut dark = act("verb:display-off", &Act::Dark(name.clone()));
+        if last {
+            dark["note"] = Value::String(words.wakes.clone());
+            dark["waits"] = Value::Bool(true);
+        }
+        acts.push(dark);
+    }
+    if !last {
+        acts.push(if each {
+            let mut unplug = act("verb:display-unplug", &Act::Unplug(name));
+            unplug["note"] = Value::String(words.moves.clone());
+            unplug
+        } else {
+            act("verb:display-off", &Act::Off(name))
+        });
+    }
+    acts
 }
 
 /// niri's answer to an act, or none where it didn't answer in time.
@@ -100,12 +166,13 @@ pub fn done(niri: &Path, act: &Act) -> Option<Value> {
 }
 
 /// The answer to the ask of `id`: done, or why not, in the launcher's
-/// words where it has them for the act. A screen turned on that niri
-/// refuses says niri's own words for why, begun in lower case with no
-/// full stop closing them, as the foot's words are ("Built-in Screen not
-/// turned on · no such output"), and one gone before niri came to it
-/// says it's unplugged, both as Displays.qml said them; the rest leave
-/// the launcher to say it couldn't. `named` is the screen's row's name.
+/// words where it has them for the act. A screen turned on, off or
+/// unplugged that niri refuses says niri's own words for why, begun in
+/// lower case with no full stop closing them, as the foot's words are
+/// ("Built-in Screen not turned on · no such output"), and one gone
+/// before niri came to it says it's unplugged, both as Displays.qml said
+/// them; focusing and every screen off leave the launcher to say it
+/// couldn't. `named` is the screen's row's name.
 #[must_use]
 pub fn answered(
     id: &Value,
@@ -124,7 +191,12 @@ pub fn answered(
     let Some(answer) = answer else {
         return refused("no-answer", None);
     };
-    let turning_on = matches!(act, Act::On(_) | Act::Wake(_));
+    let not_done = match act {
+        Act::On(_) | Act::Wake(_) => Some(&words.not_on),
+        Act::Dark(_) | Act::Off(_) => Some(&words.not_off),
+        Act::Unplug(_) => Some(&words.not_unplugged),
+        Act::Focus(_) | Act::Sleep => None,
+    };
     if let Some(why) = answer["Err"].as_str() {
         let why = why.trim().trim_end_matches('.');
         let mut letters = why.chars();
@@ -132,12 +204,7 @@ pub fn answered(
             .next()
             .map(|first| first.to_lowercase().chain(letters).collect())
             .unwrap_or_default();
-        let said = turning_on.then(|| {
-            words
-                .not_on
-                .replace("{thing}", named)
-                .replace("{why}", &why)
-        });
+        let said = not_done.map(|words| words.replace("{thing}", named).replace("{why}", &why));
         return refused("refused", said);
     }
     if answer["Ok"]["OutputConfigChanged"] == "OutputWasMissing" {
@@ -154,14 +221,21 @@ mod tests {
     use super::*;
     use crate::screens::tests::words;
 
-    #[test]
-    fn each_act_comes_back_as_its_row_serves_it() {
-        for act in [
+    fn every_act() -> [Act; 7] {
+        [
             Act::Focus("eDP-1".to_owned()),
             Act::On("DP-3".to_owned()),
             Act::Wake("DP-3".to_owned()),
+            Act::Dark("DP-3".to_owned()),
+            Act::Off("DP-3".to_owned()),
+            Act::Unplug("DP-3".to_owned()),
             Act::Sleep,
-        ] {
+        ]
+    }
+
+    #[test]
+    fn each_act_comes_back_as_its_row_serves_it() {
+        for act in every_act() {
             assert_eq!(
                 Act::asked(&act.ask()),
                 Some(act.clone()),
@@ -175,7 +249,7 @@ mod tests {
         for said in [
             json!({"ask": "screen", "do": "focus"}),
             json!({"ask": "screen", "do": "on", "output": ""}),
-            json!({"ask": "screen", "do": "unplug", "output": "DP-3"}),
+            json!({"ask": "screen", "do": "darken", "output": "DP-3"}),
             json!({"ask": "screen"}),
         ] {
             assert_eq!(Act::asked(&said), None, "{said} was taken for an act");
@@ -184,24 +258,91 @@ mod tests {
 
     #[test]
     fn niri_is_asked_each_act_in_its_own_words() {
-        let asked: Vec<Value> = [
-            Act::Focus("eDP-1".to_owned()),
-            Act::On("DP-3".to_owned()),
-            Act::Wake("DP-3".to_owned()),
-            Act::Sleep,
-        ]
-        .iter()
-        .map(Act::request)
-        .collect();
+        let asked: Vec<Value> = every_act().iter().map(Act::request).collect();
         assert_eq!(
             asked,
             [
                 json!({"Action": {"FocusMonitor": {"output": "eDP-1"}}}),
                 json!({"Output": {"output": "DP-3", "action": "On"}}),
                 json!({"Action": {"PowerOnMonitor": {"output": "DP-3"}}}),
+                json!({"Action": {"PowerOffMonitor": {"output": "DP-3"}}}),
+                json!({"Output": {"output": "DP-3", "action": "Off"}}),
+                json!({"Output": {"output": "DP-3", "action": "Off"}}),
                 json!({"Action": {"PowerOffMonitors": {}}}),
             ],
             "niri was asked otherwise"
+        );
+    }
+
+    /// Each act as `[key, do, note, waits]`, so a case reads as the
+    /// screen's step-in would.
+    fn offered(name: &str, stands: &str, last: bool, each: bool) -> Vec<Value> {
+        of(name, stands, last, each, &words())
+            .iter()
+            .map(|act| json!([act["key"], act["ask"]["do"], act["note"], act["waits"]]))
+            .collect()
+    }
+
+    #[test]
+    fn beside_another_lit_a_screen_darkens_then_unplugs() {
+        assert_eq!(
+            offered("DP-2", "lit", false, true),
+            [
+                json!(["displays:focus", "focus", null, null]),
+                json!(["verb:display-off", "dark", null, null]),
+                json!([
+                    "verb:display-unplug",
+                    "unplug",
+                    "its windows move to the other screens",
+                    null
+                ]),
+            ],
+            "the bigger step isn't after darkening"
+        );
+    }
+
+    #[test]
+    fn the_last_lit_screen_darkens_once_the_key_is_up_and_never_unplugs() {
+        assert_eq!(
+            offered("eDP-1", "lit", true, true),
+            [
+                json!(["displays:focus", "focus", null, null]),
+                json!(["verb:display-off", "dark", "a key wakes it", true]),
+            ],
+            "nothing would show the launcher"
+        );
+    }
+
+    #[test]
+    fn a_screen_not_lit_only_turns_on() {
+        assert_eq!(
+            [
+                offered("DP-2", "dark", false, true),
+                offered("DP-2", "off", false, true)
+            ],
+            [
+                [json!(["verb:display-on", "wake", null, null])],
+                [json!(["verb:display-on", "on", null, null])],
+            ],
+            "a dark screen is turned on by name, an unplugged one put back"
+        );
+    }
+
+    #[test]
+    fn an_older_niri_only_unplugs_as_turn_it_off_and_keeps_the_last_on() {
+        assert_eq!(
+            [
+                offered("DP-2", "lit", false, false),
+                offered("eDP-1", "lit", true, false)
+            ],
+            [
+                vec![
+                    json!(["displays:focus", "focus", null, null]),
+                    json!(["verb:display-off", "off", null, null]),
+                ],
+                vec![json!(["displays:focus", "focus", null, null])],
+            ],
+            "an older niri darkens by name"
         );
     }
 
@@ -239,6 +380,25 @@ mod tests {
         assert_eq!(
             said["error"]["said"], "DELL not turned on \u{b7} no such output",
             "the refusal was said otherwise: {said}"
+        );
+    }
+
+    #[test]
+    fn a_screen_niri_wont_turn_off_or_unplug_says_which() {
+        let answer = json!({"Err": "No such output."});
+        let said: Vec<Value> = [Act::Dark("DP-3".to_owned()), Act::Unplug("DP-3".to_owned())]
+            .iter()
+            .map(|act| {
+                answered(&json!(5), act, Some(&answer), "DELL", &words())["error"]["said"].clone()
+            })
+            .collect();
+        assert_eq!(
+            said,
+            [
+                "DELL not turned off \u{b7} no such output",
+                "DELL not unplugged \u{b7} no such output"
+            ],
+            "the refusals were said otherwise"
         );
     }
 

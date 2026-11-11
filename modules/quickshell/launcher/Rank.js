@@ -35,6 +35,19 @@
 // It's plain functions over plain values, so tests/ranking.qml holds them
 // to a table in Qt's own JavaScript engine.
 
+// The keys given, held to be asked of by name in a plain object with no
+// prototype, so no key is one of Object's own. Never a Set or a Map: Qt
+// 6.12's engine looks a key up in one by walking every key it holds
+// (qv4estable.cpp), so a Set of Emoji's 1914 rows took 11 to 22 ms to make
+// (H6EDLC, 2026-11-11), while an object's keys are hashed.
+function keyed(keys) {
+    const out = Object.create(null);
+    for (const key of keys) {
+        out[key] = true;
+    }
+    return out;
+}
+
 // What a row is, for telling two rows apart.
 function identity(row) {
     return row.is ?? row.key ?? "";
@@ -43,7 +56,7 @@ function identity(row) {
 // Rows that are one thing, as one row: the first one's place, the richest
 // one's words.
 function once(rows) {
-    const at = {};
+    const at = Object.create(null);
     const out = [];
     for (const row of rows) {
         const id = identity(row);
@@ -65,9 +78,9 @@ function once(rows) {
 // a search lists one Neovim. A layer named otherwise (Terminal beside
 // kitty) stays, since nothing else there reads as it does.
 function keysHeld(rows) {
-    const held = new Set(rows.filter(row => row.ownLayer)
+    const programs = keyed(rows.filter(row => row.ownLayer)
         .map(row => `${row.ownLayer}/${plainly(row.name)}`));
-    return rows.filter(row => !row.layer || !held.has(`${row.layer}/${plainly(row.name)}`));
+    return rows.filter(row => !row.layer || !programs[`${row.layer}/${plainly(row.name)}`]);
 }
 
 // What's typed as the latch keeps it: in lower case, its spaces single.
@@ -217,7 +230,11 @@ function latched(picks, typed, ask) {
 // The row a latch was left on, from a table kept as { query -> key }, or as
 // { query -> { on } } by a launcher before.
 function heldAt(latches, typed) {
-    const held = latches[plainly(typed)];
+    return heldOn(latches[plainly(typed)]);
+}
+
+// The row one latch was left on, read as heldAt reads it.
+function heldOn(held) {
     return typeof held === "string" ? held : held?.on ?? "";
 }
 
@@ -230,10 +247,10 @@ function relatch(latches, picks, typed, there) {
     if (isStepped(plainly(typed))) {
         return latches;
     }
-    const picked = new Set();
+    const picked = Object.create(null);
     for (const asked of Object.keys(picks)) {
         for (const key of Object.keys(picks[asked])) {
-            picked.add(key);
+            picked[key] = true;
         }
     }
     const query = plainly(typed);
@@ -244,8 +261,11 @@ function relatch(latches, picks, typed, there) {
     }
     const out = {};
     for (const asked of Object.keys(latches)) {
-        const held = heldAt(latches, asked);
-        if (fresh[asked] === undefined && picked.has(held)) {
+        // Read by the query it's kept under, which is plain already: making
+        // it plain again for each of a big table's latches cost more than
+        // the rest of the relatch.
+        const held = heldOn(latches[asked]);
+        if (fresh[asked] === undefined && picked[held] === true) {
             out[asked] = held;
         }
     }
@@ -276,8 +296,8 @@ function maybeThere(rows) {
 // there but not them, and any of a kind not there at all, which may not be
 // read yet, as though there.
 function standing(known) {
-    const kinds = new Set(Object.keys(known).map(kindOf));
-    return key => known[key] ?? (kinds.has(kindOf(key)) ? 0 : 1);
+    const kinds = keyed(Object.keys(known).map(kindOf));
+    return key => known[key] ?? (kinds[kindOf(key)] ? 0 : 1);
 }
 
 // The fewest letters a row is learned at: its first word's, for one that
@@ -292,8 +312,8 @@ function leastOf(row) {
 // keeps its picks; and one not picked within `stale` milliseconds of `now`,
 // so a row that comes and goes, as a call's Leave does, keeps its own.
 function forget(picks, known, now, stale) {
-    const kinds = new Set(Object.keys(known).map(kindOf));
-    const gone = (key, entry) => known[key] === undefined && kinds.has(kindOf(key))
+    const kinds = keyed(Object.keys(known).map(kindOf));
+    const gone = (key, entry) => known[key] === undefined && kinds[kindOf(key)] === true
         && now - (entry.t ?? 0) > stale;
     const out = {};
     for (const asked of Object.keys(picks)) {

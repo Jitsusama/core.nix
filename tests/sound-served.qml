@@ -16,8 +16,10 @@
 // a send asking it once a stream; and the programs playing through a
 // device are served inside it, the drawer's Playing saying the daemon's
 // words, each program's :setl asking the daemon on its streams and its
-// Plays On choices sending it as Sound does. (tests/sound.qml holds the
-// parts and drawers made here.) It exits 0 once every case holds, and
+// Plays On choices sending it as Sound does; and with a device's drawer
+// out, how its node keeps time is watched and drawn as the daemon serves
+// it, and the watch let go once the drawer's in. (tests/sound.qml holds
+// the parts and drawers made here.) It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
@@ -67,6 +69,9 @@ ShellRoot {
         property bool open: false
         property bool wanting: true
         readonly property var held: []
+        // The row selected, and whether its drawer is out.
+        property var selected: null
+        property bool drawerOut: false
 
         function wants(source) {
             return wanting;
@@ -111,6 +116,20 @@ ShellRoot {
     // Each act asked on the socket, as the daemon would take it.
     property var acted: []
     onActedChanged: heardNow()
+    // The connections watching how nodes keep time, told apart from the
+    // rows' since the daemon serves it only while watched, and how many
+    // have let it go.
+    property var timers: []
+    onTimersChanged: heardNow()
+    property int unwatched: 0
+    onUnwatchedChanged: heardNow()
+
+    function time(record) {
+        for (const timer of timers) {
+            timer.write(`${JSON.stringify({ id: "all", changed: [record], gone: [] })}\n`);
+            timer.flush();
+        }
+    }
 
     function tell(record) {
         records[record.key] = record;
@@ -141,7 +160,13 @@ ShellRoot {
                     let answer = { id: ask.id, unwatched: true };
                     if (ask.ask === "hello")
                         answer = { id: ask.id, version: 1, domain: "sound", state: "answering" };
-                    else if (ask.ask === "watch") {
+                    else if (ask.ask === "watch" && ask.kind === "timing") {
+                        root.timers = root.timers.concat([asked]);
+                        answer = { id: ask.id, records: [] };
+                    } else if (ask.ask === "unwatch" && root.timers.includes(asked)) {
+                        root.timers = root.timers.filter(timer => timer !== asked);
+                        root.unwatched += 1;
+                    } else if (ask.ask === "watch") {
                         root.watchers.push(asked);
                         answer = { id: ask.id, records: Object.values(root.records) };
                     } else if (ask.ask === "act") {
@@ -185,6 +210,14 @@ ShellRoot {
         target: sound.served
 
         function onHeard() {
+            root.heardNow();
+        }
+    }
+
+    Connections {
+        target: sound
+
+        function onTimingsChanged() {
             root.heardNow();
         }
     }
@@ -557,7 +590,31 @@ ShellRoot {
                     ["send", "stream:94", deskSpeakers.name]];
                 expect("a Plays On choice sends its program as Sound does",
                     sends === JSON.stringify(sent), sends);
-                Qt.exit(0);
+                timed();
+            });
+        });
+    }
+
+    // The speakers' drawer out: how their node keeps time is watched, and
+    // drawn as the daemon's timing.rs serves it, until the drawer's in.
+    function timed() {
+        expect("nothing's timed while no drawer is out", root.timers.length === 0,
+            `${root.timers.length} watching`);
+        asking.selected = { key: `sound:${deskSpeakers.name}` };
+        asking.open = true;
+        asking.drawerOut = true;
+        when("the timings watched", () => root.timers.length === 1, () => {
+            time({ key: "timing:52", kind: "timing", id: 52, quantum: 1024, rate: 48000,
+                ms: 21.333, busy: 0.0312, unfinished: false, errors: 0, drives: true });
+            when("the timing served", () => sound.timings[52] !== undefined, () => {
+                const drawn = sound.keepingOf({ id: 52 })
+                    .map(fact => `${fact.label}=${fact.value}`).join("; ");
+                expect("a drawer's node keeps time as the daemon serves it", drawn
+                    === "Dropouts=none; Load=3.12% of each cycle; "
+                    + "Cycle=1,024 frames \u00b7 21.3 ms", drawn);
+                asking.drawerOut = false;
+                when("the timings let go", () => root.unwatched === 1
+                    && Object.keys(sound.timings).length === 0, () => Qt.exit(0));
             });
         });
     }

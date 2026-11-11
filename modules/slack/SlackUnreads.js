@@ -3,10 +3,11 @@
 // Slack piece says what of it wants him (NewSlack.qml) and Slack's
 // program lists it as Unread and Recent (SlackProgram.qml): how what's
 // held stands, how many to read and from whom; each conversation's row
-// and each message's are the daemon's, served ready (SlackRows.qml). A count is shown only while the daemon answers and Slack answered
-// it, since the daemon holds conversations only then and the shell lets
-// them go once it stops answering: an old count is never shown as though
-// it were Slack's (Joel, 2026-10-28: "out of date information also sucks
+// and each message's are the daemon's, served ready (SlackRows.qml). A
+// count is shown only while the daemon answers and Slack answered it,
+// since the daemon holds conversations only then and the shell lets them
+// go once it stops answering: an old count is never shown as though it
+// were Slack's (Joel, 2026-10-28: "out of date information also sucks
 // ass"). Why there's no count is said on Slack's program row
 // (SlackProgram.qml), not in Now, since Slack out of reach doesn't want
 // Joel (VKCF3Z, b8c8920e). Slack's own desktop notices of what was read in

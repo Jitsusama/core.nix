@@ -236,7 +236,7 @@ ShellRoot {
         card.audio.muted = true;
         expect("a muted one doesn't say so again, nor its level", !sound.drawerOf(card).facts
             .some(fact => fact.label === "Muted" || fact.label === "Level"), said);
-        // How it keeps time, while pw-top says it runs: ahead of its
+        // How it keeps time, as the sound daemon serves it: ahead of its
         // Format, its Dropouts warned only past none.
         card.state = "running";
         card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
@@ -275,27 +275,16 @@ ShellRoot {
             keeping(card)[1].value === "over 100% of each cycle" && keeping(card)[1].warns
             && keeping(card)[1].figure?.values[0] === 1 && keeping(card)[1].figure?.warn,
             JSON.stringify(keeping(card)[1]));
-        // A frame of pw-top as it comes: a driver, then its follower in
-        // the driver's cycle, whole once the next header opens.
-        const header = "S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT  NAME ";
-        [header, "R  52  1024  48000  20.1us 665.6us  0.00  0.03  0  F32LE 2 48000 speakers",
-            "R  90  0  0  1.0us  2.1ms  0.00  0.10  0  F32LE 2 48000 + pw-cat", header]
-            .forEach(line => sound.heardTiming(line));
-        expect("a frame read whole, its follower in its driver's cycle",
-            sound.timings[52]?.quantum === 1024 && sound.timings[90]?.quantum === 1024
-            && keeping(card)[1]?.value === "3.12% of each cycle",
-            JSON.stringify(sound.timings));
-        // A driver that isn't running ends the one before, so the
-        // follower after it has no cycle rather than the last driver's.
-        ["R  52  1024  48000  20.1us 665.6us  0.00  0.03  0  F32LE 2 48000 speakers",
-            "S  53  0  0  ---  ---  ---  ---  0  headphones",
-            "R  91  0  0  1.0us  2.1ms  0.00  0.10  0  F32LE 2 48000 = player", header]
-            .forEach(line => sound.heardTiming(line));
-        expect("a follower of a driver not running has no cycle",
-            sound.timings[52]?.quantum === 1024 && sound.timings[91] === undefined,
-            JSON.stringify(sound.timings));
+        // The daemon's records, held by key, are its timings by node.
+        const held = sound.timingsOf({
+            "timing:52": { key: "timing:52", kind: "timing", id: 52, quantum: 1024 },
+            "stream:90": { key: "stream:90", kind: "stream", id: 90 }
+        });
+        expect("each node's timing by its id, and nothing else",
+            JSON.stringify(Object.keys(held)) === "[\"52\"]" && held[52].quantum === 1024,
+            JSON.stringify(held));
         sound.timings = {};
-        expect("none while pw-top doesn't say it runs", keeping(card).length === 1,
+        expect("none while the daemon doesn't say it runs", keeping(card).length === 1,
             JSON.stringify(keeping(card)));
         expect("a headset's microphone is over Bluetooth",
             sound.drawerOf(calling()).eyebrow === "Bluetooth \u00b7 input",
@@ -377,7 +366,8 @@ ShellRoot {
             { name: "Firefox", streams: [{ id: 93, name: "firefox", properties: {} }] });
         expect("a stream that says little says what it does",
             said(scant) === "Graph ID=93*", said(scant));
-        // pw-top times a device's drawer and its programs', never its list's.
+        // How nodes keep time is watched for a device's drawer and its
+        // programs', never its list's.
         const among = [speakers, headphones];
         for (const [key, timed] of [["sound:alsa_output.pci.speakers", speakers.name],
             ["sound:alsa_output.pci.speakers:program:Firefox", speakers.name],

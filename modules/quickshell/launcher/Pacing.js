@@ -119,6 +119,25 @@ function weighing(kept, key, words, face) {
         weighed: same ? kept.weighed : 0 };
 }
 
+// How many places' weighings are held at once, the one shown included.
+const placesWeighed = 4;
+
+// The weighings `held` for what was shown last, newest first, with the one
+// for `key` made from its own: going home and back weighed every one of
+// Windows' rows again on each kept opening, 3.5 to 4.8 ms of it over 40
+// windows on a builder (ZINAWZ, 2026-11-11). Only a place as it's shown
+// (`place`) is held past the next key, at most `placesWeighed` of them,
+// never a typed search, which a reopening never shows again (Y2YBTS,
+// 2026-11-11). A row that changed is another object, so it's weighed
+// again, and a held place lets go of rows it no longer lists as `weighing`
+// does. `measure` says the words and the face the foot measured in.
+function weighingAmong(held, key, measure, place) {
+    const before = held.find(one => one.key === key) ?? null;
+    const now = Object.assign(weighing(before, key, measure.words, measure.face), { place });
+    const rest = held.filter(one => one.key !== key && one.place);
+    return [now].concat(rest.slice(0, placesWeighed - (place ? 1 : 0)));
+}
+
 // The rows the foot weighs keys for, of `rows` listed: each, but only the
 // first of a run that says its keys are alike by the word they share
 // (`keysAlike`), since the rest weigh the same, and the `selected`, which
