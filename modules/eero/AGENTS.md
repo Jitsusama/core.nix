@@ -68,7 +68,7 @@ on a machine that's the first laptop.
 ## How It Reads
 
 `eero daemon` (the `eero-daemon` user unit) keeps the model, drawn by
-[`src/read.rs`][read] from each read's answer and written whole, and
+[`src/read/`][read] from each read's answer and written whole, and
 only when it changes. It reads the account's first network, each part
 as often as its figures move ([`src/schedule.rs`][schedule]):
 
@@ -86,7 +86,7 @@ asks for it now, at most once every 5 seconds.
 
 After each read the daemon records what moves in
 `$XDG_STATE_HOME/eero/history.sqlite`, beside the sealed session, and
-draws it into each model it writes ([`src/history.rs`][history]): each
+draws it into each model it writes ([`src/history/`][history]): each
 device's signal, SNR, rates and speed, each node's bars and each
 radio's channel, how busy and power, a sample a read; a device joining,
 leaving or roaming, recorded only between reads at most 10 minutes
@@ -185,12 +185,12 @@ offered by its hardware address.
 
 [contract]: contract/README.md
 [model]: home-network.json
-[read]: src/read.rs
+[read]: src/read/mod.rs
 [schedule]: src/schedule.rs
 [watch]: src/watch.rs
 [completion]: src/completion.zsh
 
-[history]: src/history.rs
+[history]: src/history/mod.rs
 [probe]: src/probe.rs
 [notices]: src/notices.rs
 [desktop]: src/desktop.rs
