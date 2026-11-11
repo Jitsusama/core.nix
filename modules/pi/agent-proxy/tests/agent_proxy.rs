@@ -398,6 +398,42 @@ fn refuses_a_session_reached_through_a_forwarded_agent() {
     assert_eq!(proxy.signatures(), 0, "the agent was never asked");
 }
 
+/// How many clients the proxy answers at once, as src/main.rs has it.
+const MOST_CLIENTS: usize = 64;
+
+/// Whether `client` is answered when it asks for the keys. One refused
+/// may be closed before it asks, so a write that fails is no answer.
+fn answered(client: &mut UnixStream) -> bool {
+    client.write_all(&[0, 0, 0, 1, REQUEST_IDENTITIES]).is_ok() && receive(client).is_some()
+}
+
+#[test]
+fn answers_only_so_many_clients_at_once() {
+    let (allowed, _) = host(1);
+    let proxy = Proxy::start("crowd", &hosts_file(&[&allowed]));
+    let mut held: Vec<UnixStream> = (0..MOST_CLIENTS).map(|_| proxy.client()).collect();
+    for (n, client) in held.iter_mut().enumerate() {
+        assert!(answered(client), "client {n} of {MOST_CLIENTS} is answered");
+    }
+
+    let mut one_more = proxy.client();
+    assert!(
+        !answered(&mut one_more),
+        "a client past {MOST_CLIENTS} is closed unanswered"
+    );
+
+    drop(held.pop());
+    let started = Instant::now();
+    while !answered(&mut proxy.client()) {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "a client that went never gave its place back"
+        );
+        // A short poll while the proxy sees the client that went close.
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[test]
 fn refuses_to_change_the_agents_behind_it() {
     let (allowed, _) = host(1);

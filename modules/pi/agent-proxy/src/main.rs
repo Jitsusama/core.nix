@@ -28,6 +28,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use bind::{Bindings, Hosts};
@@ -48,11 +49,37 @@ const EXTENSION: u8 = 27;
 const SESSION_BIND: &[u8] = b"session-bind@openssh.com";
 /// The first socket systemd hands a service it starts.
 const FIRST_PASSED_FD: i32 = 3;
+/// The most clients answered at once. Each has a thread of its own, so
+/// without a ceiling a fenced command opening connections without end
+/// would run the proxy out of threads, and every fenced ssh with it.
+const MOST_CLIENTS: usize = 64;
 
-/// What every client is answered by: the hosts and the agents behind.
+/// What every client is answered by: the hosts and the agents behind,
+/// and how many clients are being answered now.
 struct Shared {
     hosts: Hosts,
     upstreams: Vec<PathBuf>,
+    clients: AtomicUsize,
+}
+
+/// A client's place among the [`MOST_CLIENTS`], given back as it goes.
+struct Place(Arc<Shared>);
+
+impl Place {
+    /// A place for one more client, or none when every one is taken.
+    fn take(shared: &Arc<Shared>) -> Option<Self> {
+        if shared.clients.fetch_add(1, Ordering::SeqCst) >= MOST_CLIENTS {
+            shared.clients.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(Place(Arc::clone(shared)))
+    }
+}
+
+impl Drop for Place {
+    fn drop(&mut self) {
+        self.0.clients.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// What the command line says.
@@ -83,8 +110,14 @@ fn main() {
     for client in listener.incoming() {
         match client {
             Ok(stream) => {
-                let shared = Arc::clone(&shared);
-                thread::spawn(move || serve(&shared, stream));
+                // Dropped at once, which closes it, when there's no place.
+                let Some(place) = Place::take(&shared) else {
+                    eprintln!(
+                        "pi-agent-proxy: refused a client, since {MOST_CLIENTS} are answered already"
+                    );
+                    continue;
+                };
+                thread::spawn(move || serve(&place.0, stream));
             }
             Err(error) => eprintln!("pi-agent-proxy: a client couldn't be taken: {error}"),
         }
@@ -115,7 +148,11 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, String> {
         return Err("at least one --upstream is needed".to_owned());
     }
     Ok(Config {
-        shared: Shared { hosts, upstreams },
+        shared: Shared {
+            hosts,
+            upstreams,
+            clients: AtomicUsize::new(0),
+        },
         socket,
     })
 }
