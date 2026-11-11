@@ -180,9 +180,7 @@ fn host(
     output: impl Write + Send + 'static,
     socket: &Path,
 ) -> io::Result<()> {
-    // One left by a host that ended without tidying is stale.
-    let _ = fs::remove_file(socket);
-    let listener = UnixListener::bind(socket)?;
+    let listener = claim(socket)?;
     fs::set_permissions(socket, fs::Permissions::from_mode(0o600))?;
 
     let asks: Waiting = Arc::default();
@@ -215,6 +213,28 @@ fn host(
     };
     let _ = fs::remove_file(socket);
     ended
+}
+
+/// Binds `socket`, first clearing one a host left as it ended without
+/// tidying, which nothing answers on. One another host still answers on
+/// is that host's, so this one refuses rather than take the launcher from
+/// it, as a test's Chromium once took Joel's Chrome's name and left it
+/// dead (E2ZIAQ, 2026-11-11).
+fn claim(socket: &Path) -> io::Result<UnixListener> {
+    match UnixStream::connect(socket) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AddrInUse,
+                format!("another host answers on {}", socket.display()),
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {
+            fs::remove_file(socket)?;
+        }
+        Err(error) => return Err(error),
+    }
+    UnixListener::bind(socket)
 }
 
 /// Answers one of the launcher's asks: reads its line, asks the extension,
@@ -403,6 +423,44 @@ mod tests {
         drop(chrome_in);
         hosting.join().unwrap().unwrap();
         assert!(!socket.exists(), "the socket outlived Chrome's closing");
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    fn folder(name: &str) -> PathBuf {
+        let folder =
+            env::temp_dir().join(format!("chrome-open-tabs-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    #[test]
+    fn a_socket_another_host_answers_on_is_left_to_it() {
+        let folder = folder("answering");
+        let socket = folder.join(SOCKET);
+        let other = UnixListener::bind(&socket).unwrap();
+        let refused = claim(&socket).expect_err("a host took a socket another answers on");
+        assert_eq!(refused.kind(), io::ErrorKind::AddrInUse);
+        assert!(
+            UnixStream::connect(&socket).is_ok(),
+            "the other host's socket no longer answers"
+        );
+        drop(other);
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_socket_nothing_answers_on_is_cleared_and_taken() {
+        let folder = folder("dead");
+        let socket = folder.join(SOCKET);
+        drop(UnixListener::bind(&socket).unwrap());
+        assert!(socket.exists(), "the dead socket was never left to clear");
+        let listener = claim(&socket).expect("a dead socket wasn't cleared");
+        assert!(
+            UnixStream::connect(&socket).is_ok(),
+            "the socket taken doesn't answer"
+        );
+        drop(listener);
         fs::remove_dir_all(&folder).unwrap();
     }
 
