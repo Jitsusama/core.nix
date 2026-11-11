@@ -466,8 +466,10 @@ def test_a_kept_opening_fills_in_once_niri_has_presented_its_frame(shell: Shell)
     within the launcher's wait, filled anyway.
     """
     waited: list[Json] = []
+    seen: list[Json] = []
     for _ in range(PRESENTED_OPENINGS):
         opening = presented_after(shell, opened_from_kept(shell)["nth"])
+        seen.append(opening)
         assert opening["presented"] >= 0, f"niri never presented the opening: {opening}"
         if opening["filledBy"] != "unpresented":
             assert opening["fillFrom"] >= opening["presented"], (
@@ -475,7 +477,7 @@ def test_a_kept_opening_fills_in_once_niri_has_presented_its_frame(shell: Shell)
             )
             waited.append(opening)
         shell.launcher_left_closed()
-    assert waited, "niri presented no opening within the launcher's wait"
+    assert waited, f"niri presented no opening within the launcher's wait: {seen}"
 
 
 def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:

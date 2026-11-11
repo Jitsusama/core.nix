@@ -8244,6 +8244,8 @@ Scope {
         // wait runs to the frame he sees. A frame niri hasn't said it
         // presented within `fillUnpresented` is filled anyway, and one
         // already presented, or on a surface niri can't say of, at once.
+        // Niri always says a frame was presented or discarded, so that
+        // wait only guards one that never answers; a key fills at once.
         if (presentedFrom >= 0) {
             fillPresented = true;
             fillUnpresented.restart();
@@ -8262,7 +8264,10 @@ Scope {
     Timer {
         id: fillUnpresented
 
-        interval: 100
+        // Past 100 ms, every one of five openings on a builder running
+        // the gate's other nested niris beside it filled unpresented,
+        // niri slow to present there, though each was presented alone.
+        interval: 500
         onTriggered: root.presentedFill("unpresented")
     }
 
