@@ -604,6 +604,9 @@ mod tests {
     fn a_message_cut_short_ends_what_is_read() {
         let (links, _) = dumps();
         let cut = &links[..links.len() / 2];
-        assert!(messages(cut).len() < messages(&links).len());
+        assert!(
+            messages(cut).len() < messages(&links).len(),
+            "a message cut in half was read whole"
+        );
     }
 }

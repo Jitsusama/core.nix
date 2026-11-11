@@ -596,31 +596,12 @@ Provider {
         }, () => provider.neighbourParts(name, at));
     }
 
-    // A neighbour a step in, each thing it says over LLDP.
+    // A neighbour a step in, each thing it says over LLDP (Networkd.js).
     function neighbourParts(name, at) {
         const one = (neighbours[name] ?? [])[at] ?? null;
-        if (one === null)
-            return [];
-        const key = id => `networks:${name}:neighbour:${at}:${id}`;
-        const said = (id, side, note) => part(key(id), `neighbour-${id}`, side, note);
-        const rows = [];
-        if (one.system !== null)
-            rows.push(said("system", one.system, "what it calls itself"));
-        if (one.description !== null)
-            rows.push(said("description", one.description, "what it says it is"));
-        if (one.port !== null)
-            rows.push(said("port", one.port, "the port it hears this card on"));
-        if (one.portName !== null)
-            rows.push(said("port-name", one.portName, "what it calls that port"));
-        if (one.chassis !== null)
-            rows.push(said("chassis", one.chassis, "what tells it apart from others"));
-        if (one.acts.length > 0)
-            rows.push(said("acts", one.acts.join(", "), "what it's doing now"));
-        if (one.vlan !== null)
-            rows.push(said("vlan", String(one.vlan), "the VLAN this port is on"));
-        if (one.profile !== null)
-            rows.push(said("profile", one.profile, "where it says what it should reach"));
-        return rows;
+        return one === null ? [] : Networkd.neighbourParts(one).map(said => part(
+            `networks:${name}:neighbour:${at}:${said.id}`, `neighbour-${said.id}`, said.side,
+            said.note));
     }
 
     // The cards on a cable, asked alone: one's parts, or several each
