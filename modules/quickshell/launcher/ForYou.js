@@ -421,16 +421,23 @@ function look(text) {
     });
 }
 
-// The looks folder's files, each { file, text }, as { waiting, history }:
-// those waiting in the order they came, the oldest first, and the rest
-// newest first by when each was resolved. A file still being written,
-// `*.writing`, is left out, and so is one that can't be read.
-function looks(files) {
+// The looks folder's files, each { file, text }, as { waiting, history }: those waiting in the
+// order they came, the oldest first, the rest newest first by when each was resolved. One still
+// being written, `*.writing`, or unreadable is left out. A file whose text is as `kept.by` holds it
+// isn't parsed again: an act changes one of Joel's 166, and parsing all took 9 ms (2026-11-10).
+function looks(files, kept = {}) {
+    const was = kept.by ?? {};
+    const now = {};
     const read = (files ?? []).filter(one => !String(one.file ?? "").endsWith(".writing"))
         .map(one => {
-            const each = look(one.text);
-            return each === null ? null : Object.assign(each, { file: String(one.file ?? "") });
+            const file = String(one.file ?? "");
+            const same = file in was && was[file].text === one.text;
+            const each = same ? was[file].look : look(one.text);
+            const made = each === null ? null : Object.assign(each, { file });
+            now[file] = { text: one.text, look: made };
+            return made;
         }).filter(one => one !== null);
+    kept.by = now;
     return {
         waiting: Order.sorted(read.filter(one => one.state === "waiting"),
             Order.smaller(one => one.since)),

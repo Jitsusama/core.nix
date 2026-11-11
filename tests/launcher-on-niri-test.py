@@ -651,6 +651,42 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
         look.unlink()
 
 
+def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
+    """Clearing a look in For You's To Look At writes its file again, saying it was cleared.
+
+    The write is made off the shell's thread (2026-11-10), so this is the one path showing it
+    still lands, whole.
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "cleared.json"
+    said = {"v": 1, "id": "cleared", "title": "Cleared Look", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
+    look.write_text(json.dumps(said))
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        typed_at_once(shell, "'for you' -k Return")
+        shell.launcher_until(
+            lambda shown: shown["path"][-1:] == ["For You"] and "To Look At" in shown["rows"]
+        )
+        shell.down_to("To Look At")
+        shell.step_in()
+        shell.launcher_until(lambda shown: shown["path"][-1:] == ["To Look At"])
+        shell.normal()
+        shell.down_to("Cleared Look")
+        with shell.told("ask ready"):
+            shell.send_chars("dd")
+        shell.send_chars("y")
+        shell.launcher_until(lambda _shown: json.loads(look.read_text())["state"] == "cleared")
+        written = json.loads(look.read_text())
+        assert (written["id"], written["title"]) == ("cleared", "Cleared Look"), written
+        shell.close_launcher()
+    finally:
+        look.unlink()
+
+
 def test_the_head_holds_the_finds_mark_alone_and_no_bare_question(shell: Shell) -> None:
     """The head's / stands only on the find, it asks no bare which?, and a find says its count."""
     shell.as_account(shell.ipc("toggle"))

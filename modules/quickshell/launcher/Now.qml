@@ -817,8 +817,11 @@ Provider {
         || `${Quickshell.env("HOME")}/.local/state`}/pi/agentic-harness.pi/looks`
     // Each file's text, by its name, as it was last read.
     property var lookTexts: ({})
+    // Each file's look is kept by its text, in looksParsed.by, so only a
+    // file that changed is parsed again.
     readonly property var looks: ForYou.looks(Object.keys(lookTexts)
-        .map(file => ({ file: file, text: lookTexts[file] })))
+        .map(file => ({ file: file, text: lookTexts[file] })), looksParsed)
+    readonly property var looksParsed: ({})
 
     FolderListModel {
         id: lookFiles
@@ -894,23 +897,46 @@ Provider {
     }
 
     // A look's file written again whole, as it's done with, through a file
-    // beside it renamed over it (atomicWrites), and before the launcher
-    // goes (blockWrites), so a reader never sees half of one.
-    FileView {
-        id: lookWriter
-        preload: false
-        printErrors: false
-        atomicWrites: true
-        blockWrites: true
+    // beside it renamed over it (atomicWrites), so a reader never sees half
+    // of one. It's written off the shell's thread: written there, with its
+    // sync to disk, it took 3 to 31 ms of Joel's act, 70 on the first
+    // (2026-11-10). Each file has a writer of its own until it's written,
+    // since a writer given a second write gives up the first: a second
+    // write of the same file is the one meant, and replaces the first.
+    Component {
+        id: lookWrite
+
+        FileView {
+            id: writer
+
+            required property string file
+
+            preload: false
+            printErrors: false
+            atomicWrites: true
+            blockWrites: false
+            onSaved: provider.lookWritten(file, writer)
+            onSaveFailed: provider.lookWritten(file, writer)
+        }
     }
+    // Each file's writer, by its name, while its write is under way.
+    readonly property var lookWriters: ({})
 
     function settleLook(one, state, how) {
         if (one.file === "")
             return;
         const text = ForYou.rewritten(one, state, how, Date.now());
-        lookWriter.path = `${provider.looksAt}/${one.file}`;
-        lookWriter.setText(text);
+        if (!(one.file in lookWriters))
+            lookWriters[one.file] = lookWrite.createObject(provider,
+                { file: one.file, path: `${provider.looksAt}/${one.file}` });
+        lookWriters[one.file].setText(text);
         heardLook(one.file, text);
+    }
+
+    function lookWritten(file, writer) {
+        if (lookWriters[file] === writer)
+            delete lookWriters[file];
+        writer.destroy();
     }
 
     // The session a terminal look is about, by the session or address it
