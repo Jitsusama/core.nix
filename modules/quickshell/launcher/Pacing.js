@@ -115,6 +115,26 @@ function weighing(kept, key, words, face) {
     return { key, words, face, rows: new Map(), weighed: 0 };
 }
 
+// The rows the foot weighs keys for, of `rows` listed: each, but only the
+// first of a run that says its keys are alike by the word they share
+// (`keysAlike`), since the rest weigh the same, and the `selected`, which
+// says more. The room is then what every row would give, so it never
+// widens as the selection walks them. Each of Emoji's 1,924 rows weighed as
+// it opened took 129 to 202 ms of its 245 to 373 ms opening on a builder
+// (2026-11-11).
+function toWeigh(rows, selected) {
+    const weighed = [];
+    let alike = "";
+    for (const row of rows) {
+        const like = row.keysAlike ?? "";
+        if (like === "" || like !== alike || row === selected) {
+            weighed.push(row);
+        }
+        alike = like;
+    }
+    return weighed;
+}
+
 // A row's keys and widths, as `kept` holds them or as `weigh` weighs them
 // now, kept for the next time.
 function weighedRow(kept, row, weigh) {

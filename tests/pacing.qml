@@ -92,6 +92,19 @@ QtObject {
             check(failures, `another ${what} weighs again`, kept === again, false);
         }
         check(failures, "once each", weighed, 7);
+        // Emoji's 1,924 rows were each weighed as it opened (2026-11-11).
+        const named = (alike, picked) => {
+            const listed = alike.map((like, at) => ({ name: `${at}`, keysAlike: like }));
+            return Pacing.toWeigh(listed, listed[picked] ?? null).map(row => row.name).join(" ");
+        };
+        const emoji = Array.from({ length: 1924 }, () => "emoji");
+        check(failures, "a run of rows alike is weighed once", named(emoji, -1), "0");
+        check(failures, "and the selection among them as well", named(emoji, 1000), "0 1000");
+        check(failures, "rows not said alike are each weighed", named(["", undefined, ""], -1),
+            "0 1 2");
+        check(failures, "a run begins again after another row",
+            named(["emoji", "emoji", "", "emoji", "copy", "copy", "emoji"], -1), "0 2 3 4 6");
+        check(failures, "an empty list weighs none", named([], -1), "");
     }
 
     // An opening is usable once the shell's thread answers its ticks on
