@@ -258,6 +258,21 @@
     const isMono = (element) =>
       getComputedStyle(element).fontFamily === mono ||
       element.closest("code, kbd, samp, pre, .mono, .figure, sup, sub, svg") !== null;
+    // Text kept for a screen reader alone, the kit's .sr, is clipped to a
+    // pixel and never read by eye, so its size is no reading size.
+    const forEarsOnly = (element) => {
+      for (let at = element; at !== null && at !== main; at = at.parentElement) {
+        const style = getComputedStyle(at);
+        const box = at.getBoundingClientRect();
+        if (
+          style.clipPath.startsWith("inset(50%") ||
+          (style.overflow !== "visible" && (box.width <= 1 || box.height <= 1))
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
     const set = new Set();
     const prose = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
     for (let text = prose.nextNode(); text !== null; text = prose.nextNode()) {
@@ -267,7 +282,7 @@
     }
     let small = null;
     for (const element of set) {
-      if (shown(element) && !isMono(element) && element.offsetWidth > 0) {
+      if (shown(element) && !isMono(element) && element.offsetWidth > 0 && !forEarsOnly(element)) {
         const box = element.getBoundingClientRect();
         const size =
           Number.parseFloat(getComputedStyle(element).fontSize) * (box.width / element.offsetWidth);

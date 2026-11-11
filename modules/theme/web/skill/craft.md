@@ -103,7 +103,8 @@ narrow and the theme's 1.25 wide, in `rem` so zoom works.
 On a page to read, no prose is under 15 px on screen, `--step-small` at
 its narrowest: a card's aside, a footnote, a table's head, a strip of
 labels or a slide's number takes the step, not a fraction of it. Only
-mono runs sit smaller, at 0.85 em, so code matches the serif beside it.
+mono runs sit smaller, at 0.85 em, so code matches the serif beside it,
+and text kept for a screen reader alone (`.sr`) has no size anyone reads.
 The probe holds this at every width.
 
 Each step's largest is under 2.5 times its smallest, which keeps 200% zoom
