@@ -3936,9 +3936,13 @@
   windows-passes-clippy = ''
     clippy finds nothing in the windows daemon or its tests
   '';
+  windows-reads-the-launchers-words = ''
+    the launcher's vocabulary has every word the windows daemon words Screens' rows with: the
+    built-in screen's name, how a screen stands and runs, and Turn Every Screen Off
+  '';
   windows-runs-beside-the-shell = ''
     the shell brings the windows daemon, on the daemons' socket, which systemd holds whether or not
-    it runs, restarted by a switch
+    it runs, restarted by a switch, handed the launcher's words
   '';
   without-syncfs-passes-clippy = ''
     clippy finds nothing in without-syncfs or its tests

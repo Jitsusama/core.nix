@@ -4,9 +4,21 @@
 # daemon interface, for the launcher's Windows, Capture and each
 # program's windows (src/main.rs says how). The shell imports it, since
 # those are what it holds.
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   windows = pkgs.callPackage ./package.nix { };
+  # The launcher's vocabulary, which Screens' ready rows are said in; none
+  # where the shell isn't imported, and then it makes no rows.
+  launcher = config.jitsusama.quickshell.launcher or null;
+  worded = lib.optionals (launcher != null) [
+    "--words"
+    (pkgs.writeText "words.json" (builtins.toJSON launcher.words))
+  ];
 in
 {
   # It isn't in background.slice: what it holds is what the launcher
@@ -26,7 +38,13 @@ in
       Requires = [ "windows.socket" ];
     };
     Service = {
-      ExecStart = "${lib.getExe windows} %t/daemons/windows.sock";
+      ExecStart = lib.concatStringsSep " " (
+        [
+          (lib.getExe windows)
+          "%t/daemons/windows.sock"
+        ]
+        ++ worded
+      );
       Restart = "on-failure";
       RestartSec = 5;
     };

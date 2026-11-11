@@ -45,11 +45,19 @@ first frame lists them in that order, and a retitle wakes nothing.
 | `cast:<stream id>`  | each cast as niri says it: its kind, whether it's active, its session, process and target | the recorder, the bar's sharing mark, a call |
 | `layout:<niri id>`  | each window's tile as niri lays it out: its place in the view, its size and the window's | where a notice opens below, the recorder's size |
 | `screenshot`        | the last screenshot's path, and `taken`: how many so far | the recorder |
+| `row:displays:<id>` | each screen as Screens shows it, worded, placed and ready, in the form every daemon's rows take (../ready-rows), then Turn Every Screen Off while one is lit | the launcher's Screens |
 
 A watch or list that names no kind gets every kind but `layout`, which
-changes at every resize and scroll, and `focus`, which changes at every
-opening of the launcher, so only a watch that draws tiles, or follows
-niri's focus, is woken by them.
+changes at every resize and scroll, `focus`, which changes at every
+opening of the launcher, and `row`, which is the launcher's alone, so
+only a watch that draws tiles, follows niri's focus or shows Screens is
+woken by them. A watch of rows may name its `place`, `displays`.
+
+The rows are made only where the shell hands the daemon the launcher's
+words (`--words`, its words.json). niri says nothing as a screen comes,
+goes or turns off, so the daemon asks niri for its outputs as the stream
+begins and at each workspace change, which each of those makes, and
+tells a watch only the rows that moved.
 
 A window's program is the desktop entry its app id names, as Quickshell's
 `heuristicLookup` finds it: by its id, its id in any case, its class,
@@ -62,7 +70,10 @@ whose own page it opened deeper in (BrowserWindows.js said it so).
 - **A row's tile.** A window's record says its column and how far down,
   not its tile's size or place, which change at every resize and scroll;
   those are its `layout` record's, for the few that draw them.
-- **Words.** "workspace 2", "3rd column" and the rest are the shell's,
-  from what each record says.
-- **Acting on a window.** The shell asks niri itself, on niri's own
-  socket, so an act never waits on this daemon.
+- **Words for a window.** "workspace 2", "3rd column" and the rest are
+  the shell's, from what each record says, until windows' rows are
+  served ready as Screens' are.
+- **Acting on a window or a screen.** The shell asks niri itself, on
+  niri's own socket, so an act never waits on this daemon. A screen's row
+  holds its connector and how it stands (`held`) for those acts until
+  they move here.
