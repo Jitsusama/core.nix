@@ -12,8 +12,13 @@
 //! `parent`: for a finding Return acts on, copying it and marking it
 //! expected, then the lines behind it. A row standing for a report says
 //! which in `held`, and that report's rows stay its own record, told
-//! while Spend is wanted. The summary's rows, which answer "spend", are
-//! one record of their own kind, `summary:spend`, naming them in order.
+//! while Spend is wanted.
+//!
+//! How Spend stands, said after its title at home and in Agents, is each
+//! place's `summary:<place>` record, `{ place, said }` as every daemon's
+//! summary is: "about $960 today", or while the screen is shared the quiet
+//! list's first side, which holds no amount. The summary that answers
+//! "spend" names its rows too, in order.
 
 use ready_rows::kept::Kept;
 use serde::Deserialize;
@@ -25,8 +30,12 @@ pub const PLACE: &str = "spend";
 /// The launcher's place for the list it shows while the screen is
 /// shared, which holds no amounts.
 pub const QUIET: &str = "spend-quiet";
-/// The key of the record naming the summary's rows.
+/// The key of the record saying how Spend stands, and naming the rows
+/// that answer "spend".
 pub const SUMMARY: &str = "summary:spend";
+/// The key of the record saying how Spend stands while the screen is
+/// shared.
+pub const QUIET_SUMMARY: &str = "summary:spend-quiet";
 
 /// The launcher's words a ready row says beyond the collection's own,
 /// spend's from its vocabulary (words.json): a name and a verb by id.
@@ -103,10 +112,22 @@ impl Served {
             .filter_map(Value::as_str)
             .map(|key| key_of(PLACE, key))
             .collect();
-        let summary = json!({"key": SUMMARY, "kind": "summary", "rows": summed});
         let quiet: Vec<&Value> = lines(&whole["quiet"]).collect();
+        // Until the daemon has counted today, as just after a switch,
+        // today's row's side says it.
+        let today = Some(text(whole, "today"))
+            .filter(|said| !said.is_empty())
+            .or_else(|| lines(&whole["now"]).next().map(|line| text(line, "side")))
+            .unwrap_or_default();
+        let quietly = quiet.first().map_or("", |line| text(line, "side"));
+        let summary = json!({"key": SUMMARY, "kind": "summary",
+            "summary": {"place": PLACE, "said": today, "rows": summed}});
+        let quiet_summary = json!({"key": QUIET_SUMMARY, "kind": "summary",
+            "summary": {"place": QUIET, "said": quietly}});
         let mut told = BTreeMap::new();
-        for (place, of, beside) in [(PLACE, shown, vec![summary]), (QUIET, quiet, vec![])] {
+        let places = [(PLACE, shown, summary), (QUIET, quiet, quiet_summary)];
+        for (place, of, summary) in places {
+            let beside = vec![summary];
             let kept = self.places.entry(place).or_default();
             kept.take(rows(place, &of, words), beside);
             told.extend(
@@ -519,6 +540,7 @@ mod tests {
             "findings": [line("finding:burn", "")], "more": [],
             "quiet": [line("today", "")],
             "shown": ["finding:burn", "today", "week"], "summaryRows": ["today"],
+            "today": "$4 today",
         });
         let mut served = Served::default();
         let told = served.take(&whole, &words());
@@ -530,6 +552,7 @@ mod tests {
                 "row:spend:today",
                 "row:spend:week",
                 "summary:spend",
+                "summary:spend-quiet",
             ]
         );
         let record = &told["row:spend:today"];
@@ -547,7 +570,11 @@ mod tests {
         };
         let first = orders(&told);
         assert!(first.windows(2).all(|two| two[0] < two[1]), "{first:?}");
-        assert_eq!(told[SUMMARY]["rows"], json!(["row:spend:today"]));
+        assert_eq!(
+            told[SUMMARY]["summary"],
+            json!({"place": "spend", "said": "$4 today", "rows": ["row:spend:today"]})
+        );
+        assert_eq!(told[QUIET_SUMMARY]["summary"]["place"], "spend-quiet");
         whole["now"][1]["side"] = json!("$31");
         let again = served.take(&whole, &words());
         assert_eq!(orders(&again), first);
@@ -578,6 +605,28 @@ mod tests {
             .collect();
         assert_eq!(told["row:spend:held"]["row"]["name"], "Watch on hold");
         assert_eq!(told["row:spend-quiet:held"]["row"]["hue"], "warning");
-        assert_eq!(told[SUMMARY]["rows"], json!(["row:spend:held"]));
+        assert_eq!(told[SUMMARY]["summary"]["rows"], json!(["row:spend:held"]));
+    }
+
+    // How Spend stands is said as the collection says today, or by
+    // today's row before it's counted, and while the screen is shared by
+    // the quiet list's first side, which holds no amount.
+    #[test]
+    fn each_place_says_how_spend_stands() {
+        fn line(key: &str, side: &str) -> Value {
+            json!({"key": key, "name": key, "side": side, "copy": "", "role": ""})
+        }
+        let mut whole = json!({
+            "now": [line("today", "about $960 · ahead")], "findings": [], "more": [],
+            "quiet": [line("today", "ahead")], "shown": ["today"], "summaryRows": [],
+            "today": "about $960 today · ahead",
+        });
+        let said = |whole: &Value, key: &str| -> Value {
+            Served::default().take(whole, &words())[key]["summary"]["said"].clone()
+        };
+        assert_eq!(said(&whole, SUMMARY), "about $960 today · ahead");
+        assert_eq!(said(&whole, QUIET_SUMMARY), "ahead");
+        whole["today"] = json!("");
+        assert_eq!(said(&whole, SUMMARY), "about $960 · ahead");
     }
 }
