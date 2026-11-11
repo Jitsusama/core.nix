@@ -177,6 +177,10 @@ Scope {
         }
         keys = Ready.placed(keys, held, said, dropped);
         placings += 1;
+        // What was found was found among the rows before, so it's asked
+        // again of these.
+        if (found.words !== null)
+            found = { words: null, keys: null, marks: {} };
         heard(said, dropped);
     }
 
@@ -231,6 +235,70 @@ Scope {
     // The rows inside the row of `key`, as `rows` gives them.
     function inside(key) {
         return rows(key);
+    }
+
+    // What the daemon last found for what was typed, as it ranks it
+    // (ready-rows.md's search): the words it answered, the keys of the
+    // rows it found, best first, and the letters of each one's name to
+    // bring forward. Each key's words are asked at once, never waiting on
+    // the answer before, and only an answer to what's typed now is taken,
+    // so a key costs no round trip behind another. Its words and keys are
+    // null until an answer comes, and again once the rows change.
+    property var found: ({ words: null, keys: null, marks: ({}) })
+    property string asking: ""
+    // Whether the daemon said it can't search, so the place matches its
+    // rows itself, as it did before, said once in the journal.
+    property bool searchless: false
+    // Said once an answer to `words` is held, for the place to show it.
+    signal searched(string words)
+    // The keys found before their rows were served, each said once.
+    readonly property var unserved: ({})
+
+    // The daemon's answer to `words` if it's held, else null, asking it.
+    function search(words) {
+        if (found.words === words)
+            return found;
+        if (asking !== words && !searchless && link) {
+            asking = words;
+            link.find({ ask: "search", place: ready.place, words: words },
+                answer => ready.answered(words, answer));
+        }
+        return null;
+    }
+
+    // An answer taken, unless it's to words typed over since. One that
+    // didn't come, the daemon gone, is asked again with the next key.
+    function answered(words, answer) {
+        if (asking === words)
+            asking = "";
+        if (answer === null)
+            return;
+        if (answer.error) {
+            if (!searchless)
+                console.warn(`launcher: ${place}'s daemon can't search, so the launcher `
+                    + `matches its rows itself: ${JSON.stringify(answer.error)}`);
+            searchless = true;
+            searched(words);
+            return;
+        }
+        found = { words: words, keys: answer.keys ?? [], marks: answer.marks ?? {} };
+        searched(words);
+    }
+
+    // The rows an answer found, in its order, each as the place made it.
+    // A key whose row isn't served yet is passed over, said once.
+    function foundRows(answer) {
+        const out = [];
+        for (const key of answer.keys) {
+            const row = key in held ? rowAt(key) : null;
+            if (row !== null) {
+                out.push(row);
+            } else if (!(key in unserved)) {
+                unserved[key] = true;
+                console.warn(`launcher: ${place}'s search found ${key}, which isn't served yet`);
+            }
+        }
+        return out;
     }
 
     // The words a time is said in, the launcher's own for each form

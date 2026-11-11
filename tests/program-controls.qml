@@ -48,7 +48,9 @@
 // programs share, heard again as it was, changes nothing, and an act
 // another provider gives to be found from the top makes its own row and
 // no program's own again. A step asked again, as a held one is at each
-// change, makes none of its Recent's rows again. Typing on
+// change, makes none of its Recent's rows again. Typed inside Programs,
+// the rows holding its letters stand at once and the programs daemon's
+// answer takes its own order; where the daemon can't search, typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -107,6 +109,14 @@ ShellRoot {
 
         function goTo(spot) {
             went = spot;
+        }
+
+        // Each list shown again in its rows' own order, as a search's
+        // answer asks (Launcher.qml's reshow).
+        property var reshown: []
+
+        function reshow(count, ordered) {
+            reshown = reshown.concat([`${count} ${ordered}`]);
         }
     }
 
@@ -950,11 +960,12 @@ ShellRoot {
             same("nomute unmutes what it records, and not a level meter",
                 `${listening.muted} ${meter.muted}`, "false false");
 
-            // Typing on looks only through what the last key found
-            // (Provider.qml's poolFor), and finds just what looking
-            // through everything would; going back, or another word,
-            // looks through everything again. Inside Programs only its
-            // programs are searched, not the acts found from the top.
+            // Where the daemon can't search, typing on looks only through
+            // what the last key found (Provider.qml's poolFor), and finds
+            // just what looking through everything would; going back, or
+            // another word, looks through everything again. Inside
+            // Programs only its programs are searched, not the acts found
+            // from the top.
             same("a program's acts are found from the top, not inside Programs",
                 applications.things.length > applications.programs.length, true);
             // One found from the top that asks for a choice, as Neovim's Open
@@ -966,7 +977,7 @@ ShellRoot {
             same("a found act asking for a choice goes to its list inside its program",
                 `${JSON.stringify(choosing.trail)} ${theLauncher.went === choosing}`,
                 '["collection:applications","program:tester","tester:pick"] true');
-            const found = typed => names(applications.search(typed).rows);
+            const found = typed => names(applications.matched(typed).rows);
             const whole = typed => {
                 applications.matchedIn(null, "", []);
                 return found(typed);
@@ -1025,6 +1036,46 @@ ShellRoot {
             const closedCount = program("radio").count;
             same("a closed program's count asks no provider what it holds",
                 `${closedCount}|${giver.askedRecent + giver.askedOpen - countAsked}`, "|0");
+            // Typed inside Programs, the rows holding its letters stand at
+            // once, and the daemon's answer, asked as the key comes, takes
+            // its own order, shown again with the selection kept.
+            theLauncher.open = true;
+            theLauncher.typed = "ra";
+            theLauncher.held = [{ row: { from: applications }, rows: [] }];
+            same("a key inside Programs shows the rows holding its letters at once",
+                names(applications.search("ra").rows), "Pair, Radio");
+            root.waiting = "the programs daemon's search";
+            searchAnswered.start();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Each tenth of a second until the daemon has answered what's typed.
+    Timer {
+        id: searchAnswered
+
+        interval: 100
+        repeat: true
+        onTriggered: {
+            if (theLauncher.reshown.length === 0)
+                return;
+            searchAnswered.stop();
+            root.searchedOn();
+        }
+    }
+
+    function searchedOn() {
+        try {
+            same("the answer shows Programs again in its own order",
+                theLauncher.reshown.join(", "), "1 true");
+            same("and it's the daemon's, which finds the letters together",
+                names(applications.search("ra").rows), "Radio");
+            // Typed on, its rows are the last answer's that hold them.
+            same("a key typed on narrows the last answer, in its order",
+                names(applications.search("rad").rows), "Radio");
+            theLauncher.typed = "";
+            theLauncher.held = [];
             // Written while the launcher is closed, quiet's list isn't read
             // until it opens, however long that is.
             root.waiting = "a change while closed";

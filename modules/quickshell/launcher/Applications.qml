@@ -67,9 +67,9 @@ Provider {
     // only as it opens or closes, which Joel did himself
     // (collection-order.md): as the programs daemon serves them, placed,
     // counted and worded (modules/programs/src/program_rows.rs), each made
-    // here into its program's row by its id, once its record changes.
-    // A search ranks the programs here still, until the programs daemon
-    // ranks them on ask too, due Fri 13 Nov 12:00 (PLAN-20261110-XGN3ZV).
+    // here into its program's row by its id, once its record changes, and
+    // searched there too (search.rs), by its name or what else it's
+    // called, its key binds' words among them as the watch says them.
     function everything() {
         return ready.rows();
     }
@@ -77,10 +77,30 @@ Provider {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
         place: "programs"
-        // The hidden programs other providers give acts to are listed too.
-        watching: ({ shown: provider.declared })
+        // The hidden programs other providers give acts to are listed too,
+        // and what each program's binds do is what it's found by too.
+        watching: ({ shown: provider.declared, also: provider.bound })
         make: row => provider.served(row)
         drawn: provider.launcher?.open ?? false
+        // The answer to what's typed in Programs now takes its order, the
+        // selection staying on its row (Launcher.qml's reshow).
+        onSearched: words => {
+            const launcher = provider.launcher;
+            const step = launcher?.held[launcher.held.length - 1];
+            if (launcher?.open && launcher.typed === words && step?.row.from === provider)
+                launcher.reshow(launcher.held.length, true);
+        }
+    }
+    // What each program's key binds do, by its entry's id, as its row's
+    // keywords say them, for the daemon to find it by.
+    readonly property var bound: {
+        const said = {};
+        for (const entry of DesktopEntries.applications.values) {
+            const binds = opening(provider.command(entry));
+            if (binds.length > 0)
+                said[entry.id] = binds.map(bind => `${bind.does} ${bind.also}`).join(" ");
+        }
+        return said;
     }
     // A served row made into its program's, or nothing where Quickshell
     // doesn't know the entry yet.
@@ -93,8 +113,31 @@ Provider {
         return Order.returned({ first: open, name: row => row.name });
     }
 
-    // Inside Programs, by its name or what it is, the best grade first.
+    // Inside Programs, as the programs daemon ranks them for what's typed.
+    // While its answer is asked, the rows that still hold every letter
+    // typed stand: the last answer's, in its order, when what's typed goes
+    // on from it, so a key takes rows away and puts none in a place of its
+    // own, else every row. The answer, a moment later, takes its order
+    // (ReadyRows' searched). A daemon that can't search leaves
+    // them matched here, as they were (`matched`), saying so once.
     function search(typed) {
+        const answer = ready.search(typed);
+        if (answer !== null)
+            return { rows: ready.foundRows(answer), grade: answer.keys.length > 0 ? 0 : 3 };
+        if (ready.searchless)
+            return matched(typed);
+        const need = Fuzzy.letters(Fuzzy.words(typed));
+        const holds = item => !!item && (item.mask & need) === need;
+        const said = Fuzzy.words(typed).join(" ");
+        const last = ready.found.words !== null
+            && said.startsWith(Fuzzy.words(ready.found.words).join(" "))
+            ? ready.foundRows(ready.found) : ready.rows();
+        const rows = last.filter(row => holds(row.prepared) || holds(row.keywords));
+        return { rows: rows, grade: rows.length > 0 ? 0 : 3 };
+    }
+
+    // Inside Programs, by its name or what it is, the best grade first.
+    function matched(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];

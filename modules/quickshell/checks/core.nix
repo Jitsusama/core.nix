@@ -106,12 +106,15 @@ in
   # The launcher finds what's meant: for each query in tests/fuzzy.qml the
   # right thing comes first, few rows are left, or nothing answers, and a
   # query keeps within its budget in at least one of five processes, all in
-  # Qt's own JavaScript engine, the one the shell runs the matcher in.
+  # Qt's own JavaScript engine, the one the shell runs the matcher in; and
+  # every case of fuzzy.json, which the daemons' matcher is held to too,
+  # scores and marks as it says.
   the-launcher-finds-what-is-meant = pkgs.runCommandLocal "the-launcher-finds-what-is-meant" { } ''
     cp ${../../../tests/fuzzy.qml} fuzzy.qml
     ${copied [ "Fuzzy.js" ]}
+    cp ${../../ready-rows/fuzzy.json} fuzzy.json
     export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-    export FONTCONFIG_FILE=${noFonts}
+    export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
     ${timedQml "fuzzy.qml"}
     touch $out
   '';

@@ -12,10 +12,11 @@
 //! file-preview kept; what kitty's page reads of zoxide's database, ssh's
 //! files and zsh's history is read as each is asked; and an ask or kind it
 //! doesn't know is refused. Each module beside this one tests one more of
-//! what it serves, over the same daemon: Programs' rows (rows.rs) and
-//! Capture's (taken.rs).
+//! what it serves, over the same daemon: Programs' rows (rows.rs), their
+//! search and what programs tell (search.rs), and Capture's (taken.rs).
 
 mod rows;
+mod search;
 mod taken;
 
 use std::os::unix::fs::PermissionsExt;

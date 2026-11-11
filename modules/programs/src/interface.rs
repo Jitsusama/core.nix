@@ -2,6 +2,8 @@
 //! (RSCH-20261029-0E8050, "Daemons: One Interface"): JSON lines, each ask
 //! with an `id` echoed in its answers.
 
+use std::collections::BTreeMap;
+
 use serde_json::{Value, json};
 
 /// The interface's version this speaks.
@@ -48,8 +50,9 @@ pub enum Ask {
     /// Records of these kinds as they change, all of them or these keys.
     /// `shown` names the hidden programs the watcher lists all the same,
     /// as Programs' rows do those another provider gives acts; `place`
-    /// the one place whose rows it hears (ready-rows.md), and `folders`
-    /// those Capture's rows are taken from.
+    /// the one place whose rows it hears (ready-rows.md); `folders`
+    /// those Capture's rows are taken from; and `also`, what each
+    /// program's key binds do, by its id, which its search finds it by too.
     Watch {
         id: Value,
         kinds: Vec<String>,
@@ -57,6 +60,14 @@ pub enum Ask {
         shown: Vec<String>,
         place: Option<String>,
         folders: Vec<String>,
+        also: BTreeMap<String, String>,
+    },
+    /// The rows of a place whose names, or what else they're called, start
+    /// with the words typed, best first (search.rs).
+    Search {
+        id: Value,
+        place: String,
+        words: String,
     },
     Unwatch {
         id: Value,
@@ -157,8 +168,22 @@ pub fn ask(line: &str) -> Ask {
                 shown: strings(&said, "shown"),
                 place: said.get("place").and_then(Value::as_str).map(str::to_owned),
                 folders: strings(&said, "folders"),
+                also: said
+                    .get("also")
+                    .and_then(Value::as_object)
+                    .map(|also| {
+                        also.iter()
+                            .filter_map(|(id, said)| Some((id.clone(), said.as_str()?.to_owned())))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             },
             Err(kind) => Ask::UnknownKind { id, kind },
+        },
+        "search" => Ask::Search {
+            id,
+            place: text_of(&said, "place"),
+            words: text_of(&said, "words"),
         },
         "unwatch" => Ask::Unwatch { id },
         "changed" => Ask::Changed {
@@ -169,6 +194,14 @@ pub fn ask(line: &str) -> Ask {
         "health" => Ask::Health { id },
         _ => Ask::Unknown { id, ask: asked },
     }
+}
+
+/// A field of an ask that's a text, or an empty one.
+fn text_of(said: &Value, field: &str) -> String {
+    said.get(field)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_owned()
 }
 
 /// An error answer, by the interface's codes.
@@ -191,6 +224,7 @@ mod tests {
                 shown: Vec::new(),
                 place: None,
                 folders: Vec::new(),
+                also: BTreeMap::new(),
             }
         );
     }
@@ -206,6 +240,25 @@ mod tests {
                 shown: Vec::new(),
                 place: Some("taken".into()),
                 folders: vec!["/a".into()],
+                also: BTreeMap::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_watch_says_what_programs_binds_do_and_a_search_its_words() {
+        let watched = ask(r#"{"id":6,"ask":"watch","kind":"row","also":{"kitty":"Open","x":1}}"#);
+        let Ask::Watch { also, .. } = watched else {
+            panic!("a watch is read as one: {watched:?}");
+        };
+        assert_eq!(also.len(), 1, "only words are kept: {also:?}");
+        assert_eq!(also["kitty"], "Open");
+        assert_eq!(
+            ask(r#"{"id":7,"ask":"search","place":"programs","words":"chr"}"#),
+            Ask::Search {
+                id: json!(7),
+                place: "programs".into(),
+                words: "chr".into()
             }
         );
     }

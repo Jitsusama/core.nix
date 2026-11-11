@@ -10,7 +10,9 @@ onLinux {
   # Its tests run as it builds: a moved row takes an order midway and the
   # rest keep theirs, a making is answered with only the records that read
   # differently and the keys that went, each figure is said as
-  # numbers.json's cases say, and a time travels as its moment and form.
+  # numbers.json's cases say, a time travels as its moment and form, and
+  # every text matches every query as fuzzy.json, made by the shell's
+  # Fuzzy.js, says.
   ready-rows-keeps-each-rows-place = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in ready-rows, its tests included.
   ready-rows-passes-clippy = passesClippy "ready-rows-passes-clippy" (
