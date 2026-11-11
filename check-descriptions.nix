@@ -734,7 +734,8 @@
     week ago, with what was kept beside them, and serves the same in the daemon interface, a record
     for each meeting, mail, document and the account, a watch told them all and then only those a
     change touched and those gone, of the kinds it watches, an act handed on as the old socket's
-    asks are, on the socket systemd hands it
+    asks are, on the socket systemd hands it; and Calendar's rows and drawers, read in the
+    account's own vocabulary, say no word but the vocabulary's, a meeting's own and the clock's
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units

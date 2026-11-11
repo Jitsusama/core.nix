@@ -11293,7 +11293,160 @@
         }
       },
       "said": {
-        "earlier": "{count} in the past 30 days"
+        "earlier": "{count} in the past 30 days",
+        "eyebrow": "on Calendar \u00b7 meeting",
+        "going": "going",
+        "maybe": "maybe",
+        "notGoing": "not going",
+        "unanswered": "not answered",
+        "allDay": "all day",
+        "span": "{start} to {end}",
+        "dated": "{weekday} {day} {month}",
+        "pin": "PIN {pin}",
+        "guest": "{name} \u00b7 {answer}",
+        "tally": "{count} {answer}",
+        "callSide": "its call",
+        "pageSide": "its page",
+        "weekday": "every weekday",
+        "every": "every {unit}",
+        "everyMany": "every {count} {units}",
+        "day": "day",
+        "days": "days",
+        "week": "week",
+        "weeks": "weeks",
+        "month": "month",
+        "months": "months",
+        "year": "year",
+        "years": "years",
+        "on": "{every} on {days}",
+        "nth": "the {which} {day}",
+        "monthDay": "the {nth}",
+        "nthDay": "the {which} day",
+        "times": "{every}, {count} times",
+        "until": "{every}, until {day} {month} {year}",
+        "first": "first",
+        "second": "second",
+        "third": "third",
+        "fourth": "fourth",
+        "fifth": "fifth",
+        "last": "last",
+        "nthLast": "{which} last",
+        "st": "{n}st",
+        "nd": "{n}nd",
+        "rd": "{n}rd",
+        "th": "{n}th",
+        "and": "{some} and {last}"
+      },
+      "weekdays": [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday"
+      ],
+      "months": [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December"
+      ]
+    },
+    {
+      "id": "calendar:when",
+      "in": "calendar:meeting",
+      "name": "When"
+    },
+    {
+      "id": "calendar:repeats",
+      "in": "calendar:meeting",
+      "name": "Repeats"
+    },
+    {
+      "id": "calendar:earlier",
+      "in": "calendar:meeting",
+      "name": "Earlier"
+    },
+    {
+      "id": "calendar:where",
+      "in": "calendar:meeting",
+      "name": "Where"
+    },
+    {
+      "id": "calendar:call",
+      "in": "calendar:meeting",
+      "name": "Call"
+    },
+    {
+      "id": "calendar:dial",
+      "in": "calendar:meeting",
+      "name": "Dial In"
+    },
+    {
+      "id": "calendar:answer",
+      "in": "calendar:meeting",
+      "name": "Your Answer"
+    },
+    {
+      "id": "calendar:holder",
+      "in": "calendar:meeting",
+      "name": "Holds It"
+    },
+    {
+      "id": "calendar:answers",
+      "in": "calendar:meeting",
+      "name": "Answers"
+    },
+    {
+      "id": "calendar:asked",
+      "in": "calendar:meeting",
+      "name": "Asked"
+    },
+    {
+      "id": "calendar:attached",
+      "in": "calendar:meeting",
+      "name": "Attachment",
+      "states": {
+        "several": {
+          "name": "Attachments"
+        }
+      }
+    },
+    {
+      "id": "calendar:telling",
+      "in": "calendar:meeting",
+      "name": "Telling Nobody Else",
+      "states": {
+        "one": {
+          "name": "Telling {one}"
+        },
+        "two": {
+          "name": "Telling {one} and {other}"
+        },
+        "three": {
+          "name": "Telling {one}, {other} and 1 Other"
+        },
+        "more": {
+          "name": "Telling {one}, {other} and {count} Others"
+        },
+        "guest": {
+          "name": "Telling 1 Guest"
+        },
+        "guests": {
+          "name": "Telling {count} Guests"
+        }
+      },
+      "said": {
+        "sure": "{sure}, {telling}"
       }
     },
     {
@@ -13262,7 +13415,8 @@
       "glyph": "joinCall",
       "said": {
         "two": "{first} and {second}",
-        "others": "{first} and {count} others"
+        "others": "{first} and {count} others",
+        "eyebrow": "on Meet \u00b7 call"
       }
     }
   ],
@@ -13587,6 +13741,22 @@
     }
   },
   "meant": [
+    {
+      "word": "attachment",
+      "things": [
+        "calendar:attachment",
+        "calendar:attached"
+      ],
+      "why": "A meeting's file is an Attachment, and its drawer's fact naming it says so too; the fact is never a row."
+    },
+    {
+      "word": "attachments",
+      "things": [
+        "verb:calendar:attachments",
+        "calendar:attached"
+      ],
+      "why": "Attachments steps in to a meeting's files, and its drawer's fact naming several says so too; the fact is never a row."
+    },
     {
       "word": "{manager}",
       "things": [

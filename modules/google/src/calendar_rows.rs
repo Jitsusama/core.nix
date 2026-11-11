@@ -32,39 +32,30 @@ const TAKES_OVER: i64 = 600_000;
 /// to be dropped.
 const RECENT: usize = 9;
 
-/// Between the items of one run, as every side and fact joins them.
+/// Between the items of one run, as every side and fact joins them
+/// (docs/design.md: "a run of items joins with dots").
 const BETWEEN: &str = " \u{b7} ";
 
-const DAYS: [&str; 7] = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-];
-const MONTHS: [&str; 12] = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-];
+/// Between the members of a list said in one fact, and between those of
+/// a list whose members hold a dot of their own.
+const COMMA: &str = ", ";
+const SEMICOLON: &str = "; ";
 
-/// Which of a day in its month, from the first.
-const WHICH: [&str; 6] = ["", "first", "second", "third", "fourth", "fifth"];
-
-/// The words Calendar's rows are said in, from the launcher's vocabulary.
+/// The words Calendar's rows are said in, from the launcher's vocabulary
+/// (launcher/words.json), every one: nothing Joel reads is written here
+/// but what the meeting itself says, the clock's figures and the marks
+/// that join a run, which `words_are_all_the_vocabularys` holds.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Words {
+    /// What its own words say of a meeting, by their key in its `said`.
+    pub said: std::collections::BTreeMap<String, String>,
+    /// Each fact's name, by the fact's id after `calendar:` and its state.
+    pub facts: std::collections::BTreeMap<(String, String), String>,
+    /// The days of the week from Sunday, and the months from January.
+    pub weekdays: Vec<String>,
+    pub months: Vec<String>,
+    /// The drawer's eyebrow over a call in Meet's Recent.
+    pub call_eyebrow: String,
     /// A row's name for a meeting with no title.
     pub untitled: String,
     /// The glyph role every meeting's row shows.
@@ -83,22 +74,126 @@ pub struct Words {
     pub with_others: String,
 }
 
+/// The words a meeting's own `said` must hold, each one this file says.
+const SAID: [&str; 43] = [
+    "earlier",
+    "eyebrow",
+    "going",
+    "maybe",
+    "notGoing",
+    "unanswered",
+    "allDay",
+    "span",
+    "dated",
+    "pin",
+    "guest",
+    "tally",
+    "callSide",
+    "pageSide",
+    "weekday",
+    "every",
+    "everyMany",
+    "day",
+    "days",
+    "week",
+    "weeks",
+    "month",
+    "months",
+    "year",
+    "years",
+    "on",
+    "nth",
+    "monthDay",
+    "nthDay",
+    "times",
+    "until",
+    "first",
+    "second",
+    "third",
+    "fourth",
+    "fifth",
+    "last",
+    "nthLast",
+    "st",
+    "nd",
+    "rd",
+    "th",
+    "and",
+];
+
+/// Each fact a drawer names, `calendar:<fact>` in the vocabulary, with the
+/// states it's named in besides its own; Telling's names are Move's and
+/// Cancel's sure rows' ends.
+const FACTS: [(&str, &[&str]); 12] = [
+    ("when", &[]),
+    ("repeats", &[]),
+    ("earlier", &[]),
+    ("where", &[]),
+    ("call", &[]),
+    ("dial", &[]),
+    ("answer", &[]),
+    ("holder", &[]),
+    ("answers", &[]),
+    ("asked", &[]),
+    ("attached", &["several"]),
+    (
+        "telling",
+        &["one", "two", "three", "more", "guest", "guests"],
+    ),
+];
+
 impl Words {
     /// Calendar's words from the whole vocabulary, or the first one it
     /// lacks.
     pub fn read(vocabulary: &Value) -> Result<Words, String> {
-        let word = |id: &str, at: &[&str]| -> Result<String, String> {
-            let thing = vocabulary["things"]
+        let thing = |id: &str| -> Result<&Value, String> {
+            vocabulary["things"]
                 .as_array()
                 .and_then(|things| things.iter().find(|thing| thing["id"] == id))
-                .ok_or_else(|| format!("the vocabulary has no {id}"))?;
+                .ok_or_else(|| format!("the vocabulary has no {id}"))
+        };
+        let word = |id: &str, at: &[&str]| -> Result<String, String> {
             at.iter()
-                .fold(thing, |within, field| &within[field])
+                .fold(thing(id)?, |within, field| &within[field])
                 .as_str()
                 .map(str::to_owned)
                 .ok_or_else(|| format!("the vocabulary's {id} has no {}", at.join(".")))
         };
+        let list = |field: &str, length: usize| -> Result<Vec<String>, String> {
+            let listed: Vec<String> = thing("calendar:meeting")?[field]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect();
+            (listed.len() == length)
+                .then_some(listed)
+                .ok_or_else(|| format!("the vocabulary's calendar:meeting hasn't {length} {field}"))
+        };
+        let said = SAID
+            .iter()
+            .map(|key| Ok(((*key).to_owned(), word("calendar:meeting", &["said", key])?)))
+            .collect::<Result<_, String>>()?;
+        let mut facts = std::collections::BTreeMap::new();
+        for (fact, states) in FACTS {
+            let id = format!("calendar:{fact}");
+            facts.insert((fact.to_owned(), String::new()), word(&id, &["name"])?);
+            for state in states {
+                let name = word(&id, &["states", state, "name"])?;
+                facts.insert((fact.to_owned(), (*state).to_owned()), name);
+            }
+        }
+        facts.insert(
+            ("telling".to_owned(), "sure".to_owned()),
+            word("calendar:telling", &["said", "sure"])?,
+        );
         Ok(Words {
+            said,
+            facts,
+            weekdays: list("weekdays", 7)?,
+            months: list("months", 12)?,
+            call_eyebrow: word("meet:held", &["said", "eyebrow"])?,
             untitled: word("calendar:meeting", &["states", "untitled", "name"])?,
             glyph: word("calendar:meeting", &["glyph"])?,
             earlier: word("calendar:meeting", &["said", "earlier"])?,
@@ -109,6 +204,35 @@ impl Words {
             with_others: word("meet:held", &["said", "others"])?,
         })
     }
+
+    /// A meeting's word by its key in `said`, which `read` made sure of.
+    fn word(&self, key: &str) -> &str {
+        self.said.get(key).map_or("", String::as_str)
+    }
+
+    /// A fact's name in a state, "" for its own.
+    fn fact(&self, fact: &str, state: &str) -> &str {
+        self.facts
+            .get(&(fact.to_owned(), state.to_owned()))
+            .map_or("", String::as_str)
+    }
+
+    /// How Joel answered, as his calendar would say it to him.
+    fn answer(&self, answer: Answer) -> &str {
+        self.word(match answer {
+            Answer::Yes => "going",
+            Answer::Maybe => "maybe",
+            Answer::No => "notGoing",
+            Answer::Waiting => "unanswered",
+        })
+    }
+}
+
+/// A form with each `{name}` in it filled.
+fn fill(form: &str, with: &[(&str, &str)]) -> String {
+    with.iter().fold(form.to_owned(), |said, (name, value)| {
+        said.replace(&format!("{{{name}}}"), value)
+    })
 }
 
 /// The places meetings are listed in: Calendar, its Recent, and Meet's.
@@ -280,11 +404,11 @@ fn row(listed: &Listed, order: usize, now: i64, zone: &TimeZone, words: &Words) 
     // Its times and his answer, or nothing once it's over, where its side
     // says when it was (Calendar.js's noted); a call its times alone.
     let note = if call {
-        span(meeting, zone)
+        span(meeting, zone, words)
     } else if meeting.end <= now {
         String::new()
     } else {
-        about(meeting, zone)
+        about(meeting, zone, words)
     };
     let when = json!({
         "at": meeting.start,
@@ -390,7 +514,7 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
             "key": "verb:calendar:move",
             "step": "move",
             "sure": words.move_sure,
-            "telling": telling_them(meeting),
+            "telling": telling_them(meeting, words),
         }));
     }
     if !emails.is_empty() {
@@ -404,23 +528,28 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
         }));
     }
     if meeting.holds {
+        let count = meeting.guests.len().to_string();
         let told = match meeting.guests.len() {
-            0 => "Telling Nobody Else".to_owned(),
-            1 => "Telling 1 Guest".to_owned(),
-            asked => format!("Telling {asked} Guests"),
+            0 => words.fact("telling", ""),
+            1 => words.fact("telling", "guest"),
+            _ => words.fact("telling", "guests"),
         };
+        let told = fill(told, &[("count", &count)]);
         acts.push(json!({
             "key": "verb:calendar:cancel",
             "ask": {"cancel": {"id": id}},
-            "sure": format!("{}, {told}", words.cancel_sure),
+            "sure": fill(
+                words.fact("telling", "sure"),
+                &[("sure", &words.cancel_sure), ("telling", &told)],
+            ),
         }));
     }
     if let Some(link) = meeting.link.as_ref().or(meeting.page.as_ref()) {
-        let side = if meeting.link.is_some() {
-            "its call"
+        let side = words.word(if meeting.link.is_some() {
+            "callSide"
         } else {
-            "its page"
-        };
+            "pageSide"
+        });
         acts.push(json!({"key": "verb:calendar:link", "copy": link, "side": side}));
     }
     acts
@@ -494,35 +623,41 @@ fn with_whom(meeting: &Meeting, words: &Words) -> String {
 /// Who Google tells of a change to a meeting, as Move's sure row says it:
 /// "Telling Nobody Else", "Telling Ada and Grace", or the first two and
 /// how many more (Calendar.js's `tellingThem`).
-fn telling_them(meeting: &Meeting) -> String {
+fn telling_them(meeting: &Meeting, words: &Words) -> String {
     let people: Vec<&str> = meeting
         .organizer
         .iter()
         .map(|person| person.name.as_str())
         .chain(meeting.guests.iter().map(|guest| guest.name.as_str()))
         .collect();
-    match people.as_slice() {
-        [] => "Telling Nobody Else".to_owned(),
-        [one] => format!("Telling {one}"),
-        [one, other] => format!("Telling {one} and {other}"),
+    let (state, one, other, rest) = match people.as_slice() {
+        [] => ("", "", "", 0),
+        [one] => ("one", *one, "", 0),
+        [one, other] => ("two", *one, *other, 0),
         [one, other, rest @ ..] => {
-            let others = if rest.len() == 1 { "Other" } else { "Others" };
-            format!("Telling {one}, {other} and {} {others}", rest.len())
+            let state = if rest.len() == 1 { "three" } else { "more" };
+            (state, *one, *other, rest.len())
         }
-    }
+    };
+    fill(
+        words.fact("telling", state),
+        &[("one", one), ("other", other), ("count", &rest.to_string())],
+    )
 }
 
 /// Its details, as the launcher's drawer shows them beside its row
 /// (Calendar.js's details): when, how it repeats, how many of its series
 /// came before, where, its call and the number it's dialled into by, his
 /// answer, who holds it, how those asked answered and who they are, and
-/// the files on it, every one plain text; and what it's about below.
+/// the files on it, every one plain text; and what it's about below. Each
+/// fact is ready-rows' `{name, said, qualifier, identifies}`: its day said
+/// with its times as their qualifier, its number with its PIN, and its
+/// call's link set as written, as an identifier is; and its eyebrow says
+/// where it is and what (Y2YBTS's review of #2983).
 fn drawer(listed: &Listed, zone: &TimeZone, words: &Words) -> Value {
     let meeting = listed.meeting;
     let earlier = if listed.earlier > 0 {
-        words
-            .earlier
-            .replace("{count}", &listed.earlier.to_string())
+        fill(&words.earlier, &[("count", &listed.earlier.to_string())])
     } else {
         String::new()
     };
@@ -531,65 +666,88 @@ fn drawer(listed: &Listed, zone: &TimeZone, words: &Words) -> Value {
         .iter()
         .map(|file| file.title.as_str())
         .collect();
-    let attachments = if titles.len() == 1 {
-        "Attachment"
-    } else {
-        "Attachments"
-    };
-    let asked: Vec<String> = meeting.guests.iter().map(guest_asked).collect();
+    let several = if titles.len() == 1 { "" } else { "several" };
+    let asked: Vec<String> = meeting
+        .guests
+        .iter()
+        .map(|guest| guest_asked(guest, words))
+        .collect();
+    let plain = |fact: &str, said: String| (words.fact(fact, "").to_owned(), said, None, false);
+    let (number, pin) = meeting.dial.as_ref().map_or((String::new(), None), |dial| {
+        let pin = dial
+            .pin
+            .as_ref()
+            .map(|pin| fill(words.word("pin"), &[("pin", pin)]));
+        (dial.number.clone(), pin)
+    });
     let facts = [
-        ("When", dated(meeting, zone)),
         (
-            "Repeats",
+            words.fact("when", "").to_owned(),
+            dated(meeting, zone, words),
+            Some(span(meeting, zone, words)),
+            false,
+        ),
+        plain(
+            "repeats",
             meeting
                 .repeats
                 .as_ref()
-                .map(|rule| repeated(rule, zone))
+                .map(|rule| repeated(rule, zone, words))
                 .unwrap_or_default(),
         ),
-        ("Earlier", earlier),
-        ("Where", meeting.place.clone().unwrap_or_default()),
-        ("Call", meeting.link.clone().unwrap_or_default()),
+        plain("earlier", earlier),
+        plain("where", meeting.place.clone().unwrap_or_default()),
         (
-            "Dial In",
-            meeting
-                .dial
-                .as_ref()
-                .map_or_else(String::new, |dial| match &dial.pin {
-                    Some(pin) => format!("{}, PIN {pin}", dial.number),
-                    None => dial.number.clone(),
-                }),
+            words.fact("call", "").to_owned(),
+            meeting.link.clone().unwrap_or_default(),
+            None,
+            true,
         ),
-        ("Your Answer", answered(meeting.answer).to_owned()),
-        (
-            "Holds It",
+        (words.fact("dial", "").to_owned(), number, pin, true),
+        plain(
+            "answer",
+            meeting
+                .answer
+                .map_or("", |answer| words.answer(answer))
+                .to_owned(),
+        ),
+        plain(
+            "holder",
             meeting.organizer.as_ref().map(named).unwrap_or_default(),
         ),
-        ("Answers", tallied(&meeting.guests)),
-        ("Asked", asked.join("; ")),
-        (attachments, titles.join(", ")),
+        plain("answers", tallied(&meeting.guests, words)),
+        plain("asked", asked.join(SEMICOLON)),
+        (
+            words.fact("attached", several).to_owned(),
+            titles.join(COMMA),
+            None,
+            false,
+        ),
     ];
+    let eyebrow = if listed.place == "meet" {
+        &words.call_eyebrow
+    } else {
+        words.word("eyebrow")
+    };
     json!({
+        "eyebrow": eyebrow,
         "title": titled(meeting, words),
         "facts": facts
             .into_iter()
-            .filter(|(_, value)| !value.is_empty())
-            .map(|(label, value)| json!({"label": label, "value": value}))
+            .filter(|(_, said, _, _)| !said.is_empty())
+            .map(|(name, said, qualifier, identifies)| {
+                let mut fact = json!({"name": name, "said": said});
+                if let Some(qualifier) = qualifier.filter(|qualifier| !qualifier.is_empty()) {
+                    fact["qualifier"] = json!(qualifier);
+                }
+                if identifies {
+                    fact["identifies"] = json!(true);
+                }
+                fact
+            })
             .collect::<Vec<_>>(),
         "body": meeting.about.clone().unwrap_or_default(),
     })
-}
-
-/// How Joel answered an invitation, as his calendar would say it to him,
-/// or nothing for a meeting that isn't one.
-fn answered(answer: Option<Answer>) -> &'static str {
-    match answer {
-        Some(Answer::Yes) => "going",
-        Some(Answer::Maybe) => "maybe",
-        Some(Answer::No) => "not going",
-        Some(Answer::Waiting) => "not answered",
-        None => "",
-    }
 }
 
 /// Someone by name, or their address when the calendar gives no name.
@@ -602,19 +760,22 @@ fn named(person: &Person) -> String {
 }
 
 /// A guest by name, with how they answered after a dot.
-fn guest_asked(guest: &Guest) -> String {
+fn guest_asked(guest: &Guest, words: &Words) -> String {
     let name = if guest.name.is_empty() {
         guest.email.as_deref().unwrap_or_default()
     } else {
         &guest.name
     };
-    format!("{name}{BETWEEN}{}", answered(Some(guest.answer)))
+    fill(
+        words.word("guest"),
+        &[("name", name), ("answer", words.answer(guest.answer))],
+    )
 }
 
 /// How those asked answered, counted, as a calendar heads its list of
 /// guests: "9 going, 2 not going, 3 not answered", in the order an
 /// invitation offers them; nothing for one guest, whom Asked says whole.
-fn tallied(guests: &[Guest]) -> String {
+fn tallied(guests: &[Guest], words: &Words) -> String {
     if guests.len() < 2 {
         return String::new();
     }
@@ -622,15 +783,24 @@ fn tallied(guests: &[Guest]) -> String {
         .into_iter()
         .filter_map(|answer| {
             let count = guests.iter().filter(|guest| guest.answer == answer).count();
-            (count > 0).then(|| format!("{count} {}", answered(Some(answer))))
+            (count > 0).then(|| {
+                fill(
+                    words.word("tally"),
+                    &[
+                        ("count", &count.to_string()),
+                        ("answer", words.answer(answer)),
+                    ],
+                )
+            })
         })
         .collect::<Vec<_>>()
-        .join(", ")
+        .join(COMMA)
 }
 
 /// Its times and, for an invitation, his answer: "14:00 to 14:30 · maybe".
-fn about(meeting: &Meeting, zone: &TimeZone) -> String {
-    [span(meeting, zone), answered(meeting.answer).to_owned()]
+fn about(meeting: &Meeting, zone: &TimeZone, words: &Words) -> String {
+    let answer = meeting.answer.map_or("", |answer| words.answer(answer));
+    [span(meeting, zone, words), answer.to_owned()]
         .into_iter()
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
@@ -638,30 +808,53 @@ fn about(meeting: &Meeting, zone: &TimeZone) -> String {
 }
 
 /// Its times on Joel's clock, "14:00 to 14:30", or "all day".
-fn span(meeting: &Meeting, zone: &TimeZone) -> String {
+fn span(meeting: &Meeting, zone: &TimeZone, words: &Words) -> String {
     if meeting.all_day {
-        return "all day".to_owned();
+        return words.word("allDay").to_owned();
     }
-    format!(
-        "{} to {}",
-        clock(meeting.start, zone),
-        clock(meeting.end, zone)
+    fill(
+        words.word("span"),
+        &[
+            ("start", &clock(meeting.start, zone)),
+            ("end", &clock(meeting.end, zone)),
+        ],
     )
 }
 
-/// Its day and times in full: "Monday 26 October · 14:00 to 14:30".
-fn dated(meeting: &Meeting, zone: &TimeZone) -> String {
+/// Its day, "Monday 26 October", which its drawer says with its times as
+/// their qualifier.
+fn dated(meeting: &Meeting, zone: &TimeZone, words: &Words) -> String {
     let Ok(at) = Timestamp::from_millisecond(meeting.start) else {
         return String::new();
     };
     let day = at.to_zoned(zone.clone());
-    format!(
-        "{} {} {}{BETWEEN}{}",
-        DAYS[usize::from(day.weekday().to_sunday_zero_offset().unsigned_abs())],
-        day.day(),
-        MONTHS[usize::from(day.month().unsigned_abs()) - 1],
-        span(meeting, zone)
+    fill(
+        words.word("dated"),
+        &[
+            (
+                "weekday",
+                weekday(day.weekday().to_sunday_zero_offset(), words),
+            ),
+            ("day", &day.day().to_string()),
+            ("month", month(day.month(), words)),
+        ],
     )
+}
+
+/// A day of the week by its number from Sunday, by name.
+fn weekday(day: i8, words: &Words) -> &str {
+    words
+        .weekdays
+        .get(usize::from(day.unsigned_abs()) % 7)
+        .map_or("", String::as_str)
+}
+
+/// A month by its number from January, 1, by name.
+fn month(month: i8, words: &Words) -> &str {
+    usize::from(month.unsigned_abs())
+        .checked_sub(1)
+        .and_then(|at| words.months.get(at))
+        .map_or("", String::as_str)
 }
 
 /// A time on Joel's clock, "09:05".
@@ -682,8 +875,9 @@ fn on_or_before(time: i64, now: i64, zone: &TimeZone) -> bool {
     date(time) <= date(now)
 }
 
-/// 1st, 2nd, 3rd, 4th, 11th, 21st.
-fn ordinal(n: i64) -> String {
+/// 1st, 2nd, 3rd, 4th, 11th, 21st: which form English's rule picks is
+/// this file's, and the forms are the vocabulary's.
+fn ordinal(n: i64, words: &Words) -> String {
     let ending = match (n % 100, n % 10) {
         (11..=13, _) => "th",
         (_, 1) => "st",
@@ -691,37 +885,42 @@ fn ordinal(n: i64) -> String {
         (_, 3) => "rd",
         _ => "th",
     };
-    format!("{n}{ending}")
+    fill(words.word(ending), &[("n", &n.to_string())])
 }
 
 /// Which of a day in its month: first, or from the end, last and second
 /// last.
-fn which(n: i8) -> String {
+fn which(n: i8, words: &Words) -> String {
+    const WHICH: [&str; 5] = ["first", "second", "third", "fourth", "fifth"];
     let at = usize::from(n.unsigned_abs());
-    let from_start = WHICH.get(at).filter(|word| !word.is_empty()).map_or_else(
-        || ordinal(i64::from(n.unsigned_abs())),
-        |word| (*word).to_owned(),
+    let from_start = at.checked_sub(1).and_then(|at| WHICH.get(at)).map_or_else(
+        || ordinal(i64::from(n.unsigned_abs()), words),
+        |key| words.word(key).to_owned(),
     );
     match n {
         1.. => from_start,
-        -1 => "last".to_owned(),
-        _ => format!("{from_start} last"),
+        -1 => words.word("last").to_owned(),
+        _ => fill(words.word("nthLast"), &[("which", &from_start)]),
     }
 }
 
 /// Words in a list, as one says them: "a", "a and b", "a, b and c".
-fn listed_words(words: &[String]) -> String {
-    match words {
+fn listed_words(listed: &[String], words: &Words) -> String {
+    match listed {
         [] => String::new(),
         [one] => one.clone(),
-        [first @ .., last] => format!("{} and {last}", first.join(", ")),
+        [first @ .., last] => fill(
+            words.word("and"),
+            &[("some", &first.join(COMMA)), ("last", last)],
+        ),
     }
 }
 
-/// How a meeting repeats, as its details say it: "Every weekday", "Every
-/// 2 weeks on Monday and Wednesday", "Every month on the last Friday,
-/// until 31 December 2026" (Repeats.js's repeated).
-fn repeated(rule: &Repeats, zone: &TimeZone) -> String {
+/// How a meeting repeats, as its details say it: "every weekday", "every
+/// 2 weeks on Monday and Wednesday", "every month on the last Friday,
+/// until 31 December 2026" (Repeats.js's repeated), lowercase as every
+/// value the launcher says is.
+fn repeated(rule: &Repeats, zone: &TimeZone, words: &Words) -> String {
     let (one, many) = match rule.every {
         Every::Day => ("day", "days"),
         Every::Week => ("week", "weeks"),
@@ -733,48 +932,70 @@ fn repeated(rule: &Repeats, zone: &TimeZone) -> String {
     days.sort_unstable();
     let weekdays = days == [1, 2, 3, 4, 5];
     let mut said = if rule.every == Every::Week && rule.interval == 1 && plain && weekdays {
-        "Every weekday".to_owned()
+        words.word("weekday").to_owned()
     } else {
-        let mut said = if rule.interval == 1 {
-            format!("Every {one}")
+        let said = if rule.interval == 1 {
+            fill(words.word("every"), &[("unit", words.word(one))])
         } else {
-            format!("Every {} {many}", rule.interval)
+            fill(
+                words.word("everyMany"),
+                &[
+                    ("count", &rule.interval.to_string()),
+                    ("units", words.word(many)),
+                ],
+            )
         };
         let on: Vec<String> = rule
             .days
             .iter()
             .map(|day| {
-                let name = DAYS[usize::from(day.day) % DAYS.len()];
+                let name = weekday(i8::try_from(day.day).unwrap_or_default(), words);
                 day.nth.map_or_else(
                     || name.to_owned(),
-                    |nth| format!("the {} {name}", which(nth)),
+                    |nth| {
+                        fill(
+                            words.word("nth"),
+                            &[("which", &which(nth, words)), ("day", name)],
+                        )
+                    },
                 )
             })
             .chain(rule.month_days.iter().map(|&day| {
                 if day > 0 {
-                    format!("the {}", ordinal(i64::from(day)))
+                    let nth = ordinal(i64::from(day), words);
+                    fill(words.word("monthDay"), &[("nth", &nth)])
                 } else {
-                    format!("the {} day", which(day))
+                    fill(words.word("nthDay"), &[("which", &which(day, words))])
                 }
             }))
             .collect();
-        if !on.is_empty() {
-            said = format!("{said} on {}", listed_words(&on));
+        if on.is_empty() {
+            said
+        } else {
+            fill(
+                words.word("on"),
+                &[("every", &said), ("days", &listed_words(&on, words))],
+            )
         }
-        said
     };
     if let Some(times) = rule.times {
-        said = format!("{said}, {times} times");
+        said = fill(
+            words.word("times"),
+            &[("every", &said), ("count", &times.to_string())],
+        );
     } else if let Some(last) = rule
         .until
         .and_then(|until| Timestamp::from_millisecond(until).ok())
     {
         let last = last.to_zoned(zone.clone());
-        said = format!(
-            "{said}, until {} {} {}",
-            last.day(),
-            MONTHS[usize::from(last.month().unsigned_abs()) - 1],
-            last.year()
+        said = fill(
+            words.word("until"),
+            &[
+                ("every", &said),
+                ("day", &last.day().to_string()),
+                ("month", month(last.month(), words)),
+                ("year", &last.year().to_string()),
+            ],
         );
     }
     said
@@ -783,3 +1004,7 @@ fn repeated(rule: &Repeats, zone: &TimeZone) -> String {
 #[cfg(test)]
 #[path = "calendar_rows_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "calendar_rows_words_tests.rs"]
+mod words_tests;
