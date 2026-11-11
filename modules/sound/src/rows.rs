@@ -6,10 +6,10 @@
 //! They're worked out from the device records (devices.rs), as the
 //! launcher's Sound.qml works its rows out from the sound server's nodes
 //! today, rule for rule: what a device is called, the glyph it wears,
-//! whether it's the one chosen, its volume as a bar and its note. Whether
-//! a jack with nothing plugged in or a display's output with no display
-//! is listed comes next, from desk-facts and from the shell telling the
-//! displays it has.
+//! whether it's the one chosen, its volume as a bar and its note. A jack
+//! with nothing plugged in, or a display's output with no display, isn't
+//! listed unless it's the one chosen, which says so: its card says so of
+//! the route that plays it, live, as desk-facts' file said for Sound.qml.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -136,6 +136,11 @@ impl<'a> Device<'a> {
 
     fn chosen(&self) -> bool {
         self.record["chosen"].as_bool().unwrap_or(false)
+    }
+
+    /// Whether its card says nothing is plugged in where it plays.
+    fn unplugged(&self) -> bool {
+        self.record["unplugged"].as_bool().unwrap_or(false)
     }
 
     /// How loud it's heard, as a share: none while it's muted.
@@ -293,6 +298,7 @@ pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
         .iter()
         .filter_map(Device::of)
         .filter(|device| device.property("filter.smart") != "true")
+        .filter(|device| !device.unplugged() || device.chosen())
         .collect();
     let named: Vec<String> = devices
         .iter()
@@ -363,6 +369,9 @@ fn row(device: &Device, name: &str, devices: &[Device], words: &Words) -> Value 
     if device.muted() {
         note.push(words.said("muted", &[]));
     }
+    if device.unplugged() {
+        note.push(words.said("unplugged", &[]));
+    }
     if switches(device, devices) {
         note.push(words.said("to-calls", &[]));
     }
@@ -399,6 +408,7 @@ mod tests {
                 {"id": "sound", "name": "Sound", "said": {
                     "volume": "volume {level}", "muted": "muted", "chosen": "chosen",
                     "to-calls": "using it switches the headset to calls",
+                    "unplugged": "nothing plugged in",
                 }},
                 {"id": "sound:called:speakers", "name": "Built-In Speakers"},
                 {"id": "sound:called:microphones", "name": "Built-In Microphones"},
@@ -543,6 +553,21 @@ mod tests {
         let keys: Vec<&Value> = moved.changed.iter().map(|record| &record["key"]).collect();
         assert_eq!(keys, ["row:sound:a"]);
         assert_eq!(moved.changed[0]["row"]["note"], "volume 60%");
+    }
+
+    // The headphones while none are plugged in aren't listed, unless
+    // they're the ones chosen, which says why nothing is heard.
+    #[test]
+    fn a_jack_with_nothing_in_it_is_listed_only_while_chosen() {
+        let mut headphones = device("headphones", true, "Headphones", &json!({}));
+        headphones["unplugged"] = json!(true);
+        let speakers = device("speakers", true, "Speakers", &json!({}));
+        let listed = rows(&[headphones.clone(), speakers.clone()], &words());
+        assert_eq!(names(&listed), ["Speakers"]);
+        headphones["chosen"] = json!(true);
+        let listed = rows(&[headphones, speakers], &words());
+        assert_eq!(names(&listed), ["Headphones", "Speakers"]);
+        assert_eq!(listed[0]["note"], "volume 40% · nothing plugged in");
     }
 
     // A smart filter in front of a device, as the speakers' tuning is,

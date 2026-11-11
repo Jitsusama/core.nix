@@ -2,7 +2,8 @@
 //! the Props or the Route an act sets: each channel's volume and whether
 //! it's muted. A Props names only what it says, so either may be missing,
 //! and a missing one keeps what was said before. A card's device says
-//! which of its routes plays each of its profile's devices, read here too.
+//! which of its routes plays each of its profile's devices, and whether
+//! anything is plugged into each route it has, read here too.
 
 use std::io::Cursor;
 
@@ -10,6 +11,7 @@ use pipewire::spa::pod::deserialize::PodDeserializer;
 use pipewire::spa::pod::serialize::PodSerializer;
 use pipewire::spa::pod::{Object, Property, PropertyFlags, Value, ValueArray};
 use pipewire::spa::sys;
+use pipewire::spa::utils::Id;
 
 /// Each channel's volume and the mute a Props pod says, from its bytes.
 pub fn levels(pod: &[u8]) -> (Option<Vec<f32>>, Option<bool>) {
@@ -48,6 +50,34 @@ pub fn route(pod: &[u8]) -> Option<(i32, i32)> {
         }
     }
     Some((index?, device?))
+}
+
+/// What a card's `EnumRoute` pod says of one route it has: its index, the
+/// profile's devices it can play, and whether the card says nothing is
+/// plugged into it, as a jack with nothing in it and a display's output
+/// with no display are. A route it can't tell of is plugged in.
+pub fn offered(pod: &[u8]) -> Option<(i32, Vec<i32>, bool)> {
+    let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(pod) else {
+        return None;
+    };
+    let mut index = None;
+    let mut devices = Vec::new();
+    let mut unplugged = false;
+    for property in object.properties {
+        match property.value {
+            Value::Int(n) if property.key == sys::SPA_PARAM_ROUTE_index => index = Some(n),
+            Value::ValueArray(ValueArray::Int(said))
+                if property.key == sys::SPA_PARAM_ROUTE_devices =>
+            {
+                devices = said;
+            }
+            Value::Id(Id(said)) if property.key == sys::SPA_PARAM_ROUTE_available => {
+                unplugged = said == sys::SPA_PARAM_AVAILABILITY_no;
+            }
+            _ => {}
+        }
+    }
+    Some((index?, devices, unplugged))
 }
 
 fn keyed(key: u32, value: Value) -> Property {
@@ -141,5 +171,33 @@ mod tests {
         let pod = routed(3, 1, Some(&[0.5]), Some(true));
         assert_eq!(route(&pod), Some((3, 1)));
         assert_eq!(route(&props(None, Some(true))), None);
+    }
+
+    fn enumerated(index: i32, devices: &[i32], available: u32) -> Vec<u8> {
+        written(&Value::Object(Object {
+            type_: sys::SPA_TYPE_OBJECT_ParamRoute,
+            id: sys::SPA_PARAM_EnumRoute,
+            properties: vec![
+                keyed(sys::SPA_PARAM_ROUTE_index, Value::Int(index)),
+                keyed(
+                    sys::SPA_PARAM_ROUTE_devices,
+                    Value::ValueArray(ValueArray::Int(devices.to_vec())),
+                ),
+                keyed(sys::SPA_PARAM_ROUTE_available, Value::Id(Id(available))),
+            ],
+        }))
+    }
+
+    // The headphones' jack with nothing in it, as the laptop's card says
+    // while none are plugged in, and the speakers, which it can't tell of.
+    #[test]
+    fn a_route_offered_says_its_devices_and_whether_its_plugged_in() {
+        let headphones = enumerated(1, &[1], sys::SPA_PARAM_AVAILABILITY_no);
+        assert_eq!(offered(&headphones), Some((1, vec![1], true)));
+        let speakers = enumerated(0, &[0], sys::SPA_PARAM_AVAILABILITY_unknown);
+        assert_eq!(offered(&speakers), Some((0, vec![0], false)));
+        let plugged = enumerated(1, &[1], sys::SPA_PARAM_AVAILABILITY_yes);
+        assert_eq!(offered(&plugged), Some((1, vec![1], false)));
+        assert_eq!(offered(&props(None, Some(true))), None);
     }
 }

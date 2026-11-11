@@ -20,9 +20,11 @@ onLinux {
   # server at all: outputs and inputs made devices and a program's stream
   # left out, a volume said as the shell shows it and a mute alone keeping
   # it, the chosen ones those the default metadata names, a node gone let
-  # go of, a card saying what it is, each channel's volume and the mute
-  # read from a Props, Sound's rows named, ordered, worn and worded as
-  # the launcher's, a volume moving sending its own row alone, hello
+  # go of, a card saying what it is and whether anything is plugged in
+  # where each device plays, each channel's volume and the mute read
+  # from a Props and a card's routes from its EnumRoute, Sound's rows
+  # named, ordered, worn and worded as the launcher's, an empty jack
+  # listed only while chosen, a volume moving sending its own row alone, hello
   # saying PipeWire isn't answering, a list and a watch answering no
   # devices or rows rather than waiting, and an ask or kind it doesn't know
   # refused.

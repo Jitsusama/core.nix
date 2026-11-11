@@ -33,6 +33,15 @@ pub enum Change {
     /// A card saying which of its routes plays one of its profile's
     /// devices, as its Route param does.
     Route { card: u32, index: i32, device: i32 },
+    /// A card saying one route it has, as its `EnumRoute` param does: the
+    /// profile's devices it can play, and whether nothing is plugged
+    /// into it.
+    Offer {
+        card: u32,
+        index: i32,
+        devices: Vec<i32>,
+        unplugged: bool,
+    },
     /// The default metadata saying a key, or no key for every key at
     /// once, its value none where it's let go of.
     Chose {
@@ -63,6 +72,10 @@ pub struct Devices {
     /// What each card says it is, by its id: its form factor and icon,
     /// as `BlueZ` gives a Bluetooth one's.
     forms: BTreeMap<u32, String>,
+    /// Each route each card has, by the card's id and the route's index:
+    /// the profile's devices it can play, and whether nothing is plugged
+    /// into it.
+    offers: BTreeMap<(u32, i32), (Vec<i32>, bool)>,
 }
 
 /// One device as an act finds it.
@@ -151,6 +164,7 @@ impl Devices {
             }
             Change::Gone { id } => {
                 self.routes.retain(|(card, _), _| *card != id);
+                self.offers.retain(|(card, _), _| *card != id);
                 self.forms.remove(&id);
                 self.nodes.remove(&id).is_some()
             }
@@ -162,6 +176,15 @@ impl Devices {
             } => {
                 self.routes.insert((card, device), index);
                 false
+            }
+            Change::Offer {
+                card,
+                index,
+                devices,
+                unplugged,
+            } => {
+                let offer = (devices, unplugged);
+                self.offers.insert((card, index), offer.clone()) != Some(offer)
             }
             Change::Chose { key, value } => {
                 match key.as_deref() {
@@ -216,6 +239,26 @@ impl Devices {
             .map_or("", String::as_str)
     }
 
+    /// Whether a node's card says nothing is plugged in where it plays:
+    /// every route that can play its profile's device says so, and one
+    /// at least does. A device no card plays, as a USB or Bluetooth one
+    /// with no routes, is never unplugged.
+    fn unplugged(&self, node: &Node) -> bool {
+        let said = |key: &str| node.properties.get(key).map_or("", String::as_str);
+        let card: Option<u32> = said("device.id").parse().ok();
+        let device: Option<i32> = said("card.profile.device").parse().ok();
+        let (Some(card), Some(device)) = (card, device) else {
+            return false;
+        };
+        let mut offers = self
+            .offers
+            .range((card, i32::MIN)..=(card, i32::MAX))
+            .map(|(_, offer)| offer)
+            .filter(|(devices, _)| devices.contains(&device))
+            .peekable();
+        offers.peek().is_some() && offers.all(|(_, unplugged)| *unplugged)
+    }
+
     /// Each device as a record, keyed by its node's name, which a device
     /// keeps from one sound server to the next where its id doesn't.
     pub fn records(&self) -> Vec<Value> {
@@ -241,6 +284,7 @@ impl Devices {
                     "chosen": chosen.as_deref() == Some(name.as_str()),
                     "properties": node.properties,
                     "form": self.form(node),
+                    "unplugged": self.unplugged(node),
                 }))
             })
             .collect()
@@ -418,6 +462,55 @@ mod tests {
         assert!(!devices.hear(other), "a card playing no device moves none");
         devices.hear(Change::Gone { id: 7 });
         assert_eq!(devices.records()[0]["form"], "");
+    }
+
+    // The laptop's card says its headphones' jack has nothing in it while
+    // none are plugged in, and can't tell of its speakers, which are
+    // always there.
+    #[test]
+    fn a_device_says_whether_anything_is_plugged_in_where_it_plays() {
+        let mut devices = Devices::default();
+        for (id, name, device) in [(40, "speakers", "0"), (41, "headphones", "1")] {
+            let Change::Node { mut properties, .. } = node(id, name, "Audio/Sink") else {
+                unreachable!("node says a node");
+            };
+            properties.insert("device.id".into(), "7".into());
+            properties.insert("card.profile.device".into(), device.into());
+            devices.hear(Change::Node { id, properties });
+        }
+        devices.hear(node(42, "usb-desk", "Audio/Sink"));
+        let offer = |index: i32, unplugged: bool| Change::Offer {
+            card: 7,
+            index,
+            devices: vec![index],
+            unplugged,
+        };
+        let unplugged = |devices: &Devices| -> Vec<bool> {
+            let records = devices.records();
+            records
+                .iter()
+                .map(|record| record["unplugged"] == true)
+                .collect()
+        };
+        assert_eq!(unplugged(&devices), [false, false, false]);
+        assert!(
+            devices.hear(offer(0, false)),
+            "a route offered moves its device"
+        );
+        assert!(
+            devices.hear(offer(1, true)),
+            "an empty jack moves its device"
+        );
+        assert_eq!(unplugged(&devices), [false, true, false]);
+        assert!(
+            !devices.hear(offer(1, true)),
+            "said again, it moves nothing"
+        );
+        devices.hear(offer(1, false));
+        assert_eq!(unplugged(&devices), [false, false, false]);
+        devices.hear(offer(1, true));
+        devices.hear(Change::Gone { id: 7 });
+        assert_eq!(unplugged(&devices), [false, false, false]);
     }
 
     #[test]
