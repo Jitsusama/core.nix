@@ -61,6 +61,10 @@ fn tried_again(why: &str) -> bool {
 /// checks ran, so it's neither merged nor tried again.
 pub const DROPPED: &str = "main's newest head passes its test, so it was dropped";
 
+/// How a revert fails whose test fails at main's newest head with it in
+/// too, so it lands nothing.
+const MENDS_NOTHING: &str = "the revert mends nothing";
+
 /// How many times a run the builder never took is sent again, two minutes
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
@@ -1522,7 +1526,7 @@ fn revert_and_tell(
         return Ok(());
     }
     let listed: Option<Result<Merged, String>> = match &reverted {
-        Err(why) if !tried_again(why) => Some(list_broken(world, state, found, head)),
+        Err(why) if !tried_again(why) => Some(list_broken(world, state, found, head, why)),
         _ => None,
     };
     state.find(&json!({
@@ -1620,7 +1624,7 @@ fn revert_wanted<'a>(
             short(&found.commit)
         ));
         Err(format!(
-            "{test} fails with the revert at main's newest head {} too",
+            "{MENDS_NOTHING}: {test} fails with the revert at main's newest head {} too",
             short(newest)
         ))
     }
@@ -1641,25 +1645,38 @@ fn dropped(state: &State, found: &Bad, reverted: &Result<Merged, String>) -> Res
     Ok(true)
 }
 
-/// A merge pinned for breaking a test whose revert won't apply has its test
-/// listed as quarantined, with the merge's PR as its owner, and the hold
-/// cleared, so the net goes on to main's head and switches go on while the
-/// owner fixes it forward. On 9 November the revert of #2363 conflicted
-/// with the 138 merges since, and main stayed held until a fix forward
-/// landed by hand 23 minutes later; the owner is told in the finding.
+/// A merge pinned for breaking a test whose revert won't apply, or mends
+/// nothing, has its test listed as quarantined, with the merge's PR as its
+/// owner, and the hold cleared, so the net goes on to main's head and
+/// switches go on while the owner fixes it forward. On 9 November the
+/// revert of #2363 conflicted with the 138 merges since, and main stayed
+/// held until a fix forward landed by hand 23 minutes later; the owner is
+/// told in the finding. The reason says which, since `why` is the revert's
+/// failure: on 11 November vm-desktop-looks failed with #3064 reverted too,
+/// as a second merge broke another of its subtests, and a list saying the
+/// revert won't apply would have sent its owner after a conflict.
 fn list_broken(
     world: &dyn World,
     state: &State,
     found: &Bad,
     head: &str,
+    why: &str,
 ) -> Result<Merged, String> {
     let what = found
         .pr
         .map_or_else(|| short(&found.commit).to_owned(), |pr| format!("#{pr}"));
-    let reason = format!(
-        "has been broken since {what}, whose revert won't apply; its owner fixes it forward \
-         and takes it off this list"
-    );
+    let reason = if why.starts_with(MENDS_NOTHING) {
+        format!(
+            "has been broken since {what}, but fails with it reverted too, so a later merge \
+             breaks it as well; whoever finds that merge fixes it forward and takes it off \
+             this list"
+        )
+    } else {
+        format!(
+            "has been broken since {what}, whose revert won't apply; its owner fixes it \
+             forward and takes it off this list"
+        )
+    };
     let made = world.quarantine(&found.test, found.pr, head, &reason)?;
     state.clear_hold()?;
     state.say(&format!(
@@ -1735,6 +1752,8 @@ mod tests {
         /// A commit main's newest head builds every check as.
         newest_builds_as: Option<String>,
         put_in_quarantine: Mutex<Vec<String>>,
+        /// The reason each test put in quarantine was listed for.
+        quarantine_reasons: Mutex<Vec<String>>,
         /// The owner each test put in quarantine was listed with.
         quarantine_owners: Mutex<Vec<Option<u64>>>,
         /// The PR that last took a test off the list.
@@ -1957,9 +1976,13 @@ mod tests {
             test: &str,
             owner: Option<u64>,
             _: &str,
-            _: &str,
+            reason: &str,
         ) -> Result<Merged, String> {
             self.put_in_quarantine.lock().unwrap().push(test.to_owned());
+            self.quarantine_reasons
+                .lock()
+                .unwrap()
+                .push(reason.to_owned());
             self.quarantine_owners.lock().unwrap().push(owner);
             Ok(Merged {
                 pr: 8,
@@ -2730,6 +2753,11 @@ mod tests {
             Round::Failed("h".into())
         );
         assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        let reasons = world.quarantine_reasons.lock().unwrap().clone();
+        assert!(
+            reasons[0].contains("won't apply"),
+            "a conflicting revert is listed as {reasons:?}"
+        );
         assert_eq!(state.hold(), None, "switches go on");
         let found = findings(&state);
         assert_eq!(found[0]["kind"], "failed");
@@ -3383,6 +3411,11 @@ mod tests {
             "the revert landed though its test fails with it at main's newest head"
         );
         assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        let reasons = world.quarantine_reasons.lock().unwrap().clone();
+        assert!(
+            reasons[0].contains("fails with it reverted too") && !reasons[0].contains("apply"),
+            "a revert that mends nothing is listed as {reasons:?}"
+        );
         assert_eq!(state.hold(), None, "the listing clears the hold");
         let (_, world) = reverting("revert-mends", &[1], &[0]);
         assert_eq!(*world.reverted.lock().unwrap(), names("m2"));
