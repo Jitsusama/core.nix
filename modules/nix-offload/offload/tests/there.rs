@@ -2778,6 +2778,58 @@ fn a_changed_run_sent_first_tells_the_builders_gate_so() {
 }
 
 #[test]
+fn a_changed_run_kept_to_the_lent_builders_runs_this_machines_changed_checks() {
+    // A fenced session writes its commits, so the changed-checks a commit
+    // names would run what the session put there, on the builder and as
+    // the person, and say what passed (12 November).
+    let Some(own) = option_env!("NIX_OFFLOAD_CHANGED_CHECKS") else {
+        panic!("built without a changed-checks of its own, which package.nix gives it");
+    };
+    let package = own
+        .strip_suffix("/bin/changed-checks")
+        .expect("a program in a package's bin");
+    let changed = Changed::new();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    let arguments = ["--build", "--no-vm", "--system", "x86_64-linux"];
+    let (ran, sent) = changed.run_after(&["--lent-only"], &arguments);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = sent.expect("it's sent");
+    assert!(
+        sent.contains(&format!("{own} --build --no-vm --system x86_64-linux")),
+        "run by its store path: {sent}"
+    );
+    assert!(
+        !sent.contains("nix run"),
+        "nothing the commit names runs: {sent}"
+    );
+    let calls = fs::read_to_string(changed.bin.join("nix-calls")).unwrap();
+    assert!(
+        calls.lines().any(|call| {
+            call.starts_with("copy --to ssh-ng://nix-offload?")
+                && call.ends_with(&format!(" {package}"))
+        }),
+        "its package goes up to the builder: {calls}"
+    );
+    // What's kept as passed names the commit it was sent and the run as
+    // it was asked, and the far side only what it named.
+    let kept = fs::read_to_string(
+        changed
+            .folder
+            .path()
+            .join("nix-offload/passed")
+            .join(&changed.head),
+    )
+    .unwrap();
+    let run: serde_json::Value = kept
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .find(|line| line.get("run").is_some())
+        .unwrap_or_else(|| panic!("no run kept: {kept}"));
+    assert_eq!(run["run"], serde_json::json!(arguments), "{kept}");
+    assert_eq!(run["printed"], "changed  a\n", "{kept}");
+}
+
+#[test]
 fn changed_checks_go_to_a_vm_builder_that_stands_while_no_lent_builder_answers() {
     // From 01:00 to 08:05 on 8 November the lent builders' disks stalled
     // them, and every `there --changed` waited on them and ended 69,

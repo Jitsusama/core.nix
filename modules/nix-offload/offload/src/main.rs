@@ -1346,6 +1346,10 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         eprintln!("nix-offload: {why}, so changed-checks runs here");
         ExitCode::from(changed::NOT_TAKEN)
     };
+    let own = match changed::run_by(there::lent_only()) {
+        Ok(own) => own,
+        Err(why) => return not_taken(&why),
+    };
     let Ok(folder) = env::current_dir() else {
         return not_taken("this folder can't be read");
     };
@@ -1410,6 +1414,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         scratch: &scratch,
         waiting,
         moves: false,
+        own,
     };
     // Said while it runs, so a merge sharing its files waits for it
     // (`running.rs`).
@@ -1435,16 +1440,31 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         return not_taken("no builder or evaluator answered");
     };
     if let (0, Some(at), Some(printed)) = (finished.status, &at, &finished.printed) {
-        passed.keep_run(at, arguments, printed, started);
-        if let (true, Some(system)) = (wanted.build, &wanted.system) {
-            let built: Vec<String> = changed::to_build(printed, wanted.vm)
-                .iter()
-                .map(|name| format!("{}{name}", checks_of(system)))
-                .collect();
-            passed.keep_checks(at, &built);
-        }
+        kept_passing(&passed, at, arguments, printed, started);
     }
     ExitCode::from(u8::try_from(finished.status).unwrap_or(1))
+}
+
+/// Keeps that the changed-checks run with `arguments`, started at
+/// `started`, passed at `at`, having printed `printed`, and, where it
+/// built, that each check it named passed there. What it named is the
+/// far side's to say; the commit and the run are what this one sent.
+fn kept_passing(
+    passed: &passed::Passed,
+    at: &passed::At,
+    arguments: &[String],
+    printed: &str,
+    started: u64,
+) {
+    passed.keep_run(at, arguments, printed, started);
+    let wanted = changed::wanted(arguments);
+    if let (true, Some(system)) = (wanted.build, &wanted.system) {
+        let built: Vec<String> = changed::to_build(printed, wanted.vm)
+            .iter()
+            .map(|name| format!("checks.{system}.{name}"))
+            .collect();
+        passed.keep_checks(at, &built);
+    }
 }
 
 /// How a `there --changed` run ended: its status, and what changed-checks
@@ -1473,12 +1493,15 @@ struct Sent<'a> {
     waiting: there::Waiting,
     /// Whether it may go to the other lent builder, rather than wait.
     moves: bool,
+    /// The changed-checks it runs by store path, sent up first, rather
+    /// than the commit's own.
+    own: Option<&'a str>,
 }
 
 impl Sent<'_> {
     /// The command changed-checks is sent as with `arguments`.
     fn sending(&self, arguments: &[String]) -> there::Sending {
-        let mut sending = changed::sending(self.source.clone(), arguments, self.told);
+        let mut sending = changed::sending(self.source.clone(), arguments, self.told, self.own);
         if self.moves {
             sending.command.insert_str(0, there::MOVES);
         }
@@ -1496,6 +1519,15 @@ impl Sent<'_> {
     ) -> Option<Finished> {
         let wanted = changed::wanted(arguments);
         let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
+        // Sent as `--run`'s `--copy` paths are, as held outputs go, since
+        // the builder trusts no account.
+        if let Some(own) = self.own {
+            let package = [changed::package_of(own)];
+            if let Err(why) = there::paths_up(&package, &lent, "nix", there::send_within(0)) {
+                eprintln!("nix-offload: {why}");
+                return None;
+            }
+        }
         if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
             let apart = Apart {
                 lent: &lent,
