@@ -170,6 +170,16 @@ impl<'a> Settler<'a> {
         self.moved.notify_all();
     }
 
+    /// End with `end` now, for a build installed after this one, rather than
+    /// once every job handed is done: each is kept on disk, and the new build
+    /// takes it up. On 10 November a watcher told at 21:32 that another build
+    /// was installed tested nothing for 79 minutes, its search waiting on two
+    /// 35-minute runs. `end` runs while nothing writes the hold, so none is
+    /// left half written.
+    pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
+        self.write(end)
+    }
+
     /// The first error a job ended in, since the settler was made.
     pub fn error(&self) -> Option<String> {
         lock(&self.first_error).clone()

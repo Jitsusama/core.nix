@@ -199,8 +199,13 @@ fn rounds(
         if let Some(installed) = follow
             && replaced(fs::canonicalize(installed), env::current_exe())
         {
-            state.say("another merge-net is installed, so this one ends between rounds");
-            return Ok(ExitCode::SUCCESS);
+            state.say(
+                "another merge-net is installed, so this one ends between rounds, \
+                 leaving what it settles to that one",
+            );
+            // An exit, since the scope would wait for the searches under way,
+            // which the new build takes up from disk.
+            return Ok(settler.leave(|| std::process::exit(0)));
         }
         std::thread::sleep(std::time::Duration::from_secs(rest));
     }
