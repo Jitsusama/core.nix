@@ -140,8 +140,10 @@ Provider {
 
     function take(changed, gone) {
         const kept = Object.assign({}, madeOf);
-        for (const key of gone)
+        for (const key of gone) {
             delete kept[key];
+            delete verbsOf[key];
+        }
         for (const key of changed) {
             const row = served.held[key];
             if (row?.kind === "network")
@@ -450,7 +452,7 @@ Provider {
                 : opening ? opening.given : null,
             run: signing ? () => SignIn.open() : joined ? () => provider.leave(network)
                 : () => provider.join(network),
-            verbs: () => provider.verbs(network, locked),
+            verbs: () => provider.verbsKept(network, locked),
             // Joined, its Return disconnects, which Return typed in insert
             // never does.
             ends: joined && !signing ? Words.ending("verb:wifi-leave").ends : ""
@@ -1177,6 +1179,22 @@ Provider {
             stays: true,
             run: () => provider.trust(network, !network.trusted)
         }));
+    }
+
+    // Each network's acts and parts as last made, by its row's key, with
+    // what they were made from. A freshening asks every network's acts
+    // again a minute after a closing (Launcher.qml's spotsFreshened), and
+    // made Wi-Fi's 14 to 20 again each time with nothing changed
+    // (2026-11-10), so they're made again only once the network's row, its
+    // sign-in, or the detail and link read of the one shown, are new.
+    property var verbsOf: ({})
+    function verbsKept(network, locked) {
+        const key = network.served?.key;
+        if (!key)
+            return verbs(network, locked);
+        return Placed.madeOnce(verbsOf, key,
+            [network.served, SignIn.network, Wifi.detail, linkRead, signalSeen],
+            () => verbs(network, locked));
     }
 
     function verbs(network, locked) {

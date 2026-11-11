@@ -3,7 +3,7 @@
 // each found its place by halving, and nothing sorts the rest. The daemon
 // spaces its orders and keeps them from one change to the next, so a row
 // that moves is said alone. Wireless.qml keeps wifid's rows by it, and
-// tests/placed.qml runs it in Qt's own engine.
+// what it makes of each, and tests/placed.qml runs it in Qt's own engine.
 .pragma library
 
 // The keys in their order once a message said the rows `changed` anew and
@@ -16,6 +16,22 @@ function placed(keys, held, changed, gone) {
         now.splice(after(now, held, held[key].order), 0, key);
     }
     return now;
+}
+
+// What `make` made for `key` the last time it was asked, while each of
+// `from`, what it was made from, is the very one it was then; else made
+// again and kept in `kept`, by key, for the next time. A row served
+// stays the one object until the daemon says it changed, so whatever's
+// made of it is made once for each change rather than once for each ask.
+function madeOnce(kept, key, from, make) {
+    const before = kept[key];
+    if (before && before.from.length === from.length
+        && before.from.every((one, at) => one === from[at])) {
+        return before.made;
+    }
+    const made = make();
+    kept[key] = { from, made };
+    return made;
 }
 
 // Where a row of order `order` goes among `keys`: after every row ordered

@@ -45,5 +45,25 @@ QtObject {
         held.d = { order: 2048 };
         keys = Placed.placed(keys, held, ["a", "c", "d"], []);
         Expect.same("every row renumbered at once is placed once", keys, ["d", "a", "c"]);
+        madeOnce();
+    }
+
+    // A minute after a closing, the launcher asks every network's acts
+    // again: those of a row unchanged are the ones made before.
+    function madeOnce() {
+        const kept = {};
+        let makings = 0;
+        const make = () => ({ made: ++makings });
+        const row = { order: 1024 };
+        const first = Placed.madeOnce(kept, "a", [row, null], make);
+        const again = Placed.madeOnce(kept, "a", [row, null], make);
+        Expect.expect("asked again from the same row, nothing is made", again === first
+            && makings === 1, makings);
+        const changed = Placed.madeOnce(kept, "a", [{ order: 1024 }, null], make);
+        Expect.same("a row the daemon changed is made again", changed, { made: 2 });
+        Placed.madeOnce(kept, "a", [kept.a.from[0], "Lantern"], make);
+        Expect.same("and so is one whose other source moved", makings, 3);
+        Placed.madeOnce(kept, "b", [row, null], make);
+        Expect.same("each key keeps its own", Object.keys(kept), ["a", "b"]);
     }
 }
