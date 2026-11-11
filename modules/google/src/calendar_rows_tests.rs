@@ -343,16 +343,16 @@ fn show_in_calendar_steps_into_each_fact_copied_then_opens_its_page() {
     };
     let link = "https://meet.google.com/abc-defg-hij";
     assert!(
-        named[0].0.starts_with("Monday 26 October") && named[0].1 == json!([{"said": "when"}]),
+        named[0].0.starts_with("Monday 26 October") && named[0].1 == json!([{"said": "When"}]),
         "first when it is, as the drawer says it: {:?}",
         named[0]
     );
     assert_eq!(
         named[1..4],
         [
-            fact("Room 4", "where", "Room 4"),
-            fact(link, "call", link),
-            fact("going", "your answer", "going"),
+            fact("Room 4", "Where", "Room 4"),
+            fact(link, "Call", link),
+            fact("going", "Your Answer", "going"),
         ],
         "each fact the drawer has, Return copying what it says"
     );

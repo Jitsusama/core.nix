@@ -152,12 +152,12 @@ fn acted(within: &Within, parent: &str, id: &str, verb: &str, depth: u8, words: 
 }
 
 /// What's known of it, each a row inside Show in Calendar: each of its
-/// drawer's facts, named by what it says, which Return copies, what fact
-/// it is at its side; what it's about on one line, copied whole; then
+/// drawer's facts, named by what it says, which Return copies, the fact's
+/// name as the drawer says it at its side; what it's about on one line, copied whole; then
 /// Open in Calendar, its page in Google's window, where it's changed
 /// (Calendar.qml's `facts`, as it was).
 fn facts(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Vec<Value> {
-    let value = |id: &str, name: &str, copy: &str, side: String, note: &str| {
+    let value = |id: &str, name: &str, copy: &str, side: &str, note: &str| {
         json!({
             "key": format!("{parent}:{id}"),
             "thing": format!("{}:fact:{id}", within.thing),
@@ -179,7 +179,7 @@ fn facts(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Vec
             let said = fact["said"].as_str()?;
             let id = name.to_lowercase().replace(' ', "-");
             let note = fact["qualifier"].as_str().unwrap_or_default();
-            Some(value(&id, said, said, name.to_lowercase(), note))
+            Some(value(&id, said, said, name, note))
         })
         .collect();
     if let Some(about) = meeting
@@ -188,8 +188,7 @@ fn facts(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Vec
         .filter(|about| !about.trim().is_empty())
     {
         let line = about.split_whitespace().collect::<Vec<_>>().join(" ");
-        let side = words.word("aboutSide").to_owned();
-        rows.push(value("about", &line, about, side, ""));
+        rows.push(value("about", &line, about, words.word("aboutSide"), ""));
     }
     if let Some(page) = &meeting.page {
         let verb = "verb:calendar:open";
