@@ -495,12 +495,6 @@ def test_openings_make_only_the_notices_rows_that_came(shell: Shell) -> None:
     assert came == 1, f"one notice come, an opening made {came} notices' rows"
 
 
-# The sources whose rows are still made at every opening, by their owners' leave until they
-# keep them: Agents' own rows are bound to whether they're read, which each opening flips, until
-# the agents daemon makes them ready (Fri 13 Nov); Capture's Recent is read afresh at each.
-MADE_AT_EACH_OPENING = {"agents", "capture"}
-
-
 def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
     """Opened into For You again, and told a notice while open, it makes only what changed.
 
@@ -521,7 +515,7 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
         return {
             name: now[name] - before.get(name, 0)
             for name in now
-            if now[name] > before.get(name, 0) and name not in MADE_AT_EACH_OPENING
+            if now[name] > before.get(name, 0) and name not in MADE_AS_ANY_OPENS
         }
 
     def in_for_you() -> None:
