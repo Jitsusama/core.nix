@@ -2213,8 +2213,8 @@ Singleton {
     }
     readonly property var windowsFrom: windowsDaemon
 
-    // niri's windows by the process drawing them, each kitty's oldest first,
-    // and by the app id each was opened with, the oldest of each, for
+    // niri's windows by the process drawing them, and by the app id each was
+    // opened with, oldest first, for
     // `running`. They're made again only when a window comes, goes or
     // moves, rather than for every change to a session and looked through
     // for every session, which with a hundred sessions made a hundred lists
@@ -2249,7 +2249,8 @@ Singleton {
 
     // A session's niri window: the one niri lists by the app id its window
     // was opened with (`opened`), or a hosted one's viewer by its own
-    // (viewerOf), since kitty's own ids mean nothing to niri. A window
+    // (viewerOf), since kitty's own ids mean nothing to niri; of several
+    // opened with one app id, the one its kitty draws. A window
     // opened without one, before the shell named them or by Joel by hand,
     // is the one window of the kitty it runs in, or of a
     // kitty drawing several, the nth of kitty's as niri's nth of that
@@ -2262,12 +2263,13 @@ Singleton {
     // daemon's are looked through.
     function windowOf(record, kitties, opened) {
         const named = record.opened || viewerOf(record.presence);
-        if (named !== "" && opened)
-            return opened[String(named)] ?? null;
-        if (named !== "")
-            return Object.values(windowsKept).find(window => window.opened === named) ?? null;
         const kitty = record.kitty;
         const pid = kitty ? (kittySocket.exec(kitty.socket) ?? [])[1] : undefined;
+        if (named !== "" && opened)
+            return SessionWindows.named(opened[String(named)] ?? [], pid);
+        if (named !== "")
+            return SessionWindows.named(Object.values(windowsKept)
+                .filter(window => window.opened === named).sort((a, b) => a.id - b.id), pid);
         const windows = pid ? kitties[pid] ?? [] : [];
         if (windows.length === 1)
             return windows[0];

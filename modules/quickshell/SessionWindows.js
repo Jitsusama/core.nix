@@ -19,8 +19,8 @@ function moved(kept, record) {
     return !kept || read.some(field => kept[field] !== record[field]);
 }
 
-// The windows by the process drawing them, each kitty's oldest first, and
-// by the app id each opened with, the oldest of each, as niri lists them.
+// The windows by the process drawing them, and by the app id each opened
+// with, oldest first, as niri lists them.
 function indexed(records) {
     const pids = {};
     const opened = {};
@@ -28,9 +28,21 @@ function indexed(records) {
         if (record.pid) {
             pids[record.pid] = (pids[record.pid] ?? []).concat([record]);
         }
-        if (!(String(record.opened) in opened)) {
-            opened[String(record.opened)] = record;
-        }
+        const app = String(record.opened);
+        opened[app] = (opened[app] ?? []).concat([record]);
     }
     return { pids, opened };
+}
+
+// The window an app id names among those opened with it: the one, or of
+// several, the one drawn by the session's own kitty (`pid`). Old spawns
+// share small numbers, so pi-spawned.1 named four windows of four kittys
+// (2QZBX9, 2026-11-11), and the oldest was another session's; one that
+// can't be told apart names none rather than the wrong one.
+function named(windows, pid) {
+    if (windows.length === 1) {
+        return windows[0];
+    }
+    const drawn = pid ? windows.filter(window => String(window.pid) === String(pid)) : [];
+    return drawn.length === 1 ? drawn[0] : null;
 }
