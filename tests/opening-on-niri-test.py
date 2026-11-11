@@ -36,6 +36,14 @@ READING = "\u2026"
 # spotsLater).
 SPOTS_DUE = timedelta(milliseconds=700)
 
+# When they're made: a reopening asked only after it finds them made, rightly, and shows
+# nothing of the race.
+SPOTS_LATER = timedelta(milliseconds=500)
+
+# How many closings and reopenings a case tries before a builder too busy to ask the reopening
+# within SPOTS_LATER fails it.
+REOPENINGS_TRIED = 3
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -155,18 +163,28 @@ def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     Network's rows between its ask and its first frame (a gate of #2971, 2026-11-10). Niri is
     held from the closing until past that half second, so the reopening's first frame can't
     come before the spots are due, however quickly the shell turns. Rows follow only from a
-    place changed while shut, so the spots being made at all is what fails.
+    place changed while shut, so the spots being made at all is what fails. Each call starts a
+    process, and on a busy builder the two took past the half second, so the spots were made
+    before the reopening was asked (four gates, 2026-11-10): such a try shows nothing and is
+    made again.
     """
-    first = opened_from_kept(shell)
-    began = shell.mark()
-    with niri_held():
-        closed = time.monotonic()
-        shell.as_account(shell.ipc("toggle"))
-        # Home is kept a turn after the closing, before the next call can land.
-        shell.as_account(shell.ipc("toggle"))
-        # Held until the spots are due, so they come due between the ask and its first frame.
-        time.sleep(max(0, closed + SPOTS_DUE.total_seconds() - time.monotonic()))
-    opening = filled_after(shell, cast("int", first["nth"]))
+    for _ in range(REOPENINGS_TRIED):
+        first = opened_from_kept(shell)
+        began = shell.mark()
+        with niri_held():
+            closed = time.monotonic()
+            shell.as_account(shell.ipc("toggle"))
+            # Home is kept a turn after the closing, before the next call can land.
+            shell.as_account(shell.ipc("toggle"))
+            asked = time.monotonic() - closed
+            # Held until the spots are due, so they come due between the ask and its frame.
+            time.sleep(max(0, closed + SPOTS_DUE.total_seconds() - time.monotonic()))
+        opening = filled_after(shell, cast("int", first["nth"]))
+        if asked < SPOTS_LATER.total_seconds():
+            break
+        shell.close_launcher()
+    else:
+        pytest.fail(f"no reopening was asked within {SPOTS_LATER} of its closing")
     said, _ = shell.said_since(began)
     spots = [one for one in said if one.startswith("spots made while closed ")]
     assert not spots, f"the closing's spots were made as the launcher reopened: {spots}"
