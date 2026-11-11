@@ -20,7 +20,7 @@ echo harbour >"$state/mycelium/realm"
 # older listed first, and one saying where from badly; one pi's host
 # here gave back, between them in time, one saying so badly and one
 # saying it was both carried and given back; and one that ran hosted, which its host
-# brings back itself.
+# brings back itself, so reopening it starts no pi.
 cat >"$state/pi/restore.json" <<'EOF'
 {"v":1,"boot":"an-earlier-boot","sessions":[
   {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},

@@ -14,7 +14,8 @@ pragma ComponentBehavior: Bound
 // node says is parked is held apart from those running, and one it says
 // closed apart again, however each record reads; Wake, or talking to one
 // parked, asks the node, which wakes it. What an earlier boot's end took away is
-// offered whole, but one that ran hosted, which its host brings back,
+// offered whole, one that ran hosted too, whose host brings it back, so
+// asking reopens no pi for it (tests/sessions-hosted-reopen.qml), the rest
 // reopened held in its own folder, until put off, one pi
 // never saved started under its own id with its quest, and Reopen Them
 // All reopens even when niri never answers its ask for the screens; what
@@ -359,9 +360,9 @@ ShellRoot {
     // home folder; one whose folder is gone starts its quest afresh in
     // the quest's start folder, or nowhere when it has none.
     function lastBoot() {
-        expect("only the whole ones of another boot, none hosted",
+        expect("only the whole ones of another boot, one hosted among them",
             Sessions.lastBoot.map(one => one.id).join(" ")
-                === "s-before s-fresh s-given-back s-far",
+                === "s-before s-fresh s-given-back s-hosted s-far",
             JSON.stringify(Sessions.lastBoot));
         // Those another machine carried here or pi's host gave back
         // apart, the newest first, and one saying where from badly, or
@@ -370,7 +371,7 @@ ShellRoot {
             Sessions.apart.map(one => one.id).join(" ") === "s-ferry s-freed s-ferried",
             JSON.stringify(Sessions.apart));
         expect("the last boot's, then those apart", Sessions.toReopen.map(one => one.id).join(" ")
-            === "s-before s-fresh s-given-back s-far s-ferry s-freed s-ferried",
+            === "s-before s-fresh s-given-back s-hosted s-far s-ferry s-freed s-ferried",
             JSON.stringify(Sessions.toReopen));
         Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
         // One held elsewhere is joined again once, however often asked.
@@ -464,7 +465,7 @@ ShellRoot {
         Sessions.forgetReopen({ id: "s-ferried" });
         expect("a forgotten one is offered no more",
             Sessions.toReopen.map(one => one.id).join(" ")
-                === "s-before s-fresh s-given-back s-far s-ferry s-freed",
+                === "s-before s-fresh s-given-back s-hosted s-far s-ferry s-freed",
             JSON.stringify(Sessions.toReopen));
         Sessions.forgotten = ["s-long-gone"];
         Sessions.forgetReopen({ id: "s-ferried" });

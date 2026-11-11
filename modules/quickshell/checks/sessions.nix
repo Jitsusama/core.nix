@@ -198,4 +198,76 @@
       timeout 60 ${qs} -p shell.qml
       touch $out
     '';
+
+  # Reopen Them All opens only the viewer of a session pi's host brought
+  # back, quietly where the last boot kept it (tests/sessions-hosted-reopen.qml),
+  # with the node and niri stood in.
+  a-hosted-viewer-reopens-where-it-was =
+    let
+      # Joel's window on the monitor's first workspace, and the empty one
+      # niri keeps last; the test makes more as windows open there.
+      niri = singleton "Niri.qml" ''
+        property var workspaces: ({
+          "40": { id: 40, idx: 1, output: "DP-4", is_focused: true, active_window_id: 90 },
+          "41": { id: 41, idx: 2, output: "DP-4", is_focused: false, active_window_id: null }
+        })
+        property var windows: ({
+          "90": { id: 90, pid: 900, workspace_id: 40, opened: "firefox",
+            layout: { pos_in_scrolling_layout: [1, 1] } }
+        })
+        property int revision: 0
+        property var current: null
+        property var focused: null
+        property var acts: []
+        property var spawns: []
+        signal windowOpenedOrChanged(var window)
+        function act(request) { acts = acts.concat([request]); }
+        function request(asked, answer) {}
+        function workspace(id) {
+          if (id !== undefined)
+            return workspaces[id] ?? null;
+          return Object.values(workspaces).find(one => one.is_focused) ?? null;
+        }
+        function spawn(command) { spawns = spawns.concat([command.join(" ")]); }
+      '';
+      options = singleton "Options.qml" ''
+        readonly property var sounds: ({ wants: "", player: "" })
+      '';
+      quiet = singleton "Quiet.qml" ''
+        property bool on: false
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        function mark(id, read) {}
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
+      report = singleton "Report.qml" "function say(text) {}";
+    in
+    pkgs.runCommandLocal "a-hosted-viewer-reopens-where-it-was" { } ''
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
+      cp ${../Sessions.qml} Sessions.qml
+      cp ${../SessionWindows.js} SessionWindows.js
+      cp ${../PiSource.qml} PiSource.qml
+      cp ${../PiSource.js} PiSource.js
+      cp ${../Daemon.qml} Daemon.qml
+      cp ${../Hearing.js} Hearing.js
+      cp ${../Waiting.js} Waiting.js
+      cp ${../Places.js} Places.js
+      cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
+      cp ${../../../tests/sessions-hosted-reopen.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${notices} Notices.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
 }
