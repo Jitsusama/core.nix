@@ -16,6 +16,7 @@ import contextlib
 import json
 import os
 import signal
+import socket
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -449,3 +450,35 @@ def test_openings_make_only_the_notices_rows_that_came(shell: Shell) -> None:
     came = searched("turnstone")
     assert again == 0, f"opened again with no notice come, it made {again} notices' rows"
     assert came == 1, f"one notice come, an opening made {came} notices' rows"
+
+
+# How many times the shell is restarted back to back, as five switches in half an hour did
+# on 9 November, after which the launcher stopped taking keys.
+RESTARTS = 5
+
+
+def test_the_launcher_takes_keys_after_each_of_five_restarts(shell: Shell) -> None:
+    """Restarted five times running, as switches restart it, the launcher opens and takes keys.
+
+    A switch restarts the shell while niri, its daemons and Joel's windows go on, and on 9
+    November the launcher stopped taking keys after five switches in half an hour, so switches
+    were held 30 minutes apart (update-to-main's follow.rs). Each restart here is followed by an
+    opening from the chord's socket, as Joel's chord opens it, and a word typed and found.
+    """
+    for restart in range(1, RESTARTS + 1):
+        shell.restart()
+        with socket.socket(socket.AF_UNIX) as said:
+            said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+            said.sendall(f"toggle @{time.time():.6f}\n".encode())
+        shell.launcher_ready()
+        shell.send_chars("agents")
+        try:
+            shell.launcher_until(
+                lambda shown: (
+                    shown["typed"] == "agents" and (shown["selected"] or {}).get("name") == "Agents"
+                )
+            )
+        except AssertionError as failed:
+            message = f"after restart {restart} of {RESTARTS}, typing found nothing: {failed}"
+            raise AssertionError(message) from failed
+        shell.close_launcher()

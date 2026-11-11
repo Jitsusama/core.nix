@@ -105,7 +105,28 @@ class Shell:
                         stderr=subprocess.STDOUT,
                     )
                 )
-        with self.log.open("wb") as log:
+        self.launch("wb")
+
+    def restart(self) -> None:
+        """End the shell alone and start it again, as a switch restarts its unit.
+
+        Its daemons go on running, as their own units do through a switch that leaves them be,
+        and its log goes on where it was, so a mark made before still reads what came after.
+        """
+        assert self.process is not None, "the shell was never started"
+        self.process.terminate()
+        self.process.wait(timeout=10)
+        self.launch("ab")
+        # smithay keeps one keymap active for the seat and sends a virtual keyboard's only when
+        # it differs from that one, while a keyboard made since is given the seat's own: the
+        # restarted shell would read wtype's next word, if it's the last one typed, by the
+        # seat's keymap, "agents" as "123456". A key of another keymap first makes the word's
+        # keymap new again, as a key Joel presses does on his keyboard. F24 does nothing here.
+        subprocess.run(["wtype", "-k", "F24"], check=True)  # noqa: S607
+
+    def launch(self, mode: str) -> None:
+        """Start the shell alone, its log opened in this mode, and wait until it answers, closed."""
+        with self.log.open(mode) as log:
             self.process = subprocess.Popen(  # noqa: S603
                 ["qs", "-p", str(self.folder)],  # noqa: S607
                 stdout=log,
