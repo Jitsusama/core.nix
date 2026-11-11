@@ -142,6 +142,27 @@ fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
 }
 
+/// What the launcher's vocabulary says for each code an act is refused
+/// with, spend's own `refused:<code>` words, so the launcher says a
+/// refusal as the daemon words it; a message is for the journal alone.
+pub fn refusals(vocabulary: &str) -> BTreeMap<String, String> {
+    let Ok(read) = serde_json::from_str::<Value>(vocabulary) else {
+        return BTreeMap::new();
+    };
+    let spend = read["things"].as_array().into_iter().flatten();
+    spend
+        .filter(|thing| thing["id"] == "spend")
+        .filter_map(|thing| thing["said"].as_object())
+        .flatten()
+        .filter_map(|(key, said)| {
+            Some((
+                key.strip_prefix("refused:")?.to_owned(),
+                said.as_str()?.to_owned(),
+            ))
+        })
+        .collect()
+}
+
 /// One watch: the kinds it's told, and where.
 struct Watch {
     connection: u64,
@@ -184,6 +205,8 @@ pub struct Hub {
     doer: OnceLock<Doer>,
     /// The launcher's words the rows served ready say.
     words: Words,
+    /// The launcher's words for an act refused, by its code.
+    refusals: BTreeMap<String, String>,
 }
 
 impl Hub {
@@ -193,6 +216,7 @@ impl Hub {
             since,
             doer: OnceLock::new(),
             words: Words::default(),
+            refusals: BTreeMap::new(),
         }
     }
 
@@ -200,6 +224,21 @@ impl Hub {
     #[must_use]
     pub fn worded(self, words: Words) -> Hub {
         Hub { words, ..self }
+    }
+
+    /// The hub, its refusals saying the launcher's words (`refusals`).
+    #[must_use]
+    pub fn refusing(self, refusals: BTreeMap<String, String>) -> Hub {
+        Hub { refusals, ..self }
+    }
+
+    /// An act refused, worded where the vocabulary words its code.
+    fn refused(&self, id: &Value, code: &str, message: &str) -> Value {
+        let mut answer = error(id, code, message);
+        if let Some(said) = self.refusals.get(code) {
+            answer["error"]["said"] = json!(said);
+        }
+        answer
     }
 
     /// Gives the hub what does its acts; only the first is kept.
@@ -220,7 +259,7 @@ impl Hub {
     /// act as not answering.
     fn act(&self, id: &Value, act: &str, line: &str) -> Value {
         let Some(doer) = self.doer.get() else {
-            return error(id, "not-answering", "spend-watch can't act yet");
+            return self.refused(id, "not-answering", "spend-watch can't act yet");
         };
         let held = {
             let held = self.lock();
@@ -232,11 +271,11 @@ impl Hub {
         };
         let doing = match acts::asked(act, line, held.as_ref()) {
             Ok(doing) => doing,
-            Err(refusal) => return error(id, refusal.code, &refusal.message),
+            Err(refusal) => return self.refused(id, refusal.code, &refusal.message),
         };
         match doer(doing) {
             Ok(()) => json!({"id": id, "done": true}),
-            Err(why) => error(id, "not-done", &why),
+            Err(why) => self.refused(id, "not-done", &why),
         }
     }
 
@@ -305,14 +344,20 @@ impl Hub {
     /// pass would, for a hub serving only what was written
     /// (`daemon::serve`), so a fixture that writes them anew is heard. A
     /// collection of another shape is passed over, and budgets that can't
-    /// be read are none.
+    /// be read are none. A collection taken away is an empty one, so what
+    /// it held is told gone, as when a fixture removes it to show none.
     pub fn rewritten(&self, collection: &str, budgets: &str) {
-        let Ok(whole) = serde_json::from_str::<Value>(collection) else {
-            return;
+        let whole = if collection.is_empty() {
+            json!({})
+        } else {
+            let Ok(whole) = serde_json::from_str::<Value>(collection) else {
+                return;
+            };
+            if whole["v"].as_u64() != Some(u64::from(crate::collection::VERSION)) {
+                return;
+            }
+            whole
         };
-        if whole["v"].as_u64() != Some(u64::from(crate::collection::VERSION)) {
-            return;
-        }
         let standing = serde_json::from_str::<Value>(budgets)
             .ok()
             .filter(|said| said["v"].as_u64() == Some(u64::from(crate::standing::VERSION)));
@@ -816,6 +861,37 @@ mod tests {
         assert!(
             client.silent(),
             "the same written again, or another shape, should tell nothing"
+        );
+    }
+
+    #[test]
+    fn a_refusal_says_the_launchers_words_for_it() {
+        let vocabulary = r#"{"things": [{"id": "spend", "said": {
+            "down": "not answering", "refused:not-answering": "the watch can't act yet"}}]}"#;
+        let hub = Arc::new(Hub::new(1).refusing(refusals(vocabulary)));
+        hub.answering();
+        let mut client = Client::to(&hub, r#"{"id":1,"ask":"act","act":"run","line":"a"}"#);
+        assert_eq!(
+            client.next()["error"],
+            json!({"code": "not-answering", "message": "spend-watch can't act yet",
+                "said": "the watch can't act yet"}),
+            "a refusal should say the vocabulary's words, its message kept for the journal"
+        );
+    }
+
+    #[test]
+    fn a_collection_taken_away_is_told_gone() {
+        let hub = Arc::new(Hub::new(1));
+        hub.seed(&serde_json::to_string(&collection()).expect("the collection, written"));
+        hub.answering();
+        let mut client = Client::to(&hub, r#"{"id":"all","ask":"watch","kind":"session"}"#);
+        client.next();
+        hub.rewritten("", "");
+        let told = client.next();
+        assert_eq!(
+            told["gone"],
+            json!(["session:a", "session:b"]),
+            "a collection removed should tell what it held gone: {told}"
         );
     }
 

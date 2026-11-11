@@ -13,12 +13,14 @@
   ...
 }:
 {
-  # The AI spend piece, the tokens piece, the launcher's collection and its
-  # budgets' drawers read what spend-watch writes, from a day of a session's turns on two models,
-  # and the states tests/spend.qml writes by hand, through Quickshell
-  # itself, with niri, do not disturb, the shortcuts and the sessions stood
-  # in for; and what its socket tells, from a stand-in serving those
-  # records (tests/spend-told.qml), a pass remaking only the rows it changed.
+  # The AI spend piece and the tokens piece read what spend-watch writes,
+  # from a day of a session's turns on two models, and the states
+  # tests/spend.qml writes by hand, through Quickshell itself, with niri, do
+  # not disturb, the shortcuts and the sessions stood in for; the
+  # launcher's collection holds the rows `spend-watch serve` serves ready
+  # from those files (tests/spend-served.qml), its budgets' drawers among
+  # them; and what its socket tells, from a stand-in serving those records
+  # (tests/spend-told.qml), a change remaking only the rows it changed.
   the-desktop-reads-the-spend-watch =
     let
       watch = pkgs.callPackage ../../spend-watch/package.nix { };
@@ -48,6 +50,13 @@
        "quests": "$PWD/quests", "state": "$PWD/state", "runtime": "$PWD/runtime/written",
        "zone": "UTC", "notices": {"enable": false}}
       EOF
+      # serve reads where spend-watch writes, worded by the launcher's own
+      # vocabulary, as the home module runs it.
+      cat > serve.json <<EOF
+      {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",
+       "quests": "$PWD/quests", "state": "$PWD/state", "runtime": "$PWD/runtime/spend-watch",
+       "zone": "UTC", "notices": {"enable": false}, "vocabulary": "${../launcher/words.json}"}
+      EOF
       ${lib.getExe watch} --config config.json import
       ${lib.getExe watch} --config config.json show > runtime/written/status.json
       ${lib.getExe watch} --config config.json show collection > runtime/written/collection.json
@@ -64,6 +73,11 @@
       cp ${../launcher/Numbers.js} launcher/Numbers.js
       cp ${../launcher/Spend.qml} launcher/Spend.qml
       cp ${../launcher/SpendDrawer.js} launcher/SpendDrawer.js
+      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
+      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
+      cp ${../launcher/Ago.js} launcher/Ago.js
+      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
+      cp ${../When.js} When.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../Words.qml} Words.qml
       cp ${../launcher/words.json} launcher/words.json
@@ -72,6 +86,7 @@
       cp ${../Daemon.qml} Daemon.qml
       cp ${../Hearing.js} Hearing.js
       cp ${../../../tests/spend.qml} shell.qml
+      cp ${../../../tests/spend-served.qml} served.qml
       cp ${../../../tests/spend-told.qml} told.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
@@ -81,6 +96,9 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      SPEND_WATCH=${lib.getExe watch} SERVE_CONFIG=$PWD/serve.json timeout 90 ${qs} -p served.qml
+      # Serve ended with the shell, its socket left behind for the stand-in.
+      rm -f runtime/spend-watch/socket
       cp runtime/written/collection.json runtime/written/budgets.json runtime/spend-watch/
       timeout 60 ${qs} -p told.qml
       touch $out

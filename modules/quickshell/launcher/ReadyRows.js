@@ -160,13 +160,15 @@ function sideJoined(items) {
 
 // A drawer's fact as Drawer.qml draws one: a heading its own, else named
 // and saying its value or its time, with its qualifier, whether it
-// identifies the thing (drawn in the Name face) and the role it warns in.
+// identifies the thing (drawn in the Name face), the role it warns in, its
+// meter beside it, and whether it says words rather than a name or a figure,
+// drawn in the words face.
 function factOf(fact, now, said) {
     if (fact.heading !== undefined) {
         return { heading: fact.heading };
     }
     const drawn = { label: fact.name ?? "", value: itemSaid(fact, now, said) };
-    for (const field of ["qualifier", "identifies", "hue"]) {
+    for (const field of ["qualifier", "identifies", "hue", "figure", "words"]) {
         if (fact[field] !== undefined) {
             drawn[field] = fact[field];
         }
@@ -187,6 +189,11 @@ function drawerOf(drawer, now, said) {
     };
     if (drawer.eyebrow !== undefined) {
         drawn.eyebrow = drawer.eyebrow;
+    }
+    // An eyebrow that names something from the world, a budget's, set as
+    // it's written rather than in the launcher's capitals.
+    if (drawer.eyebrowNames === true) {
+        drawn.eyebrowNames = true;
     }
     return drawn;
 }

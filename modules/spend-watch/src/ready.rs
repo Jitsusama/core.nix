@@ -125,7 +125,7 @@ impl Served {
         let quietly = quiet.first().map_or("", |line| text(line, "side"));
         // The spend answer's headline is how today stands, as copied.
         let headline = lines(&whole["now"])
-            .next()
+            .find(|line| line["key"] == "period:today")
             .map_or("", |line| text(line, "copy"));
         let summary = json!({"key": SUMMARY, "kind": "summary",
             "summary": {"place": PLACE, "said": today, "headline": headline, "rows": summed}});
@@ -434,7 +434,7 @@ fn drawer(drawn: &Value, name: &str, words: &Words) -> Value {
         "facts": facts, "body": "",
     });
     if drawn["names"] == true {
-        made["names"] = json!(true);
+        made["eyebrowNames"] = json!(true);
     }
     made
 }
@@ -590,7 +590,8 @@ mod tests {
         let made = rows(PLACE, &[&window], &Value::Null, &words());
         assert_eq!(
             made[0]["drawer"],
-            json!({"eyebrow": "in Claude Pro · window", "names": true, "title": "Five Hours",
+            json!({"eyebrow": "in Claude Pro · window", "eyebrowNames": true,
+            "title": "Five Hours",
             "body": "", "facts": [
                 {"name": "Resets", "said": "16:20"},
                 {"name": "Week", "said": "40%",
@@ -758,14 +759,14 @@ mod tests {
     // summary's headline is today's row as copied.
     #[test]
     fn a_report_no_row_stands_for_is_laid_behind_its_answer() {
-        let today = json!({"key": "today", "name": "Today", "side": "$4",
+        let today = json!({"key": "period:today", "name": "Today", "side": "$4",
             "copy": "Today: about $4", "role": ""});
         let model = json!({"key": "today/model", "name": "By Model", "side": "",
             "copy": "", "role": "report", "report": "today/model"});
         let row = |key: &str| json!({"key": key, "name": key, "side": "", "copy": ""});
         let whole = json!({
             "now": [today, model], "findings": [], "more": [], "quiet": [],
-            "shown": ["today", "today/model"], "summaryRows": [],
+            "shown": ["period:today", "today/model"], "summaryRows": [],
             "reports": {
                 "today/model": {"title": "By model", "rows": [row("today/model/0")]},
                 "caps": {"title": "Caps", "rows": [row("caps/0"), row("caps/1")]},
@@ -782,7 +783,7 @@ mod tests {
             [
                 ("row:spend:caps/0", "row:spend:answer:caps"),
                 ("row:spend:caps/1", "row:spend:answer:caps"),
-                ("row:spend:today", ""),
+                ("row:spend:period:today", ""),
                 ("row:spend:today/model", ""),
                 ("row:spend:today/model/0", "row:spend:today/model"),
             ]

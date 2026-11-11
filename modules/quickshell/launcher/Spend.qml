@@ -1,7 +1,8 @@
-// What AI use cost, a collection, from what spend-watch tells (SpendWatch.qml)
-// (modules/spend-watch). It's laid out as the other collections are: each
-// row a short name with a few muted words beside it, what else is known of
-// it in the footer while it's picked, and the rest a right arrow away,
+// What AI use cost, a collection, its rows served ready by spend-watch
+// (modules/spend-watch, its src/ready.rs) and held as every place's are
+// (ReadyRows.qml). It's laid out as the other collections are: each row a
+// short name with a few muted words beside it, what else is known of it
+// in the footer while it's picked, and the rest a right arrow away,
 // behind the row it belongs to. First what was found that wants a look;
 // then how things stand: today, with a day's cap behind it, each longer
 // cap, with the week ahead behind the first, and the periods before; then
@@ -9,43 +10,90 @@
 // else. A period steps into its cuts and a cut into its rows; a cap steps
 // into its changes and the sign-ins its feed offers; a budget's row, a
 // window's and a cap's have a drawer of how it stands, and a period's a
-// drawer of its days and what its cuts went to most, each as the row
-// brings it (SpendDrawer.js). Return copies a row, or a report whole as
-// markdown, to paste where it's asked about; a finding with something to do does
-// it, and steps into marking it expected.
+// drawer of its days and what its cuts went to most. Return copies a row,
+// or a report whole as markdown, to paste where it's asked about; a
+// finding with something to do does it, and steps into marking it
+// expected, each asked of spend-watch on the rows' own socket.
+//
+// spend-watch orders, words and lays out every row, its drawer and its
+// acts, so nothing here sorts, counts, words or builds one (Joel,
+// 2026-11-10: "the daemons need to be the data layer, and they need to
+// serve the launcher"). Spend made its rows here from the collection's
+// records before, and read the collection's file whole while the socket
+// wasn't there; a check or a VM test standing in for the daemon now runs
+// `spend-watch serve` over the files it writes. The rows are watched
+// whether or not the launcher's open, so it opens on rows already held,
+// and made into the launcher's only while they're wanted.
 //
 // It answers in the field too: "spend" or "ai" for how today stands, "cap"
 // for the caps, and a report by its words, "spend last week by quest" or
-// "spend today by model", whose words the daemon gives with the reports. The
-// daemon works out every figure and every word, so nothing here counts or
-// formats; with nothing told there's no collection, and nothing to answer. While
-// the screen is shared it lists the daemon's quiet lines, which hold no
+// "spend today by model", whose words the daemon gives with the reports
+// (SpendWatch.qml), each answer's rows the ones it serves inside the row
+// standing for that report, or inside the answer where none does. While
+// the screen is shared it lists the daemon's quiet place, which holds no
 // amounts, and no report, and answers only that the amounts are hidden.
+// With no socket answering, there's one row saying so, with a way to
+// start the watch.
 import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "SpendDrawer.js" as SpendDrawer
 
 Provider {
     id: provider
 
     what: "AI spend"
 
-    readonly property bool known: SpendWatch.known
     readonly property bool sharing: Quiet.sharing
     readonly property var reports: SpendWatch.reports
 
+    // The place read now: the quiet one while the screen is shared.
+    readonly property var place: sharing ? quiet : ready
+
+    // Whether spend-watch's socket isn't answering, so there's nothing to
+    // tell but that, and whether any row is held to tell.
+    readonly property bool down: ready.state === "not answering"
+    readonly property bool known: {
+        void ready.placings;
+        return ready.keys.length > 0;
+    }
+    // Whether the daemon is still on its first pass, telling what its last
+    // run wrote, so those figures are said as still being read rather
+    // than passing as current.
+    readonly property bool lastRun: known && ready.state === "starting"
+
     // Named, and found, as the vocabulary says (Words.qml): a part of
     // Agents, wearing their glyph, and no longer found by pi's names.
-    // While there's nothing to tell, as when the watch never ran, it's
-    // there still, saying so, with a way to start it.
-    collection: known || SpendWatch.down ? Words.collection("spend") : null
+    collection: known || down ? Words.collection("spend") : null
     examples: SpendWatch.examples
 
-    // Only what's drawn is watched: the rows while the launcher is open,
-    // and the reports while these rows are wanted. A check's, with no
-    // launcher, watches everything.
+    // Spend's rows as spend-watch serves them, and the ones it lists while
+    // the screen is shared, each watched always so neither waits on a
+    // read as the launcher opens.
+    ReadyRows {
+        id: ready
+        socket: SpendWatch.socket
+        place: "spend"
+        beside: ["summary"]
+        make: (row, key) => provider.made(ready, row, key)
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+    }
+    ReadyRows {
+        id: quiet
+        socket: SpendWatch.socket
+        place: "spend-quiet"
+        beside: ["summary"]
+        make: (row, key) => provider.made(quiet, row, key)
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+    }
+    // What the daemon serves, for a reader told of each change it hears.
+    readonly property alias served: ready
+
+    // The budgets its drawers and Agents' say are watched while the
+    // launcher is open, and the reports while these rows are wanted. A
+    // check's, with no launcher, watches everything.
     Binding {
         target: SpendWatch
         property: "listing"
@@ -65,99 +113,74 @@ Provider {
         when: provider.launcher !== null
     }
 
-    // While the rows or the reports are read for this opening, or the
-    // daemon's first pass is, what was held is drawn, and a report never
-    // held is said as "\u2026".
-    stillReading: SpendWatch.rowsReading || SpendWatch.reportsReading || SpendWatch.lastRun
-
-    // The one row while there's nothing to tell: the watch isn't
-    // answering, and starting it.
-    readonly property var downLine: ({
-        key: "start",
-        name: Words.name("spend:start"),
-        side: "",
-        note: Words.of("spend").said?.down ?? "",
-        role: "warning",
-        verb: Words.verb("spend:start"),
-        // As the command line would start it; the machine daemon does.
-        run: ["systemctl", "--user", "restart", "spend-watch.service"]
-    })
+    // While the reports are read for this opening, or the daemon's first
+    // pass is, what was held is drawn, and a report never held is said as
+    // "\u2026".
+    stillReading: SpendWatch.reportsReading || lastRun
 
     Connections {
-        target: SpendWatch
-        // A session's or a quest's figure is Agents' alone, so it changes
-        // nothing here.
+        target: ready
         function onHeard(changed, gone) {
-            if (changed.concat(gone).some(key => !key.startsWith("session:")
-                && !key.startsWith("quest:")))
+            if (!provider.sharing)
                 provider.changed();
         }
     }
+    Connections {
+        target: quiet
+        function onHeard(changed, gone) {
+            if (provider.sharing)
+                provider.changed();
+        }
+    }
+    onSharingChanged: changed()
+    onDownChanged: changed()
 
-    // Each row of the lists kept by its record's key while its line, and
-    // the report it stands for, are the ones held before (keptAlike): a
-    // record SpendWatch didn't hear change is the same object, so a pass
-    // remakes only the rows whose records it changed.
-    readonly property var keeping: keeper()
-
-    function made(one) {
-        const given = one.line;
-        return keptAlike(keeping, one.key,
-            [given, given.report ? reports[given.report] ?? null : null, sharing],
-            () => build(given));
+    // A row as spend-watch serves it, made as every place's ready rows are
+    // (ReadyRows.qml's thing), with what its `held` says of it: whether its
+    // mark is its own, the verb its Return says, whether a copy is a
+    // figure, and the report words it's found by too, "waste" for the
+    // context rebuilt, "model" for a period cut by model.
+    function made(from, served, key) {
+        const held = served.held ?? {};
+        const first = (served.acts ?? [])[0] ?? {};
+        const fields = { marked: held.marked === true };
+        if (typeof held.verb === "string")
+            fields.verb = held.verb;
+        // Going to a session or signing in shows once it's done, so the
+        // launcher waits on it before it closes.
+        if (first.key === "verb:spend:run")
+            fields.later = true;
+        if (held.figure === false)
+            fields.figure = false;
+        const row = from.thing(served, key, fields);
+        if (row && typeof held.also === "string" && held.also !== "") {
+            let found = null;
+            Object.defineProperty(row, "found", {
+                enumerable: true,
+                get: () => found ?? (found = Fuzzy.kept(held.also))
+            });
+        }
+        return row;
     }
 
-    // Each row's mark and colour by its role: what AI use has cost for how
-    // things stand, a trend for what was found, the warning or the urgent
-    // mark for a finding that wants a look, all's fine for one marked
-    // expected, the report's for a row standing for one, and signing in's.
-    // The warning is the theme's caution, as every other warning wears.
-    readonly property var roleMarks: ({
-        "alert": "urgent",
-        "warning": "caution",
-        "found": "trend",
-        "expected": "fine",
-        "report": "report",
-        "sign-in": "signIn"
-    })
-
-    function glyph(role) {
-        return Theme.glyph[roleMarks[role] ?? "cost"];
-    }
-
-    function hue(role) {
-        return role === "alert" || role === "warning" ? role
-            : role === "sign-in" ? "action"
-            : role === "expected" ? "muted" : "voice";
-    }
-
-    // A row whose role colours a mark of its own, a budget's, a window's or
-    // a day's: muted at rest, the warning or the alert past them, and drawn
-    // on a figure row too (VKCF3Z, 2026-11-07).
-    function markedHue(role) {
-        return role === "alert" || role === "warning" ? role : "muted";
-    }
-
-    // The vocabulary's name for a fact of spend's drawers (SpendDrawer.js).
-    function factName(id) {
-        return Words.name(`spend:${id}`);
-    }
-
-    // Does what a row offers through the watch's socket, and nothing else:
-    // with no socket to ask, as while its rows are read from the file, the
-    // row says it isn't answering and nothing runs (Y2YBTS, 2026-11-10).
-    // Starting the watch, which isn't there to ask, is the machine
-    // daemon's to do.
-    function act(what, key) {
-        const then = answer => {
-            const unanswered = answer === null || answer.error?.code === "not-answering";
-            provider.refused(`spend:${key}`, unanswered ? Words.of("spend").said?.down ?? ""
-                : answer.error?.message ?? "");
-        };
-        if (key === downLine.key)
-            machine.ask({ ask: "act", act: "restart-unit", unit: "spend-watch.service" }, then);
-        else
-            SpendWatch.act(what, key, then);
+    // The one row while the socket isn't answering, and starting the
+    // watch, which isn't there to ask, so the machine daemon does.
+    readonly property string downNote: Words.of("spend").said?.down ?? ""
+    function downRow() {
+        return thing({
+            key: "spend:start",
+            name: Words.name("spend:start"),
+            note: downNote,
+            glyph: Theme.glyph.caution,
+            hue: "warning",
+            verb: Words.verb("spend:start"),
+            later: true,
+            run: () => machine.ask({ ask: "act", act: "restart-unit",
+                unit: "spend-watch.service" }, answer => {
+                const unanswered = answer === null || answer.error;
+                provider.refused("spend:start", unanswered ? downNote : "");
+            })
+        });
     }
 
     // The machine daemon, asked only to start the watch again; nothing of
@@ -170,73 +193,6 @@ Provider {
         live: false
     }
 
-    // A row as the daemon gave it, with what's behind it made only when
-    // it's stepped into, since a month's cuts are hundreds of rows.
-    function build(given) {
-        const report = given.report ? reports[given.report] ?? null : null;
-        const marked = (given.mark ?? "") !== "";
-        const fields = {
-            key: `spend:${given.key}`,
-            name: given.name,
-            side: given.side,
-            note: given.note ?? "",
-            glyph: marked ? Theme.glyph[given.mark] ?? glyph(given.role) : glyph(given.role),
-            hue: marked ? markedHue(given.role) : hue(given.role),
-            marked: marked
-        };
-        // A row the daemon gives a drawer opens it, a budget's, a window's,
-        // a cap's or a period's, and is a thing, as the launcher's drawer
-        // rule asks of a row with details (Launcher.qml's detailed). A pass
-        // that moves it tells the row again, so an open drawer follows.
-        if (given.drawn) {
-            fields.thing = true;
-            fields.drawer = () => SpendDrawer.drawer(given, id => factName(id));
-        }
-        const row = given.run
-            ? thing(Object.assign(fields, {
-                verb: given.verb || "run",
-                later: true,
-                run: () => act("run", given.key)
-            }))
-            : copyRow(Object.assign(fields, { copy: report ? report.markdown : given.copy }));
-        const nested = given.rows ?? [];
-        const inside = report ? report.rows : [];
-        // A finding Return acts on can still be copied, and one not yet
-        // marked can be.
-        const doing = [];
-        if (given.run && given.key.startsWith("finding:"))
-            doing.push(copyRow({
-                key: `spend:${given.key}:copy`,
-                name: Words.name("spend:copy"),
-                copy: given.copy,
-                figure: false,
-                glyph: glyph(given.role),
-                hue: hue(given.role)
-            }));
-        if (given.expect)
-            doing.push(thing({
-                key: `spend:${given.key}:expect`,
-                name: Words.name("spend:expect"),
-                verb: Words.verb("spend:expect"),
-                glyph: Theme.glyph.fine,
-                hue: "action",
-                run: () => act("expect", given.key)
-            }));
-        if (doing.length + nested.length + inside.length > 0) {
-            row.verbs = () => doing.concat(nested.map(build), inside.map(build));
-            row.nested = true;
-            // Behind most rows are more of them to choose from, not
-            // things to do.
-            if (doing.length === 0)
-                row.ask = "which?";
-        }
-        // Found by the words the daemon gives its report too: "waste" for
-        // the context rebuilt, "model" for a period cut by model.
-        if (report)
-            row.found = Fuzzy.prepare(`${report.title} ${report.words ?? ""}`);
-        return row;
-    }
-
     function matched(row, words) {
         const name = Fuzzy.match(row.prepared, words, false);
         if (name.score >= 0 || !row.found)
@@ -246,44 +202,20 @@ Provider {
         return byWord.score < 0 ? byWord : { score: byWord.score / 2, grade: byWord.grade };
     }
 
-    // Made only while they're wanted (Provider.qml's whileWanted), since
-    // every row was made again at each of the daemon's passes: 90 in four
-    // minutes with the launcher shut on Joel's shell (YQZGPC, 2026-11-10).
-    // Home's figure is SpendWatch's `today`.
-    readonly property var all: whileWanted("all", () => {
-        keepingBegun(keeping);
-        const rows = listedRows().map(made);
-        keptOnly(keeping);
-        return rows;
-    })
+    // Made only while they're wanted (Provider.qml's whileWanted), and
+    // each only once its record changes (ReadyRows.qml's rowAt).
+    readonly property var all: whileWanted("all", () => down ? [downRow()] : place.rows(""))
 
-    // The rows the daemon gives to be listed, each { key, line }, in the
-    // order it ranked them: a finding that wants a look first, under the
-    // cursor as the collection opens.
-    function listedRows() {
-        return SpendWatch.down ? [{ key: "start", line: downLine }]
-            : !known ? []
-            : sharing ? SpendWatch.rows.quiet : SpendWatch.rows.shown;
-    }
-
-    // What the daemon gives to be listed, as it gives it.
-    function listed() {
-        return listedRows().map(one => one.line);
-    }
-
-    // A row of the list as it reads now, for those who show it while these
-    // rows aren't wanted: Now's Spend and Tokens borrowing its drawer, and
-    // Agents' Budgets. Made then, of the rows the list holds; a row inside
-    // another, and every row while they're wanted, when `all` is as it
-    // reads now, is looked for where it's shown.
+    // A row as it reads now, for those who show it while these rows aren't
+    // wanted: Now's Spend and Tokens borrowing its drawer, and Agents'
+    // Budgets, made then as it was served. While they're wanted, when
+    // `all` is as it reads now, it's looked for where it's shown.
     function rowNow(key) {
-        if (provider.wanted)
+        if (provider.wanted || down || !key.startsWith("spend:"))
             return undefined;
-        const given = listed().find(one => `spend:${one.key}` === key);
-        return given === undefined ? undefined : build(given);
+        const record = `row:${place.place}:${key.slice("spend:".length)}`;
+        return place.served(record) ? place.rowAt(record) : undefined;
     }
-
-    onSharingChanged: changed()
 
     function everything() {
         return all;
@@ -291,14 +223,15 @@ Provider {
 
     // After its title, at home and in Agents, how today stands with its
     // period said, "$412 today", as All AI Spend says it (VKCF3Z,
-    // 2026-11-08); while the screen is shared, the first quiet line's,
-    // which holds no amount. Until the daemon writes `today`, as just
-    // after a switch, today's row's side.
+    // 2026-11-08), or while the screen is shared what holds no amount, as
+    // the daemon's summary of the place says it.
     function counted() {
-        if (!sharing && SpendWatch.today !== "")
-            return SpendWatch.today;
-        const today = (sharing ? SpendWatch.rows.quiet : SpendWatch.rows.now)[0];
-        return today ? today.line.side : "";
+        return String(summaryOf(place)?.said ?? "");
+    }
+
+    function summaryOf(from) {
+        void from.placings;
+        return from.held[`summary:${from.place}`]?.summary ?? null;
     }
 
     function search(typed) {
@@ -349,6 +282,15 @@ Provider {
         return `${period ? period.id : "this-week"}/${cut ? cut.id : "quest"}`;
     }
 
+    // The rows a report's answer lists: those inside the row standing for
+    // it, or where no row does, inside its answer, as spend-watch serves
+    // them.
+    function reportRows(id) {
+        void ready.placings;
+        const standing = ready.keys.find(key => ready.served(key)?.held?.report === id);
+        return ready.rows(standing ?? `row:spend:answer:${id}`);
+    }
+
     // While the reports are first read, held in its place as Firmware's
     // answer is, rather than said as none.
     function waitingAnswer() {
@@ -362,21 +304,19 @@ Provider {
     }
 
     // Beside each answer, unless the daemon answers with this run's
-    // figures: its last figures, or its last run's, are said as such
-    // rather than passing as current.
+    // figures: its last run's are said as such rather than passing as
+    // current.
     function noted(note) {
-        const said = Words.of("spend").said ?? {};
-        return SpendWatch.fromFile ? said.lastFigures ?? note
-            : SpendWatch.lastRun ? said.lastRun ?? note : note;
+        return lastRun ? Words.of("spend").said?.lastRun ?? note : note;
     }
 
     function answer(typed) {
         const id = reportFor(typed);
-        if (SpendWatch.down)
+        if (down)
             return id === null ? null : {
-                headline: downLine.note,
+                headline: downNote,
                 copy: "",
-                rows: [build(downLine)],
+                rows: [downRow()],
                 note: ""
             };
         if (!known)
@@ -384,28 +324,27 @@ Provider {
         const shown = id === null ? null : reports[id] ?? null;
         if (shown === null)
             return id !== null && SpendWatch.reportsReading ? waitingAnswer() : null;
-        const lines = list => SpendWatch.rows[list].map(one => one.line);
         if (sharing)
             return {
                 // In lower case, as every other answer's headline is.
                 headline: "amounts are hidden while the screen is shared",
                 copy: "",
-                rows: lines("quiet").map(build),
+                rows: quiet.rows(""),
                 note: "ask again once sharing ends"
             };
         if (id === "summary") {
-            const lead = SpendWatch.rows.now[0]?.line;
+            const summary = summaryOf(ready) ?? {};
             return {
-                headline: lead ? lead.copy : shown.headline,
+                headline: summary.headline || shown.headline,
                 copy: shown.markdown,
-                rows: lines("summary").map(build),
+                rows: (summary.rows ?? []).map(key => ready.rowAt(key)).filter(row => row !== null),
                 note: noted("Return copies the summary")
             };
         }
         return {
             headline: `${shown.title}: ${shown.headline}`,
             copy: shown.markdown,
-            rows: shown.rows.map(build),
+            rows: reportRows(id),
             // Not "the report", which in Agents is a quest's document
             // (docs/glossary.md).
             note: noted("Return copies it whole")

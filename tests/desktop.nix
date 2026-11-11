@@ -258,6 +258,28 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-collector.py);
 
+  # spend-watch serving only what a test writes in its runtime directory,
+  # as its daemon would write it, since the VM runs no daemon to read pi's
+  # logs. Spend's rows come only from its socket, so the looks test's
+  # budgets reach the launcher through it. It reads none of these paths.
+  servedSpend = pkgs.lib.escapeShellArgs [
+    (pkgs.lib.getExe (pkgs.callPackage ../modules/spend-watch/package.nix { }))
+    "--config"
+    (pkgs.writeText "spend-watch-serves.json" (
+      builtins.toJSON {
+        sessions = "/nonexistent/sessions";
+        runs = "/nonexistent/runs.db";
+        registry = "/nonexistent/registry";
+        quests = "/nonexistent/quests";
+        state = "/nonexistent/state";
+        zone = "UTC";
+        notices.enable = false;
+        vocabulary = "${../modules/quickshell/launcher/words.json}";
+      }
+    ))
+    "serve"
+  ];
+
   # Stands in for the google program, which would ask Google, on its socket
   # (desktop/stand-in-google.py).
   standInGoogle = pkgs.writers.writePython3 "stand-in-google" {
@@ -1037,6 +1059,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {
           Service.ExecStart = "${standInCollector}";
+        };
+        # spend-watch, serving what the looks test writes as its own.
+        systemd.user.services.spend-watch-serves = lib.mkIf (area == "looks") {
+          Service.ExecStart = servedSpend;
+          Install.WantedBy = [ "default.target" ];
         };
         # A unit whose stop takes 30 s, as disk-guard's did when a switch
         # stopped it mid-step, started by the test that switches past it.
