@@ -117,7 +117,7 @@ fn meetings_to_come_are_listed_soonest_first_and_those_held_newest_first_a_serie
         rows.iter().all(|row| row["order"].is_null()),
         "the daemon spaces each place's order, not the rows"
     );
-    assert_eq!(rows[0]["row"], "calendar:meeting:on");
+    assert_eq!(rows[0]["thing"], "calendar:meeting:on");
     assert_eq!(rows[3]["held"]["earlier"], 1);
     assert_eq!(rows[3]["drawer"], "drawer:held:standup-2");
     let drawn = drawers(&[], &[rows_meeting_held()], MONDAY, &zone(), &words());

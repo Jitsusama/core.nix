@@ -76,7 +76,7 @@ fn a_document_is_a_row_keyed_as_the_launcher_keys_it_in_the_order_held() {
     let rows = documents(&held, &words());
     let row = &rows[1];
     assert_eq!(row["key"], "row:documents:s");
-    assert_eq!(row["row"], "gdoc:s");
+    assert_eq!(row["thing"], "gdoc:s");
     assert_eq!(row["place"], "documents");
     assert_eq!(
         row["kind"], "spreadsheet",
