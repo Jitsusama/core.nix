@@ -40,6 +40,7 @@ const BUILT_IN: [(&str, &str); 3] = [
 #[derive(Debug, Default)]
 pub struct Words {
     names: BTreeMap<String, String>,
+    verbs: BTreeMap<String, String>,
     said: BTreeMap<String, String>,
 }
 
@@ -56,10 +57,17 @@ impl Words {
                 continue;
             };
             words.names.insert(id.to_owned(), name.to_owned());
-            // A state's own name, as `verb:sound-to`'s for an input.
+            if let Some(verb) = thing["verb"].as_str() {
+                words.verbs.insert(id.to_owned(), verb.to_owned());
+            }
+            // A state's own name and verb, as `verb:sound-to`'s name for an
+            // input and `sound:mute`'s verb while muted.
             for (state, worded) in thing["states"].as_object().into_iter().flatten() {
                 if let Some(name) = worded["name"].as_str() {
                     words.names.insert(format!("{id}#{state}"), name.to_owned());
+                }
+                if let Some(verb) = worded["verb"].as_str() {
+                    words.verbs.insert(format!("{id}#{state}"), verb.to_owned());
                 }
             }
             if id == PLACE
@@ -89,6 +97,16 @@ impl Words {
         self.names
             .get(id)
             .map_or_else(String::new, |words| filled(words, fill))
+    }
+
+    /// A thing's verb in a state, as Words.qml's `verb` gives it, or its
+    /// own where the state has none: `sound:mute`'s is unmute while muted.
+    pub(crate) fn verb_in(&self, id: &str, state: &str) -> String {
+        self.verbs
+            .get(&format!("{id}#{state}"))
+            .or_else(|| self.verbs.get(id))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// A thing's name in a state of its own, as Words.qml's `name` gives
@@ -460,7 +478,8 @@ pub(crate) mod tests {
                 {"id": "verb:sound-port", "name": "Use {port}"},
                 {"id": "verb:sound-use", "name": "Play Sound Through It",
                     "states": {"input": {"name": "Listen Through It"}}},
-                {"id": "sound:mute", "name": "Muted"},
+                {"id": "sound:mute", "name": "Muted", "verb": "mute",
+                    "states": {"muted": {"verb": "unmute"}}},
                 {"id": "sound:volume", "name": "Volume"},
                 {"id": "sound:gain", "name": "Gain"},
                 {"id": "verb:sound-louder", "name": "Louder"},

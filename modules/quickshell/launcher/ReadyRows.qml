@@ -299,10 +299,9 @@ Scope {
             || typeof launcher?.intoDrawer === "function");
     }
 
-    // The verb an act says, words.json's for its key in the state it
-    // carries, as a switch's mute says unmute while it's muted.
+    // The verb an act says, words.json's for its key.
     function verbOf(one) {
-        return Ready.verbOf(one, Words.verb(one.key, one.state ?? ""));
+        return Ready.verbOf(one, Words.verb(one.key));
     }
 
     // An act as a row of its own, among a row's verbs.

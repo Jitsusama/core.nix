@@ -89,10 +89,12 @@ fn use_row(device: &Device, named: &str, devices: &[Device], words: &Words, pare
 }
 
 /// Whether it's Muted: one switch, keeping its name as it flips, its side
-/// saying yes or no, its act's verb mute or unmute (docs/design.md, "A
-/// switch is one row that keeps its name as it flips").
+/// saying yes or no, its one act named Mute or Unmute, as words.json's
+/// verb says it in the state it's in (docs/design.md, "A switch is one
+/// row that keeps its name as it flips"; ../ready-rows, an act's name).
 fn mute_row(device: &Device, words: &Words, parent: &str) -> Value {
     let muted = device.muted();
+    let flips = capitalised(&words.verb_in("sound:mute", if muted { "muted" } else { "" }));
     json!({
         "key": format!("{parent}:mute"),
         "thing": format!("sound:{}:mute", device.name),
@@ -106,7 +108,7 @@ fn mute_row(device: &Device, words: &Words, parent: &str) -> Value {
         "side": [{"said": words.said(if muted { "yes" } else { "no" }, &[])}],
         "acts": [{
             "key": "sound:mute",
-            "state": if muted { "muted" } else { "" },
+            "name": flips,
             "ask": ask(device, "mute", &json!({"muted": !muted})),
         }],
         "held": {"node": device.name, "muted": muted},
@@ -184,6 +186,14 @@ fn volume_rows(device: &Device, words: &Words, parent: &str) -> Vec<Value> {
         rows.push(row);
     }
     rows
+}
+
+/// A verb as an act's name says it, its first letter a capital.
+fn capitalised(verb: &str) -> String {
+    let mut letters = verb.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(letters).collect()
+    })
 }
 
 /// A volume moved by `by`, kept to whole steps from nothing to full, as
@@ -337,7 +347,7 @@ mod tests {
         assert_eq!(muting["name"], "Muted");
         assert_eq!(muting["side"], json!([{"said": "no"}]));
         assert_eq!(muting["acts"][0]["ask"]["muted"], true);
-        assert_eq!(muting["acts"][0]["state"], "");
+        assert_eq!(muting["acts"][0]["name"], "Mute");
         let volume = keyed(&made, "row:sound:desk:volume");
         assert_eq!(volume["kind"], "setting");
         assert_eq!(volume["side"], json!([{"said": "50%"}]));
@@ -368,7 +378,7 @@ mod tests {
         let muting = keyed(&made, "row:sound:desk:mute");
         assert_eq!(muting["side"], json!([{"said": "yes"}]));
         assert_eq!(muting["glyph"], "silent");
-        assert_eq!(muting["acts"][0]["state"], "muted");
+        assert_eq!(muting["acts"][0]["name"], "Unmute");
         assert_eq!(muting["acts"][0]["ask"]["muted"], false);
         assert_eq!(
             keyed(&made, "row:sound:desk:volume")["side"],

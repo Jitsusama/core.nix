@@ -10,8 +10,8 @@
 // of moves only once a device comes or goes; and a device's Port, served
 // inside its row, steps into its choices, a choice's Return asking the
 // daemon to move it, as its option does; and its Use, Muted and Volume,
-// served, lead its parts in Sound's order, Muted saying unmute once it's
-// muted, the Volume its drawer's, and each Return asking the daemon.
+// served, lead its parts in Sound's order, Muted's act named Unmute once
+// it's muted, the Volume its drawer's, and each Return asking the daemon.
 // (tests/sound.qml holds the parts and drawers made here.) It exits 0 once every case holds, and otherwise 1,
 // saying which didn't.
 pragma ComponentBehavior: Bound
@@ -386,7 +386,7 @@ ShellRoot {
             name: "Muted", glyph: muted ? "silent" : "speaker",
             side: [{ said: muted ? "yes" : "no" }],
             acts: [{
-                key: "sound:mute", state: muted ? "muted" : "",
+                key: "sound:mute", name: muted ? "Unmute" : "Mute",
                 ask: asks("mute", { muted: !muted })
             }]
         });
@@ -421,8 +421,9 @@ ShellRoot {
         expect("using it names it on its line", using.fill?.name === "Desk Speakers"
             && using.wordState === "", JSON.stringify(using.fill));
         const muting = partOf("mute");
-        expect("unmuted, its switch says no and mutes",
-            muting.side === "no" && muting.verb === "mute", `${muting.side}, ${muting.verb}`);
+        expect("unmuted, its switch says no, its act Mute",
+            muting.side === "no" && muting.targets()[0]?.name === "Mute",
+            `${muting.side}, ${muting.targets()[0]?.name}`);
         const volume = partOf("volume");
         expect("its Volume is a setting saying how it's set", volume.offers === true
             && volume.side === "50%" && names(volume.targets()) === "verb:sound-louder",
@@ -446,7 +447,9 @@ ShellRoot {
 
     function muted() {
         const muting = partOf("mute");
-        expect("muted, it says unmute", muting.verb === "unmute", muting.verb);
+        expect("muted, its act is Unmute, as the daemon names it, and its foot says unmute",
+            muting.targets()[0]?.name === "Unmute" && muting.verb === "unmute",
+            `${muting.targets()[0]?.name}, ${muting.verb}`);
         muting.run();
         when("the mute asked", () => root.acted.length === 3, () => {
             const ask = root.acted[2];

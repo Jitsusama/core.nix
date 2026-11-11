@@ -253,6 +253,8 @@ QtObject {
             Ready.verbOf(acts[0], "disconnect"), "disconnect");
         Expect.same("else its form's", [1, 2, 3, 4].map(at => Ready.verbOf(acts[at], "")),
             ["copy", "open", "read", "more"]);
+        Expect.same("an act named by its daemon says that name, as the foot says verbs",
+            Ready.verbOf({ key: "sound:mute", name: "Unmute", ask: {} }, "mute"), "unmute");
         const words = { noAnswer: "no answer", couldNot: "couldn't" };
         Expect.same("an ask done says nothing", Ready.refusal({ done: true }, words), "");
         Expect.same("one refused says the daemon's words",

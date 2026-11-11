@@ -316,9 +316,14 @@ function actWorded(act, worded, roles) {
     };
 }
 
-// The verb the foot says for an act: words.json's for its key, `worded`,
-// else the one every act of its form says.
+// The verb the foot says for an act: the name the daemon served it with,
+// as Unmute on a muted switch, lowercased as the foot says verbs; else
+// words.json's for its key, `worded`; else the one every act of its form
+// says (Y2YBTS, 2026-11-11: one shape, the daemon's words).
 function verbOf(act, worded) {
+    if (typeof act.name === "string" && act.name !== "") {
+        return act.name.toLowerCase();
+    }
     if (worded) {
         return worded;
     }
