@@ -135,6 +135,13 @@ let
   # its lid suspends there, as the lid module has it, and its sleep stands
   # in, leaving a file for the test to find and returning at once.
   sleepsAtTheLid = area == "minds-the-margin";
+  # The lab where niri drives the screen itself, as on a machine, rather than
+  # nested in Cage: the kernel's vkms is its screen, whose vblanks come from a
+  # timer at the refresh as a panel's do, so what niri's frame timing costs
+  # the launcher's keys shows there and nowhere else (modules/niri's
+  # render-deadline.patch). It's no check: keeps-pace's `drm` runs it, by
+  # name.
+  drawsOnDrm = area == "draws-on-drm";
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -567,6 +574,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         (config.boot.kernelPackages.callPackage ./stand-in-monitor { })
         config.boot.kernelPackages.v4l2loopback
       ];
+      # In the initrd, so the screen is there before greetd starts niri.
+      boot.initrd.kernelModules = lib.mkIf drawsOnDrm [ "vkms" ];
       boot.kernelModules = [
         "stand-in-backlight"
         "stand-in-light"
@@ -790,9 +799,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       virtualisation = {
         memorySize = 4096;
         cores = 4;
-        qemu.options = [
-          "-vga none -device virtio-gpu-pci,xres=${toString screen.width},yres=${toString screen.height}"
-        ]
+        qemu.options =
+          # No display of QEMU's where vkms is the screen, so niri drives it alone.
+          (
+            if drawsOnDrm then
+              [ "-vga none" ]
+            else
+              [
+                "-vga none -device virtio-gpu-pci,xres=${toString screen.width},yres=${toString screen.height}"
+              ]
+          )
         # A cable of its own, as the laptop's dock gives it: a card that
         # says it agreed on a gigabit, full duplex, on a network of its own
         # that hands out an address, and whose carrier QEMU's monitor drops
@@ -1220,9 +1236,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # VM has no GPU, so it runs nested in Cage, which renders in software,
       # in place of greetd. Everything inside niri is the same, but niri can't
       # run as a session there, so the test hands its variables to systemd.
-      services.greetd.enable = lib.mkForce false;
+      services.greetd.enable = lib.mkIf (!drawsOnDrm) (lib.mkForce false);
       services.cage = {
-        enable = true;
+        enable = !drawsOnDrm;
         user = account;
         # The machine's niri, with its patches, rather than nixpkgs's, through
         # the wrapper its session starts it by.
@@ -1235,6 +1251,33 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # is the name greetd turns off, and turning off getty@tty1 left the
       # switch back stopping Cage. Only where the area switches.
       systemd.services."autovt@tty1".enable = lib.mkIf switchesTheHome false;
+      # On vkms, greetd starts niri on tty1 as a machine's does, through the
+      # same wrapper, but not as a session, so the test hands its variables
+      # to systemd as it does from Cage. llvmpipe is all the VM has to render
+      # with, which niri refuses on a screen of its own, so the lab's niri
+      # takes it; that's the lab's alone, never a machine's.
+      services.greetd.settings.initial_session = lib.mkIf drawsOnDrm (
+        lib.mkForce {
+          user = account;
+          command = "${config.security.wrapperDir}/niri-compositor";
+        }
+      );
+      # vkms has no render node to hand a client, so Mesa reached for zink,
+      # whose Vulkan device-select layer looked for a PCI GPU and crashed
+      # every program that draws. The account's services take llvmpipe's own
+      # software path instead, which hands niri shared memory, as a program
+      # on a machine with no GPU would.
+      systemd.user.settings.Manager.DefaultEnvironment = lib.mkIf drawsOnDrm "LIBGL_ALWAYS_SOFTWARE=1 NODEVICE_SELECT=1";
+      security.wrappers.niri-compositor.source = lib.mkIf drawsOnDrm (
+        lib.mkForce "${
+          config.programs.niri.package.overrideAttrs (old: {
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace src/backend/tty.rs \
+                --replace-fail '!egl_device.is_software(),' 'true,'
+            '';
+          })
+        }/bin/niri"
+      );
       # Stands in for niri's own unit, which starts the graphical session, and
       # with it the desktop portal.
       systemd.user.services.compositor = {

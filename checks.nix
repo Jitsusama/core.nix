@@ -295,10 +295,19 @@ let
       inherit self pkgs;
       area = "locks-and-asks";
     };
-    vm-desktop-keeps-pace = import ./tests/desktop.nix {
-      inherit self pkgs;
-      area = "keeps-pace";
-    };
+    # Its `drm` is a lab, run by name and judging nothing: niri on vkms,
+    # its render deadline on and off by turns (tests/desktop.nix).
+    vm-desktop-keeps-pace =
+      import ./tests/desktop.nix {
+        inherit self pkgs;
+        area = "keeps-pace";
+      }
+      // {
+        drm = import ./tests/desktop.nix {
+          inherit self pkgs;
+          area = "draws-on-drm";
+        };
+      };
     # How the launcher keeps up with a held arrow while sessions and
     # people change, at Joel's scales, on a screen as large as the
     # laptop's.
