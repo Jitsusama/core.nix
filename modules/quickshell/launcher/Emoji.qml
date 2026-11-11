@@ -85,6 +85,10 @@ Provider {
                 hue: "text",
                 now: true,
                 run: pasted,
+                // Every emoji says the same keys where it isn't selected, its
+                // verb being the window under's, so the foot weighs one of a
+                // run for all (Pacing.toWeigh).
+                keysAlike: "emoji",
                 // What y takes, as plain fields rather than a row made
                 // searchable, since y over hundreds asks every row
                 // (Launcher.qml's actionsOf).

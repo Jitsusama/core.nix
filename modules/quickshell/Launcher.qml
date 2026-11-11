@@ -2925,8 +2925,10 @@ Scope {
         footRowsWeighed = kept;
         const before = kept.weighed;
         const weigh = row => weighedKeys(keysFor(row));
-        const rows = asking ? matches.concat([asking]) : matches;
-        const said = rows.map(row => row === selected || visual ? weigh(row)
+        // A run of rows alike in their keys, as Emoji's, is weighed once.
+        const alike = Pacing.toWeigh(matches, selected);
+        const listed = asking ? alike.concat([asking]) : alike;
+        const said = listed.map(row => row === selected || visual ? weigh(row)
             : Pacing.weighedRow(kept, row, weigh)).filter(one => one.keys.length > 0);
         rowsWeighed += kept.weighed - before;
         // Room for the drawer's own only once the keys have gone in, so
