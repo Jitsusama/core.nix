@@ -8,6 +8,10 @@
 //! Heat.js made of the same records, moved here so the shell holds no
 //! data and builds no rows (Y2YBTS's ready-row form); its cases are the
 //! ones tests/answers.qml held for Heat.js.
+//!
+//! Long because its cases, over a third of it, stay beside the private
+//! pieces they prove, and each part is gathered by the one rule of which
+//! record names it.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;

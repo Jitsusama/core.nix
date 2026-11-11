@@ -17,6 +17,10 @@
 //! isn't sent again. The Last Reads are kept only between reads made
 //! while Heat is watched ([`Heat::forget`] drops them), so a shut launcher
 //! costs nothing; a new watch shows what's kept so far, one read at first.
+//!
+//! Long because every part's row, its drawer and the rows inside it change
+//! together as Heat's one design does, and its cases, a quarter of it, stay
+//! beside the private pieces they prove.
 
 use std::collections::BTreeMap;
 

@@ -15,6 +15,10 @@
 //! row moves as the supply is read again. The last reads are kept only
 //! between reads made while Power is watched ([`Power::forget`] drops
 //! them), so a shut launcher costs nothing.
+//!
+//! Long because every row of the one supply, its drawer and its choices
+//! change together as Power's one design does, and its cases stay beside
+//! the private pieces they prove.
 
 use std::cmp::Ordering;
 
