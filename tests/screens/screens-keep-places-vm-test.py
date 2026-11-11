@@ -291,6 +291,14 @@ def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sa
         [space] = [spaces[one["workspace_id"]] for one in windows if one["title"] == "Lantern"]
         return space["output"], space["idx"]
 
+    def windows() -> list[dict[str, Any]]:
+        """Give every window niri lays out."""
+        return json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
+
+    def focused() -> list[str]:
+        """Give the title of each window niri says has the focus."""
+        return [one["title"] for one in windows() if one["is_focused"]]
+
     # restore.json holds what the boot before left, and the shell kept where each sat.
     boot = booted.hand_over(where)
     try:
@@ -305,6 +313,10 @@ def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sa
         # A shell starting after the reboot reopens nothing of it by itself.
         machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
         assert counted() == {}, counted()
+        # Joel is typing in his own window as he asks.
+        [joels] = [one["id"] for one in windows() if one["title"] == "Lantern"]
+        machine.succeed(booted.in_niri(f"niri msg action focus-window --id {joels}"))
+        assert focused() == ["Lantern"], focused()
         # Reopen Them All, as Joel's press runs it from Agents (Now holds
         # the same row), reopens them, each where it sat.
         reopen_all = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
@@ -316,6 +328,9 @@ def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sa
         while not home(now_sat := booted.sessions_sat("01c7-")):
             assert time.monotonic() < deadline, f"not reopened where they sat: {now_sat}"
             time.sleep(1)
+        # None of them took the focus from him: a reopened window takes no
+        # keys (item 11's rollback, 2026-11-11: each back unfocused).
+        assert focused() == ["Lantern"], focused()
         # Started again, the shell reopens none twice.
         machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
         assert counted() == dict.fromkeys(where, "1"), counted()
