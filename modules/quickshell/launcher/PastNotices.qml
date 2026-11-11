@@ -202,9 +202,16 @@ Provider {
     // `where` saying which: each read one in Desktop says so, as one read
     // while Joel looks stays where it was (VKCF3Z, 2026-11-09), as the
     // daemon words it.
+    // Desktop's are in the order of `ids`, each its own place's row once
+    // that's told of it, and until then the one every notice has: Desktop
+    // is watched again only as the launcher opens, so one come while it
+    // was closed would be missing from the step into it, then put at its
+    // end once told, rather than where it belongs.
     function rowsOf(ids, where) {
-        const ready = where === "desktop" ? desktop : mixed;
-        return lined(ready.rows().filter(row => ids.includes(row.notice)), []);
+        if (where !== "desktop")
+            return lined(mixed.rows().filter(row => ids.includes(row.notice)), []);
+        return lined(ids.map(id => desktop.rowAt(`row:${desktop.place}:${id}`)
+            ?? mixed.rowAt(`row:${mixed.place}:${id}`)).filter(row => !!row), []);
     }
 
     // Whether a text holds a word typed, as search finds it.
