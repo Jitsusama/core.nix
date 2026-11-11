@@ -2,7 +2,7 @@
 //! ending at the update's ending.
 
 use crate::line::Line;
-use crate::serve::{ASK, FOLLOW, STOP};
+use crate::serve::{ASK, FOLLOW, STOP, STOP_FOR_NEWER};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -36,10 +36,17 @@ fn asking(socket: &Path, word: &str, hear: &mut dyn FnMut(&Line)) -> io::Result<
     ))
 }
 
-/// Asks the machine's update-to-main to stop the update it's fetching or
-/// building, and gives its one answer, which says what it did.
+/// Asks the machine's update-to-main, for a person, to stop the update
+/// it's fetching or building, one a hold was given for too, and gives its
+/// one answer, which says what it did.
 pub fn stop(socket: &Path) -> io::Result<Line> {
     once(socket, STOP)
+}
+
+/// Asks as `stop` does once main has moved past the heads the update
+/// builds, which leaves one a hold was given for to run.
+pub fn stop_for_newer(socket: &Path) -> io::Result<Line> {
+    once(socket, STOP_FOR_NEWER)
 }
 
 /// Sends an ask with one answer, such as a pause or a hold on a commit,

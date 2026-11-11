@@ -40,10 +40,16 @@ pub const ASK: &str = "update";
 /// meanwhile joins it and ends the wait.
 pub const FOLLOW: &str = "follow";
 
-/// What stops an update still fetching or building, as when main has moved
-/// past the head it builds: on 8 November one built a kernel two hours
-/// after a revert made it moot, and every ask joined it.
+/// What a person sends to stop an update still fetching or building, one
+/// a hold was given for too: on 11 November a granted switch compiled the
+/// kernel on the laptop, and the stop asked of it was refused.
 pub const STOP: &str = "stop";
+
+/// What stops an update still fetching or building once main has moved
+/// past the head it builds: on 8 November one built a kernel two hours
+/// after a revert made it moot, and every ask joined it. One a hold was
+/// given for runs on, since someone waits on its switch.
+pub const STOP_FOR_NEWER: &str = "stop-for-newer";
 
 /// How long an asker has to say its ask, and the most it may send.
 const ASK_WITHIN: Duration = Duration::from_secs(5);
@@ -193,11 +199,16 @@ fn answer(
         };
         return writeln!(out, "{}", answered.json());
     }
-    if ask.trim() == STOP {
-        eprintln!("uid {asker} asks to stop the update");
+    if ask.trim() == STOP || ask.trim() == STOP_FOR_NEWER {
+        eprintln!("uid {asker} asks to {}", ask.trim());
+        let by = if ask.trim() == STOP {
+            Asked::ByAPerson
+        } else {
+            Asked::ForANewerHead
+        };
         let stopped = Line::Refused {
             commit: update::last(config),
-            why: stop(current, Asked::ByAnyone),
+            why: stop(current, by),
         };
         return writeln!(out, "{}", stopped.json());
     }
@@ -207,8 +218,8 @@ fn answer(
         let refused = Line::Refused {
             commit: update::last(config),
             why: format!(
-                "the only asks are `{ASK}`, `{FOLLOW}`, `{STOP}`, `{}`, `{}`, `{} COMMIT` and \
-                 `{} COMMIT`",
+                "the only asks are `{ASK}`, `{FOLLOW}`, `{STOP}`, `{STOP_FOR_NEWER}`, `{}`, \
+                 `{}`, `{} COMMIT` and `{} COMMIT`",
                 held::PAUSE,
                 held::RESUME,
                 held::HOLD,
@@ -253,11 +264,13 @@ fn hear(heard: &Answer, out: &mut impl Write) -> io::Result<()> {
     }
 }
 
-/// Which updates a stop ends: any, or only one the follower alone asked
-/// for, as a pause does.
+/// Which updates a stop ends: a person's any, even one a hold was given
+/// for; one for a newer head any but those; and a pause only one the
+/// follower alone asked for.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Asked {
-    ByAnyone,
+    ByAPerson,
+    ForANewerHead,
     ByTheFollower,
 }
 
@@ -280,15 +293,26 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>, asked: Asked) -> String {
         .lines
         .last()
         .and_then(|line| serde_json::from_str::<Line>(line).ok());
-    match latest {
+    let granted = if asked == Asked::ByAPerson {
+        run::Granted::Ends
+    } else {
+        run::Granted::RunsOn
+    };
+    let was_granted = run::was_granted(worker);
+    let stopped = match latest {
         Some(Line::Switching { commit }) => {
-            format!("the update is switching to {commit}, so it runs on")
+            return format!("the update is switching to {commit}, so it runs on");
         }
-        _ if run::stop(worker).is_none() => {
-            "the update switches what a hold was given for, so it runs on".to_owned()
+        _ if run::stop(worker, granted).is_none() => {
+            return "the update switches what a hold was given for, so it runs on".to_owned();
         }
         Some(Line::Building { commit }) => format!("stopped the update building {commit}"),
         _ => "stopped the update".to_owned(),
+    };
+    if was_granted {
+        format!("{stopped}; the hold given for it is spent, so its switch needs one given again")
+    } else {
+        stopped
     }
 }
 

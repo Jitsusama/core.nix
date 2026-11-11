@@ -33,16 +33,28 @@ fn running() -> MutexGuard<'static, HashMap<ThreadId, Running>> {
     RUNNING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Ends every command the update on `thread` runs now, each with its
-/// whole process group, and lets it start none until it has `ended`, so
-/// the update fails at once. Says how many it ended.
-pub fn stop(thread: ThreadId) -> Option<usize> {
-    stop_in(&mut running(), thread)
+/// Whether a stop ends an update a hold was given for too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Granted {
+    Ends,
+    RunsOn,
 }
 
-fn stop_in(running: &mut HashMap<ThreadId, Running>, thread: ThreadId) -> Option<usize> {
+/// Ends every command the update on `thread` runs now, each with its
+/// whole process group, and lets it start none until it has `ended`, so
+/// the update fails at once. Says how many it ended; none when a hold was
+/// given for it and `granted` lets it run on.
+pub fn stop(thread: ThreadId, granted: Granted) -> Option<usize> {
+    stop_in(&mut running(), thread, granted)
+}
+
+fn stop_in(
+    running: &mut HashMap<ThreadId, Running>,
+    thread: ThreadId,
+    granted: Granted,
+) -> Option<usize> {
     let update = running.entry(thread).or_default();
-    if update.granted {
+    if update.granted && granted == Granted::RunsOn {
         return None;
     }
     update.stopping = true;
@@ -52,7 +64,7 @@ fn stop_in(running: &mut HashMap<ThreadId, Running>, thread: ThreadId) -> Option
     }
     let mut ended = update.groups.len();
     for helper in update.helpers.clone() {
-        ended += stop_in(running, helper).unwrap_or_default();
+        ended += stop_in(running, helper, granted).unwrap_or_default();
     }
     Some(ended)
 }
@@ -79,10 +91,16 @@ pub fn helped(update: ThreadId, helper: ThreadId) {
 }
 
 /// Marks this thread's update as one a hold was given for, which a stop
-/// leaves to run, since someone waits on its switch and a newer head
-/// would only start it over.
+/// for a newer head or a pause leaves to run, since someone waits on its
+/// switch and a newer head would only start it over. A person's stop
+/// still ends it.
 pub fn granted() {
     running().entry(thread::current().id()).or_default().granted = true;
+}
+
+/// Whether a hold was given for the update on `thread`.
+pub fn was_granted(thread: ThreadId) -> bool {
+    running().get(&thread).is_some_and(|update| update.granted)
 }
 
 /// Whether this thread's update is being stopped.

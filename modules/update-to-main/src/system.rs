@@ -38,7 +38,8 @@ pub struct Switched {
 /// the light pieces is built on the builders first.
 pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathBuf, Failure> {
     if config.elsewhere {
-        build_elsewhere(config, flake, overrides)?;
+        build_elsewhere(config, flake, overrides, Pass::First)?;
+        build_elsewhere(config, flake, overrides, Pass::Last)?;
     } else if let Some(batches) = &config.batches {
         batches::build(config, batches, flake, overrides)?;
     }
@@ -96,7 +97,12 @@ pub(crate) fn nix(config: &Config) -> std::process::Command {
 /// carry it to whichever builder took it, so it stays for the build here,
 /// where the kept one now is: such pieces are a system's links, units and
 /// wrappers, not what compiles.
-fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result<(), Failure> {
+fn build_elsewhere(
+    config: &Config,
+    flake: &str,
+    overrides: &[String],
+    pass: Pass,
+) -> Result<(), Failure> {
     let needed = needed(config, flake, overrides)?;
     if needed.is_empty() {
         return Ok(());
@@ -111,12 +117,22 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
     let shown = run::output(show, "reading what the system needs", &needed)?;
     let pieces = pieces(&shown)?;
     let (kept, rest) = heavy(&pieces, &needed, &config.kept.names);
-    eprintln!(
-        "the system needs {} pieces built: {} kept apart, {} on the builders, the rest here",
-        needed.len(),
-        kept.len(),
-        rest.len()
-    );
+    match pass {
+        Pass::First => eprintln!(
+            "the system needs {} pieces built: {} kept apart, {} on the builders, the rest here",
+            needed.len(),
+            kept.len(),
+            rest.len()
+        ),
+        Pass::Last if kept.is_empty() && rest.is_empty() => return Ok(()),
+        Pass::Last => eprintln!(
+            "before the build here, {} pieces that aren't light are still to build, so they \
+             go where the first were sent: {} kept apart, {} on the builders",
+            kept.len() + rest.len(),
+            kept.len(),
+            rest.len()
+        ),
+    }
     if !kept.is_empty() {
         build_kept(config, &kept)?;
     }
@@ -149,6 +165,19 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
         }
     }
     Ok(())
+}
+
+/// Which listing of what the system needs a build elsewhere goes by. The
+/// last comes just before the build here, which may use no builders, so
+/// what isn't light and is missing again by then, such as an output
+/// collected since the first or one its builder sent back and nothing
+/// kept, goes to the builders rather than build here: on 11 November the
+/// disk guard's collection took the kernel's output between the first
+/// listing and the build here, which compiled it on the laptop.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    First,
+    Last,
 }
 
 /// The derivations the system needs built, by their paths, as a dry run
@@ -307,7 +336,7 @@ fn beside_the_big(
             // Nothing more is built once a big piece fails, so what builds
             // beside it is stopped rather than waited on.
             if big_built.is_err() {
-                run::stop(helper);
+                run::stop(helper, run::Granted::Ends);
             }
             let built = building
                 .join()
