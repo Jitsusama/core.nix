@@ -7,7 +7,9 @@ pragma Singleton
 // second version (Joel, 2026-10-28 22:20). The surface says what's beside
 // it, its note and its drawer, as only it knows them. Return opens it in
 // Slack; inside are Open in Slack, then Copy the Link where it has a link
-// to share, Copy last as everywhere.
+// to share, Copy last as everywhere. Where Slack's daemon serves the row
+// ready, as Slack's Unread and Recent are (src/rows.rs), `served` makes it
+// from what's served, its words and acts the daemon's.
 import qs
 import Quickshell
 import QtQuick
@@ -39,6 +41,20 @@ Singleton {
         if (fields.drawer !== undefined)
             made.drawer = fields.drawer;
         return thing(made);
+    }
+
+    // A conversation's row as Slack's daemon serves it, made by the place's
+    // ReadyRows as every served row is, its acts its verbs, and this
+    // component's as `row`'s is, so it's the one row of the conversation.
+    function served(ready, row, key) {
+        return ready.thing(row, key, {
+            what: "conversation",
+            component: "slackConversation",
+            thing: true,
+            of: "program:slack",
+            part: row.name ?? "",
+            later: true
+        });
     }
 
     function acts(fields, open, thing) {
