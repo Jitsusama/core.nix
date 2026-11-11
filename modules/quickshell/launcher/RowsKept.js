@@ -113,8 +113,11 @@ function whole(was, taken) {
 // row again: "f" in Emoji ranked 838 of its 1,914 rows, whose 550 moves
 // took 2.4 to 6.7 s before the key's frame, and their steps 0.15 to 0.57 s
 // more, in the sandbox (2026-11-11). Listed afresh, the list reads each
-// row in view once, from the rows it set aside. Leaving `most` out moves
-// every row, however many.
+// row in view once, from the rows it set aside. So are more than `most`
+// runs of rows put in: each shifts the rows after it, and a backspace from
+// "fi" to "f" put 762 rows in as 43 runs, 14 to 21 ms before its frame,
+// against 3 to 4 ms for the 838 listed afresh (2026-11-11). Leaving `most`
+// out moves every row and puts in every run, however many.
 // Working the steps out read each list several times over, tagged, as
 // sets and as places: 84 to 132 ms for that reorder, 113 to 151 for a
 // narrowing as long and 58 to 94 for two lists the same, in Qt's engine
@@ -178,9 +181,14 @@ function steps(was, now, most) {
     const stay = setOf(standing);
     const settled = setOf(standing);
     const holds = setOf(held);
+    let runs = 0;
     for (let at = 0; at < into.length; at += 1) {
         // A run of rows the list didn't hold goes in as one.
         if (holds[into[at]] !== true) {
+            runs += 1;
+            if (most !== undefined && runs > most) {
+                return afresh(was, now);
+            }
             let past = at + 1;
             while (past < into.length && holds[into[past]] !== true) {
                 past += 1;
