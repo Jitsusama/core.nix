@@ -222,6 +222,11 @@
     a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
     function that isn't there ends qs with a failure
   '';
+  an-unasked-switch-never-brings-back-a-touch-alone = ''
+    polkit lets a switch to a system the profile holds go unasked, but not to one whose PAM took a
+    YubiKey's touch alone, in a service other than polkit's or in polkit's without the check that
+    the person is in, nor to a system the profile never held
+  '';
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
   '';
@@ -1366,6 +1371,10 @@
     ddcutil's rules give the seat a DisplayPort connector's AUX bus and an MST branch's, and keep
     the panel's eDP, HDMI's, the GPU's own and the touchpad's buses root's, ahead of seat-late
   '';
+  only-polkit-may-take-a-yubikey-touch = ''
+    a machine whose login names pam_u2f is refused as it's built, since a touch there lets someone
+    in with no password, and a workstation with no key isn't
+  '';
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
@@ -1588,7 +1597,8 @@
   '';
   polkit-takes-a-yubikey-touch-once-one-is-named = ''
     once a machine names a YubiKey, polkit's sign-in takes its touch before the password, from a
-    root-owned file, and no other login does; with none named, polkit asks for the password alone
+    root-owned file, only past the gate saying the person is in, with its helper let reach the key,
+    and no other login does; with none named, polkit asks for the password alone
   '';
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
@@ -3105,6 +3115,12 @@
     heard only while something records from that one and with no model loaded before; recorded
     beside the microphone itself, its noise comes out at least 10 dB quieter and its voice within
     10 dB, and once the recording stops the program says it rests and stops hearing it
+  '';
+  vm-a-yubikey-answers-only-once-in = ''
+    with a FIDO2 key plugged in and named, polkit takes its touch alone for run0 from a terminal on
+    the seat's desktop while the lock is let go, asks for the password, which still works, while
+    the lock is up or has said nothing, and never takes the touch from a text console signed in
+    beside the desktop or an ssh login
   '';
   vm-bluetooth-types-at-the-disk-prompt = ''
     a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its
