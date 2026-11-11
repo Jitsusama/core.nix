@@ -260,6 +260,27 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
     assert not made, f"opening into Windows, other sources made rows: {made}"
 
 
+def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
+    """Its chord pressed again, a place is drawn from what was kept, there, with nothing made.
+
+    A chord opened its place whole every time, 203 to 597 ms to its frame, while home drew from
+    what was kept in 27 to 56 (Joel, 2026-11-10, 20:39 to 20:43).
+    """
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    left = settled(shell)
+    there = shell.showing()["path"]
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    timed = latest(openings(shell))
+    shell.as_account(shell.ipc("collection", "on"))
+    opening = filled_after(shell, timed)
+    assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
+    assert opening["shown"]["keys"] == left["keys"], f"kept, the rows moved: {left} to {opening}"
+    assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
+    assert shell.showing()["path"] == there, "filled in, it left the place its chord opened"
+
+
 def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     """Reopened as the closing's spots come due, the kept opening makes none before its frame.
 

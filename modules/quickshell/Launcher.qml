@@ -7544,8 +7544,70 @@ Scope {
 
     // Opens straight into a collection, all of it shown until something's
     // typed; - steps out to the search. A name no collection
-    // has opens the search.
+    // has opens the search. Closed, a place kept from its last opening is
+    // drawn at once and filled in after its frame (intoKept), as home is.
     function into(name) {
+        if (!open && !opening) {
+            if (intoKept(name))
+                return;
+            openChord = name;
+        }
+        intoWhole(name);
+        keepPlace(name);
+    }
+
+    // Each place a chord opens, as it last opened: the steps to it, its
+    // rows, how deep it is and the app of the window it opened over, by
+    // the chord's name. Its chord opened it whole every time, 203 to 597
+    // ms to its frame, while home drew from what was kept in 27 to 56
+    // (Joel, 2026-11-10, 20:39 to 20:43). Plain, so keeping notifies
+    // nothing.
+    readonly property var placesKept: ({})
+    // The chord a kept opening is to fill in, and the one the opening
+    // being timed came by, said in its line.
+    property string openInto: ""
+    property string openChord: ""
+    function keepPlace(name) {
+        if (held.length === 0)
+            return;
+        placesKept[name] = { held: held, matches: matches, depth: homeDepth,
+            under: cameFrom()?.app_id ?? "" };
+    }
+    // Draws a place as it was kept, while the closed card holds home and
+    // the window under it is the kind it was kept over, since what some
+    // places show follows that window (Shortcuts' keys). It's filled in
+    // after its frame by opening it whole (filled), which lands its rows
+    // where the kept ones stood.
+    function intoKept(name) {
+        const kept = placesKept[name];
+        if (!kept || !homeHeld || parting !== ""
+            || kept.under !== (cameFrom()?.app_id ?? ""))
+            return false;
+        keeping = true;
+        try {
+            held = kept.held;
+            homeDepth = kept.depth;
+            listing = false;
+            listedInDrawer = false;
+            steadying = false;
+            typed = "";
+            candidates = [];
+            prompt.text = "";
+            matches = kept.matches;
+            current = 0;
+            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
+        } finally {
+            keeping = false;
+        }
+        homeHeld = false;
+        openChord = name;
+        openInto = name;
+        beginOpening();
+        return true;
+    }
+
+    function intoWhole(name) {
+        openInto = "";
         const source = collections.find(s => s.settings.name === name) ?? null;
         // Unless home is to be found as it opens, with none kept yet, since
         // the card's height is home's.
@@ -7915,6 +7977,7 @@ Scope {
             openBegun = -1;
             openKept = false;
             presentedBegin(openAsked);
+            openChord = "";
         }
     }
     // When the ask that opened it was done, every binding the opening
@@ -8173,14 +8236,20 @@ Scope {
             return;
         openFilledBy = by;
         const began = KeyTimes.now();
-        // Its sources wake a few a frame from the next (wakeNext), so home
-        // is found again here from what each made last.
+        // Its sources wake a few a frame from the next (wakeNext), so home,
+        // or the place a chord opened, is found again here from what each
+        // made last.
         wakeQueue = wakingOrder();
         for (const source of wakeQueue)
             source.asleep = true;
         wakeSlices = [];
         waking = true;
-        open = true;
+        // A place a chord opened, opened whole now, as its chord would.
+        const place = openInto;
+        if (place !== "")
+            into(place);
+        else
+            open = true;
         wakeBegan = KeyTimes.now();
         afterFrame(wakeNext);
         if (openAsked >= 0)
@@ -8276,6 +8345,7 @@ Scope {
     // does: nothing woke for it, so nothing has to settle.
     function unopened() {
         opening = false;
+        openInto = "";
         spotsLater.restart();
         if (unlooked.length > 0 || unready.length > 0)
             readying.start();
@@ -8408,7 +8478,8 @@ Scope {
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows,
             made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
-            frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke };
+            frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
+            into: openChord };
         if (kept)
             timed.shown = rowsSaid();
         openingsTimed = openingsTimed.concat([timed]).slice(-20);
@@ -8422,6 +8493,7 @@ Scope {
             + (kept ? `, drawn from what was kept, at its size after ${openFramesWaited} frames`
                 + ` and ${after.sizing} ms` : "")
             + (first ? ", the first since the shell started" : "")
+            + (openChord === "" ? "" : `, into ${openChord}`)
             + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
         // Once its record is made, so niri's answer, which may already
         // have come, is kept with this opening.
