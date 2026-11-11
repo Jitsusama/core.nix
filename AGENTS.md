@@ -139,7 +139,7 @@ derivations as before. A new check has to earn its place. All of
 it is in [docs/testing.md][1]. How to spend the shared builders, and the
 targets that keep the cycle fast, are in [docs/delivery.md][21]: read it
 before sending a VM run. Every session holds those targets: a merge on the
-machine in a median 8 minutes, a non-boot change merged 20 minutes after
+machine in a median 18 minutes, a non-boot change merged 20 minutes after
 its last commit, a VM run waiting under 2 for a builder, and a broken merge
 caught within the hour.
 

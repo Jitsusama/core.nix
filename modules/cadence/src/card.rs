@@ -60,7 +60,7 @@ fn delivery(out: &mut String, s: &Snapshot, clock: &impl Fn(i64) -> String) {
         })
         .collect();
     let times: Vec<f64> = on.iter().map(|(m, _)| *m).collect();
-    line(out, "Merge to on (target median 8)", &times);
+    line(out, "Merge to on (target median 18)", &times);
     on.sort_by(|a, b| b.0.total_cmp(&a.0));
     if !on.is_empty() {
         let worst: Vec<String> = on
@@ -231,7 +231,7 @@ mod tests {
         for want in [
             "Core: 1 merged (0 tests or docs only).",
             "Last commit to merge, outside boot (target median 20): median 5.0",
-            "Merge to on (target median 8): median 10.0",
+            "Merge to on (target median 18): median 10.0",
             "slowest: #2066 10",
             "switches: 1, last at t99400",
             "VM runs: 1, 1 passed.",
