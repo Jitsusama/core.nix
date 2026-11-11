@@ -173,7 +173,9 @@ pub const GOING_QUIET_MIN: i64 = 15;
 /// follower keeps it (its `SWITCH_EVERY`): a merge that lands soon after a
 /// switch waits for the next by design. On 10 November a merge 22 minutes
 /// after a switch was said not on, eight minutes before the follower
-/// could ask for it, and the follower was restarted for nothing.
+/// could ask for it, and the follower was restarted for nothing. It's the
+/// spacing kept while someone is at the machine, the longer of the two, so
+/// a merge waiting out the shorter one while nobody is there isn't late.
 pub const SWITCH_EVERY_MIN: i64 = 30;
 
 /// The oldest merge that should be on the machine by now and isn't, unless

@@ -40,11 +40,34 @@ const BUSY_AGAIN: Duration = Duration::from_secs(60);
 const FAILED_AGAIN: Duration = Duration::from_mins(30);
 
 /// The least time between a switch, whoever asked for it, and the next
-/// the follower asks for. A home switch restarts
-/// the desktop's shell: on 9 November a launcher stopped taking keys after
-/// five switches the follower asked for in half an hour, one at each core
-/// merge, so main's newest head waits for the next.
+/// the follower asks for while someone is at the machine. A home switch
+/// restarts the desktop's shell: on 9 November a launcher stopped taking
+/// keys after five switches the follower asked for in half an hour, one at
+/// each core merge, so main's newest head waits for the next. The first
+/// opening after a restart is the slow one a person feels, too.
 const SWITCH_EVERY: Duration = Duration::from_mins(30);
+
+/// The least time between switches once nobody has been at the machine for
+/// `AWAY_AFTER`, since a restart nobody's hands are under costs nobody that
+/// slow first opening. On 11 November the launcher took keys after each of
+/// five shell restarts in ten minutes (`tests/opening-on-niri-test.py`).
+const SWITCH_EVERY_AWAY: Duration = Duration::from_mins(10);
+
+/// How long the machine must have gone untouched, as the follower's looks
+/// see it, before it counts as left, so a step away for a coffee keeps the
+/// spacing for someone there.
+const AWAY_AFTER: Duration = Duration::from_mins(10);
+
+/// The mark, in the account's runtime folder, that someone touched a key
+/// or the pointer in the last two minutes (`../../swayidle/home.nix`).
+const SOMEONE_HERE: &str = "someone-at-the-machine";
+
+/// Whether the mark says someone is at the machine now. A machine without
+/// the marks has nobody at it, as the daemon's own wait takes it.
+pub fn someone_here() -> bool {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .is_some_and(|runtime| Path::new(&runtime).join(SOMEONE_HERE).exists())
+}
 
 /// How soon heads whose build lost its builders are asked for again, and
 /// how many times in a row before they wait `FAILED_AGAIN` like any other
@@ -118,6 +141,10 @@ pub struct Follower {
     /// The machine's last ending when an ask was refused for a held
     /// daemon, so it waits until that changes.
     held: Option<String>,
+    /// Since when its looks have found nobody at the machine; none while
+    /// someone is, or before it has looked, since it can't know how long
+    /// they've been gone.
+    nobody_since: Option<Instant>,
 }
 
 impl Follower {
@@ -129,6 +156,27 @@ impl Follower {
     pub fn saw_switch(&mut self, at: Instant) {
         if self.switched.is_none_or(|switched| at > switched) {
             self.switched = Some(at);
+        }
+    }
+
+    /// Counts whether someone is at the machine at a look made at `at`.
+    pub fn saw(&mut self, someone: bool, at: Instant) {
+        if someone {
+            self.nobody_since = None;
+        } else if self.nobody_since.is_none() {
+            self.nobody_since = Some(at);
+        }
+    }
+
+    /// The least time after a switch before it asks for the next, at `now`.
+    fn spacing(&self, now: Instant) -> Duration {
+        if self
+            .nobody_since
+            .is_some_and(|since| now.duration_since(since) >= AWAY_AFTER)
+        {
+            SWITCH_EVERY_AWAY
+        } else {
+            SWITCH_EVERY
         }
     }
 
@@ -149,7 +197,7 @@ impl Follower {
         }
         if self
             .switched
-            .is_some_and(|switched| now.duration_since(switched) < SWITCH_EVERY)
+            .is_some_and(|switched| now.duration_since(switched) < self.spacing(now))
         {
             return false;
         }
@@ -491,6 +539,37 @@ mod tests {
         assert!(
             f.should_ask(&at("a"), "", t + SWITCH_EVERY, EVERY),
             "half an hour after a switch, it still didn't ask"
+        );
+    }
+
+    #[test]
+    fn a_machine_left_alone_switches_every_ten_minutes_until_someone_is_back() {
+        let mut f = Follower::default();
+        let t = Instant::now();
+        f.saw_switch(t);
+        f.saw(false, t);
+        let ten = t + SWITCH_EVERY_AWAY;
+        assert!(
+            f.should_ask(&at("a"), "", ten, EVERY),
+            "ten minutes after a switch nobody was there for, it didn't ask"
+        );
+        f.saw(false, ten);
+        assert!(
+            f.should_ask(&at("a"), "", ten, EVERY),
+            "a look finding nobody again started its count over"
+        );
+        f.saw(true, ten);
+        assert!(
+            !f.should_ask(&at("a"), "", ten, EVERY),
+            "someone back at the machine didn't bring the half hour back"
+        );
+        let mut f = Follower::default();
+        f.saw_switch(t);
+        let stepped_away = t + Duration::from_mins(5);
+        f.saw(false, stepped_away);
+        assert!(
+            !f.should_ask(&at("a"), "", stepped_away + LOOK_EVERY, EVERY),
+            "a few minutes away counted as having left"
         );
     }
 
