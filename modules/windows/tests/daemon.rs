@@ -272,7 +272,10 @@ fn a_resize_is_told_only_to_a_watch_naming_layouts() {
         .filter_map(|record| record["key"].as_str())
         .collect();
     assert!(kinds.contains(&"screenshot"), "{kinds:?}");
-    assert!(!kinds.iter().any(|key| key.starts_with("layout:")), "{kinds:?}");
+    assert!(
+        !kinds.iter().any(|key| key.starts_with("layout:")),
+        "{kinds:?}"
+    );
     let mut tiles = running.daemon.client();
     let said = tiles.ask(&json!({"id": 2, "ask": "watch", "kind": "layout"}));
     assert_eq!(said["records"].as_array().map(Vec::len), Some(3));
@@ -285,7 +288,9 @@ fn a_resize_is_told_only_to_a_watch_naming_layouts() {
     assert_eq!(said["changed"][0]["tile_size"], json!([900, 800]));
     // The watch naming no kind hears the next thing that isn't a tile,
     // and not the resize before it.
-    running.niri.says(&window(11, "Calendar", "google-chrome", 1, 2, 900));
+    running
+        .niri
+        .says(&window(11, "Calendar", "google-chrome", 1, 2, 900));
     assert!(!keys(&unnamed.heard()).contains(&"layout:10".to_owned()));
 }
 

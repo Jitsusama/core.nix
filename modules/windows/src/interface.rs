@@ -8,7 +8,14 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 6] = ["window", "workspace", "desktop", "cast", "layout", "screenshot"];
+pub const KINDS: [&str; 6] = [
+    "window",
+    "workspace",
+    "desktop",
+    "cast",
+    "layout",
+    "screenshot",
+];
 
 /// The kinds of which there's one record, keyed by its kind alone.
 const SOLE: [&str; 2] = ["desktop", "screenshot"];

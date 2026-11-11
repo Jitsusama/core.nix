@@ -173,6 +173,14 @@ impl Desktop {
                 }
             }
             "ConfigLoaded" => self.settings_failed = said["failed"] == true,
+            _ => return self.hear_capture(name, said),
+        }
+        Heard::Changed
+    }
+
+    /// Hears an event of what's cast or shot of the screen.
+    fn hear_capture(&mut self, name: &str, said: &Value) -> Heard {
+        match name {
             "CastsChanged" => {
                 self.casts = said["casts"]
                     .as_array()
@@ -676,11 +684,17 @@ mod tests {
         let mut desktop = heard(BEGINNING);
         let before = records(&desktop);
         assert_eq!(before["screenshot"]["taken"], 0);
-        hear(&mut desktop, r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#);
+        hear(
+            &mut desktop,
+            r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#,
+        );
         let once = records(&desktop);
         assert_eq!(changed(&before, &once), ["screenshot"]);
         assert_eq!(once["screenshot"]["path"], "/tmp/a.png");
-        hear(&mut desktop, r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#);
+        hear(
+            &mut desktop,
+            r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#,
+        );
         let twice = records(&desktop);
         assert_eq!(changed(&once, &twice), ["screenshot"]);
         assert_eq!(twice["screenshot"]["taken"], 2);
@@ -720,10 +734,10 @@ mod tests {
         let before = records(&desktop);
         hear(&mut desktop, r#"{"WindowClosed":{"id":13}}"#);
         // A window closed elsewhere changes no other window's record, only
-        // what its workspace says is on it.
+        // what its workspace says is on it, and its tile goes with it.
         assert_eq!(
             changed(&before, &records(&desktop)),
-            ["workspace:2", "window:13"]
+            ["workspace:2", "layout:13", "window:13"]
         );
         hear(
             &mut desktop,
@@ -777,14 +791,18 @@ mod tests {
         );
         // A window opened on the empty last one makes it no longer new,
         // and changes no other workspace. Its title is its own, so no
-        // other window's column count (`alike`) moves.
+        // other window's column count (`alike`) moves; it comes with its
+        // tile.
         let before = said;
         hear(
             &mut desktop,
             r#"{"WindowOpenedOrChanged":{"window":{"id":14,"title":"~/notes","app_id":"foot","pid":103,"workspace_id":3,"is_focused":false,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[640,800]},"focus_timestamp":null}}}"#,
         );
         let after = records(&desktop);
-        assert_eq!(changed(&before, &after), ["window:14", "workspace:3"]);
+        assert_eq!(
+            changed(&before, &after),
+            ["layout:14", "window:14", "workspace:3"]
+        );
         assert_eq!(after["workspace:3"]["new"], false);
     }
 
