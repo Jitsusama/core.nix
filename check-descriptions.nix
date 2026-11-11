@@ -2469,7 +2469,8 @@
     key's act is said shown by the first frame begun after its refresh, which another act
     refreshed while that frame is drawn never holds back; and an opening says what its own work
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
-    words file or the face has changed
+    words file or the face has changed; and a daemon's changes are timed from the first line
+    its draw shows, and said a place a line
   '';
   the-launcher-places-each-row-it-is-served = ''
     the rows a daemon serves ready are kept in the order each says, each a change names placed
@@ -2929,8 +2930,9 @@
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
     key, what was held stays through a gap unless the client lets it go there, a client of two
-    kinds names both in every watch, a kind with none is known to hold none once answered, and a
-    whole answer after a gap lets go what went in it
+    kinds names both in every watch, a kind with none is known to hold none once answered, a
+    whole answer after a gap lets go what went in it, and a handler of a line reads when it was
+    heard while one it put off reads none
   '';
   the-desktop-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step

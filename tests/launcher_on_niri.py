@@ -483,6 +483,24 @@ class Shell:
         return self.frames() - began
 
 
+@contextlib.contextmanager
+def niri_held() -> Iterator[None]:
+    """Hold the nested niri stopped while what's done inside it runs, so it answers no frame."""
+    held = [
+        int(process.name)
+        for process in Path("/proc").iterdir()
+        if process.name.isdigit()
+        and (process / "cmdline").read_bytes().split(b"\0")[1:2] == [b"-c"]
+        and (process / "comm").read_text().strip() == "niri"
+    ]
+    assert len(held) == 1, f"there should be one niri to hold, not {held}"
+    os.kill(held[0], signal.SIGSTOP)
+    try:
+        yield
+    finally:
+        os.kill(held[0], signal.SIGCONT)
+
+
 def started() -> Shell:
     """Start the shell in the folder the check gives, logging where it says."""
     shell = Shell(Path(os.environ["SHELL_FOLDER"]).resolve(), Path(os.environ["LOGS"]))

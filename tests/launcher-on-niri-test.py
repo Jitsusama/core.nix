@@ -21,6 +21,7 @@ import shlex
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -2273,6 +2274,224 @@ def test_a_key_that_glides_lands_once_its_glide_has_ended(shell: Shell) -> None:
     assert there["at"] - there["from"] >= lasting[-1], (
         f"the arrow landed {there['at'] - there['from']:.0f} ms from its press,"
         f" before its {lasting[-1]} ms glide ended"
+    )
+
+
+# How long niri is held just after a daemon's line, well past Joel's 50 ms bar.
+NIRI_HELD = timedelta(seconds=1)
+# How far the shell's time of a line may read before the test's, both whole ms of one clock: the
+# shell reads its line by the realtime clock, moved onto the monotonic one (Hearing.js).
+CLOCKS_APART_MS = 2
+# How many rows a change adds, so it changes well over CARD_SHARE of niri's screen.
+ADDED = 6
+
+
+class ReadyQuests:
+    """Serve Quests' rows ready, as the quests daemon does, and tell each client a change.
+
+    It answers the shell's daemon interface on the socket the account's systemd holds for the
+    quests daemon, which nothing else serves here: hello, a watch with every row held, and any
+    other ask with none.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """Listen on `path`, holding one quest's row."""
+        self.held: dict[str, Json] = {}
+        self.clients: list[socket.socket] = []
+        self.lock = threading.Lock()
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        self.listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.listening.bind(str(path))
+        self.listening.listen()
+        threading.Thread(target=self.accept, daemon=True).start()
+
+    @staticmethod
+    def row(order: int, name: str) -> Json:
+        """Give a quest's row as the quests daemon serves it, holding only what Quests reads."""
+        ident = f"QEST-20261111-KES{order:03}"
+        return {
+            "key": f"row:quests:{ident}",
+            "kind": "row",
+            "row": {
+                "order": order,
+                "place": "quests",
+                "thing": f"quest:{ident}",
+                "kind": "quest",
+                "name": name,
+                "glyph": "pending",
+                "hue": "program",
+                "side": [],
+                "note": ident,
+                "reads": "",
+                "unfinished": True,
+                "held": {
+                    "id": ident,
+                    "kind": "quest",
+                    "status": "active",
+                    "priority": "active",
+                    "updated": "2026-11-11",
+                    "folder": f"/quests/{ident}",
+                    "open": True,
+                },
+            },
+        }
+
+    def accept(self) -> None:
+        """Answer each client that connects, for as long as the run lasts."""
+        while True:
+            try:
+                client, _ = self.listening.accept()
+            except OSError:
+                return
+            threading.Thread(target=self.serve, args=(client,), daemon=True).start()
+
+    def serve(self, client: socket.socket) -> None:
+        """Answer one client, a line for each ask, until it goes."""
+        with client.makefile("r") as lines:
+            for line in lines:
+                asked = json.loads(line)
+                if asked.get("ask") == "hello":
+                    self.write(client, {"id": "hello", "version": 1, "state": "answering"})
+                elif asked.get("ask") == "watch" and asked.get("id") == "all":
+                    self.write(client, {"id": "all"}, watching=True)
+                else:
+                    self.write(client, {"id": asked.get("id"), "records": []})
+
+    def write(self, client: socket.socket, said: Json, *, watching: bool = False) -> None:
+        """Send one line to a client, a watch with every row held, which it's told of after.
+
+        Under the lock, so no change is told between a watch's rows and its being told.
+        """
+        with self.lock:
+            if watching:
+                said = {**said, "records": list(self.held.values())}
+                self.clients.append(client)
+            client.sendall((json.dumps(said) + "\n").encode())
+
+    def told(self, changed: list[Json], gone: list[str]) -> float:
+        """Tell every client watching a change, and give when, on the monotonic clock in ms."""
+        with self.lock:
+            for record in changed:
+                self.held[record["key"]] = record
+            for key in gone:
+                self.held.pop(key, None)
+            line = (json.dumps({"id": "all", "changed": changed, "gone": gone}) + "\n").encode()
+            at = time.monotonic() * 1000
+            for client in list(self.clients):
+                try:
+                    client.sendall(line)
+                except OSError:
+                    # A connection the shell let go, as Daemon.qml does once it's refused.
+                    self.clients.remove(client)
+        return at
+
+    def close(self) -> None:
+        """Stop listening."""
+        self.listening.close()
+
+
+@pytest.fixture(scope="module")
+def quests() -> Iterator[ReadyQuests]:
+    """Give Quests' daemon, stood in for, holding one quest, served until the run ends."""
+    served = ReadyQuests(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "quests.sock")
+    served.told([ReadyQuests.row(0, "Kestrel 0")], [])
+    yield served
+    served.close()
+
+
+def updates_presented(shell: Shell, after: int, deadline: float) -> list[Json]:
+    """Give Quests' changes said presented past the first `after`, once there are any."""
+    while time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("updatesPresented")))
+        if len(presented) > after:
+            return [one for one in presented[after:] if one["place"] == "quests"]
+        time.sleep(launcher_on_niri.POLL)
+    return []
+
+
+def quests_shown(shell: Shell) -> int:
+    """Open the launcher in Quests, and give how many changes it had said presented.
+
+    Stepped into, since a search at the top folds a place's other finds into its first row's
+    side, which changes too little of the screen to see.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("quests", selecting="Quests")
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: shown["path"][-1:] == ["Quests"] and shown["rows"] == ["Kestrel 0"]
+    )
+    return len(json.loads(shell.as_account(shell.ipc("updatesPresented"))))
+
+
+def added() -> list[Json]:
+    """Give the rows a change adds, after the one held."""
+    return [ReadyQuests.row(order, f"Kestrel {order}") for order in range(1, ADDED + 1)]
+
+
+def test_a_daemons_change_is_presented_as_niri_first_shows_it(
+    shell: Shell, quests: ReadyQuests
+) -> None:
+    """A daemon's change is timed from its line to the frame niri showed with it.
+
+    Joel's 50 ms bar holds for updates as for keys (2026-11-10), so the launcher times each change
+    a daemon tells from the line it came in to niri's presentation feedback for the frame drawing
+    it (Y2YBTS, 2026-11-11): never from before the line was written, and niri's screen first shows
+    it no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and soon after.
+    """
+    after = quests_shown(shell)
+    before = screen()
+    written = quests.told(added(), [])
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    seen = first_changed(before, deadline)
+    assert seen >= 0, "niri's screen never showed the change"
+    presented = updates_presented(shell, after, deadline)
+    shell.launcher_until(lambda shown: f"Kestrel {ADDED}" in shown["rows"])
+    shell.close_launcher()
+    quests.told([], [row["key"] for row in added()])
+    assert presented, "the change was never said presented"
+    change = presented[0]
+    assert change["from"] >= written - CLOCKS_APART_MS, (
+        f"said {change}, timed from before its line was written at {written:.0f}"
+    )
+    lead = COPIED_BEFORE_PRESENTED.total_seconds() * 1000
+    assert change["from"] <= change["at"] <= seen + lead, (
+        f"said {change}; niri's screen showed it at {seen:.0f}"
+    )
+    within = SEEN_WITHIN.total_seconds() * 1000
+    assert seen - change["at"] <= within, (
+        f"niri's screen showed the change {seen - change['at']:.0f} ms after the time said,"
+        f" past {within}"
+    )
+
+
+def test_a_daemons_change_niri_holds_back_is_presented_late(
+    shell: Shell, quests: ReadyQuests
+) -> None:
+    """A change drawn while niri is held is said presented only once niri shows it, too late.
+
+    The shell hears the line and draws the change at once, but niri, held, presents nothing, so
+    a measure taken at the shell's own frame would pass what Joel sees late.
+    """
+    after = quests_shown(shell)
+    with launcher_on_niri.niri_held():
+        written = quests.told(added(), [])
+        # How long niri is held, as a compositor stalled behind a frame.
+        time.sleep(NIRI_HELD.total_seconds())
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    presented = updates_presented(shell, after, deadline)
+    shell.launcher_until(lambda shown: f"Kestrel {ADDED}" in shown["rows"])
+    shell.close_launcher()
+    quests.told([], [row["key"] for row in added()])
+    assert presented, "the change was never said presented"
+    change = presented[0]
+    held = NIRI_HELD.total_seconds() * 1000
+    assert change["at"] >= written + held, (
+        f"said {change}, presented before niri, held {held:.0f} ms from {written:.0f}, could"
+    )
+    assert change["at"] - change["from"] > launcher_on_niri.KEY_PACE_MS, (
+        f"a change niri held {held:.0f} ms was said presented within 50 ms: {change}"
     )
 
 

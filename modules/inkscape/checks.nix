@@ -131,6 +131,7 @@ onLinux {
       cp ${../quickshell/Words.qml} Words.qml
       cp ${../quickshell/Files.qml} Files.qml
       cp ${../quickshell/Daemon.qml} Daemon.qml
+      cp ${../quickshell/Hearing.js} Hearing.js
       cp ${../quickshell/FileFacts.js} FileFacts.js
       cp ${../quickshell/When.js} When.js
       ${lib.concatMapStrings (file: ''
