@@ -26,7 +26,8 @@
 // edge, so three levels read as three with no colour of their own (VKCF3Z,
 // 2026-11-07).
 //
-// Its words are styled text, carrying only what NoticeBody.js lets through;
+// Its words are styled text, carrying only what the notices daemon lets
+// through (modules/notices' body.rs);
 // a link is underlined in the words' own colour, since colour goes on
 // glyphs and never on text, and a click on it says where it goes.
 import QtQuick

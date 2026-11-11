@@ -63,8 +63,8 @@
   # shows, wears a mark of its own in ProgramGlyphs.js's table, its logo or
   # the theme's mark for it, never the program mark the rest share, and
   # each theme mark it names is one the theme has. Each program a notice's
-  # sender is named as (Notices.qml's senders) is one the table knows, so
-  # its notices wear the mark its row does.
+  # sender is named as (modules/notices/senders.json) is one the table
+  # knows, so its notices wear the mark its row does.
   every-program-wears-its-own-mark =
     let
       home = account graphical;
@@ -89,8 +89,8 @@
       while read -r mark; do
         grep -q -x -F "$mark" ${marks} || { echo "No theme mark is named $mark"; exit 1; }
       done < named
-      grep -o 'program: "[^"]*"' ${../Notices.qml} | cut -d '"' -f 2 > senders
-      [ -s senders ] || { echo "Notices.qml names no sender's program"; exit 1; }
+      ${lib.getExe pkgs.jq} -r '.senders[].program // empty' ${../../notices/senders.json} > senders
+      [ -s senders ] || { echo "senders.json names no sender's program"; exit 1; }
       while read -r program; do
         grep -q -x -F "$program" known \
           || { echo "A notice from $program would wear the bell: no mark is known for it"; exit 1; }
@@ -151,35 +151,20 @@
       touch $out
     '';
 
-  # A notice's card and its row in the launcher list the same acts in one
-  # order, as tests/notice.qml holds Notice.js.
-  a-notice-is-one-thing =
+  # What a notice's card offers of its sender's, its sender's own Read,
+  # and the line a search names a notice by, as tests/notice.qml holds
+  # Notice.js.
+  a-notice-found-is-noted-by-what-was-typed =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "a-notice-is-one-thing" { } ''
+    pkgs.runCommandLocal "a-notice-found-is-noted-by-what-was-typed" { } ''
       cp ${../../../tests/notice.qml} notice.qml
       cp ${../launcher/Notice.js} Notice.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice.qml
-      touch $out
-    '';
-
-  # A notice's body read once as it arrives, its links kept and every tag
-  # but the spec's escaped, as tests/notice-body.qml holds NoticeBody.js.
-  a-notice-keeps-its-links =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "a-notice-keeps-its-links" { } ''
-      cp ${../../../tests/notice-body.qml} notice-body.qml
-      cp ${../NoticeBody.js} NoticeBody.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-body.qml
       touch $out
     '';
 

@@ -43,33 +43,23 @@
         function act(action) { acted = acted.concat([action]); }
         function spawn(command) { spawned = command; spawns = spawns.concat([command]); }
       '';
+      # The notices' history, which the stand-in for the notices daemon
+      # (tests/lib/NoticesDaemon.qml) serves the rows of.
       notices = singleton "Notices.qml" ''
         property var history: [
           { id: 3, at: Date.now() - 60000, app: "Tester", summary: "Newest", body: "",
-            glyph: 0xf0f3, hue: "program", read: false, missed: false },
+            read: false, missed: false },
           { id: 2, at: Date.now() - 120000, app: "Other", summary: "Not its", body: "",
-            glyph: 0xf0f3, hue: "program", read: false, missed: false },
+            read: false, missed: false },
           { id: 1, at: Date.now() - 180000, app: "tester", summary: "Oldest", body: "said",
-            glyph: 0xf0f3, hue: "program", read: true, missed: false }
+            read: true, missed: false }
         ]
         property var live: ({})
         property var resting: ({})
         property var waiting: []
         property bool gathered: false
-        property var marked: []
-        // The newest still open, its picture held in memory as a sender's
-        // image data is; the oldest's kept as a file. Each asking counted,
-        // in a plain object so counting notifies nothing.
-        readonly property var asked: ({ pictures: 0 })
-        function pictureOf(notice) {
-          asked.pictures += 1;
-          return ({ 3: "image://qsimage/3/0", 1: "file:///kept/oldest.png" })[notice.id] ?? "";
-        }
-        function mark(id, read) { marked = marked.concat([id]); }
+        function mark(id, read) {}
         function seen() {}
-        // Who signs a notice, as its card says it: here by the name it
-        // came with, no sender being known.
-        function sender(name) { return { glyph: 0xf0f3, hue: "program", name: name }; }
         // A sender's window by its program's id, as Notices finds it, the
         // desktop's entries aside.
         function senderWindow(app) {
@@ -253,13 +243,14 @@
       cp ${../launcher/Captured.js} launcher/Captured.js
       cp ${../launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${../launcher/Notice.js} launcher/Notice.js
-      cp ${../NoticeBody.js} NoticeBody.js
       cp ${../launcher/Ago.js} launcher/Ago.js
       cp ${../Words.qml} Words.qml
       cp ${../Files.qml} Files.qml
       cp ${../launcher/words.json} launcher/words.json
       cp ${../../../tests/program-controls.qml} shell.qml
       cp ${../../../tests/lib/HeardWindows.js} HeardWindows.js
+      cp ${../../../tests/lib/NoticesDaemon.qml} NoticesDaemon.qml
+      cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${niri} Niri.qml
       cp ${notices} Notices.qml
       cp ${playing} launcher/Playing.qml
@@ -267,6 +258,7 @@
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share
       mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir $XDG_RUNTIME_DIR/daemons
       export FONTCONFIG_FILE=${noFonts}
       # What quiet had open lately, as a program keeps it, and the command
       # that lists it.

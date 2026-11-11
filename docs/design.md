@@ -2045,7 +2045,8 @@ works the same way everywhere.
   list. Its words are found but never its name (VKCF3Z, 2026-11-08). Its
   drawer's eyebrow says who sent it, then its kind ("from Slack ·
   message"), a kind the glossary doesn't name left out. Among the notices its
-  row's acts are in `launcher/Notice.js`'s order: going to what it's about,
+  row's acts are in the notices daemon's order (`modules/notices`' row.rs):
+  going to what it's about,
   what its sender offers, Mark It Read (Mark It Unread once read), an act
   with nothing at its side, Forget It, and
   Copy What It Said last. Held, a card's acts are commands, never a row

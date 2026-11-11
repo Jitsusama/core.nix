@@ -96,6 +96,11 @@ ShellRoot {
         property var entered: null
         property var went: null
 
+        // Nothing is drawn here, so what waits on a frame runs at once.
+        function afterFrame(then) {
+            then();
+        }
+
         function enter(row) {
             entered = row;
         }
@@ -177,6 +182,14 @@ ShellRoot {
 
         launcher: theLauncher
         settings: ({ name: "notices" })
+        onChanged: root.ready()
+    }
+
+    // The notices daemon, serving the history's rows, the tester's
+    // notices naming its desktop entry, as the daemon finds it.
+    NoticesDaemon {
+        notices: Notices.history.map(one => Object.assign({
+            entry: one.app.toLowerCase() === "tester" ? "tester" : "" }, one))
     }
 
     Launcher.Applications {
@@ -269,7 +282,8 @@ ShellRoot {
                     .every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
                 && applications.recents.of("tester").length === 3
-                && applications.recents.of("radio").length === 1)
+                && applications.recents.of("radio").length === 1
+                && notices.everything().length === 3)
             Qt.callLater(root.cases);
     }
 
@@ -840,21 +854,10 @@ ShellRoot {
             const sent = told.targets();
             // Each is named by its title alone, as every notice row is (VKCF3Z,
             // 2026-11-08); what it said is its note.
+            // Each as the notices daemon serves it, its drawer and its acts
+            // the daemon's (modules/notices' row.rs), done as every served
+            // row's are (tests/ready-rows.qml).
             same("its notices, newest first", names(sent), "Newest, Oldest");
-            // Made without their drawers, which are made as each is shown,
-            // so the history's rows cost only what they list.
-            same("and none's drawer made before it's shown", Notices.asked.pictures, 0);
-            // A picture its card draws is its drawer's too, whether held in
-            // memory while the notice lives or kept as a file (VKCF3Z,
-            // 210afa2f).
-            same("each drawer holds the picture its card draws",
-                sent.map(row => row.drawer?.().picture ?? "none").join(" "),
-                "image://qsimage/3/0 file:///kept/oldest.png");
-            Niri.acted = [];
-            sent[0].run();
-            same("Return on one reads it", Notices.marked.join(" "), "3");
-            same("and goes to its window, as the collection's does", acted(),
-                '[{"FocusWindow":{"id":11}}]');
             // Ctrl+] on a notice goes to its sender where it lives, as Vim
             // follows a tag, by the program's row among Programs.
             same("Ctrl+] follows each to the program that sent it",

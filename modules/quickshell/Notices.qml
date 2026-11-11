@@ -9,9 +9,10 @@ pragma Singleton
 // launcher's acts read as Quickshell's own (LiveNotice.js); every change
 // is an ask of the daemon, whose answer is the record changed.
 //
-// Its words are styled and its sender's mark is found here, and the
-// history is put in order here, until the daemon serves the notices'
-// ready rows whole, as the machine daemon serves its own (Daemon.qml).
+// Its words styled and its sender's mark, hue and name come on its record
+// as the daemon made them for its card, the same it makes its rows of
+// (modules/notices' row.rs, the launcher's PastNotices.qml), so the card
+// and the row never differ and neither is worked out here.
 //
 // One leaves the screen in one of three ways: clicked away; withdrawn by its
 // program, as a chat app does once the message is read there; or by itself
@@ -36,8 +37,7 @@ import Quickshell
 import QtQuick
 import "Forward.js" as Forward
 import "LiveNotice.js" as LiveNotice
-import "NoticeBody.js" as NoticeBody
-import "ProgramGlyphs.js" as ProgramGlyphs
+import "launcher/ReadyRows.js" as Ready
 
 Singleton {
     id: root
@@ -55,12 +55,10 @@ Singleton {
     // Whether the daemon is there to ask.
     readonly property bool answering: daemon.wire !== null
 
-    // { id, at, app, entry, summary, body, styled, links, picture, glyph,
-    // hue, urgency, category, low, urgent, held, missed, read, readHow,
-    // waits, left, leftAt }: `body` is its words plain and `styled` with
-    // the markup a card draws, `links` each { text, href }, `urgency` what
-    // its sender asked (low, normal or critical) and `urgent` whether it
-    // stays, `readHow` how it was read where that wasn't here (markRead),
+    // { id, at, app, entry, summary, body, urgency, category, low, urgent,
+    // held, missed, read, readHow, waits, left, leftAt }: `body` is its
+    // words plain, `urgency` what its sender asked (low, normal or
+    // critical) and `urgent` whether it stays, `readHow` how it was read where that wasn't here (markRead),
     // and `left` how it left the screen once it has (expired, dismissed or
     // withdrawn), and when. Each is made again only as the daemon says its
     // record changed, so the launcher's rows of the rest are kept.
@@ -84,117 +82,25 @@ Singleton {
     // Whether the launcher's collection of them is open.
     property bool gathered: false
 
-    // A sender's glyph, the hue of what it brings, a person's message
-    // wearing the person's, and the name Joel knows it by, which a card
-    // signs it with, never its program's. A program's notice wears its
-    // program's own mark, the one its row in the launcher does
-    // (ProgramGlyphs.js), named by its desktop entry's id as `program`;
-    // the rest are the desktop's own, each its theme mark. Which only
-    // answer what Joel just did, as the recorder's saying where a file
-    // went, and so are never missed, the daemon knows
-    // (modules/notices/senders.json).
-    readonly property var senders: ({
-        "slack": { program: "slack", hue: "person", name: "Slack" },
-        "tuple": { glyph: Theme.glyph.call.codePointAt(0), hue: "person", name: "Tuple" },
-        "google chrome": { program: "google-chrome", hue: "program", name: "Google Chrome" },
-        "chromium": { program: "chromium", hue: "program", name: "Chromium" },
-        // The compositor, saying a screenshot was taken or its settings
-        // didn't load.
-        "niri": { glyph: 0xf0e51, hue: "machine", name: "Desktop" },
-        // notify-send is the tool a notice came through, not who sent it, so
-        // a notice it names no sender for is the desktop's, on its card and
-        // its plate alike (VKCF3Z, 2026-11-03).
-        "notify-send": { glyph: 0xf0e51, hue: "machine", name: "Desktop" },
-        // A pi session wanting Joel (Sessions.qml), in its mark. It's
-        // never missed, since For You's tray in the margin says the want
-        // while it holds (Joel's pick, 2026-11-09).
-        "pi": {
-            glyph: Theme.glyph.agent.codePointAt(0), hue: "program",
-            name: Words.name("agents")
-        },
-        // Something an agent has ready for Joel to do (WaitingOnYou.qml),
-        // sent by For You, so its margin mark is For You's own tray, the
-        // mark its row in Now and its head wear (VKCF3Z, 2026-11-08).
-        "waiting": {
-            glyph: Theme.glyph.forYou.codePointAt(0), hue: "program",
-            name: Words.name("on:waiting")
-        },
-        "recorder": {
-            glyph: Theme.glyph.recording.codePointAt(0), hue: "machine",
-            name: "Capture"
-        },
-        // What arrives by itself (Arrivals.qml), in its margin mark, which
-        // says it while it holds, so it's never missed either.
-        "camera": {
-            glyph: Theme.glyph.camera.codePointAt(0), hue: "machine",
-            name: "Camera"
-        },
-        // A call being written down, or written (call-transcripts'
-        // notices.rs), a call's as Tuple's are, since each is about a
-        // call with others. Each says itself whether it answers what Joel
-        // is doing, so it's never missed.
-        "calls": {
-            glyph: Words.glyph("notices:calls").codePointAt(0), hue: "person",
-            name: Words.name("notices:calls")
-        },
-        // A meeting about to start (Starting.qml), with others in it.
-        "calendar": {
-            glyph: Theme.glyph.meeting.codePointAt(0), hue: "person",
-            name: "Calendar"
-        },
-        // A timer ringing (timers/src/main.rs), in a timer's mark, the
-        // desktop's as niri's are, missed until seen, since it rang for
-        // Joel whether or not he was there.
-        "timers": {
-            glyph: Theme.glyph.timer.codePointAt(0), hue: "machine",
-            name: Words.name("timers")
-        },
-        "battery": {
-            glyph: Theme.glyph.low.codePointAt(0), hue: "machine",
-            name: Words.name("power")
-        },
-        // The AI tokens running out (pieces/Tokens.qml), the agents' own.
-        "tokens": {
-            glyph: Theme.glyph.tokens.codePointAt(0), hue: "program",
-            name: Words.name("spend")
-        },
-        // A firmware update fwupd offers (modules/firmware-notice), said
-        // once a release, and missed until seen, since nothing else says it.
-        "firmware": {
-            glyph: Theme.glyph.firmware.codePointAt(0), hue: "machine",
-            name: Words.name("firmware")
-        },
-        // What became of a save into Google Drive (modules/google's
-        // Saves.qml): one that failed is missed until seen, since the file
-        // waits on Joel, and one that went up answers what he did.
-        "google drive": { program: "google-drive", hue: "program", name: "Google Drive" }
-    })
-
-    // The bell, worn only by a sender no program's mark is known for.
-    readonly property int bell: 0xf0f3
-    // A machine's own program marks, as the launcher's Programs are given
-    // them (jitsusama.quickshell.launcher.providers.applications.glyphs).
-    readonly property var ownGlyphs: Providers.providers
-        .find(listed => listed.name === "applications")?.glyphs ?? {}
-
-    // Who sent a notice, by the name it gave and the desktop entry it names,
-    // if any: one the desktop knows by name as it's listed; any other is
-    // signed by its program's own name for itself, as its launcher row is,
-    // or else as it named itself, and wears its program's mark, the bell
-    // only where no program's is known.
-    function sender(name, entry) {
-        const known = senders[name.toLowerCase()];
-        if (known && known.glyph !== undefined)
-            return known;
-        const program = known?.program
-            ?? ((entry ?? "") !== "" ? DesktopEntries.byId(entry) : null)
-            ?? DesktopEntries.heuristicLookup(name);
-        const id = typeof program === "string" ? program : program?.id ?? name;
-        const mark = ProgramGlyphs.glyph(id, ownGlyphs, Theme.glyph);
+    // What the daemon made of a notice for its card, on its record: who
+    // sent it, the name Joel knows the sender by, never its program's, in
+    // its mark, a theme role's or a program's own served as its code
+    // point, and the hue of what it brings (modules/notices/senders.json,
+    // the machine's program marks); and its words plain and styled, with
+    // their links.
+    function cardOf(record) {
+        const sender = record?.sender ?? {};
         return {
-            glyph: mark === "" ? bell : mark.codePointAt(0),
-            hue: known?.hue ?? "program",
-            name: known?.name ?? (typeof program === "string" ? null : program?.name) ?? name
+            from: {
+                glyph: Ready.glyphOf(sender.glyph ?? "", Theme.glyph),
+                hue: sender.hue ?? "program",
+                name: sender.name ?? record?.notice?.app ?? ""
+            },
+            words: {
+                plain: record?.body?.plain ?? "",
+                styled: record?.body?.styled ?? "",
+                links: record?.body?.links ?? []
+            }
         };
     }
 
@@ -206,11 +112,6 @@ Singleton {
         return notification?.image ?? "";
     }
 
-    // A notice's picture as the history has it.
-    function pictureOf(notice) {
-        return notice.picture ?? "";
-    }
-
     // Each notice as the history has it, by id, made again only as its
     // record changes, so a reader keeping its rows by the notice keeps
     // those of the rest.
@@ -218,16 +119,13 @@ Singleton {
     // The ids heard open, so one first heard open is known to have come.
     property var heardOpen: ({})
 
-    // A record as the history has it: its words plain for the launcher's
-    // rows, the find and a copy, and styled for a card and a drawer, with
-    // its links, and its sender's mark.
-    function madeOf(notice) {
-        const from = sender(notice.app, notice.entry);
-        const said = NoticeBody.read(notice.body);
+    // A record as the history has it, its words plain, as the shell's own
+    // readers of it find and withdraw notices by what they said; its rows
+    // and their drawers are the daemon's.
+    function madeOf(notice, card) {
         return {
             id: notice.id, at: notice.at, app: notice.app, entry: notice.entry,
-            summary: notice.summary, body: said.plain, styled: said.styled,
-            links: said.links, picture: notice.picture, glyph: from.glyph, hue: from.hue,
+            summary: notice.summary, body: card.words.plain,
             urgency: notice.urgency, category: notice.category, low: notice.low,
             urgent: notice.urgent, held: notice.held, missed: notice.missed,
             read: notice.read, readHow: notice.readHow, readAt: notice.readAt,
@@ -262,11 +160,12 @@ Singleton {
             // Kept as it was while what the history holds of it is the
             // same, so a change it doesn't hold, such as its card resting,
             // remakes no reader's row of it.
-            const now = madeOf(notice);
+            const card = cardOf(daemon.held[key]);
+            const now = madeOf(notice, card);
             made[id] = was && JSON.stringify(was) === JSON.stringify(now) ? was : now;
             if (notice.live) {
                 nowLive[id] = LiveNotice.of(notice, said => daemon.ask(said),
-                    then => Quickshell.activationToken(then));
+                    then => Quickshell.activationToken(then), card);
                 if (!(id in heardOpen)) {
                     heardOpen[id] = true;
                     if (arriving)

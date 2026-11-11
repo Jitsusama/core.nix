@@ -221,6 +221,11 @@ QtObject {
         });
         Expect.same("nothing served of them is none",
             Object.keys(Ready.drawerOf({ title: "plain" }, now, said)), ["title", "facts", "body"]);
+        Expect.same("a notice's drawer keeps how its words are drawn", Ready.drawerOf({
+            eyebrow: "Slack", eyebrowNames: true, title: "Ana", body: "<b>hi</b>",
+            styled: true, prose: true, picture: "file:///p.png", facts: []
+        }, now, said), { title: "Ana", facts: [], body: "<b>hi</b>", eyebrow: "Slack",
+            styled: true, picture: "file:///p.png", eyebrowNames: true, prose: true });
     }
 
     function insides() {
@@ -297,6 +302,20 @@ QtObject {
         Expect.same("a link says its host at its side", Ready.actWorded({
             key: "verb:notice:link", side: "github.com" }, worded, roles),
             { name: "Open the Link", glyph: "L", side: "github.com" });
+        const linkTo = href => ({ key: "verb:notice:link", open: href });
+        const repeated = {};
+        Expect.same("a key a row holds once stays bare, and two alike go by their targets",
+            Ready.actKeys([linkTo("https://a.org"), linkTo("https://b.org"),
+                { key: "verb:notice:read", ask: { ask: "mark" } }], repeated),
+            ["verb:notice:link:https://a.org", "verb:notice:link:https://b.org",
+                "verb:notice:read"]);
+        Expect.same("the first link gone, the second keeps its key, so the cursor stays on it",
+            Ready.actKeys([linkTo("https://b.org")], repeated), ["verb:notice:link:https://b.org"]);
+        Expect.same("two alike with no target of their own go by their place",
+            Ready.actKeys([{ key: "verb:more", step: "rows" },
+                { key: "verb:more", step: "rows" }], {}), ["verb:more:0", "verb:more:1"]);
+        Expect.same("another row's keys are its own", Ready.actKeys([linkTo("https://b.org")], {}),
+            ["verb:notice:link"]);
         const asking = { key: "verb:notice:open", ask: { ask: "invoke", id: 4 }, token: true };
         Expect.same("an ask that takes a token is sent with it",
             Ready.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });

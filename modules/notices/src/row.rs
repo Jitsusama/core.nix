@@ -161,7 +161,7 @@ fn reads(notice: &Notice) -> Value {
 /// comes before what ends it; then copying what it said, last, never
 /// first (Joel, 2026-10-28: "having the separate copy option at the top is
 /// very confusing"). Each act reads it as it's done.
-fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str) -> Vec<Value> {
+fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words) -> Vec<Value> {
     let invoke = |action: &str| {
         let id = notice.id;
         json!({ "ask": "invoke", "notice": id, "action": action, "read": true })
@@ -202,13 +202,28 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str) -> Vec<Value>
             "side": body::host(&link.href), "also": reads(notice),
         }));
     }
-    let (key, now) = if notice.read {
-        ("verb:notice:unread", false)
-    } else {
-        ("verb:notice:read", true)
-    };
+    // One act, its words saying what it will do, Mark It Read or Mark It
+    // Unread, as the vocabulary words its key's states, since the : line
+    // names one command for it (VKCF3Z, 2026-11-08). Unread and still
+    // open, it's read at its sender where the sender offers Read, so
+    // :delete and d tell the program too, with no token, since nothing
+    // need come forward.
+    let state = if notice.read { "read" } else { "" };
+    let reading = (notice.live && !notice.read)
+        .then(|| {
+            notice
+                .actions
+                .iter()
+                .find(|action| says_read(&action.id) || says_read(&action.text))
+        })
+        .flatten();
+    let ask = reading.map_or_else(
+        || json!({ "ask": "mark", "notices": [notice.id], "read": !notice.read }),
+        |action| invoke(&action.id),
+    );
     acts.push(json!({
-        "key": key, "ask": { "ask": "mark", "notices": [notice.id], "read": now },
+        "key": "verb:notice:read", "name": words.name("verb:notice:read", state),
+        "glyph": words.glyph("verb:notice:read", state), "ask": ask,
     }));
     if notice.live {
         acts.push(json!({
@@ -217,6 +232,28 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str) -> Vec<Value>
     }
     acts.push(json!({ "key": "verb:notice:copy", "copy": said, "also": reads(notice) }));
     acts
+}
+
+/// Whether an action's identifier or words are a sender's own Read, as
+/// "read", "mark-read" or "Mark as read", whatever the case.
+fn says_read(word: &str) -> bool {
+    let word = word.to_lowercase();
+    let Some(before) = word.strip_suffix("read") else {
+        return false;
+    };
+    if before.is_empty() {
+        return true;
+    }
+    let Some(after_mark) = before.strip_prefix("mark") else {
+        return false;
+    };
+    let after_mark = after_mark
+        .strip_prefix(['-', '_', ' '])
+        .unwrap_or(after_mark);
+    after_mark.is_empty()
+        || after_mark
+            .strip_prefix("as")
+            .is_some_and(|after_as| matches!(after_as, "" | "-" | "_" | " "))
 }
 
 /// A notice's row in `place`, not yet given its `order`, its side saying
@@ -249,7 +286,7 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
         "key": format!("row:{place}:{}", notice.id), "thing": notice.key(), "place": place,
         "kind": "notice", "name": name, "note": note, "glyph": sender.glyph,
         "hue": if notice.urgency == Urgency::Low { "muted" } else { sender.hue.as_str() },
-        "side": side, "drawer": drawer, "acts": acts(notice, sender, &read, &said),
+        "side": side, "drawer": drawer, "acts": acts(notice, sender, &read, &said, words),
         "held": {
             "id": notice.id, "app": notice.app, "entry": sender.entry, "read": notice.read,
             "at": notice.at, "live": notice.live, "said": said,
@@ -471,6 +508,41 @@ mod tests {
     }
 
     #[test]
+    fn a_senders_read_is_known_by_its_identifier_or_words() {
+        for word in [
+            "read",
+            "Read",
+            "mark-read",
+            "mark_as_read",
+            "Mark as read",
+            "markasread",
+        ] {
+            assert!(says_read(word), "{word} is Read");
+        }
+        for word in [
+            "readme",
+            "Reply",
+            "mark as unread",
+            "marks read",
+            "mark as  read",
+        ] {
+            assert!(!says_read(word), "{word} isn't");
+        }
+    }
+
+    #[test]
+    fn its_kind_is_said_from_its_category_or_left_out() {
+        let words = crate::words::tests::core();
+        let said = |category| kind(category, &words);
+        assert_eq!(said("im"), "message", "a kind by its class");
+        assert_eq!(said("im.received"), "message", "and with its subtype");
+        assert_eq!(said("transfer.error"), "transfer failed", "an error fails");
+        assert_eq!(said("email.bounced"), "mail bounced", "a bounced mail");
+        assert_eq!(said("x-gnome.music"), "", "one never named, never raw");
+        assert_eq!(said(""), "", "and none given");
+    }
+
+    #[test]
     fn a_row_is_named_and_marked_as_its_card() {
         let [mixed, ..] = making(&[notice(5, &json!({ "urgency": "low" }))], &[]);
         let row = &mixed[0];
@@ -541,8 +613,16 @@ mod tests {
         let [mixed, ..] = making(&[gone], &[]);
         assert_eq!(
             act_keys(&mixed[0]),
-            ["verb:notice:goTo", "verb:notice:unread", "verb:notice:copy"],
+            ["verb:notice:goTo", "verb:notice:read", "verb:notice:copy"],
             "gone, it goes to its program"
+        );
+        assert_eq!(
+            (
+                &mixed[0]["acts"][1]["name"],
+                &mixed[0]["acts"][1]["ask"]["read"]
+            ),
+            (&json!("Mark It Unread"), &json!(false)),
+            "read, it's marked unread, said so"
         );
         assert_eq!(mixed[0]["acts"][0]["go"], "slack");
         assert_eq!(
@@ -550,6 +630,21 @@ mod tests {
             json!([{ "name": "Left", "said": "put away at {time}", "at": 8000, "as": "moment" }]),
             "left the minute it came, Left says both"
         );
+        let offering = notice(
+            11,
+            &json!({ "live": true, "actions": [{ "id": "read", "text": "Mark as read" }] }),
+        );
+        let [mixed, ..] = making(&[offering], &[]);
+        let read = &mixed[0]["acts"][2];
+        assert_eq!(
+            (&read["key"], &read["ask"]),
+            (
+                &json!("verb:notice:read"),
+                &json!({ "ask": "invoke", "notice": 11, "action": "read", "read": true })
+            ),
+            "one whose sender offers Read is read there"
+        );
+        assert!(read.get("token").is_none(), "with nothing to bring forward");
         let nowhere = notice(9, &json!({ "app": "some-tool" }));
         let [mixed, ..] = making(&[nowhere], &[]);
         assert_eq!(

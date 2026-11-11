@@ -349,9 +349,10 @@ let
       niri = singleton "Niri.qml" ''
         function spawn(command) {}
       '';
-      # For You's Desktop row holds the notices unread, as their own rows
-      # say them, and For You counts a critical one among what waits while
-      # no card says it.
+      # For You's Desktop row holds the notices unread, as the notices
+      # daemon serves them (tests/lib/NoticesDaemon.qml stands it in), and
+      # For You counts a critical one among what waits while no card says
+      # it.
       notices = ../tests/stand-ins/now-notices.qml;
       whereabouts = pkgs.callPackage ../whereabouts/package.nix { };
     in
@@ -369,7 +370,6 @@ let
       cp ${../launcher/Now.qml} launcher/Now.qml
       cp ${../launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${../launcher/Notice.js} launcher/Notice.js
-      cp ${../NoticeBody.js} NoticeBody.js
       cp ${../launcher/NeedsYou.js} launcher/NeedsYou.js
       cp ${../launcher/Moment.js} launcher/Moment.js
       cp ${../launcher/NowGroups.js} launcher/NowGroups.js
@@ -389,6 +389,8 @@ let
       cp ${../launcher/words.json} launcher/words.json
       cp ${test} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/NoticesDaemon.qml} NoticesDaemon.qml
+      cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
@@ -399,7 +401,7 @@ let
       cp ${../Hearing.js} Hearing.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
-      mkdir -p $XDG_RUNTIME_DIR/whereabouts root/etc
+      mkdir -p $XDG_RUNTIME_DIR/whereabouts $XDG_RUNTIME_DIR/daemons root/etc
       ln -s /etc/zoneinfo/America/Halifax root/etc/localtime
       echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
       '"when":1790000000,"place":"Kelpwater, Westmark","zone":"America/Toronto",'\

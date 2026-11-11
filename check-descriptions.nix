@@ -81,13 +81,9 @@
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open
   '';
-  a-notice-is-one-thing = ''
-    a notice's card and its row among the notices list the same acts in one order, copying last,
-    and a notice gone from the screen keeps none of its sender's
-  '';
-  a-notice-keeps-its-links = ''
-    a notice's body keeps its links, bare addresses included, and only the spec's bold, italics,
-    underline and links as markup, everything else escaped as its sender's words
+  a-notice-found-is-noted-by-what-was-typed = ''
+    a notice found by a search is noted by the line of its words holding what was typed, worked
+    out only once it's read, and its card offers its sender's acts but the one that opens it
   '';
   a-capture-says-what-it-took = ''
     a screenshot's or a recording's drawer says where it is and what kind, when it was taken to

@@ -44,7 +44,6 @@ import Quickshell.Wayland
 import QtQuick
 import "Columns.js" as Columns
 import "LiveNotice.js" as LiveNotice
-import "NoticeBody.js" as NoticeBody
 import "Stack.js" as Stack
 
 Scope {
@@ -282,17 +281,13 @@ Scope {
     // What a notice said, as plain text: its summary, and its body without
     // the markup it may carry.
     function said(notification) {
-        const body = root.plain(notification.body);
+        const body = notification.words.plain;
         return body === "" ? notification.summary : `${notification.summary}\n${body}`;
     }
 
-    function plain(body) {
-        return NoticeBody.read(body).plain;
-    }
-
     // A link in what a notice said opened in the program the desktop opens
-    // it with, through niri, as every program is (NoticeBody.js lets only
-    // the web's and mail's through).
+    // it with, through niri, as every program is (the daemon's body.rs lets
+    // only the web's and mail's through).
     function follow(href) {
         Niri.spawn(["xdg-open", href]);
     }
@@ -415,13 +410,13 @@ Scope {
             const at = card.mapToItem(null, 0, 0);
             const left = screen.width - window.width + at.x;
             const pileAt = pile.mapToItem(null, 0, 0);
-            const from = Notices.sender(root.front.appName, root.front.desktopEntry);
+            const from = root.front.from;
             return JSON.stringify({
                 signed: from.name,
-                glyph: String.fromCodePoint(from.glyph),
+                glyph: from.glyph,
                 hue: from.hue,
                 pictured: Notices.picture(root.front) !== "",
-                links: NoticeBody.read(root.front.body).links.map(link => link.href),
+                links: root.front.words.links.map(link => link.href),
                 left: left / screen.width,
                 top: at.y / screen.height,
                 right: (left + card.width) / screen.width,
@@ -804,8 +799,7 @@ Scope {
                     // notice going and the card with it, so nothing
                     // reads a notice no longer there.
                     readonly property var modelData: Notices.live[noticeId] ?? LiveNotice.none
-                    readonly property var from: Notices.sender(modelData.appName,
-                        modelData.desktopEntry)
+                    readonly property var from: modelData.from
                     // Where it stands in the stack, 0 at the front.
                     readonly property int rank: root.shown.indexOf(modelData.id)
                     readonly property bool front: rank === 0
@@ -871,12 +865,12 @@ Scope {
 
                         visible: card.front
                         width: parent.width
-                        mark: String.fromCodePoint(card.from.glyph)
+                        mark: card.from.glyph
                         hue: Theme[card.from.hue]
                         picture: Notices.picture(card.modelData)
                         quiet: card.modelData.urgency === NotificationUrgency.Low
                         title: card.modelData.summary
-                        words: NoticeBody.read(card.modelData.body).styled
+                        words: card.modelData.words.styled
                         onLinked: href => root.follow(href)
                         from: card.from.name
                         when: (more > 0 ? `${more} more \u00b7 ` : "")

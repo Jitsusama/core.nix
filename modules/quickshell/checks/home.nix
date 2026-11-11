@@ -63,10 +63,11 @@
   # that names another than the place's. For You's looks are given as
   # their files' texts, kept only while each reads the same, and what's
   # on as pieces whose rows are kept while each reads the same. For You's
-  # Desktop holds the notices' own rows (launcher/PastNotices.qml), each
-  # kept while its notice is the same. Lately's rows are kept as well, so
-  # a notice arriving makes only Desktop's row again, and a session's move
-  # that leaves what For You reads of it the same makes none.
+  # Desktop holds the notices' rows as their daemon serves them, stood in
+  # (tests/lib/NoticesDaemon.qml), each kept while its notice is the same.
+  # Lately's rows are kept as well, so a notice arriving makes only
+  # Desktop's row again, and a session's move that leaves what For You
+  # reads of it the same makes none.
   the-launcher-shows-the-moment-in-now = nowShown {
     name = "the-launcher-shows-the-moment-in-now";
     test = ../../../tests/now-moment.qml;

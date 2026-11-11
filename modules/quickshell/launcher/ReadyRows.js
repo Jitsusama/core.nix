@@ -188,10 +188,12 @@ function drawerOf(drawer, now, said) {
         body: drawer.body ?? ""
     };
     // What a drawer shows and the eyebrow's parts each pass through only
-    // where served: a picture's path and size, never its bytes, and parts
-    // that, where given, are drawn over the eyebrow's one text.
-    for (const field of ["eyebrow", "preview", "eyebrowItems"]) {
-        if (drawer[field] !== undefined) {
+    // where served: a preview's path and size, never its bytes; parts
+    // that, where given, are drawn over the eyebrow's one text; and, as
+    // Drawer.qml reads a notice's, a body styled where it carries markup
+    // or links, and its picture.
+    for (const field of ["eyebrow", "preview", "eyebrowItems", "styled", "picture"]) {
+        if (drawer[field] !== undefined && drawer[field] !== null) {
             drawn[field] = drawer[field];
         }
     }
@@ -407,6 +409,36 @@ function actWorded(act, worded, roles) {
         glyph: act.glyph === undefined ? worded.glyph : glyphOf(act.glyph, roles),
         side: typeof act.side === "string" ? act.side : ""
     };
+}
+
+// What each of a row's acts is kept by as a row of its own, since the
+// launcher holds its selection by key: its key where the row holds it
+// once, so every other place's keys stay as they were; where two share
+// one, as two links' "Open the Link", the key and what the act goes to,
+// so one going leaves the cursor on the other rather than moving it
+// along; only an act with no target of its own takes its place in the
+// row (Y2YBTS, 2026-11-11). A key the row has repeated before, in
+// `repeated`, is still told apart once it's held once, or the last link
+// left would take its bare key and the cursor go from it; each key
+// repeated now is added there.
+function actKeys(acts, repeated) {
+    const times = {};
+    for (const one of acts) {
+        times[one.key] = (times[one.key] ?? 0) + 1;
+    }
+    for (const key of Object.keys(times)) {
+        if (times[key] > 1) {
+            repeated[key] = true;
+        }
+    }
+    return acts.map((one, at) => {
+        if (repeated[one.key] !== true) {
+            return one.key;
+        }
+        const target = [one.open, one.go, one.copy, one.ask?.action]
+            .find(each => typeof each === "string" && each !== "");
+        return `${one.key}:${target ?? at}`;
+    });
 }
 
 // The verb the foot says for an act: the name the daemon served it with,

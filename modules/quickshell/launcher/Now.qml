@@ -1174,14 +1174,11 @@ Provider {
         const came = from === undefined ? cameDone
             : cameDone.filter(one => one.source === from);
         // Notices' rows of every notice done with, asked for at once, each
-        // by its notice's id: rowsOf keeps the history's order.
+        // by its notice's id.
         const ids = came.map(one => one.of.id);
-        const found = source("notices")?.rowsOf(ids) ?? [];
         const notices = {};
-        Notices.history.filter(notice => ids.includes(notice.id)).forEach((notice, at) => {
-            if (found[at] !== undefined)
-                notices[notice.id] = found[at];
-        });
+        for (const row of source("notices")?.rowsOf(ids, "history") ?? [])
+            notices[row.notice] = row;
         const say = forYouSaid(now);
         const ours = from === undefined ? looks.history.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
@@ -1732,7 +1729,7 @@ Provider {
                 stays: true,
                 run: () => Notices.markRead(ids)
             })]).concat([provider.historyOf(from)]));
-        const listed = () => (ids.length > 0 ? (source("notices")?.rowsOf(ids) ?? [])
+        const listed = () => (ids.length > 0 ? (source("notices")?.rowsOf(ids, "desktop") ?? [])
             : []).concat(owned());
         const row = member({
             key: `on:waiting:${from}`,
