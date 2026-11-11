@@ -13,6 +13,9 @@ publish = false
 # The clocks the kernel counts time awake and time since boot by, which
 # std doesn't name.
 libc = "0.2"
+# The one form every daemon's rows take, each place's kept so a row
+# coming or going sends itself alone (../ready-rows).
+ready-rows = { path = "../ready-rows" }
 serde_json = "1"
 # UDisks, asked for a disk's health over the system bus, never spawned.
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }

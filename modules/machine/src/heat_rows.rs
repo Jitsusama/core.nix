@@ -11,7 +11,7 @@
 //! nothing (Joel, 2026-11-10: "the daemons need to be the data layer").
 //!
 //! A row is `row:heat:<id>`; one inside another names it as its `parent`
-//! and says its `depth`, and siblings are ordered among themselves. Its
+//! and says its `depth`, and each comes in the order it's shown. Its
 //! graph is worked out whole and sent in the steps the shell draws, so a
 //! reading that leaves the drawing as it was changes nothing and the row
 //! isn't sent again. The Last Reads are kept only between reads made
@@ -868,7 +868,6 @@ fn capitalised(label: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rows::SPACED;
 
     /// The words these cases say, as words.json has them.
     fn words() -> Words {
@@ -981,7 +980,7 @@ mod tests {
     }
 
     /// The parts first, throttling right after the processor, then the
-    /// fans; each a step in from its own, ordered among its siblings.
+    /// fans; each a step in from its own, shown after it.
     #[test]
     fn each_part_then_its_rows_a_step_inside() {
         let ready = read(&mut Heat::default(), 71.0, 79.0, 1000);
@@ -1010,8 +1009,18 @@ mod tests {
             (core["depth"].clone(), core["name"].clone()),
             (json!(2), json!("Core 0"))
         );
-        assert_eq!(row(&ready, "disk:0")["order"], json!(3 * SPACED));
-        assert_eq!(row(&ready, "processor:0/cores")["order"], json!(2 * SPACED));
+        let shown: Vec<&str> = ready
+            .rows
+            .iter()
+            .filter_map(|row| row["key"].as_str())
+            .collect();
+        let at = |key: &str| shown.iter().position(|one| *one == key);
+        assert!(
+            at("row:heat:processor:0") < at("row:heat:processor:0/cores")
+                && at("row:heat:processor:0/cores") < at("row:heat:processor:0/cores/0")
+                && at("row:heat:processor:0/critical") < at("row:heat:throttled"),
+            "each row inside shown after its own and before the next part: {shown:?}"
+        );
     }
 
     /// What's left to its limit beside it, a hotter core in its note, and
@@ -1048,7 +1057,7 @@ mod tests {
         let acts = &part["acts"];
         assert_eq!(
             acts[0],
-            json!({ "key": "verb:copy", "ask": { "copy": "71.0 \u{b0}C" } })
+            json!({ "key": "verb:copy", "copy": "71.0 \u{b0}C" })
         );
         assert_eq!(acts[1]["key"], "verb:more");
     }

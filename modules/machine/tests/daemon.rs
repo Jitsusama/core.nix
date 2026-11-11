@@ -784,6 +784,37 @@ fn powers_rows_are_made_for_its_watch_and_move_with_its_limit() {
         moved["row"]["side"][0]["said"],
         "stops at 60%, starts below 55%"
     );
+    // A row that goes sends only itself: the rows after it keep their
+    // orders, where ordering siblings by where they stood sent every one
+    // after it again (FEH1HE, 2026-11-10).
+    std::fs::remove_file(
+        running
+            .root()
+            .join("sys/class/power_supply/BAT0/cycle_count"),
+    )
+    .expect("the cycles taken away");
+    let mut told = Vec::new();
+    loop {
+        let said = client.heard();
+        told.extend(
+            said["changed"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|record| record["key"].as_str().map(str::to_owned)),
+        );
+        if said["gone"]
+            .as_array()
+            .is_some_and(|gone| gone.contains(&json!("row:power:cycles")))
+        {
+            break;
+        }
+    }
+    let after = ["type", "temperature", "made"].map(|id| format!("row:power:{id}"));
+    assert!(
+        !told.iter().any(|key| after.contains(key)),
+        "no row after the one gone told again: {told:?}"
+    );
 }
 
 #[test]
