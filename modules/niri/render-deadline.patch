@@ -1,0 +1,590 @@
+Renders each frame as late as it can and still make the next vblank, so
+a client's commit that comes after the last vblank is shown at the next
+one rather than a refresh later. The time left for rendering adapts to
+the vblanks it misses, and debug's disable-render-deadline turns it off. Upstream's niri-wm/niri#4692 by Liam Dyer, commit
+d83adcab41c1560b3d23d49d7b6c0533ec799d08, made on niri 26.04 and the
+patches before it here.
+
+diff --git a/docs/wiki/Configuration:-Debug-Options.md b/docs/wiki/Configuration:-Debug-Options.md
+index b43cfe3..56e6d56 100644
+--- a/docs/wiki/Configuration:-Debug-Options.md
++++ b/docs/wiki/Configuration:-Debug-Options.md
+@@ -33,6 +33,7 @@ debug {
+     honor-xdg-activation-with-invalid-serial
+     skip-cursor-only-updates-during-vrr
+     deactivate-unfocused-windows
++    disable-render-deadline
+ }
+ 
+ binds {
+@@ -345,6 +346,23 @@ debug {
+ }
+ ```
+ 
++### `disable-render-deadline`
++
++<sup>Since: next release</sup>
++
++Render frames as soon as something changes, instead of just before the next vblank.
++
++By default, niri renders as late as it can while still making the next vblank, so that commits arriving in the meantime (e.g. a terminal answering a keypress while another window is animating) make it into the same frame.
++The time it leaves for rendering adapts to missed vblanks.
++This flag restores rendering right away, for example to check whether it causes dropped frames on your hardware.
++It has no effect on VRR outputs, which always render right away.
++
++```kdl
++debug {
++    disable-render-deadline
++}
++```
++
+ ### Key Bindings
+ 
+ These are not debug options, but rather key bindings.
+diff --git a/niri-config/src/debug.rs b/niri-config/src/debug.rs
+index c0779a4..eb32391 100644
+--- a/niri-config/src/debug.rs
++++ b/niri-config/src/debug.rs
+@@ -25,6 +25,7 @@ pub struct Debug {
+     pub honor_xdg_activation_with_invalid_serial: bool,
+     pub deactivate_unfocused_windows: bool,
+     pub skip_cursor_only_updates_during_vrr: bool,
++    pub disable_render_deadline: bool,
+ }
+ 
+ #[derive(knuffel::Decode, Debug, Default, PartialEq)]
+@@ -71,6 +72,8 @@ pub struct DebugPart {
+     pub deactivate_unfocused_windows: Option<Flag>,
+     #[knuffel(child)]
+     pub skip_cursor_only_updates_during_vrr: Option<Flag>,
++    #[knuffel(child)]
++    pub disable_render_deadline: Option<Flag>,
+ }
+ 
+ impl MergeWith<DebugPart> for Debug {
+@@ -95,6 +98,7 @@ impl MergeWith<DebugPart> for Debug {
+             honor_xdg_activation_with_invalid_serial,
+             deactivate_unfocused_windows,
+             skip_cursor_only_updates_during_vrr,
++            disable_render_deadline,
+         );
+ 
+         merge_clone_opt!((self, part), preview_render, render_drm_device);
+diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
+index e1ef640..3351108 100644
+--- a/niri-config/src/lib.rs
++++ b/niri-config/src/lib.rs
+@@ -2266,6 +2266,7 @@ mod tests {
+                 honor_xdg_activation_with_invalid_serial: false,
+                 deactivate_unfocused_windows: false,
+                 skip_cursor_only_updates_during_vrr: false,
++                disable_render_deadline: false,
+             },
+             workspaces: [
+                 Workspace {
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index beb5c59..7cce2b7 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -1846,6 +1846,11 @@ impl Tty {
+         output_state.last_drm_sequence = Some(meta.sequence);
+ 
+         output_state.frame_clock.presented(presentation_time);
++        if let Some(refresh) = refresh_interval {
++            output_state
++                .render_deadline
++                .presented(presentation_time, refresh);
++        }
+ 
+         if redraw_needed || output_state.unfinished_animations_remain {
+             let vblank_frame = tracy_client::Client::running()
+@@ -2619,6 +2624,9 @@ impl Tty {
+                         Some(refresh_interval(mode)),
+                         surface.compositor.vrr_enabled(),
+                     );
++                    if let Some(token) = mem::take(&mut output_state.render_deadline).take_timer() {
++                        niri.event_loop.remove(token);
++                    }
+                     niri.output_resized(&output);
+                 }
+             }
+diff --git a/src/lib.rs b/src/lib.rs
+index d516838..97a5193 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,6 +17,7 @@ pub mod layer;
+ pub mod layout;
+ pub mod niri;
+ pub mod protocols;
++pub mod render_deadline;
+ pub mod render_helpers;
+ pub mod rubber_band;
+ #[cfg(feature = "xdp-gnome-screencast")]
+diff --git a/src/niri.rs b/src/niri.rs
+index 8352340..389d8a1 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -151,6 +151,7 @@ use crate::protocols::mutter_x11_interop::MutterX11InteropManagerState;
+ use crate::protocols::output_management::OutputManagementManagerState;
+ use crate::protocols::screencopy::{Screencopy, ScreencopyBuffer, ScreencopyManagerState};
+ use crate::protocols::virtual_pointer::VirtualPointerManagerState;
++use crate::render_deadline::RenderDeadline;
+ use crate::render_helpers::blur::BlurOptions;
+ use crate::render_helpers::debug::push_opaque_regions;
+ use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
+@@ -505,6 +506,7 @@ pub struct OutputState {
+     pub global: GlobalId,
+     pub frame_clock: FrameClock,
+     pub redraw_state: RedrawState,
++    pub render_deadline: RenderDeadline,
+     pub on_demand_vrr_enabled: bool,
+     /// Whether power-off-monitor powered this output off by name.
+     ///
+@@ -3077,6 +3079,7 @@ impl Niri {
+         let state = OutputState {
+             global,
+             redraw_state: RedrawState::Idle,
++            render_deadline: RenderDeadline::default(),
+             on_demand_vrr_enabled: false,
+             off_by_name: false,
+             unfinished_animations_remain: false,
+@@ -3125,7 +3128,11 @@ impl Niri {
+         self.reposition_outputs(None);
+         self.gamma_control_manager_state.output_removed(output);
+ 
+-        let state = self.output_state.remove(output).unwrap();
++        let mut state = self.output_state.remove(output).unwrap();
++
++        if let Some(token) = state.render_deadline.take_timer() {
++            self.event_loop.remove(token);
++        }
+ 
+         match state.redraw_state {
+             RedrawState::Idle => (),
+@@ -3959,18 +3966,72 @@ impl Niri {
+     pub fn redraw_queued_outputs(&mut self, backend: &mut Backend) {
+         let _span = tracy_client::span!("Niri::redraw_queued_outputs");
+ 
+-        while let Some((output, _)) = self.output_state.iter().find(|(_, state)| {
+-            matches!(
+-                state.redraw_state,
+-                RedrawState::Queued | RedrawState::WaitingForEstimatedVBlankAndQueued(_)
+-            )
+-        }) {
+-            trace!("redrawing output");
++        // Outputs are rendered sequentially, so render the one with the soonest vblank first.
++        while let Some((output, _)) = self
++            .output_state
++            .iter()
++            .filter(|(_, state)| {
++                !state.render_deadline.is_pending()
++                    && matches!(
++                        state.redraw_state,
++                        RedrawState::Queued | RedrawState::WaitingForEstimatedVBlankAndQueued(_)
++                    )
++            })
++            .min_by_key(|(_, state)| state.frame_clock.next_presentation_time())
++        {
+             let output = output.clone();
++            if matches!(backend, Backend::Tty(_)) && self.defer_redraw_to_deadline(&output) {
++                continue;
++            }
++            trace!("redrawing output");
+             self.redraw(backend, &output);
+         }
+     }
+ 
++    /// Render as late as possible before the next vblank, so that every commit arriving
++    /// in the meantime makes it into the same frame, reducing input latency. Rendering immediately
++    /// only includes what has been committed so far. A client committing a moment later (e.g. a
++    /// terminal answering a keypress) then waits for the vblank, and the frame after it, i.e. up to
++    /// two refresh cycles.
++    fn defer_redraw_to_deadline(&mut self, output: &Output) -> bool {
++        let state = self.output_state.get_mut(output).unwrap();
++        // Expecting a vblank, render now
++        if !matches!(state.redraw_state, RedrawState::Queued) {
++            return false;
++        }
++        // VRR displays wait for the frame, there's no vblank to render ahead of
++        if state.frame_clock.vrr() || self.config.borrow().debug.disable_render_deadline {
++            return false;
++        }
++        let Some(refresh) = state.frame_clock.refresh_interval() else {
++            return false;
++        };
++        let now = get_monotonic_time();
++        let target = state.frame_clock.next_presentation_time();
++        let Some(deadline) = state.render_deadline.deadline(now, target, refresh) else {
++            return false;
++        };
++
++        let timer = Timer::from_duration(deadline - now);
++        let output = output.clone();
++        let token = self
++            .event_loop
++            .insert_source(timer, move |_, _, state| {
++                if let Some(output_state) = state.niri.output_state.get_mut(&output) {
++                    // Redrawn at the end of this loop iteration (unless something else changed
++                    // the redraw state in the meantime).
++                    let queued = matches!(output_state.redraw_state, RedrawState::Queued);
++                    output_state
++                        .render_deadline
++                        .timer_fired(queued.then_some(target));
++                }
++                TimeoutAction::Drop
++            })
++            .unwrap();
++        state.render_deadline.set_pending(token);
++        true
++    }
++
+     pub fn render_pointer<R: NiriRenderer>(
+         &self,
+         renderer: &mut R,
+@@ -4913,6 +4974,7 @@ impl Niri {
+ 
+         // Verify our invariant.
+         let state = self.output_state.get_mut(output).unwrap();
++        state.render_deadline.redraw_started();
+         assert!(matches!(
+             state.redraw_state,
+             RedrawState::Queued | RedrawState::WaitingForEstimatedVBlankAndQueued(_)
+diff --git a/src/render_deadline.rs b/src/render_deadline.rs
+new file mode 100644
+index 0000000..356c196
+--- /dev/null
++++ b/src/render_deadline.rs
+@@ -0,0 +1,333 @@
++use std::time::Duration;
++
++use smithay::reexports::calloop::RegistrationToken;
++
++const BUDGET_MIN: Duration = Duration::from_millis(1);
++const BUDGET_START: Duration = Duration::from_millis(2);
++const STEP_UP: Duration = Duration::from_micros(250);
++const STEP_DOWN: Duration = Duration::from_micros(5);
++const MIN_DEFER: Duration = Duration::from_micros(250);
++
++/// After a few idle refreshes, GPUs often put the display and themselves to sleep, resulting in the
++/// next frame taking longer than usual. Skip deferral in this case, there's likely nothing to batch
++/// anyway.
++const MAX_IDLE_REFRESHES: u32 = 8;
++const MAX_IDLE_TIME: Duration = Duration::from_millis(35);
++
++/// After a miss, decay to just above the budget that missed, and wait (exponential backoff) to
++/// decay further. Otherwise, we'd end up constantly decaying the budget below what the hardware
++/// needs, leading to missed vblanks.
++const COOLDOWN_MIN: Duration = Duration::from_secs(1);
++const COOLDOWN_MAX: Duration = Duration::from_secs(600);
++const MISS_HEADROOM: Duration = Duration::from_micros(50);
++
++#[derive(Debug, Clone, Copy)]
++enum Deadline {
++    /// Defer redraw until this timer fires.
++    Pending(RegistrationToken),
++    /// Timer fired, redraw immediately for this vblank.
++    Reached(Duration),
++}
++
++#[derive(Debug)]
++pub struct RenderDeadline {
++    deadline: Option<Deadline>,
++    /// Amount of time we expect redraw + flip to take
++    budget: Duration,
++    last_presentation_time: Option<Duration>,
++    next_presentation_time: Option<Duration>,
++    /// (budget, presentation_time)
++    last_presentation_miss: Option<(Duration, Duration)>,
++    cooldown: Duration,
++}
++
++impl Default for RenderDeadline {
++    fn default() -> Self {
++        Self {
++            deadline: None,
++            budget: BUDGET_START,
++            last_presentation_time: None,
++            next_presentation_time: None,
++            last_presentation_miss: None,
++            cooldown: COOLDOWN_MIN,
++        }
++    }
++}
++
++impl RenderDeadline {
++    /// When to start rendering a frame for `target`, or `None` to render right away.
++    pub fn deadline(&self, now: Duration, target: Duration, refresh: Duration) -> Option<Duration> {
++        // Already deferred, or the deadline was reached and it's time to render.
++        if self.deadline.is_some() || budget_too_large(self.budget, refresh) {
++            return None;
++        }
++        if now.saturating_sub(self.last_presentation_time?)
++            > (refresh * MAX_IDLE_REFRESHES).min(MAX_IDLE_TIME)
++        {
++            return None;
++        }
++
++        let deadline = target.checked_sub(self.budget)?;
++        (deadline > now + MIN_DEFER).then_some(deadline)
++    }
++
++    pub fn set_pending(&mut self, token: RegistrationToken) {
++        self.deadline = Some(Deadline::Pending(token));
++    }
++
++    pub fn is_pending(&self) -> bool {
++        matches!(self.deadline, Some(Deadline::Pending(_)))
++    }
++
++    /// The deadline timer fired. `target` is the vblank it was for, or `None` if the redraw is no
++    /// longer queued.
++    pub fn timer_fired(&mut self, presentation_time: Option<Duration>) {
++        self.deadline = presentation_time.map(Deadline::Reached);
++    }
++
++    /// Cancels a deferred redraw: the pending timer to remove, if any.
++    pub fn take_timer(&mut self) -> Option<RegistrationToken> {
++        match self.deadline.take() {
++            Some(Deadline::Pending(token)) => Some(token),
++            _ => None,
++        }
++    }
++
++    /// A redraw is starting. If it's the one deferred to its deadline, the frame it queues is
++    /// checked against the vblank the deadline was for.
++    pub fn redraw_started(&mut self) {
++        self.next_presentation_time = match self.deadline {
++            Some(Deadline::Reached(target)) => {
++                self.deadline = None;
++                Some(target)
++            }
++            _ => None,
++        };
++    }
++
++    pub fn presented(&mut self, presentation_time: Duration, refresh: Duration) {
++        if presentation_time.is_zero() {
++            return;
++        }
++        self.last_presentation_time = Some(presentation_time);
++
++        // If we've recently missed the vblank, don't go below the missed budget + some headroom.
++        let floor = match self.last_presentation_miss {
++            Some((budget, time)) if presentation_time.saturating_sub(time) < self.cooldown => {
++                budget + MISS_HEADROOM
++            }
++            _ => BUDGET_MIN,
++        };
++        let budget_decayed = self
++            .budget
++            .saturating_sub(STEP_DOWN)
++            .max(floor)
++            .min(self.budget);
++
++        self.budget = match self.next_presentation_time {
++            // Rendered with deferral but missed the vblank, raise the budget.
++            Some(target) if presentation_time > target + refresh / 2 => {
++                // Exponential backoff when repeated tries to lower the budget miss vblank.
++                let miss_repeated = self
++                    .last_presentation_miss
++                    .is_some_and(|(budget, _)| self.budget.abs_diff(budget) <= MISS_HEADROOM);
++                self.cooldown = if miss_repeated {
++                    (self.cooldown * 2).min(COOLDOWN_MAX)
++                } else {
++                    COOLDOWN_MIN
++                };
++
++                self.last_presentation_miss = Some((self.budget, presentation_time));
++
++                let budget = (self.budget + STEP_UP).min(refresh);
++                debug!(
++                    "render deadline: frame missed its vblank by {:?} with a budget of {:?}, \
++                     budget now {budget:?}, holding for {:?}",
++                    presentation_time - target,
++                    self.budget,
++                    self.cooldown,
++                );
++                if !budget_too_large(self.budget, refresh) && budget_too_large(budget, refresh) {
++                    debug!(
++                        "render deadline: budget grew to {budget:?}, over 3/4 of the {refresh:?} \
++                         refresh, rendering immediately until it decays"
++                    );
++                }
++                budget
++            }
++
++            // Rendered with deferral before the vblank.
++            Some(_) => budget_decayed,
++
++            // Rendered immediately because budget grew too large, decay it.
++            None if budget_too_large(self.budget, refresh) => {
++                if !budget_too_large(budget_decayed, refresh) {
++                    debug!(
++                        "render deadline: budget decayed to {budget_decayed:?}, \
++                         rendering at deadlines again (refresh {refresh:?})"
++                    );
++                }
++                budget_decayed
++            }
++
++            // Rendered immediately for some other reason, leave budget unchanged.
++            None => self.budget,
++        };
++    }
++}
++
++/// Rendering takes >3/4 of a frame, meaning the user's PC can't keep up.
++fn budget_too_large(budget: Duration, refresh: Duration) -> bool {
++    budget * 4 >= refresh * 3
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    const REFRESH_240: Duration = Duration::from_nanos(4_166_667);
++    const REFRESH_60: Duration = Duration::from_nanos(16_666_667);
++
++    fn ms(ms: u64) -> Duration {
++        Duration::from_millis(ms)
++    }
++
++    fn with_budget(budget: Duration) -> RenderDeadline {
++        RenderDeadline {
++            budget,
++            ..Default::default()
++        }
++    }
++
++    fn immediately_presented_at(rd: &mut RenderDeadline, time: Duration, refresh: Duration) {
++        rd.redraw_started();
++        rd.presented(time, refresh);
++    }
++
++    fn deferred_presented_at(rd: &mut RenderDeadline, target: Duration, time: Duration) {
++        rd.timer_fired(Some(target));
++        rd.redraw_started();
++        rd.presented(time, REFRESH_240);
++    }
++
++    fn simulate_renders(
++        rd: &mut RenderDeadline,
++        refresh: Duration,
++        need: Duration,
++        secs: u64,
++    ) -> u32 {
++        let mut now = ms(100);
++        immediately_presented_at(rd, now, refresh);
++        let end = now + Duration::from_secs(secs);
++        let mut misses = 0;
++        while now < end {
++            let target = now + refresh;
++            let deferred = rd.deadline(now, target, refresh).is_some();
++            if deferred {
++                rd.timer_fired(Some(target));
++            }
++            rd.redraw_started();
++            now = if deferred && rd.budget < need {
++                misses += 1;
++                target + refresh
++            } else {
++                target
++            };
++            rd.presented(now, refresh);
++        }
++        misses
++    }
++
++    #[test]
++    fn deadline() {
++        let budget = ms(2);
++        let mut rd = with_budget(budget);
++        assert_eq!(rd.deadline(ms(100), ms(104), REFRESH_240), None);
++
++        let last = ms(100);
++        immediately_presented_at(&mut rd, last, REFRESH_240);
++        assert_eq!(rd.deadline(ms(101), ms(104), REFRESH_240), Some(ms(102)));
++        let now = Duration::from_micros(101_900);
++        assert_eq!(rd.deadline(now, ms(104), REFRESH_240), None);
++
++        // Idle for 7 refreshes, deferred
++        let target = last + REFRESH_240 * 8;
++        let deadline = Some(target - budget);
++        assert_eq!(
++            rd.deadline(last + REFRESH_240 * 7, target, REFRESH_240),
++            deadline
++        );
++        // Idle for 9 refreshes, rendered immediately
++        let target = last + REFRESH_240 * 10;
++        assert_eq!(
++            rd.deadline(last + REFRESH_240 * 9, target, REFRESH_240),
++            None
++        );
++
++        // At 60hz, the idle limit is 35 ms (~2 frames)
++        immediately_presented_at(&mut rd, last, REFRESH_60);
++        let target = last + ms(50);
++        assert_eq!(
++            rd.deadline(last + ms(34), target, REFRESH_60),
++            Some(target - budget)
++        );
++        assert_eq!(rd.deadline(last + ms(36), target, REFRESH_60), None);
++
++        // Deadline reached, redraw hasn't started yet
++        immediately_presented_at(&mut rd, last, REFRESH_240);
++        rd.timer_fired(Some(ms(104)));
++        assert_eq!(rd.deadline(ms(101), ms(104), REFRESH_240), None);
++
++        // At 1000hz, minimum budget too high, always immediate
++        let mut rd = with_budget(BUDGET_MIN);
++        immediately_presented_at(&mut rd, ms(100), ms(1));
++        assert_eq!(rd.deadline(ms(100), ms(102), ms(1)), None);
++    }
++
++    #[test]
++    fn adaptive_budget() {
++        let start = ms(2);
++        let mut rd = with_budget(start);
++        immediately_presented_at(&mut rd, ms(100), REFRESH_240);
++
++        // Deferred frame but landed on next vblank, raises budget
++        deferred_presented_at(&mut rd, ms(104), ms(108));
++        assert_eq!(rd.budget, start + STEP_UP);
++
++        // Deferred frame, decays budget
++        deferred_presented_at(&mut rd, ms(112), ms(112));
++        assert_eq!(rd.budget, start + STEP_UP - STEP_DOWN);
++
++        // Immediate frame, keeps budget
++        immediately_presented_at(&mut rd, ms(116), REFRESH_240);
++        assert_eq!(rd.budget, start + STEP_UP - STEP_DOWN);
++
++        // During cooldown, hits decay to previously missed budget
++        for _ in 0..1000 {
++            deferred_presented_at(&mut rd, ms(120), ms(120));
++        }
++        assert_eq!(rd.budget, start + MISS_HEADROOM);
++
++        // After cooldown, down to minimum
++        let after = ms(108) + COOLDOWN_MIN;
++        for _ in 0..1000 {
++            deferred_presented_at(&mut rd, after, after);
++        }
++        assert_eq!(rd.budget, BUDGET_MIN);
++    }
++
++    #[test]
++    fn exponential_backoff() {
++        let mut rd = RenderDeadline::default();
++        assert_eq!(
++            simulate_renders(&mut rd, REFRESH_240, Duration::from_micros(1500), 600),
++            10
++        );
++    }
++
++    #[test]
++    fn slow_rendering_falls_back() {
++        let mut rd = RenderDeadline::default();
++        assert_eq!(simulate_renders(&mut rd, REFRESH_60, ms(14), 600), 52);
++    }
++}
