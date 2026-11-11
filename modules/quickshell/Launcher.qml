@@ -10144,12 +10144,23 @@ Scope {
                                 // Laid out now rather than at the next frame,
                                 // so the rows drawn stand where they will and
                                 // the selection is placed from them (rowY).
+                                // How many rows the laying built and took
+                                // back from those let go are said beside it,
+                                // since Joel's "ca" laid for 191 ms with 15
+                                // rows new and "batt" for 1 with 1
+                                // (2026-11-11): rows moving into view are
+                                // drawn too, and a laying long for the rows
+                                // it drew is spent elsewhere.
                                 const laying = Date.now();
+                                const built = root.rowsBuilt;
+                                const drawn = root.rowsDrawn;
                                 list.forceLayout();
                                 list.keptLast = {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
-                                    laying: Date.now() - laying
+                                    laying: Date.now() - laying,
+                                    built: root.rowsBuilt - built,
+                                    reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };
                                 return false;
                             }
