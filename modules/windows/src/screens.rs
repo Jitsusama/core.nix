@@ -348,10 +348,7 @@ fn figures(given: &str, count: usize) -> Option<Vec<f64>> {
 /// halfway between rounds up, as the shell's toFixed did.
 fn xy(said: &str, x: f64, y: f64, numbers: &Numbers) -> String {
     let scale = 10f64.powi(3);
-    let placed = |value: f64| {
-        format!("{:.COORDINATE_PLACES$}", (value * scale).round() / scale)
-            .replace('.', numbers.point())
-    };
+    let placed = |value: f64| numbers.fixed((value * scale).round() / scale, COORDINATE_PLACES);
     said.replace("{x}", &placed(x)).replace("{y}", &placed(y))
 }
 

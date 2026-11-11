@@ -19,6 +19,14 @@
     { "group": "", "point": "", "value": -12, "places": 0, "said": "-12" },
     { "group": " ", "point": ",", "value": 1234.25, "places": 2, "said": "1 234,25" }
   ],
+  "fixed": [
+    { "group": "", "point": "", "value": 0.06, "places": 3, "said": "0.060" },
+    { "group": "", "point": "", "value": 0, "places": 3, "said": "0.000" },
+    { "group": "", "point": "", "value": 0.313, "places": 3, "said": "0.313" },
+    { "group": "", "point": "", "value": -1.5, "places": 2, "said": "\u22121.50" },
+    { "group": "", "point": "", "value": 6462, "places": 0, "said": "6,462" },
+    { "group": ".", "point": ",", "value": 1234.6, "places": 3, "said": "1.234,600" }
+  ],
   "whole": [
     { "group": "", "point": "", "value": -14.4, "said": "\u221214" },
     { "group": "", "point": "", "value": 1203.6, "said": "1,204" }
