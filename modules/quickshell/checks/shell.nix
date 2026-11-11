@@ -197,6 +197,23 @@
     touch $out
   '';
 
+  # A field turned into a getter in one object leaves every other object's
+  # fields whole, in the Qt the shell is built with
+  # (qtdeclarative-accessor-keeps-its-own-table.patch): in Qt 6.12.0 the
+  # second of two such turns, in shapes grown one from the other, put its
+  # setter over a field, which crashed the shell on 2026-11-11. Run in qs,
+  # so it's the shell's own engine that's judged.
+  a-getter-turned-leaves-other-shapes-whole =
+    pkgs.runCommandLocal "a-getter-turned-leaves-other-shapes-whole" { }
+      ''
+        mkdir runtime && chmod 700 runtime
+        cp ${../../../tests/getters-keep-their-own-table.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
+
   # A file reloaded while it's still being read is read once more as that
   # read lands, so the view holds what was written last, as
   # tests/reloaded.qml drives it in the Quickshell the machine runs

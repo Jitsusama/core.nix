@@ -77,6 +77,31 @@
 # Open-Meteo, for its zone and its weather.
 { pkgs, ... }:
 let
+  # The Qt the shell is built with: nixpkgs' own, its JavaScript engine
+  # patched. Qt 6.12.0's turns a field into a getter by writing where the
+  # getter's setter lives into a table other objects' shapes share, so a
+  # later such turn in a longer shape stored its setter over one of its
+  # fields, or past the object's end, which crashed the shell on
+  # 2026-11-11 (qtdeclarative-accessor-keeps-its-own-table.patch). The
+  # three fixes to its collector that Qt's 6.12 branch has since 6.12.0
+  # come with it. Only the shell and the modules it loads are built with
+  # it, so nothing else on the machine is rebuilt for it.
+  shellQt =
+    prev:
+    prev.qt6.overrideScope (
+      _: qt: {
+        qtdeclarative = qt.qtdeclarative.overrideAttrs (old: {
+          # In the order Qt's branch took them, as each collector fix is
+          # written over the one before it.
+          patches = (old.patches or [ ]) ++ [
+            ./qtdeclarative-accessor-keeps-its-own-table.patch
+            ./qtdeclarative-sweep-keeps-what-it-allocates.patch
+            ./qtdeclarative-generator-frames-marked.patch
+            ./qtdeclarative-generator-frames-checked.patch
+          ];
+        });
+      }
+    );
   # The standard library alone, so it builds with rustc and no crates.
   keyboardLights = pkgs.runCommandCC "keyboard-lights" { nativeBuildInputs = [ pkgs.rustc ]; } ''
     mkdir -p $out/bin
@@ -87,30 +112,38 @@ in
 {
   nixpkgs.overlays = [
     (_: prev: {
-      quickshell = prev.quickshell.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [
-          ./activation-token.patch
-          ./bluetooth-finds-bluez-late.patch
-          ./bluetooth-rssi-and-failures.patch
-          ./desktop-entries-heard-only-when-theirs.patch
-          ./fileview-quiet.patch
-          ./fileview-watch-nearest.patch
-          ./fileview-reads-again.patch
-          ./frame-presentation.patch
-          ./ipc-replies-whole.patch
-          ./pipewire-node-state-and-format.patch
-        ];
-        qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
-          "--prefix"
-          "NIXPKGS_QT6_QML_IMPORT_PATH"
-          ":"
-          "${prev.callPackage ./maths/package.nix { }}/${prev.qt6.qtbase.qtQmlPrefix}"
-          "--prefix"
-          "NIXPKGS_QT6_QML_IMPORT_PATH"
-          ":"
-          "${prev.callPackage ./key-times/package.nix { }}/${prev.qt6.qtbase.qtQmlPrefix}"
-        ];
-      });
+      quickshell =
+        let
+          qt6 = shellQt prev;
+          # Built with the shell's own Qt, as a QML module loaded in its
+          # process must be.
+          maths = prev.callPackage ./maths/package.nix { inherit qt6; };
+          keyTimes = prev.callPackage ./key-times/package.nix { inherit qt6; };
+        in
+        (prev.quickshell.override { inherit qt6; }).overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [
+            ./activation-token.patch
+            ./bluetooth-finds-bluez-late.patch
+            ./bluetooth-rssi-and-failures.patch
+            ./desktop-entries-heard-only-when-theirs.patch
+            ./fileview-quiet.patch
+            ./fileview-watch-nearest.patch
+            ./fileview-reads-again.patch
+            ./frame-presentation.patch
+            ./ipc-replies-whole.patch
+            ./pipewire-node-state-and-format.patch
+          ];
+          qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
+            "--prefix"
+            "NIXPKGS_QT6_QML_IMPORT_PATH"
+            ":"
+            "${maths}/${prev.qt6.qtbase.qtQmlPrefix}"
+            "--prefix"
+            "NIXPKGS_QT6_QML_IMPORT_PATH"
+            ":"
+            "${keyTimes}/${prev.qt6.qtbase.qtQmlPrefix}"
+          ];
+        });
       wf-recorder = prev.wf-recorder.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
           ./wf-recorder-dmabuf-version.patch

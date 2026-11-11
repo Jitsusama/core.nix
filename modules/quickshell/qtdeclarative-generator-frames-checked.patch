@@ -1,0 +1,40 @@
+From 9eca4322acef46f67405e891d9a61661a4fc26ee Mon Sep 17 00:00:00 2001
+From: Ulf Hermann <ulf.hermann@qt.io>
+Date: Wed, 21 Oct 2026 14:14:06 +0200
+Subject: [PATCH] QtQml: Check function for null before marking generator
+ frames
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Amends commit 65c743820a26b83836589ed6c84d1e91f0ab2a2f.
+
+Fixes: QTBUG-151511
+Original-patch-by: Rafał Mikrut
+Pick-to: 6.8
+Change-Id: I2467db18ffe140ccb0ffbb2ed3bf413954bc336b
+Reviewed-by: Fabian Kosmale <fabian.kosmale@qt.io>
+(cherry picked from commit 3c20488ac4a676c612cef9539144194a4fb86801)
+Reviewed-by: Sami Shalayel <sami.shalayel@qt.io>
+
+Taken from Qt's 6.12 branch, where it follows 6.12.0, with its test's
+changes left out, since the tests aren't built.
+
+---
+ src/qml/memory/qv4mm.cpp           |  2 +-
+ tests/auto/qml/qv4mm/tst_qv4mm.cpp | 41 ++++++++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/src/qml/memory/qv4mm.cpp b/src/qml/memory/qv4mm.cpp
+index b4f473d027d..6fe55ebbeaa 100644
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -1503,7 +1503,7 @@ void MemoryManager::collectFromJSStack(MarkStack *markStack) const
+         if (frame->isJSTypesFrame()) {
+             // Generator frames don't live on the JS stack, but in a heap object that the
+             // interpreter writes to without write barrier.
+-            if (frame->v4Function->isGenerator())
++            if (frame->v4Function && frame->v4Function->isGenerator())
+                 static_cast<const JSTypesStackFrame *>(frame)->markJSFrame(markStack);
+             continue;
+         }
