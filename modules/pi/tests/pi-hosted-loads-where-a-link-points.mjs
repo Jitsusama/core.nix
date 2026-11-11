@@ -53,7 +53,8 @@ const commandsOf = (loaded) => loaded.extensions.flatMap((one) => [...one.comman
 
 // Loads an extension through its link, moves the link in one rename to a
 // second copy, removing the first when asked, and loads it again, as a
-// reload does, with an empty extension cache.
+// reload does, with an empty extension cache, holding that the second copy
+// and its own helper load, still known by the link.
 const reloadAfterTheLinkMoves = async ({ firstGoes }) => {
   const folder = mkdtempSync(join(tmpdir(), "pi-hosted-link-"));
   const link = join(folder, "extensions", "linked");
@@ -67,17 +68,17 @@ const reloadAfterTheLinkMoves = async ({ firstGoes }) => {
 
   symlinkSync(copy(folder, "second"), `${link}.next`);
   renameSync(`${link}.next`, link);
-  if (firstGoes) rmSync(join(folder, "copies", "first"), { recursive: true });
+  if (firstGoes) {
+    rmSync(join(folder, "copies", "first"), { recursive: true });
+  }
   clearExtensionCache();
   const after = await loadExtensions([entry], folder);
   rmSync(folder, { recursive: true, force: true });
-  return { after, entry };
-};
-
-for (const firstGoes of [true, false]) {
-  const { after, entry } = await reloadAfterTheLinkMoves({ firstGoes });
   const which = firstGoes ? "once the first copy was gone" : "while the first copy stayed";
   assert.deepEqual(after.errors, [], `the moved link's copy didn't load ${which}`);
   assert.deepEqual(commandsOf(after), ["from-second"], `the reload ran old code ${which}`);
   assert.equal(after.extensions[0].path, entry, "the extension is no longer known by its link");
-}
+};
+
+await reloadAfterTheLinkMoves({ firstGoes: true });
+await reloadAfterTheLinkMoves({ firstGoes: false });
