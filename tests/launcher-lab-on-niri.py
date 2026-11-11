@@ -49,10 +49,9 @@ WINDOWS = 4
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
     """Give the shell once it has kept home by itself, started once a run and never opened."""
-    started = launcher_on_niri.started()
-    started.launcher_until(lambda shown: shown.get("kept"))
-    yield started
-    started.stop()
+    with launcher_on_niri.running() as started:
+        started.launcher_until(lambda shown: shown.get("kept"))
+        yield started
 
 
 def openings(shell: Shell) -> list[Json]:
@@ -113,7 +112,8 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
             }
             with capsys.disabled():
                 print("lab-opening " + json.dumps(said), flush=True)
-            assert opening["presented"] >= 0, f"{place}'s opening closed unpresented: {opening}"
+            if opening["presented"] < 0:
+                pytest.fail(f"{place}'s opening closed unpresented: {opening}")
             timed[place].append(opening["presented"])
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
@@ -121,6 +121,6 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
         shell.close(window)
     for place, spans in timed.items():
         median = round(statistics.median(spans))
-        said = f"{len(spans)} presented a median {median} ms, p90 {p90(spans)}"
+        line = f"{len(spans)} presented a median {median} ms, p90 {p90(spans)}"
         with capsys.disabled():
-            print(f"lab-place {place}: {said}", flush=True)
+            print(f"lab-place {place}: {line}", flush=True)
