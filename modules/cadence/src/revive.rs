@@ -430,9 +430,68 @@ pub fn marked(listing: &serde_json::Value, session: &str) -> Vec<(String, Option
     found
 }
 
+/// What each peer is told of a look's revivals, `told` holding whom
+/// each line is for, in the order they were started: one message each,
+/// however many sessions it started. A harness rollover at 03:22 on
+/// 11 November ended about 40 sessions together, and telling of each
+/// alone sent the steward 40 messages and the watcher 40 more.
+#[must_use]
+pub fn gathered(told: &[(String, String)]) -> Vec<(String, String)> {
+    let mut each: Vec<(String, Vec<&str>)> = Vec::new();
+    for (to, line) in told {
+        match each.iter_mut().find(|(peer, _)| peer == to) {
+            Some((_, lines)) => lines.push(line),
+            None => each.push((to.clone(), vec![line])),
+        }
+    }
+    each.into_iter()
+        .map(|(to, lines)| {
+            let text = match lines.as_slice() {
+                [one] => (*one).to_owned(),
+                all => format!(
+                    "{} sessions were started again: {}",
+                    all.len(),
+                    all.join(" ")
+                ),
+            };
+            (to, text)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_look_that_starts_several_sessions_tells_each_peer_once() {
+        let told: Vec<(String, String)> = [
+            ("steward", "A died; started again."),
+            ("watcher", "A died; started again."),
+            ("steward", "B died; started again."),
+            ("orchestrator", "B died; started again."),
+            ("watcher", "B died; started again."),
+        ]
+        .map(|(to, line)| (to.to_owned(), line.to_owned()))
+        .into();
+        let both = "2 sessions were started again: A died; started again. B died; started again.";
+        assert_eq!(
+            gathered(&told),
+            [
+                ("steward".to_owned(), both.to_owned()),
+                ("watcher".to_owned(), both.to_owned()),
+                (
+                    "orchestrator".to_owned(),
+                    "B died; started again.".to_owned()
+                ),
+            ],
+            "each peer hears one message, with its own sessions' lines"
+        );
+        assert!(
+            gathered(&[]).is_empty(),
+            "a look that started nothing says nothing"
+        );
+    }
 
     #[test]
     fn nothing_starts_before_sign_in_or_while_the_desktop_settles() {
