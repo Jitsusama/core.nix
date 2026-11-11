@@ -135,6 +135,10 @@ ShellRoot {
         function wants(source) {
             return wanting;
         }
+        // Nothing is drawn here, so what waits on a frame runs at once.
+        function afterFrame(then) {
+            then();
+        }
         readonly property var sources: [weather, calendar, cameras, power, pastNotices, agents]
         property int placed: 0
 
@@ -239,7 +243,108 @@ ShellRoot {
                 === JSON.stringify(["e.json", "f.json", "g.json"]) && banded() === 1
                 && now.forYouBands.look.length === 3,
             JSON.stringify([Object.keys(now.lookTexts), banded()]))))
+            noticesServed();
+    }
+
+    // For You's Desktop holds the notices unread as the notices daemon
+    // serves their rows, and its History those done with, each made again
+    // only once the daemon says its notice changed: every notice's was
+    // made anew at any change, 488 on Joel's shell as he stepped into
+    // Desktop (2026-11-10). Desktop's rows are watched while the launcher
+    // is open, so it's open for these.
+    function noticeOf(id, read) {
+        return { id: id, at: Date.now() - id * 60000, app: "Tester", summary: `Notice ${id}`,
+            body: "said", read: read, missed: false,
+            readAt: read ? Date.now() - id * 60000 : null };
+    }
+    property var told: []
+    property var madeBefore: []
+    // What the case waits to have been served, or "" while it waits on
+    // nothing.
+    property string waiting: ""
+    function madeNow() {
+        return [pastNotices.tally.rows, now.tally.rows];
+    }
+    function since(before) {
+        return madeNow().map((count, at) => count - before[at]);
+    }
+    function stepIn() {
+        const held = now.leadsTo("notices")[1].verbs();
+        return { held: held, history: held[held.length - 1].verbs() };
+    }
+    function served(id, read) {
+        return pastNotices.rowsOf([id], "history")[0]?.unread === !read;
+    }
+    function noticesServed() {
+        const told = [];
+        for (let id = 1; id <= 30; id++)
+            told.push(noticeOf(id, id > 3));
+        root.told = told;
+        theLauncher.open = true;
+        Notices.history = told;
+        noticesDaemon.notices = told;
+        waiting = "the notices served";
+        heardNotices();
+    }
+    function heardNotices() {
+        if (waiting === "the notices served" && pastNotices.rowsOf([1], "desktop").length > 0
+            && served(30, true))
+            firstNotices();
+        else if (waiting === "one read" && pastNotices.rowsOf([2], "desktop").length === 0
+            && served(2, true))
+            oneRead();
+    }
+    function firstNotices() {
+        waiting = "";
+        if (!tried(() => {
+            const desktop = stepIn();
+            expect("For You's Desktop holds the notices unread, then Mark Them Read and History",
+                JSON.stringify(desktop.held.map(row => row.name)) === JSON.stringify([
+                    "Notice 1", "Notice 2", "Notice 3", "Mark Them Read", "History"])
+                    && desktop.history.length === 27,
+                JSON.stringify([desktop.held.map(row => row.name), desktop.history.length]));
+            const before = madeNow();
+            stepIn();
+            expect("stepped into again, it makes none of the notices' rows again",
+                since(before)[0] === 0, JSON.stringify(since(before)));
+        }))
+            return;
+        const read = told.map(one => one.id === 2
+            ? Object.assign({}, one, { read: true, readAt: Date.now() }) : one);
+        madeBefore = madeNow();
+        Notices.history = read;
+        noticesDaemon.notices = read;
+        waiting = "one read";
+        heardNotices();
+    }
+    function oneRead() {
+        waiting = "";
+        if (tried(() => {
+            stepIn();
+            expect("one notice read, stepping in again makes only its row again",
+                since(madeBefore)[0] === 1, JSON.stringify(since(madeBefore)));
+        }))
             Qt.exit(0);
+    }
+
+    // The notices daemon, serving the rows of the notices a case gives.
+    NoticesDaemon {
+        id: noticesDaemon
+    }
+    Connections {
+        target: pastNotices
+
+        function onChanged() {
+            root.heardNotices();
+        }
+    }
+    Timer {
+        running: root.waiting !== ""
+        interval: 20000
+        onTriggered: {
+            console.warn(`FAIL never served: ${root.waiting}`);
+            Qt.exit(1);
+        }
     }
 
     // Whether the cases held, exiting 1 saying which didn't.
@@ -541,42 +646,6 @@ ShellRoot {
         expect("a kept row runs its piece's act as it is now",
             onRow("on:awake") === awakeRow && ran === "awake now", ran);
         Facts.all = [];
-
-        // For You's Desktop holds the notices unread as the notices' own
-        // rows, and its History those read, each made again only once its
-        // notice changes: every notice's was made anew at any change, 488
-        // on Joel's shell as he stepped into Desktop (2026-11-10).
-        const notice = (id, read) => ({ id: id, at: Date.now() - id * 60000, app: "Tester",
-            summary: `Notice ${id}`, body: "said", glyph: 0xf0f3, hue: "program",
-            read: read, missed: false, readAt: read ? Date.now() - id * 60000 : null });
-        const told = [];
-        for (let id = 1; id <= 30; id++)
-            told.push(notice(id, id > 3));
-        Notices.history = told;
-        const made = () => [pastNotices.tally.rows, now.tally.rows];
-        const since = before => made().map((count, at) => count - before[at]);
-        const stepIn = () => {
-            const held = now.leadsTo("notices")[1].verbs();
-            return { held: held, history: held[held.length - 1].verbs() };
-        };
-        let before = made();
-        const desktop = stepIn();
-        expect("For You's Desktop holds the notices unread, then Mark Them Read and History",
-            JSON.stringify(desktop.held.map(row => row.name)) === JSON.stringify(["Notice 1",
-                "Notice 2", "Notice 3", "Mark Them Read", "History"])
-                && desktop.history.length === 27,
-            JSON.stringify([desktop.held.map(row => row.name), desktop.history.length]));
-        before = made();
-        stepIn();
-        expect("stepped into again, it makes none of the notices' rows again",
-            since(before)[0] === 0, JSON.stringify(since(before)));
-        Notices.history = told.map(one => one.id === 2
-            ? Object.assign({}, one, { read: true, readAt: Date.now() }) : one);
-        before = made();
-        stepIn();
-        expect("one notice read, stepping in again makes only its row again",
-            since(before)[0] === 1, JSON.stringify(since(before)));
-        Notices.history = [];
 
         // For You's to-dos, the sessions wanting Joel and its bands' own
         // rows are kept as its looks are, while each reads the same: each
