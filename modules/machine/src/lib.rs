@@ -11,7 +11,8 @@
 //! restart, [`units`], and the parts Heat's rows say, gathered from those
 //! records and the processor's own telemetry ([`parts`], [`telemetry`]),
 //! and Heat's, Power's and Machine's own rows made of them, ready for the
-//! launcher ([`heat_rows`], [`power_rows`], [`machine_rows`], placed and
+//! launcher ([`heat_rows`], [`power_rows`], [`machine_rows`],
+//! [`processor_rows`], placed and
 //! graphed through [`rows`] and worded through [`words`]). Every file is
 //! read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
@@ -47,6 +48,7 @@ pub mod parts;
 pub mod power_rows;
 pub mod pressure;
 pub mod processor;
+pub mod processor_rows;
 pub mod rows;
 pub mod sleep;
 pub mod status;

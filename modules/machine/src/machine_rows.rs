@@ -5,8 +5,8 @@
 //! the Linux it runs. They're what the launcher's `Machine.qml` and
 //! `Machine.js` made of the same memory, boot and using records, moved
 //! here so the shell words, sorts and builds nothing (Joel, 2026-11-10:
-//! "the daemons need to be the data layer"). The processor and the disks
-//! follow.
+//! "the daemons need to be the data layer"). The Processor's are made
+//! in `processor_rows.rs` with the pieces here; the disks follow.
 //!
 //! Nothing here reads the wall clock: how long the machine has been up
 //! and when it started travel as times (`lasted` and `moment`), which
@@ -41,11 +41,12 @@ const BYTES: [&str; 6] = ["B", "kB", "MB", "GB", "TB", "PB"];
 /// The parts of a run said in one, as "DDR5 · 2 modules".
 const DOT: &str = " \u{b7} ";
 
-/// What Machine's rows are made of: the memory's record, this boot's,
-/// and the programs using the memory most, where they were read just
-/// now.
+/// What Machine's rows are made of: the processor's record, the
+/// memory's, this boot's, and the programs using each most, where they
+/// were read just now.
 #[derive(Clone, Copy, Default)]
 pub struct Held<'a> {
+    pub processor: Option<&'a Value>,
     pub memory: Option<&'a Value>,
     pub boot: Option<&'a Value>,
     pub using: Option<&'a [Value]>,
@@ -57,6 +58,10 @@ pub struct Held<'a> {
 pub fn read(held: Held, now: u64, words: &Words) -> Ready {
     let say = Say { words };
     let mut made = Vec::new();
+    made.extend(
+        held.processor
+            .and_then(|p| crate::processor_rows::row(p, held.using, words)),
+    );
     if let Some(memory) = held
         .memory
         .filter(|m| m["total_b"].as_f64().is_some_and(|t| t > 0.0))
@@ -72,19 +77,19 @@ pub fn read(held: Held, now: u64, words: &Words) -> Ready {
 }
 
 /// A figure's number, or none.
-fn number(value: &Value) -> f64 {
+pub(crate) fn number(value: &Value) -> f64 {
     value.as_f64().unwrap_or(0.0)
 }
 
 /// A share as a whole percentage, "42%".
-fn percent(share: f64) -> String {
+pub(crate) fn percent(share: f64) -> String {
     format!("{:.0}%", (share * 100.0).round())
 }
 
 /// A thing's parts in the order its words list them (VKCF3Z, 2026-11-07:
 /// what moves most first, then what describes, the model last), each
 /// part where its figure is made where the words don't list it.
-fn ordered(words: &Words, thing: &str, mut rows: Vec<Made>) -> Vec<Made> {
+pub(crate) fn ordered(words: &Words, thing: &str, mut rows: Vec<Made>) -> Vec<Made> {
     let order = words.parts(thing);
     let place = |row: &Made| {
         let id = format!("machine:{}", row.id);
@@ -98,23 +103,23 @@ fn ordered(words: &Words, thing: &str, mut rows: Vec<Made>) -> Vec<Made> {
 }
 
 /// The rows in what's said, as Machine's own words say them.
-struct Say<'a> {
-    words: &'a Words,
+pub(crate) struct Say<'a> {
+    pub(crate) words: &'a Words,
 }
 
 impl Say<'_> {
-    fn name(&self, id: &str) -> String {
+    pub(crate) fn name(&self, id: &str) -> String {
         self.words.name(&format!("machine:{id}"), &[])
     }
 
-    fn says(&self, id: &str, phrase: &str, fill: &[(&str, &str)]) -> String {
+    pub(crate) fn says(&self, id: &str, phrase: &str, fill: &[(&str, &str)]) -> String {
         self.words.said(&format!("machine:{id}"), phrase, fill)
     }
 
     /// A measure to three digits and its unit, a thousand a step: bytes
     /// whole below a kilobyte, "915 MB", "1.52 GB" (Machine.js's
     /// `measure`).
-    fn measure(&self, value: f64, units: &[&str]) -> String {
+    pub(crate) fn measure(&self, value: f64, units: &[&str]) -> String {
         let mut scaled = value;
         let mut at = 0;
         while scaled.abs() >= ROUNDS_UP && at < units.len() - 1 {
@@ -129,7 +134,7 @@ impl Say<'_> {
         format!("{said} {}", units[at])
     }
 
-    fn bytes(&self, count: f64) -> String {
+    pub(crate) fn bytes(&self, count: f64) -> String {
         self.measure(count, &BYTES)
     }
 
@@ -138,7 +143,7 @@ impl Say<'_> {
     }
 
     /// A count a second, whole once it's past ten.
-    fn often(&self, count: f64) -> String {
+    pub(crate) fn often(&self, count: f64) -> String {
         format!("{}/s", self.words.number(count, usize::from(count < 10.0)))
     }
 
@@ -154,7 +159,13 @@ impl Say<'_> {
     }
 
     /// A figure of Machine's, named by its words.
-    fn figure(&self, id: &str, said: String, graph: Option<Value>, note: String) -> Made {
+    pub(crate) fn figure(
+        &self,
+        id: &str,
+        said: String,
+        graph: Option<Value>,
+        note: String,
+    ) -> Made {
         Made {
             hue: "machine",
             ..figure(id.to_owned(), self.name(id), said, graph, note)
@@ -162,7 +173,7 @@ impl Say<'_> {
     }
 
     /// A figure holding more, a step in, wearing its thing's glyph.
-    fn holder(&self, made: Made, glyph: &str, inside: Vec<Made>) -> Made {
+    pub(crate) fn holder(&self, made: Made, glyph: &str, inside: Vec<Made>) -> Made {
         Made {
             glyph: self.words.glyph(&format!("machine:{glyph}")),
             inside,
@@ -173,8 +184,8 @@ impl Say<'_> {
     /// Held up waiting for something, the share of the last ten seconds,
     /// and a step in, the last minute's and five minutes', each with the
     /// share in which everything waited where the kernel keeps that and
-    /// it did.
-    fn pressured(&self, id: &str, pressure: &Value, full: bool) -> Made {
+    /// it did, in the words the memory's pressure says them in.
+    pub(crate) fn pressured(&self, id: &str, pressure: &Value, full: bool) -> Made {
         let some = &pressure["some"];
         let now = number(&some["avg10_pct"]);
         let each = |window: &str, name: &str| {
@@ -183,9 +194,13 @@ impl Say<'_> {
             let some = self.words.number(share, 0);
             let said = if full && whole > 0.0 {
                 let full = self.words.number(whole, 0);
-                self.says(id, "pair", &[("some", &some), ("full", &full)])
+                self.says(
+                    "memory:pressure",
+                    "pair",
+                    &[("some", &some), ("full", &full)],
+                )
             } else {
-                self.says(id, "some", &[("some", &some)])
+                self.says("memory:pressure", "some", &[("some", &some)])
             };
             let graph = bar(share / 100.0, share >= PRESSED_PCT);
             self.figure(&format!("{id}-{name}"), said, Some(graph), String::new())
@@ -641,7 +656,7 @@ impl Say<'_> {
 }
 
 /// A note's items, joined with dots, those empty given way.
-fn items(parts: &[String]) -> String {
+pub(crate) fn items(parts: &[String]) -> String {
     parts
         .iter()
         .filter(|part| !part.is_empty())

@@ -174,7 +174,7 @@ const FIRMWARE: Place = Place {
 };
 const MACHINE: Place = Place {
     name: "machine",
-    sources: &["memory", "boot"],
+    sources: &["processor", "memory", "boot"],
     heard: &["using"],
 };
 const PLACES: [Place; 4] = [HEAT, POWER, FIRMWARE, MACHINE];
@@ -825,6 +825,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
         let memory = held.get("memory:main");
         let boot = held_of(held, "boot").into_iter().next();
         let said = machine_rows::Held {
+            processor: held.get("processor:0"),
             memory,
             boot: boot.as_ref(),
             using: fresh.then_some(using.as_slice()),

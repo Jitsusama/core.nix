@@ -1018,7 +1018,11 @@
         "load"
       ],
       "said": {
-        "down": "not answering"
+        "down": "not answering",
+        "head": "{busy} busy",
+        "since-boot": "since the machine started",
+        "since-asked": "since you last asked",
+        "since-now": "just now"
       },
       "parts": [
         "machine:cpu:spent",
@@ -1160,7 +1164,12 @@
       "id": "machine:cpu:cores",
       "in": "machine:cpu",
       "name": "Cores",
-      "term": "Machine/core"
+      "term": "Machine/core",
+      "said": {
+        "one": "core {n}",
+        "run": "cores {first} to {last}",
+        "list": "cores {list} and {last}"
+      }
     },
     {
       "id": "machine:cpu:core",
@@ -1173,7 +1182,12 @@
       "name": "Maxed",
       "answers": [
         "maxed"
-      ]
+      ],
+      "said": {
+        "none": "none",
+        "many": "{n} of {all}",
+        "note": "at 95% or more"
+      }
     },
     {
       "id": "machine:cpu:clock",
@@ -1182,13 +1196,18 @@
       "term": "Machine/clock speed",
       "answers": [
         "clock speed"
-      ]
+      ],
+      "said": {
+        "of": "on average, of {most} at most",
+        "mean": "on average"
+      }
     },
     {
       "id": "machine:cpu:clock-range",
       "in": "machine:cpu:clock",
       "name": "Range",
       "said": {
+        "side": "{low} to {high}",
         "kinds": "its slowest cores top out at {least}"
       }
     },
@@ -1197,6 +1216,7 @@
       "in": "machine:cpu:clock",
       "name": "Base",
       "said": {
+        "range": "{low} to {high}",
         "note": "the clock it's sold at"
       }
     },
@@ -1220,6 +1240,8 @@
       "in": "machine:cpu:clock",
       "name": "Turbo",
       "said": {
+        "side-on": "on",
+        "side-off": "off",
         "on": "it may clock past its base",
         "off": "held to its base"
       }
@@ -1238,22 +1260,37 @@
     {
       "id": "machine:cpu:temperature",
       "in": "machine:cpu",
-      "name": "Temperature"
+      "name": "Temperature",
+      "said": {
+        "degrees": "{n} °C",
+        "most": "at most {degrees}"
+      }
     },
     {
       "id": "machine:cpu:using",
       "in": "machine:cpu",
-      "name": "Using It"
+      "name": "Using It",
+      "said": {
+        "note": "of the whole processor",
+        "processes": "{n} processes"
+      }
     },
     {
       "id": "machine:cpu:load",
       "in": "machine:cpu",
-      "name": "Load"
+      "name": "Load",
+      "said": {
+        "note": "over 1, 5 and 15 minutes"
+      }
     },
     {
       "id": "machine:cpu:npu-load",
       "in": "machine:cpu",
-      "name": "NPU Load"
+      "name": "NPU Load",
+      "said": {
+        "at": "at {clock} of {most}",
+        "resting": "resting"
+      }
     },
     {
       "id": "machine:cpu:kinds",
@@ -1261,7 +1298,10 @@
       "name": "Kinds",
       "answers": [
         "core kinds"
-      ]
+      ],
+      "said": {
+        "at": "{n} at {clock}"
+      }
     },
     {
       "id": "machine:cpu:performance",
@@ -1327,7 +1367,8 @@
         "own": "one a core",
         "shared": "each shared by {n} cores",
         "ways": "{ways}-way",
-        "line": "{line} B lines"
+        "line": "{line} B lines",
+        "times": "{size} × {count}"
       }
     },
     {
