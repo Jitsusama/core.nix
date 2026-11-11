@@ -23,6 +23,8 @@ const KEPT_OUT: &str =
 /// What it says while 1Password only waits on Joel's leave.
 const LET_IN: &str = "1Password asks you to let the launcher in";
 /// What it says while the app is closed.
+// What it says before anything has asked 1Password, as a fresh manager does.
+const UNASKED: &str = "1Password is asked as you next open Passwords";
 const CLOSED: &str = "1Password is closed, and Unlock opens it";
 /// What it says while it opens the app for Joel's ask.
 const OPENING: &str = "1Password is opening, to let the launcher in";
@@ -231,7 +233,7 @@ fn turned_on_with_nothing_asked_it_says_so_by_itself() {
     let told = manager.heard();
     assert_eq!(
         stands(&told),
-        ("signed-out", LET_IN),
+        ("signed-out", UNASKED),
         "once Joel turns it on: {told}"
     );
     assert!(told.get("id").is_none(), "said by itself: {told}");
@@ -244,7 +246,7 @@ fn let_in_it_starts_waiting_only_on_joels_leave() {
     let starting = manager.heard();
     assert_eq!(
         stands(&starting),
-        ("signed-out", LET_IN),
+        ("signed-out", UNASKED),
         "as it starts: {starting}"
     );
 }
@@ -261,7 +263,7 @@ fn a_settings_file_not_there_says_nothing_of_the_setting() {
     let starting = manager.heard();
     assert_eq!(
         stands(&starting),
-        ("signed-out", LET_IN),
+        ("signed-out", UNASKED),
         "as it starts: {starting}"
     );
     let (said, _) = manager.asked(&json!({"id": 1, "ask": "let-in"}));
@@ -280,7 +282,7 @@ fn the_app_closing_is_said_at_once_and_opening_again_too() {
     let starting = manager.heard();
     assert_eq!(
         stands(&starting),
-        ("signed-out", LET_IN),
+        ("signed-out", UNASKED),
         "as it starts: {starting}"
     );
     fs::remove_file(home.opened()).expect("the app closes");
@@ -288,7 +290,7 @@ fn the_app_closing_is_said_at_once_and_opening_again_too() {
     assert_eq!(stands(&closed), ("signed-out", CLOSED), "closed: {closed}");
     fs::write(home.opened(), "").expect("the app opens again");
     let open = manager.heard();
-    assert_eq!(stands(&open), ("signed-out", LET_IN), "open: {open}");
+    assert_eq!(stands(&open), ("signed-out", UNASKED), "open: {open}");
 }
 
 #[test]
