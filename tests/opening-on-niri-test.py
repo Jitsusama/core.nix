@@ -510,7 +510,7 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
         return {
             name: now[name] - before.get(name, 0)
             for name in now
-            if now[name] > before.get(name, 0) and name not in MADE_AS_ANY_OPENS
+            if now[name] > before.get(name, 0)
         }
 
     def in_for_you() -> None:
