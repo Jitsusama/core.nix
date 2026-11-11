@@ -319,7 +319,10 @@ fn a_hold_keeps_current_even_told_now() {
         "a held update built a version"
     );
 
-    assert!(hold::release(&config).expect("a release"), "no hold stood to release");
+    assert!(
+        hold::release(&config).expect("a release"),
+        "no hold stood to release"
+    );
     assert_eq!(
         Fixture::update_all(&config, later, Pace::Spaced),
         [Done::Moved {
