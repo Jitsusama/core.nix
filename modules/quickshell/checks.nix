@@ -2216,7 +2216,8 @@ onLinux {
       ${shellFolderLint}
       # The daemon follows the node the shell stands in, trying again
       # until it listens.
-      ${quests} --node $XDG_RUNTIME_DIR/mycelium/harbour.sock \
+      ${quests} --vocabulary ${./launcher/words.json} \
+        --node $XDG_RUNTIME_DIR/mycelium/harbour.sock \
         --socket $XDG_RUNTIME_DIR/daemons/quests.sock &
       timeout 60 ${qs} -p shell.qml
       touch $out
