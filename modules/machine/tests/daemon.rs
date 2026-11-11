@@ -1457,9 +1457,14 @@ fn the_guards_acts_run_it_and_say_what_it_printed() {
         "path": "/srv"}));
     assert_eq!(unkept["error"]["code"], "refused", "{unkept}");
     assert_eq!(unkept["error"]["message"], "disk-guard: /srv isn't kept");
+    assert_eq!(unkept["error"]["said"], "/srv isn't kept");
     let reasonless = client.ask(&json!({"id": 3, "ask": "act", "act": "disk-keep",
         "path": "/srv"}));
     assert_eq!(reasonless["error"]["code"], "bad-act", "{reasonless}");
+    assert!(
+        reasonless["error"].get("said").is_none(),
+        "a badly asked act leaves its words to the shell: {reasonless}"
+    );
     assert_eq!(
         std::fs::read_to_string(&asked).unwrap(),
         "keep /home/joel/src the build's\nunkeep /srv\n",

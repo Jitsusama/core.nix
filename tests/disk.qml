@@ -284,5 +284,35 @@ ShellRoot {
         }
     }
 
-    Component.onCompleted: begin()
+    // What the foot says of an act's answer, held before the guards' cases:
+    // the guard's words, the daemon's for a refusal, and the launcher's
+    // where a refusal carries only its cause or nothing answers.
+    readonly property var toldCases: [{
+        what: "a done act says what the guard printed",
+        answer: { id: 1, done: true, said: "Kept /srv: the build's." },
+        told: "Kept /srv: the build's."
+    }, {
+        what: "a refusal says the daemon's words for it",
+        answer: { id: 2, error: { code: "refused", message: "disk-guard: /srv isn't kept",
+            said: "/srv isn't kept" } },
+        told: "/srv isn't kept"
+    }, {
+        what: "a refusal carrying only its cause says it couldn't",
+        answer: { id: 3, error: { code: "bad-act", message: "keeping a folder needs its reason" } },
+        told: "couldn't"
+    }, {
+        what: "no answer says it isn't answering",
+        answer: null,
+        told: "not answering"
+    }]
+
+    Component.onCompleted: {
+        const wrong = toldCases.find(one => piece.toldOf(one.answer) !== one.told);
+        if (wrong) {
+            console.warn(`FAIL ${wrong.what}: "${piece.toldOf(wrong.answer)}"`);
+            Qt.exit(1);
+            return;
+        }
+        begin();
+    }
 }

@@ -7466,7 +7466,8 @@
         "days": "{count} days",
         "hourly": "{amount} an hour",
         "grew": "{path} +{amount}",
-        "cleared": "{amount} from {path} at {time}"
+        "cleared": "{amount} from {path} at {time}",
+        "silent": "not answering"
       }
     },
     {

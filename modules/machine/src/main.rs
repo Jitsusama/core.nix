@@ -86,7 +86,7 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
+use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of, refused};
 use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
@@ -2275,7 +2275,7 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
         // write of it is.
         "disk-keep" | "disk-unkeep" | "disk-clear" | "disk-thaw" => match guard::told(act, said) {
             Ok(told) => json!({"id": id, "done": true, "said": told}),
-            Err(untold) => error(id, untold.code, &untold.message),
+            Err(untold) => refused(id, untold.code, &untold.message, &untold.said),
         },
         _ => error(id, "unknown-act", &format!("no act {act:?} here")),
     }
