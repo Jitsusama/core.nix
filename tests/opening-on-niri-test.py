@@ -44,8 +44,8 @@ SPOTS_LATER = timedelta(milliseconds=500)
 # within SPOTS_LATER fails it.
 REOPENINGS_TRIED = 3
 
-# How long niri leaves a surface off the screen before it answers a frame of its: once a
-# second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
+# How long niri leaves a surface wholly off the screen before it answers a frame of its: once
+# a second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
 UNANSWERED_MS = 900
 
 # How long a window opening is given to reach the closed shell, which hears niri's events
@@ -314,8 +314,8 @@ def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:
 
     Grown from a pixel, every opening waited for niri to answer its new size and for a second
     frame at it, 100 to 150 ms past its own work on Joel's laptop (2026-11-10). Closed, it's
-    above the screen, where niri answers its frames only once a second, so an opening that
-    waited on a frame drawn there takes most of a second to its own.
+    off the screen but for a pixel, and wholly off it, niri answered its frames only once a
+    second, so an opening that waited on a frame drawn there took most of a second to its own.
     """
     opening = opened_from_kept(shell)
     assert opening["frames"] == 1, f"the kept opening waited on niri's size: {opening}"
@@ -325,8 +325,9 @@ def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:
 def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> None:
     """Closed, the launcher draws no frame as a window opens and closes.
 
-    Kept at the card's size above the screen, a frame it drew there would wait a second for
-    niri to answer it, and the next opening behind it.
+    Kept at the card's size wholly off the screen, it drew a frame a second: niri answered each
+    only after a second, and Qt took the surface for hidden until then and drew it again once
+    shown, so a pixel of it stays on the screen.
     """
     shell.launcher_until(lambda shown: shown.get("kept"))
     drawn = shell.frames()
@@ -345,8 +346,8 @@ def test_the_closed_launcher_draws_nothing_as_its_spots_are_made_again(shell: Sh
     """Closed, the launcher draws no frame as its closing's spots are made, and freshened.
 
     A closing makes its spots half a second after it, and their figures a minute after that,
-    each while the card is above the screen, where a frame drawn would wait a second for niri
-    to answer it. Counted from once home is kept, since putting it back follows the closing.
+    each while the card is off the screen but for a pixel, where nothing it draws is seen.
+    Counted from once home is kept, since putting it back follows the closing.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()

@@ -8582,10 +8582,13 @@ Scope {
     // closed, so an opening moves it rather than growing it: grown from a
     // pixel, each opening waited on niri's configure and new buffers before
     // a frame at its size, 100 to 150 ms past its own work on Joel's laptop
-    // (2026-11-10). Closed, it sits above the screen's top edge, since niri
-    // draws a surface kept out of screencasts (config.kdl) as a black box
-    // the size of the whole surface, shown or not, and one off the screen
-    // is in no screencast.
+    // (2026-11-10). Closed, it sits up and left of the screen but for its
+    // last pixel, since niri draws a surface kept out of screencasts
+    // (config.kdl) as a black box the size of the whole surface, shown or
+    // not, so a screencast shows that pixel as the one-pixel surface did.
+    // Wholly off the screen, niri answered its frames once a second, and Qt,
+    // waiting on each, took the surface for hidden and drew it again as it
+    // was answered, a frame a second for as long as it stayed closed.
     PanelWindow {
         id: surface
 
@@ -8598,8 +8601,9 @@ Scope {
         anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.cardUp ? root.cardTop - card.reach // qmllint disable unqualified
-            : -implicitHeight
-        margins.left: root.cardLeft - card.reach // qmllint disable unqualified
+            : 1 - implicitHeight
+        margins.left: root.cardUp ? root.cardLeft - card.reach // qmllint disable unqualified
+            : 1 - implicitWidth
         implicitWidth: root.width + root.drawerBeside + 2 * card.reach
         implicitHeight: card.height + 2 * card.reach
         exclusionMode: ExclusionMode.Ignore
