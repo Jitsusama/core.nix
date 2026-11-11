@@ -10,7 +10,10 @@
 # hibernation back, short of memory or with its swap file gone, so the
 # notice's reasons are seen end to end. A slice holds memory under a hard
 # floor, as the laptops' slices do, past what the image may hold, to prove
-# the floors are set aside while it's made. The tests are
+# the floors are set aside while it's made. Its battery, charger and lid are
+# stand-ins, the kernel's test_power and stand-in-lid, starting on battery
+# with the lid open, so a battery run out with Keep Awake's locks held is
+# seen to hibernate it as UPower has it. The tests are
 # hibernate-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:
@@ -28,7 +31,19 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       imports = [
         self.nixosModules.hibernate
         self.nixosModules.memory
+        self.nixosModules.power-profiles-daemon
       ];
+      boot.extraModulePackages = [
+        (config.boot.kernelPackages.callPackage ../../stand-in-lid { })
+      ];
+      boot.kernelModules = [
+        "stand-in-lid"
+        "test_power"
+      ];
+      # Its USB supply would count as a charger too.
+      boot.extraModprobeConfig = ''
+        options test_power ac_online=off usb_online=off
+      '';
       virtualisation = {
         useEFIBoot = true;
         # A software TPM, whose state outlives each start, as a laptop's

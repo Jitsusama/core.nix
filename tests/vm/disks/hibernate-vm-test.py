@@ -56,6 +56,14 @@ GOES_OFF = dt.timedelta(minutes=3)
 # Pages zswap may store around a hibernation, as the machine thaws, against the tens of
 # thousands swapped out to make room for an image.
 STRAY = 2048
+# The stand-in lid, and the stand-in battery's charge and charger (hibernate.nix).
+LID = "/sys/module/stand_in_lid/parameters/shut"
+CHARGE = "/sys/module/test_power/parameters/battery_capacity"
+CHARGER = "/sys/module/test_power/parameters/ac_online"
+# Below UPower's mark for acting, 5% (modules/power-profiles-daemon/nixos.nix), and how long
+# UPower waits once there before it acts, with room over its 20 s.
+RUN_OUT = 4
+UPOWER_WAITS = dt.timedelta(minutes=1)
 
 
 def zswap_stored(machine: QemuMachine) -> int:
@@ -277,6 +285,43 @@ def test_a_hibernation_short_of_memory_says_so(swapping: QemuMachine) -> None:
         )
 
 
+def test_kept_awake_with_its_lid_shut_a_battery_run_out_hibernates(swapping: QemuMachine) -> None:
+    """Kept awake with its lid shut on battery, a battery run out hibernates, keeping its work.
+
+    Keep Awake holds idle and the lid's switch (modules/quickshell/home.nix), the locks held
+    here, so a laptop kept awake runs on with its lid shut until its battery runs out. UPower
+    hibernates past both; powering off instead would start it afresh, losing the mark.
+    """
+    swapping.succeed(
+        "mkdir -p /run/kept",
+        "mountpoint -q /run/kept || mount -t ramfs -o size=1m ramfs /run/kept",
+        f"echo '{SAID}' > {MARK}",
+        'systemd-run --unit=kept-awake -- "$(command -v systemd-inhibit)"'
+        " --what=idle:handle-lid-switch --who='Keep Awake' --why='Kept awake from the launcher'"
+        ' --mode=block "$(command -v sleep)" infinity',
+    )
+    # Held before the lid shuts, or logind would suspend it.
+    swapping.wait_until_succeeds(
+        "systemd-inhibit --list --no-pager | grep -F 'Keep Awake' | grep -q handle-lid-switch",
+        timeout=10,
+    )
+    # A laptop's graphical target starts UPower; this machine stops at multi-user's.
+    swapping.succeed("systemctl start upower.service")
+    swapping.wait_until_succeeds("upower --dump | grep -q 'percentage: *50%'", timeout=30)
+    swapping.succeed(f"echo 1 > {LID}", f"echo {RUN_OUT} > {CHARGE}")
+    try:
+        swapping.wait_for_shutdown(timeout=UPOWER_WAITS + GOES_OFF)
+    except subprocess.TimeoutExpired:
+        _, said = swapping.execute("upower --dump; journalctl --boot --unit=upower --no-pager")
+        pytest.fail(f"at {RUN_OUT}% with the lid shut and held, the machine stayed on:\n{said}")
+    start_through_the_disk_prompt(swapping)
+    # Charged again, so UPower has nothing more to act on.
+    swapping.succeed(f"echo 50 > {CHARGE}", f"echo on > {CHARGER}", f"echo 0 > {LID}")
+    _, kept = swapping.execute(f"cat {MARK}")
+    assert SAID in kept, "it powered off rather than hibernating, so it started afresh"
+    swapping.succeed("systemctl stop kept-awake.service")
+
+
 def test_a_boot_after_it_starts_afresh(swapping: QemuMachine) -> None:
     """The image is used once: a machine started again after it boots anew."""
     swapping.crash()
@@ -289,7 +334,8 @@ def test_a_hibernation_that_rolls_back_is_rescued(swapping: QemuMachine) -> None
     """Back from a hibernation with no start between is a rollback, and a rescue follows.
 
     The hook is run as systemd-sleep runs it around a hibernation the kernel rolled back:
-    before, then after, with the TPM's counts unmoved. The machine has no lid, so the
+    before, then after, with the TPM's counts unmoved. The machine has no ACPI lid, its
+    stand-in being a switch alone, so the
     rescue, ten seconds on and on its own, says so rather than hibernating again, and with
     nothing in the kernel's log, says it didn't finish.
     """
