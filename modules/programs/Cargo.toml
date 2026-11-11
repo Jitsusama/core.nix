@@ -20,5 +20,5 @@ ready-rows = { path = "../ready-rows" }
 
 [dev-dependencies]
 # The daemon started for a test, and its client, as every daemon's tests
-# share them (tests/daemon.rs).
+# share them (tests/daemon/).
 daemon-client = { path = "../daemon-client" }
