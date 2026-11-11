@@ -239,6 +239,8 @@ units, or named here as left out with the reason.
 | `layer:keyboard` | the board's layer, whether it's locked there | Layer, Keyboard's layers, the map        |
 | `counts:<board>` | its presses and holds, the keys pressed most, each layer's and modifiers' presses, when counting began | a keyboard's drawer |
 | `status:<watcher>` | what its status file says, but its heartbeat; whether it's gone silent | the margin's Lag and Disk, Waits |
+| `link:<name>`   | its index, flags, MTU, type, hardware addresses, what made it, its bus, its addresses, in ip's own names | Network's connections and their parts |
+|                 | whether it's wireless, where its hardware address came from | Network's Wi-Fi, Hardware address |
 
 `brightness` and `warmth` are the backlight program's (modules/backlight),
 which writes them whole in its files, and `camera` is each camera's file
@@ -267,6 +269,15 @@ heard through inotify from the daemon's start, and power-profiles-daemon
 as it says a property changed, since the shell watches them while the
 launcher's shut. A folder not there, or taken away as systemd does a
 service's runtime folder, is looked for again every 10 seconds.
+
+`link` is the kernel's own (src/links.rs): the links and their addresses
+dumped over a route socket, said in the names `ip -json -details address`
+uses so Network reads them as it read ip, with each link's `uevent` and
+`addr_assign_type` from /sys/class/net. They're dumped as a watch begins
+and again only as the kernel says a link or an address changed, over a
+socket joined to its link and address groups while `link` is watched and
+let go within a minute of its last watch ending, so nothing polls and
+nothing is spawned.
 
 ## Left Out, and Why
 

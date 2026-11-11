@@ -1631,6 +1631,15 @@ QtObject {
             vlan: 10, profile: null
         }]);
         machine("no neighbours from a reply that isn't one", Networkd.neighbours(undefined), {});
+        machine("a neighbour's parts, joined and written, what it doesn't say left out",
+            Networkd.neighbourParts(neighbours.cable0[0]).map(said => `${said.id}=${said.side}`), [
+                "system=closet", "description=a switch", "port=gi1/0/3",
+                "port-name=desk drop 3", "chassis=52:54:00:aa:bb:cc", "acts=bridge, router",
+                "vlan=10"
+            ]);
+        machine("no acts said by a neighbour doing nothing",
+            Networkd.neighbourParts({ system: "closet", acts: [] }).map(said => said.id),
+            ["system"]);
 
         // A Wi-Fi card's link as wifid says the kernel reads it (detail.rs).
         const networkJoined = {

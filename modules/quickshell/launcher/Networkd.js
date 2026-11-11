@@ -134,3 +134,30 @@ function neighbours(reply) {
     }
     return out;
 }
+
+// What a neighbour says a step in, in the order it's said: what it's read
+// from, the part's id and its note.
+const NEIGHBOUR_PARTS = [
+    ["system", "system", "what it calls itself"],
+    ["description", "description", "what it says it is"],
+    ["port", "port", "the port it hears this card on"],
+    ["portName", "port-name", "what it calls that port"],
+    ["chassis", "chassis", "what tells it apart from others"],
+    ["acts", "acts", "what it's doing now"],
+    ["vlan", "vlan", "the VLAN this port is on"],
+    ["profile", "profile", "where it says what it should reach"],
+];
+
+// A neighbour's parts a step in, each { id, side, note }: a list is said
+// joined, a number as it's written, and what it doesn't say is left out.
+function neighbourParts(one) {
+    const out = [];
+    for (const [field, id, note] of NEIGHBOUR_PARTS) {
+        const said = one[field] ?? [];
+        const side = Array.isArray(said) ? said.join(", ") : String(said);
+        if (side !== "") {
+            out.push({ id, side, note });
+        }
+    }
+    return out;
+}

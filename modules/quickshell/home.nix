@@ -1993,11 +1993,7 @@ in
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";
                     }
-                    # What each connection is, from ip, and the words
-                    # wifid says Wi-Fi's rows in.
-                    // lib.optionalAttrs (provider.source == "networks") {
-                      ip = lib.getExe' pkgs.iproute2 "ip";
-                    }
+                    # The words wifid says Wi-Fi's rows in.
                     // lib.optionalAttrs (provider.source == "wifi") {
                       words = "${launcherWords}";
                     }

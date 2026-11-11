@@ -25,15 +25,18 @@
 // nothing leaves the machine. Every row is a part named first, its value
 // after, and the words are the vocabulary's (words.json, networks:*).
 //
-// What each connection is comes from one `ip -json -details address`,
-// spawned as the launcher opens and when it's asked after five seconds,
-// never for a key; the routes and name servers are read from the kernel's
+// What each connection is comes from the machine daemon, which dumps the
+// links and their addresses from the kernel in ip's own names
+// (modules/machine/src/links.rs) and says again only what the kernel says
+// changed, watched while Network is wanted, so nothing is spawned and
+// nothing polls; the routes and name servers are read from the kernel's
 // files and resolv.conf when asked, so nothing blocks. A cable's link is
 // read from its folder in /sys/class/net, and read again each second
-// spawns nothing: ip is asked only when the answer is. The leases and
-// neighbours are asked of networkd over its varlink socket as ip is, so
-// nothing is spawned for them either.
+// while it's shown. The leases and neighbours are asked of networkd over
+// its varlink socket as the launcher opens and when what it said is five
+// seconds old, so nothing is spawned for them either.
 import qs
+import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Addresses.js" as Addresses
@@ -52,7 +55,7 @@ Provider {
     // How long what a registry or ipify said is kept, in milliseconds.
     readonly property int day: 24 * 60 * 60 * 1000
     readonly property int minutes: 5 * 60 * 1000
-    // How long what ip said stands before it's asked again.
+    // How long what networkd said stands before it's asked again.
     readonly property int stands: 5000
 
     function grouped(value) {
@@ -93,19 +96,38 @@ Provider {
         return said ? about(said) : null;
     }
 
-    // What ip last said of every connection, made sense of
+    // What the daemon last said of every connection, made sense of
     // (Interfaces.js), each with where its hardware address came from;
     // null until it first answers. `waiting` is whether an answer was given
     // without it, and so is asked again once it comes.
     property var links: null
-    property real linksAt: 0
     property bool waiting: false
+    property real lookedAt: 0
 
     function look() {
-        if (!lister.running)
-            lister.running = true;
+        lookedAt = Date.now();
         if (!networkd.connected)
             networkd.connected = true;
+    }
+
+    // The links and their addresses, watched while Network is wanted, and
+    // kept through a gap, so an opening answers from what was last said
+    // while its watch asks again.
+    Daemon {
+        id: linked
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: ["link"]
+        live: provider.wanted
+        answersWhole: true
+    }
+
+    Connections {
+        target: linked
+
+        function onRevisionChanged() {
+            provider.heard();
+        }
     }
 
     // What networkd last said over varlink of each connection's DHCP lease
@@ -157,16 +179,22 @@ Provider {
         }
     }
 
-    function heard(text) {
-        const said = parsed(text);
-        const listed = Array.isArray(said) ? said : [];
-        const wireless = listed.map(link => String(link.ifname ?? ""))
-            .filter(name => name !== "" && sys(name, "uevent").includes("DEVTYPE=wlan"));
-        links = Interfaces.interfaces(listed, wireless).map(link => Object.assign(link, {
-            assigned: link.mac === "" ? "" : Interfaces.assigned(sys(link.name, "addr_assign_type"))
+    function heard() {
+        const listed = Object.values(linked.held).filter(record => record.kind === "link")
+            .sort((a, b) => a.ifindex - b.ifindex);
+        const wireless = listed.filter(link => link.wireless).map(link => String(link.ifname));
+        const sources = {};
+        for (const link of listed)
+            sources[link.ifname] = String(link.addr_assign_type ?? "");
+        const now = Interfaces.interfaces(listed, wireless).map(link => Object.assign(link, {
+            assigned: link.mac === "" ? "" : Interfaces.assigned(sources[link.name] ?? "")
         }));
-        linksAt = Date.now();
-        if (waiting) {
+        if (JSON.stringify(now) === JSON.stringify(links))
+            return;
+        links = now;
+        // A link that changed while it's shown is said at once, as the
+        // kernel says it.
+        if (waiting || watching) {
             waiting = false;
             answered();
         }
@@ -187,11 +215,12 @@ Provider {
         }
     }
 
-    // The connections as they stand, asking ip again when what it said is
-    // old, but for a cable's link read again while it's shown: { links,
-    // routes, routes6, out }, or null before ip first answers.
+    // The connections as they stand, asking networkd again when what it
+    // said is old, but for a cable's link read again while it's shown:
+    // { links, routes, routes6, out }, or null before the daemon first
+    // answers.
     function standing() {
-        if (links === null || (!ticking && Date.now() - linksAt > stands))
+        if (!ticking && Date.now() - lookedAt > stands)
             look();
         if (links === null) {
             waiting = true;
@@ -207,7 +236,7 @@ Provider {
         };
     }
 
-    // What isn't known yet, while ip answers.
+    // What isn't known yet, while the daemon answers.
     readonly property var unknown: ({ headline: "\u2026", rows: [], asking: true, note: "" })
 
     // The order kinds of connection are listed in, after the way out.
@@ -310,8 +339,8 @@ Provider {
         return (row?.asker === provider && cableAsked.includes(row?.chip ?? ""))
             || connections.some(each => key === each || key.startsWith(`${each}:`));
     }
-    // Whether the answer is asked again for the link alone, which asks ip
-    // nothing.
+    // Whether the answer is asked again for the link alone, which asks
+    // networkd nothing.
     property bool ticking: false
 
     Timer {
@@ -395,7 +424,7 @@ Provider {
             rows.push(part(key("mtu"), "mtu", `${grouped(link.mtu)} bytes`,
                 "the largest packet it sends whole", String(link.mtu)));
         // A cable's carrier is read as its link is, so it's said as it is
-        // now rather than as ip last said.
+        // now rather than as the daemon last said.
         rows.push(part(key("state"), "state", stateSaid[cable?.state ?? link.state], "", ""));
         return rows;
     }
@@ -567,31 +596,12 @@ Provider {
         }, () => provider.neighbourParts(name, at));
     }
 
-    // A neighbour a step in, each thing it says over LLDP.
+    // A neighbour a step in, each thing it says over LLDP (Networkd.js).
     function neighbourParts(name, at) {
         const one = (neighbours[name] ?? [])[at] ?? null;
-        if (one === null)
-            return [];
-        const key = id => `networks:${name}:neighbour:${at}:${id}`;
-        const said = (id, side, note) => part(key(id), `neighbour-${id}`, side, note);
-        const rows = [];
-        if (one.system !== null)
-            rows.push(said("system", one.system, "what it calls itself"));
-        if (one.description !== null)
-            rows.push(said("description", one.description, "what it says it is"));
-        if (one.port !== null)
-            rows.push(said("port", one.port, "the port it hears this card on"));
-        if (one.portName !== null)
-            rows.push(said("port-name", one.portName, "what it calls that port"));
-        if (one.chassis !== null)
-            rows.push(said("chassis", one.chassis, "what tells it apart from others"));
-        if (one.acts.length > 0)
-            rows.push(said("acts", one.acts.join(", "), "what it's doing now"));
-        if (one.vlan !== null)
-            rows.push(said("vlan", String(one.vlan), "the VLAN this port is on"));
-        if (one.profile !== null)
-            rows.push(said("profile", one.profile, "where it says what it should reach"));
-        return rows;
+        return one === null ? [] : Networkd.neighbourParts(one).map(said => part(
+            `networks:${name}:neighbour:${at}:${said.id}`, `neighbour-${said.id}`, said.side,
+            said.note));
     }
 
     // The cards on a cable, asked alone: one's parts, or several each
@@ -747,15 +757,6 @@ Provider {
             rows: rows,
             note: `${registry ? registries[registry] : "the registry"}, through rdap.org`
         };
-    }
-
-    Process {
-        id: lister
-        command: [provider.settings.ip ?? "ip", "-json", "-details", "address", "show"]
-        stdout: StdioCollector {
-            id: listing
-            onStreamFinished: provider.heard(listing.text)
-        }
     }
 
     FileView {

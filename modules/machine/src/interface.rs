@@ -9,7 +9,7 @@ pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps: what it reads, then what it
 /// makes of them, a place's ready rows and its headline (`MADE`).
-pub const KINDS: [&str; 28] = [
+pub const KINDS: [&str; 29] = [
     "processor",
     "memory",
     "disk",
@@ -36,6 +36,7 @@ pub const KINDS: [&str; 28] = [
     "counts",
     "status",
     "telemetry",
+    "link",
     "row",
     "head",
 ];

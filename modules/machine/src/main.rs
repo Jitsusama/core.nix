@@ -40,6 +40,9 @@
 //! power-profiles-daemon as it says it changed, from the daemon's start,
 //! since the shell watches them while the launcher's shut: neither is
 //! read on a clock, so watching them wakes nothing until they change.
+//! The network links and their addresses (links.rs) are dumped from the
+//! kernel's route socket as their watch begins, and again only as the
+//! kernel says one changed, so Network reads them without spawning ip.
 //!
 //! Heat's, Power's and Firmware's rows and headlines are made here too,
 //! ready for the launcher (`heat_rows.rs`, `power_rows.rs`,
@@ -85,8 +88,8 @@ use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_o
 use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, firmware, firmware_rows, heat, heat_rows,
-    kept, keyboards, light, machine_rows, memory, now_ms, power_rows, processor, rounded, rows,
-    sleep, status, steered, supply, telemetry, tree, units, using, written::Written,
+    kept, keyboards, light, links, machine_rows, memory, now_ms, power_rows, processor, rounded,
+    rows, sleep, status, steered, supply, telemetry, tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -119,7 +122,8 @@ const LEEWAY: Duration = Duration::from_millis(50);
 /// the second.
 const STEERED: [&str; 2] = ["brightness", "warmth"];
 const KEYBOARDS: [&str; 2] = ["keyboards", "capslock"];
-const HEARD: [&str; 8] = [
+const HEARD: [&str; 9] = [
+    "link",
     "brightness",
     "warmth",
     "camera",
@@ -279,6 +283,9 @@ impl Reader {
         }
         if wants("camera") {
             records.extend(camera::cameras(&self.root));
+        }
+        if wants("link") {
+            records.extend(links::links(&self.root));
         }
         if wants("keyboards") {
             records.push(keyboards::connected(&self.root));
@@ -562,6 +569,10 @@ fn main() {
         std::thread::spawn(move || profile_loop(&shared));
     }
     hear_keyboards_and_watchers(&shared, &root);
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || links_loop(&shared));
+    }
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
@@ -1284,6 +1295,45 @@ fn heard_until(
             let heard = written.wait(wait);
             let late = due(shared).is_some_and(|at| at <= Instant::now());
             if late || heard.iter().any(|name| name.is_empty() || ours(name)) {
+                read(shared, &kinds, &[]);
+            }
+        }
+    }
+}
+
+/// Hears the kernel say a link or an address came, changed or went while
+/// `link` is watched, and tells what changed at once: the links are
+/// dumped as the watch begins and again only as the kernel speaks, a
+/// burst of its messages read once, so nothing polls. Within a minute of
+/// the last watch ending the socket is let go, so an idle machine hears
+/// none of it.
+fn links_loop(shared: &Shared) {
+    let kinds = HashSet::from(["link".to_owned()]);
+    let watching = |daemon: &Daemon| watched(daemon).contains("link");
+    loop {
+        {
+            let mut daemon = lock(&shared.daemon);
+            while !watching(&daemon) {
+                daemon = shared
+                    .woken
+                    .wait(daemon)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+        let Some(mut heard) = links::Heard::on() else {
+            // With no socket the kernel will give, they're read on the
+            // second instead, as every other kind is.
+            while watching(&lock(&shared.daemon)) {
+                read(shared, &kinds, &[]);
+                std::thread::sleep(EVERY);
+            }
+            continue;
+        };
+        read(shared, &kinds, &[]);
+        while watching(&lock(&shared.daemon)) {
+            // Only whether the watch has ended waits on the clock, which
+            // can, since a change heard while nothing watches tells nobody.
+            if heard.wait(RESTING) {
                 read(shared, &kinds, &[]);
             }
         }
