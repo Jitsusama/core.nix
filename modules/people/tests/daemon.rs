@@ -134,7 +134,10 @@ impl Running {
         // The launcher's vocabulary, as far as People's words go, worded
         // apart from any source's own word so a test sees whose it says.
         let words = folder.join("words.json");
-        let vocabulary = json!({"things": [{"id": "people", "said": {"available": "around"}}]});
+        let vocabulary = json!({"things": [
+            {"id": "people", "said": {"available": "around"}},
+            {"id": "people:email", "name": "her address"}
+        ]});
         std::fs::write(&words, vocabulary.to_string()).unwrap();
         let socket = folder.join("daemons").join("people.sock");
         // Made here, since a launcher listens there before the daemon runs.
@@ -550,10 +553,26 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
     let records = said["records"].as_array().expect("a listing is records");
     assert_eq!(
         keys_of(&said["records"]),
-        ["person:ada@example.com", "row:people:ada@example.com"],
-        "Ada, the one favourite, as who she is and as her row: {said}"
+        [
+            "drawer:people:ada@example.com",
+            "person:ada@example.com",
+            "row:people:ada@example.com"
+        ],
+        "Ada, the one favourite, as her drawer, who she is and her row: {said}"
     );
-    let (ada, row) = (&records[0], &records[1]);
+    let (drawer, ada, row) = (&records[0], &records[1], &records[2]);
+    assert_eq!(
+        (&drawer["drawer"]["title"], &drawer["drawer"]["facts"]),
+        (
+            &json!("Ada Brightwater"),
+            &json!([{"name": "her address", "said": "ada@example.com"}])
+        ),
+        "her drawer ready, its words the launcher's: {said}"
+    );
+    assert_eq!(
+        row["row"]["drawer"], drawer["key"],
+        "her row names it: {said}"
+    );
     assert_eq!(ada["person"]["name"], "Ada Brightwater", "{said}");
     assert_eq!(ada["person"]["stood"]["favourite"], true, "{said}");
     assert_eq!(
@@ -586,11 +605,15 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
     assert_eq!(said["id"], 1, "{said}");
     assert_eq!(
         keys_of(&said["changed"]),
-        ["person:eli@example.com", "row:people:eli@example.com"],
+        [
+            "drawer:people:eli@example.com",
+            "person:eli@example.com",
+            "row:people:eli@example.com"
+        ],
         "Ada, unchanged, isn't told again: {said}"
     );
     assert!(
-        said["changed"][1]["row"]["order"].as_i64() > Some(first),
+        said["changed"][2]["row"]["order"].as_i64() > Some(first),
         "Eli is placed after Ada: {said}"
     );
     // Ada no longer a favourite is gone from the listing, and Eli, still
@@ -601,14 +624,18 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
         (&said["changed"], &said["gone"]),
         (
             &json!([]),
-            &json!(["person:ada@example.com", "row:people:ada@example.com"])
+            &json!([
+                "drawer:people:ada@example.com",
+                "person:ada@example.com",
+                "row:people:ada@example.com"
+            ])
         ),
         "{said}"
     );
     let said = client.ask(&json!({"id": 4, "ask": "list", "kind": "listing"}));
     assert_eq!(
         said["records"].as_array().map(Vec::len),
-        Some(2),
+        Some(3),
         "a list is the whole: {said}"
     );
 }

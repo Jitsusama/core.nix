@@ -17,7 +17,8 @@
 // then each address to copy, last as every Copy is. Each thing is drawn
 // by its own row, so a mail is Mail's row and a meeting the meeting's.
 // Their details, every address and each source's facts, are in the
-// drawer beside the row.
+// drawer beside the row, which the daemon serves ready for anyone it
+// lists or finds (drawer.rs).
 //
 // A source the people daemon holds (`daemonHolds`, as Tuple's and Google's) is read from
 // the daemon, never held whole here: only those it lists with nothing
@@ -37,6 +38,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Person.js" as Person
 import "Placed.js" as Placed
+import "ReadyRows.js" as Ready
 import "Recent.js" as Recent
 import "Zones.js" as Zones
 
@@ -421,17 +423,18 @@ Provider {
             keepingBegun(made.keeping);
             made.rows = persons().map(person => {
                 // One only the daemon's sources know comes with the row a
-                // search finds them as, kept while their record says the
+                // search finds them as, and its drawer, kept while their record says the
                 // same, which the daemon stamps `heard` anew when a source
                 // says anything new of them, so each search's answer remakes
                 // none it found before; and let go once no answer holds it.
                 // The rest are merged here from what QML sources hold, until
-                // the daemon holds them too: Slack's people and facts, which
-                // slack-people serves (#3045), with People's drawers by Thu
-                // 12 Nov 18:00.
+                // the daemon holds them too: Slack's people, whose facts
+                // slack-people serves (#3045), its source in QML going by
+                // Fri 13 Nov.
                 const record = readyFor(person);
                 return record ? keptOr(made.keeping, person.key, record, () => provider.made(
-                    person, Person.standing(person, []), null, record.row), heardAlike)
+                    person, Person.standing(person, []), record.row, () => record.drawer),
+                    heardAlike)
                     : keptOr(made.keeping, person.key, JSON.stringify(person),
                         () => provider.made(person, Person.standing(person, [])));
             });
@@ -493,11 +496,11 @@ Provider {
             const record = person.stood ? lister.held[`person:${person.key}`] : null;
             const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
             if (ready)
-                return keptOr(keptListed, person.key, record,
-                    () => made(person, person.stood, factsOf(person), ready));
+                return keptOr(keptListed, person.key, record, () => made(person, person.stood,
+                    ready, () => Ready.drawerServed(ready, lister.held)));
             const stood = person.stood ?? standOf(person);
             return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
-                () => made(person, stood, person.stood ? factsOf(person) : null));
+                () => made(person, stood));
         });
         keptOnly(keptListed);
         listedRows.from = listed;
@@ -507,13 +510,17 @@ Provider {
     readonly property var keptListed: keeper()
     readonly property var listedRows: ({ from: null, rows: [] })
 
-    // The facts each source adds to someone the daemon listed, read from
-    // everyone merged as their drawer is shown, since the daemon keeps no
-    // source's facts: so only a drawer shown merges anyone. A function
-    // rather than a getter on the person, which a copy of the person
-    // would read, merging everyone on the thread this frees.
-    function factsOf(person) {
-        return () => whoIs(person.email)?.facts ?? [];
+    // A drawer the daemon served, as the drawer draws one: its times said
+    // as of now, a zone as the time there (`there`), and a fact that says
+    // nothing, as the time in a zone tzdata doesn't know, left out.
+    function drawnFrom(served) {
+        const words = Object.assign({ zone: zone => provider.there(zone) },
+            Words.field.times ?? {});
+        const drawn = Ready.drawerOf(served, Date.now(), words);
+        if (drawn)
+            drawn.facts = drawn.facts.filter(fact => fact.heading !== undefined
+                || fact.value !== "");
+        return drawn;
     }
 
     // The listed rows by key, so a search finds them as they stand.
@@ -527,8 +534,10 @@ Provider {
     // A person's row: their name, how they stand, their first address,
     // and Return the first way a source reaches them, asked as it's used,
     // so a row made for a search costs no source anything until then.
-    // One the daemon listed is drawn as its ready row says (`ready`).
-    function made(person, stood, facts, ready) {
+    // One the daemon listed or found is drawn as its ready row says
+    // (`ready`), its drawer as the daemon serves it (`served`, read as
+    // it's shown).
+    function made(person, stood, ready, served) {
         const row = member({
             // A ready row's key is the daemon's; the person it is, which
             // Joel's picks remember, is its `thing`.
@@ -575,13 +584,15 @@ Provider {
         // is made again once its minute has passed. A function the drawer
         // calls (drawerOf) rather than a getter, which a copy of the row
         // would read, merging everyone for their facts (Y2YBTS, 2026-11-10).
+        // One the daemon serves merges nobody; until it serves one, as
+        // before its listing comes, it's what this person holds.
         let details = null;
         let detailsAt = -1;
         row.drawer = () => {
             const minute = Math.floor(Date.now() / 60000);
             if (details === null || detailsAt !== minute) {
-                const shown = facts ? Object.assign({}, person, { facts: facts() }) : person;
-                details = Person.details(shown, zone => provider.there(zone));
+                const drawn = served ? drawnFrom(served()) : null;
+                details = drawn ?? Person.details(person, zone => provider.there(zone));
                 detailsAt = minute;
             }
             return details;

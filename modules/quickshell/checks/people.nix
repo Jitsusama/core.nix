@@ -90,6 +90,10 @@
       cp ${../launcher/Numbers.js} launcher/Numbers.js
       cp ${../../people/People.qml} launcher/People.qml
       cp ${../launcher/Placed.js} launcher/Placed.js
+      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
+      cp ${../When.js} When.js
+      cp ${../launcher/Ago.js} launcher/Ago.js
+      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
       cp ${../launcher/Recent.js} launcher/Recent.js
       cp ${../../people/Person.js} launcher/Person.js
       cp ${../launcher/Order.js} launcher/Order.js
@@ -115,7 +119,9 @@
       while [ ! -S $XDG_RUNTIME_DIR/tuple-0 ]; do sleep 0.1; done
       cat > sources.json <<EOF
       {"sources": [{"name": "tuple", "stands": $(cat ${../../tuple/stands.json}),
-        "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]}]}
+        "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]},
+        {"name": "facts",
+          "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-facts-source.sh}"]}]}
       EOF
       export PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json WORDS=${../launcher/words.json}
       $PEOPLE $XDG_RUNTIME_DIR/daemons/people.sock $SOURCES $WORDS &

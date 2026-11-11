@@ -18,6 +18,7 @@ use ready_rows::kept::{Kept, Moved};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::drawer::{self, Named};
 use crate::{Book, LISTING, Record, address};
 
 /// How a source's entry says someone stands, as its module tells the
@@ -226,13 +227,6 @@ fn bare(name: &str) -> bool {
     name.is_empty() || name.contains('@')
 }
 
-/// A record as a search answers it, with the row it's found as.
-pub fn found(record: &Record, sources: &[(String, Option<Stands>)]) -> Value {
-    let mut said = record.json();
-    said["row"] = person(record, sources).found();
-    said
-}
-
 /// A record as one person, by its sources in the order they're consulted,
 /// each with how it says anyone stands.
 pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
@@ -351,7 +345,7 @@ impl Person {
             "side": if self.stood.said.is_empty() { json!([]) }
                 else { json!([{"said": self.stood.said}]) },
             "note": if self.name == self.email { "" } else { self.email.as_str() },
-            "drawer": format!("drawer:people:{known}"),
+            "drawer": drawer::key(self),
         })
     }
 
@@ -466,12 +460,13 @@ impl Told {
     /// Those listed now: each one's row in the order shown, its `order`
     /// kept where it still rises, so one person moving is told alone, and
     /// beside it their record, as one person with what each source said,
-    /// which the shell reads for who they are. Answered with the records
-    /// that read differently and the keys that went.
+    /// which the shell reads for who they are, and their drawer. Answered
+    /// with the records that read differently and the keys that went.
     pub fn changes(
         &mut self,
         book: &Book,
         sources: &[(String, Option<Stands>)],
+        named: &Named,
         now: f64,
     ) -> Moved {
         let persons: Vec<Person> = book
@@ -483,14 +478,15 @@ impl Told {
         let rows = listed.iter().map(|person| person.row()).collect();
         let beside = listed
             .iter()
-            .map(|person| {
-                let sources_said = book
-                    .record(&person.key)
-                    .map_or_else(|| json!({}), |record| json!(record.sources));
-                json!({
-                    "key": person.key, "kind": LISTING, "person": person.json(),
-                    "sources": sources_said,
-                })
+            .filter_map(|person| book.record(&person.key).map(|record| (person, record)))
+            .flat_map(|(person, record)| {
+                [
+                    json!({
+                        "key": person.key, "kind": LISTING, "person": person.json(),
+                        "sources": record.sources,
+                    }),
+                    drawer::drawer(person, record, sources, named, book.standings()),
+                ]
             })
             .collect();
         self.kept.take(rows, beside)
@@ -503,7 +499,7 @@ impl Told {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// The launcher's vocabulary as far as People's words go.
@@ -578,7 +574,9 @@ mod tests {
         ]
     }
 
-    fn record(key: &str, entries: &[(&str, Value)]) -> Record {
+    /// A person's record holding each source's entry, as drawer.rs's
+    /// tests take it too.
+    pub(crate) fn record(key: &str, entries: &[(&str, Value)]) -> Record {
         let mut record = Record::of(key.to_owned(), 0);
         for (source, entry) in entries {
             record.sources.insert((*source).to_owned(), entry.clone());

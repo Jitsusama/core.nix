@@ -211,7 +211,9 @@ function details(person, there = () => "") {
         value: person.emails.join(", ")
     }];
     const facts = [];
-    for (const fact of person.facts) {
+    // One the daemon lists comes with no facts of its own: they're in the
+    // drawer it serves.
+    for (const fact of person.facts ?? []) {
         facts.push({ label: fact.label, value: fact.value });
         const now = fact.zone ? there(fact.value) : "";
         if (now !== "") {
