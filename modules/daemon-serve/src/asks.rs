@@ -5,6 +5,8 @@
 //! a watch narrowed by place, as every daemon's ready rows are watched
 //! (Y2YBTS's ready-rows.md).
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
 
 /// The interface's version this speaks.
@@ -65,6 +67,11 @@ impl Domain {
                 .collect::<Vec<_>>()
         });
         let places = said.get("place").and_then(words);
+        let every = said
+            .get("every")
+            .and_then(Value::as_u64)
+            .filter(|ms| *ms > 0)
+            .map(Duration::from_millis);
         match asked.as_str() {
             "hello" => Ask::Hello { id },
             "get" => Ask::Get {
@@ -81,6 +88,7 @@ impl Domain {
                     kinds,
                     keys,
                     places,
+                    every,
                 },
                 Err(kind) => Ask::UnknownKind { id, kind },
             },
@@ -128,12 +136,15 @@ pub enum Ask {
         kinds: Vec<String>,
     },
     /// Records of these kinds as they change: all of them, these keys, or
-    /// those in these places.
+    /// those in these places; told at once, or, paced `every` so long,
+    /// at most once a pace with all that moved in it, as a shut launcher
+    /// asks.
     Watch {
         id: Value,
         kinds: Vec<String>,
         keys: Option<Vec<String>>,
         places: Option<Vec<String>>,
+        every: Option<Duration>,
     },
     Unwatch {
         id: Value,
@@ -198,8 +209,19 @@ mod tests {
                 kinds: vec!["row".into()],
                 keys: None,
                 places: Some(vec!["agents".into()]),
+                every: None,
             },
             "a watch of one place's rows"
+        );
+        let Ask::Watch { every, .. } =
+            ROWS.ask(r#"{"id":1,"ask":"watch","place":"agents","every":10000}"#)
+        else {
+            panic!("a paced watch wasn't read as a watch");
+        };
+        assert_eq!(
+            every,
+            Some(Duration::from_secs(10)),
+            "a watch paced ten seconds"
         );
         let Ask::Watch { kinds, places, .. } = ROWS.ask(r#"{"id":1,"ask":"watch"}"#) else {
             panic!("a watch of every kind wasn't read as a watch");
