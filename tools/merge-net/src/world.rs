@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 use crate::holds;
 use crate::running;
 use crate::state::{now, short};
+use crate::subtests;
 use crate::watch::{Bad, Changed, DROPPED, Merged, UNCHECKED, UNSENT, World};
 
 /// What the net's changed-checks runs ask, so a builder lets them ahead of
@@ -484,6 +485,76 @@ fn append_line(log: &Path, line: &str) {
     }
 }
 
+impl Real {
+    /// Build `check` at `commit` into `log`, or only the subtests `picked`
+    /// names, as `run-subtests --there` builds them; none when it couldn't
+    /// be started or ran past its time.
+    fn built(&self, commit: &str, check: &str, picked: &[&str], log: &Path) -> Option<i32> {
+        let output = file(log).ok()?;
+        let mut clock = Clock::new(log, Instant::now());
+        let takes = run(Command::new("nix-offload").args(["there", "--takes"])).unwrap_or_default();
+        let args = build_args(&self.flake(commit), &self.system, check, picked, &takes);
+        let mut child = Command::new("nix-offload")
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(output.try_clone().ok()?)
+            .stderr(output)
+            .spawn()
+            .ok()?;
+        loop {
+            match child.try_wait() {
+                // A run whose builder couldn't fetch the commit's source ran
+                // nothing, so it's sent again like one no builder took.
+                Ok(Some(status))
+                    if !status.success()
+                        && unfetched(&fs::read_to_string(log).unwrap_or_default(), commit) =>
+                {
+                    return Some(UNSENT);
+                }
+                Ok(Some(status)) => return status.code(),
+                Ok(None) if clock.overdue(log, Instant::now()) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                Ok(None) => std::thread::sleep(Duration::from_secs(5)),
+                Err(_) => return None,
+            }
+        }
+    }
+}
+
+/// What the net asks `nix-offload there` to build `check` with at
+/// `flake`: the check, or with `picked` only those of its subtests, built
+/// from the flake's `subtests` as `run-subtests --there` asks for them.
+/// Test and subtest names hold only letters, digits, `-` and `_`, so
+/// each is a Nix string as JSON writes it.
+pub fn build_args(
+    flake: &str,
+    system: &str,
+    check: &str,
+    picked: &[&str],
+    takes: &str,
+) -> Vec<String> {
+    let test = subtests::whole(check);
+    if picked.is_empty() {
+        return there_args(flake, &format!("checks.{system}.{test}"), takes);
+    }
+    let words: Vec<String> = picked
+        .iter()
+        .map(|word| Value::from(*word).to_string())
+        .collect();
+    let apply = format!(
+        "subtests: subtests {{ check = {}; words = [ {} ]; }}",
+        Value::from(test),
+        words.join(" ")
+    );
+    let mut args = there_args(flake, &format!("legacyPackages.{system}.subtests"), takes);
+    let at = args.len() - 2;
+    args.splice(at..at, ["--apply".to_owned(), apply]);
+    args
+}
+
 impl World for Real {
     fn held(&self) -> Option<String> {
         if self.state.join("pause").exists() {
@@ -565,6 +636,7 @@ impl World for Real {
     }
 
     fn has_check(&self, commit: &str, check: &str) -> Result<bool, String> {
+        let check = subtests::whole(check);
         let attribute = format!("{}#checks.{}", self.flake(commit), self.system);
         let asked = format!("checks: builtins.hasAttr \"{check}\" checks");
         let said = self.evaluated(&attribute, &["--json", "--apply", &asked])?;
@@ -572,6 +644,7 @@ impl World for Real {
     }
 
     fn drv(&self, commit: &str, check: &str) -> Result<String, String> {
+        let check = subtests::whole(check);
         let attribute = format!(
             "{}#checks.{}.{check}.drvPath",
             self.flake(commit),
@@ -583,37 +656,19 @@ impl World for Real {
     }
 
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
-        let attribute = format!("checks.{}.{check}", self.system);
-        let output = file(log).ok()?;
-        let mut clock = Clock::new(log, Instant::now());
-        let takes = run(Command::new("nix-offload").args(["there", "--takes"])).unwrap_or_default();
-        let mut child = Command::new("nix-offload")
-            .args(there_args(&self.flake(commit), &attribute, &takes))
-            .stdin(Stdio::null())
-            .stdout(output.try_clone().ok()?)
-            .stderr(output)
-            .spawn()
-            .ok()?;
-        loop {
-            match child.try_wait() {
-                // A run whose builder couldn't fetch the commit's source ran
-                // nothing, so it's sent again like one no builder took.
-                Ok(Some(status))
-                    if !status.success()
-                        && unfetched(&fs::read_to_string(log).unwrap_or_default(), commit) =>
-                {
-                    return Some(UNSENT);
-                }
-                Ok(Some(status)) => return status.code(),
-                Ok(None) if clock.overdue(log, Instant::now()) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return None;
-                }
-                Ok(None) => std::thread::sleep(Duration::from_secs(5)),
-                Err(_) => return None,
-            }
+        let picked = subtests::subtests_of(check);
+        let code = self.built(commit, check, &picked, log)?;
+        let said = || fs::read_to_string(log).unwrap_or_default();
+        if picked.is_empty() || code == 0 {
+            return Some(code);
         }
+        if subtests::none_selected(&said()) {
+            return Some(0);
+        }
+        if subtests::unbuildable(&said()) {
+            return self.built(commit, subtests::whole(check), &[], log);
+        }
+        Some(code)
     }
 
     fn quarantined(&self, head: &str) -> Vec<String> {
@@ -1079,6 +1134,35 @@ mod tests {
             there_args(flake, attribute, ""),
             ["there", "-L", flake, attribute],
             "none could be read"
+        );
+    }
+
+    #[test]
+    fn a_search_builds_only_the_subtests_it_was_narrowed_to() {
+        let flake = "github:o/core/abc";
+        assert_eq!(
+            build_args(flake, "x86_64-linux", "vm-a", &[], "bulk\n"),
+            ["there", "--bulk", "-L", flake, "checks.x86_64-linux.vm-a"],
+            "a whole test is its check"
+        );
+        assert_eq!(
+            build_args(
+                flake,
+                "x86_64-linux",
+                "vm-a::test_b::test_c",
+                &["test_b", "test_c"],
+                "bulk\n"
+            ),
+            [
+                "there",
+                "--bulk",
+                "-L",
+                "--apply",
+                "subtests: subtests { check = \"vm-a\"; words = [ \"test_b\" \"test_c\" ]; }",
+                flake,
+                "legacyPackages.x86_64-linux.subtests"
+            ],
+            "a narrowed one is built from the flake's subtests, as run-subtests asks"
         );
     }
 

@@ -25,6 +25,7 @@
 //! The round talks to git, nix and GitHub through `World`, so each of
 //! those choices is tested against a stand-in (the tests below).
 
+use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
@@ -33,6 +34,7 @@ use serde_json::{Value, json};
 use crate::movers;
 use crate::running;
 use crate::state::{Ran, State, now, short};
+use crate::subtests;
 
 mod settling;
 use settling::Job;
@@ -515,9 +517,15 @@ fn known(state: &State, merges: &[String], check: &str) -> Option<(usize, usize)
         .iter()
         .map(|commit| state.runs(commit, check))
         .collect();
+    // A pass of the whole test at a commit is a pass of any of its subtests.
+    let whole = subtests::whole(check);
     let good = runs
         .iter()
-        .rposition(|ran| ran.contains(&Ran::Passed))
+        .zip(merges)
+        .rposition(|(ran, commit)| {
+            ran.contains(&Ran::Passed)
+                || (whole != check && state.runs(commit, whole).contains(&Ran::Passed))
+        })
         .map_or(0, |index| (index + 1).min(last));
     let bad = (good..=last)
         .find(|&index| {
@@ -1332,6 +1340,19 @@ fn search(
         }));
     }
     let merges = to_search(world, state, base, head, test)?;
+    // Each step runs only the subtests that failed in both runs at the head
+    // (subtests.rs), and what it finds is checked at its parent the same way.
+    let at_head: Vec<String> = (1..=2)
+        .map(|run| fs::read_to_string(state.log(head, test, run)).unwrap_or_default())
+        .collect();
+    let narrowed = subtests::narrowed(test, &at_head);
+    if narrowed != test {
+        state.say(&format!(
+            "searching {test} on the subtests that failed in both its runs at {}: {}",
+            short(head),
+            subtests::subtests_of(&narrowed).join(", ")
+        ));
+    }
     // Whether main's newest head fixed it is asked beside the search's first
     // step, and the search waits for the answer before its second. On
     // 7 November asking first took 16 minutes, two VM runs one after the
@@ -1359,7 +1380,7 @@ fn search(
                 world,
                 state,
                 &merges,
-                test,
+                &narrowed,
                 &|| fixed() == Ok(false),
                 splits,
             )
@@ -1369,9 +1390,15 @@ fn search(
         return Ok(None);
     }
     let failing = bad.clone().unwrap_or_else(|| head.to_owned());
-    let log = state.log(&failing, test, 2).display().to_string();
+    let log = state.log(&failing, &narrowed, 2);
+    let log = if log.exists() {
+        log
+    } else {
+        state.log(&failing, test, 2)
+    };
+    let log = log.display().to_string();
     let bad = match bad {
-        Some(commit) => match before(world, state, &commit, test)? {
+        Some(commit) => match before(world, state, &commit, &narrowed)? {
             Before::Passed => Some(commit),
             Before::Unsent => None,
             not_broken_here => {
@@ -1723,6 +1750,8 @@ mod tests {
         moved: Mutex<Option<String>>,
         /// The merges the machine runs already.
         running: Vec<String>,
+        /// The subtest pytest names in each failed run's log.
+        fails_in: Option<String>,
     }
 
     impl Stand {
@@ -1808,7 +1837,7 @@ mod tests {
             }
             Ok(format!("{commit}-{check}"))
         }
-        fn build(&self, commit: &str, check: &str, _: &Path) -> Option<i32> {
+        fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
             self.built
                 .lock()
                 .unwrap()
@@ -1871,6 +1900,10 @@ mod tests {
             } else {
                 left[0]
             };
+            if let Some(subtest) = self.fails_in.as_ref().filter(|_| exit != 0) {
+                let line = format!("vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n");
+                let _ = fs::write(log, line);
+            }
             (exit != STALL).then_some(exit)
         }
         fn quarantined(&self, commit: &str) -> Vec<String> {
@@ -2756,6 +2789,41 @@ mod tests {
         assert!(
             world.built().contains(&("m1".into(), "vm-a".into())),
             "m1, before m2, passes"
+        );
+    }
+
+    #[test]
+    fn a_search_runs_only_the_subtest_that_failed_at_its_head() {
+        let state = state("searches-a-subtest");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 m3 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("m2", "vm-a::test_b", &[1, 1])
+        .exits("m3", "vm-a::test_b", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "test_b broke at m2"
+        );
+        let searched: Vec<(String, String)> = world
+            .built()
+            .into_iter()
+            .filter(|(commit, _)| ["m1", "m2", "m3"].contains(&commit.as_str()))
+            .collect();
+        assert!(
+            !searched.is_empty() && searched.iter().all(|(_, check)| check == "vm-a::test_b"),
+            "each step ran only the subtest that failed in both runs at the head: {searched:?}"
         );
     }
 

@@ -230,7 +230,9 @@ red on main by 11:00, and none was caught. A check that fails twice at one
 commit is broken: the net finds which merge broke it the moment it does,
 while the round's other tests run on, searching only the merges that changed the test's derivation,
 since a derivation fails wherever it does, and running a searched merge's
-two runs at once, checks that the merge changed the test and that the
+two runs at once, and only the subtests that failed in both runs at the
+head, as `run-subtests --there` builds them, where pytest named any, checks
+that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, unless the machine already runs it, when holding would keep
 only fixes off it and the hold is kept apart and says so, reverts it through a
