@@ -188,6 +188,13 @@ async fn serve(
     words: Option<Words>,
 ) -> Result<(), Box<dyn Error>> {
     let localtime = root.join("etc/localtime");
+    // Heard before anything's first read and before the socket answers,
+    // so nothing changed as it starts is missed between the two.
+    let hearing = Hearing::new(Watched {
+        localtime: localtime.clone(),
+        pin: files.as_ref().map(|files| files.pin.clone()),
+        moved: files.as_ref().map(|files| files.moved.clone()),
+    });
     let listener = match serve::listen(socket) {
         Ok(listener) => listener,
         Err(why) => {
@@ -216,13 +223,8 @@ async fn serve(
     let (pins, pinned) = unbounded_channel();
     {
         let shared = Arc::clone(&shared);
-        let watched = Watched {
-            localtime,
-            pin: files.as_ref().map(|files| files.pin.clone()),
-            moved: files.as_ref().map(|files| files.moved.clone()),
-        };
         std::thread::spawn(move || {
-            if let Err(why) = hear(&shared, &watched, &pins) {
+            if let Err(why) = hearing.and_then(|hearing| hearing.hear(&shared, &pins)) {
                 eprintln!("<4>changes to the clock and the pin can't be heard: {why}");
             }
         });
@@ -250,32 +252,60 @@ fn beside(file: &Path) -> Option<(PathBuf, String)> {
     Some((folder, file.file_name()?.to_str()?.to_owned()))
 }
 
-/// Hears each change to the clock's zone, its move and the pin, for as
-/// long as the program runs: the first two are read again and said, and
-/// the pin's is passed to `follow`, which says what it means for here.
-fn hear(shared: &Shared, watched: &Watched, pins: &UnboundedSender<()>) -> io::Result<()> {
-    let notify = Notify::new()?;
-    let watch =
-        |file: &Path| beside(file).and_then(|(folder, name)| Some((notify.watch(&folder)?, name)));
-    let zone = watch(&watched.localtime);
-    let moved = watched.moved.as_deref().and_then(watch);
-    let pin = watched.pin.as_deref().and_then(watch);
-    loop {
-        for (said, name) in notify.changes()? {
-            let is = |watch: &Option<(i32, String)>| {
-                watch
-                    .as_ref()
-                    .is_some_and(|(wd, file)| *wd == said && *file == name)
-            };
-            if is(&zone) {
-                shared.change(|known| known.clock_zone = clock::zone(&watched.localtime));
-            }
-            if is(&moved) {
-                let file = watched.moved.as_deref();
-                shared.change(|known| known.moved = file.and_then(clock::moved));
-            }
-            if is(&pin) {
-                let _ = pins.send(());
+/// The clock's zone, its move and the pin, each watched from the moment
+/// hearing begins: `serve` begins it before it listens or first reads
+/// any of them, so each change is either read or heard. Watched once its
+/// loop ran, a pin set as the daemon started, after its first read, was
+/// never heard, and Find It Again never offered.
+struct Hearing {
+    notify: Notify,
+    watched: Watched,
+    zone: Option<(i32, String)>,
+    moved: Option<(i32, String)>,
+    pin: Option<(i32, String)>,
+}
+
+impl Hearing {
+    fn new(watched: Watched) -> io::Result<Hearing> {
+        let notify = Notify::new()?;
+        let watch = |file: &Path| {
+            beside(file).and_then(|(folder, name)| Some((notify.watch(&folder)?, name)))
+        };
+        let zone = watch(&watched.localtime);
+        let moved = watched.moved.as_deref().and_then(watch);
+        let pin = watched.pin.as_deref().and_then(watch);
+        Ok(Hearing {
+            notify,
+            watched,
+            zone,
+            moved,
+            pin,
+        })
+    }
+
+    /// Hears each change to the clock's zone, its move and the pin, for as
+    /// long as the program runs: the first two are read again and said,
+    /// and the pin's is passed to `follow`, which says what it means for
+    /// here.
+    fn hear(&self, shared: &Shared, pins: &UnboundedSender<()>) -> io::Result<()> {
+        let watched = &self.watched;
+        loop {
+            for (said, name) in self.notify.changes()? {
+                let is = |watch: &Option<(i32, String)>| {
+                    watch
+                        .as_ref()
+                        .is_some_and(|(wd, file)| *wd == said && *file == name)
+                };
+                if is(&self.zone) {
+                    shared.change(|known| known.clock_zone = clock::zone(&watched.localtime));
+                }
+                if is(&self.moved) {
+                    let file = watched.moved.as_deref();
+                    shared.change(|known| known.moved = file.and_then(clock::moved));
+                }
+                if is(&self.pin) {
+                    let _ = pins.send(());
+                }
             }
         }
     }
@@ -513,5 +543,30 @@ mod tests {
             "GeoClue was asked again of a here it had said"
         );
         assert_eq!(last, Some(town(false)), "GeoClue's here was let go");
+    }
+
+    /// A pin written once hearing has begun is heard, though hearing's
+    /// loop hadn't yet run: as a pin set while the daemon starts is, once
+    /// it listens and before it first waits for a change.
+    #[test]
+    fn a_pin_written_once_hearing_begins_is_heard() {
+        let files = files("heard");
+        let watched = Watched {
+            localtime: files.kept.with_file_name("localtime"),
+            pin: Some(files.pin.clone()),
+            moved: Some(files.moved.clone()),
+        };
+        let hearing = Hearing::new(watched).unwrap();
+        town(true).write(&files.pin).unwrap();
+        let shared = Shared::new(Known::default(), None, None);
+        let (pins, mut pinned) = unbounded_channel();
+        let (heard, told) = std::sync::mpsc::channel();
+        std::thread::spawn(move || hearing.hear(&shared, &pins));
+        std::thread::spawn(move || heard.send(pinned.blocking_recv()));
+        assert_eq!(
+            told.recv_timeout(Duration::from_secs(10)),
+            Ok(Some(())),
+            "the pin written as hearing began was never heard"
+        );
     }
 }
