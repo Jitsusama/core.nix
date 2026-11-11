@@ -15,12 +15,14 @@ use crate::tree::{self, Laid, Member};
 
 /// The vocabulary's words a row says: the agents' own, those for a
 /// session elsewhere (`agents:machine`) and those for what it wants
-/// (`agents:wants`).
+/// (`agents:wants`); and the names a drawer gives its facts, each
+/// `agents:<id>`'s by its id.
 #[derive(Debug, Default)]
 pub struct Words {
     pub agents: Said,
     pub machine: Said,
     pub wants: Said,
+    pub names: Said,
 }
 
 impl Words {
@@ -30,6 +32,7 @@ impl Words {
             agents: Said::of_thing(text, "agents")?,
             machine: Said::of_thing(text, "agents:machine")?,
             wants: Said::of_thing(text, "agents:wants")?,
+            names: Said::names_under(text, "agents")?,
         })
     }
 }
@@ -373,6 +376,7 @@ mod tests {
             ]),
             machine: Said::of(&[("on", "on {machine}"), ("away", "{machine}, out of reach")]),
             wants: Said::of(&[("question", "needs you"), ("approval", "needs your yes")]),
+            names: Said::default(),
         }
     }
 

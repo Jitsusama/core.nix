@@ -4,7 +4,8 @@
 //! `row:agents:<id>` with the row's fields under `row`, placed by a
 //! spaced `order` the shell never sorts. A fold holds its members' keys,
 //! each member saying the fold it's in, and how the sessions stand
-//! together is a record of its own kind, `summary`, read by its key.
+//! together is a record of its own kind, `summary`, read by its key, as
+//! each session's drawer is, `drawer`, watched by key while it's shown.
 //! Each making is held against the last, so a change sends only the
 //! records that read differently and the keys gone, and a session whose
 //! step alone moved sends nothing.
@@ -52,6 +53,17 @@ impl Moved {
 pub struct Made {
     rows: Vec<Value>,
     summary: Value,
+    /// Each session's drawer, a whole record, sent only to a watch that
+    /// names its key (drawer.rs).
+    drawers: Vec<Value>,
+}
+
+impl Made {
+    /// The same, with each session's drawer beside its rows.
+    #[must_use]
+    pub fn with_drawers(self, drawers: Vec<Value>) -> Self {
+        Self { drawers, ..self }
+    }
 }
 
 fn key_of(id: &str) -> String {
@@ -128,7 +140,11 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
     let mut rows = Vec::new();
     laid(shown, None, &mut rows);
     let summary = json!({"place": PLACE, "said": summary});
-    Made { rows, summary }
+    Made {
+        rows,
+        summary,
+        drawers: Vec::new(),
+    }
 }
 
 /// The `order` each row takes, in the order shown, from the order each
@@ -230,6 +246,11 @@ impl Served {
             SUMMARY.to_owned(),
             json!({"key": SUMMARY, "kind": "summary", "summary": made.summary}),
         );
+        for drawer in made.drawers {
+            if let Some(key) = drawer["key"].as_str() {
+                records.insert(key.to_owned(), drawer);
+            }
+        }
         let gone = self
             .records
             .keys()

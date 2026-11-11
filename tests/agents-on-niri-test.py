@@ -233,10 +233,12 @@ def shell() -> Iterator[Shell]:
         time.sleep(0.1)
     with (logs / "agents.log").open("w") as log:
         # The agents daemon makes Agents' rows from the node, the store's own as the check
-        # names it, as the account's unit runs it; this sandbox has no to-do daemon.
+        # names it, as the account's unit runs it; this sandbox has no to-do daemon, nor
+        # any windows daemon.
         rows = subprocess.Popen(  # noqa: S603
             [os.environ["AGENTS"], "--vocabulary", os.environ["WORDS"], "--node", str(NODE),
-             "--to-do", str(ROWS.parent / "to-do.sock"), "--spend", str(SPEND),
+             "--to-do", str(ROWS.parent / "to-do.sock"),
+             "--windows", str(ROWS.parent / "windows.sock"), "--spend", str(SPEND),
              "--orchestrators", str(WORKFLOW / "orchestrators.json"), "--socket", str(ROWS)],
             stdout=log, stderr=log,
         )  # fmt: skip

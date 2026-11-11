@@ -24,6 +24,8 @@ pub enum Heard {
     Jobs(Value),
     /// An answer to the to-do daemon's watch of its to-dos.
     ToDos(Value),
+    /// An answer to the windows daemon's watch of its windows.
+    Windows(Value),
     /// Files that landed or went.
     Files(Vec<PathBuf>),
     /// Whether the shell says the screen is shared.
@@ -35,13 +37,19 @@ pub enum Heard {
 pub struct Paths {
     /// Spend-watch's collection.
     pub spend: PathBuf,
+    /// Spend-watch's budgets, beside its collection.
+    pub budgets: PathBuf,
     /// The harness's list of orchestrators.
     pub orchestrators: PathBuf,
 }
 
 impl Paths {
     pub fn all(&self) -> Vec<PathBuf> {
-        vec![self.spend.clone(), self.orchestrators.clone()]
+        vec![
+            self.spend.clone(),
+            self.budgets.clone(),
+            self.orchestrators.clone(),
+        ]
     }
 }
 
@@ -73,6 +81,9 @@ impl Inputs {
             Heard::ToDos(answer) => {
                 self.to_dos.took(&answer);
             }
+            Heard::Windows(answer) => {
+                self.windows.took(&answer);
+            }
             Heard::Files(landed) => {
                 for path in landed {
                     self.read(&path, paths);
@@ -85,6 +96,8 @@ impl Inputs {
     fn read(&mut self, path: &Path, paths: &Paths) {
         if path == paths.spend {
             self.spend = file::read(path);
+        } else if path == paths.budgets {
+            self.budgets = file::read(path);
         } else if path == paths.orchestrators {
             self.orchestrators = file::read(path);
         }
@@ -106,9 +119,11 @@ mod tests {
         fs::create_dir_all(&folder).expect("a folder");
         let paths = Paths {
             spend: folder.join("collection.json"),
+            budgets: folder.join("budgets.json"),
             orchestrators: folder.join("orchestrators.json"),
         };
         fs::write(&paths.spend, r#"{"agentsToday": "$4"}"#).expect("the collection");
+        fs::write(&paths.budgets, r#"{"sessions": {}}"#).expect("the budgets");
         let mut inputs = Inputs::default();
         inputs.hear(
             Heard::Sessions(json!({"records": [{"key": "session:a"}]})),
@@ -123,6 +138,7 @@ mod tests {
         );
         assert!(inputs.jobs.get("job:1").is_some(), "the node's job held");
         assert_eq!(inputs.spend, Some(json!({"agentsToday": "$4"})));
+        assert_eq!(inputs.budgets, Some(json!({"sessions": {}})));
         assert_eq!(inputs.orchestrators, None, "a file not there holds nothing");
         assert!(inputs.sharing, "the shell's sharing held");
         let _ = fs::remove_dir_all(&folder);
@@ -134,6 +150,7 @@ mod tests {
         fs::create_dir_all(&folder).expect("a folder");
         let paths = Paths {
             spend: folder.join("collection.json"),
+            budgets: folder.join("budgets.json"),
             orchestrators: folder.join("orchestrators.json"),
         };
         let (to, heard) = mpsc::channel();

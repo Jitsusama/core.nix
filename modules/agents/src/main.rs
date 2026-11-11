@@ -3,11 +3,12 @@
 //! launcher over the socket systemd holds for it, each watch told only
 //! the rows that moved.
 //!
-//! Usage: `agents --vocabulary WORDS --node NODE --to-do TODO --spend
-//! SPEND --orchestrators ORCHESTRATORS --socket SOCKET`, where WORDS is
-//! the launcher's words.json, NODE the mycelium node's socket, TODO the
-//! to-do daemon's, SPEND spend-watch's collection and ORCHESTRATORS the
-//! harness's list of them.
+//! Usage: `agents --vocabulary WORDS --node NODE --to-do TODO --windows
+//! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --socket SOCKET`,
+//! where WORDS is the launcher's words.json, NODE the mycelium node's
+//! socket, TODO the to-do daemon's, WINDOWS the windows daemon's, SPEND
+//! spend-watch's collection (its budgets.json read from beside it) and
+//! ORCHESTRATORS the harness's list of them.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -21,21 +22,23 @@ use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use serde_json::json;
 
-/// The daemon as the launcher knows it: Agents' ready rows, and how its
-/// sessions stand together.
+/// The daemon as the launcher knows it: Agents' ready rows, how its
+/// sessions stand together, and each session's drawer.
 const DOMAIN: Domain = Domain {
     name: "agents",
-    kinds: &["row", "summary"],
+    kinds: &["row", "summary", "drawer"],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS --node NODE --to-do TODO \
-                     --spend SPEND --orchestrators ORCHESTRATORS --socket SOCKET";
+                     --windows WINDOWS --spend SPEND --orchestrators ORCHESTRATORS \
+                     --socket SOCKET";
 
 /// Where everything it reads and serves is.
 struct Args {
     vocabulary: PathBuf,
     node: PathBuf,
     to_do: PathBuf,
+    windows: PathBuf,
     spend: PathBuf,
     orchestrators: PathBuf,
     socket: PathBuf,
@@ -52,6 +55,7 @@ fn args() -> Option<Args> {
         vocabulary: named("--vocabulary")?,
         node: named("--node")?,
         to_do: named("--to-do")?,
+        windows: named("--windows")?,
         spend: named("--spend")?,
         orchestrators: named("--orchestrators")?,
         socket: named("--socket")?,
@@ -98,7 +102,9 @@ fn main() -> ExitCode {
     sources::follow(args.node.clone(), "session", Heard::Sessions, to.clone());
     sources::follow(args.node, "job", Heard::Jobs, to.clone());
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
+    sources::follow(args.windows, "window", Heard::Windows, to.clone());
     let paths = Paths {
+        budgets: args.spend.with_file_name("budgets.json"),
         spend: args.spend,
         orchestrators: args.orchestrators,
     };

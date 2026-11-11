@@ -1,13 +1,19 @@
 //! Everything Agents' rows are made from, as each source last told it:
 //! the node's sessions and the machine's queue, the to-do daemon's
-//! to-dos, spend-watch's collection, the harness's list of orchestrators,
-//! and whether the shell says the screen is shared. Each source changes
-//! its own part, and `made` makes every record from all of them.
+//! to-dos, the windows daemon's windows, spend-watch's collection and
+//! budgets, the harness's list of orchestrators, and whether the shell
+//! says the screen is shared. Each
+//! source changes its own part, and `made` makes every record from all of
+//! them.
+
+use std::collections::{HashMap, HashSet};
 
 use daemon_serve::watch::Held;
 use serde_json::Value;
 
-use crate::row::{self, Known, Words};
+use crate::clock;
+use crate::drawer;
+use crate::row::{self, Known, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Session};
 use crate::summary;
@@ -22,8 +28,12 @@ pub struct Inputs {
     pub jobs: Held,
     /// The to-do daemon's `to-do` records.
     pub to_dos: Held,
+    /// The windows daemon's `window` records.
+    pub windows: Held,
     /// Spend-watch's collection, or none before it's written.
     pub spend: Option<Value>,
+    /// Spend-watch's budgets, or none before they're written.
+    pub budgets: Option<Value>,
     /// The harness's orchestrators file, or none.
     pub orchestrators: Option<Value>,
     /// Whether the screen is shared, so no amount is said.
@@ -31,6 +41,34 @@ pub struct Inputs {
 }
 
 impl Inputs {
+    /// When each session's window was last used, in milliseconds, by its
+    /// address: the window the windows daemon says opened with the app id
+    /// the session's did (`Session::opened`), the oldest of them where
+    /// several did, as Sessions.qml finds it. One with none isn't said.
+    fn used(&self) -> HashMap<String, u64> {
+        let mut by_opened: HashMap<&str, (u64, u64)> = HashMap::new();
+        for (_, window) in self.windows.records() {
+            let opened = window.get("opened").and_then(Value::as_str);
+            let id = window.get("id").and_then(Value::as_u64);
+            let (Some(opened), Some(id)) = (opened, id) else {
+                continue;
+            };
+            let order = window.get("order").and_then(Value::as_u64).unwrap_or(0);
+            let kept = by_opened.entry(opened).or_insert((id, order));
+            if id < kept.0 {
+                *kept = (id, order);
+            }
+        }
+        self.sessions
+            .records()
+            .filter_map(|(_, one)| {
+                let session = Session(one);
+                let (_, order) = by_opened.get(session.opened().as_str())?;
+                Some((session.address().to_owned(), *order))
+            })
+            .collect()
+    }
+
     /// What a session spent today, by pi's id for it.
     fn spent(&self, id: &str) -> Option<String> {
         let said = self.spend.as_ref()?.get("sessions")?.get(id)?.as_str()?;
@@ -69,6 +107,27 @@ impl Inputs {
         Some((said("short"), said("title")))
     }
 
+    /// The titles of what a quest waits on Joel for, as For You says them:
+    /// what he can do now, then what he can't yet, each in the to-do
+    /// daemon's order, and nothing done.
+    fn needs(&self, quest: &str) -> Vec<String> {
+        let mut waiting: Vec<(bool, i64, String)> = self
+            .to_dos
+            .records()
+            .filter_map(|(_, record)| {
+                let said = |path| record.pointer(path).and_then(Value::as_str);
+                let state = said("/state")?;
+                let title = said("/item/title").filter(|title| !title.is_empty())?;
+                (state != "done" && said("/item/quest") == Some(quest)).then(|| {
+                    let order = record.get("order").and_then(Value::as_i64).unwrap_or(0);
+                    (state != "now", order, title.to_owned())
+                })
+            })
+            .collect();
+        waiting.sort();
+        waiting.into_iter().map(|(_, _, title)| title).collect()
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -76,10 +135,7 @@ impl Inputs {
         let spent = |id: &str| self.spent(id);
         let family = |quest: &str| self.family(quest);
         let listed = |address: &str| self.listed(address);
-        // Whether a session has a window to go to comes from the windows
-        // daemon (3TXW9E, Thu 12 Nov); until then one here is taken to
-        // have its own, as a held session's kitty window is.
-        let windowed = |session: Session| session.here();
+        let windowed = |session: Session| session.windowed();
         let known = Known {
             joel_can: &joel_can,
             jobs: &jobs,
@@ -89,13 +145,17 @@ impl Inputs {
             windowed: &windowed,
             sharing: self.sharing,
         };
-        let sessions =
-            session::in_order(self.sessions.records().map(|(_, one)| Session(one)), &|_| 0);
+        let used = self.used();
+        let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
+        let sessions = session::in_order(
+            self.sessions.records().map(|(_, one)| Session(one)),
+            &last_used,
+        );
         let states: Vec<_> = sessions
             .iter()
             .map(|one| one.stands(&joel_can, &jobs))
             .collect();
-        let today = if self.sharing {
+        let today_spent = if self.sharing {
             ""
         } else {
             self.spend
@@ -105,7 +165,42 @@ impl Inputs {
                 .unwrap_or("")
         };
         let rows = row::rows(&sessions, &known, &self.words);
-        served::made(&rows, &summary::summary(&states, today, &self.words.agents))
+        let mut orchestrating = HashSet::new();
+        orchestrators(&rows, &mut orchestrating);
+        let needs = |quest: &str| self.needs(quest);
+        let today = clock::today();
+        let drawn = drawer::Known {
+            needs: &needs,
+            spend: self.spend.as_ref(),
+            budgets: self.budgets.as_ref(),
+            sharing: self.sharing,
+            today: &today,
+        };
+        let drawers = sessions
+            .iter()
+            .map(|one| {
+                let orchestrates = orchestrating.contains(one.address());
+                drawer::drawer(*one, orchestrates, &self.words, &drawn)
+            })
+            .collect();
+        served::made(
+            &rows,
+            &summary::summary(&states, today_spent, &self.words.agents),
+        )
+        .with_drawers(drawers)
+    }
+}
+
+/// The addresses of those laid out as orchestrating others, folded or not.
+fn orchestrators<'a>(shown: &'a [Shown], into: &mut HashSet<&'a str>) {
+    for one in shown {
+        match one {
+            Shown::Session(row) if row.orchestrates => {
+                into.insert(row.key.trim_start_matches("agent:"));
+            }
+            Shown::Session(_) => {}
+            Shown::Fold(fold) => orchestrators(&fold.held, into),
+        }
     }
 }
 
@@ -129,6 +224,7 @@ mod tests {
                 ]),
                 machine: Said::default(),
                 wants: Said::of(&[("question", "needs you")]),
+                names: Said::of(&[("spent", "Spent Today")]),
             },
             spend: Some(json!({"agentsToday": "$214", "sessions": {"s-p": "$4"},
                 "families": {"QEST-O": {"all": "$9"}}})),
@@ -146,6 +242,32 @@ mod tests {
              "presence": {"addresses": ["X"]}}
         ]}));
         inputs
+    }
+
+    #[test]
+    fn a_sessions_window_was_used_when_the_oldest_opened_with_its_app_id_was() {
+        let mut inputs = inputs();
+        inputs.sessions.took(&json!({"records": [
+            {"key": "session:o", "standing": "running", "window": {"app_id": "pi-session.1"},
+             "presence": {"addresses": ["O"]}},
+            {"key": "session:p", "standing": "running",
+             "presence": {"addresses": ["P"], "session": "s-p", "hosted": true}},
+            {"key": "session:q", "standing": "running", "presence": {"addresses": ["Q"]}}
+        ]}));
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "opened": "pi-session.1", "order": 10},
+            {"key": "window:9", "id": 9, "opened": "pi-session.1", "order": 99},
+            {"key": "window:8", "id": 8, "opened": "pi-hosted.s-p", "order": 20},
+            {"key": "window:3", "id": 3, "opened": "kitty", "order": 50}
+        ]}));
+        let used = inputs.used();
+        assert_eq!(used.get("O"), Some(&10), "the oldest window of its app id");
+        assert_eq!(used.get("P"), Some(&20), "a hosted one's viewer");
+        assert_eq!(
+            used.get("Q"),
+            None,
+            "one opened without an app id isn't said"
+        );
     }
 
     /// Every record served of what the inputs say now.
@@ -195,6 +317,42 @@ mod tests {
             served.get("row:agents:X").is_none(),
             "one closed is Recent's"
         );
+    }
+
+    #[test]
+    fn each_session_listed_has_a_drawer_an_orchestrators_saying_all_it_spent() {
+        let served = served(&inputs());
+        let drawer = &served.get("drawer:agents:O").expect("O's drawer")["drawer"];
+        assert_eq!(
+            drawer["facts"][0],
+            json!({"label": "Spent Today", "value": "$9 in all"}),
+            "O orchestrates P, so says its whole orchestration's spend"
+        );
+        let drawer = &served.get("drawer:agents:P").expect("P's drawer")["drawer"];
+        assert_eq!(
+            drawer["facts"][0],
+            json!({"label": "Spent Today", "value": "$4"})
+        );
+        assert!(
+            served.get("drawer:agents:X").is_none(),
+            "one closed is listed nowhere, so has no drawer"
+        );
+    }
+
+    #[test]
+    fn a_quests_needs_are_what_joel_can_do_now_then_later_never_done() {
+        let mut inputs = inputs();
+        inputs.to_dos.took(&json!({"records": [
+            {"key": "to-do:QEST-O:b", "state": "later", "order": 1,
+             "item": {"title": "Later", "quest": "QEST-O"}},
+            {"key": "to-do:QEST-O:a", "state": "now", "order": 2,
+             "item": {"title": "Now", "quest": "QEST-O"}},
+            {"key": "to-do:QEST-O:c", "state": "done", "order": 0,
+             "item": {"title": "Done", "quest": "QEST-O"}},
+            {"key": "to-do:QEST-B:d", "state": "now", "order": 0,
+             "item": {"title": "Elsewhere", "quest": "QEST-B"}}
+        ]}));
+        assert_eq!(inputs.needs("QEST-O"), ["Now", "Later"]);
     }
 
     #[test]

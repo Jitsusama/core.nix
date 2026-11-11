@@ -1374,11 +1374,11 @@ onLinux {
       touch $out
     '';
 
-  # A pi session says how it stands, its acts, its drawer and its figures
-  # as tests/session-row.qml holds launcher/SessionRow.js and
+  # A pi session says how it stands and its acts, and its drawer's times
+  # are worded, as tests/session-row.qml holds launcher/SessionRow.js and
   # SessionDrawer.js to them in Qt's own engine, and Landed what they
-  # landed, kept past their end (Landed.js). How Agents lays sessions out
-  # is the agents daemon's, proven in its own crate.
+  # landed, kept past their end (Landed.js). How Agents lays sessions out,
+  # and what its drawer says, is the agents daemon's, proven in its crate.
   the-launcher-says-how-each-session-stands =
     let
       qt = pkgs.qt6.qtdeclarative;

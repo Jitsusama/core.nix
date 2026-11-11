@@ -50,7 +50,9 @@ function placed(key, session) {
 // parked here; `ending`, those here that ended this boot, unparked. Each
 // is `{ file, presence, window, held }`, with where it runs, whether it
 // can be reached and when it changed for one elsewhere, and when it
-// changed for one ended.
+// changed for one ended. A stopgap: Agents takes its rows ready from the
+// agents daemon, and the daemon's ready rows take over this sorting for
+// Now and the windows' readers too, with the session acts, Thu 12 Nov.
 function sorted(held) {
     const sorting = { live: [], resting: [], ending: [] };
     for (const key of Object.keys(held).sort()) {

@@ -27,6 +27,9 @@ struct Thing {
     /// agents' do.
     #[serde(default)]
     said: Value,
+    /// Its name, where it's a word; a name by state is read as none.
+    #[serde(default)]
+    name: Value,
 }
 
 impl Said {
@@ -55,6 +58,25 @@ impl Said {
             })
             .collect();
         Ok(Self(said))
+    }
+
+    /// The names of every thing whose id starts `{prefix}:`, by the rest
+    /// of its id, as a drawer names each fact (`agents:step` is Doing).
+    pub fn names_under(text: &str, prefix: &str) -> serde_json::Result<Self> {
+        let vocabulary: Vocabulary = serde_json::from_str(text)?;
+        let lead = format!("{prefix}:");
+        let names = vocabulary
+            .things
+            .into_iter()
+            .filter_map(|thing| {
+                let id = thing.id.strip_prefix(&lead)?.to_owned();
+                match thing.name {
+                    Value::String(name) => Some((id, name)),
+                    _ => None,
+                }
+            })
+            .collect();
+        Ok(Self(names))
     }
 
     /// Words given outright, as a test gives only those it reads.
@@ -100,6 +122,21 @@ mod tests {
         .expect("the vocabulary reads");
         assert_eq!(said.fill("today", &[("spent", "$4")]), "$4 today");
         assert_eq!(said.word("absent"), "", "a word it lacks says nothing");
+    }
+
+    #[test]
+    fn the_names_under_a_thing_are_kept_by_the_rest_of_their_ids() {
+        let names = Said::names_under(
+            r#"{"things": [{"id": "agents:step", "name": "Doing"},
+                {"id": "agents", "name": "Agents"},
+                {"id": "agentsish:step", "name": "Not this"},
+                {"id": "agents:by-state", "name": {"on": "On"}}]}"#,
+            "agents",
+        )
+        .expect("the vocabulary reads");
+        assert_eq!(names.word("step"), "Doing");
+        assert_eq!(names.word("by-state"), "", "a name by state is none");
+        assert_eq!(names.word(""), "", "the thing itself isn't under itself");
     }
 
     #[test]

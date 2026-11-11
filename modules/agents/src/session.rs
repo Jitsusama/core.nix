@@ -120,9 +120,51 @@ impl<'a> Session<'a> {
             .unwrap_or(true)
     }
 
+    /// Whether it has a window to go to: one here, as a held session's
+    /// kitty window is, since a window opened without an app id is one
+    /// only its kitty can say, which Sessions.qml asks; one elsewhere
+    /// where the node says how to attach to it, which Go To opens here.
+    pub fn windowed(self) -> bool {
+        self.here()
+            || self.0.get("attach").is_some_and(|attach| match attach {
+                Value::Array(command) => !command.is_empty(),
+                Value::String(command) => !command.is_empty(),
+                Value::Null | Value::Bool(false) => false,
+                _ => true,
+            })
+    }
+
     /// When the node last heard it change, in milliseconds.
     pub fn changed(self) -> u64 {
         self.0.get("changed").and_then(Value::as_u64).unwrap_or(0)
+    }
+
+    /// The app id its window opened with, which the windows daemon says of
+    /// the window too: as the node was told it with the window, or for a
+    /// hosted session its viewer's, `pi-hosted.<id>`, as Sessions.qml
+    /// finds it. Empty for a window opened without one, which only its
+    /// kitty can say, so Sessions alone finds it.
+    pub fn opened(self) -> String {
+        let told = self
+            .0
+            .get("window")
+            .and_then(|window| window.get("app_id"))
+            .and_then(Value::as_str)
+            .filter(|app| !app.is_empty());
+        if let Some(app) = told {
+            return app.to_owned();
+        }
+        let hosted = self
+            .presence()
+            .and_then(|presence| presence.get("hosted"))
+            .is_some_and(|hosted| !matches!(hosted, Value::Null | Value::Bool(false)));
+        let id = self.said("session").unwrap_or("");
+        let plain = !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+        if hosted && plain {
+            format!("pi-hosted.{id}")
+        } else {
+            String::new()
+        }
     }
 
     /// How it stands among the others, given who has something Joel can
@@ -311,6 +353,22 @@ mod tests {
     }
 
     #[test]
+    fn one_here_or_one_elsewhere_to_attach_to_has_a_window_to_go_to() {
+        assert!(Session(&json!({"here": true})).windowed(), "one here");
+        let attach = json!({"here": false, "attach": ["mycelium", "attach", "P"]});
+        assert!(Session(&attach).windowed(), "one elsewhere to attach to");
+        let unattached = json!({"here": false, "attach": []});
+        assert!(
+            !Session(&unattached).windowed(),
+            "one elsewhere with no way in"
+        );
+        assert!(
+            !Session(&json!({"here": false})).windowed(),
+            "one elsewhere the node says nothing of"
+        );
+    }
+
+    #[test]
     fn a_session_is_named_by_its_quest_and_folder() {
         let record = json!({"presence": {"addresses": ["P"], "cwd": "/src/reef/",
             "questInfo": {"title": "Kelp Water"}, "title": "\u{3c0} - old - x"}});
@@ -444,5 +502,30 @@ mod tests {
             .map(|session| session.address())
             .collect();
         assert_eq!(order, ["Q", "O", "P", "B", "A"]);
+    }
+
+    #[test]
+    fn a_window_is_known_by_the_app_id_it_opened_with_or_its_viewers() {
+        let told = json!({"window": {"app_id": "pi-session.4"},
+            "presence": {"session": "s-1", "hosted": true}});
+        let hosted = json!({"presence": {"session": "s-1", "hosted": true}});
+        let odd = json!({"presence": {"session": "s 1", "hosted": true}});
+        let held = json!({"window": {"app_id": ""}, "presence": {"session": "s-1"}});
+        assert_eq!(
+            Session(&told).opened(),
+            "pi-session.4",
+            "the app id told wins"
+        );
+        assert_eq!(
+            Session(&hosted).opened(),
+            "pi-hosted.s-1",
+            "else its viewer's"
+        );
+        assert_eq!(Session(&odd).opened(), "", "never an id no app id can hold");
+        assert_eq!(
+            Session(&held).opened(),
+            "",
+            "and none for one opened without"
+        );
     }
 }
