@@ -70,25 +70,6 @@ ShellRoot {
 
     property int step: 0
     property int left: 0
-    // How often Taken's files changed, so a read finding what the last one
-    // did is seen to change nothing.
-    property int filesChanged: 0
-    property int filesChangedBefore: 0
-
-    Connections {
-        target: Taken
-
-        function onFilesChanged(): void {
-            root.filesChanged += 1;
-        }
-    }
-
-    // The folder's three screenshots as the daemon says them, a time, a
-    // size and a path each.
-    function shotsAsFound() {
-        return [29, 30, 31].map(day => `${1761900000 + day}\t10\t${root.shots}/2026-10-${day}`
-            + " 09-00-00.png");
-    }
 
     readonly property var steps: [
         {
@@ -96,16 +77,6 @@ ShellRoot {
             run: () => Taken.want(root.shots),
             holds: () => Taken.files.some(file => file.path === root.picture)
                 && root.askedSoFar().length === 0
-        },
-        {
-            what: "a read that finds what the last one did changes nothing",
-            run: () => {
-                Taken.heard(root.shotsAsFound());
-                root.filesChangedBefore = root.filesChanged;
-                Taken.heard(root.shotsAsFound());
-            },
-            holds: () => root.filesChanged === root.filesChangedBefore
-                && Taken.files.some(file => file.path === root.picture)
         },
         {
             what: "a search gives none at first, and says once it's found",

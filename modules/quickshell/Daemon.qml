@@ -142,9 +142,11 @@ Scope {
     property var sources: ({})
 
     // Said once a message, after `held` takes it: the keys it said anew
-    // and the keys it let go. A whole answer says every key it holds,
-    // and the keys it dropped as gone. A signal rather than a property,
-    // so nothing binds to it and re-walks what's held.
+    // and the keys it let go. A record said as it's held already isn't
+    // said anew, so a whole answer says only the keys whose records
+    // differ from what was held, and the keys it dropped as gone. A
+    // signal rather than a property, so nothing binds to it and re-walks
+    // what's held.
     signal heard(var changed, var gone)
     // Said with every line the daemon says, once it's taken, so a domain
     // hears what a daemon tells beyond its records, as the passwords
@@ -234,7 +236,11 @@ Scope {
     // Records said whole, each replacing what was held by its key, and
     // keys the daemon says are gone taken out, whether in a gone list or
     // as a record saying `gone`, as the people daemon tells of someone no
-    // source knows any more.
+    // source knows any more. A record said just as it's held is left be,
+    // the object held kept and its key not heard: each opening's watch
+    // ahead is answered whole, and every record of it told as changed
+    // made every reader remake its rows at every opening, though nothing
+    // had changed (Capture's Recent, a place's ready rows, People's).
     function took(records, gone, changes) {
         const changed = [];
         const dropped = [];
@@ -248,8 +254,12 @@ Scope {
                 }
                 continue;
             }
-            held[record.key] = changes && changesDiffer && record.key in held
+            const holds = record.key in held;
+            const now = changes && changesDiffer && holds
                 ? mended(held[record.key], record) : record;
+            if (holds && alike(held[record.key], now))
+                continue;
+            held[record.key] = now;
             changed.push(record.key);
         }
         for (const key of gone ?? []) {
@@ -262,6 +272,20 @@ Scope {
             return;
         revision += 1;
         heard(changed, dropped);
+    }
+
+    // Whether two records say the same, field by field and item by item,
+    // as plain values parsed from a line are compared, whatever the order
+    // their fields came in.
+    function alike(was, now) {
+        if (was === now)
+            return true;
+        if (was === null || now === null || typeof was !== "object"
+            || typeof now !== "object" || Array.isArray(was) !== Array.isArray(now))
+            return false;
+        const fields = Object.keys(was);
+        return fields.length === Object.keys(now).length
+            && fields.every(field => field in now && alike(was[field], now[field]));
     }
 
     // A record held with a change laid over it: a new object, so a reader

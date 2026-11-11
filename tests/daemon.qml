@@ -24,8 +24,10 @@
 // with no records knows it holds none once it's answered, and one whose
 // answer is the whole of its kind, as the node's is, lets go what went in
 // a gap. What each message changed and let go is heard apart, a key let
-// go never said as changed, and a whole answer says every key it holds
-// and those it dropped. A client holding its wire watches neither its
+// go never said as changed, and a whole answer says only the keys whose
+// records differ from what was held and those it dropped, so a rewatch
+// answered with the same records hears nothing. A client holding its wire
+// watches neither its
 // socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -116,6 +118,21 @@ ShellRoot {
     }
     property bool heldBoth: false
     property var wholeHeard: null
+
+    // Watched again once it holds its one record, as each opening watches
+    // again, and answered with the same record: the keys it hears after,
+    // counted from the rewatch, or -1 before it.
+    Daemon {
+        id: rewatched
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "note"
+        onHeard: (changed, gone) => {
+            if (root.rewatchHeard >= 0)
+                root.rewatchHeard += changed.length + gone.length;
+        }
+    }
+    property int rewatchHeard: -1
 
     // Not live, so watching only once it's refreshed, until answered.
     Daemon {
@@ -376,7 +393,21 @@ ShellRoot {
             holds: () => root.heldBoth && whole.state === "answering"
                 && "waiting:b" in whole.held && !("waiting:a" in whole.held)
                 && JSON.stringify(root.wholeHeard)
-                === '{"changed":["waiting:b"],"gone":["waiting:a"]}'
+                === '{"changed":[],"gone":["waiting:a"]}'
+        },
+        {
+            what: "a rewatch answered with the same records hears nothing",
+            holds: () => {
+                if (!("note:one" in rewatched.held))
+                    return false;
+                if (root.rewatchHeard < 0) {
+                    root.rewatchHeard = 0;
+                    rewatched.live = false;
+                    rewatched.live = true;
+                    return false;
+                }
+                return rewatched.answeredThisWatch && root.rewatchHeard === 0;
+            }
         },
         {
             what: "a client holding its wire watches neither its socket nor its folder",
