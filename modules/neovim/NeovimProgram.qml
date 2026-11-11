@@ -51,6 +51,7 @@ import Quickshell.Io
 import QtQuick
 import "../Copied.js" as Copying
 import "../FileFacts.js" as FileFacts
+import "../Hearing.js" as Hearing
 import "Ago.js" as Ago
 import "Neovim.js" as Neovim
 import "NeovimOpening.js" as Opening
@@ -99,10 +100,11 @@ Provider {
     }
 
     // Each answer draws Neovim's step again, once a frame however many
-    // come together.
+    // come together, timed from the earliest line that asked (Hearing.js).
     function heard() {
-        Qt.callLater(provider.redraw);
+        Qt.callLater(Hearing.putOff(redrawn));
     }
+    readonly property var redrawn: Hearing.carried(() => provider.redraw())
 
     function redraw() {
         provider.changed();

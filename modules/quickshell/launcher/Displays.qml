@@ -54,6 +54,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../Hearing.js" as Hearing
 import "Backlight.js" as Backlight
 import "Numbers.js" as Numbers
 import "Order.js" as Order
@@ -466,7 +467,7 @@ Provider {
         // whenever the watch was answered before the next key (the
         // answers VM test, 2026-11-10).
         function onAnsweredThisWatchChanged() {
-            Qt.callLater(provider.lightAnswered);
+            Qt.callLater(Hearing.putOff(provider.lightTold));
         }
 
         function onLiveChanged() {
@@ -474,6 +475,8 @@ Provider {
         }
     }
 
+    // Timed from the line that answered the watch (Hearing.js).
+    readonly property var lightTold: Hearing.carried(() => provider.lightAnswered())
     function lightAnswered() {
         if (lightShown)
             answered();

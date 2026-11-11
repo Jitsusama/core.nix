@@ -36,6 +36,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../Hearing.js" as Hearing
 import "Person.js" as Person
 import "Placed.js" as Placed
 import "ReadyRows.js" as Ready
@@ -219,8 +220,10 @@ Provider {
         merging.stale = true;
         rowsOfEveryone.stale = true;
         heardRevision += 1;
-        Qt.callLater(provider.lentMoved);
+        Qt.callLater(Hearing.putOff(lentTold));
     }
+    // Timed from the earliest line whose change it tells (Hearing.js).
+    readonly property var lentTold: Hearing.carried(() => provider.lentMoved())
 
     // A row People lends another place (personOf), as a mail's sender or a
     // meeting's guest, says how they stood as it was made, and stayed so
