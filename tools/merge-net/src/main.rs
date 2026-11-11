@@ -55,6 +55,7 @@ mod ready;
 mod rules;
 mod running;
 mod state;
+mod subtests;
 mod turn;
 mod watch;
 mod world;
