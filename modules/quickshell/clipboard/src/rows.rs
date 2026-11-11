@@ -251,25 +251,35 @@ pub fn picture(picture: &Picture, words: &Words) -> Value {
         None => words.fill("image", &[]),
     };
     let (across, down) = picture.size.unwrap_or((0, 0));
-    // Said by its subtype, "png" for image/png.
-    let subtype = picture.kind.strip_prefix("image/").unwrap_or(picture.kind);
-    let kind = words.fill(subtype, &[]);
-    let kind = if kind.is_empty() {
-        words.fill("picture", &[])
-    } else {
-        kind
+    // Said by its format's own name, which no vocabulary words, as a
+    // document's "PDF" is: "PNG" for image/png.
+    let kind = match picture.kind {
+        "image/png" => "PNG".to_owned(),
+        "image/jpeg" => "JPEG".to_owned(),
+        "image/webp" => "WebP".to_owned(),
+        "image/gif" => "GIF".to_owned(),
+        _ => capitalised(&words.said("picture")),
     };
     json!({
         "key": format!("row:{PLACE}:{}", picture.id),
         "thing": format!("picture:{}", picture.id),
         "place": PLACE,
         "kind": "picture",
-        "name": name,
+        "name": capitalised(&name),
         "glyph": "picture",
         "hue": "text",
         "side": [{ "said": kind }, { "said": words.bytes(picture.bytes) }, came(picture.at)],
         "acts": acts(picture.id),
         "held": { "id": picture.id, "picture": picture.path, "across": across, "down": down },
+    })
+}
+
+/// Words read beside a value, given a capital where they open a name or
+/// a side: "image" as "Image".
+fn capitalised(words: &str) -> String {
+    let mut letters = words.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(letters).collect()
     })
 }
 
