@@ -120,6 +120,20 @@ impl<'a> Session<'a> {
             .unwrap_or(true)
     }
 
+    /// Whether it has a window to go to: one here, as a held session's
+    /// kitty window is, since a window opened without an app id is one
+    /// only its kitty can say, which Sessions.qml asks; one elsewhere
+    /// where the node says how to attach to it, which Go To opens here.
+    pub fn windowed(self) -> bool {
+        self.here()
+            || self.0.get("attach").is_some_and(|attach| match attach {
+                Value::Array(command) => !command.is_empty(),
+                Value::String(command) => !command.is_empty(),
+                Value::Null | Value::Bool(false) => false,
+                _ => true,
+            })
+    }
+
     /// When the node last heard it change, in milliseconds.
     pub fn changed(self) -> u64 {
         self.0.get("changed").and_then(Value::as_u64).unwrap_or(0)
@@ -335,6 +349,22 @@ mod tests {
             Session(&json!({})).address(),
             "",
             "no presence names nothing"
+        );
+    }
+
+    #[test]
+    fn one_here_or_one_elsewhere_to_attach_to_has_a_window_to_go_to() {
+        assert!(Session(&json!({"here": true})).windowed(), "one here");
+        let attach = json!({"here": false, "attach": ["mycelium", "attach", "P"]});
+        assert!(Session(&attach).windowed(), "one elsewhere to attach to");
+        let unattached = json!({"here": false, "attach": []});
+        assert!(
+            !Session(&unattached).windowed(),
+            "one elsewhere with no way in"
+        );
+        assert!(
+            !Session(&json!({"here": false})).windowed(),
+            "one elsewhere the node says nothing of"
         );
     }
 

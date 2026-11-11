@@ -135,10 +135,7 @@ impl Inputs {
         let spent = |id: &str| self.spent(id);
         let family = |quest: &str| self.family(quest);
         let listed = |address: &str| self.listed(address);
-        // One here is taken to have a window to go to, as a held session's
-        // kitty window is, since a window opened without an app id is one
-        // only its kitty can say, which Sessions.qml asks.
-        let windowed = |session: Session| session.here();
+        let windowed = |session: Session| session.windowed();
         let known = Known {
             joel_can: &joel_can,
             jobs: &jobs,
