@@ -242,17 +242,42 @@ Provider {
     // not wanted, as Start a Session steps in, they're laid out then
     // (laidOut), keeping those that read the same.
     readonly property var all: provider.wanted ? laidOut() : kept.rows ?? []
+
+    // Each quest's title broken into the pieces A to Z reads (Order.js's
+    // pieces), by its id, with the title they were made from. Sorted by
+    // name alone, both titles were broken apart at each comparison, about
+    // 10,000 for Joel's 1,063 quests: 20% of the stall after an opening's
+    // frame (H6EDLC's profile, 2026-11-10). Now each is broken once, and
+    // again only when its title changes. A stopgap: Quests' ready rows, from
+    // a quests daemon of their own by Thu 12 (RCTRF8), take the sort out of
+    // the launcher. A plain object, so keeping one notifies nothing.
+    readonly property var named: ({})
+    function piecesKept() {
+        const next = {};
+        for (const quest of quests) {
+            const title = quest.title || quest.id;
+            const before = provider.named[quest.id];
+            next[quest.id] = before && before.title === title
+                ? before : { title: title, pieces: Order.pieces(title) };
+        }
+        for (const id of Object.keys(provider.named))
+            delete provider.named[id];
+        Object.assign(provider.named, next);
+        return next;
+    }
+
     function laidOut() {
         const bucket = q => {
             const at = priorities.indexOf(q.priority);
             return at < 0 ? priorities.length : at;
         };
+        const named = piecesKept();
         const sorted = Order.sorted(quests, Order.returned({
             first: isOpen,
             placed: (a, b) => bucket(a) - bucket(b)
                 || (Number(a.rank) || 1e9) - (Number(b.rank) || 1e9),
             last: q => String(q.updated ?? ""),
-            name: q => q.title || q.id
+            pieces: q => named[q.id].pieces
         }));
         const sessions = loaded;
         const next = {};

@@ -16,8 +16,9 @@ pragma ComponentBehavior: Bound
 // why, each other saying how it stands as Machines says it, from the
 // node's machine records, and Wherever It Fits last; and a quest made since is heard, each
 // other's row kept as every quest is told again, and a change remakes only the quests it
-// names, a list written again with only when each was heard moved remaking none. It exits 0 once every
-// case holds, and otherwise 1, saying which didn't.
+// names, a list written again with only when each was heard moved remaking none; and each
+// title is broken into the pieces A to Z reads once, and again only when it changes. It
+// exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -36,6 +37,9 @@ ShellRoot {
     // they were said anew since.
     property var before: []
     property int questsSaid: 0
+    // Each quest's title in pieces, by its id, before the store is written
+    // again.
+    property var namedBefore: ({})
 
     function expect(what, holds, said) {
         if (!holds)
@@ -306,6 +310,17 @@ ShellRoot {
             expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go to",
                 held.verbs()[0].name);
 
+            // Laid out again with nothing changed, no title is broken into
+            // pieces again: each sort broke both titles apart at every
+            // comparison, 20% of the stall after an opening's frame
+            // (2026-11-10).
+            const named = Object.assign({}, theQuests.named);
+            theQuests.laidOut();
+            const rebroken = Object.keys(named).filter(id => theQuests.named[id] !== named[id]);
+            expect("no title broken again laid out again", rebroken.length === 0
+                && Object.keys(theQuests.named).length === 4, rebroken.join(", "));
+
+            root.namedBefore = named;
             root.made = theQuests.looksThrough();
             root.counted = theQuests.tally.rows;
             root.before = theQuests.quests.slice();
@@ -364,6 +379,11 @@ ShellRoot {
             expect("every other quest's row kept", remade.length === 0, names(remade));
             expect("one row made, for the new quest", theQuests.tally.rows - root.counted === 1,
                 `${theQuests.tally.rows - root.counted} rows`);
+            const rebroken = Object.keys(root.namedBefore)
+                .filter(id => theQuests.named[id] !== root.namedBefore[id]);
+            expect("only the new quest's title broken into pieces", rebroken.length === 0
+                && theQuests.named["QEST-20261020-NEWONE"]?.title === "Newly made",
+                rebroken.join(", "));
             // The list written again with nothing moved but when each was
             // heard, then the new one let go, then the ended one retired:
             // the quests are said anew for the last two alone.
@@ -374,7 +394,7 @@ ShellRoot {
                 .concat([{ key: "quest:QEST-20261020-NEWONE", heard: 3 }]) });
             tell("quest", { gone: ["quest:QEST-20261020-NEWONE"] });
             tell("ended-quest", { changed: [{ key: "ended-quest:QEST-20250105-BANNER",
-                status: "retired" }] });
+                status: "retired", title: "Retune the banner" }] });
         } catch (error) {
             fail(error.message);
         }
@@ -395,6 +415,12 @@ ShellRoot {
                 && quest.id !== "QEST-20261020-NEWONE" && quest.id !== "QEST-20250105-BANNER");
             expect("every other quest kept", remade.length === 0,
                 remade.map(quest => quest.id).join(", "));
+            // A title changed is broken into pieces anew, and sorts by them.
+            const banner = theQuests.named["QEST-20250105-BANNER"]?.pieces ?? [];
+            expect("a retitled quest's pieces made again", banner.join("|") === "retune the banner",
+                banner.join("|"));
+            expect("the one let go no longer kept",
+                theQuests.named["QEST-20261020-NEWONE"] === undefined, "still kept");
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
