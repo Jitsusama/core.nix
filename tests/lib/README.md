@@ -1,9 +1,9 @@
 # What Checks Share
 
 The pieces more than one check is built from, so a check's own files say
-only what it checks. Most are for VM tests, and those are proven by a check
-of their own, against stand-ins, without booting a machine. The rest are
-proven by the checks that use them.
+only what it checks. Most are for VM tests, and those are proven by checks
+of their own in `checks.nix`, against stand-ins, without booting a machine.
+The rest are proven by the checks that use them.
 
 For VM tests:
 

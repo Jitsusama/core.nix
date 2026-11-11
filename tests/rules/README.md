@@ -4,9 +4,9 @@ The checks that hold every file in the repository to one rule of the quality
 standard. Each is three files: `<rule>.nix` builds the check, `<rule>.py`,
 beside it, says what breaks the rule, and `<rule>-waiting.nix` lists the files
 that broke it before the rule came in. A list only shrinks: fixing a file takes
-it off, and nothing new goes on. Every rule is also given to other repositories
-built on core, through `core.lib` in `flake.nix`, with a waiting list of their
-own.
+it off, and nothing new goes on. `checks.nix` runs all eight on core itself.
+Every rule is also given to other repositories built on core, through
+`core.lib` in `flake.nix`, with a waiting list of their own.
 
 | Rule                                             | Holds                                                         |
 | ------------------------------------------------ | ------------------------------------------------------------- |

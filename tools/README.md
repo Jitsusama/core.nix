@@ -3,8 +3,8 @@
 The programs the dev shell gives whoever is changing core.nix, each in
 a folder of its own with its tests beside it. None is part of a
 machine but merge-net, whose daemon `modules/merge-net` runs for an
-account that changes core, and none is a test: the checks that prove them are in the
-root `checks.nix`. [AGENTS.md][agents] says when to use each.
+account that changes core, and none is a test: the checks that prove each
+are in its folder's `checks.nix`. [AGENTS.md][agents] says when to use each.
 
 | Folder            | Holds                                                         |
 | ----------------- | ------------------------------------------------------------- |
