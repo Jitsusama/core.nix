@@ -2,8 +2,9 @@
 //! places it by and never sorts: a making's rows keep the orders they had
 //! where they still rise, and only those that moved take a new one,
 //! midway between their neighbours, so one row moving sends one row.
-//! Every row is spaced again only when a gap runs out, and that goes as
-//! one change, so the shell moves nothing twice.
+//! Where a gap runs out, only the rows nearest it are spaced again, as
+//! many as give each its share of the spacing, so rows arriving again and
+//! again in one place move their neighbours seldom and the rest never.
 
 /// How far apart each row's `order` is set, so one row moving between
 /// two takes a number between theirs and the rest keep their own.
@@ -13,13 +14,26 @@ pub const SPACING: i64 = 1024;
 /// had before (`was`): the most rows that can keep theirs do (the longest
 /// run still rising), and the rest take numbers spaced between their
 /// neighbours, so one row moving changes one row. Where no room is left
-/// between two, every row is spaced again.
+/// between two, the rows around them are spaced again (see [`widened`]).
 pub fn spaced(was: &[Option<i64>]) -> Vec<i64> {
-    let kept = rising(was);
+    let mut kept = rising(was);
+    loop {
+        match placed(was, &kept) {
+            Ok(order) => return order,
+            Err(full) => widened(was, &mut kept, full),
+        }
+    }
+}
+
+/// Each row's order, keeping those of the rows at `kept` and spacing the
+/// rest between them, or the place in `kept` of the row above the first
+/// gap with no room for the rows that go in it.
+fn placed(was: &[Option<i64>], kept: &[usize]) -> Result<Vec<i64>, usize> {
     let mut order = vec![0; was.len()];
     let mut at = 0;
     let mut below: Option<i64> = None;
-    for upto in kept.iter().copied().chain(std::iter::once(was.len())) {
+    let bounds = kept.iter().copied().chain(std::iter::once(was.len()));
+    for (anchor, upto) in bounds.enumerate() {
         let above = was.get(upto).copied().flatten();
         let between = upto - at;
         let count = i64::try_from(between).unwrap_or(i64::MAX);
@@ -32,9 +46,7 @@ pub fn spaced(was: &[Option<i64>]) -> Vec<i64> {
             (None, None) => Some((0, SPACING)),
         };
         let Some((from, step)) = room else {
-            return (1..=i64::try_from(was.len()).unwrap_or(i64::MAX))
-                .map(|n| n * SPACING)
-                .collect();
+            return Err(anchor);
         };
         for (step_at, one) in (1..).zip(at..upto) {
             order[one] = from + step * step_at;
@@ -45,7 +57,29 @@ pub fn spaced(was: &[Option<i64>]) -> Vec<i64> {
         }
         at = upto + 1;
     }
-    order
+    Ok(order)
+}
+
+/// Lets go of the kept rows nearest a full gap, the one above it at
+/// `full` in `kept` and the one below in turn, until the rows between
+/// those still kept have half the spacing each, or one side reaches an
+/// end. Spaced again that far, the gap takes many more rows before it
+/// runs out, and nothing beyond it moves.
+fn widened(was: &[Option<i64>], kept: &mut Vec<usize>, full: usize) {
+    let order = |place: usize| was[place].unwrap_or_default();
+    let (mut lo, mut hi) = (full, full);
+    while let (Some(low), Some(high)) = (lo.checked_sub(1).map(|k| kept[k]), kept.get(hi)) {
+        let rows = i64::try_from(high - low).unwrap_or(i64::MAX);
+        if (order(*high) - order(low)) / rows >= SPACING / 2 {
+            break;
+        }
+        if hi - full <= full - lo {
+            hi += 1;
+        } else {
+            lo -= 1;
+        }
+    }
+    kept.drain(lo..hi);
 }
 
 /// A name broken into runs of digits and of the rest, lowered, as the
@@ -112,6 +146,8 @@ fn rising(was: &[Option<i64>]) -> Vec<usize> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     #[test]
@@ -123,7 +159,7 @@ mod tests {
         );
         assert_eq!(
             spaced(&[Some(1), None, Some(2)]),
-            [1024, 2048, 3072],
+            [1, 1025, 2049],
             "no room between"
         );
     }
@@ -146,6 +182,49 @@ mod tests {
         assert_eq!(
             spaced(&[None, Some(1024), Some(3072), None]),
             [0, 1024, 3072, 4096]
+        );
+    }
+
+    #[test]
+    fn streams_arriving_one_after_another_move_only_their_neighbour() {
+        // A program's streams, each new one shown after the last before
+        // that one goes, as a notification sound's do (2026-11-11): each
+        // arrives midway between the last and the row after them.
+        let mut shown: Vec<(String, i64)> = Vec::new();
+        let mut moves: BTreeMap<String, usize> = BTreeMap::new();
+        let names = |streams: &[usize]| {
+            ["a", "b", "program"]
+                .into_iter()
+                .map(str::to_owned)
+                .chain(streams.iter().map(|stream| format!("stream {stream}")))
+                .chain(["next", "c", "d"].into_iter().map(str::to_owned))
+                .collect::<Vec<_>>()
+        };
+        let arrivals = 200;
+        let makings = (1..=arrivals).flat_map(|stream| [vec![stream - 1, stream], vec![stream]]);
+        for streams in [vec![0]].into_iter().chain(makings) {
+            let rows = names(&streams);
+            let was: Vec<Option<i64>> = rows
+                .iter()
+                .map(|row| shown.iter().find(|(key, _)| key == row).map(|(_, at)| *at))
+                .collect();
+            let orders = spaced(&was);
+            for ((row, before), after) in rows.iter().zip(&was).zip(&orders) {
+                if before.is_some_and(|before| before != *after) {
+                    *moves.entry(row.clone()).or_default() += 1;
+                }
+            }
+            shown = rows.into_iter().zip(orders).collect();
+        }
+        let far: Vec<_> = moves
+            .iter()
+            .filter(|(row, _)| ["a", "b", "c", "d"].contains(&row.as_str()))
+            .collect();
+        assert!(far.is_empty(), "rows away from the streams moved: {far:?}");
+        let next = moves.get("next").copied().unwrap_or(0);
+        assert!(
+            next * 8 <= arrivals,
+            "the row after the streams moved {next} times in {arrivals} arrivals"
         );
     }
 }
