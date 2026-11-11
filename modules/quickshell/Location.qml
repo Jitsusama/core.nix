@@ -120,20 +120,23 @@ Singleton {
 
     // Sets where the laptop is to the town Joel names, asked of
     // whereabouts, which finds it by the web and pins it, then says it as
-    // here; nothing is run for it.
+    // here; nothing is run for it. A refusal is said as whereabouts words
+    // it, from the same vocabulary; only what's said while it's asked, and
+    // when it doesn't answer, are worded here.
     function setByHand(words) {
         if (setting)
             return;
         setting = true;
-        told = `finding ${words}\u2026`;
+        told = phrase("finding", words);
         daemon.ask({ ask: "act", act: "set", words: words }, said => {
-            setting = false;
-            const code = said?.error?.code;
-            told = said?.done === true ? ""
-                : code === "nowhere" ? `no place is called ${words}`
-                : code === "unasked" ? `couldn't ask where ${words} is`
-                : `${words} couldn't be set`;
+            root.setting = false;
+            root.told = said?.done === true ? ""
+                : said?.error?.message ?? root.phrase("unkept", words);
         });
+    }
+
+    function phrase(id, words) {
+        return (Words.of("location").said?.[id] ?? id).replace("{words}", words);
     }
 
     // Takes Joel's place away, so GeoClue finds the laptop again, which

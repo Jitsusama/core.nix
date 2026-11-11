@@ -225,17 +225,35 @@ impl Shared {
         let done = match act {
             "again" => pin::again(pin).map_err(|why| ("refused", why.to_string())),
             "set" if words.trim().is_empty() => Err(("bad-act", "set names no place".into())),
-            "set" => pin::set(pin, words.trim()).map_err(|unpinned| match unpinned {
-                Unpinned::Nowhere => ("nowhere", format!("no place is called {words}")),
-                Unpinned::Unasked => ("unasked", format!("couldn't ask where {words} is")),
-                Unpinned::Unkept(why) => ("refused", why),
-            }),
+            "set" => {
+                pin::set(pin, words.trim()).map_err(|unpinned| self.unpinned(&unpinned, words))
+            }
             _ => Err(("unknown-act", format!("no act {act:?} here"))),
         };
         match done {
             Ok(()) => json!({"id": id, "done": true}),
             Err((code, message)) => error(id, code, &message),
         }
+    }
+
+    /// Why the town Joel named wasn't pinned, as the launcher's foot says
+    /// it, in Location's words (the phrase's id where none were handed
+    /// over), so the shell words no refusal of its own. A pin that
+    /// couldn't be kept says why on the journal, which isn't his to read.
+    fn unpinned(&self, unpinned: &Unpinned, words: &str) -> (&'static str, String) {
+        let (code, phrase) = match unpinned {
+            Unpinned::Nowhere => ("nowhere", "nowhere"),
+            Unpinned::Unasked => ("unasked", "unasked"),
+            Unpinned::Unkept(why) => {
+                eprintln!("<4>the place found for {words:?} wasn't kept: {why}");
+                ("refused", "unkept")
+            }
+        };
+        let said = self.words.as_ref().map_or_else(
+            || phrase.to_owned(),
+            |said| said.said(phrase, &[("words", words.trim())]),
+        );
+        (code, said)
     }
 }
 
@@ -607,5 +625,28 @@ mod tests {
             "no pin to take away is done too"
         );
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_town_not_pinned_is_refused_in_locations_words() {
+        let worded = Shared::new(Known::default(), Some(crate::words::fixture()), None);
+        assert_eq!(
+            worded.unpinned(&Unpinned::Nowhere, " Kelpwater "),
+            ("nowhere", "no place is called Kelpwater".to_owned())
+        );
+        assert_eq!(
+            worded.unpinned(&Unpinned::Unasked, "Kelpwater"),
+            ("unasked", "couldn't ask where Kelpwater is".to_owned())
+        );
+        assert_eq!(
+            worded.unpinned(&Unpinned::Unkept("read-only".into()), "Kelpwater"),
+            ("refused", "Kelpwater couldn't be set".to_owned())
+        );
+        let unworded = Shared::new(Known::default(), None, None);
+        assert_eq!(
+            unworded.unpinned(&Unpinned::Nowhere, "Kelpwater"),
+            ("nowhere", "nowhere".to_owned()),
+            "with no words handed over, the phrase's id"
+        );
     }
 }
