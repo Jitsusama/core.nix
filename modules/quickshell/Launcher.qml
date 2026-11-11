@@ -8003,6 +8003,15 @@ Scope {
     // the next opening draws it with nothing made and nothing woken. Every
     // row is read again as that opening fills in, landing where it stands,
     // and only what changed is drawn anew.
+    // A kept card is drawn at the height it was kept at, never laid out
+    // again as it opens, so a screen that shrinks while it's shut (a new
+    // scale, another output) keeps it again at as many rows as now fit;
+    // kept at 1 and opened at 1.5, its foot ran 30 px off the bottom.
+    onRowsChanged: {
+        if (homeHeld)
+            keepHome();
+    }
+
     function keepHome() {
         if (open || opening || parting !== "")
             return;
@@ -8215,8 +8224,12 @@ Scope {
         }
     }
 
+    // Never as a kept opening waits for its frame either, which beginOpening
+    // puts spotsLater off for, but the start's timer above came due in it:
+    // every closing reopened within half a second leaves no spots made, so
+    // it made them between a reopening's ask and its frame (2026-11-10).
     function spotsMadeClosed() {
-        if (open)
+        if (open || opening)
             return;
         freshen();
         spots = spotsFrom();
