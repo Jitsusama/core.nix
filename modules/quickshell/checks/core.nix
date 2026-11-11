@@ -593,7 +593,10 @@ in
     pkgs.runCommandLocal "the-launcher-words-each-ready-row-it-is-served" { } ''
       mkdir launcher
       cp ${../../../tests/ready-rows.qml} ready-rows.qml
-      ${copied [ "launcher/ReadyRows.js" ]}
+      ${copied [
+        "launcher/Moved.js"
+        "launcher/ReadyRows.js"
+      ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

@@ -22,25 +22,22 @@ function rowOf(record) {
     return record?.kind === "row" && record.row ? record.row : null;
 }
 
-// Whether a row told again says all it said when made, `order` aside, so it
-// only moves: a daemon making room tells every row it moved, remaking some
-// 103 of Sound's rows every ten notification streams (1KZFHC, 2026-11-11).
-function movedOnly(was, now) {
-    return Boolean(was && now) && Object.keys(was).length === Object.keys(now).length
-        && Object.keys(now).every(name => name === "order"
-            ? Object.keys(was).includes(name) : alike(was[name], now[name]));
-}
-
-// Whether two values a daemon said are alike, as their JSON reads.
-function alike(one, other) {
-    if (one === other || typeof one !== "object" || typeof other !== "object" || !one
-        || !other || Array.isArray(one) !== Array.isArray(other)) {
-        return one === other;
-    }
-    const names = Object.keys(one);
-    const theirs = Object.keys(other);
-    return names.length === theirs.length
-        && names.every(name => theirs.includes(name) && alike(one[name], other[name]));
+// The words beyond its name a served row is found by, in one text, or "":
+// the daemon's `keywords`, a list or a text, then the place's own, a text
+// or one already made ready to match (its `text`). The launcher's search
+// matches only words made ready, so a row's are made from this once
+// (ReadyRows.qml's thing); kept as given, a text was never searched.
+function keywordsOf(served, own) {
+    const said = one => {
+        if (Array.isArray(one)) {
+            return one.filter(word => typeof word === "string").join(" ");
+        }
+        if (typeof one === "string") {
+            return one;
+        }
+        return typeof one?.text === "string" ? one.text : "";
+    };
+    return [said(served), said(own)].join(" ").trim();
 }
 
 // The keys of the rows in their order once a message said the records
