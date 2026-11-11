@@ -25,7 +25,7 @@ use update_to_main::config::{
     Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Session, Signers, Tools,
 };
 use update_to_main::line::{Applied, Line};
-use update_to_main::{ask, serve, update};
+use update_to_main::{ask, held, serve, update};
 
 /// The shell the stand-ins run under: the build's own in Nix's sandbox,
 /// which has no /usr/bin/env.
@@ -958,6 +958,87 @@ fn how_an_update_ended_is_kept_for_its_group_to_read() {
     assert!(
         !world.root.join("last.json.new").exists(),
         "nothing is left beside it"
+    );
+}
+
+#[test]
+fn a_pause_asked_on_the_socket_refuses_updates_until_resumed() {
+    let world = World::new();
+    let one = world.signed("one");
+    world.system(&one);
+    let config = world.config.clone();
+    thread::spawn(move || serve::serve(config));
+    while !world.config.socket.exists() {
+        // The daemon makes its socket on its own thread; there's nothing
+        // to wait on but the file.
+        thread::sleep(Duration::from_millis(20));
+    }
+    let paused = ask::once(&world.config.socket, held::PAUSE).unwrap();
+    let Line::Refused { why, .. } = &paused else {
+        panic!("a pause wasn't answered with what holds: {paused:?}")
+    };
+    assert!(held::says(why), "a pause wasn't taken: {why}");
+    let (_, ending) = world.update();
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a paused machine wasn't refused: {ending:?}")
+    };
+    assert!(
+        why.contains("updates are paused"),
+        "refused for another reason: {why}"
+    );
+    assert_eq!(world.builds(), 0, "a paused machine built");
+    ask::once(&world.config.socket, held::RESUME).unwrap();
+    assert_eq!(
+        world.update().1,
+        done(&one),
+        "a resumed machine didn't update"
+    );
+}
+
+#[test]
+fn a_main_holding_a_held_commit_is_refused_until_it_is_lifted() {
+    let world = World::new();
+    let one = world.signed("one");
+    world.system(&one);
+    world.update();
+    let bad = world.signed("two");
+    world.system(&bad);
+    let three = world.signed("three");
+    world.system(&three);
+    let said = held::ask(&world.config, &format!("hold {bad}"), 1000);
+    assert!(
+        said.is_some_and(|said| said.is_ok()),
+        "a hold on {bad} wasn't taken"
+    );
+    let (_, ending) = world.update();
+    let Line::Refused { commit, why } = &ending else {
+        panic!("a main holding a held commit wasn't refused: {ending:?}")
+    };
+    assert_eq!(
+        commit.as_deref(),
+        Some(one.as_str()),
+        "the refusal named another commit"
+    );
+    assert!(why.contains("is held"), "refused for another reason: {why}");
+    assert_eq!(world.builds(), 1, "a main holding a held commit was built");
+    held::ask(&world.config, &format!("lift {bad}"), 1000);
+    assert_eq!(
+        world.update().1,
+        done(&three),
+        "a lifted hold still refused"
+    );
+}
+
+#[test]
+fn a_hold_on_a_commit_main_doesnt_hold_lets_it_switch() {
+    let world = World::new();
+    let one = world.signed("one");
+    world.system(&one);
+    held::ask(&world.config, &format!("hold {}", "0".repeat(40)), 1000);
+    assert_eq!(
+        world.update().1,
+        done(&one),
+        "a hold main doesn't hold refused it"
     );
 }
 

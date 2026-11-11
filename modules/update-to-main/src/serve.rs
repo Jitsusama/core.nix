@@ -1,7 +1,8 @@
 //! The socket an ask comes in on. Only root and the config's group may
 //! write it, so the kernel decides who may ask. An ask is one line,
 //! `update`, or `stop`, which ends an update still fetching or building,
-//! and anything else is refused. An ask while an update runs
+//! or one of the asks that pause updates or hold a commit back
+//! (src/held.rs), and anything else is refused. An ask while an update runs
 //! joins it and hears it from its first line, so a flood of asks is one
 //! update. Once an update has switched, the program starts itself again
 //! from the running system's path, so the newest one serves the next. A
@@ -18,7 +19,7 @@
 
 use crate::config::Config;
 use crate::line::{Applied, Line};
-use crate::{run, update};
+use crate::{held, run, update};
 use std::ffi::CString;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -173,6 +174,21 @@ fn answer(
     let mut ask = String::new();
     BufReader::new(stream.take(ASK_AT_MOST)).read_line(&mut ask)?;
     let mut out = stream;
+    let uid = peer_uid(stream).unwrap_or(u32::MAX);
+    if let Some(said) = held::ask(config, ask.trim(), uid) {
+        // A pause stops what runs too, so nothing switches after it.
+        let why = match said {
+            Ok(said) if ask.trim() == held::PAUSE => format!("{}; {said}", stop(current)),
+            Ok(said) => said,
+            Err(why) => why,
+        };
+        eprintln!("uid {asker} asks to {}: {why}", ask.trim());
+        let answered = Line::Refused {
+            commit: update::last(config),
+            why,
+        };
+        return writeln!(out, "{}", answered.json());
+    }
     if ask.trim() == STOP {
         eprintln!("uid {asker} asks to stop the update");
         let stopped = Line::Refused {
@@ -186,7 +202,14 @@ fn answer(
         eprintln!("refused an ask from uid {asker}: {:?}", ask.trim());
         let refused = Line::Refused {
             commit: update::last(config),
-            why: format!("the only asks are `{ASK}`, `{FOLLOW}` and `{STOP}`"),
+            why: format!(
+                "the only asks are `{ASK}`, `{FOLLOW}`, `{STOP}`, `{}`, `{}`, `{} COMMIT` and \
+                 `{} COMMIT`",
+                held::PAUSE,
+                held::RESUME,
+                held::HOLD,
+                held::LIFT
+            ),
         };
         return writeln!(out, "{}", refused.json());
     }

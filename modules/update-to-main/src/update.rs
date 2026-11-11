@@ -14,6 +14,7 @@
 use crate::config::{Busy, Config, Kind};
 use crate::follows;
 use crate::git::{self, Repo};
+use crate::held;
 use crate::hosted;
 use crate::line::Line;
 use crate::power::{self, Power};
@@ -86,14 +87,20 @@ fn run(
     tell: &mut dyn FnMut(&Line),
 ) -> Line {
     let last = last(config);
-    if let Some(why) = too_low(config).or_else(|| busy(config)) {
+    if let Some(why) = held::paused(config)
+        .or_else(|| too_low(config))
+        .or_else(|| busy(config))
+    {
         return Line::Refused { commit: last, why };
     }
     // The ask that brings the grant a built switch waited for switches to
     // that one, rather than fetch main again and build what merged since:
     // on 8 November the morning switch started over three times for newer
     // heads while Joel waited.
-    if granted && let Some(waiting) = waited(config) {
+    if granted
+        && let Some(waiting) = waited(config)
+        && held::stops(config, &waiting.commit, &waiting.followed).is_none()
+    {
         return switch_waiting(config, waiting, last, tell);
     }
     tell(&Line::Fetching);
@@ -146,6 +153,10 @@ fn run(
             Ok(Err(why)) => return Line::Refused { commit: last, why },
             Err(failure) => return failed(last, failure),
         }
+    }
+
+    if let Some(why) = held::stops(config, &head, &followed) {
+        return Line::Refused { commit: last, why };
     }
 
     tell(&Line::Building {
