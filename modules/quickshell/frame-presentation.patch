@@ -68,7 +68,7 @@ new file mode 100644
 index 0000000..4b3f5c5
 --- /dev/null
 +++ b/src/wayland/presentation/qml.cpp
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,261 @@
 +#include "qml.hpp"
 +#include <cstdint>
 +#include <ctime>
@@ -278,14 +278,24 @@ index 0000000..4b3f5c5
 +
 +void FramePresentation::onAfterSynchronizing() { this->drawing.synchronized = monotonicNow(); }
 +
-+void FramePresentation::onAfterRendering() { this->drawing.rendered = monotonicNow(); }
-+
-+void FramePresentation::onFrameSwapped() {
-+	this->drawing.swapped = monotonicNow();
++// Kept once rendered, so a frameSwapped handler connected before this one,
++// as QML's may be where the GUI thread renders, reads it with its swap
++// still 0.
++void FramePresentation::onAfterRendering() {
++	this->drawing.rendered = monotonicNow();
 +	if (this->drawing.frame > 0) {
 +		auto at = static_cast<size_t>(this->drawing.frame) % this->drawn.size();
 +		QMutexLocker lock(&this->drawnLock);
 +		this->drawn.at(at) = this->drawing;
++	}
++}
++
++void FramePresentation::onFrameSwapped() {
++	auto swapped = monotonicNow();
++	if (this->drawing.frame > 0) {
++		auto at = static_cast<size_t>(this->drawing.frame) % this->drawn.size();
++		QMutexLocker lock(&this->drawnLock);
++		if (this->drawn.at(at).frame == this->drawing.frame) this->drawn.at(at).swapped = swapped;
 +	}
 +	// A frame rendered without a sync, as one only exposed again is, says no
 +	// sync rather than the last frame's.
@@ -441,8 +451,8 @@ index 0000000..1e911f1
 +	/// sync, ended it, began rendering, ended it and was swapped, each read on
 +	/// the render thread as it happened, in monotonic milliseconds, so a
 +	/// frame's time is its own however late the GUI thread hears its swap.
-+	/// Empty before it's swapped and once it's older than the last sixteen;
-+	/// a time it had no such step for is 0.
++	/// Empty before it's rendered and once it's older than the last sixteen;
++	/// a time it had no such step for, or hasn't reached yet, is 0.
 +	Q_INVOKABLE QVariantMap timesOf(int frame) const;
 +
 +	static FramePresentation* qmlAttachedProperties(QObject* object);

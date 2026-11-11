@@ -58,7 +58,7 @@ STRETCH = 4096
 COPIED_BEFORE_PRESENTED = timedelta(milliseconds=250)
 
 # How a key's line says its drawing, and what its render thread's times make of it (Trials.qml's
-# drew), each part rounded to a millisecond apart, so the three may miss the whole by two.
+# drawingApart), each part rounded to a millisecond apart, so the three may miss the whole by two.
 DRAWING_SPLIT = re.compile(
     r"(?P<drawing>\d+) drawing it \((?P<syncing>\d+) syncing, (?P<rendering>\d+) rendering,"
     r" (?P<heard>\d+) before the shell heard it\)"
@@ -2249,7 +2249,8 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     # And its line says its drawing so, the three adding up to it but for rounding.
     said = shell.log.read_bytes()[since:].decode(errors="replace")
     drew = DRAWING_SPLIT.search(said)
-    assert drew, f"its line never said its drawing apart:\n{said[-600:]}"
+    lines = [line for line in said.splitlines() if 'launcher: "w" took' in line]
+    assert drew, f"its line never said its drawing apart: {lines}"
     drawing, syncing, rendering, heard = (int(part) for part in drew.groups())
     assert abs(syncing + rendering + heard - drawing) <= ROUNDED, (
         f"{drawing} ms drawing, said as {syncing} syncing, {rendering} rendering"

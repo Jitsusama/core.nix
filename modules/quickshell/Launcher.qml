@@ -5594,15 +5594,18 @@ Scope {
     // render and swap; then how long the GUI thread, busy with other work,
     // took to hear the swap, which the frame never waited on. Its swap is
     // sent from the render thread and heard queued, so Joel's "meet" said
-    // 77 ms drawing with 3 rows new, and "me" 51 with 11 (2026-11-11). None
-    // where the frame had no sync or wasn't the one it was numbered.
+    // 77 ms drawing with 3 rows new, and "me" 51 with 11 (2026-11-11). A
+    // frame rendered on this thread, as in a sandbox, may be heard swapped
+    // before its swap is kept, and was heard as it swapped. None where the
+    // frame had no sync or wasn't the one it was numbered.
     function frameSplit(key, shown) {
         const times = surface.FramePresentation.timesOf(key.frame ?? 0);
-        if (!times.swapped || !times.synchronized)
+        if (!times.rendered || !times.synchronized)
             return null;
+        const swapped = times.swapped || shown;
         const split = { syncing: Math.round(times.synchronized - key.begun),
-            rendering: Math.round(times.swapped - times.synchronized),
-            heard: Math.round(shown - times.swapped) };
+            rendering: Math.round(swapped - times.synchronized),
+            heard: Math.round(shown - swapped) };
         return split.syncing >= 0 && split.heard >= 0 ? split : null;
     }
 
