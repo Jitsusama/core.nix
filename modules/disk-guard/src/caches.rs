@@ -1,5 +1,6 @@
-//! Caches that refill on demand, taken once a disk is nearly full, cheapest to refill
-//! first.
+//! Caches that refill on demand, cheapest to refill first: once a disk is
+//! filling those nothing has written to for a week, and once it's nearly
+//! full any.
 //!
 //! A cache without a protocol goes whole, as one candidate: its top-level
 //! entries can't be told apart safely, since a database left beside the
@@ -84,12 +85,57 @@ pub fn go_entry(entry: &Entry, rank: u8, from: Band, awake: &Awake, now: f64) ->
     }
 }
 
+/// How many entries of a cache `last_written` reads at most.
+pub const WALKED: usize = 100_000;
+
+/// When anything in a cache was last written: the newest modification of
+/// it or anything in it, links not followed. Nothing when it can't be read
+/// or holds more than `budget` entries, so a cache too large to walk each
+/// pass counts as in use. A write at `recent` or later ends the walk, since
+/// a cache in use shows one almost at once, often in its own folder's time.
+pub fn last_written(cache: &Path, budget: usize, recent: f64) -> Option<f64> {
+    let written = |path: &Path| {
+        fs::symlink_metadata(path)
+            .ok()?
+            .modified()
+            .ok()?
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .map(|since| since.as_secs_f64())
+    };
+    let mut newest = written(cache)?;
+    let (mut waiting, mut read) = (vec![cache.to_owned()], 0_usize);
+    while let Some(dir) = waiting.pop() {
+        if newest >= recent {
+            break;
+        }
+        for entry in fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+        {
+            read += 1;
+            if read > budget {
+                return None;
+            }
+            let path = entry.path();
+            if let Some(at) = written(&path) {
+                newest = newest.max(at);
+            }
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                waiting.push(path);
+            }
+        }
+    }
+    Some(newest)
+}
+
 /// A whole cache, which its band takes at once.
-pub fn whole(path: &Path, rank: u8, from: Band, size: u64) -> Candidate {
+pub fn whole(path: &Path, rank: u8, from: Band, size: u64, idle: f64) -> Candidate {
     Candidate {
         path: path.to_owned(),
         class: Class::Cache { rank, from },
-        idle: 0.0,
+        idle,
         size,
         occupied: false,
         spent: false,
