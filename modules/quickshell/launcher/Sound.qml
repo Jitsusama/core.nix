@@ -84,10 +84,10 @@ Provider {
         place: "sound"
         // Where each program's stream is sent, as one record.
         beside: ["targets"]
-        // A device's row is made with its parts; a part the daemon serves
-        // inside one, as its Volume, as every place's rows are.
-        make: (row, key) => row.kind === "device" ? provider.servedRow(row, key)
-            : ready.thing(row, key, provider.partFields(row))
+        // A device's row is made with its parts, a program's with what's
+        // still made here of it, and a part the daemon serves inside one, as
+        // its Volume, as every place's rows are (made).
+        make: (row, key) => provider.made(row, key)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -100,6 +100,8 @@ Provider {
 
         function onHeard() {
             provider.changed();
+            if (provider.following !== null)
+                provider.arrived();
         }
     }
 
@@ -464,7 +466,8 @@ Provider {
         const usb = `sound:${node.name}:hardware:usb-id`;
         const channels = Array.from(node.audio.channels ?? []);
         const volumes = Array.from(node.audio.volumes ?? []);
-        const parts = [volumePart(node), programsPart(node), channelsPart(node),
+        const programs = node.isSink ? "programs" : "recorders";
+        const parts = [volumePart(node), servedPart(node, programs), channelsPart(node),
             filterPart(node), portPart(node), profilePart(node)]
             .concat(hardware.filter(row => row.key !== usb), factRows(node));
         const facts = Plate.facts(parts, row => {
@@ -474,7 +477,8 @@ Provider {
                 return { value: row.note };
             case `sound:${node.name}:programs`:
             case `sound:${node.name}:recorders`:
-                return { value: provider.programsSaid(node) || row.side };
+                return { value: ready.served(`row:sound:${node.name}:${programs}`)?.held
+                    ?.playing || row.side };
             case `sound:${node.name}:channels`:
                 return { value: Plate.runs([row.side].concat(Sounds.channelLevels(
                     channels.map(channel => Sounds.channel(PwAudioChannel.toString(channel))),
@@ -574,17 +578,6 @@ Provider {
             : said(`joined-${how}`);
     }
 
-    // Each program playing through a device, or recording from it, and how
-    // loud, a run apart: "Spotify 100% \u00b7 Chrome paused at 45%".
-    function programsSaid(node) {
-        return Plate.runs(programsOf(node).map(program => {
-            const paused = program.streams
-                .every(stream => stream.properties["pulse.corked"] === "true");
-            const level = streamLevel(program.streams);
-            return `${program.name} ${paused ? said("paused-at", { level: level }) : level}`;
-        }));
-    }
-
     // A device's right arrow, kept while the launcher is shut and nothing
     // its parts say has moved, as its spots ask for it again a minute after
     // each closing (Launcher.qml's spotsFreshened): it made Sound's 111
@@ -601,19 +594,15 @@ Provider {
     }
 
     // What a device's parts are made of, every figure they say included:
-    // its row's words, its properties, channels and levels, its programs'
-    // and filters' levels and where its programs are sent, its ports and
-    // its facts.
+    // its row's words, its properties, channels and levels, its filters'
+    // levels, every row served inside it, its programs' included, and its
+    // facts.
     function partsMadeOf(node) {
-        const programs = programsOf(node).map(program => [program.name,
-            Targets.sentTo(program.streams, targets),
-            program.streams.map(stream => [stream.audio?.volume, stream.audio?.muted,
-                stream.properties["pulse.corked"]])]);
         const filters = filtersOf(node).map(filter => [filter.name, filter.audio?.volume,
             filter.audio?.muted, flowing(filter, node)]);
         return JSON.stringify([says(node), switches(node), carried(node), node.properties,
             Array.from(node.audio?.channels ?? []), Array.from(node.audio?.volumes ?? []),
-            node === metered ? heard : [], programs, filters, servedOf(node),
+            node === metered ? heard : [], filters, servedOf(node),
             facts[factKey(node)] ?? []]);
     }
 
@@ -630,6 +619,25 @@ Provider {
         return ready.served(key) ? ready.rowAt(key) : null;
     }
 
+    // A served row as Sound draws it: a device's with its parts; a
+    // program's with its drawer and :setl options; a Plays On choice sent
+    // as Sound's own send sends it, so the launcher follows the program to
+    // where it lands; any other as the daemon serves it.
+    function made(row, key) {
+        switch (row.kind) {
+        case "device":
+            return servedRow(row, key);
+        case "program":
+            return programRow(row, key);
+        case "send":
+            return ready.thing(row, key, Object.assign(partFields(row), {
+                run: () => provider.sendServed(ready.served(key) ?? row)
+            }));
+        default:
+            return ready.thing(row, key, partFields(row));
+        }
+    }
+
     // What a served part carries for the launcher beyond its row: a
     // setting offers its choices, and using a device names it on its
     // line, as :set output= or input= does.
@@ -643,11 +651,13 @@ Provider {
     }
 
     // Using it, when it isn't the one chosen, then its parts, and what the
-    // kernel says of its card. Using it, Muted, its Volume and its Port
-    // are served; the rest are made here until the daemon serves them too.
+    // kernel says of its card. Using it, Muted, its Volume, its programs
+    // and its Port are served; the rest are made here until the daemon
+    // serves them too.
     function partsMade(node) {
+        const programs = node.isSink ? "programs" : "recorders";
         const parts = [servedPart(node, "use"), servedPart(node, "mute"), levelPart(node),
-            volumePart(node), programsPart(node), filterPart(node), portPart(node),
+            volumePart(node), servedPart(node, programs), filterPart(node), portPart(node),
             channelsPart(node), profilePart(node), hardwarePart(node)];
         return parts.filter(part => part !== null).concat(factRows(node));
     }
@@ -760,61 +770,79 @@ Provider {
         return servedPart(node, node.isSink ? "volume" : "gain");
     }
 
-    // An act on a device, as the vocabulary says it, in the state it's in.
-    // Each changes how something sounds, so it keeps the launcher, its row
-    // saying what it changed to.
-    function act(key, state, fields) {
-        return thing(Object.assign({
-            key: key,
-            verb: Words.verb(key, state),
-            name: Words.name(key, state, fields.fill),
-            hue: "action",
-            stays: true
-        }, fields));
+    // The programs Playing through an output, or Recording from an input,
+    // are served: each program's row, its Muted, Louder and Quieter, its
+    // Plays On and its figures. Its drawer and its :setl options are made
+    // here, the drawer from its streams as Quickshell has them, until the
+    // daemon serves it, timings and all, by 13 November.
+
+    // A program's row as the daemon serves it, with its drawer and its
+    // options, each read from the row as it's served when they're asked
+    // for, so neither is made again as it moves.
+    function programRow(row, key) {
+        const held = () => (ready.served(key) ?? row).held;
+        return gotten(ready.thing(row, key, {
+            thing: true,
+            drawer: () => provider.programDrawn(held())
+        }), { options: () => provider.programOptions(held()) });
     }
 
-    // The one Muted switch a program has, as a device's is served (VKCF3Z,
-    // 2026-10-29: one idea has one word): it keeps its name as it flips,
-    // its side saying yes or no (docs/design.md, "A switch is one row that
-    // keeps its name as it flips"). How it stands is read as it's
-    // drawn and as Return comes, so the row says what Return just did
-    // without being made again.
-    function mutedSwitch(key, muted, mark, flip) {
-        const row = thing({
-            key: key,
-            name: Words.name("sound:mute"),
-            hue: "action",
-            stays: true,
-            state: () => provider.said(muted() ? "yes" : "no"),
-            run: flip
-        });
-        return gotten(row, {
-            verb: () => Words.verb("sound:mute", muted() ? "muted" : ""),
-            glyph: mark,
-            side: () => provider.said(muted() ? "yes" : "no")
-        });
+    // A program as a send takes one: its name, and its streams by their
+    // ids, as its served row holds them.
+    function programHeld(held) {
+        return { name: held?.program ?? "", streams: (held?.streams ?? []).map(id => ({ id })) };
     }
 
-    // The programs Playing through an output, or Recording from an input:
-    // each a part saying how loud it is, muted or turned a step in.
-
-    // Each stream linked to a device, or to a filter in front of it, which
-    // is where programs are linked while the filter's there.
-    function linkedTo(node) {
-        const ends = [node].concat(filtersOf(node));
-        const found = [];
-        for (const group of Pipewire.linkGroups.values) {
-            const stream = node.isSink ? group.source : group.target;
-            const end = node.isSink ? group.target : group.source;
-            if (stream && stream.isStream && ends.includes(end) && own(stream)
-                    && !found.includes(stream))
-                found.push(stream);
-        }
-        return found;
+    function deviceNamed(name) {
+        return nodes.find(node => node.name === name) ?? null;
     }
 
-    // A program's name and glyph, as its desktop entry says them, looked up
-    // once each, or the name it gives with a capital.
+    // A program's own options, which :setl sets as Vim's :setlocal sets a
+    // buffer's (VKCF3Z, 2026-11-05): whether it's muted, how loud, and where
+    // it plays, each an ask of the daemon on every one of its streams. A
+    // level set or raised is meant to be heard, so it unmutes, as its
+    // Louder does.
+    function programOptions(held) {
+        const node = deviceNamed(held?.node);
+        const link = ready.link;
+        if (node === null || !link)
+            return {};
+        const asked = (act, more) => {
+            link.ask(Object.assign({ ask: "act", act: act,
+                key: `program:${held.node}:${held.program}`, streams: held.streams }, more),
+                () => {});
+            return "";
+        };
+        return Object.assign({
+            mute: {
+                kind: "switch",
+                now: () => held.muted === true,
+                set: to => asked("mute", { muted: to })
+            },
+            volume: {
+                kind: "number",
+                least: 0,
+                most: 100,
+                now: () => Math.round((held.volume ?? 0) * 100),
+                set: (to, change) => asked("volume", change?.how === "subtract"
+                    ? { volume: to / 100 } : { volume: to / 100, muted: false })
+            }
+        }, sentOption(node, programHeld(held)));
+    }
+
+    // A Plays On choice's Return: the program's streams sent there, or to
+    // the default, as its option sends them, so the launcher follows it.
+    function sendServed(row) {
+        const held = row.held;
+        const node = deviceNamed(held?.node);
+        const to = held?.to ? deviceNamed(held.to) : null;
+        if (node !== null && (to !== null || !held.to))
+            send(node, programHeld(held), to);
+    }
+
+    // A program's name as its desktop entry says it, looked up once each,
+    // or the name it gives, for Now's list of what's open; the daemon names
+    // Sound's own programs.
     readonly property var entries: ({})
 
     function programOf(stream) {
@@ -831,10 +859,6 @@ Provider {
         return entries[given];
     }
 
-    function programsOf(node) {
-        return Sounds.grouped(linkedTo(node), stream => provider.programOf(stream).name);
-    }
-
     function loudestOf(streams) {
         return Math.max(0, ...streams.filter(stream => !!stream.audio)
             .map(stream => stream.audio.volume));
@@ -842,77 +866,6 @@ Provider {
 
     function hushed(streams) {
         return streams.every(stream => !stream.audio || stream.audio.muted);
-    }
-
-    function streamLevel(streams) {
-        return hushed(streams) ? said("muted") : percent(loudestOf(streams));
-    }
-
-    // A program's streams turned as one, from the loudest.
-    function turn(streams, by) {
-        const to = Sounds.stepped(loudestOf(streams), by, step);
-        for (const stream of streams.filter(each => !!each.audio)) {
-            stream.audio.volume = to;
-            if (by > 0)
-                stream.audio.muted = false;
-        }
-    }
-
-    function programsPart(node) {
-        const programs = programsOf(node);
-        const id = node.isSink ? "programs" : "recorders";
-        const key = `sound:${node.name}:${id}`;
-        // No program listening to a microphone is worth saying; an output
-        // nothing plays through has nothing to hold.
-        if (programs.length === 0)
-            return node.isSink ? null : figureRow({
-                key: key,
-                name: Words.name(`sound:${id}`),
-                side: said("nothing"),
-                note: said("recording-none")
-            });
-        return holderRow({
-            key: key,
-            name: Words.name(`sound:${id}`),
-            side: programs.map(program => program.name).join(", "),
-            glyph: glyph(kind(node))
-        }, () => provider.programsOf(node).map(program => provider.programPart(node, program)));
-    }
-
-    function programPart(node, program) {
-        const streams = program.streams;
-        const first = streams[0];
-        const paused = streams.every(stream => stream.properties["pulse.corked"] === "true");
-        const key = `sound:${node.name}:program:${program.name}`;
-        return thingRow({
-            thing: true,
-            key: key,
-            options: Object.assign(nodeOptions(streams), sentOption(node, program)),
-            name: program.name,
-            side: paused ? `${streamLevel(streams)} \u00b7 ${said("paused")}` : streamLevel(streams),
-            graph: bar(hushed(streams) ? 0 : loudestOf(streams)),
-            glyph: programGlyph(programOf(first).id),
-            drawer: () => provider.programDrawn(node, program)
-        }, () => {
-            const stepping = by => ({
-                glyph: Theme.glyph.volume,
-                stays: true,
-                state: () => provider.said("now", { level: provider.streamLevel(streams) }),
-                run: () => provider.turn(streams, by)
-            });
-            const hush = () => provider.hushed(streams);
-            const rows = [mutedSwitch(`${key}:mute`, hush,
-                () => Words.glyph("verb:program:mute", hush() ? "muted" : ""), () => {
-                    const muting = !hush();
-                    for (const stream of streams.filter(each => !!each.audio))
-                        stream.audio.muted = muting;
-                }), act("verb:program:louder", "", stepping(step)),
-            act("verb:program:quieter", "", stepping(-step))];
-            const sent = provider.sentPart(node, program, key);
-            if (sent !== null)
-                rows.push(sent);
-            return rows.concat(provider.streamFigures(key, first));
-        });
     }
 
     // A stream's Sample Rate, as it asks for one, and its Delay: how long
@@ -955,12 +908,16 @@ Provider {
     // so neither is said again; its eyebrow says where it plays and that
     // it's a stream, in Note since it names the device, as Media's "on
     // Spotify \u00b7 track" does (VKCF3Z, 2026-11-09). It's read as it's
-    // drawn, its streams as the device has them now; a program gone has
-    // none, its old streams' nodes perhaps gone with it, so its drawer
-    // shuts.
-    function programDrawn(node, program) {
-        return programPlate(node, programsOf(node).find(each => each.name === program.name)
-            ?? { name: program.name, streams: [] });
+    // drawn, from the streams its served row holds as Quickshell has them
+    // now; a program gone has none, its old streams' nodes perhaps gone
+    // with it, so its drawer shuts.
+    function programDrawn(held) {
+        const node = deviceNamed(held?.node);
+        if (node === null)
+            return null;
+        const ids = held.streams ?? [];
+        const live = (node.isSink ? streams : recorders).filter(stream => ids.includes(stream.id));
+        return programPlate(node, { name: held.program ?? "", streams: live });
     }
 
     function programPlate(node, live) {
@@ -1196,50 +1153,6 @@ Provider {
         return ready.held["targets:default"]?.targets ?? ({});
     }
 
-    // A program's Plays On, or Records From for one recording: the device
-    // it's on, stepping in to the default and each device it could go to
-    // instead (VKCF3Z, 2026-11-09), where there's another to go to.
-    function sentPart(node, program, key) {
-        const among = sendable(node);
-        if (among.length < 2)
-            return null;
-        const id = node.isSink ? "plays-on" : "records-from";
-        const usual = usualFor(node);
-        const choices = () => Targets.choices(among,
-            Targets.sentTo(program.streams, provider.targets));
-        // What's chosen: the device it's sent to, or the default and the
-        // device that is, so a stream sent somewhere is told from one
-        // following the default (VKCF3Z, 2026-11-09).
-        const pinned = choices().find(choice => choice.chosen && choice.device !== null);
-        return holderRow({
-            key: `${key}:${id}`,
-            name: Words.name(`sound:${id}`),
-            side: pinned ? named(pinned.device)
-                : Plate.runs([said("the-default"), usual ? named(usual) : ""]),
-            glyph: glyph(kind(node)),
-            offers: true
-        }, () => choices().map(choice => {
-            // Each said by its value alone, wearing its own row's mark,
-            // the default its device's, as a choice is (design.md).
-            const device = choice.device ?? usual;
-            // One choice's words for both ways, a device's name being the
-            // same word whether sound goes to it or comes from it, and
-            // :setlocal output= or input= its command, as the part's own.
-            const name = choice.device === null ? provider.said("the-default")
-                : provider.named(choice.device);
-            const value = choice.device === null ? Targets.byDefault()
-                : provider.named(choice.device);
-            return provider.act("verb:sound-sent", node.isSink ? "" : "input", {
-                key: `verb:sound-${id}:${choice.device?.name ?? ""}`,
-                fill: { device: name, value: value },
-                glyph: device ? provider.glyph(provider.kind(device)) : provider.glyph(""),
-                side: choice.chosen ? provider.said("chosen") : "",
-                note: choice.device === null && usual ? provider.named(usual) : "",
-                run: () => provider.send(node, program, choice.device)
-            });
-        }));
-    }
-
     // The devices a program's streams could go to, in Sound's order: the
     // outputs for one playing, the inputs for one recording.
     function sendable(node) {
@@ -1346,34 +1259,28 @@ Provider {
         }
     }
 
-    Connections {
-        target: Pipewire.linkGroups
-        enabled: provider.following !== null
-
-        function onValuesChanged() {
-            provider.arrived();
-        }
-    }
-
-    // Whether a stream it sent is linked there now, by its id, so one of the
-    // program's already there doesn't stand for it.
     // Whether any of a move's sends is still to be done, so its part isn't
     // drawn naming where it was.
     function stillSending(moving) {
         return moving.left > 0 && !moving.refused;
     }
 
+    // Once the daemon serves the program on the device it went to, holding
+    // a stream it sent, by its id, so one of the program's already there
+    // doesn't stand for it, the launcher goes to it there.
     function arrived() {
         const went = following;
+        const list = went?.sink ? "programs" : "recorders";
+        const there = went === null ? null
+            : ready.served(`row:sound:${went.to.name}:${list}:program:${went.program}`);
         if (went === null || stillSending(went)
-            || !linkedTo(went.to).some(stream => went.ids.includes(String(stream.id))))
+            || !(there?.held?.streams ?? []).some(id => went.ids.includes(String(id))))
             return;
         following = null;
         followFor.stop();
         const device = `sound:${went.to.name}`;
         const program = `${device}:program:${went.program}`;
         const id = went.sink ? "plays-on" : "records-from";
-        const list = went.sink ? "programs" : "recorders";
         launcher?.goTo({
             // From the top, through Machine, which holds Sound.
             trail: ["category:computer", "collection:sound", device, `${device}:${list}`, program],
@@ -1495,7 +1402,7 @@ Provider {
     // parts, by 13 November.
     property string spotsStamp: JSON.stringify(ordered(outputs).concat(ordered(inputs))
         .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
-            switches(node), programsOf(node).map(program => program.name),
+            switches(node), ready.served(`row:sound:${node.name}:programs`)?.side ?? [],
             filtersOf(node).map(filter => filter.name),
             portsServed(node).slice(1).map(choice => choice.held.port),
             Array.from(node.audio.channels ?? []).length, carried(node),
