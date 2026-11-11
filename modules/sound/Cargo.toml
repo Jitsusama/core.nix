@@ -16,6 +16,12 @@ pipewire = { version = "0.10", features = ["v1_2_0"] }
 # kept and spaced as every other place's (../ready-rows).
 ready-rows = { path = "../ready-rows" }
 serde_json = "1.0"
+# Which program a stream is, by the desktop entries the windows daemon
+# names a window's program by, and the mark it wears, as a notice's
+# sender wears it (../windows); the entries are found where the programs
+# daemon finds them (../programs).
+programs = { path = "../programs" }
+windows = { path = "../windows" }
 
 [dev-dependencies]
 # The daemon started for a test, and its client, as every daemon's tests

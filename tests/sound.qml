@@ -112,7 +112,8 @@ ShellRoot {
     // field it had, each getter read as it's asked, through rows of
     // shapes grown one from another, where turning a field into a getter
     // in place lost the field grown after it under Qt 6.12 (the shell's
-    // crash of 2026-11-11). Muted, a switch, is made that way.
+    // crash of 2026-11-11). A program's row is made that way, its options
+    // read as :setl asks (tests/sound-served.qml).
     function gotten() {
         let muted = true;
         const grown = sound.thing({ key: "grown", name: "Grown", hue: "action" });
@@ -125,14 +126,6 @@ ShellRoot {
             && second.hue === "action" && first.chord.length === 0, JSON.stringify(first));
         muted = false;
         expect("its getter is read as it's asked", second.side === "no", second.side);
-        const flipped = [];
-        const switched = sound.mutedSwitch("sound:test:mute", () => muted, () => "m",
-            () => flipped.push(true));
-        switched.run();
-        expect("Muted keeps its act and key", flipped.length === 1
-            && switched.key === "sound:test:mute" && switched.stays === true,
-            JSON.stringify(switched));
-        expect("and says how it stands", switched.glyph === "m", switched.glyph);
     }
 
     function run() {
@@ -365,9 +358,9 @@ ShellRoot {
             three.facts.filter(fact => fact.heading !== undefined).length === 1, said(three));
         // A program gone from the device, its streams perhaps gone with
         // it, draws none of them, so its drawer shuts.
-        const gone = sound.programDrawn(speakers,
-            { name: "Firefox", streams: [stream(90, "Big Buck Bunny - YouTube", 0.8)] });
-        expect("a program gone has nothing to draw", gone.facts.length === 0, said(gone));
+        const gone = shutSound.programDrawn({ node: deskSpeakers.name, program: "Firefox",
+            streams: [90] });
+        expect("a program gone has nothing to draw", gone?.facts.length === 0, said(gone));
         // What a stream plays goes where it says nothing the title doesn't.
         for (const plays of ["", "-", "firefox", "Firefox"]) {
             const bare = sound.programPlate(speakers,

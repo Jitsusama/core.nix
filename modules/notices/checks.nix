@@ -61,7 +61,7 @@ onLinux {
         && lib.hasInfix "-notices-levels.json" started
         && lib.hasInfix "--quiet %t/quiet" started
         && lib.hasInfix "-notices-words.json" started
-        && lib.hasInfix "-notices-marks.json" started
+        && lib.hasInfix "-program-marks.json" started
         && lib.hasInfix "--socket %t/daemons/notices.sock" started
         && socket.Socket.ListenStream == "%t/daemons/notices.sock"
         && service.Service.Restart == "always"

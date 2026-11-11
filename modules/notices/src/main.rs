@@ -100,7 +100,7 @@ fn signing(args: &Args) -> (Senders, Marks, Words) {
     }
     (
         or_none(&args.senders, |text| serde_json::from_str(text)),
-        or_none(&args.marks, |text| serde_json::from_str(text)),
+        or_none(&args.marks, Marks::read),
         or_none(&args.vocabulary, Words::from_vocabulary),
     )
 }

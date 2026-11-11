@@ -2,9 +2,10 @@
 //! its tests reach it: what a client asks ([`interface`]), what niri's
 //! events say of the desktop and the records drawn from it ([`desktop`]),
 //! what's cast and shot of the screen ([`capture`]), which program each
-//! window is ([`entries`]), and the launcher's Screens, served as rows
-//! ready to show ([`screens`]), their drawers saying the screen's light
-//! as the machine daemon serves it ([`light`]).
+//! window is ([`entries`]), the mark each program wears ([`marks`]), and
+//! the launcher's Screens, served as rows ready to show ([`screens`]),
+//! their drawers saying the screen's light as the machine daemon serves
+//! it ([`light`]).
 //!
 //! A record names every figure the shell draws a window's row from, as
 //! niri says it, and none a row doesn't show: words are the shell's, and
@@ -16,4 +17,5 @@ pub mod desktop;
 pub mod entries;
 pub mod interface;
 pub mod light;
+pub mod marks;
 pub mod screens;

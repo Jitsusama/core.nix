@@ -303,6 +303,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "programs"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -442,8 +451,10 @@ version = "0.1.0"
 dependencies = [
  "daemon-client",
  "pipewire",
+ "programs",
  "ready-rows",
  "serde_json",
+ "windows",
 ]
 
 [[package]]
@@ -543,6 +554,15 @@ name = "version-compare"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03c2856837ef78f57382f06b2b8563a2f512f7185d732608fd9176cb3b8edf0e"
+
+[[package]]
+name = "windows"
+version = "0.1.0"
+dependencies = [
+ "programs",
+ "ready-rows",
+ "serde_json",
+]
 
 [[package]]
 name = "windows-link"
