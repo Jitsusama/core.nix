@@ -14,24 +14,6 @@
 const AIMED = /"?([A-Za-z0-9_.-]+)"?\s*[=:]\s*"([^"]*)"/g;
 // A stream's "frames/rate", as it asks for its latency or says its rate.
 const FRACTION = /^\s*(\d+)\s*\/\s*(\d+)\s*$/;
-// pw-top's marks for a node running, as against idle (I), suspended (S)
-// or created (C): R, or T and t where its transport runs or starts, as a
-// JACK client's does (pw-top.c's state_as_string).
-const RUNNING = ["R", "T", "t"];
-// Where pw-top's batch line holds each figure: its state, id, quantum,
-// rate, wait and busy times, those as shares of the cycle (W/Q, B/Q),
-// then its error count; its format and name follow, a follower's name
-// after a lone "+", or "=" where it follows asynchronously (pw-top.c's
-// do_refresh).
-const COLUMN = { state: 0, id: 1, quantum: 2, rate: 3, busy: 5, errors: 8 };
-const WHOLE = /^\d+$/;
-const FOLLOWS = ["+", "="];
-// A time as pw-top prints it, to a tenth of its unit; "---" and "???"
-// say it has none, and "+++" that the node didn't finish in its cycle.
-const TIME = /^(\d+(?:\.\d+)?)(us|ms|s)$/;
-const SECONDS = { us: 1e-6, ms: 1e-3, s: 1 };
-const UNFINISHED = "+++";
-const HEADER = /^\s*S\s+ID\s+QUANT\b/;
 const PERCENT = 100;
 // A USB card names itself by its ids.
 const USB_IDS = /^USB([0-9a-f]{4}):([0-9a-f]{4})$/i;
@@ -176,65 +158,6 @@ function sameFormat(graph, card) {
     return card === graph || String(card ?? "").startsWith(`${graph}${APART}`);
 }
 
-// A time pw-top prints, in seconds, or null where it has none.
-function seconds(text) {
-    const found = TIME.exec(String(text ?? ""));
-    return found ? Number(found[1]) * SECONDS[found[2]] : null;
-}
-
-// How a node is keeping time, from one line of `pw-top --batch-mode`:
-// "R  79  1024  48000  20.1us  10.2us  0.00  0.00  0  S32LE 2 48000 name",
-// its state, id, quantum in frames, clock rate, wait and busy times and
-// their shares of the cycle, and its xruns since it started. Only a
-// running node has a cycle: { id, quantum, rate, ms, busy, unfinished,
-// errors, drives }, busy its busy time over the cycle (B/Q has too few
-// places for three significant digits), null where pw-top can't say;
-// null for the header, a node not running and a line it can't read. A
-// follower's quantum and rate are the latency it asks for, so it takes
-// its driver's, the line before it in the frame, and is null without.
-function timing(line, driver) {
-    const fields = String(line ?? "").trim().split(SPACES);
-    const whole = [COLUMN.id, COLUMN.quantum, COLUMN.rate, COLUMN.errors]
-        .every(at => WHOLE.test(fields[at] ?? ""));
-    if (!RUNNING.includes(fields[COLUMN.state]) || !whole) {
-        return null;
-    }
-    const drives = !follower(line);
-    const cycle = drives ? {
-        quantum: Number(fields[COLUMN.quantum]),
-        rate: Number(fields[COLUMN.rate])
-    } : driver ?? { quantum: 0, rate: 0 };
-    if (cycle.quantum === 0 || cycle.rate === 0) {
-        return null;
-    }
-    const length = cycle.quantum / cycle.rate;
-    const busy = seconds(fields[COLUMN.busy]);
-    return {
-        id: Number(fields[COLUMN.id]),
-        quantum: cycle.quantum,
-        rate: cycle.rate,
-        ms: length * MILLISECONDS,
-        busy: busy === null ? null : busy / length,
-        unfinished: fields[COLUMN.busy] === UNFINISHED,
-        errors: Number(fields[COLUMN.errors]),
-        drives
-    };
-}
-
-// Whether a line of `pw-top --batch-mode` is a follower's, so a line
-// that isn't, running or not, ends the driver its followers run in.
-function follower(line) {
-    return String(line ?? "").trim().split(SPACES).slice(COLUMN.errors + 1)
-        .some(field => FOLLOWS.includes(field));
-}
-
-// Whether a line of `pw-top --batch-mode` opens its next frame, the
-// header it prints over every node each second, so what the frame
-// before held stands whole and a node gone from running drops out.
-function heading(line) {
-    return HEADER.test(String(line ?? ""));
-}
-
 // How much of each cycle a node was busy, in percent: 0.0312 is 3.12.
 // It's said to three significant digits by Numbers.significant, the
 // one rule every measure keeps.
@@ -242,8 +165,9 @@ function load(busy) {
     return busy * PERCENT;
 }
 
-// A cycle's length in milliseconds, said by the same rule: a quantum of
-// 1024 at 48 kHz is 21.333, said 21.3.
+// A cycle's length in milliseconds, as the sound daemon serves it
+// (modules/sound's timing.rs), said by the same rule: a quantum of 1024
+// at 48 kHz is 21.333, said 21.3.
 function cycleMs(timed) {
     return timed.ms;
 }

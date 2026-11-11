@@ -38,9 +38,20 @@ levels and choices, and read whole files rewritten by another daemon.
 | `row:sound:<node name>` | the launcher's row for it, ready to draw        | Sound's place           |
 | `targets:default`       | `targets`: each stream's `target.object`, by    | Plays On, Records From  |
 |                         | the stream's id, where one is sent              |                         |
+| `timing:<id>`           | a running node's cycle, in its driver's         | a drawer's Dropouts,    |
+|                         | `quantum` and `rate`, and `ms`; `busy`, the     | Load and Cycle          |
+|                         | share of it the node was busy, or `unfinished`; |                         |
+|                         | `errors`, its dropouts; and whether it `drives` |                         |
 
 A volume is the mean of each channel's cube root, as Quickshell says it,
 since PipeWire holds each channel's share cubed.
+
+How nodes keep time is read only while a watch on `timing` stands, as
+the launcher's Sound watches it while a device's or a program's drawer
+is out: the daemon binds PipeWire's profiler, as `pw-top` does, which
+has the server measure every cycle, and lets it go once no watch wants
+it. Each second of cycles stands as one frame, the figures `pw-top`
+prints (`src/timing.rs`), so a node that stopped running drops out.
 
 ## Acts
 
@@ -112,9 +123,9 @@ can be sent to; and its first stream's Sample Rate and Delay.
 
 ## What Comes Next
 
-The launcher's Sound lists these rows rather than making its own, and
-sends programs through the daemon rather than a `pw-metadata` each. A
-program's drawer is still made in the shell, from Quickshell's streams;
-it's served next, with each program's timings read here while its row
-is ahead, so `pw-top` goes too. Then the rest of each device's parts:
-its filters, channels, profile, hardware and Level.
+The launcher's Sound lists these rows rather than making its own,
+sends programs through the daemon rather than a `pw-metadata` each, and
+reads how nodes keep time from it rather than from `pw-top`. A device's
+and a program's drawers are still made in the shell, from Quickshell's
+nodes and these timings; they're served whole next. Then the rest of
+each device's parts: its filters, channels, profile, hardware and Level.

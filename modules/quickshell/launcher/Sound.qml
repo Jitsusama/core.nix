@@ -526,9 +526,9 @@ Provider {
         };
     }
 
-    // How a node keeps time, as pw-top last said it (VKCF3Z, 2026-11-08):
-    // its Dropouts, warned past none, as a glitch it recovers from rather
-    // than a failure; its Load, the share of each cycle it was busy; and
+    // How a node keeps time, as the sound daemon last served it (VKCF3Z,
+    // 2026-11-08): its Dropouts, warned past none, as a glitch it recovers
+    // from rather than a failure; its Load, the share of each cycle it was busy; and
     // its Cycle, the frames it moves each time and how long that takes.
     // Only a running node has them. One that ran past its cycle has taken
     // more than all of it, so its Load says so in its own form, its stroke
@@ -1085,9 +1085,9 @@ Provider {
     }
 
     // The device whose drawer is out, or a program's playing through it or
-    // recording from it, by the device's node's name, or "". pw-top runs
-    // only while one shows, since it asks the graph for its timing every
-    // cycle while it runs.
+    // recording from it, by the device's node's name, or "". How nodes keep
+    // time is watched only while one shows, since the sound server measures
+    // every cycle while it's watched.
     readonly property string timedDevice: timedBy(launcher !== null && launcher.open
         && launcher.drawerOut ? String(launcher.selected?.key ?? "") : "", devices)
 
@@ -1100,49 +1100,36 @@ Provider {
         return device === undefined ? "" : device.name;
     }
 
-    // How each running node keeps time, by its id, as pw-top's last whole
-    // frame said it (Sounds.timing), the frame it's reading now, and the
-    // driver last read in it, whose cycle its followers run in. The drawer
-    // reads `timings`, so it moves with each frame without the launcher
+    // How each running node keeps time, by its id, as the sound daemon
+    // serves it from PipeWire's profiler each second (modules/sound's
+    // timing.rs), none while it isn't watched. The drawer reads
+    // `timings`, so it moves with each second without the launcher
     // refreshing.
     property var timings: ({})
-    property var timing: ({})
-    property var driving: null
 
-    // pw-top prints every node each second until it's stopped; a frame
-    // opens with its header, so the one before stands whole then. It
-    // never flushes, so into a pipe its frames would come in clumps of a
-    // few kilobytes; stdbuf has it give each line as it's printed.
-    Process {
-        running: provider.timedDevice !== ""
-        command: [provider.settings.stdbuf ?? "stdbuf", "-oL",
-            provider.settings.pwTop ?? "pw-top", "--batch-mode"]
-        onRunningChanged: {
-            if (!running) {
+    Daemon {
+        id: timing
+
+        socket: ready.socket
+        kind: "timing"
+        live: provider.timedDevice !== ""
+        // The daemon forgets each node's time once nothing watches it, so
+        // a watch's answer is all there is, and none stands in a gap.
+        answersWhole: true
+        keptThroughGap: false
+        onHeard: provider.timings = provider.timingsOf(timing.held)
+        onLiveChanged: {
+            if (!live)
                 provider.timings = ({});
-                provider.timing = ({});
-                provider.driving = null;
-            }
-        }
-        stdout: SplitParser {
-            onRead: line => provider.heardTiming(line)
         }
     }
 
-    function heardTiming(line) {
-        if (Sounds.heading(line)) {
-            timings = timing;
-            timing = ({});
-            driving = null;
-            return;
-        }
-        const timed = Sounds.timing(line, driving);
-        // A line that isn't a follower's ends its driver's run, so one
-        // not running leaves its followers with no cycle, not the last.
-        if (!Sounds.follower(line))
-            driving = timed;
-        if (timed !== null)
-            timing[timed.id] = timed;
+    function timingsOf(held) {
+        const timed = {};
+        for (const record of Object.values(held))
+            if (record?.kind === "timing")
+                timed[record.id] = record;
+        return timed;
     }
 
     // Which device each stream is sent to, by its id, as WirePlumber keeps
