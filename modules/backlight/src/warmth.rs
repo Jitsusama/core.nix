@@ -13,8 +13,8 @@
 //! with every flicker of the light. The night comes slower: a move to the
 //! night's white that isn't one of its evening steps, as when the laptop
 //! starts or opens after sunset, glides 50 K every 1.2 seconds, so its
-//! whole warmth comes over about a minute rather than in ten seconds. This file only decides; main.rs sets
-//! what it decides.
+//! whole warmth comes over about a minute rather than in ten seconds.
+//! This file only decides; answering.rs sets what it decides.
 //!
 //! Joel can say the screen shouldn't follow the room. Then it glides back
 //! to its own white, however near it already is, and holds there until he

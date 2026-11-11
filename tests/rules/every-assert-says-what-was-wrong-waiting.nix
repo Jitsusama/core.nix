@@ -11,7 +11,6 @@
   "modules/backlight/src/keep.rs" = 1;
   "modules/backlight/src/keyboard.rs" = 2;
   "modules/backlight/src/light.rs" = 11;
-  "modules/backlight/src/monitor.rs" = 17;
   "modules/backlight/src/screen.rs" = 3;
   "modules/backlight/src/steer.rs" = 5;
   "modules/backlight/src/switch.rs" = 4;

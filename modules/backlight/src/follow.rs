@@ -3,7 +3,8 @@
 //! comes on and goes out.
 //!
 //! It's given the brightness shown and the time, and says what to do, so it
-//! reads no screen, writes no file and speaks no D-Bus; main.rs does those.
+//! reads no screen, writes no file and speaks no D-Bus; the daemon does
+//! those (answering.rs and dbus.rs).
 
 use std::time::{Duration, Instant};
 

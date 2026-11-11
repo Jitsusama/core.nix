@@ -4,7 +4,7 @@
 //! before sunrise (VKCF3Z's ruling, 2026-11-08: 4,000 K by default, gentle
 //! enough to keep code's colours readable, warmer by an option). This file
 //! only reckons the white the night wants and when to look again; warmth.rs
-//! takes the warmer of it and the room's, and main.rs sets it.
+//! takes the warmer of it and the room's, and answering.rs sets it.
 //!
 //! Where the laptop is comes from whereabouts' file, its latitude and
 //! longitude; with none known there's no schedule, and the shell says the

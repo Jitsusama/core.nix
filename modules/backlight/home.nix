@@ -13,7 +13,7 @@
 # the light now are told in $XDG_RUNTIME_DIR/backlight-now for Screens'
 # Brightness, emptied as the daemon stops.
 # A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
-# panel at the same share of its own brightest (src/monitor.rs), once
+# panel at the same share of its own brightest (src/monitor/), once
 # udev opens its bus to the seat, as modules/ddcutil does. What such a
 # monitor says of itself (src/facts.rs) is kept in $XDG_RUNTIME_DIR/desk
 # for the launcher's Displays facts, which desk-facts adds to its own

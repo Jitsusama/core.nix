@@ -6,7 +6,9 @@
 # last, Return opens a new one, Space finds, ? shows what's here, the arrows
 # go that way and Shift brings the split along, and 1 to 9 pick by number.
 # Each group is a letter (b the open files, c code, g git), and the group
-# then Space finds among what it holds.
+# then Space finds among what it holds. Long because it's one table: every
+# key Neovim binds, each group under its letter, read whole by the key map
+# and by the check that holds it to the key language.
 #
 # A chord is written as the map spells it, keys pressed one after another
 # with a space between, and a capital letter alone is that letter with
