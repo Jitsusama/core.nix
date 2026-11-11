@@ -198,7 +198,7 @@ ShellRoot {
             Expect.expect("the daemon asked for that battery's stop", root.asked?.supply
                 === "BAT0" && root.asked?.stop_pct === 70, JSON.stringify(root.asked));
             Expect.expect("taken back, saying why", theLauncher.takenBack.key === "power:limit"
-                && theLauncher.takenBack.why === "the kernel wouldn't write it",
+                && theLauncher.takenBack.why === "the battery wouldn't take it",
                 JSON.stringify(theLauncher.takenBack));
         } catch (error) {
             root.waiting = "a failure";
