@@ -50,14 +50,9 @@ function staying(held, placeOf) {
     return stay;
 }
 
-// Whether two lists share no row, looking up the longer's in the
-// shorter's, so a step from home's 20 rows into Emoji's 1,924 reads each
-// once and makes nothing of them.
-function apart(was, now) {
-    const fewer = was.length <= now.length ? was : now;
-    const more = fewer === was ? now : was;
-    const held = new Set(fewer);
-    return !more.some(key => held.has(key));
+// Each key's place in `keys`.
+function placesOf(keys) {
+    return new Map(keys.map((key, at) => [key, at]));
 }
 
 // Every row held gone and every row now put in, in one step each.
@@ -82,8 +77,8 @@ function whole(was, taken) {
 // once. A step into Emoji lists 1,924 rows, which went in one at a time,
 // 16 to 20 ms in Qt's engine offscreen against a millisecond at once, after
 // 28 to 34 ms tagging and placing each, where nothing listed before stays
-// (2026-11-11). So two lists sharing no row are told apart first, in under
-// a millisecond, and take one step each way. A row that moves is moved up
+// (2026-11-11). So two lists sharing no row take one step each way. A row
+// that moves is moved up
 // into its place, or, in a staying row's way, down to just before the
 // next row listed after it now that stays or has already moved down, or
 // the end. None where the two are the same.
@@ -94,17 +89,51 @@ function whole(was, taken) {
 // more, in the sandbox (2026-11-11). Listed afresh, the list reads each
 // row in view once, from the rows it set aside. Leaving `most` out moves
 // every row, however many.
+// Working the steps out read each list several times over, tagged, as
+// sets and as places: 84 to 132 ms for that reorder, 113 to 151 for a
+// narrowing as long and 58 to 94 for two lists the same, in Qt's engine
+// offscreen (2026-11-11). Lists the same are now seen in one walk, keys
+// are tagged only where one repeats, and one walk over the rows held
+// tells how many stay listed and how many fall behind the row before
+// them. Each that falls is a row that must move, so past `most` the list
+// goes afresh there and then; with none falling and every row now held,
+// it's a narrowing, only removed from.
 function steps(was, now, most) {
-    if (apart(was, now)) {
+    if (was.length === now.length && was.every((key, at) => key === now[at])) {
+        return [];
+    }
+    let from = was;
+    let into = now;
+    let placeOf = placesOf(now);
+    if (placeOf.size !== now.length || new Set(was).size !== was.length) {
+        from = tagged(was);
+        into = tagged(now);
+        placeOf = placesOf(into);
+    }
+    let kept = 0;
+    let fallen = 0;
+    let last = -1;
+    for (const key of from) {
+        const place = placeOf.get(key);
+        if (place === undefined) {
+            continue;
+        }
+        kept += 1;
+        if (place < last) {
+            fallen += 1;
+            if (most !== undefined && fallen > most) {
+                return afresh(was, now);
+            }
+        }
+        last = place;
+    }
+    if (kept === 0) {
         return afresh(was, now);
     }
-    const from = tagged(was);
-    const into = tagged(now);
-    const wanted = new Set(into);
     const done = [];
     let end = from.length;
     for (let at = from.length - 1; at >= -1; at -= 1) {
-        if (at >= 0 && !wanted.has(from[at])) {
+        if (at >= 0 && !placeOf.has(from[at])) {
             continue;
         }
         if (end - at > 1) {
@@ -112,9 +141,10 @@ function steps(was, now, most) {
         }
         end = at;
     }
-    const held = from.filter(key => wanted.has(key));
-    // Each tagged key's place now, read once rather than searched for.
-    const placeOf = new Map(into.map((key, at) => [key, at]));
+    if (fallen === 0 && kept === into.length) {
+        return done;
+    }
+    const held = from.filter(key => placeOf.has(key));
     const stay = staying(held, placeOf);
     if (most !== undefined && held.length - stay.size > most) {
         return afresh(was, now);
