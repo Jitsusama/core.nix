@@ -157,6 +157,23 @@ def opened_held(desktop: Desktop, session: str) -> Json:
     pid, wake = desktop.as_account(f"cat $XDG_RUNTIME_DIR/moves-{session}").split()
     assert wake.endswith(".wake"), f"the session's pi isn't held: {wake}"
     says(desktop, session, {"owner": owner_of(desktop, int(pid)), "wake": wake})
+    # Go To goes to a session's window only once the node has joined the two.
+    seen: list[dict[str, Any]] = []
+
+    def windowed(_last: bool) -> bool:
+        try:
+            seen[:] = [node_row(desktop, session)]
+        except AssertionError:
+            # The node hasn't read the presence yet; the next look may find it.
+            return False
+        return bool(seen[0].get("held") and seen[0].get("window"))
+
+    try:
+        desktop_session.retry(windowed, timeout=STEP)
+    except Exception as failed:
+        holds = desktop.as_account(f"cat {HOLDS}/*.json || true")
+        msg = f"the node never gave the session its window: {seen} with holds {holds}"
+        raise AssertionError(msg) from failed
     return next(one for one in desktop.windows() if one["title"] == f"pi --session {session}")
 
 
@@ -350,7 +367,8 @@ def cleaned(desktop: Desktop, session: str) -> None:
     desktop.as_account(
         f"touch ~/typing-done ~/move-{session} ~/refused-{session}; pkill -f 'event-strea[m]';"
         " pkill -INT -x wf-recorder; pkill -f 'sleep 60[1]';"
-        f" pkill -f 'pi .*{session}'; rm -f $XDG_RUNTIME_DIR/pi-moves-in-place"
+        # Bracketed, so the pattern doesn't match the shell running it.
+        f" pkill -f '[p]i .*{session}'; rm -f $XDG_RUNTIME_DIR/pi-moves-in-place"
         f" {PI_PRESENCE}/{session}.json $XDG_RUNTIME_DIR/moves-{session}; true"
     )
     desktop.as_account(
