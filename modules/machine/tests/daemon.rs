@@ -532,15 +532,16 @@ fn the_sensors_zones_and_cooling_say_every_reading() {
     assert_eq!(throttled["package_longest_ms"], json!(129));
 }
 
+/// The launcher's own words for what these cases say (tests/words.json),
+/// which `the-daemons-test-the-launchers-words` holds to words.json, so a
+/// case holds the daemon to the words Joel reads.
+fn launchers() -> Value {
+    serde_json::from_str(include_str!("words.json")).expect("the launcher's words parse")
+}
+
 #[test]
 fn heats_rows_are_made_for_its_watch_and_told_as_they_move() {
-    let words = json!({ "things": [
-        { "id": "heat", "name": "Heat", "glyph": "heat", "said": {
-            "hottest": "{degrees} at the {part}", "stopped": "fans stopped",
-            "turning": "a fan turning", "turnings": "{count} fans turning" } },
-        { "id": "heat:processor", "name": "Processor" },
-        { "id": "heat:cpu-fan", "name": "Processor Fan" }
-    ] });
+    let words = launchers();
     let running = Running::worded("rows", &words);
     heat(&running.root());
     let mut client = running.client();
@@ -582,15 +583,7 @@ fn heats_rows_are_made_for_its_watch_and_told_as_they_move() {
 
 #[test]
 fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
-    let words = json!({ "things": [
-        { "id": "machine:memory", "name": "Memory", "glyph": "memory",
-            "said": { "head": "{used} used, {share}" } },
-        { "id": "machine:memory:using", "name": "Using It" },
-        { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {time}" } },
-        { "id": "machine:cpu", "name": "Processor", "glyph": "processor",
-            "said": { "head": "{busy} busy", "since-boot": "since the machine started" } },
-        { "id": "machine:cpu:load", "name": "Load" }
-    ] });
+    let words = launchers();
     let running = Running::worded("machine-rows", &words);
     let mut client = running.client();
     let said =
@@ -637,14 +630,7 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
 
 #[test]
 fn the_disks_rows_are_a_place_of_their_own_each_still_machines() {
-    let words = json!({ "things": [
-        { "id": "machine:disk", "name": "Disk", "glyph": "disk",
-            "said": { "head": "{free} free on {mount}",
-                "since-boot": "since the machine started" } },
-        { "id": "machine:disk:model", "name": "Model" },
-        { "id": "machine:disk:link", "name": "PCIe",
-            "said": { "side": "{speed} \u{d7}{width}" } }
-    ] });
+    let words = launchers();
     let running = Running::worded("disk-rows", &words);
     let mut client = running.client();
     let said = client.ask(&json!({"id": "disk", "ask": "watch", "kind": "row", "place": "disk"}));
@@ -701,20 +687,7 @@ fn telemetry_reader(root: &Path) {
 
 #[test]
 fn the_processors_telemetry_is_asked_only_while_watched_and_made_into_its_rows() {
-    let words = json!({ "things": [
-        { "id": "machine:cpu", "name": "Processor", "glyph": "processor",
-            "parts": ["machine:cpu:held-back", "machine:cpu:kept-from-resting",
-                "machine:cpu:load"],
-            "said": { "head": "{busy} busy" } },
-        { "id": "machine:cpu:load", "name": "Load" },
-        { "id": "machine:cpu:held-back", "name": "Held Back", "said": {
-            "note": "by {limit}, over the last second", "core": "by {limit}",
-            "limit-pl1": "its power limit, PL1", "limit-power": "power" } },
-        { "id": "machine:cpu:held-back-core", "name": "Core {n}" },
-        { "id": "machine:cpu:kept-from-resting", "name": "Kept From Resting",
-            "said": { "by": "by {keeper}" } },
-        { "id": "machine:cpu:kept-by-npu", "name": "NPU", "said": { "by": "the NPU" } }
-    ] });
+    let words = launchers();
     let running = Running::worded("telemetry", &words);
     telemetry_reader(&running.root());
     let mut client = running.client();
@@ -1032,13 +1005,7 @@ fn a_firmware_install_is_answered_once_done_and_the_connection_answers_meanwhile
 
 #[test]
 fn powers_rows_are_made_for_its_watch_and_move_with_its_limit() {
-    let words = json!({ "things": [
-        { "id": "power", "name": "Battery", "said": { "battery": "on battery" } },
-        { "id": "power:charge", "name": "Charge" },
-        { "id": "power:limit", "name": "Charge Limit", "said": {
-            "both": "stops at {stop}%, starts below {start}%" } },
-        { "id": "power:limit:stop", "name": "Stop at {n}%", "said": { "chosen": "chosen" } }
-    ] });
+    let words = launchers();
     let running = Running::worded("power-rows", &words);
     power(&running.root());
     let mut client = running.client();

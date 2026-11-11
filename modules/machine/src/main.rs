@@ -2437,12 +2437,10 @@ mod tests {
     // machine with no fwupdmgr, which is refused at once.
     #[test]
     fn firmwares_rows_say_an_act_going_then_how_it_ended() {
-        let vocabulary = json!({ "things": [
-            { "id": "firmware", "name": "Firmware", "said": { "one": "1 update ready" } },
-            { "id": "verb:firmware:install", "name": "Install {version}",
-                "sure": "Install {version} on {device} Now", "said": {
-                "installing": "installing", "failed": "didn't install" } }
-        ] });
+        // The launcher's own words (tests/words.json), which the words
+        // check holds to words.json.
+        let vocabulary: Value = serde_json::from_str(include_str!("../tests/words.json"))
+            .expect("the launcher's words parse");
         let words = Words::new(&vocabulary, ",", ".");
         let root = Root::new(std::env::temp_dir());
         let shared = Arc::new(shared(&root, Some(words)));
