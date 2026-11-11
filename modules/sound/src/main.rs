@@ -1,9 +1,11 @@
-//! sound SOCKET
+//! sound SOCKET [--vocabulary WORDS]
 //!
 //! The sound server's devices, held ready for the shell and anything else
 //! that asks, over SOCKET in the shell's daemon interface (interface.rs):
 //! each output and input as a `device` record, saying how loud it's set,
-//! whether it's muted and whether it's the one chosen (devices.rs).
+//! whether it's muted and whether it's the one chosen (devices.rs), and
+//! as the launcher's Sound row for it, worded from WORDS, the launcher's
+//! words.json (rows.rs).
 //!
 //! It hears PipeWire through its own API for as long as it runs, rather
 //! than a program's output read line by line: the registry says each
@@ -35,7 +37,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pipewire as pw;
 use pw::context::ContextRc;
-use pw::device::{Device, DeviceListener};
+use pw::device::{Device, DeviceChangeMask, DeviceInfoRef, DeviceListener};
 use pw::main_loop::MainLoopRc;
 use pw::metadata::{Metadata, MetadataListener};
 use pw::node::{Node, NodeChangeMask, NodeInfoRef, NodeListener};
@@ -44,11 +46,13 @@ use pw::spa::param::ParamType;
 use pw::spa::pod::Pod;
 use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
+use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use sound::acts::{Move, act, planned};
 use sound::devices::{Change, Devices, direction};
 use sound::interface::{Ask, VERSION, ask, error, kind_of};
 use sound::levels::{levels, route};
+use sound::rows::{Words, rows};
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -91,6 +95,10 @@ struct Daemon {
     held: BTreeMap<String, Value>,
     watches: Vec<Watch>,
     devices: Devices,
+    /// The launcher's words its rows are worded in, and the rows as last
+    /// told, each keeping its place in their order.
+    words: Words,
+    served: Kept,
     /// How PipeWire stands: "starting" until it first answers,
     /// "answering", or "not answering" while it's gone.
     server: &'static str,
@@ -102,11 +110,21 @@ struct Daemon {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let Some(socket) = args.next() else {
-        eprintln!("usage: sound SOCKET");
+    let (Some(socket), vocabulary) = (args.next(), args.next()) else {
+        eprintln!("usage: sound SOCKET [--vocabulary WORDS]");
         std::process::exit(64);
     };
     let socket = PathBuf::from(socket);
+    // Without its words, a row says the vocabulary's ids for them, as
+    // the launcher's Sound does, rather than the daemon not starting.
+    let words = match (vocabulary.as_deref(), args.next()) {
+        (Some("--vocabulary"), Some(path)) => worded(Path::new(&path)),
+        (None, None) => Words::default(),
+        _ => {
+            eprintln!("usage: sound SOCKET [--vocabulary WORDS]");
+            std::process::exit(64);
+        }
+    };
     let listener = match listen(&socket) {
         Ok(listener) => listener,
         Err(why) => {
@@ -118,6 +136,8 @@ fn main() {
         held: BTreeMap::new(),
         watches: Vec::new(),
         devices: Devices::default(),
+        words,
+        served: Kept::default(),
         server: "starting",
         changes: 0,
         since: now_ms(),
@@ -134,6 +154,19 @@ fn main() {
         };
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
+    }
+}
+
+/// The launcher's words, read from its words.json, or none where it
+/// can't be read, said once.
+fn worded(path: &Path) -> Words {
+    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
+    match read.and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string())) {
+        Ok(words) => words,
+        Err(why) => {
+            eprintln!("<4>couldn't read the words in {}: {why}", path.display());
+            Words::default()
+        }
     }
 }
 
@@ -378,7 +411,8 @@ fn node(
     })
 }
 
-/// Binds a card, hearing which route plays each of its profile's devices.
+/// Binds a card, hearing what it says it is and which route plays each
+/// of its profile's devices.
 fn card(
     shared: &Arc<Mutex<Daemon>>,
     registry: &RegistryRc,
@@ -391,6 +425,25 @@ fn card(
     let card: Device = registry.bind(global).ok()?;
     let listener = card
         .add_listener_local()
+        .info({
+            let shared = Arc::clone(shared);
+            move |info: &DeviceInfoRef| {
+                if !info.change_mask().contains(DeviceChangeMask::PROPS) {
+                    return;
+                }
+                let Some(props) = info.props() else { return };
+                let properties = props
+                    .iter()
+                    .map(|(key, value)| (key.to_owned(), value.to_owned()));
+                told(
+                    &shared,
+                    Change::Card {
+                        id,
+                        properties: properties.collect(),
+                    },
+                );
+            }
+        })
         .param({
             let shared = Arc::clone(shared);
             move |_, kind, _, _, pod| {
@@ -464,7 +517,10 @@ fn told(shared: &Mutex<Daemon>, change: Change) {
 /// Works every record out again, keeps those that changed and lets go of
 /// those gone, telling each watch what changed of what it wants.
 fn refresh(daemon: &mut Daemon) {
-    let records = daemon.devices.records();
+    let mut records = daemon.devices.records();
+    let ready = rows(&records, &daemon.words);
+    daemon.served.take(ready, Vec::new());
+    records.extend(daemon.served.all().cloned());
     let said: HashSet<String> = records
         .iter()
         .filter_map(|record| record["key"].as_str().map(str::to_owned))

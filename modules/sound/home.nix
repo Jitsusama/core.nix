@@ -26,7 +26,13 @@ in
       Requires = [ "sound.socket" ];
     };
     Service = {
-      ExecStart = "${lib.getExe sound} %t/daemons/sound.sock";
+      # Its rows are worded as the launcher's own are.
+      ExecStart = lib.escapeShellArgs [
+        (lib.getExe sound)
+        "%t/daemons/sound.sock"
+        "--vocabulary"
+        "${../quickshell/launcher/words.json}"
+      ];
       Restart = "on-failure";
       RestartSec = 5;
     };

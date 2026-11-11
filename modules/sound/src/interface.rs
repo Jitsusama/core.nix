@@ -7,10 +7,12 @@ use serde_json::{Value, json};
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
 
-/// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 1] = ["device"];
+/// The kinds of record this daemon keeps: each device as PipeWire says
+/// it, and each of Sound's rows served ready (rows.rs).
+pub const KINDS: [&str; 2] = ["device", "row"];
 
-/// The kind a key names: `device` for `device:alsa_output.pci`.
+/// The kind a key names: `device` for `device:alsa_output.pci`, `row`
+/// for `row:sound:alsa_output.pci`.
 pub fn kind_of(key: &str) -> Option<&str> {
     let (kind, rest) = key.split_once(':')?;
     (KINDS.contains(&kind) && !rest.is_empty()).then_some(kind)
