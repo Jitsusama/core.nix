@@ -148,7 +148,10 @@ feed speaks.
   the contract's README says, or for its length when no feed reads it
   ("Five Hours", "Week", "Premium Day"); its figure says the window short
   ("85% of 5 h"), and a sentence names it with the glossary's word after
-  it, "near the Week allowance" (VKCF3Z, 2026-11-07).
+  it, "near the Week allowance" (VKCF3Z, 2026-11-07). Each row with a
+  drawer brings it ready: a period's facts, and `src/drawers.rs`'s for a
+  budget, a window and a cap, its quiet row's with no dollars, so the
+  shell only names each fact by its id.
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
   they no longer hold or are marked expected. No notice holds an amount, and

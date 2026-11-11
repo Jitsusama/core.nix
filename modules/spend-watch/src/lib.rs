@@ -35,6 +35,7 @@ pub mod collection;
 pub mod config;
 pub mod daemon;
 pub mod detect;
+pub mod drawers;
 pub mod estimate;
 pub mod feed;
 pub mod findings;

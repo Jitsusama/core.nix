@@ -509,8 +509,6 @@
       "ask": "which?",
       "empty": "Nothing spent yet.",
       "said": {
-        "unread": "not read yet",
-        "window": "in {budget} \u00b7 window",
         "down": "not answering",
         "lastFigures": "not answering · its last figures",
         "lastRun": "the watch is still reading; these are its last run's figures"
