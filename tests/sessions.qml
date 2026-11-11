@@ -13,7 +13,7 @@ pragma ComponentBehavior: Bound
 // To focuses that window, or asks kitty when niri's isn't known. One the
 // node says is parked is held apart from those running, and one it says
 // closed apart again, however each record reads; Wake, or talking to one
-// parked, writes the file its marker names. What an earlier boot's end took away is
+// parked, asks the node, which wakes it. What an earlier boot's end took away is
 // offered whole, but one that ran hosted, which its host brings back,
 // reopened held in its own folder, until put off, one pi
 // never saved started under its own id with its quest, and Reopen Them
@@ -177,10 +177,6 @@ ShellRoot {
         const other = find("OTHER2");
         if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window)
             return;
-        if (!markersLaid) {
-            parking.running = true;
-            return;
-        }
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
             JSON.stringify(live.window));
@@ -284,9 +280,9 @@ ShellRoot {
     }
 
     // One the node says is parked is listed apart, never running, however
-    // its record reads; Wake writes the file its marker names, whole, in
-    // place, and talking to it asks the node to steer its inbox, then,
-    // once the node has, wakes it to read it.
+    // its record reads; Wake asks the node to wake it, saying nothing, and
+    // talking to it asks the node to steer its inbox, which wakes it too,
+    // so the shell starts no program for either.
     function parks() {
         expect("only those the node says are parked are parked",
             parkedAs() === "DOZER4 NAPPER", parkedAs());
@@ -317,53 +313,32 @@ ShellRoot {
             && JSON.stringify(Sessions.keptPlaces["s-DOZER4"] ?? null).startsWith(
                 '{"workspace":8,"column":3,'), JSON.stringify(Sessions.keptPlaces));
         Sessions.keepPlaces({});
+        wokeAt = Niri.spawns.length;
         Sessions.wake(napper);
-        const woken = Niri.spawned;
-        expect("Wake writes the file its marker names, in place",
-            woken.slice(0, 5).join(" ")
-                === `sh -c printf "%s\\n" "$2" > "$1" wake ${root.state}/napper.wake`
-            && JSON.parse(woken[5]).session === "s-NAPPER", woken.join(" "));
-        talkedAt = Niri.spawns.length;
         Sessions.talk("napper", "what now?");
-        expect("a talk writes no inbox itself, nor wakes before the node has it",
-            Niri.spawns.length === talkedAt, Niri.spawns.slice(talkedAt).join(" | "));
     }
 
-    // What the shell ran since the talk to the one parked, and whether the
-    // talk has been steered and woken it, its wake after the node's answer.
-    property int talkedAt: -1
-    function wokenSinceTalk() {
-        return talkedAt >= 0
-            && Niri.spawns.slice(talkedAt).some(one => one.includes("/napper.wake "));
-    }
+    // Whether the node was asked to wake the one parked, and then to steer
+    // it the words talked to it, with nothing run by the shell for either.
+    property int wokeAt: -1
     function talked() {
-        const told = steers.find(one => one.ask.address === "NAPPER");
-        if (!told || !wokenSinceTalk())
+        const told = steers.filter(one => one.ask.address === "NAPPER")
+            .map(one => one.ask.steer);
+        if (wokeAt < 0 || told.length < 2)
             return false;
-        expect("talking to one parked asks the node to steer it, then wakes it",
-            told.ask.steer.text === "what now?" && told.ask.steer.from === "joel"
-            && !told.wokenBefore, JSON.stringify(told));
-        expect("a talk writes no inbox itself",
-            !Niri.spawns.slice(talkedAt).some(one => one.includes("/steer/")),
-            Niri.spawns.slice(talkedAt).join(" | "));
+        expect("Wake asks the node to wake the one parked, saying nothing",
+            told[0].act === "wake" && told[0].from === "joel" && told[0].text === undefined
+            && told[0].id === undefined, JSON.stringify(told[0]));
+        expect("talking to one parked asks the node to steer it",
+            told[1].text === "what now?" && told[1].from === "joel"
+            && told[1].act === undefined, JSON.stringify(told[1]));
+        // Later stages start sessions, so only what would write a file is
+        // looked for.
+        expect("and the shell writes nothing itself for either",
+            !Niri.spawns.slice(wokeAt).some(one => one.includes("printf")
+                || one.includes(".wake") || one.includes("/steer/")),
+            Niri.spawns.slice(wokeAt).join(" | "));
         return true;
-    }
-
-    // The marker of the one parked, naming its wake file, laid once the
-    // shell has listed its sessions, in a park folder that wasn't there
-    // till then, as the harness makes it only as a session first parks.
-    property bool markersLaid: false
-    Process {
-        id: parking
-        onExited: {
-            root.markersLaid = true;
-            Qt.callLater(root.check);
-        }
-        command: ["sh", "-c", 'p="$1/pi/agentic-harness.pi/park-workflow/parked"; mkdir -p "$p"'
-            + ' && printf \'{"session":"s-NAPPER","wake":"%s/napper.wake"}\' "$1"'
-            + ' > "$p/s-NAPPER.json"'
-            + ' && printf \'{"session":"s-STALE7","wake":"%s/stale.wake"}\' "$1"'
-            + ' > "$p/s-STALE7.json"', "park", root.state]
     }
 
     // Why each that didn't open as asked didn't, as its caller is told:
@@ -709,8 +684,7 @@ ShellRoot {
                     } else if (ask.ask === "watch" && (ask.kind === "run" || ask.kind === "talk")) {
                         answer = { id: ask.id, records: [] };
                     } else if (ask.ask === "steer") {
-                        root.steers = root.steers.concat([
-                            { ask: ask, wokenBefore: root.wokenSinceTalk() }]);
+                        root.steers = root.steers.concat([{ ask: ask }]);
                         answer = ask.address === "FARAWY" ? { id: ask.id, error: {
                             code: "refused",
                             message: "lighthouse is out of reach, so FARAWY can't be told now"

@@ -596,28 +596,30 @@ def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
 
 
 def wakes_parked_orchestrator(desktop: Desktop) -> None:
-    """Wake Lighthouse once it's parked, by the file its marker names, rather than resume it.
+    """Wake Lighthouse once it's parked, by its holder's file, rather than resume it.
 
     Parked while it wants Joel, its want still holds For You's mark, and its row still
     wakes it, since there's no process to go to.
     """
     machine = desktop.machine
     # Parked as the harness parks one: its process ended this boot, its
-    # record saying so, and the marker naming the file that wakes it. Its
+    # record saying so and naming its holder's file that wakes it, which
+    # the node writes when asked to wake it, and the marker beside. Its
     # want stays in its record, as the harness keeps it when it parks.
     parked = f"{HARNESS}/park-workflow/parked"
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
     began = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    held = desktop.as_account('echo "$XDG_RUNTIME_DIR/mycelium/harbour.held"').strip()
     record = {
         "session": "s-testqa", "addresses": ["TESTQA"], "state": "parked", "busy": False,
         "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": boot, "startTicks": 1},
-        "at": "2026-11-06T12:00:00Z",
+        "at": "2026-11-06T12:00:00Z", "wake": f"{held}/testqa.wake",
     }  # fmt: skip
     wanting = record | {"wants": {"kind": "question", "since": began, "said": "Which way?"}}
     since = desktop.mark()
     desktop.as_account(
-        f"mkdir -p {parked} && echo '{json.dumps(wanting)}' > {PI_PRESENCE}/testqa.json"
-        ' && printf \'{"session":"s-testqa","wake":"%s/testqa.wake"}\' "$XDG_RUNTIME_DIR"'
+        f"mkdir -p {parked} {held} && echo '{json.dumps(wanting)}' > {PI_PRESENCE}/testqa.json"
+        f' && printf \'{{"session":"s-testqa","wake":"%s"}}\' {held}/testqa.wake'
         f" > {parked}/s-testqa.json"
     )
     desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
@@ -637,9 +639,8 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 wake"], desktop.showing()
     since = desktop.mark()
     machine.send_key("ret")
-    machine.wait_until_succeeds(
-        desktop.in_session('grep -q \'"session":"s-testqa"\' "$XDG_RUNTIME_DIR/testqa.wake"')
-    )
+    # The node writes it, saying who steered, as Wake asks it to.
+    machine.wait_until_succeeds(desktop.in_session(f"grep -q '\"steered\"' {held}/testqa.wake"))
     # It wakes in its own window, so the launcher stays, its row reading as it will be
     # from the key's own frame, though its record still says it's parked until pi is up.
     desktop.reported("becoming ", lambda rest: rest == "agent:TESTQA", since)
@@ -648,7 +649,7 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
     desktop.down_to("Lighthouse")
     desktop.launcher_until(lambda shown: shown["selected"]["side"].endswith("listening"))
     desktop.close_launcher()
-    desktop.as_account(f"rm -rf {parked} {PI_PRESENCE}/testqa.json $XDG_RUNTIME_DIR/testqa.wake")
+    desktop.as_account(f"rm -rf {parked} {PI_PRESENCE}/testqa.json {held}/testqa.wake")
 
 
 def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -> None:
