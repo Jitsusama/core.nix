@@ -312,7 +312,7 @@ pub fn holding(json: &str) -> Option<(u64, u64)> {
     let cake = all.iter().find(|q| q["kind"] == "cake")?;
     let backlog = cake["backlog"].as_u64().unwrap_or(0);
     let marks: u64 = tins(json).iter().map(|t| t.marks).sum();
-    Some((backlog, cake["drops"].as_u64().unwrap_or(0) + marks))
+    Some((backlog, dropped(cake) + marks))
 }
 
 /// The packets the CAKE in `tc -s -j qdisc show dev` has dropped, marks
@@ -321,9 +321,21 @@ pub fn drops(json: &str) -> Option<u64> {
     let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
         return None;
     };
-    all.iter()
-        .find(|q| q["kind"] == "cake")
-        .map(|cake| cake["drops"].as_u64().unwrap_or(0))
+    all.iter().find(|q| q["kind"] == "cake").map(dropped)
+}
+
+/// What a CAKE dropped of its flows. Its count takes in the ACKs its
+/// ack-filter thinned, which nothing sends again and which say nothing
+/// of a queue: beside a download on 11 November they were six in every
+/// seven, so the link's CAKE read as queued nearly every second and hid
+/// the VPN's queue, and what TCP resent read as ours.
+fn dropped(cake: &Value) -> u64 {
+    let thinned: u64 = cake["tins"].as_array().map_or(0, |tins| {
+        tins.iter()
+            .map(|t| t["ack_drops"].as_u64().unwrap_or(0))
+            .sum()
+    });
+    cake["drops"].as_u64().unwrap_or(0).saturating_sub(thinned)
 }
 
 /// A queue CAKE holds, at least, rather than packets passing through it: a
@@ -453,6 +465,25 @@ mod tests {
         assert_eq!(holding(r#"[{"kind":"fq_codel","backlog":9000}]"#), None);
         assert_eq!(drops(json), Some(10));
         assert_eq!(drops(r#"[{"kind":"fq_codel","drops":9}]"#), None);
+    }
+
+    /// CAKE counts the ACKs its ack-filter thins among its drops, a
+    /// hundred a second beside a download on 11 November against about
+    /// fifteen it dropped of a flow, and nothing sends those again.
+    #[test]
+    fn the_acks_cake_thins_are_no_drop_and_no_queue() {
+        let json = r#"[{"kind":"cake","backlog":0,"drops":110,"tins":[
+            {"drops":4,"ack_drops":60,"ecn_mark":1},{"drops":6,"ack_drops":40,"ecn_mark":0},
+            {"drops":0,"ack_drops":0,"ecn_mark":0},{"drops":0,"ack_drops":0,"ecn_mark":0}]}]"#;
+        assert_eq!(drops(json), Some(10), "only what CAKE dropped of a flow");
+        assert_eq!(holding(json), Some((0, 11)), "thinned ACKs aren't a queue");
+        let thinned = r#"[{"kind":"cake","backlog":0,"drops":160,"tins":[
+            {"drops":4,"ack_drops":110,"ecn_mark":1},{"drops":6,"ack_drops":40,"ecn_mark":0},
+            {"drops":0,"ack_drops":0,"ecn_mark":0},{"drops":0,"ack_drops":0,"ecn_mark":0}]}]"#;
+        assert!(
+            !queued(holding(json), holding(thinned).unwrap()),
+            "more ACKs thinned, with nothing waiting, is no queue"
+        );
     }
 
     #[test]
