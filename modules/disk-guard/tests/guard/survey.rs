@@ -26,14 +26,18 @@ fn now() -> f64 {
         .as_secs_f64()
 }
 
-fn config(sources: &str) -> Config {
+pub fn config(sources: &str) -> Config {
     Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "sources": {{ {sources} }} }}"#
     ))
     .unwrap()
 }
 
-fn offers(config: &Config, processes: &[Process], finished: &dyn Fn(&Path) -> bool) -> Vec<Offer> {
+pub fn offers(
+    config: &Config,
+    processes: &[Process],
+    finished: &dyn Fn(&Path) -> bool,
+) -> Vec<Offer> {
     offers_after(config, processes, finished, &BTreeMap::new())
 }
 
@@ -104,7 +108,7 @@ fn surveyed(
     (found, world.walked)
 }
 
-fn find<'a>(offers: &'a [Offer], path: &Path) -> &'a Offer {
+pub fn find<'a>(offers: &'a [Offer], path: &Path) -> &'a Offer {
     offers
         .iter()
         .find(|offer| offer.candidate.path == path)
@@ -114,7 +118,7 @@ fn find<'a>(offers: &'a [Offer], path: &Path) -> &'a Offer {
         })
 }
 
-fn real(path: &Path) -> PathBuf {
+pub fn real(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap()
 }
 
@@ -133,7 +137,7 @@ fn src(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
     (app, target, modules.parent().unwrap().to_owned())
 }
 
-fn written_ago(path: &Path, seconds: f64) {
+pub fn written_ago(path: &Path, seconds: f64) {
     use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
     let at = Timespec {
         tv_sec: crate::whole_seconds(now() - seconds),
@@ -146,7 +150,7 @@ fn written_ago(path: &Path, seconds: f64) {
     utimensat(CWD, path, &times, AtFlags::SYMLINK_NOFOLLOW).unwrap();
 }
 
-const DAY: f64 = 86_400.0;
+pub const DAY: f64 = 86_400.0;
 
 #[test]
 fn an_older_build_is_offered_once_its_deps_is_watched() {

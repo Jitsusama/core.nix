@@ -34,7 +34,7 @@ impl Draw {
 
     fn class(&mut self) -> Class {
         let bool = |draw: &mut Draw| draw.below(2) == 0;
-        match self.below(17) {
+        match self.below(18) {
             0 => Class::Target,
             1 => Class::Install,
             2 => Class::Variant,
@@ -62,6 +62,7 @@ impl Draw {
                 from: bool(self).then(|| self.band()),
             },
             15 => Class::Log,
+            16 => Class::QuestTemp,
             _ => Class::Podman { unused: bool(self) },
         }
     }
@@ -318,6 +319,27 @@ fn a_cache_is_taken_from_its_own_band_on() {
     assert_eq!(taken(&both, Band::Filling), ["soon"]);
     assert_eq!(taken(&both, Band::NearlyFull), ["soon"]);
     assert_eq!(taken(&both, Band::CriticallyFull), ["soon", "late"]);
+}
+
+#[test]
+fn what_a_quest_at_work_left_in_its_tmp_goes_after_a_week_or_sooner_nearly_full() {
+    // A quest's tmp/ may hold what its session still means to read, so
+    // only a week with nothing written takes it, on a disk that's merely
+    // filling too; one nearly full takes a day's, and one critically full
+    // six hours'.
+    let left = |name, idle| candidate(name, Class::QuestTemp, idle);
+    let all = [
+        left("week", 8.0 * DAY),
+        left("days", 2.0 * DAY),
+        left("hours", 7.0 * HOUR),
+    ];
+    assert_eq!(taken(&all, Band::Healthy), ["week"]);
+    assert_eq!(taken(&all, Band::Filling), ["week"]);
+    assert_eq!(sorted(taken(&all, Band::NearlyFull)), ["days", "week"]);
+    assert_eq!(
+        sorted(taken(&all, Band::CriticallyFull)),
+        ["days", "hours", "week"]
+    );
 }
 
 #[test]

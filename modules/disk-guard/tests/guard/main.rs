@@ -53,6 +53,7 @@ mod pool;
 mod procargs;
 #[cfg(target_os = "linux")]
 mod procs;
+mod quest_temp;
 mod reclaim;
 mod replaced;
 mod sandbox;

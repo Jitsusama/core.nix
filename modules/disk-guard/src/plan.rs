@@ -29,6 +29,9 @@ pub enum Class {
     Scratch {
         healthy: Option<f64>,
     },
+    /// An entry of a quest's `tmp/` while the quest is at work, which its
+    /// session may still mean to read.
+    QuestTemp,
     /// A snapshot whose process is gone.
     Snapshot,
     /// What git staged in a repository no git works on now.
@@ -92,6 +95,7 @@ impl Class {
             Class::Install => "install",
             Class::Variant => "variant",
             Class::Scratch { .. } => "scratch",
+            Class::QuestTemp => "quest-temp",
             Class::Snapshot => "snapshot",
             Class::GitTemporary => "git-temporary",
             Class::Workspace => "workspace",
@@ -217,6 +221,11 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             Group::Variants,
             [healthy, days(1.0), hours(6.0), hours(2.0)],
         ),
+        // A quest at work may come back for what it left, so a week with
+        // nothing written is the sign it won't, on a disk merely filling
+        // too: on one laptop that sat filling for days, its quests' tmp/
+        // folders held 124 GiB, a quarter unwritten for a week.
+        Class::QuestTemp => (Group::Idle, [days(7.0), days(7.0), days(1.0), hours(6.0)]),
         // Of a log, what's trimmed is history nobody reads; the rest stays.
         Class::Snapshot | Class::GitTemporary | Class::NixBuild | Class::Log => {
             (Group::Waste, [AT_ONCE; 4])
