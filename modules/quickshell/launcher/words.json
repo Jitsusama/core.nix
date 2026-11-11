@@ -13678,6 +13678,17 @@
       "keys": "keys",
       "place": "place"
     },
+    "times": {
+      "now": "just now",
+      "minutes": "{minutes} min ago",
+      "yesterday": "yesterday",
+      "tomorrow": "tomorrow",
+      "today": "today",
+      "happening": "now",
+      "soon": "in {minutes} min",
+      "at": "at {time}",
+      "opened": "opened {when}"
+    },
     "hints": {
       "up": "up",
       "open": "open",
