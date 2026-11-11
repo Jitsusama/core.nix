@@ -856,11 +856,19 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
         shell.reported("spots made while closed ", lambda _: True, since_closing)
 
     def within_a_minute(act: Callable[[], dict[str, int]]) -> dict[str, int]:
-        """Give the rows the act made, done again once if a minute turned, which remakes some."""
+        """Give the rows the act made, done again once if a minute turned, which remakes some.
+
+        A turn counts if the clock says one came, or if the shell said it heard one, however
+        late: a shell that heard the turn after the clock's slack made Time's and Today's rows
+        again rightly, and failed the case (Y2YBTS, 2026-11-11, at 0cb9591c).
+        """
         for _ in range(2):
             began = time.time()
+            heard_from = shell.mark()
             made_by_it = act()
-            if int((began - CLOCK_SLACK) // 60) == int((time.time() + CLOCK_SLACK) // 60):
+            turned = "the clock turned a minute" in shell.said_since(heard_from)[0]
+            same = int((began - CLOCK_SLACK) // 60) == int((time.time() + CLOCK_SLACK) // 60)
+            if same and not turned:
                 break
         return made_by_it
 
