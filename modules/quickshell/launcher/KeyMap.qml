@@ -209,6 +209,13 @@ Provider {
             leads = now;
     }
 
+    // What its rows follow of the window the launcher opens over, the layers
+    // whose keys work there, so Shortcuts kept shut is drawn again only over
+    // a window with the same keys (Launcher.qml's keptUnder).
+    function keptOver(window) {
+        return KeyLayers.over(window?.app_id ?? "", window?.title ?? "").join(" ");
+    }
+
     // The layers in the order the window opened over puts them, the first
     // saying it's that window's in the foot while it's selected.
     readonly property var ranked: {

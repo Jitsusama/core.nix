@@ -168,9 +168,13 @@ Provider {
                 // and one onto Now's rows places them only once a minute
                 // has turned since they were placed: each opening into For
                 // You made all 17 again with nothing changed (2026-11-11).
+                // Asleep as a kept opening fills in, it wakes a frame or two
+                // on and is wanted then (onWantedChanged), within the minute
+                // it was placed in, so it's kept: a chord into Now kept made
+                // all 17 again as it woke (2026-11-11).
                 if (provider.wanted)
                     provider.retimeIfStale();
-                else
+                else if (!provider.asleep)
                     provider.timeStale = true;
             } else {
                 provider.openedAt = Number.POSITIVE_INFINITY;
