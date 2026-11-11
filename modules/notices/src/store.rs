@@ -1,13 +1,20 @@
 //! The history on disk, in the daemon's own state folder, so a restart
 //! loses none: every notice kept, and the id the next one gets, so a key
-//! names one notice for good. Written whole to a file beside it and moved
-//! over it, so a crash mid-write leaves the last one whole.
+//! names one notice for good. Written whole to a file beside it, made to
+//! reach the disk, and moved over it, so a crash or a battery running out
+//! mid-write leaves the last one whole rather than an empty file.
+//!
+//! One that doesn't read all the same is set aside, kept for whoever
+//! wants what it held, and the daemon starts with none: a daemon that
+//! stopped at each start over it would leave nothing to take any notice,
+//! and every one sent would be lost.
 //!
 //! The first time it starts, with no history of its own, it takes the
 //! shell's (`notices.json` in Quickshell's state), so moving notices out
 //! of the shell keeps what Joel had. The shell's ids were its server's,
 //! begun again at each start, so each taken gets a new one.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -24,17 +31,35 @@ pub struct Saved {
     pub notices: Vec<Notice>,
 }
 
-/// Reads what was written, or none where nothing was. One that doesn't
-/// read is an error, so the caller says so rather than starting over and
-/// writing over what Joel kept.
-pub fn read(file: &Path) -> Result<Option<Saved>, String> {
-    match std::fs::read_to_string(file) {
-        Ok(text) => serde_json::from_str(&text)
-            .map(Some)
-            .map_err(|why| format!("{} doesn't read: {why}", file.display())),
-        Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(why) => Err(format!("{} can't be read: {why}", file.display())),
-    }
+/// What was written, as it was read.
+#[derive(Debug)]
+pub enum Kept {
+    Saved(Saved),
+    /// Nothing was written yet.
+    None,
+    /// It didn't read, so it was set aside here, saying why, and nothing
+    /// is kept now.
+    SetAside(PathBuf, String),
+}
+
+/// Reads what was written. One that doesn't read is moved aside, as
+/// `notices.json.unread-<ms>` at `now`, so starting over writes over
+/// nothing Joel kept. One that can't be opened at all is an error, since
+/// moving it would fail the same way.
+pub fn read(file: &Path, now: i64) -> Result<Kept, String> {
+    let text = match std::fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => return Ok(Kept::None),
+        Err(why) => return Err(format!("{} can't be read: {why}", file.display())),
+    };
+    let why = match serde_json::from_str(&text) {
+        Ok(saved) => return Ok(Kept::Saved(saved)),
+        Err(why) => why.to_string(),
+    };
+    let aside = file.with_extension(format!("json.unread-{now}"));
+    std::fs::rename(file, &aside)
+        .map_err(|moved| format!("{} doesn't read ({why}) nor move: {moved}", file.display()))?;
+    Ok(Kept::SetAside(aside, why))
 }
 
 /// Writes what's held, those passing unkept left out.
@@ -47,8 +72,17 @@ pub fn write(file: &Path, holding: &Holding) -> std::io::Result<()> {
         std::fs::create_dir_all(folder)?;
     }
     let beside = file.with_extension("json.new");
-    std::fs::write(&beside, saved.to_string())?;
-    std::fs::rename(&beside, file)
+    let mut written = std::fs::File::create(&beside)?;
+    written.write_all(saved.to_string().as_bytes())?;
+    // On the disk before it's moved into place, and the move on the disk
+    // after, so neither a crash nor a battery running out between them
+    // leaves a name over a file not yet written.
+    written.sync_all()?;
+    std::fs::rename(&beside, file)?;
+    match file.parent() {
+        Some(folder) => std::fs::File::open(folder)?.sync_all(),
+        None => Ok(()),
+    }
 }
 
 /// The newest of the shell's histories under Quickshell's `by-shell`
@@ -149,7 +183,7 @@ mod tests {
         let folder = folder("store");
         let file = folder.join("notices").join("notices.json");
         assert!(
-            read(&file).expect("none yet").is_none(),
+            matches!(read(&file, 0), Ok(Kept::None)),
             "a history never written reads as none"
         );
         let mut holding = Holding::default();
@@ -166,7 +200,9 @@ mod tests {
             ..Notice::default()
         });
         write(&file, &holding).expect("written");
-        let saved = read(&file).expect("it reads").expect("it's there");
+        let Ok(Kept::Saved(saved)) = read(&file, 0) else {
+            panic!("what was written reads back");
+        };
         assert_eq!(saved.next, 3);
         assert_eq!(saved.notices.len(), 1);
         assert_eq!(saved.notices[0].summary, "kept");
@@ -178,13 +214,27 @@ mod tests {
     }
 
     #[test]
-    fn a_history_that_doesnt_read_is_said_rather_than_started_over() {
+    fn a_history_that_doesnt_read_is_set_aside_and_started_over() {
         let folder = folder("unread");
         let file = folder.join("notices.json");
-        std::fs::write(&file, "{ not json").expect("written");
+        // Torn by a crash, or left empty by a battery running out.
+        for (torn, now) in [("{ not json", 7), ("", 8)] {
+            std::fs::write(&file, torn).expect("written");
+            let Ok(Kept::SetAside(aside, _)) = read(&file, now) else {
+                panic!("{torn:?} is set aside");
+            };
+            assert_eq!(aside, folder.join(format!("notices.json.unread-{now}")));
+            assert_eq!(
+                std::fs::read_to_string(&aside).ok().as_deref(),
+                Some(torn),
+                "kept whole"
+            );
+            assert!(!file.exists(), "{torn:?} no longer stands as the history");
+        }
+        write(&file, &Holding::default()).expect("written anew");
         assert!(
-            read(&file).is_err(),
-            "a history that isn't JSON is an error"
+            matches!(read(&file, 9), Ok(Kept::Saved(_))),
+            "the history begun again reads"
         );
         let _ = std::fs::remove_dir_all(&folder);
     }
