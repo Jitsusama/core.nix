@@ -69,6 +69,9 @@ FRESHENING = timedelta(seconds=75)
 # was presented, niri saying it was or not saying in time, or a key before any of them.
 FILLERS = frozenset({"frame", "presented", "unpresented", "key"})
 
+# How many windows a case opens, so Windows has rows whose keys are weighed as it opens.
+WINDOWS_WEIGHED = 3
+
 # How many kept openings a case times its fill against niri's presenting in.
 PRESENTED_OPENINGS = 5
 
@@ -296,6 +299,32 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     assert opening["shown"]["keys"] == left["keys"], f"kept, the rows moved: {left} to {opening}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
     assert shell.showing()["path"] == there, "filled in, it left the place its chord opened"
+
+
+def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: Shell) -> None:
+    """Closed by :q and its chord pressed again, a place weighs its rows' keys once, not twice.
+
+    Shut in normal, a reopening weighed Windows' keys for normal as its kept rows landed, then
+    again for the find as it took the keys, 5 and 4 ms of its opening over 40 windows on a
+    builder (ZINAWZ, 2026-11-11).
+    """
+    opened = [shell.opened(f"Weighed {at}") for at in range(WINDOWS_WEIGHED)]
+    try:
+        shell.as_account(shell.ipc("collection", "windows"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: len(shown["rows"]) >= WINDOWS_WEIGHED - 1)
+        settled(shell)
+        shell.close_launcher()
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        timed = latest(openings(shell))
+        shell.as_account(shell.ipc("collection", "windows"))
+        opening = filled_after(shell, timed)
+    finally:
+        for window in opened:
+            shell.close(window)
+    weighings = cast("int | None", opening.get("weighings"))
+    assert weighings is not None, f"the opening didn't say how often it weighed: {opening}"
+    assert weighings <= 1, f"the kept opening weighed its keys {weighings} times: {opening}"
 
 
 def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:
