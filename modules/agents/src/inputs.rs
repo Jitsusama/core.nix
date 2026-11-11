@@ -1,5 +1,6 @@
 //! Everything Agents' rows are made from, as each source last told it:
-//! the node's sessions and the machine's queue, the to-do daemon's
+//! the node's sessions, what they landed and the machine's queue, what
+//! Joel read of those landings, the to-do daemon's
 //! to-dos, the windows daemon's windows, spend-watch's collection and
 //! budgets, the harness's list of orchestrators and of sessions to
 //! reopen, what Joel said of those, and whether the shell says the
@@ -14,6 +15,7 @@ use serde_json::Value;
 
 use crate::clock;
 use crate::drawer;
+use crate::landed::{self, Reading};
 use crate::recent;
 use crate::reopen::{self, Kept};
 use crate::row::{self, Known, Shown, Words};
@@ -29,6 +31,10 @@ pub struct Inputs {
     pub sessions: Held,
     /// The node's `job` records, each job of the machine's queue.
     pub jobs: Held,
+    /// The node's `landing` records, what the realm's sessions landed.
+    pub landings: Held,
+    /// What of those Joel has read.
+    pub read: Reading,
     /// The to-do daemon's `to-do` records.
     pub to_dos: Held,
     /// The windows daemon's `window` records.
@@ -216,6 +222,22 @@ impl Inputs {
         recent::recent(self.sessions.records().map(|(_, one)| Session(one)), &shown)
     }
 
+    /// What the sessions landed, each a whole record, with how many
+    /// landed each day, and the keys of every landing held (landed.rs).
+    pub fn landed(&self) -> (Vec<Value>, HashSet<String>) {
+        let live: Vec<Session> = self
+            .sessions
+            .records()
+            .map(|(_, one)| Session(one))
+            .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
+            .collect();
+        landed::landed(
+            self.landings.records().map(|(_, one)| one),
+            &live,
+            &self.read,
+        )
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -282,6 +304,7 @@ impl Inputs {
         .with_drawers(drawers)
         .with_recent(recent)
         .with_reopens(reopens)
+        .with_landed(self.landed().0)
     }
 }
 

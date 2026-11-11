@@ -499,45 +499,6 @@ Singleton {
         reopenKind.ask({ ask: "forget", session: lost.id });
     }
 
-    // The landings Joel has read, by key (Landed.js's landingKey), and when
-    // he first read each, in milliseconds, which For You's History says,
-    // "read 14:02"; one read before the shell kept when has none. Kept by
-    // the shell, since a session's presence is the harness's to write.
-    // Whoever marks one read says which are still held (`held`), so what's
-    // kept never grows past them.
-    property var landingsRead: landingsKept().keys
-    property var landingsReadAt: landingsKept().at
-    function landingsKept() {
-        try {
-            const kept = JSON.parse(landingsReadFile.text());
-            const at = kept.at !== null && typeof kept.at === "object" ? kept.at : {};
-            return { keys: Array.isArray(kept.keys) ? kept.keys.map(String) : [], at: at };
-        } catch (_error) {
-            return { keys: [], at: {} };
-        }
-    }
-    FileView {
-        id: landingsReadFile
-        path: Quickshell.statePath("landings-read.json")
-        blockLoading: true
-        printErrors: false
-    }
-    function readLandings(keys, held) {
-        const now = Date.now();
-        const at = {};
-        landingsRead = held.filter(key => !keys.includes(key)).concat(keys);
-        for (const key of landingsRead) {
-            const was = landingsReadAt[key] ?? (keys.includes(key) ? now : null);
-            if (typeof was === "number")
-                at[key] = was;
-        }
-        keepLandingsRead(at);
-    }
-    function keepLandingsRead(at) {
-        landingsReadAt = at;
-        landingsReadFile.setText(JSON.stringify({ keys: landingsRead, at: at }));
-    }
-
     // One of them, in its own folder only: when that's gone, nothing is
     // opened, and `gone(cwd)` is told so the caller says so, since there's
     // no quest here to start afresh. Its row said so already unless the

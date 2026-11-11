@@ -1,8 +1,9 @@
 //! Times as a drawer sends them, and today's date. Nothing that reads the
 //! clock is worded here, or every drawer would change each minute: a time
 //! goes out as milliseconds since 1970 and the shell words it (Y2YBTS's
-//! ready rows, "Times"). Only today's date is read here, since the harness
-//! starts a session's figures over each day and dates them by it.
+//! ready rows, "Times"). Only dates are said here, today's and a landing's,
+//! since the harness starts a session's figures over each day and dates
+//! them by it, and Landed counts what landed each day.
 
 use serde_json::Value;
 
@@ -93,8 +94,14 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 pub fn today() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs());
-    let seconds = libc::time_t::try_from(now).unwrap_or(0);
+        .map_or(0, |since| since.as_millis());
+    date_of(i64::try_from(now).unwrap_or(0))
+}
+
+/// The date where Joel is of `ms` since 1970, `2026-11-10`; none where it
+/// can't say.
+pub fn date_of(ms: i64) -> String {
+    let seconds = libc::time_t::try_from(ms.div_euclid(1000)).unwrap_or(0);
     // SAFETY: tm is plain data, zeroed is a valid value, and localtime_r
     // writes only the struct it's given.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
@@ -160,5 +167,8 @@ mod tests {
         let today = today();
         assert_eq!(today.len(), 10, "{today} reads as a date");
         assert_eq!(&today[4..5], "-", "{today} reads as a date");
+        // Midday UTC is the same day on every clock within twelve hours of it.
+        let noon = ms_of(&json!("2026-11-10T12:00:00Z")).expect("a time");
+        assert_eq!(date_of(noon), "2026-11-10", "a moment's own date");
     }
 }

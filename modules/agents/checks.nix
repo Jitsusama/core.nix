@@ -56,6 +56,7 @@ onLinux {
         && lib.hasInfix "--windows %t/daemons/windows.sock" started
         && lib.hasInfix "-words.json" started
         && lib.hasInfix "--socket %t/daemons/agents.sock" started
+        && lib.hasInfix "/quickshell/by-shell --socket" started
         && socket.Socket.ListenStream == "%t/daemons/agents.sock"
         && service.Unit.Requires == [ "agents.socket" ]
         && service.Unit.X-SwitchMethod == "restart"

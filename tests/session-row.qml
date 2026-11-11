@@ -217,70 +217,34 @@ QtObject {
         if (lastLive !== "NEWEST TIEDA TIEDB OLDEST NEVER")
             failures.push(`the closed, last live first: "${lastLive}"`);
 
-        // What landed reads newest first, changes and what says what to
-        // try, never a plan item ticked alone, and only a web link opens.
-        // What says what to try waits in For You until Joel reads it, and
-        // what he read goes to its History with when.
-        const landing = (ref, at, more) => Object.assign({ ref: ref, at: at, what: ref }, more);
-        const landers = [
-            { address: "A", presence: { session: "a", landings: [
-                landing("core.nix#2140", "2026-11-07T11:31:00Z",
-                    { url: "https://github.com/o/core.nix/pull/2140" }),
-                landing("PLAN-20261106-2ZPAI5#3", "2026-11-07T11:32:00Z"),
-                landing("PLAN-20261106-2ZPAI5", "2026-11-07T11:32:30Z"),
-                landing("PLAN-20261106-2ZPAI5#4", "2026-11-07T11:30:00Z",
-                    { person: "try Stop twice" })] } },
-            { address: "B", presence: { session: "b", landings: [
-                landing("world#9", "2026-11-07T11:33:00Z", { url: "file:///etc/passwd" }),
-                landing("core.nix#2138", "2026-11-07T11:20:00Z")] } },
-            { address: "C", presence: { session: "c" } }
+        // Which landings there are, whose and whether Joel read each are
+        // the agents daemon's (modules/agents/src/landed.rs). Of those it
+        // serves, what says what to try waits in For You until he reads
+        // it, and what he read goes to its History with when; one read
+        // before when was kept goes to neither.
+        const landing = (address, ref, at, more) => Object.assign({ key: `${address} ${ref}`,
+            ref: ref, at: at, what: ref, person: "", url: "", quest: "", repo: "",
+            machine: "", session: { address: address, title: "", id: "" }, read: null }, more);
+        const served = [
+            landing("B", "world#9", "2026-11-07T11:33:00Z"),
+            landing("A", "core.nix#2140", "2026-11-07T11:31:00Z",
+                { url: "https://github.com/o/core.nix/pull/2140" }),
+            landing("A", "PLAN-20261106-2ZPAI5#4", "2026-11-07T11:30:00Z",
+                { person: "try Stop twice" }),
+            landing("B", "core.nix#2138", "2026-11-07T11:20:00Z"),
+            landing("D", "core.nix#2200", "2026-11-07T09:00:00Z", { quest: "QEST-20261106-KP0L6A",
+                repo: "Jitsusama/core.nix", machine: "skiff" }),
+            landing("E", "o#1", "2026-11-07T08:00:00Z", { person: "try it", read: 1000 }),
+            landing("E", "o#2", "2026-11-07T07:00:00Z", { person: "try it", read: true })
         ];
-        const landedAs = rows => rows.map(one => `${one.session.address}:${one.ref}`
-            + `${one.person === "" ? "" : "+try"}${one.url === "" ? "" : "+url"}`).join(" ");
-        const unread = Landed.all([], landers);
-        const unreadWant = "B:world#9 A:core.nix#2140+url A:PLAN-20261106-2ZPAI5#4+try "
-            + "B:core.nix#2138";
-        if (landedAs(unread) !== unreadWant)
-            failures.push(`what landed: "${landedAs(unread)}", not "${unreadWant}"`);
-        const toTry = Landed.toTry(unread, [unread[1].key]);
-        if (landedAs(toTry) !== "A:PLAN-20261106-2ZPAI5#4+try")
-            failures.push(`to try: "${landedAs(toTry)}", not only the one saying what to`);
-        if (Landed.toTry(unread, [unread[2].key]).length !== 0)
-            failures.push("a landing read still waits to be tried");
-        const readAt = { [unread[2].key]: 1000, [unread[0].key]: 2000, [unread[3].key]: "x" };
-        const tried = Landed.triedRead(unread, readAt);
-        if (tried.length !== 1 || tried[0].one !== unread[2] || tried[0].at !== 1000)
+        const keysOf = rows => rows.map(one => one.key).join(" | ");
+        const toTry = keysOf(Landed.toTry(served));
+        if (toTry !== "A PLAN-20261106-2ZPAI5#4")
+            failures.push(`to try: "${toTry}", not only the unread one saying what to`);
+        const tried = Landed.triedRead(served);
+        if (tried.length !== 1 || tried[0].one !== served[5] || tried[0].at !== 1000)
             failures.push(`what's read for History: ${JSON.stringify(tried.map(one => one.at))}`);
-        const kept = Landed.stillRead([], landers, [unread[1].key, "z gone#1 2026"]);
-        if (kept.join() !== unread[1].key)
-            failures.push(`what's kept read: ${JSON.stringify(kept)}`);
-        // What the harness keeps outlives its session: one landed by a
-        // session now closed is listed by its address, with its quest,
-        // repository and machine, and one both kept and still carried by
-        // its session is listed once, read by the same key either way.
-        const keeping = [
-            landing("core.nix#2200", "2026-11-07T09:00:00Z", { session: "d", address: "D",
-                quest: "QEST-20261106-KP0L6A", repo: "Jitsusama/core.nix", machine: "skiff" }),
-            landing("core.nix#2138", "2026-11-07T11:20:00Z", { session: "b", address: "B" }),
-            landing("PLAN-20261106-2ZPAI5#5", "2026-11-07T09:10:00Z", { session: "d" })
-        ];
-        const lasting = Landed.all(keeping, landers);
-        const lastingWant = `${unreadWant} D:core.nix#2200`;
-        if (landedAs(lasting) !== lastingWant)
-            failures.push(`what's kept: "${landedAs(lasting)}", not "${lastingWant}"`);
-        const closedOne = lasting[lasting.length - 1];
-        if (closedOne.quest !== "QEST-20261106-KP0L6A" || closedOne.repo !== "Jitsusama/core.nix"
-            || closedOne.machine !== "skiff")
-            failures.push(`a kept landing's facts: ${JSON.stringify(closedOne)}`);
-        const stillKept = Landed.stillRead(keeping, landers, [closedOne.key, unread[3].key]);
-        if (stillKept.length !== 2)
-            failures.push(`what's kept read with the harness's: ${JSON.stringify(stillKept)}`);
-        const morning = Date.parse("2026-11-07T15:00:00Z");
-        const todayCount = Landed.landedToday(keeping, morning);
-        if (todayCount !== 2)
-            failures.push(`landed today: ${todayCount}, not 2`);
-        if (Landed.landedToday(keeping, Date.parse("2026-11-09T15:00:00Z")) !== 0)
-            failures.push("a landing two days old counted as today's");
+        const closedOne = served[4];
         // Landed's row says at its right how many landed today, never
         // how many are to read, which For You alone counts.
         const standing = { today: "{count} today", none: "none today" };
@@ -294,7 +258,7 @@ QtObject {
         // nobody knows isn't said.
         const drawerSays = drawn => `${drawn.eyebrow} | ${drawn.title} | `
             + `${drawn.facts.map(fact => `${fact.label}=${fact.value}`).join(" ")} | ${drawn.body}`;
-        const plate = Landed.landingDrawer(unread[2], { kind: "landing",
+        const plate = Landed.landingDrawer(served[2], { kind: "landing",
             when: "Saturday 7 November, 11:30", session: "A Quest", named: id => id });
         const plateWant = "A \u00b7 landing | PLAN-20261106-2ZPAI5#4 | landed=Saturday 7 November,"
             + " 11:30 session=A Quest item=PLAN-20261106-2ZPAI5#4 | try Stop twice";
@@ -306,7 +270,7 @@ QtObject {
             + " repo=Jitsusama/core.nix machine=skiff change=core.nix#2200 | ";
         if (merged !== mergedWant)
             failures.push(`a change's drawer: "${merged}", not "${mergedWant}"`);
-        const unsaid = Landed.landingDrawer(unread[3],
+        const unsaid = Landed.landingDrawer(served[3],
             { kind: "", when: "", session: "", named: id => id });
         if (unsaid.eyebrow !== "B" || unsaid.facts.length !== 1 || unsaid.body !== "")
             failures.push(`a bare landing's drawer: ${JSON.stringify(unsaid)}`);

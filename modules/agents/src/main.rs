@@ -4,16 +4,20 @@
 //! the rows that moved; and does a row's act as the shell asks by it,
 //! steering its session through the node (acts.rs); and serves the
 //! sessions there are to reopen, keeping what Joel says of them
-//! (reopen.rs).
+//! (reopen.rs), and what the sessions landed, keeping what of it he has
+//! read (landed.rs).
 //!
 //! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
-//! --kept KEPT --socket SOCKET`, where WORDS is the launcher's
+//! --kept KEPT --landed LANDED --shells SHELLS --socket SOCKET`, where
+//! WORDS is the launcher's
 //! words.json, NODE the mycelium node's socket, TODO the to-do daemon's,
 //! WINDOWS the windows daemon's, SPEND spend-watch's collection (its
 //! budgets.json read from beside it), ORCHESTRATORS the harness's list of
-//! them, RESTORE its list of sessions to reopen, and KEPT the daemon's own
-//! file of what Joel said of those. A machine with no realm runs no node,
+//! them, RESTORE its list of sessions to reopen, KEPT the daemon's own
+//! file of what Joel said of those, LANDED its file of the landings he
+//! has read, and SHELLS the launcher's own folders, where it kept them
+//! before the daemon did. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
 
 use std::collections::HashSet;
@@ -24,6 +28,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use agents::acts;
 use agents::inputs::Inputs;
+use agents::landed::Reading;
 use agents::reopen::Kept;
 use agents::row::Words;
 use agents::served::Served;
@@ -37,12 +42,22 @@ use serde_json::{Value, json};
 /// there are to reopen.
 const DOMAIN: Domain = Domain {
     name: "agents",
-    kinds: &["row", "summary", "drawer", "reopen", "restoring", "recent"],
+    kinds: &[
+        "row",
+        "summary",
+        "drawer",
+        "reopen",
+        "restoring",
+        "recent",
+        "landed",
+        "landed-days",
+    ],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \
                      --windows WINDOWS --spend SPEND --orchestrators ORCHESTRATORS \
-                     --restore RESTORE --kept KEPT --socket SOCKET";
+                     --restore RESTORE --kept KEPT --landed LANDED --shells SHELLS \
+                     --socket SOCKET";
 
 /// This boot, as Linux names it, or none where it isn't said, when no
 /// boot's sessions are offered as the last boot's.
@@ -58,6 +73,8 @@ struct Args {
     orchestrators: PathBuf,
     restore: PathBuf,
     kept: PathBuf,
+    landed: PathBuf,
+    shells: PathBuf,
     socket: PathBuf,
 }
 
@@ -77,6 +94,8 @@ fn args() -> Option<Args> {
         orchestrators: named("--orchestrators")?,
         restore: named("--restore")?,
         kept: named("--kept")?,
+        landed: named("--landed")?,
+        shells: named("--shells")?,
         socket: named("--socket")?,
     })
 }
@@ -129,6 +148,21 @@ fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>) -> Own {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_millis());
+        // Joel reads landings, by their keys, as he opens one or its drawer.
+        if said["ask"] == "read" {
+            let Some(keys) = said["keys"].as_array() else {
+                return Some(json!({"error": {"code": "not-an-ask",
+                    "message": "a read names no `keys`"}}));
+            };
+            let keys: Vec<String> = keys
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect();
+            let count = keys.len();
+            let _ = told.send(Heard::Read(keys, i64::try_from(now).unwrap_or(0)));
+            return Some(json!({"read": count}));
+        }
         acts::steer_of(said, now).map(|steer| match &node {
             Some(node) => acts::done(steer, node),
             None => json!({"error": {"code": "unsteered",
@@ -166,7 +200,8 @@ fn main() -> ExitCode {
     }
     if let Some(node) = args.node {
         sources::follow(node.clone(), "session", Heard::Sessions, to.clone());
-        sources::follow(node, "job", Heard::Jobs, to.clone());
+        sources::follow(node.clone(), "job", Heard::Jobs, to.clone());
+        sources::follow(node, "landing", Heard::Landings, to.clone());
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
     sources::follow(args.windows, "window", Heard::Windows, to.clone());
@@ -176,6 +211,8 @@ fn main() -> ExitCode {
         orchestrators: args.orchestrators,
         restore: args.restore,
         kept: args.kept,
+        landed: args.landed,
+        shells: args.shells,
     };
     if let Err(why) = sources::follow_files(&paths, to) {
         eprintln!("agents: can't hear the files it reads: {why}");
@@ -187,6 +224,7 @@ fn main() -> ExitCode {
             .map(|id| id.trim().to_owned())
             .unwrap_or_default(),
         kept: Kept::read(&paths.kept),
+        read: Reading::read(&paths.landed).unwrap_or_else(|| Reading::from_shell(&paths.shells)),
         ..Inputs::default()
     };
     let mut served = Served::default();

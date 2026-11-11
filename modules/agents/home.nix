@@ -59,6 +59,12 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           "${config.xdg.stateHome}/pi/restore.json"
           "--kept"
           "${config.xdg.stateHome}/agents/reopen.json"
+          "--landed"
+          "${config.xdg.stateHome}/agents/landed.json"
+          # Where Quickshell keeps each shell's own state, in which the
+          # launcher kept the landings Joel read before the daemon did.
+          "--shells"
+          "${config.xdg.stateHome}/quickshell/by-shell"
           "--socket"
           "%t/daemons/agents.sock"
         ]
