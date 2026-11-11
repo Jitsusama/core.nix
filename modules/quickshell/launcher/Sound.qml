@@ -616,9 +616,39 @@ Provider {
         }));
     }
 
-    // A device's right arrow: using it, when it isn't the one chosen, then
-    // its parts, and what the kernel says of its card.
+    // A device's right arrow, kept while the launcher is shut and nothing
+    // its parts say has moved, as its spots ask for it again a minute after
+    // each closing (Launcher.qml's spotsFreshened): it made Sound's 111
+    // parts again each time with nothing here changed (Y2YBTS,
+    // 2026-11-10). Shown, they're made as they're asked for, as they read.
+    // A sound daemon serving Sound's rows ready takes this over by
+    // 13 November.
+    readonly property var partsKeeping: keeper()
     function verbs(node) {
+        if (provider.wanted)
+            return partsMade(node);
+        return keptAlike(partsKeeping, `sound:${node.name}`, [node, partsMadeOf(node)],
+            () => partsMade(node));
+    }
+
+    // What a device's parts are made of, every figure they say included:
+    // its row's words, its properties, channels and levels, its programs'
+    // and filters' levels, its ports and its facts.
+    function partsMadeOf(node) {
+        const programs = programsOf(node).map(program => [program.name,
+            program.streams.map(stream => [stream.audio?.volume, stream.audio?.muted,
+                stream.properties["pulse.corked"]])]);
+        const filters = filtersOf(node).map(filter => [filter.name, filter.audio?.volume,
+            filter.audio?.muted, flowing(filter, node)]);
+        return JSON.stringify([says(node), switches(node), carried(node), node.properties,
+            Array.from(node.audio?.channels ?? []), Array.from(node.audio?.volumes ?? []),
+            node === metered ? heard : [], programs, filters, portChoices(node),
+            facts[factKey(node)] ?? []]);
+    }
+
+    // Using it, when it isn't the one chosen, then its parts, and what the
+    // kernel says of its card.
+    function partsMade(node) {
         const using = node.isSink ? "" : "input";
         const rows = chosen(node) ? [] : [thing({
             key: "verb:sound-use",
