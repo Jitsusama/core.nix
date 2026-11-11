@@ -60,6 +60,7 @@ onLinux {
         && lib.hasInfix "--socket %t/daemons/notices.sock" started
         && socket.Socket.ListenStream == "%t/daemons/notices.sock"
         && service.Service.Restart == "always"
+        && service.Unit.StartLimitIntervalSec == 0
         && !shellServes
       );
 }

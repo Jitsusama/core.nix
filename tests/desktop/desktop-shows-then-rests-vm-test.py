@@ -121,6 +121,50 @@ def test_a_notice_sent_while_the_notices_daemon_is_down_is_shown_once_it_is_up(
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=SAYING)
 
 
+# Whether the unit named holds the notifications name on the session bus, as busctl says.
+NAME_HELD_BY = "busctl --user status org.freedesktop.Notifications | grep -qx UserUnit={}"
+
+
+def test_the_notices_daemon_waits_out_another_holding_the_name_then_takes_it(
+    desktop: Desktop,
+) -> None:
+    """Started while another server holds the name, the daemon keeps trying until it's free.
+
+    The old shell holds the name as a switch lands, for as long as its restart takes. A
+    second copy of the daemon, with a socket and history of its own, stands in for it here.
+    """
+    machine = desktop.machine
+    shown = desktop.as_account("systemctl --user show notices.service -p ExecStart --value")
+    found = re.search(r"argv\[\]=(.*?) ;", shown)
+    assert found, f"notices.service's ExecStart says no argv: {shown}"
+    program, *pairs = found.group(1).split()
+    given = dict(zip(pairs[::2], pairs[1::2], strict=True))
+    # The account's own runtime folder, which only it may write.
+    own = desktop.as_account('echo "$XDG_RUNTIME_DIR"').strip() + "/notices-stand-in"
+    given |= {"--socket": f"{own}/notices.sock", "--state": own, "--quiet": f"{own}/quiet"}
+    given.pop("--shells", None)
+    stand_in = shlex.join([program, *(word for pair in given.items() for word in pair)])
+    desktop.as_account("systemctl --user stop notices.socket notices.service")
+    desktop.as_account(f"systemd-run --user --unit=notices-stand-in {stand_in}")
+    machine.wait_until_succeeds(
+        desktop.in_session(NAME_HELD_BY.format("notices-stand-in.service")), timeout=SAYING
+    )
+    desktop.as_account("systemctl --user start notices.service")
+    # Past systemd's default limit of five starts in ten seconds, which would fail it.
+    machine.wait_until_succeeds(
+        desktop.in_session(
+            'test $(journalctl --user -u notices.service -o cat | grep -c "is another\'s") -ge 7'
+        ),
+        timeout=SAYING,
+    )
+    machine.fail(desktop.in_session("systemctl --user is-failed --quiet notices.service"))
+    desktop.as_account("systemctl --user stop notices-stand-in")
+    machine.wait_until_succeeds(
+        desktop.in_session(NAME_HELD_BY.format("notices.service")), timeout=SAYING
+    )
+    machine.succeed(desktop.in_session("systemctl --user is-active --quiet notices.socket"))
+
+
 def test_the_volume_shows_when_it_changes_then_goes(desktop: Desktop) -> None:
     """The volume shows when it changes, then goes."""
     # WirePlumber picks the defaults a moment after Pipewire lists the nodes.
