@@ -140,14 +140,16 @@ Singleton {
     // classed apart, with a number of its own (Sessions.qml's inSessions):
     // pi-spawned for one another session started, so niri's rule opens it
     // without taking the focus from Joel (modules/niri/config.kdl), and
-    // pi-session for the rest. Each is kitty's all the same to every list,
+    // pi-session for the rest; a hosted conversation's viewer is pi-hosted
+    // with its session's id (NiriRecords.js's isSessionApp, as the windows
+    // daemon judges it). Each is kitty's all the same to every list,
     // mark and key the shell has, and says it holds a session (`session`).
     // The app id it opened with is kept as `opened`, which names it apart
     // from every other window of the same kitty.
     function heard(window: var): var {
         const app = window.app_id ?? "";
         window.opened = app;
-        if (/^pi-(spawned|session)(\.[0-9]+)?$/.test(app)) {
+        if (NiriRecords.isSessionApp(app)) {
             window.app_id = "kitty";
             window.session = true;
         }
