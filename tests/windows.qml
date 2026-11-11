@@ -27,6 +27,11 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        // Whether the rows are kept from being made, as a shut launcher's are.
+        property bool hiding: false
+        function wants(provider) {
+            return !hiding;
+        }
     }
 
     Launcher.Windows {
@@ -330,8 +335,12 @@ ShellRoot {
                 "window:14");
             Expect.same("and until it comes, an opening offers none",
                 names(windows.everything()), "");
+            theLauncher.hiding = true;
             used.said(JSON.stringify({ id: `find-${used.asked}`,
                 records: [window(14, "Ledger", 1, 500000, false, 3)] }));
+            Expect.same("the window asked whole while the rows aren't wanted makes no row",
+                windows.tally.rows - madeShut, 0);
+            theLauncher.hiding = false;
             used.said(JSON.stringify({ changed: [{ key: "window:11", order: 600000 }] }));
             Niri.focused = 11;
             Niri.revision += 1;

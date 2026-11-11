@@ -240,8 +240,9 @@ Provider {
     // lists the windows in the order used now. On Joel's shell, held from
     // the last opening, Super+Tab then Return went to the window used
     // last at that opening (vm-desktop-launcher-moves-windows,
-    // 2026-11-10). A window opened meanwhile is asked for whole, its row
-    // made as it comes.
+    // 2026-11-10). A window opened meanwhile is asked for whole and held,
+    // its row made only once the rows are wanted (relisted), so the shut
+    // launcher makes none (launcher-on-niri's shut case).
     Daemon {
         id: used
 
@@ -305,8 +306,22 @@ Provider {
             const records = (answer.records ?? [])
                 .filter(record => typeof record?.key === "string"
                     && record.key.startsWith("window:"));
-            remake(HeldWindows.take(provider.held, records, []), []);
+            const taken = HeldWindows.take(provider.held, records, []);
+            if (provider.wanted) {
+                remake(taken, []);
+                return;
+            }
+            for (const key of taken)
+                provider.unmade[key] = true;
         });
+    }
+    // The windows held whole while the rows weren't wanted, whose rows
+    // are made once they are, by key.
+    property var unmade: ({})
+    function madeAtLast() {
+        const keys = Object.keys(provider.unmade).filter(key => key in provider.held.records);
+        provider.unmade = {};
+        remake(keys, []);
     }
 
     // A window waiting on Joel says so, which comes from Sessions rather
@@ -326,7 +341,10 @@ Provider {
     // reads the list whole (changedTo) has it as everything() offers it.
     property bool reordered: false
     function relisted() {
-        if (!provider.wanted || !provider.reordered)
+        if (!provider.wanted)
+            return;
+        provider.madeAtLast();
+        if (!provider.reordered)
             return;
         provider.reordered = false;
         provider.things = (provider.thisOne.row ? [provider.thisOne.row] : [])

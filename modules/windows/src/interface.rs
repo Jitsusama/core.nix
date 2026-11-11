@@ -254,10 +254,22 @@ mod tests {
         let was = json!({"key": "window:12", "title": "zsh", "order": 100});
         let retitled = json!({"key": "window:12", "title": "vim", "order": 100});
         let used = json!({"key": "window:12", "title": "vim", "order": 200});
-        assert!(!tells(Some(&was), &retitled, Some(&fields)));
-        assert!(tells(Some(&retitled), &used, Some(&fields)));
-        assert!(tells(None, &used, Some(&fields)));
-        assert!(tells(Some(&was), &retitled, None));
+        assert!(
+            !tells(Some(&was), &retitled, Some(&fields)),
+            "a retitle was told to a watch of the order alone"
+        );
+        assert!(
+            tells(Some(&retitled), &used, Some(&fields)),
+            "a window used wasn't told to a watch of the order"
+        );
+        assert!(
+            tells(None, &used, Some(&fields)),
+            "a window new to a watch of the order wasn't told"
+        );
+        assert!(
+            tells(Some(&was), &retitled, None),
+            "a retitle wasn't told to a watch of every field"
+        );
         assert_eq!(
             trimmed(&used, Some(&fields)),
             json!({"key": "window:12", "order": 200})
