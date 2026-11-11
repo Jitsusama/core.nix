@@ -46,7 +46,7 @@
   "tests/agents-on-niri-test.py" = 1;
   "tests/arrivals.qml" = 2;
   "tests/becoming.qml" = 1;
-  "tests/bluetooth-disk-prompt-vm-test.py" = 1;
+  "tests/vm/boot/bluetooth-disk-prompt-vm-test.py" = 1;
   "tests/bluetooth-pairing.qml" = 1;
   "tests/vm/sound/calls-vm-test.py" = 1;
   "tests/captured.qml" = 1;

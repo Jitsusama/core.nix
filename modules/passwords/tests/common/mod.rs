@@ -80,6 +80,22 @@ impl Running {
     /// account's, unless `XDG_STATE_HOME` is set to another that outlives
     /// it, as a test of a daemon starting again sets it.
     pub fn with_env(test: &str, managers: &[(&str, &str)], set: &[(&str, &str)]) -> Running {
+        // Rows are said in the account's own vocabulary, as the shell
+        // says them, which passwords-holds-no-secret hands the tests.
+        let words = std::env::var("LAUNCHER_WORDS")
+            .expect("LAUNCHER_WORDS names no vocabulary; passwords-holds-no-secret hands it one");
+        Running::started(test, managers, set, &words)
+    }
+
+    /// The daemon with these managers and variables, its rows said in the
+    /// vocabulary at `words`, which a test names that isn't there to start
+    /// it as an account whose words didn't read.
+    pub fn started(
+        test: &str,
+        managers: &[(&str, &str)],
+        set: &[(&str, &str)],
+        words: &str,
+    ) -> Running {
         let folder = std::env::temp_dir().join(format!("passwords-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
@@ -104,8 +120,7 @@ impl Running {
             .arg("daemon")
             .arg(&socket)
             .arg(&managers_file)
-            // Rows are said in the tests' own vocabulary (rows_tests.rs's).
-            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/words.json"))
+            .arg(words)
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
             .env("COPIED", folder.join("copied"))

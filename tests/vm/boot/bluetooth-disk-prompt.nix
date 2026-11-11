@@ -23,7 +23,7 @@ let
   # unseen. Here it takes this long, and the prompt has to ask well before.
   unsealSeconds = 15;
 
-  btvirt = import ./btvirt.nix { inherit pkgs; };
+  btvirt = import ../../btvirt.nix { inherit pkgs; };
 
   # Each machine's second serial port, ttyS1, to btvirt.
   controller = [
@@ -58,7 +58,7 @@ let
     '';
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "bluetooth-disk-prompt";
   globalTimeout = 40 * 60;
 
@@ -69,7 +69,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     in
     {
       imports = [
-        (import ./vm/guide/secure-boot-machine.nix { inherit self pkgs passphrase; })
+        (import ../guide/secure-boot-machine.nix { inherit self pkgs passphrase; })
         self.nixosModules.bluetooth-disk-prompt
       ];
       virtualisation.qemu.options = controller;

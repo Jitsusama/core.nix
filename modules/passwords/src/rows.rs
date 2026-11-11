@@ -2,24 +2,33 @@
 //! the Passwords place shows for it, worded, ordered and with its acts,
 //! so the shell makes no rows of its own (Joel, 2026-11-10: "the daemons
 //! need to be the data layer, and they need to serve the launcher").
-//! Each is a `row:<entry key>` record whose `row` is the entry's own key,
-//! as every surface keys it. `order` places those listed with nothing
-//! typed, the favourites by title then the twenty changed latest, and
-//! `attention` those the last check found breached or reused, by title;
-//! an entry with neither is found by typing alone. Times travel as `{at,
-//! as}` for the shell to word against its own clock, so no row changes
-//! each minute. Passwords.js makes the same rows today; these take its
-//! place as the shell reads them. A row's drawer is a `drawer:<entry
-//! key>` record of its own, which the row names and the shell watches by
-//! key only while it shows, so a watch of rows never carries every
-//! entry's figures. No secret is ever in either: an entry is held without
-//! its secrets (lib.rs's `Entry`), and a copy is an ask.
+//! Each is a `row:passwords:<entry key>` record whose `thing` is the
+//! entry's own key, as every surface keys it. Rows come in the order
+//! shown: those `listed` with nothing typed, the favourites by title then
+//! the twenty changed latest, then the rest by title, found by typing
+//! alone. The daemon spaces their `order` as it keeps them (the crate's
+//! `Kept`), and `attention` is spaced the same way among those the last
+//! check found breached or reused, by title, so one row moving is one row
+//! told. Times travel as `{at, as}` for the shell to word against its own
+//! clock, so no row changes each minute. Passwords.js makes the same rows
+//! today; these take its place as the shell reads them. A row's drawer
+//! is a `drawer:passwords:<entry key>` record of its own, which the row
+//! names and the shell watches by key only while it shows, so a watch of
+//! rows never carries every entry's figures. No secret is ever in either:
+//! an entry is held without its secrets (lib.rs's `Entry`), and a copy is
+//! an ask.
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use ready_rows::kept::Kept;
+use ready_rows::numbers::Numbers;
+use ready_rows::order::spaced;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+
+/// The place its rows and drawers are keyed by, as the launcher names it.
+const PLACE: &str = "passwords";
 
 /// How many entries changed lately are listed after the favourites.
 const RECENT: usize = 20;
@@ -61,7 +70,14 @@ const FACTS: [&str; 9] = [
 ];
 
 /// The place's own words a row is said in.
-const SAID: [&str; 9] = [
+const SAID: [&str; 16] = [
+    "terrible",
+    "weak",
+    "fair",
+    "good",
+    "veryGood",
+    "excellent",
+    "fantastic",
     "hidden",
     "set",
     "none",
@@ -71,6 +87,18 @@ const SAID: [&str; 9] = [
     "breached",
     "breaches",
     "within",
+];
+
+/// 1Password's ratings of a password, whatever their case, each by the
+/// word it's said in.
+const RATINGS: [(&str, &str); 7] = [
+    ("terrible", "terrible"),
+    ("weak", "weak"),
+    ("fair", "fair"),
+    ("good", "good"),
+    ("very_good", "veryGood"),
+    ("excellent", "excellent"),
+    ("fantastic", "fantastic"),
 ];
 
 /// 1Password's ratings of a password too weak to trust.
@@ -146,15 +174,34 @@ impl Words {
     }
 }
 
-/// Every entry's row, in the order held, from the records the daemon
-/// serves (lib.rs's `Held::records`).
-pub fn rows(records: &[Value], managers: &[Shown]) -> Vec<Value> {
-    let listed = places(&listed(records));
-    let needing = places(&needing(records));
-    let naming = managers.len() >= 2;
-    records
+/// A row's key: `row:passwords:<entry key>`.
+pub fn row_key(entry: &str) -> String {
+    format!("row:{PLACE}:{entry}")
+}
+
+/// A drawer's key: `drawer:passwords:<entry key>`.
+pub fn drawer_key(entry: &str) -> String {
+    format!("drawer:{PLACE}:{entry}")
+}
+
+/// Every entry's row, in the order shown and without its `order`, which
+/// `kept` gives it as it takes them, from the records the daemon serves
+/// (lib.rs's `Held::records`). `kept` holds the rows as last told, so
+/// each keeps its place among those needing attention where it can.
+pub fn rows(records: &[Value], managers: &[Shown], kept: &Kept) -> Vec<Value> {
+    let listed = listed(records);
+    let listing: HashSet<&str> = listed.iter().map(|record| text(record, "key")).collect();
+    let mut rest: Vec<&Value> = records
         .iter()
-        .map(|record| {
+        .filter(|record| !listing.contains(text(record, "key")))
+        .collect();
+    rest.sort_by(|one, other| by_title(one, other));
+    let attention = attention(&needing(records), kept);
+    let naming = managers.len() >= 2;
+    let shown = listed.iter().map(|record| (*record, true));
+    shown
+        .chain(rest.into_iter().map(|record| (record, false)))
+        .map(|(record, listed)| {
             let key = text(record, "key");
             let manager = managers
                 .iter()
@@ -162,8 +209,8 @@ pub fn rows(records: &[Value], managers: &[Shown]) -> Vec<Value> {
             row(
                 record,
                 &Placed {
-                    order: listed.get(key).copied(),
-                    attention: needing.get(key).copied(),
+                    listed,
+                    attention: attention.get(key).copied(),
                     called: manager
                         .filter(|_| naming)
                         .map_or("", |manager| &manager.called),
@@ -174,7 +221,25 @@ pub fn rows(records: &[Value], managers: &[Shown]) -> Vec<Value> {
         .collect()
 }
 
-/// Every entry's drawer, by the key its row names, `drawer:<entry key>`.
+/// Where each of those needing attention stands among them, spaced as
+/// `order` is, each keeping the place it was last told where it can.
+fn attention(needing: &[&Value], kept: &Kept) -> HashMap<String, i64> {
+    let was: Vec<Option<i64>> = needing
+        .iter()
+        .map(|record| {
+            kept.get(&row_key(text(record, "key")))
+                .and_then(|told| told["row"]["attention"].as_i64())
+        })
+        .collect();
+    needing
+        .iter()
+        .zip(spaced(&was))
+        .map(|(record, at)| (text(record, "key").to_owned(), at))
+        .collect()
+}
+
+/// Every entry's drawer, by the key its row names, `drawer:passwords:<entry
+/// key>`.
 pub fn drawers(records: &[Value], managers: &[Shown], words: &Words) -> Vec<(String, Value)> {
     let naming = managers.len() >= 2;
     records
@@ -184,16 +249,18 @@ pub fn drawers(records: &[Value], managers: &[Shown], words: &Words) -> Vec<(Str
                 .iter()
                 .find(|manager| naming && manager.name == text(record, "manager"))
                 .map_or("", |manager| manager.called.as_str());
-            let key = format!("drawer:{}", text(record, "key"));
-            (key, drawer(record, called, words))
+            (
+                drawer_key(text(record, "key")),
+                drawer(record, called, words),
+            )
         })
         .collect()
 }
 
 /// Where a row stands among the rest, and what its manager gives it.
 struct Placed<'a> {
-    order: Option<usize>,
-    attention: Option<usize>,
+    listed: bool,
+    attention: Option<i64>,
     called: &'a str,
     shows: &'a str,
 }
@@ -215,11 +282,11 @@ fn row(record: &Value, placed: &Placed) -> Value {
         json!([{"said": username}])
     };
     json!({
-        "key": format!("row:{key}"),
-        "row": key,
-        "place": "passwords",
+        "key": row_key(key),
+        "thing": key,
+        "place": PLACE,
         "kind": category,
-        "order": placed.order,
+        "listed": placed.listed,
         "attention": placed.attention,
         "name": title_of(record),
         "glyph": mark(category),
@@ -231,7 +298,7 @@ fn row(record: &Value, placed: &Placed) -> Value {
         "words": found_by(record),
         "passworded": passworded(record),
         "acts": acts(record, &link),
-        "drawer": format!("drawer:{key}"),
+        "drawer": drawer_key(key),
         "held": {"manager": text(record, "manager"), "id": text(record, "id"),
                  "website": address, "fills": browsed(&address)},
     })
@@ -243,15 +310,6 @@ fn text<'a>(record: &'a Value, field: &str) -> &'a str {
 
 fn title(record: &Value) -> &str {
     text(record, "title")
-}
-
-/// Each key's place in a list.
-fn places(listed: &[&Value]) -> HashMap<String, usize> {
-    listed
-        .iter()
-        .enumerate()
-        .map(|(at, record)| (text(record, "key").to_owned(), at))
-        .collect()
 }
 
 /// Titles in the order a person reads them: by letter, whatever the case.
@@ -473,7 +531,8 @@ fn encoded(text: &str) -> String {
 /// The acts inside it, in the one order the design gives them, each with
 /// what it asks: a secret is copied by the daemon, the username and the
 /// link through the clipboard's daemon, and the website and the entry
-/// shown in its manager opened.
+/// shown in its manager opened. One with none of those reads its details
+/// in its drawer, so Return always does something.
 fn acts(record: &Value, link: &str) -> Vec<Value> {
     let key = text(record, "key");
     let copies = |detail: Option<&str>| json!({"ask": "copy", "key": key, "detail": detail});
@@ -502,20 +561,27 @@ fn acts(record: &Value, link: &str) -> Vec<Value> {
         listed.push(json!({"key": verb("show"), "ask": {"open": {"link": link}}}));
         listed.push(json!({"key": verb("link"), "ask": {"copy": link}}));
     }
+    if listed.is_empty() {
+        listed.push(json!({"key": "verb:details", "step": "drawer"}));
+    }
     listed
 }
 
-/// A count with its thousands grouped, as the launcher's numbers are.
+/// A count as the launcher says one, its thousands grouped. Every count
+/// here, of entries, files or breaches, is far below four billion, which
+/// it would stop at, and exact below it.
 fn grouped(count: u64) -> String {
-    let digits = count.to_string();
-    let mut out = String::new();
-    for (at, digit) in digits.chars().enumerate() {
-        if at > 0 && (digits.len() - at).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
+    let exact = u32::try_from(count).map_or(f64::from(u32::MAX), f64::from);
+    Numbers::default().whole(exact)
+}
+
+/// A password's strength as 1Password rates it, in the launcher's words,
+/// or as 1Password says it where the vocabulary has no word for it.
+fn strength(rated: &str, words: &Words) -> String {
+    RATINGS
+        .iter()
+        .find(|(rating, _)| *rating == rated)
+        .map_or_else(|| rated.to_owned(), |(_, word)| words.said(word).to_owned())
 }
 
 /// What's wrong with it that its Strength doesn't say, or "".
@@ -549,11 +615,11 @@ fn health(record: &Value, words: &Words) -> String {
 /// design's order, as Passwords.js's details; its times as `{at, as}`.
 fn drawer(record: &Value, manager: &str, words: &Words) -> Value {
     let mut facts = Vec::new();
-    let mut fact = |id: &str, state: &str, value: String, warns: bool| {
-        if !value.is_empty() {
-            let mut one = json!({"label": words.name(id, state), "value": value});
+    let mut fact = |id: &str, state: &str, said: String, warns: bool| {
+        if !said.is_empty() {
+            let mut one = json!({"name": words.name(id, state), "said": said});
             if warns {
-                one["warns"] = json!(true);
+                one["hue"] = json!("warning");
             }
             facts.push(one);
         }
@@ -571,10 +637,9 @@ fn drawer(record: &Value, manager: &str, words: &Words) -> Value {
                     .find(|strength| !strength.is_empty())
             })
             .unwrap_or_default()
-            .to_lowercase()
-            .replace('_', " ");
+            .to_ascii_lowercase();
         let weak = WEAK.contains(&rated.as_str());
-        fact("strength", "", rated, weak);
+        fact("strength", "", strength(&rated, words), weak);
         let code = detail(record, "type", "code").is_some();
         fact(
             "code",
@@ -584,13 +649,13 @@ fn drawer(record: &Value, manager: &str, words: &Words) -> Value {
         );
     }
     if let Some(at) = record["changed"].as_f64() {
-        facts.push(json!({"label": words.name("changed", ""), "at": at, "as": "ago"}));
+        facts.push(json!({"name": words.name("changed", ""), "at": at, "as": "ago"}));
     }
     let addresses = websites(record);
     if !addresses.is_empty() {
         let state = if addresses.len() > 1 { "several" } else { "" };
-        facts.push(json!({"label": words.name("websites", state),
-                          "value": addresses.join(", ")}));
+        facts.push(json!({"name": words.name("websites", state),
+                          "said": addresses.join(", ")}));
     }
     drawer_rest(record, manager, words, facts, read)
 }
@@ -610,16 +675,16 @@ fn drawer_rest(
         .filter_map(Value::as_str)
         .collect();
     if !tags.is_empty() {
-        facts.push(json!({"label": words.name("tags", ""), "value": tags.join(", ")}));
+        facts.push(json!({"name": words.name("tags", ""), "said": tags.join(", ")}));
     }
     if let Some(at) = record["created"].as_f64() {
-        facts.push(json!({"label": words.name("created", ""), "at": at, "as": "ago"}));
+        facts.push(json!({"name": words.name("created", ""), "at": at, "as": "ago"}));
     }
     if !manager.is_empty() {
-        facts.push(json!({"label": words.name("manager", ""), "value": manager}));
+        facts.push(json!({"name": words.name("manager", ""), "said": manager}));
     }
     if let Some(files) = record["own"]["files"].as_u64().filter(|files| *files > 0) {
-        facts.push(json!({"label": words.name("files", ""), "value": files.to_string()}));
+        facts.push(json!({"name": words.name("files", ""), "said": grouped(files)}));
     }
     if read {
         facts.extend(detail_facts(record, words.said("hidden")));
@@ -639,8 +704,7 @@ fn drawer_rest(
         .and_then(|notes| notes.get("value"))
         .and_then(Value::as_str)
         .unwrap_or_default();
-    json!({"eyebrow": eyebrow, "eyebrowNames": true, "title": title(record), "facts": facts,
-           "body": body})
+    json!({"eyebrow": eyebrow, "title": title(record), "facts": facts, "body": body})
 }
 
 /// Each detail read in full that isn't said elsewhere, those in no
@@ -677,7 +741,7 @@ fn detail_facts(record: &Value, hidden: &str) -> Vec<Value> {
             } else {
                 text(one, "value").to_owned()
             };
-            out.push(json!({"label": label, "value": value}));
+            out.push(json!({"name": label, "said": value}));
         }
     }
     out

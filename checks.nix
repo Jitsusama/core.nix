@@ -270,7 +270,7 @@ let
     vm-secure-boot-installs = import ./tests/vm/guide/secure-boot.nix { inherit self pkgs; };
     # A keyboard at the disk prompt is the TPM, the boot stub, the initrd's
     # BlueZ and the kernel's HID together, before any disk is open.
-    vm-bluetooth-types-at-the-disk-prompt = import ./tests/bluetooth-disk-prompt.nix {
+    vm-bluetooth-types-at-the-disk-prompt = import ./tests/vm/boot/bluetooth-disk-prompt.nix {
       inherit self pkgs;
     };
     # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
@@ -498,7 +498,7 @@ let
       inherit self pkgs;
     };
     # The greeter is all that stands between a logout and the desktop.
-    vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
+    vm-greeter-signs-in = import ./tests/vm/boot/greeter.nix { inherit self pkgs; };
     # Whether the shell's surfaces come back after a screen goes shows only
     # with niri on the screen itself, not nested in Cage. Each area is a
     # machine of its own, so they run side by side (tests/screens.nix).
@@ -514,13 +514,15 @@ let
       inherit self pkgs;
       area = "keep-the-launcher";
     };
-    vm-boot-asks-in-the-theme = import ./tests/plymouth.nix { inherit self pkgs; };
+    vm-boot-asks-in-the-theme = import ./tests/vm/boot/plymouth.nix { inherit self pkgs; };
     # Whether the ask shows whole on screens of different sizes shows only
     # with Plymouth drawing on two of them at once.
-    vm-boot-asks-on-every-screen = import ./tests/plymouth-screens.nix { inherit self pkgs; };
+    vm-boot-asks-on-every-screen = import ./tests/vm/boot/plymouth-screens.nix { inherit self pkgs; };
     # What the screen shows while a hibernation's image is read shows only
     # with Plymouth up and the kernel reading an image it wrote.
-    vm-boot-says-it-wakes-from-hibernation = import ./tests/plymouth-restore.nix { inherit self pkgs; };
+    vm-boot-says-it-wakes-from-hibernation = import ./tests/vm/boot/plymouth-restore.nix {
+      inherit self pkgs;
+    };
     # Whether libvirt's daemon stops in time shows only with the daemon
     # running and its threads short of CPU, as at a busy shutdown.
     vm-libvirt-stops-quickly = import ./tests/vm/admin/libvirt.nix { inherit self pkgs; };
@@ -557,7 +559,7 @@ let
     vm-checks-go-first = import ./tests/vm/admin/vm-first.nix { inherit self pkgs; };
     # Whether a reboot gets past what won't stop shows only by rebooting, with
     # a watchdog there to reset the machine.
-    vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
+    vm-reboot-cannot-hang = import ./tests/vm/boot/shutdown.nix { inherit self pkgs; };
     # Whether dictation's chord is heard let go, and nothing else of the
     # keys, shows only with a keyboard there and an account outside its group.
     vm-dictation-hears-the-chord-let-go = import ./tests/vm/sound/dictation-chord.nix {

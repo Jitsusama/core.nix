@@ -12,15 +12,13 @@
 //! for anyone.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
+use ready_rows::kept::{Kept, Moved};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{Book, LISTING, Record, address};
-
-/// The key of the record holding those listed, by their keys in order.
-pub const ORDER: &str = "people:order";
 
 /// How a source's entry says someone stands, as its module tells the
 /// daemon in the sources file: the entry's field that says it, which of
@@ -337,15 +335,17 @@ impl Person {
         })
     }
 
-    /// Their row as the launcher draws it, ready, as the google daemon's
-    /// rows are (modules/google/src/rows.rs): its key, name, glyph and hue
-    /// by the theme's roles, how they stand as its side's items, their
-    /// address under it unless that's their name, and the key their drawer
-    /// is told by. So the shell words and builds nothing of it.
+    /// Their row as the launcher draws it, ready, in the form every
+    /// daemon's rows take (ready-rows.md): its key, the person it is as
+    /// `thing`, which Joel's picks remember, name, glyph and hue by the
+    /// theme's roles, how they stand as its side's items, their address
+    /// under it unless that's their name, and the key their drawer is told
+    /// by. So the shell words and builds nothing of it.
     pub fn row(&self) -> Value {
         let known = self.key.strip_prefix("person:").unwrap_or(&self.key);
         json!({
-            "key": self.key, "place": "people", "kind": "person", "name": self.name,
+            "key": format!("row:people:{known}"), "thing": self.key,
+            "place": "people", "kind": "person", "name": self.name,
             "glyph": if self.stood.favourite { "favourite" } else { "person" },
             "hue": "person",
             "side": if self.stood.said.is_empty() { json!([]) }
@@ -453,59 +453,52 @@ pub fn changes_at(persons: &[Person], now: f64) -> Option<f64> {
         .reduce(f64::min)
 }
 
-/// What a watch of those listed was last told, so it's told only what
-/// changed: each listed person's record as told, by key, and their order.
+/// What a watch of those listed was last told, kept as every daemon keeps
+/// a place's rows (ready-rows' `Kept`), so it's told only what changed.
 #[derive(Debug, Default)]
 pub struct Told {
-    persons: HashMap<String, Value>,
-    order: Option<Vec<String>>,
+    kept: Kept,
     /// When the clock alone next changes who's listed or their order.
     pub until: Option<f64>,
 }
 
 impl Told {
-    /// Those listed now as records, each person's and the order's: all of
-    /// them the first time, and after only those that changed, each no
-    /// longer listed said gone.
+    /// Those listed now: each one's row in the order shown, its `order`
+    /// kept where it still rises, so one person moving is told alone, and
+    /// beside it their record, as one person with what each source said,
+    /// which the shell reads for who they are. Answered with the records
+    /// that read differently and the keys that went.
     pub fn changes(
         &mut self,
         book: &Book,
         sources: &[(String, Option<Stands>)],
         now: f64,
-    ) -> Vec<Value> {
+    ) -> Moved {
         let persons: Vec<Person> = book
             .everyone()
             .map(|record| person(record, sources))
             .collect();
         let listed = ordered(&persons, now);
         self.until = changes_at(&persons, now);
-        let mut said = Vec::new();
-        let mut now_told = HashMap::new();
-        for person in &listed {
-            let sources_said = book
-                .record(&person.key)
-                .map_or_else(|| json!({}), |record| json!(record.sources));
-            let record = json!({
-                "key": person.key, "kind": LISTING, "person": person.json(),
-                "row": person.row(), "sources": sources_said,
-            });
-            if self.persons.get(&person.key) != Some(&record) {
-                said.push(record.clone());
-            }
-            now_told.insert(person.key.clone(), record);
-        }
-        for key in self.persons.keys() {
-            if !now_told.contains_key(key) {
-                said.push(json!({"key": key, "kind": LISTING, "gone": true}));
-            }
-        }
-        let order: Vec<String> = listed.iter().map(|person| person.key.clone()).collect();
-        if self.order.as_ref() != Some(&order) {
-            said.push(json!({"key": ORDER, "kind": LISTING, "order": order}));
-            self.order = Some(order);
-        }
-        self.persons = now_told;
-        said
+        let rows = listed.iter().map(|person| person.row()).collect();
+        let beside = listed
+            .iter()
+            .map(|person| {
+                let sources_said = book
+                    .record(&person.key)
+                    .map_or_else(|| json!({}), |record| json!(record.sources));
+                json!({
+                    "key": person.key, "kind": LISTING, "person": person.json(),
+                    "sources": sources_said,
+                })
+            })
+            .collect();
+        self.kept.take(rows, beside)
+    }
+
+    /// Everything told, as a listing is answered whole.
+    pub fn all(&self) -> Vec<Value> {
+        self.kept.all().cloned().collect()
     }
 }
 
@@ -692,8 +685,8 @@ mod tests {
         assert_eq!(
             favourite.row(),
             json!({
-                "key": "person:bo@example.com", "place": "people", "kind": "person",
-                "name": "Bo Diddley", "glyph": "favourite", "hue": "person",
+                "key": "row:people:bo@example.com", "thing": "person:bo@example.com",
+                "place": "people", "kind": "person", "name": "Bo Diddley", "glyph": "favourite", "hue": "person",
                 "side": [{"said": "in a call"}], "note": "bo@example.com",
                 "drawer": "drawer:people:bo@example.com",
             }),

@@ -639,7 +639,18 @@ impl Edges {
     }
 }
 
+/// How recently a path may have been registered, it or any garbage
+/// referring to it, and never go, however full the disk: Joel's rule of 30
+/// October, that nothing built in the last hour is collected. On 11
+/// November at 00:35 a pass in the filling band took the derivation an
+/// update had just evaluated, before the build that would hold it began,
+/// and the update failed. A temporary root holds a path only while the
+/// process that wrote it runs, and an evaluation is often one process and
+/// its build another.
+pub const FRESH: f64 = 3600.0;
+
 /// The batches of `dead`, whose dead references `refers` holds by place.
+/// What's [`FRESH`] is in none of them.
 fn order(
     dead: &[&Listed],
     refers: &Edges,
@@ -681,9 +692,14 @@ fn order(
     // a tie goes in the order walked, referrers first.
     // With no cache kept there is nothing old to date: all of it goes
     // largest first, as the space it frees is what matters.
+    // A path is as fresh as its newest referrer, so what a fresh path
+    // refers to is fresh too, and none of it is offered to Nix.
     let cutoff = now - keep;
-    let young = |at: usize| keep <= 0.0 || newest[at] > cutoff;
-    let mut old: Vec<usize> = (0..dead.len()).filter(|&at| !young(at)).collect();
+    let fresh = |at: usize| newest[at] > now - FRESH;
+    let young = |at: usize| (keep <= 0.0 || newest[at] > cutoff) && !fresh(at);
+    let mut old: Vec<usize> = (0..dead.len())
+        .filter(|&at| !young(at) && !fresh(at))
+        .collect();
     old.sort_by(|&a, &b| {
         newest[a]
             .total_cmp(&newest[b])

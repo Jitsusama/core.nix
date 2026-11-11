@@ -18,6 +18,7 @@ They are grouped by what they prove, a folder an area:
 | `admin/`   | switching and updating, memory and slices, niri traces, VMs first  |
 | `keys/`    | the keyring, passkeys and security keys in the TPM, signed commits |
 | `disks/`   | disks and memory filling or failing, the disk guard, hibernation   |
+| `boot/`    | the boot theme's ask, a Bluetooth keyboard there, greeter, reboots |
 
 The VM tests not yet grouped are still in `../`, and move into a folder
 here as their owners free them. Shared helpers are in `../lib/`, and

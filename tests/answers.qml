@@ -2354,6 +2354,17 @@ QtObject {
         machine("an undo that ended well changed it",
             Firmware.ended({ code: 0, stopped: 0, err: "" }, actSaid, "changed"),
             { outcome: "changed", reason: "" });
+        // How the machine daemon answered a firmware act, as `ended` reads it.
+        machine("an act done ran well", Firmware.acted({ id: "ask-1", done: true }, 30),
+            { code: 0, stopped: 0, err: "" });
+        machine("an act refused says why in its service's words", Firmware.acted(
+            { id: "ask-1", error: { code: "refused", message: "Device is locked\n" } }, 30),
+            { code: 1, stopped: 0, err: "Device is locked\n" });
+        machine("an act the daemon stopped waiting for was waited its patience",
+            Firmware.acted({ id: "ask-1", error: { code: "stopped", message: "" } }, 2),
+            { code: 1, stopped: 2, err: "" });
+        machine("an act the daemon went before answering didn't go, saying nothing",
+            Firmware.acted(null, 30), { code: 1, stopped: 0, err: "" });
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",
             Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");

@@ -39,6 +39,9 @@
 // lists them as its `questions`, best first, and answers each read
 // plainly; the start of one, three letters or more, shows its answer too,
 // asked by the first it starts, so a word half remembered still finds it.
+//
+// Long because it's the one shape every source is written to: split, a
+// source's author would read half of what it promises and miss the rest.
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -229,6 +232,11 @@ Scope {
     // of everything it holds. Such a source names what it holds without
     // making its rows, by a memberNames of its own given nothing.
     property bool saysAtHome: false
+
+    // Whether it waits its turn to wake as a kept opening fills in, a few
+    // sources a frame (Launcher.qml's wakeNext). Its own, so waking it
+    // makes no other source's wanted again.
+    property bool asleep: false
 
     // Whether its rows are wanted now: walked from outside, searched, held,
     // named at home, or an act of theirs waiting to be agreed (Launcher.qml's
