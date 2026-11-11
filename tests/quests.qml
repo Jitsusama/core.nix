@@ -141,13 +141,29 @@ ShellRoot {
             power: { on_battery: true, charge: 40 } }
     ]
 
-    // The node's watch of each kind, by kind, so the node can tell it more.
+    // The node's watch of each kind, by kind, so the node can tell it more,
+    // and what it was to be told of a kind it hasn't watched yet, told once
+    // it does: the quests daemon watches each kind in its own time, so a
+    // case reached before its session watch would otherwise tell nobody.
     property var watches: ({})
+    property var untold: ({})
 
     function tell(kind, change) {
         const watch = root.watches[kind];
+        if (!watch) {
+            root.untold[kind] = (root.untold[kind] ?? []).concat([change]);
+            return;
+        }
         watch.socket.write(`${JSON.stringify(Object.assign({ id: watch.id }, change))}\n`);
         watch.socket.flush();
+    }
+
+    // What was held for a kind until its watch, told after its answer.
+    function toldLate(kind) {
+        const held = root.untold[kind] ?? [];
+        delete root.untold[kind];
+        for (const change of held)
+            tell(kind, change);
     }
 
     // A stand-in for the machine's node, speaking the daemon interface:
@@ -177,6 +193,8 @@ ShellRoot {
                     }
                     asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();
+                    if (ask.ask === "watch")
+                        root.toldLate(ask.kind);
                 }
             }
         }
