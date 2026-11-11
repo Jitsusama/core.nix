@@ -3974,10 +3974,6 @@
     wifid's tests pass: what it hears and offers, how each network is joined, the addresses it
     shows, what it keeps, and sign-ins
   '';
-  wifid-reads-the-launchers-words = ''
-    the launcher's vocabulary has every word wifid words its Wi-Fi rows with: the radio's, the
-    sign-in's and each network's
-  '';
   wifid-sign-in-reads-its-network = ''
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card
     wants a sign-in

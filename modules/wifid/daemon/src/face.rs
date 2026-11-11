@@ -617,14 +617,16 @@ mod tests {
     ) {
         let store = tempfile::tempdir().expect("a store");
         let words = store.path().join("words.json");
-        let mut things = vec![
-            json!({"id": "wifi:radio", "name": "Wi-Fi Off", "glyph": "offline",
-                "states": {"off": {"name": "Wi-Fi On", "glyph": "wireless"}}}),
-            json!({"id": "wifi:sign-in", "name": "Sign in to {network}", "glyph": "signIn"}),
-            json!({"id": "wifi:network", "said": {"connected": "connected", "saved": "saved",
-                "bars": "{n} of 4 bars", "open": "open", "password": "a password",
-                "account": "an account"}}),
-        ];
+        // The list's own words as the launcher says them, and the parts'
+        // as their cases do.
+        let list = ["wifi:radio", "wifi:sign-in", "wifi:network"];
+        let mut things: Vec<Value> = crate::rows::launchers_words()["things"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|thing| list.iter().any(|id| thing["id"] == *id))
+            .cloned()
+            .collect();
         things.extend(
             parts::tests::things()
                 .into_iter()

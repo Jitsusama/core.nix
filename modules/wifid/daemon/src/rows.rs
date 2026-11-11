@@ -337,41 +337,22 @@ fn security(security: Security) -> &'static str {
     }
 }
 
+/// Wi-Fi's part of the launcher's vocabulary, each entry copied whole from
+/// launcher/words.json into tests/words.json, which
+/// the-daemons-test-the-launchers-words holds to it, so no case passes on
+/// words Joel never reads, as Machine's did on eleven (2026-11-11).
+#[cfg(test)]
+pub(crate) fn launchers_words() -> Value {
+    serde_json::from_str(include_str!("../tests/words.json")).expect("the launcher's words parse")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::state::{Card, Nearby};
 
-    /// Wi-Fi's part of the launcher's vocabulary, as launcher/words.json
-    /// says it.
-    fn vocabulary() -> Value {
-        json!({"things": [
-            {"id": "wifi:radio", "name": "Wi-Fi Off", "glyph": "offline",
-                "states": {"off": {"name": "Wi-Fi On", "glyph": "wireless"}}},
-            {"id": "wifi:sign-in", "name": "Sign in to {network}", "glyph": "signIn"},
-            {"id": "wifi:network", "said": {"connected": "connected", "saved": "saved",
-                "bars": "{n} of 4 bars", "open": "open", "password": "a password",
-                "account": "an account"}},
-        ]})
-    }
-
     fn words() -> Words {
-        Words::read(&vocabulary()).expect("the vocabulary has Wi-Fi's words")
-    }
-
-    /// The launcher's own vocabulary, which the check
-    /// wifid-reads-the-launchers-words hands the tests, so a word renamed
-    /// there fails a check rather than blanking a row. wifid's own build
-    /// isn't handed it, or each change to the launcher's words would start
-    /// wifid again.
-    #[test]
-    fn the_launchers_vocabulary_has_wifis_words() {
-        let Ok(path) = std::env::var("WIFID_TEST_WORDS") else {
-            return;
-        };
-        let text = std::fs::read_to_string(path).expect("the vocabulary reads");
-        let launchers: Value = serde_json::from_str(&text).expect("the vocabulary is JSON");
-        assert_eq!(Words::read(&launchers), Ok(words()));
+        Words::read(&launchers_words()).expect("the vocabulary has Wi-Fi's words")
     }
 
     #[test]

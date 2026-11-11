@@ -1506,61 +1506,75 @@ pub(crate) mod tests {
     use crate::detail::{Best, Count};
     use crate::radio::{Load, Protection};
 
-    /// The words as the launcher says them, where a case reads them, and
-    /// every other word its own id, so a case shows which was used.
-    const SAID: &[(&str, &str, &str)] = &[
-        ("figures", "dbm", "{n} dBm"),
-        ("figures", "db", "{n} dB"),
-        ("figures", "mbps", "{n} Mb/s"),
-        ("figures", "mhz", "{n} MHz"),
-        ("figures", "ms", "{n} ms"),
-        ("figures", "s", "{n} s"),
-        ("figures", "wifi", "Wi-Fi {n}"),
-        ("figures", "mcs", "MCS {n}"),
-        ("figures", "in", "{said} in"),
-        ("figures", "out", "{said} out"),
-        ("figures", "ghz2", "2.4 GHz"),
-        ("figures", "ghz5", "5 GHz"),
-        ("network", "password", "a password"),
-        ("protection", "guarded", "{who}, {strength}"),
-        ("protection", "good", "good"),
-        ("heard", "each", "{n} on {band}"),
-        ("heard", "bands", "{bands} GHz"),
-        ("heard", "ghz2", "2.4"),
-        ("heard", "ghz5", "5"),
-        ("point", "side", "{signal} dBm \u{b7} ~{estimate} Mb/s"),
-        ("point", "connected", "connected"),
-        ("card", "", "Card {n}"),
-        ("antenna", "", "Antenna {n}"),
-        ("point", "", "{band}, Channel {channel}"),
-        ("drawer", "eyebrow", "on {band} \u{b7} network"),
-        ("drawer", "over", "{margin} dB over the noise"),
-        ("drawer", "since", "since {time}"),
-        (
-            "retries",
-            "some",
-            "{retries} sent again \u{b7} {failed} never sent",
-        ),
+    /// The words a case reads, said as the launcher says them; every
+    /// other word is its own id, so a case shows which was used.
+    const SAID: &[(&str, &str)] = &[
+        ("figures", "dbm"),
+        ("figures", "db"),
+        ("figures", "mbps"),
+        ("figures", "mhz"),
+        ("figures", "ms"),
+        ("figures", "s"),
+        ("figures", "wifi"),
+        ("figures", "mcs"),
+        ("figures", "in"),
+        ("figures", "out"),
+        ("figures", "ghz2"),
+        ("figures", "ghz5"),
+        ("network", "password"),
+        ("protection", "guarded"),
+        ("protection", "good"),
+        ("heard", "each"),
+        ("heard", "bands"),
+        ("heard", "ghz2"),
+        ("heard", "ghz5"),
+        ("point", "side"),
+        ("point", "connected"),
+        ("card", ""),
+        ("antenna", ""),
+        ("point", ""),
+        ("drawer", "eyebrow"),
+        ("drawer", "over"),
+        ("drawer", "since"),
+        ("retries", "some"),
     ];
+
+    /// One word as the launcher's vocabulary says it: a thing's name, or
+    /// one of its said words.
+    fn launchers(id: &str, word: &str) -> String {
+        let vocabulary = crate::rows::launchers_words();
+        let thing = vocabulary["things"]
+            .as_array()
+            .and_then(|things| {
+                let id = format!("wifi:{id}");
+                things
+                    .iter()
+                    .find(|thing| thing["id"] == id.as_str())
+                    .cloned()
+            })
+            .unwrap_or_default();
+        let said = if word.is_empty() {
+            &thing["name"]
+        } else {
+            &thing["said"][word]
+        };
+        said.as_str()
+            .unwrap_or_else(|| panic!("the launcher's words have no wifi:{id} {word}"))
+            .to_owned()
+    }
 
     /// Wi-Fi's things holding every word the parts need, but the
     /// network's, which the list's own words hold too.
     pub(crate) fn things() -> Vec<Value> {
         let mut things: BTreeMap<&str, Value> = BTreeMap::new();
         for (id, word) in NEEDED {
-            let said = SAID
-                .iter()
-                .find(|(is, at, _)| is == id && at == word)
-                .map_or_else(
-                    || {
-                        if word.is_empty() {
-                            (*id).to_owned()
-                        } else {
-                            format!("{id}.{word}")
-                        }
-                    },
-                    |(_, _, said)| (*said).to_owned(),
-                );
+            let said = if SAID.contains(&(*id, *word)) {
+                launchers(id, word)
+            } else if word.is_empty() {
+                (*id).to_owned()
+            } else {
+                format!("{id}.{word}")
+            };
             let thing = things
                 .entry(*id)
                 .or_insert_with(|| json!({ "id": format!("wifi:{id}") }));
@@ -2023,15 +2037,10 @@ pub(crate) mod tests {
 
     /// The launcher's own words hold every word a network's insides are
     /// said in, so one renamed there fails here rather than blanking a
-    /// part (run with them by wifid-reads-the-launchers-words).
+    /// part.
     #[test]
     fn the_launchers_vocabulary_has_every_parts_words() {
-        let Ok(path) = std::env::var("WIFID_TEST_WORDS") else {
-            return;
-        };
-        let text = std::fs::read_to_string(path).expect("the vocabulary reads");
-        let launchers: Value = serde_json::from_str(&text).expect("the vocabulary is JSON");
-        let words = Words::read(&launchers).expect("every word is there");
+        let words = Words::read(&crate::rows::launchers_words()).expect("every word is there");
         let detail = lantern();
         let mut look = Look::default();
         look.follow(&detail, NOW);
