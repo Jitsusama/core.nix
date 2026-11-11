@@ -3109,18 +3109,8 @@ onLinux {
   # taken and file-preview stood in.
   the-launcher-remakes-only-the-windows-that-changed =
     let
-      # A stand-in for file-preview, whether kept (serve) or started for each
-      # picture: it answers with the picture's own sides and its process.
-      previewer = pkgs.writeShellScript "file-preview" ''
-        answer() {
-          printf '{"picture": "%s", "across": 4, "down": 3, "by": %s}\n' "''${1#show }" "$$"
-        }
-        if [ "$1" = serve ]; then
-          while IFS= read -r line; do answer "$line"; done
-        else
-          answer "$*"
-        fi
-      '';
+      # file-preview stood in, saying which process answered.
+      previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../tests/file-preview.sh);
       # What a window's verbs read of niri as they're asked.
       niri = singleton "Niri.qml" ''
         property var windows: ({
@@ -4678,16 +4668,8 @@ onLinux {
       # What open-now says two Neovims in one kitty hold, as
       # tests/neovim-open-now.sh says.
       openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../../tests/neovim-open-now.sh);
-      # A stand-in for file-preview, kept (serve) or asked once (show), that
-      # says which process answered, so the case sees a kept one asked.
-      previewer = pkgs.writeShellScript "file-preview" ''
-        answer() { printf '{"kind": "text", "lines": 3, "by": %s}\n' "$$"; }
-        if [ "$1" = serve ]; then
-          while IFS= read -r _line; do answer; done
-        else
-          answer
-        fi
-      '';
+      # file-preview stood in, saying which process answered.
+      previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../tests/file-preview.sh);
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
       programs = pkgs.callPackage ../programs/package.nix { };
       # Chrome's downloads, as chrome-recent-sites prints them: one from a
