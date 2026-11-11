@@ -338,6 +338,16 @@ fn dropped(cake: &Value) -> u64 {
     cake["drops"].as_u64().unwrap_or(0).saturating_sub(thinned)
 }
 
+/// How long a CAKE sending at `kbit` keeps what it holds, in ms, from the
+/// bytes it held over `reads` reads together: what it held on average,
+/// sent at its rate. Nothing read, or no rate, keeps nothing.
+pub fn wait_ms(held: u64, reads: u32, kbit: u64) -> u64 {
+    if reads == 0 || kbit == 0 {
+        return 0;
+    }
+    held * 8 / u64::from(reads) / kbit
+}
+
 /// A queue CAKE holds, at least, rather than packets passing through it: a
 /// couple of full-sized packets waiting.
 pub const QUEUED_BYTES: u64 = 3_000;
@@ -484,6 +494,14 @@ mod tests {
             !queued(holding(json), holding(thinned).unwrap()),
             "more ACKs thinned, with nothing waiting, is no queue"
         );
+    }
+
+    #[test]
+    fn what_cake_held_waits_as_long_as_its_rate_takes_to_send_it() {
+        // Five reads holding 12 500 bytes on average, at 10 Mbit/s.
+        assert_eq!(wait_ms(62_500, 5, 10_000), 10, "100 kbit at 10 kbit a ms");
+        assert_eq!(wait_ms(62_500, 0, 10_000), 0, "nothing read keeps nothing");
+        assert_eq!(wait_ms(62_500, 5, 0), 0, "no rate is no CAKE to wait in");
     }
 
     #[test]

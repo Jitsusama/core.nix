@@ -206,6 +206,8 @@ struct Shaped {
     /// the controller was last told, how many found a queue in it.
     holding: Option<(u64, u64)>,
     queued_reads: (u32, u32),
+    /// What the upload's CAKE held, in bytes, over those reads together.
+    held_bytes: u64,
     /// Of the reads of the VPNs riding the link since, how many found a
     /// queue in one: a VPN held under the link holds the queue in its own
     /// CAKE, and one the link's CAKE doesn't see is no router's.
@@ -237,6 +239,7 @@ impl Shaped {
             let (queued, reads) = &mut self.queued_reads;
             *queued += u32::from(qdisc::queued(self.holding, now));
             *reads += 1;
+            self.held_bytes += now.0;
             self.holding = Some(now);
         }
         if let Some(now) = up.as_deref().and_then(qdisc::drops) {
@@ -250,15 +253,18 @@ impl Shaped {
     }
 
     /// Whose the upload's queue has been since last asked: whether CAKE
-    /// held one in most reads, whether data waits to go, and what TCP
-    /// sent again and our queues dropped, in kbit/s.
+    /// held one in most reads, how long it kept what it held, whether data
+    /// waits to go, and what TCP sent again and our queues dropped, in
+    /// kbit/s.
     fn ours(&mut self, waiting: bool, resent: u64, now: Instant) -> Option<oneway::Ours> {
         let link = std::mem::take(&mut self.queued_reads);
+        let held = std::mem::take(&mut self.held_bytes);
+        let wait = qdisc::wait_ms(held, link.1, self.applied.0);
         let vpn = std::mem::take(&mut self.vpn_reads);
         let dropped = std::mem::take(&mut self.dropped);
         let seconds = self.told_at.replace(now).map(|at| (now - at).as_secs_f64());
         let dropped = seconds.map_or(0, |s| segments_kbit(dropped, s));
-        oneway::Ours::from_reads(link, vpn, waiting, (resent, dropped))
+        oneway::Ours::from_reads(link, vpn, wait, waiting, (resent, dropped))
     }
 
     /// What the link sent and received since it was last counted, in
@@ -424,6 +430,7 @@ fn start(
         real_time: qdisc::RealTime::default(),
         holding: None,
         queued_reads: (0, 0),
+        held_bytes: 0,
         vpn_reads: (0, 0),
         drops: None,
         dropped: 0,
