@@ -1,5 +1,4 @@
 use super::*;
-use crate::screen::plain;
 
 fn theme() -> Theme {
     Theme::from(
@@ -25,15 +24,6 @@ fn at() -> Where<'static> {
         steps: Some(13),
         done: DONE,
     }
-}
-
-fn text(drawn: &Drawn) -> Vec<String> {
-    drawn
-        .lines
-        .iter()
-        .map(plain)
-        .map(|line| line.trim_end().to_string())
-        .collect()
 }
 
 #[test]

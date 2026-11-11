@@ -547,6 +547,18 @@ fn capitalised(text: &str) -> String {
     }
 }
 
+/// A drawing's lines as plain text, each with its trailing spaces cut, as
+/// the view's tests and the walk's compare them.
+#[cfg(test)]
+pub fn text(drawn: &Drawn) -> Vec<String> {
+    drawn
+        .lines
+        .iter()
+        .map(crate::screen::plain)
+        .map(|line| line.trim_end().to_string())
+        .collect()
+}
+
 #[cfg(test)]
 #[path = "view_tests.rs"]
 mod tests;

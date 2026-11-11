@@ -2,9 +2,8 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use super::*;
-use crate::screen::plain;
 use crate::screen::terminal::{Keys, Paint, Screen};
-use crate::screen::view::Drawn;
+use crate::screen::view::{Drawn, text};
 use crate::stand_in::StandIn;
 use crate::{Standing, Step};
 
@@ -24,15 +23,6 @@ struct Stand {
     size: Option<(u16, u16)>,
     /// The size it changes to as each `Press::Resized` is read.
     resizes: VecDeque<(u16, u16)>,
-}
-
-fn text(drawn: &Drawn) -> Vec<String> {
-    drawn
-        .lines
-        .iter()
-        .map(plain)
-        .map(|line| line.trim_end().to_string())
-        .collect()
 }
 
 impl Keys for Stand {

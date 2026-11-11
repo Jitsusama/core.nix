@@ -156,7 +156,13 @@
   "modules/guide/tests/carry.rs" = 12;
   "modules/guide/tests/github.rs" = 2;
   "modules/guide/tests/installed.rs" = 16;
-  "modules/guide/tests/install.rs" = 43;
+  "modules/guide/tests/install/bundle.rs" = 9;
+  "modules/guide/tests/install/disk.rs" = 1;
+  "modules/guide/tests/install/keys.rs" = 8;
+  "modules/guide/tests/install/memory.rs" = 4;
+  "modules/guide/tests/install/recovery_key.rs" = 8;
+  "modules/guide/tests/install/secure_boot.rs" = 7;
+  "modules/guide/tests/install/vault.rs" = 6;
   "modules/guide/tests/journey.rs" = 5;
   "modules/guide/tests/keys.rs" = 9;
   "modules/guide/tests/policies.rs" = 4;
@@ -165,7 +171,9 @@
   "modules/guide/tests/spares.rs" = 2;
   "modules/guide/tests/stick.rs" = 9;
   "modules/guide/tests/system.rs" = 1;
-  "modules/guide/tests/writer.rs" = 9;
+  "modules/guide/tests/writer/bundles.rs" = 2;
+  "modules/guide/tests/writer/phrase.rs" = 1;
+  "modules/guide/tests/writer/which_stick.rs" = 4;
   "modules/hibernate/unlock/src/fits.rs" = 1;
   "modules/hibernate/unlock/src/floors.rs" = 2;
   "modules/hibernate/unlock/src/main.rs" = 7;
