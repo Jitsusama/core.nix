@@ -605,7 +605,8 @@ fn run(options: &Options) -> ExitCode {
                 keep(&mut memory, s);
             }
         }
-        write_status(&options.runtime, &shaped);
+        let heard = live.as_ref().and_then(live::Live::heard);
+        write_status(&options.runtime, &shaped, heard.as_ref());
         thread::sleep(STEP);
     }
 }
@@ -1095,9 +1096,17 @@ struct LinkStatus {
     /// Whether real-time traffic crosses the link now.
     #[serde(default)]
     live: bool,
+    /// What the one-way controller last heard of the link it holds, and
+    /// made of it, so a trace can say why its rate held where it did.
+    #[serde(default)]
+    heard: Option<live::Heard>,
 }
 
-fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
+fn write_status(
+    runtime: &Path,
+    shaped: &BTreeMap<String, Shaped>,
+    heard: Option<&(&str, live::Heard)>,
+) {
     let all: Vec<LinkStatus> = shaped
         .values()
         .map(|s| LinkStatus {
@@ -1113,6 +1122,9 @@ fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
             baselines: s.controller.baselines(),
             follows: s.follows.clone(),
             live: s.controller.live,
+            heard: heard
+                .filter(|(link, _)| *link == s.uplink.name)
+                .map(|(_, heard)| heard.clone()),
         })
         .collect();
     let path = runtime.join("status.json");

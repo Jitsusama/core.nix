@@ -168,7 +168,7 @@ pub struct Seen {
 /// What the shaper sees of its own side of a direction: whether its CAKE
 /// holds a queue, whether connections on the link have data waiting to
 /// go, and what TCP sent again.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ours {
     pub queued: bool,
     /// Whether the only queue that stood was a VPN's riding the link,
@@ -708,6 +708,12 @@ impl Controller {
             down: Way::from_learned(down),
             ..Controller::new(None, None)
         }
+    }
+
+    /// The least a call's round trip through the VPN is taken to be, in
+    /// ms, once one was heard.
+    pub fn vpn_base(&self) -> Option<f64> {
+        self.vpn_base
     }
 
     /// Whether the guard has given up, for `GIVEN_UP_S`.

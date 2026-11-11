@@ -10,6 +10,7 @@ use crate::oneway::{self, Learned, Ours};
 use crate::record::day_file;
 use crate::replay::{Controller as _, Rates, Reading, Sample, parse};
 use crate::vpndelay::Probe;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -24,6 +25,31 @@ const SILENT_MS: u64 = 10_000;
 
 /// What each network's directions learned, up and down, by its name.
 pub type Known = BTreeMap<String, (Learned, Learned)>;
+
+/// What the controller last heard of its link's second, and what it made
+/// of it: what a trace needs to say why a rate held where it did.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Heard {
+    /// Seconds since the stay began.
+    pub t_s: f64,
+    /// What the link carried each way, in kbit/s.
+    pub up_kbit: f64,
+    pub down_kbit: f64,
+    /// Each direction's own delay, and the gateway's round trip, in ms.
+    pub up_delay_ms: Option<f64>,
+    pub down_delay_ms: Option<f64>,
+    pub gateway_ms: Option<f64>,
+    /// Whose the upload's queue was, and what was sent again and dropped.
+    pub ours: Option<Ours>,
+    /// A call's round trip through the VPN, and the least it was taken to
+    /// be, in ms: what one took past the other is the queue only the VPN's
+    /// flow waits in.
+    pub vpn_ms: Option<f64>,
+    pub vpn_base_ms: Option<f64>,
+    /// What the upload is held to, in kbit/s, and where it holds under.
+    pub up_limit: Option<u64>,
+    pub plateau: Option<f64>,
+}
 
 /// The name a recording gives a network it couldn't name, which is no one
 /// network to remember.
@@ -42,6 +68,8 @@ pub struct Follow {
     ours: BTreeMap<String, Ours>,
     /// A call's round trip through the VPN riding the link, as last heard.
     vpn_ms: Option<f64>,
+    /// The last second the controller stepped on.
+    last: Option<crate::replay::Second>,
     /// The network of the stay, and what each network met learned.
     network: String,
     known: Known,
@@ -57,6 +85,7 @@ impl Follow {
             last_ms: 0,
             ours: BTreeMap::new(),
             vpn_ms: None,
+            last: None,
             network: UNKNOWN.into(),
             known,
         }
@@ -113,7 +142,28 @@ impl Follow {
             second.up_ours = ours;
             second.vpn_ms = self.vpn_ms;
             self.rates = self.controller.second(&second);
+            self.last = Some(second);
         }
+    }
+
+    /// The link the controller holds, and what it last heard of it and
+    /// made of it, once it has stepped on a second.
+    pub fn heard(&self) -> Option<(&str, Heard)> {
+        let (link, second) = (self.link.as_deref()?, self.last.as_ref()?);
+        let heard = Heard {
+            t_s: second.t_s,
+            up_kbit: second.up_kbit,
+            down_kbit: second.down_kbit,
+            up_delay_ms: second.up_delay_ms,
+            down_delay_ms: second.down_delay_ms,
+            gateway_ms: second.gateway_ms,
+            ours: second.up_ours,
+            vpn_ms: second.vpn_ms,
+            vpn_base_ms: self.controller.vpn_base(),
+            up_limit: self.controller.up.limit(),
+            plateau: self.controller.up.learned().plateau,
+        };
+        Some((link, heard))
     }
 
     /// The link the recorder follows and the rates to hold it to, at a
@@ -188,6 +238,11 @@ impl Live {
     /// Takes whose a link's upload queue is now.
     pub fn see(&mut self, link: &str, ours: Ours) {
         self.follow.see(link, ours);
+    }
+
+    /// The link the controller holds, and what it last heard of it.
+    pub fn heard(&self) -> Option<(&str, Heard)> {
+        self.follow.heard()
     }
 
     /// Probes through the VPN riding the link, or none, and takes what it
@@ -381,6 +436,41 @@ mod tests {
         assert!(
             rates.up.is_some_and(|up| (11_000..12_000).contains(&up)),
             "held under the router: {rates:?}"
+        );
+    }
+
+    // A trace of a live proof could show what the link carried, but not
+    // what the controller made of it: whose the queue was, the VPN's round
+    // trip and its least, the plateau. Without them, a rate held over the
+    // line can't be told from a signal that never came.
+    #[test]
+    fn what_the_controller_heard_last_is_told() {
+        let mut follow = waiting(Known::new());
+        follow.hear_vpn(Some(80.0));
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        let (link, heard) = follow.heard().expect("a second heard");
+        assert_eq!(link, "wlan0", "told of the wrong link");
+        assert_eq!(heard.vpn_ms, Some(80.0), "the VPN's round trip: {heard:?}");
+        assert!(
+            heard.vpn_base_ms.is_some_and(|base| base <= 80.0),
+            "the VPN's least: {heard:?}"
+        );
+        assert!(
+            heard.ours.is_some_and(|ours| ours.waiting && !ours.queued),
+            "whose the queue was: {heard:?}"
+        );
+        assert!(heard.up_kbit > 10_000.0, "what went up: {heard:?}");
+        assert_eq!(
+            heard.up_limit,
+            follow.controller.up.limit(),
+            "the limit held: {heard:?}"
+        );
+        assert_eq!(
+            heard.plateau,
+            follow.controller.up.learned().plateau,
+            "the plateau: {heard:?}"
         );
     }
 
