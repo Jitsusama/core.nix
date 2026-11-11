@@ -427,7 +427,8 @@ struct Daemon {
     heat: heat_rows::Heat,
     /// The reads Power's sparks keep while its rows are watched.
     power: power_rows::Power,
-    /// How Firmware's acts stand while its rows are watched.
+    /// How Firmware's acts stand: the one going, so another waits its
+    /// turn, and how each ended while its rows are watched.
     acting: firmware_rows::Acting,
     /// Each place's rows and headline as last told, by the place's name,
     /// so each row keeps its order and one coming or going sends itself
@@ -438,8 +439,6 @@ struct Daemon {
     telemetry: Vec<Value>,
     /// The kinds whose source said they changed, to be asked again now.
     hurried: HashSet<String>,
-    /// Whether a firmware act is going, so another waits its turn.
-    acting: bool,
     /// When the last sleep began and ended, as logind's signal said.
     slept: Arc<Mutex<Value>>,
     took: VecDeque<u64>,
@@ -629,7 +628,6 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             kept: BTreeMap::new(),
             telemetry: Vec::new(),
             hurried: HashSet::new(),
-            acting: false,
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
             since: now_ms(),
@@ -2117,15 +2115,26 @@ fn firmware_act(
     said: Value,
     told: SyncSender<String>,
 ) {
+    let text = |name: &str| said[name].as_str().unwrap_or("").to_owned();
+    let key = match act.as_str() {
+        "firmware-install" => format!("install:{}", text("device")),
+        "firmware-fix" => format!("fix:{}", text("attribute")),
+        "firmware-undo" => format!("undo:{}", text("attribute")),
+        _ => "setup".to_owned(),
+    };
     {
         let mut daemon = lock(&shared.daemon);
-        if daemon.acting {
+        if daemon.acting.going.is_some() {
             let busy = error(&id, "busy", "another firmware act is going");
             let _ = told.send(busy.to_string());
             return;
         }
-        daemon.acting = true;
+        daemon.acting.going = Some(key.clone());
+        daemon.acting.ended.remove(&key);
     }
+    // Firmware's rows say it's going before anything else is said.
+    let firmware = HashSet::from(["firmware".to_owned()]);
+    read(shared, &firmware, &[]);
     let shared = Arc::clone(shared);
     std::thread::spawn(move || {
         let patience = said["patience_s"]
@@ -2144,10 +2153,23 @@ fn firmware_act(
         };
         {
             let mut daemon = lock(&shared.daemon);
-            daemon.acting = false;
+            daemon.acting.going = None;
+            // How it ended is said while Firmware's rows are watched, and
+            // a launcher opened after has nothing to be told of it.
+            if makes(&daemon, FIRMWARE) {
+                let ended = match &done {
+                    Ok(()) => firmware_rows::Ended::Done,
+                    Err(refused) if refused.code == "stopped" => {
+                        firmware_rows::Ended::Stopped(patience.as_secs().div_ceil(60))
+                    }
+                    Err(refused) => firmware_rows::Ended::Refused(refused.message.clone()),
+                };
+                daemon.acting.ended.insert(key, ended);
+            }
             daemon.hurried.insert("firmware".to_owned());
         }
         shared.woken.notify_all();
+        read(&shared, &firmware, &[]);
         let answer = match done {
             Ok(()) => json!({"id": id, "done": true}),
             Err(refused) => error(&id, refused.code, &refused.message),
@@ -2192,5 +2214,69 @@ mod tests {
         assert_eq!(said.len(), 2, "the whole answer, then the change: {said:?}");
         assert_eq!(said[0]["records"][0]["raw"], Value::Null, "{said:?}");
         assert_eq!(said[1]["changed"][0]["raw"], json!(0.0), "{said:?}");
+    }
+
+    // Firmware's rows say an act is going while it goes, and how it
+    // ended once it has, before the act is answered: here an install on a
+    // machine with no fwupdmgr, which is refused at once.
+    #[test]
+    fn firmwares_rows_say_an_act_going_then_how_it_ended() {
+        let vocabulary = json!({ "things": [
+            { "id": "firmware", "name": "Firmware", "said": { "one": "1 update ready" } },
+            { "id": "verb:firmware:install", "name": "Install {version}",
+                "sure": "Install {version} on {device} Now", "said": {
+                "installing": "installing", "failed": "didn't install" } }
+        ] });
+        let words = Words::new(&vocabulary, ",", ".");
+        let root = Root::new(std::env::temp_dir());
+        let shared = Arc::new(shared(&root, Some(words)));
+        lock(&shared.daemon).firmware = vec![json!({ "key": "firmware:b10",
+            "kind": "firmware", "id": "b10", "name": "System Firmware",
+            "version": "1.12.0", "update": { "version": "1.13.0" } })];
+        let (told, lines) = mpsc::sync_channel(QUEUED);
+        let (end, _other) = UnixStream::pair().unwrap();
+        let hangup = Arc::new(end);
+        let watch = ask(r#"{"id":"f","ask":"watch","kind":["row"],"place":"firmware"}"#);
+        assert!(
+            answer(&shared, watch, 1, &told, &hangup).is_some(),
+            "the watch is answered"
+        );
+        let said = json!({ "device": "b10", "patience_s": 60 });
+        firmware_act(
+            &shared,
+            json!(1),
+            "firmware-install".to_owned(),
+            said,
+            told.clone(),
+        );
+        let mut notes = Vec::new();
+        loop {
+            let line = lines
+                .recv_timeout(Duration::from_secs(10))
+                .expect("the act is answered");
+            let line: Value = serde_json::from_str(&line).unwrap();
+            if line["id"] == 1 {
+                assert_eq!(line["error"]["code"], "bad-act", "{line}");
+                break;
+            }
+            let changed = line["changed"].as_array().into_iter().flatten();
+            notes.extend(
+                changed
+                    .filter(|record| record["key"] == "row:firmware:b10:install")
+                    .map(|record| record["row"]["note"].clone()),
+            );
+        }
+        assert_eq!(
+            notes,
+            [
+                "installing",
+                "didn't install \u{b7} no fwupdmgr on this machine"
+            ],
+            "going, then how it ended, before the answer"
+        );
+        assert!(
+            lock(&shared.daemon).acting.going.is_none(),
+            "nothing is going"
+        );
     }
 }
