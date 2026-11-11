@@ -79,7 +79,8 @@ impl Window {
     }
 }
 
-fn window(value: &Value) -> Option<(Window, bool)> {
+/// A window from niri's JSON, and whether it has the focus.
+pub fn window(value: &Value) -> Option<(Window, bool)> {
     Some((
         Window {
             id: value.get("id")?.as_u64()?,
@@ -190,6 +191,11 @@ impl Recent {
         if self.at.as_ref().is_some_and(|(window, _)| !has(window.id)) {
             self.at = None;
         }
+    }
+
+    /// The session window with the focus, if one has it.
+    pub fn at(&self) -> Option<&Window> {
+        self.at.as_ref().map(|(window, _)| window)
     }
 
     /// The windows to hold `now`: the one with the focus, then those left
@@ -385,6 +391,12 @@ impl Following {
     pub fn held(&self, now: Instant) -> Vec<Window> {
         let heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
         heard.1.held(now)
+    }
+
+    /// The session window with the focus, if one has it.
+    pub fn at(&self) -> Option<Window> {
+        let heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
+        heard.1.at().cloned()
     }
 }
 

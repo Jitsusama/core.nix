@@ -93,6 +93,7 @@ mod quests;
 mod real_time;
 mod revive;
 mod strays;
+mod swap_in;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -538,6 +539,9 @@ struct Ranks {
     /// Each held window's scope, by niri's id for it, or when it was last
     /// looked for and not found.
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
+    /// The window with the focus whose memory was last asked back, so
+    /// it's asked once each time the focus comes to it ([`swap_in`]).
+    reading: Option<u64>,
     /// Each pi host's rank, as last set.
     hosts: hosts::Hosts,
     /// The orchestrators each pid holds, as the presences last said.
@@ -659,9 +663,46 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
             }
         }
     }
+    read_back(following.at(), ranks);
     held.iter()
         .filter_map(|scope| Some(scope.file_name()?.to_str()?.to_owned()))
         .collect()
+}
+
+/// Asks, once each time the focus comes to a session window whose scope is
+/// found, for the window's swapped memory to be read back, through the
+/// root unit that may (`src/swap_in.rs`), which checks it all again itself.
+fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
+    let Some(window) = at else {
+        ranks.reading = None;
+        return;
+    };
+    if ranks.reading == Some(window.id) {
+        return;
+    }
+    let Some(Ok(scope)) = ranks.found.get(&window.id) else {
+        return;
+    };
+    ranks.reading = Some(window.id);
+    let Some(pid) = fs::read_to_string(scope.join("cgroup.procs"))
+        .ok()
+        .and_then(|procs| procs.lines().next().map(str::to_owned))
+    else {
+        return;
+    };
+    let unit = format!("memory-swap-in@{pid}.service");
+    match Command::new("systemctl")
+        .args(["start", "--no-block", &unit])
+        .stdout(Stdio::null())
+        .output()
+    {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => eprintln!(
+            "Couldn't start {unit}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ),
+        Err(error) => eprintln!("Couldn't run systemctl to start {unit}: {error}"),
+    }
 }
 
 /// Watches the folder of marks, made if it isn't there yet. Without a
@@ -1476,6 +1517,19 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some((first, rest)) = args.split_first()
+        && first == "swap-in"
+    {
+        match swap_in::main(rest) {
+            Ok(said) => eprintln!("{said}"),
+            Err(error) => {
+                eprintln!("jobs-sorter swap-in: {error}");
+                process::exit(1);
+            }
+        }
+        return;
+    }
     if let Err(error) = run() {
         eprintln!("jobs-sorter: {error}");
         process::exit(1);

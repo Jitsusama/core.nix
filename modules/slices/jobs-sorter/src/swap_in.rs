@@ -1,0 +1,540 @@
+//! Reads a session window's swapped-out memory back as Joel comes to it,
+//! rather than one fault at a time as he types.
+//!
+//! A pi window he comes back to after a while finds much of its heap in
+//! swap, and on 10 November its first keys took 300 to 600 ms, once 1.9 s,
+//! while thousands of pages came back from disk one fault at a time. Asked
+//! to read all of a heap back at once with `MADV_WILLNEED`, the kernel
+//! queues every read together: in the lab 505 MiB pushed to disk came back
+//! in 0.56 s rather than 8.3 s, and from zswap in 0.38 s rather than 0.68.
+//!
+//! Asking for another process's memory takes `CAP_SYS_NICE`, which no user
+//! service can hold, so the sorter starts `memory-swap-in@PID.service`,
+//! which only an administrator may (modules/slices/swap-in.rules). It runs
+//! this as root just long enough to become the pid's own account with
+//! `CAP_SYS_NICE` alone ([`become_owner`]); as that account it asks niri
+//! which window has the focus, reads nothing back unless the pid belongs
+//! to it ([`belongs`]), and does it at most every [`EVERY`] for a window.
+//! It only hints: nothing is changed but what memory is resident.
+
+use std::ffi::c_long;
+use std::fs;
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime};
+
+use serde_json::Value;
+
+use crate::focus::{self, Window};
+
+/// How long the focus must stay on a window before its memory is read
+/// back, so passing over windows on the way to another reads none of
+/// theirs. Joel moved over ten windows in two seconds on 10 November.
+pub const SETTLE: Duration = Duration::from_millis(250);
+
+/// How often one window's memory may be read back, however often the focus
+/// comes back to it.
+pub const EVERY: Duration = Duration::from_secs(30);
+
+/// The `madvise` hint that asks for a range to be read in ahead of use.
+const MADV_WILLNEED: c_long = 3;
+
+/// The most ranges one `process_madvise` takes, the kernel's `UIO_MAXIOV`.
+const RANGES_AT_ONCE: usize = 1024;
+
+const SYS_PIDFD_OPEN: c_long = 434;
+const SYS_PROCESS_MADVISE: c_long = 440;
+
+unsafe extern "C" {
+    fn syscall(number: c_long, ...) -> c_long;
+    fn close(fd: i32) -> i32;
+}
+
+/// One range of memory, as `process_madvise` takes them.
+#[repr(C)]
+struct Range {
+    base: usize,
+    len: usize,
+}
+
+/// `jobs-sorter swap-in PID` as root, or `jobs-sorter swap-in --owned PID`
+/// as the pid's account; what it did, or why it did nothing.
+pub fn main(args: &[String]) -> Result<String, String> {
+    match args {
+        [pid] => Err(become_owner(parse(pid)?)),
+        [owned, pid] if owned == "--owned" => read_back(parse(pid)?),
+        _ => Err("usage: jobs-sorter swap-in [--owned] PID".to_owned()),
+    }
+}
+
+fn parse(pid: &str) -> Result<u32, String> {
+    pid.parse()
+        .ok()
+        .filter(|pid| *pid > 1)
+        .ok_or_else(|| format!("{pid:?} isn't a process"))
+}
+
+/// Becomes the account that owns `pid`, keeping `CAP_SYS_NICE` and nothing
+/// else, and goes on as that account; what went wrong if it couldn't.
+fn become_owner(pid: u32) -> String {
+    let status = match fs::read_to_string(format!("/proc/{pid}/status")) {
+        Ok(status) => status,
+        Err(error) => return format!("process {pid} can't be read: {error}"),
+    };
+    let (Some(uid), Some(gid)) = (owner(&status, "Uid:"), owner(&status, "Gid:")) else {
+        return format!("process {pid} says no owner");
+    };
+    if uid == 0 {
+        return format!("process {pid} is root's, whose memory isn't read back");
+    }
+    let me = match std::env::current_exe() {
+        Ok(me) => me,
+        Err(error) => return format!("this program can't be found: {error}"),
+    };
+    let error = Command::new("setpriv")
+        .args(as_owner(uid, gid))
+        .arg(me)
+        .args(["swap-in", "--owned", &pid.to_string()])
+        .exec();
+    format!("setpriv wouldn't run: {error}")
+}
+
+/// What `setpriv` is given to run a program as `uid` and `gid`, holding
+/// only `CAP_SYS_NICE`, the one `process_madvise` asks of a caller acting
+/// on another process.
+pub fn as_owner(uid: u32, gid: u32) -> Vec<String> {
+    vec![
+        format!("--reuid={uid}"),
+        format!("--regid={gid}"),
+        "--clear-groups".to_owned(),
+        "--inh-caps=-all,+sys_nice".to_owned(),
+        "--ambient-caps=+sys_nice".to_owned(),
+        "--bounding-set=-all,+sys_nice".to_owned(),
+        "--".to_owned(),
+    ]
+}
+
+/// A process's real owner from its status's `Uid:` or `Gid:` line.
+pub fn owner(status: &str, field: &str) -> Option<u32> {
+    status
+        .lines()
+        .find_map(|line| line.strip_prefix(field))?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// What a process says of itself, as far as finding its window goes.
+#[derive(Debug, Default)]
+pub struct Process {
+    /// The app id it was started with, from its environment.
+    pub app_id: Option<String>,
+    /// Its cgroup's own name, such as `kitty-2684-26.scope`.
+    pub scope: String,
+    /// Its parent, its parent's parent, and so on.
+    pub ancestors: Vec<u32>,
+}
+
+/// Whether `process` runs in `window`, a session window, as the sorter
+/// finds a window's scope (`focus::scope_of`): started with its app id,
+/// or else in the one scope of the kitty that draws it, `kittys` scopes
+/// in all, which the process runs under.
+pub fn belongs(process: &Process, window: &Window, kittys: usize) -> bool {
+    if !window.session() {
+        return false;
+    }
+    if let Some(app_id) = &process.app_id {
+        return *app_id == window.app_id;
+    }
+    kittys == 1
+        && process.scope.starts_with(&format!("kitty-{}-", window.pid))
+        && process.ancestors.contains(&window.pid)
+}
+
+/// Whether a window last read back at `last` may be read back `now`.
+pub fn due(last: Option<SystemTime>, now: SystemTime) -> bool {
+    last.is_none_or(|last| now.duration_since(last).is_ok_and(|since| since >= EVERY))
+}
+
+/// The private anonymous ranges in a process's `maps`, its heap and stacks
+/// among them: the memory that goes to swap.
+pub fn anonymous(maps: &str) -> Vec<(usize, usize)> {
+    maps.lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let (span, perms) = (fields.next()?, fields.next()?);
+            let inode = fields.nth(2)?;
+            let path = fields.next().unwrap_or_default();
+            let named_anonymous = path.is_empty()
+                || path == "[heap]"
+                || path.starts_with("[stack")
+                || path.starts_with("[anon:");
+            if inode != "0" || perms.as_bytes().get(3) != Some(&b'p') || !named_anonymous {
+                return None;
+            }
+            let (start, end) = span.split_once('-')?;
+            let start = usize::from_str_radix(start, 16).ok()?;
+            let end = usize::from_str_radix(end, 16).ok()?;
+            (end > start).then_some((start, end - start))
+        })
+        .collect()
+}
+
+/// The window niri says has the focus, asked over its socket in `runtime`.
+fn focused(runtime: &Path) -> Result<Option<Window>, String> {
+    let sockets =
+        fs::read_dir(runtime).map_err(|error| format!("{}: {error}", runtime.display()))?;
+    let mut sockets: Vec<PathBuf> = sockets
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            let niris = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("niri."));
+            niris
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension == "sock")
+        })
+        .collect();
+    sockets.sort();
+    for socket in sockets {
+        let Ok(mut stream) = UnixStream::connect(&socket) else {
+            continue;
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .map_err(|error| error.to_string())?;
+        stream
+            .write_all(b"\"FocusedWindow\"\n")
+            .map_err(|error| error.to_string())?;
+        let mut reply = String::new();
+        BufReader::new(stream)
+            .read_line(&mut reply)
+            .map_err(|error| format!("niri didn't answer: {error}"))?;
+        return answered(&reply);
+    }
+    Err(format!("no niri answers in {}", runtime.display()))
+}
+
+/// The focused window in niri's answer to `FocusedWindow`.
+pub fn answered(reply: &str) -> Result<Option<Window>, String> {
+    let reply: Value =
+        serde_json::from_str(reply).map_err(|_| "niri's answer wasn't JSON".to_owned())?;
+    let window = reply
+        .get("Ok")
+        .and_then(|ok| ok.get("FocusedWindow"))
+        .ok_or_else(|| format!("niri answered {reply}"))?;
+    Ok(focus::window(window).map(|(window, _)| window))
+}
+
+/// What `/proc` says of `pid` for [`belongs`].
+fn process(pid: u32) -> Result<Process, String> {
+    let environ = fs::read(format!("/proc/{pid}/environ"))
+        .map_err(|error| format!("process {pid}: {error}"))?;
+    let cgroup =
+        fs::read_to_string(format!("/proc/{pid}/cgroup")).map_err(|error| error.to_string())?;
+    let mut ancestors = Vec::new();
+    let mut at = pid;
+    while at > 1 && ancestors.len() < 64 {
+        let Some(parent) = fs::read_to_string(format!("/proc/{at}/status"))
+            .ok()
+            .and_then(|status| owner(&status, "PPid:"))
+        else {
+            break;
+        };
+        ancestors.push(parent);
+        at = parent;
+    }
+    Ok(Process {
+        app_id: focus::app_id(&environ),
+        scope: cgroup
+            .trim()
+            .rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .to_owned(),
+        ancestors,
+    })
+}
+
+/// How many scopes beside `pid`'s are drawn by the kitty `kitty`.
+fn kittys(pid: u32, kitty: u32) -> usize {
+    let Ok(cgroup) = fs::read_to_string(format!("/proc/{pid}/cgroup")) else {
+        return 0;
+    };
+    let path = cgroup.trim().split("::").nth(1).unwrap_or_default();
+    let parent = Path::new("/sys/fs/cgroup").join(path.trim_start_matches('/'));
+    let own = format!("kitty-{kitty}-");
+    parent
+        .parent()
+        .and_then(|slice| fs::read_dir(slice).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(&own))
+        .count()
+}
+
+/// As the account `pid` runs as: waits [`SETTLE`], then reads back the
+/// swapped memory of every process in `pid`'s scope, if `pid` belongs to
+/// the session window niri says has the focus and it wasn't read back in
+/// the last [`EVERY`].
+fn read_back(pid: u32) -> Result<String, String> {
+    let me = fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| owner(&status, "Uid:"))
+        .ok_or("this process says no owner")?;
+    thread::sleep(SETTLE);
+    let runtime = PathBuf::from(format!("/run/user/{me}"));
+    let Some(window) = focused(&runtime)? else {
+        return Ok("No window has the focus, so nothing is read back.".to_owned());
+    };
+    let found = process(pid)?;
+    if !belongs(&found, &window, kittys(pid, window.pid)) {
+        return Err(format!(
+            "process {pid} isn't in the focused window {} ({}), so nothing is read back",
+            window.id, window.app_id
+        ));
+    }
+    let stamp = runtime.join("memory-swap-in").join(window.id.to_string());
+    let last = fs::metadata(&stamp).and_then(|meta| meta.modified()).ok();
+    if !due(last, SystemTime::now()) {
+        return Ok(format!(
+            "Window {} was read back within {}s.",
+            window.id,
+            EVERY.as_secs()
+        ));
+    }
+    if let Some(folder) = stamp.parent() {
+        fs::create_dir_all(folder).map_err(|error| error.to_string())?;
+    }
+    fs::write(&stamp, b"").map_err(|error| error.to_string())?;
+    let cgroup =
+        fs::read_to_string(format!("/proc/{pid}/cgroup")).map_err(|error| error.to_string())?;
+    let scope = Path::new("/sys/fs/cgroup").join(
+        cgroup
+            .trim()
+            .split("::")
+            .nth(1)
+            .unwrap_or_default()
+            .trim_start_matches('/'),
+    );
+    let procs =
+        fs::read_to_string(scope.join("cgroup.procs")).map_err(|error| error.to_string())?;
+    let started = Instant::now();
+    let (mut processes, mut swapped) = (0, 0);
+    for each in procs.lines().filter_map(|line| line.parse::<u32>().ok()) {
+        let Ok(status) = fs::read_to_string(format!("/proc/{each}/status")) else {
+            continue;
+        };
+        if owner(&status, "Uid:") != Some(me) {
+            continue;
+        }
+        swapped += owner(&status, "VmSwap:").unwrap_or(0);
+        if let Ok(maps) = fs::read_to_string(format!("/proc/{each}/maps")) {
+            hint(each, &anonymous(&maps))?;
+            processes += 1;
+        }
+    }
+    Ok(format!(
+        "Read back {} MiB in swap for window {} ({}), {processes} processes, in {} ms.",
+        swapped >> 10,
+        window.id,
+        window.app_id,
+        started.elapsed().as_millis()
+    ))
+}
+
+/// Asks the kernel to read `ranges` of `pid`'s memory in.
+fn hint(pid: u32, ranges: &[(usize, usize)]) -> Result<(), String> {
+    // SAFETY: pidfd_open takes a pid and flags and returns a descriptor or -1.
+    let pidfd = unsafe { syscall(SYS_PIDFD_OPEN, c_long::from(pid), 0 as c_long) };
+    if pidfd < 0 {
+        // It ended since the scope was read.
+        return Ok(());
+    }
+    let ranges: Vec<Range> = ranges
+        .iter()
+        .map(|&(base, len)| Range { base, len })
+        .collect();
+    let mut refused = None;
+    for chunk in ranges.chunks(RANGES_AT_ONCE) {
+        // SAFETY: the ranges are a live slice of `chunk.len()` iovecs, as
+        // process_madvise reads them; the memory named is the target's.
+        let done = unsafe {
+            syscall(
+                SYS_PROCESS_MADVISE,
+                pidfd,
+                chunk.as_ptr(),
+                chunk.len(),
+                MADV_WILLNEED,
+                0 as c_long,
+            )
+        };
+        if done < 0 {
+            refused.get_or_insert_with(std::io::Error::last_os_error);
+        }
+    }
+    // SAFETY: pidfd is the descriptor pidfd_open gave, closed once.
+    unsafe { close(i32::try_from(pidfd).unwrap_or(-1)) };
+    match refused {
+        Some(error) if error.raw_os_error() == Some(1) => Err(format!(
+            "the kernel won't let process {pid}'s memory be read in: {error}"
+        )),
+        _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn window(app_id: &str, pid: u32) -> Window {
+        Window {
+            id: 7,
+            app_id: app_id.to_owned(),
+            pid,
+        }
+    }
+
+    #[test]
+    fn a_process_started_with_the_windows_app_id_belongs_to_it() {
+        let process = Process {
+            app_id: Some("pi-session.7".into()),
+            scope: "kitty-2684-26.scope".into(),
+            ancestors: vec![2684, 1],
+        };
+        assert!(
+            belongs(&process, &window("pi-session.7", 2684), 40),
+            "its own app id"
+        );
+        assert!(
+            !belongs(&process, &window("pi-session.8", 2684), 40),
+            "another window's"
+        );
+    }
+
+    #[test]
+    fn one_with_none_belongs_to_the_one_scope_of_the_kitty_drawing_the_window() {
+        let process = Process {
+            app_id: None,
+            scope: "kitty-839371-0.scope".into(),
+            ancestors: vec![839_371, 1729, 1],
+        };
+        let spawned = window("pi-spawned.133320004", 839_371);
+        assert!(belongs(&process, &spawned, 1), "the kitty's one scope");
+        assert!(
+            !belongs(&process, &spawned, 2),
+            "a kitty drawing two can't say which"
+        );
+        assert!(
+            !belongs(&process, &window("pi-spawned.1", 2684), 1),
+            "another kitty's window"
+        );
+        let elsewhere = Process {
+            ancestors: vec![1729, 1],
+            ..process
+        };
+        assert!(
+            !belongs(&elsewhere, &spawned, 1),
+            "not started under that kitty"
+        );
+    }
+
+    #[test]
+    fn nothing_belongs_to_a_window_holding_no_session() {
+        let process = Process {
+            app_id: Some("com.google.Chrome".into()),
+            ..Process::default()
+        };
+        assert!(
+            !belongs(&process, &window("com.google.Chrome", 63670), 0),
+            "only a session window's"
+        );
+    }
+
+    #[test]
+    fn a_window_is_read_back_at_most_once_every_thirty_seconds() {
+        let now = SystemTime::now();
+        assert!(due(None, now), "never read back");
+        assert!(!due(Some(now - Duration::from_secs(29)), now), "29 s ago");
+        assert!(due(Some(now - EVERY), now), "30 s ago");
+        assert!(
+            !due(Some(now + Duration::from_secs(5)), now),
+            "a stamp from a clock set back"
+        );
+    }
+
+    #[test]
+    fn only_private_anonymous_memory_is_read_back() {
+        let maps = "\
+55d0c2a00000-55d0c2a21000 rw-p 00000000 00:00 0                          [heap]
+7f0000000000-7f0000100000 rw-p 00000000 00:00 0 \n\
+7f0000100000-7f0000200000 ---p 00000000 00:00 0 \n\
+7f0000200000-7f0000300000 rw-s 00000000 00:01 4242                       /memfd:shared (deleted)
+7f0000300000-7f0000301000 r-xp 00001000 fd:01 123                        /nix/store/x/lib/libc.so
+7f0000400000-7f0000401000 rw-p 00000000 00:00 0                          [anon:v8]
+7ffd00000000-7ffd00021000 rw-p 00000000 00:00 0                          [stack]
+7ffd00100000-7ffd00102000 r--p 00000000 00:00 0                          [vvar]
+";
+        assert_eq!(
+            anonymous(maps),
+            vec![
+                (0x55d0_c2a0_0000, 0x21000),
+                (0x7f00_0000_0000, 0x10_0000),
+                (0x7f00_0010_0000, 0x10_0000),
+                (0x7f00_0040_0000, 0x1000),
+                (0x7ffd_0000_0000, 0x21000),
+            ],
+            "the heap, the anonymous ranges and the stack, not files, shared memory or vvar"
+        );
+    }
+
+    #[test]
+    fn niris_focused_window_is_read_from_its_answer() {
+        let reply = concat!(
+            r#"{"Ok":{"FocusedWindow":"#,
+            r#"{"id":410,"app_id":"pi-spawned.1","pid":839371,"is_focused":true}}}"#
+        );
+        assert_eq!(
+            answered(reply),
+            Ok(Some(window("pi-spawned.1", 839_371)).map(|w| Window { id: 410, ..w })),
+            "the window"
+        );
+        assert_eq!(
+            answered(r#"{"Ok":{"FocusedWindow":null}}"#),
+            Ok(None),
+            "none focused"
+        );
+        assert!(answered(r#"{"Err":"no"}"#).is_err(), "an error is said");
+    }
+
+    #[test]
+    fn a_process_is_run_as_its_owner_with_the_nice_capability_alone() {
+        assert_eq!(
+            as_owner(1000, 100),
+            [
+                "--reuid=1000",
+                "--regid=100",
+                "--clear-groups",
+                "--inh-caps=-all,+sys_nice",
+                "--ambient-caps=+sys_nice",
+                "--bounding-set=-all,+sys_nice",
+                "--"
+            ],
+            "setpriv's arguments"
+        );
+        assert_eq!(
+            owner("Name:\tpi\nUid:\t1000\t1000\t1000\t1000\n", "Uid:"),
+            Some(1000),
+            "the real uid"
+        );
+    }
+}
