@@ -1223,6 +1223,25 @@ onLinux {
       touch $out
     '';
 
+  # The open launcher holds its keys only once niri says no window has them,
+  # so one reopened right after a closing, whose letting go reached niri
+  # late, isn't closed as if a window took them (vm-desktop-looks, 3 of 6
+  # runs, 2026-11-11): tests/keys-held.qml replays each order of events
+  # through launcher/KeysHeld.js in Qt's own engine.
+  the-launcher-closes-only-for-keys-it-held =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-closes-only-for-keys-it-held" { } ''
+      cp ${../../tests/keys-held.qml} keys-held.qml
+      cp ${./launcher/KeysHeld.js} KeysHeld.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml keys-held.qml
+      touch $out
+    '';
+
   # A place's row reads alike at home and inside its parent (VKCF3Z's
   # 2a429f67, on Joel's 2026-11-08 "i don't like how the title and values on
   # the home screen differ from every other sub-menu"): tests/place-row.qml

@@ -79,6 +79,7 @@ import "launcher/Presented.js" as Presented
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
+import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/RowsPlace.js" as RowsPlace
 
 Scope {
@@ -7730,18 +7731,20 @@ Scope {
     // left Joel's keys going nowhere he could see, and Super+Space then
     // closed it rather than giving them back (2026-11-09). So once it has
     // held them, a window taking them closes it, as a click outside a menu
-    // puts it away. A notice held over it takes them and gives them back
-    // with no window focused, so the launcher stays open under it. Called
-    // as the keys or niri's focused window change, in either order.
+    // puts it away; launcher/KeysHeld.js says when it holds them and when
+    // they're taken. Called as the keys or niri's focused window change,
+    // in either order.
     function keysMoved(): void {
         if (!open && !opening)
             return;
-        if (prompt.Window.active) {
+        const moved = KeysHeld.moved(keysHeld, {
+            active: prompt.Window.active,
+            focused: Niri.focused,
+            lettingGo
+        });
+        if (moved === "held") {
             keysHeld = true;
-        } else if (lettingGo) {
-            // Let go on purpose, to be closed once its frame is drawn.
-            return;
-        } else if (keysHeld && Niri.focused !== null) {
+        } else if (moved === "taken") {
             console.info("launcher: closed, since a window took the keys");
             if (opening)
                 unopened();
