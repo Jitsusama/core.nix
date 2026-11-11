@@ -259,9 +259,27 @@ fn beside_the_big(
         lines: failed.lines,
     })?;
     Ok(match beside_built {
-        Some(Err(_)) => beside.into_iter().chain(after).collect(),
+        Some(Err(failed)) => {
+            eprintln!("{}", gone_on(&failed));
+            beside.into_iter().chain(after).collect()
+        }
         _ => after,
     })
+}
+
+/// What the journal says of the small pieces beside the big when they
+/// failed: why, and the lines that tell it, since the update goes on and
+/// nothing else says them. On 11 November that step failed after 169
+/// seconds with no reason in the journal, and its 328 pieces then took 12
+/// minutes more.
+fn gone_on(failed: &Failure) -> String {
+    std::iter::once(format!(
+        "{}; they're built after the big pieces instead",
+        failed.why
+    ))
+    .chain(failed.lines.iter().map(|line| format!("  {line}")))
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 /// Whether a derivation asks for `big-parallel` or is built from one that
@@ -1074,6 +1092,20 @@ mod tests {
         let (kept, rest) = heavy(&pieces(older).unwrap(), &needed, &["secret".to_owned()]);
         assert_eq!(kept, ["/nix/store/s-secret.drv"]);
         assert_eq!(rest, [] as [std::string::String; 0]);
+    }
+
+    #[test]
+    fn small_pieces_that_failed_beside_the_big_say_why_before_going_on() {
+        let said = gone_on(&Failure {
+            why: "building the small pieces beside the big failed".to_owned(),
+            lines: vec!["error: unable to download 'https://x': TLS".to_owned()],
+        });
+        assert_eq!(
+            said,
+            "building the small pieces beside the big failed; they're built after the big \
+             pieces instead\n  error: unable to download 'https://x': TLS",
+            "a failure beside the big didn't say why, or dropped its lines"
+        );
     }
 
     #[test]
