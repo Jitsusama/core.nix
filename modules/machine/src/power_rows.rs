@@ -25,6 +25,7 @@ use std::cmp::Ordering;
 use serde_json::{Value, json};
 
 use crate::rows::{GRAPHED, Made, Ready, bar, figure, item, spark};
+use crate::supply::RESTART_PCT;
 use crate::words::Words;
 
 /// The place the launcher shows these rows in.
@@ -770,6 +771,36 @@ impl Say<'_> {
     /// choices a step in when Joel's account may set it, and otherwise a
     /// figure saying it's the firmware's to set.
     fn limit(&self, battery: &Value) -> Option<Made> {
+        let mut row = self.limit_at(battery)?;
+        for (choice, stop) in row.inside.iter_mut().zip(STOPS) {
+            if let (Some(act), Some(becomes)) =
+                (choice.acts.first_mut(), self.limit_becomes(battery, stop))
+            {
+                act["becomes"] = becomes;
+            }
+        }
+        Some(row)
+    }
+
+    /// The Charge Limit's row as it will be served once its limit stops
+    /// at `stop`, and starts again `RESTART_PCT` below it where the
+    /// battery has a start, as `supply::set_limit` writes them, so the
+    /// shell draws it as its ask goes and keeps no copy of how far below
+    /// (Y2YBTS, 2026-11-11).
+    fn limit_becomes(&self, battery: &Value, stop: i64) -> Option<Value> {
+        let mut set = battery.clone();
+        set["limit_stop_pct"] = json!(stop);
+        if battery["limit_start_pct"].is_i64() {
+            set["limit_start_pct"] = json!((stop - i64::from(RESTART_PCT)).max(0));
+        }
+        let mut rows = Vec::new();
+        crate::rows::placed(PLACE, vec![self.limit_at(&set)?], None, 0, &mut rows);
+        rows.into_iter().next()
+    }
+
+    /// The Charge Limit's row as the battery's limit stands, with a
+    /// choice inside for each stop where the limit can be set.
+    fn limit_at(&self, battery: &Value) -> Option<Made> {
         let stop = battery["limit_stop_pct"].as_i64()?;
         let start = battery["limit_start_pct"].as_i64();
         let side = match start {
@@ -1002,6 +1033,15 @@ mod tests {
             json!({ "ask": "act", "act": "charge-limit", "supply": "BAT0", "stop_pct": 80 })
         );
         assert_eq!(row(&ready, "row:power:limit:stop:60")["side"], json!([]));
+        // Each choice's ask carries the Charge Limit's row as it will be
+        // served once done, starting again 5 below.
+        let becomes = &row(&ready, "row:power:limit:stop:60")["acts"][0]["becomes"];
+        assert_eq!(becomes["key"], "row:power:limit");
+        assert_eq!(becomes["side"][0]["said"], "stops at 60%, starts below 55%");
+        assert_eq!(
+            becomes["acts"], limit["acts"],
+            "the Charge Limit keeps the acts it's served with now"
+        );
     }
 
     #[test]
