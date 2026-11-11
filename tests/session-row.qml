@@ -340,44 +340,9 @@ QtObject {
         if (worked !== 3)
             failures.push(`a landing's side kept past its day: worked ${worked} times`);
 
-        // Agents' Recent: those closed this boot, keyed by id at when they
-        // ended, and never one Agents shows already: a closed orchestrator
-        // or one running again by its address, one to reopen by its id.
-        // When each ended is the node's number, read as it is, never a
-        // time written out to be read back at each opening.
-        const closed = [
-            { id: "s-1", address: "A", title: "Recent, Once", machine: "here",
-                folder: "tree", ended: 1794116460000,
-                presence: { questInfo: { title: "Recent, Once" }, repo: "core.nix" } },
-            { id: "s-2", address: "B", title: "notes", machine: "here", folder: "notes",
-                quest: "QEST-B", ended: 1794115800000,
-                presence: { questInfo: { title: "Write It Up" } } },
-            { id: "s-3", address: "C", title: "C", machine: "here", folder: "x",
-                ended: 1794114000000, presence: {} },
-            { id: "s-4", address: "D", title: "D", machine: "here", folder: "y",
-                ended: 1794110400000, presence: {} }
-        ];
-        const keyed = SessionRow.closedRecent(closed);
-        const keyedSays = keyed.map(one => `${one.key}@${one.at}`).join(" ");
-        const keyedWant = "session:s-1@1794116460000 session:s-2@1794115800000"
-            + " session:s-3@1794114000000 session:s-4@1794110400000";
-        if (keyedSays !== keyedWant)
-            failures.push(`closed as Recent lists them: "${keyedSays}", not "${keyedWant}"`);
-        const shownSays = SessionRow.shownElsewhere(closed, [{ id: "s-3" }], ["D", "Z"]).join();
-        if (shownSays !== "session:s-3,session:s-4")
-            failures.push(`closed shown elsewhere: "${shownSays}"`);
-        // One whose quest a session works on again, at a new address, is
-        // left out too, since reopening it would give the quest two.
-        const questSays = SessionRow.shownElsewhere(closed, [], [], ["QEST-B", ""]).join();
-        if (questSays !== "session:s-2")
-            failures.push(`closed with its quest working again: "${questSays}"`);
-        // Its note never says its name again: its quest's title where
-        // that differs, else where it ran, its repository before its folder.
-        const notes = closed.slice(0, 3).map(SessionRow.closedNote).join(" | ");
-        const notesWant = "here \u00b7 core.nix | Write It Up | here \u00b7 x";
-        if (notes !== notesWant)
-            failures.push(`closed notes: "${notes}", not "${notesWant}"`);
-        // When it closed, at its right: the time today, the day before it
+        // Agents' Recent is the agents daemon's (modules/agents/src/recent.rs),
+        // which lists, leaves out and notes each; when one closed, at its
+        // right: the time today, the day before it
         // otherwise.
         const closing = { closed: "closed", closedAt: "closed {time}",
             closedOn: "closed {day} {time}" };

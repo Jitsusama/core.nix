@@ -14,10 +14,11 @@ use serde_json::Value;
 
 use crate::clock;
 use crate::drawer;
+use crate::recent;
 use crate::reopen::{self, Kept};
 use crate::row::{self, Known, Shown, Words};
 use crate::served;
-use crate::session::{self, JoelCan, Session};
+use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
 
 /// What each source last said.
@@ -175,6 +176,45 @@ impl Inputs {
         reopen::offered(self.restore.as_ref(), &self.boot, &self.kept, &here)
     }
 
+    /// Recent's sessions, leaving out those Agents shows elsewhere: one
+    /// running or parked, any machine's, by its address or its quest, an
+    /// orchestrator the harness lists, and those `reopening`.
+    fn recent<'a>(&'a self, reopening: &[Value]) -> Vec<Value> {
+        let live: Vec<Session<'a>> = self
+            .sessions
+            .records()
+            .map(|(_, one)| Session(one))
+            .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
+            .collect();
+        let listed = self
+            .orchestrators
+            .as_ref()
+            .and_then(|said| said["orchestrators"].as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|one| one["address"].as_str());
+        let quest = |one: &Session<'a>| -> Option<&'a str> {
+            let presence = one.presence()?;
+            presence["questInfo"]["id"]
+                .as_str()
+                .or_else(move || presence["quest"].as_str())
+        };
+        let shown = recent::Shown {
+            addresses: live.iter().map(|one| one.address()).chain(listed).collect(),
+            quests: live
+                .iter()
+                .filter_map(quest)
+                .filter(|one| !one.is_empty())
+                .collect(),
+            reopening: reopening
+                .iter()
+                .filter_map(|one| one["session"]["id"].as_str())
+                .map(str::to_owned)
+                .collect(),
+        };
+        recent::recent(self.sessions.records().map(|(_, one)| Session(one)), &shown)
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -192,6 +232,7 @@ impl Inputs {
             windowed: &windowed,
             sharing: self.sharing,
         };
+        let reopens = self.reopens();
         let used = self.used();
         let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
         let sessions = session::in_order(
@@ -235,7 +276,8 @@ impl Inputs {
             &summary::summary(&states, today_spent, &self.words.agents),
         )
         .with_drawers(drawers)
-        .with_reopens(self.reopens())
+        .with_recent(self.recent(&reopens))
+        .with_reopens(reopens)
     }
 }
 
@@ -418,15 +460,44 @@ mod tests {
                  "hosted": {"host": "attended"}}}
         ]}));
         let served = served(&inputs);
-        assert!(served.get("reopen:s-o").is_none(), "s-o runs here");
+        assert!(served.get("reopen:agents:s-o").is_none(), "s-o runs here");
         assert_eq!(
-            served.get("reopen:s-gone").map(|one| one["way"].clone()),
+            served
+                .get("reopen:agents:s-gone")
+                .map(|one| one["way"].clone()),
             Some(json!("boot")),
             "one not back is served as the last boot's"
         );
         assert!(
-            served.get("reopen:s-viewed").is_none(),
+            served.get("reopen:agents:s-viewed").is_none(),
             "one pi's host runs is back while no place of its window is kept"
+        );
+    }
+
+    #[test]
+    fn recent_lists_one_closed_unless_its_to_reopen_or_its_orchestrator_listed() {
+        let mut inputs = inputs();
+        inputs.boot = "this-one".into();
+        inputs.restore = Some(json!({"boot": "the-last", "sessions": [
+            {"id": "s-y", "cwd": "/tmp"}
+        ]}));
+        inputs.orchestrators = Some(json!({"orchestrators": [{"address": "Z"}]}));
+        inputs.sessions.took(&json!({"changed": [
+            {"key": "session:y", "standing": "closed",
+             "presence": {"addresses": ["Y"], "session": "s-y"}},
+            {"key": "session:z", "standing": "closed",
+             "presence": {"addresses": ["Z"], "session": "s-z"}}
+        ]}));
+        let served = served(&inputs);
+        let listed: Vec<_> = served
+            .all()
+            .filter(|record| record["kind"] == "recent")
+            .map(|record| record["recent"]["id"].clone())
+            .collect();
+        assert_eq!(
+            listed,
+            [json!("x")],
+            "X closed; Y is to reopen, Z a closed orchestrator"
         );
     }
 

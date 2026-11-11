@@ -39,7 +39,6 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "../PiSource.js" as Pi
 import "../Places.js" as Places
 import "../When.js" as When
 import "Landed.js" as Landed
@@ -133,7 +132,7 @@ Provider {
             id: agentsRows
 
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-            kind: ["row", "summary"]
+            kind: ["row", "summary", "recent"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             onWatchingChanged: {
@@ -176,6 +175,8 @@ Provider {
     readonly property var placing: ({ keys: [] })
     readonly property var wrapped: ({})
     property int placings: 0
+    // Says Recent's records moved, so only Recent is made again.
+    property int recentMoves: 0
 
     // Takes what the daemon said moved: each row's key gone or changed let
     // go, and each changed put back where its order places it. A drawer or
@@ -190,6 +191,8 @@ Provider {
             moved.push(changed[at]);
         for (let at = 0; at < gone.length; at += 1)
             moved.push(gone[at]);
+        if (moved.some(key => String(key).startsWith("recent:")))
+            recentMoves += 1;
         if (!moved.some(rowKey))
             return;
         for (const key of moved) {
@@ -1181,51 +1184,26 @@ Provider {
         return given;
     }
 
-    // Agents' Recent: the sessions that closed this boot, as every Recent
-    // is laid out (Recent.js), newest first, each once by its id, and
+    // Agents' Recent: the sessions that closed this boot, newest first, as
+    // the agents daemon serves them ready (modules/agents/src/recent.rs),
     // never one Agents already shows, a closed orchestrator at the tree's
-    // end, one of Sessions to Reopen or one running again
-    // (SessionRow.js's shownElsewhere). The last boot's are Sessions to
-    // Reopen's alone. It always stands, after Landed and before Start, its
-    // names in its drawer and how many at its right, and Return on one
-    // reopens it where it left off, by its id (VKCF3Z, 2026-11-08).
-    // Made again only when what it lists reads otherwise, counted by a
-    // number, which tells its readers only when it changes: Sessions makes
-    // every session anew as any one changes, and a new Recent each time was
-    // a change to Agents' things, which has the launcher walk again where
-    // every row lives (Launcher.qml's stale). What it lists is kept beside
-    // it in recentListed, a plain object that's never reassigned, so
-    // writing its fields notifies nothing and can't loop; recent reads them
-    // only once this number has said they changed. The rows are compared
-    // in place rather than as text, since nine of Joel's closed sessions'
-    // text, about 30,000 characters, started a garbage collection every
-    // second change with the launcher open (2026-11-10).
-    readonly property int recentFrom: {
-        if (!readable())
-            return recentListed.made;
-        const closed = Sessions.closed;
-        const live = Sessions.running.concat(Sessions.parked);
-        const addresses = (source("orchestrators")?.closed ?? []).map(one => one.address)
-            .concat(live.map(one => one.address));
-        const quests = live.map(one => one.presence?.questInfo?.id ?? one.presence?.quest ?? "");
-        const listed = Recent.listed([SessionRow.closedRecent(closed)],
-            SessionRow.shownElsewhere(closed, Sessions.toReopen, addresses, quests));
-        const rows = listed.map(one => one.row);
-        const day = new Date().toDateString();
-        recentListed.rows = listed;
-        if (recentListed.made > 0 && recentListed.day === day
-            && Pi.alike(recentListed.said, rows))
-            return recentListed.made;
-        recentListed.said = rows;
-        recentListed.day = day;
-        recentListed.made += 1;
-        return recentListed.made;
-    }
-    readonly property var recentListed: ({ rows: [], said: [], day: "", made: 0 })
+    // end, one of Sessions to Reopen or one running again. The last boot's
+    // are Sessions to Reopen's alone. It always stands, after Landed and
+    // before Start, its names in its drawer and how many at its right, and
+    // Return on one reopens it where it left off, by its id (VKCF3Z,
+    // 2026-11-08). Made again only as the daemon says its records moved,
+    // or the day turns, which rewords when each closed: Sessions had made
+    // every closed session anew as any one changed, and compared nine of
+    // Joel's, about 30,000 characters, each time (2026-11-10).
     readonly property var recent: {
         if (!readable())
             return madeBefore("recent", null);
-        const listed = recentFrom === 0 ? [] : recentListed.rows;
+        void recentMoves;
+        void Calendars.today;
+        const held = Object.values(rowsKind?.held ?? {})
+            .filter(one => one?.kind === "recent" && one.recent);
+        const listed = Order.sorted(held, Order.smaller(one => one.order))
+            .map(one => ({ row: one.recent }));
         const words = Words.of("agents:recent");
         const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
             || one.row.id)), false, words.said ?? {});
@@ -1238,7 +1216,7 @@ Provider {
         // alone in the folder its record ran in, as one of Sessions to
         // Reopen does.
         const reopen = one => Sessions.reopen(Object.assign({}, one,
-            { machine: undefined, cwd: String(one.presence?.cwd ?? "") }),
+            { machine: undefined, cwd: String(one.cwd ?? "") }),
             cwd => provider.launcher?.tellOnOpen([[homely(cwd), String(
                 (Words.of("verb:agents:to-reopen:one").said ?? {}).isGone ?? ""), Theme.alert]]));
         const row = one => thing({
@@ -1248,7 +1226,7 @@ Provider {
             also: Fuzzy.prepare(`${one.address ?? ""} ${one.folder ?? ""} ${one.quest ?? ""}`),
             side: SessionRow.closedAt(one.ended, now, said,
                 date => Qt.formatDate(date, "ddd")),
-            note: SessionRow.closedNote(one),
+            note: String(one.note ?? ""),
             verb: Words.verb("verb:agents:to-reopen:one"),
             glyph: Theme.glyph.agent,
             hue: SessionRow.hue("off"),

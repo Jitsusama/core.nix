@@ -165,36 +165,6 @@ function full(usage, said) {
     return share >= FULL_AT ? String(said.full ?? "").replace("{share}", share) : "";
 }
 
-// Agents' Recent: the sessions that closed this boot (Sessions.closed),
-// as Recent.js lists them, by id and when each ended (RSCH-20261030-GB56HX),
-// its `ended` in milliseconds as Sessions keeps it.
-function closedRecent(closed) {
-    return (closed ?? []).map(one => ({ key: `session:${one.id}`, at: one.ended, row: one }));
-}
-
-// Those closed Agents shows already, as closedRecent keys them: a closed
-// orchestrator or one running again by address, one to reopen by id, or
-// one whose quest a live session works on, which reopening would double.
-function shownElsewhere(closed, toReopen, addresses, quests) {
-    const reopening = new Set((toReopen ?? []).map(one => String(one.id)));
-    const listed = new Set(addresses ?? []);
-    const working = new Set((quests ?? []).filter(quest => quest));
-    return (closed ?? []).filter(one => reopening.has(String(one.id))
-        || listed.has(one.address) || working.has(one.quest)).map(one => `session:${one.id}`);
-}
-
-// A closed session's note, which never says its name again: its quest's
-// title where that differs from its name, else the machine and repository
-// it ran in, as a session's drawer names them (VKCF3Z, 2026-11-08).
-function closedNote(one) {
-    const quest = String(one.presence?.questInfo?.title ?? "");
-    if (quest !== "" && quest !== one.title) {
-        return quest;
-    }
-    return [one.machine ?? "", one.presence?.repo || one.folder || ""]
-        .filter(part => part !== "").join(" \u00b7 ");
-}
-
 // When a closed session ended, at its right: "closed 23:41" today, and
 // with its day before, "closed Fri 23:41", as `day` names a date. `said`
 // is the vocabulary's agents words, and `endedAt` when it ended, in

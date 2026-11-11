@@ -58,6 +58,8 @@ pub struct Made {
     drawers: Vec<Value>,
     /// Each session there is to reopen, a whole record (reopen.rs).
     reopens: Vec<Value>,
+    /// Each session Recent lists, a whole record (recent.rs).
+    recent: Vec<Value>,
 }
 
 impl Made {
@@ -71,6 +73,12 @@ impl Made {
     #[must_use]
     pub fn with_reopens(self, reopens: Vec<Value>) -> Self {
         Self { reopens, ..self }
+    }
+
+    /// The same, with every session Recent lists beside its rows.
+    #[must_use]
+    pub fn with_recent(self, recent: Vec<Value>) -> Self {
+        Self { recent, ..self }
     }
 }
 
@@ -153,6 +161,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         summary,
         drawers: Vec::new(),
         reopens: Vec::new(),
+        recent: Vec::new(),
     }
 }
 
@@ -255,7 +264,12 @@ impl Served {
             SUMMARY.to_owned(),
             json!({"key": SUMMARY, "kind": "summary", "summary": made.summary}),
         );
-        for whole in made.drawers.into_iter().chain(made.reopens) {
+        let wholes = made
+            .drawers
+            .into_iter()
+            .chain(made.reopens)
+            .chain(made.recent);
+        for whole in wholes {
             if let Some(key) = whole["key"].as_str() {
                 records.insert(key.to_owned(), whole);
             }
