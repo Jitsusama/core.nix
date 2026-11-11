@@ -325,6 +325,50 @@ in
       };
     };
 
+    # What passed at each commit, which a session that could remove the
+    # files once removed all of them (offload/src/keep.rs). Only this
+    # account writes them, when the account asks through the socket, which
+    # adds whole lines or forgets one commit's; every account reads them.
+    users.users.nix-offload-passed = {
+      isSystemUser = true;
+      group = "nix-offload-passed";
+    };
+    users.groups.nix-offload-passed = { };
+
+    systemd.sockets.nix-offload-keep = {
+      description = "Where the account asks for what passed to be kept";
+      wantedBy = [ "sockets.target" ];
+      socketConfig = {
+        ListenStream = "/run/nix-offload-keep.sock";
+        SocketUser = config.jitsusama.nix-offload.account;
+        SocketMode = "0600";
+      };
+    };
+
+    # Started by its socket and ended a minute after it was last asked, so
+    # it costs nothing while idle.
+    systemd.services.nix-offload-keep = {
+      description = "Keeps what passed at each commit, removing none it's not told to";
+      serviceConfig = {
+        ExecStart = "${lib.getExe offload} keep --folder /var/lib/nix-offload-passed";
+        User = "nix-offload-passed";
+        Group = "nix-offload-passed";
+        StateDirectory = "nix-offload-passed";
+        StateDirectoryMode = "0755";
+        UMask = "0022";
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateNetwork = true;
+        RestrictAddressFamilies = "AF_UNIX";
+        NoNewPrivileges = true;
+        CapabilityBoundingSet = "";
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
+        SystemCallFilter = "@system-service";
+      };
+    };
+
     # Proving a standing builder means handing the daemon a builder line,
     # which it takes only from an account it trusts, so root proves them
     # and the lender reads what it says (offload/src/standing.rs). Nothing
