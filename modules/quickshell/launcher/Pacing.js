@@ -101,6 +101,33 @@ function verbRoom(kept, words, face, weigh) {
     return { words, face, widest: weigh(words) };
 }
 
+// The rows' keys as the foot weighed them, kept for what's typed, the steps
+// and the mode, `key`, in these words and the face the foot measured them
+// in: a row is the same object for as long as it says the same, so one
+// weighed before says the same keys at the same widths. Weighed afresh each
+// time, one act in For You's 115 rows weighed every row again, 7 to 46 ms of
+// the 11 to 52 its rows took to be shown, where one row had changed
+// (2026-11-10).
+function weighing(kept, key, words, face) {
+    if (kept !== null && kept.key === key && kept.words === words && kept.face === face) {
+        return kept;
+    }
+    return { key, words, face, rows: new Map(), weighed: 0 };
+}
+
+// A row's keys and widths, as `kept` holds them or as `weigh` weighs them
+// now, kept for the next time.
+function weighedRow(kept, row, weigh) {
+    const known = kept.rows.get(row);
+    if (known !== undefined) {
+        return known;
+    }
+    const made = weigh(row);
+    kept.rows.set(row, made);
+    kept.weighed += 1;
+    return made;
+}
+
 // What an opening's own work went on, from each part's milliseconds by its
 // name, said slowest first, since the slowest is what its line is read for,
 // and parts as slow A to Z. A part under a millisecond is left out, and an
