@@ -25,7 +25,6 @@
 //! The round talks to git, nix and GitHub through `World`, so each of
 //! those choices is tested against a stand-in (the tests below).
 
-use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
@@ -1429,8 +1428,8 @@ fn search(
     let merges = to_search(world, state, base, head, test)?;
     // Each step runs only the subtests that failed in both runs at the head
     // (subtests.rs), and what it finds is checked at its parent the same way.
-    let at_head: Vec<String> = (1..=2)
-        .map(|run| fs::read_to_string(state.log(head, test, run)).unwrap_or_default())
+    let at_head: Vec<_> = (1..=2)
+        .map(|run| subtests::failed_in(crate::world::lines_of(&state.log(head, test, run))))
         .collect();
     let narrowed = subtests::narrowed(test, &at_head);
     if narrowed != test {

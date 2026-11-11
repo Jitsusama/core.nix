@@ -5,9 +5,10 @@
 //! is signed as theirs are, and they're found on the path rather than
 //! pinned.
 
+use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Write as _;
+use std::io::{BufRead as _, BufReader, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -69,20 +70,30 @@ impl Clock {
         }
     }
 
+    /// Whether this run's part of `log` says a builder took it, read from
+    /// where it begins rather than from the runs before it.
+    fn said_taken(&self, log: &Path) -> bool {
+        let mut ours = Vec::new();
+        fs::File::open(log)
+            .and_then(|mut file| {
+                file.seek(SeekFrom::Start(
+                    u64::try_from(self.from).unwrap_or(u64::MAX),
+                ))?;
+                file.read_to_end(&mut ours)
+            })
+            .is_ok_and(|_| {
+                ours.windows(TAKEN.len())
+                    .any(|seen| seen == TAKEN.as_bytes())
+            })
+    }
+
     /// Whether the run whose log is `log` should be stopped at `now`.
     fn overdue(&mut self, log: &Path, now: Instant) -> bool {
         let written = fs::metadata(log).map_or(0, |meta| meta.len());
         if written != self.written {
             self.written = written;
             self.heard = now;
-            if self.taken.is_none()
-                && fs::read(log).is_ok_and(|text| {
-                    text.get(self.from..).is_some_and(|ours| {
-                        ours.windows(TAKEN.len())
-                            .any(|seen| seen == TAKEN.as_bytes())
-                    })
-                })
-            {
+            if self.taken.is_none() && self.said_taken(log) {
                 self.taken = Some(now);
             }
         }
@@ -259,7 +270,7 @@ impl Real {
             return Err(format!("{UNCHECKED}, {}", log.display()));
         }
         if !checked.success() {
-            let failed = unbuilt(&fs::read_to_string(&log).unwrap_or_default());
+            let failed = unbuilt(lines_of(&log));
             let new: Vec<&String> = failed
                 .iter()
                 .filter(|check| !self.fails_at(&cut_from, check))
@@ -438,19 +449,47 @@ fn head_not_seen(why: &str) -> bool {
 /// Whether a build's log says its builder couldn't fetch the commit's own
 /// source, as when GitHub answered 503 to every builder at 06:38 on
 /// 8 November, and the net called a test it never ran flaky.
-pub fn unfetched(log: &str, commit: &str) -> bool {
-    log.lines()
-        .any(|line| line.contains("while fetching the input") && line.contains(commit))
+pub fn unfetched(log: impl IntoIterator<Item = impl AsRef<str>>, commit: &str) -> bool {
+    log.into_iter().any(|line| {
+        let line = line.as_ref();
+        line.contains("while fetching the input") && line.contains(commit)
+    })
+}
+
+/// A log's lines, read one at a time and ended as `str::lines` ends them,
+/// what isn't UTF-8 in them replaced, and none for a log that can't be
+/// opened. A VM test's log runs to tens
+/// of megabytes. On 11 November the watcher, reading each whole, grew
+/// from 591 to 981 MB in sixteen minutes, nearly all of it full 64 MB
+/// allocator arenas, which each thread keeps at the most it ever held.
+pub fn lines_of(log: &Path) -> impl Iterator<Item = String> {
+    fs::File::open(log).into_iter().flat_map(|file| {
+        BufReader::new(file)
+            .split(b'\n')
+            .map_while(Result::ok)
+            .map(|mut line| {
+                if line.last() == Some(&b'\r') {
+                    line.pop();
+                }
+                String::from_utf8_lossy(&line).into_owned()
+            })
+    })
 }
 
 /// The checks a nix build's log says it couldn't build, by the names their
 /// derivations go by.
-pub fn unbuilt(log: &str) -> Vec<String> {
+pub fn unbuilt(log: impl IntoIterator<Item = impl AsRef<str>>) -> Vec<String> {
     let mut names: Vec<String> = log
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("error: Cannot build '/nix/store/"))
-        .filter_map(|rest| rest.split_once(".drv'").map(|(path, _)| path))
-        .filter_map(|path| path.split_once('-').map(|(_, name)| name.to_owned()))
+        .into_iter()
+        .filter_map(|line| {
+            let rest = line
+                .as_ref()
+                .trim()
+                .strip_prefix("error: Cannot build '/nix/store/")?
+                .to_owned();
+            let (path, _) = rest.split_once(".drv'")?;
+            path.split_once('-').map(|(_, name)| name.to_owned())
+        })
         .collect();
     names.sort();
     names.dedup();
@@ -519,10 +558,7 @@ impl Real {
             match child.try_wait() {
                 // A run whose builder couldn't fetch the commit's source ran
                 // nothing, so it's sent again like one no builder took.
-                Ok(Some(status))
-                    if !status.success()
-                        && unfetched(&fs::read_to_string(log).unwrap_or_default(), commit) =>
-                {
+                Ok(Some(status)) if !status.success() && unfetched(lines_of(log), commit) => {
                     return Some(UNSENT);
                 }
                 Ok(Some(status)) => return status.code(),
@@ -673,14 +709,13 @@ impl World for Real {
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
         let picked = subtests::subtests_of(check);
         let code = self.built(commit, check, &picked, log)?;
-        let said = || fs::read_to_string(log).unwrap_or_default();
         if picked.is_empty() || code == 0 {
             return Some(code);
         }
-        if subtests::none_selected(&said()) {
+        if subtests::none_selected(lines_of(log)) {
             return Some(0);
         }
-        if subtests::unbuildable(&said()) {
+        if subtests::unbuildable(lines_of(log)) {
             return self.built(commit, subtests::whole(check), &[], log);
         }
         Some(code)
@@ -880,13 +915,17 @@ pub fn quarantine_body(test: &str, owner: Option<u64>, commit: &str, reason: &st
 /// A log's last lines, as plain text a PR can hold: no colour codes, and
 /// only ASCII, so no character the prose rules refuse comes in with it.
 pub fn tail(log: &Path, lines: usize) -> String {
-    let text = fs::read_to_string(log).unwrap_or_default();
-    let kept: Vec<String> = text
-        .lines()
-        .map(plain)
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    kept[kept.len().saturating_sub(lines)..].join("\n")
+    let mut kept = VecDeque::with_capacity(lines + 1);
+    for line in lines_of(log).map(|line| plain(&line)) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        kept.push_back(line);
+        if kept.len() > lines {
+            kept.pop_front();
+        }
+    }
+    Vec::from(kept).join("\n")
 }
 
 /// What says a test failed and why, read out of its log: the lines pytest
@@ -901,9 +940,8 @@ pub fn failure(log: &Path, lines: usize) -> String {
         "failed with error",
         "Traceback",
     ];
-    let text = fs::read_to_string(log).unwrap_or_default();
     let mut said: Vec<String> = Vec::new();
-    for line in text.lines().map(plain) {
+    for line in lines_of(log).map(|line| plain(&line)) {
         let bare = line
             .split_once("> ")
             .map_or(line.as_str(), |(_, rest)| rest)
@@ -1109,12 +1147,15 @@ mod tests {
              to download 'https://github.com/someone/core/archive/{commit}.tar.gz': \
              HTTP error 503\n"
         );
-        assert!(unfetched(&log, commit));
+        assert!(unfetched(log.lines(), commit));
         assert!(
-            !unfetched(&log, "0123456789abcdef0123456789abcdef01234567"),
+            !unfetched(log.lines(), "0123456789abcdef0123456789abcdef01234567"),
             "another input's fetch is the test's own to fail on"
         );
-        assert!(!unfetched("error: builder failed with exit code 1", commit));
+        assert!(!unfetched(
+            "error: builder failed with exit code 1".lines(),
+            commit
+        ));
     }
 
     #[test]
@@ -1125,7 +1166,7 @@ mod tests {
             error: Cannot build '/nix/store/def456-vm-clock-keeps-time.drv'.\n\
             error: Cannot build '/nix/store/abc123-nothing-names-its-own-look.drv'.\n";
         assert_eq!(
-            unbuilt(log),
+            unbuilt(log.lines()),
             vec![
                 "nothing-names-its-own-look".to_owned(),
                 "vm-clock-keeps-time".to_owned()
@@ -1358,6 +1399,23 @@ mod tests {
         let list = json!([{ "test": "vm-a", "reason": "r" }, { "test": "vm-b" }]);
         assert_eq!(tests_in(&list), ["vm-a", "vm-b"]);
         assert_eq!(tests_in(&json!({})), [] as [std::string::String; 0]);
+    }
+
+    #[test]
+    fn a_log_is_read_a_line_at_a_time_as_str_lines_reads_it() {
+        let log = std::env::temp_dir().join(format!("merge-net-lines-{}.log", std::process::id()));
+        fs::write(&log, b"one\r\ntw\xffo\n\nthree").unwrap();
+        assert_eq!(
+            lines_of(&log).collect::<Vec<_>>(),
+            ["one", "tw\u{fffd}o", "", "three"],
+            "a carriage return ends a line, and a byte that isn't UTF-8 is replaced"
+        );
+        fs::remove_file(&log).unwrap();
+        assert_eq!(
+            lines_of(&log).count(),
+            0,
+            "a log that isn't there has no lines"
+        );
     }
 
     #[test]
