@@ -3,8 +3,9 @@
 swap-in.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 The sorter starts memory-swap-in@PID.service as the focus comes to a window, and the unit reads
 back what swap holds of PID's scope only if PID belongs to the session window niri says has the
-focus, at most once a window every 30 s. A stand-in niri answers for someone, an administrator,
-from a file the tests write, and stand-in heaps play pi's, each pushed out to swap on disk first.
+focus, at most once a window every 30 s. A stand-in niri, run as someone's own niri.service,
+answers for someone, an administrator, from a file the tests write, and stand-in heaps play pi's,
+each pushed out to swap on disk first.
 """
 
 from __future__ import annotations
@@ -28,7 +29,8 @@ def up(machine: BaseMachine) -> BaseMachine:
     runtime = runtime_of(machine)
     machine.wait_for_unit(f"user@{runtime.rsplit('/', 1)[1]}.service")
     machine.succeed(
-        "systemd-run --uid=someone --unit=niri-stand-in python3 /etc/swap-in/niri.py "
+        "systemd-run --machine=someone@.host --user --unit=niri "
+        "/run/current-system/sw/bin/python3 /etc/swap-in/niri.py "
         f"{runtime}/niri.test.sock {runtime}/focus.json"
     )
     machine.wait_for_file(f"{runtime}/niri.test.sock")
@@ -103,6 +105,11 @@ def test_a_window_is_read_back_once_in_30_s(up: BaseMachine) -> None:
     focus(up, 2, "pi-session.2")
     status, said = swap_in(up, "someone", pid)
     assert status == 0, said
+    assert up.succeed("stat -c %U:%a /run/memory-swap-in").strip() == "root:700", (
+        "the stamps aren't root's alone"
+    )
+    # Whatever the account clears of its own, the window's turn is kept.
+    up.execute(f"runuser -u someone -- rm -rf /run/memory-swap-in {runtime_of(up)}/memory-swap-in")
     status, said = swap_in(up, "someone", pid)
     assert status == 0, said
     assert "was read back within 30s" in said, said
@@ -116,6 +123,29 @@ def test_a_process_outside_the_focused_window_is_left_alone(up: BaseMachine) -> 
     assert status != 0, said
     assert "isn't in the focused window" in said, said
     assert resident(up, "elsewhere") < before + (8 << 20), "the heap was read back anyway"
+    # A call while the window lacks the focus doesn't use up its turn.
+    focus(up, 3, "pi-session.3")
+    status, said = swap_in(up, "someone", pid)
+    assert status == 0, said
+    assert "Read back" in said, said
+
+
+def test_a_socket_that_isnt_niris_is_never_asked(up: BaseMachine) -> None:
+    pid = heap(up, "planted", "pi-session.8")
+    runtime = runtime_of(up)
+    planted = json.dumps({"id": 8, "app_id": "pi-session.8", "pid": 0, "is_focused": True})
+    up.succeed(f"echo '{planted}' > {runtime}/planted.json")
+    # Named to sort ahead of niri's own, as any of the account's processes could.
+    up.succeed(
+        "systemd-run --uid=someone --unit=planted-niri python3 /etc/swap-in/niri.py "
+        f"{runtime}/niri.0.sock {runtime}/planted.json"
+    )
+    up.wait_for_file(f"{runtime}/niri.0.sock")
+    focus(up, 9, "pi-session.9")
+    status, said = swap_in(up, "someone", pid)
+    up.succeed("systemctl stop planted-niri.service")
+    assert status != 0, said
+    assert "isn't in the focused window 9" in said, said
 
 
 def test_a_window_that_is_no_session_is_left_alone(up: BaseMachine) -> None:
