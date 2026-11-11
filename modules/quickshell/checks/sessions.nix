@@ -57,8 +57,9 @@
   # pi's sessions are known by their own records as the machine's node
   # holds them, never by a window's title, and each one's window by the app
   # id it opened with, or for one opened without, through the kitty it runs
-  # in (tests/sessions.qml), with the node, niri and kitten stood in over
-  # what modules/quickshell/tests/stand-ins/sessions-state.sh lays out.
+  # in (tests/sessions.qml), with the node, the agents daemon, niri and
+  # kitten stood in over what modules/quickshell/tests/stand-ins/
+  # sessions-state.sh lays out.
   a-session-is-known-by-its-own-record =
     let
       # Three windows of the same title, one of kitty 500's and two of 600's,
@@ -120,12 +121,14 @@
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions.qml} shell.qml
+      mkdir launcher
+      cp ${../launcher/Order.js} launcher/Order.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
@@ -190,6 +193,8 @@
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions-behind-the-lock.qml} shell.qml
+      mkdir launcher
+      cp ${../launcher/Order.js} launcher/Order.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
@@ -242,6 +247,8 @@
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions-hosted-reopen.qml} shell.qml
+      mkdir launcher
+      cp ${../launcher/Order.js} launcher/Order.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${niri} Niri.qml

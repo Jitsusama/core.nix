@@ -252,80 +252,16 @@ QtObject {
                 queued("d", true), queued("e", false)]).map(entry => entry.one.id),
             ["b", "d", "a", "c", "e"]);
 
-        // What Sessions to Reopen offers of the last boot, which nothing
-        // reopens until Joel asks: what restore.json kept, the parked among
-        // it, until each is back here.
-        const ids = list => list.sessions.map(one => one.id);
-        const restored = { boot: "the-last", sessions: [
-            { id: "01-kept", cwd: "/tmp", quest: "QEST-KEEL" },
-            { id: "01-asleep", cwd: "/tmp", parked: true, quest: "QEST-REEF" },
-            { id: "01-ferried", cwd: "/tmp", carried: { from: "far", at: "" } },
-            { id: "01-freed", cwd: "/tmp", released: { from: "attended", at: "" } }] };
-        const offered = (putOff, here) => {
-            const last = Places.lastBoot(restored, { boot: "this-one", putOff, here });
-            return [last.boot, ids(last)];
-        };
-        expect("what restore.json kept, the parked too, but the carried and given back",
-            offered("", []), ["the-last", ["01-kept", "01-asleep"]]);
-        expect("each until it's back here",
-            offered("", [{ id: "01-kept", quest: "QEST-KEEL" }]), ["the-last", ["01-asleep"]]);
-        // A quest begun again since, in a session restore.json doesn't
-        // list, has its old one left, so it doesn't run twice; another of
-        // the last boot's back, or one with no quest, takes none's place.
-        expect("none whose quest a session begun since took over",
-            offered("", [{ id: "02-fresh", quest: "QEST-REEF" }])[1], ["01-kept"]);
-        expect("one of the last boot's back takes no other's place",
-            ids(Places.lastBoot({ boot: "the-last", sessions: restored.sessions.concat(
-                [{ id: "01-twin", cwd: "/tmp", quest: "QEST-KEEL" }]) },
-            { boot: "this-one", putOff: "", here: [{ id: "01-twin", quest: "QEST-KEEL" }] })),
-            ["01-kept", "01-asleep"]);
-        expect("one begun since with no quest takes none's place",
-            offered("", [{ id: "02-loose", quest: "" }])[1], ["01-kept", "01-asleep"]);
-        expect("nothing of a boot Joel put off", offered("the-last", [])[1], []);
-        expect("nothing of this boot's own", ids(Places.lastBoot(
-            { boot: "this-one", sessions: restored.sessions },
-            { boot: "this-one", putOff: "", here: [] })), []);
-
-        // Back here is each one here, but one pi's host runs only once its
-        // viewer is open, when the last boot kept a place of its window:
-        // its host brings the conversation back before Joel asks.
-        const isHere = (session, fields) => Object.assign({ here: true, window: null,
-            presence: { session, quest: "QEST-HERE" } }, fields);
-        const hostedHere = (session, window) => isHere(session, { window,
-            presence: { session, hosted: { host: "work-background", conversation: session } } });
-        const backIds = (sessions, arranged) => Viewers.backHere(sessions, arranged)
-            .map(one => one.id);
-        expect("a hosted one is back once its viewer is, or when it had none", backIds([
-            isHere("plain"), hostedHere("viewless"), hostedHere("windowed", { id: 4 }),
-            hostedHere("unkept"), isHere("elsewhere", { here: false })],
-        { viewless: { workspace: 2 }, windowed: { workspace: 2 } }),
-            ["plain", "windowed", "unkept"]);
-        expect("each back with its quest", Viewers.backHere([isHere("plain")], {}),
-            [{ id: "plain", quest: "QEST-HERE" }]);
-        expect("with no places kept, each hosted one is back",
-            backIds([hostedHere("viewless")], undefined), ["viewless"]);
-
-        // Those offered apart from the last boot, whatever the boot: one
-        // another machine carried here, and one pi's host gave back,
-        // each saying where from and when; one saying it badly, or saying
-        // both, is offered neither way.
+        // Where one of those offered apart from the last boot came from:
+        // another machine carried it here, or pi's host gave it back, as
+        // the agents daemon serves it (modules/agents's reopen.rs, whose
+        // tests say which are offered, and in what order).
         const carried = (id, from, at) => ({ id, carried: { from, at } });
         const released = (id, from, at) => ({ id, released: { from, at } });
         expect("where each came from", [carried("c", "lighthouse", "1"),
             released("r", "attended", "2"), { id: "b" }].map(Places.apartOf),
             [{ kind: "carried", from: "lighthouse", at: "1" },
                 { kind: "released", from: "attended", at: "2" }, null]);
-        expect("saying where from badly, or twice, says nothing whole", [{ id: "b" },
-            released("r", "attended", ""), { id: "s", released: "attended" },
-            released("e", "", ""), Object.assign(carried("t", "lighthouse", ""),
-                released("t", "attended", ""))].map(Places.saysApart),
-            [true, true, false, false, false]);
-        expect("the newest first, by id when two came at once", Places.apart([
-            carried("c-old", "lighthouse", "2026-10-30T10:00:00Z"), { id: "booted" },
-            released("r-mid", "attended", "2026-10-30T11:00:00Z"),
-            carried("c-b", "lighthouse", "2026-10-30T12:00:00Z"),
-            released("c-a", "attended", "2026-10-30T12:00:00Z")]).map(one => one.id),
-            ["c-a", "c-b", "r-mid", "c-old"]);
 
         // Where they came from, as Sessions to Reopen's note says it: one
         // place alone by itself, several each counted, and many machines

@@ -76,16 +76,3 @@ function viewerPlace(place, workspaces) {
     return spare ? { workspace: spare.id, column: null } : null;
 }
 
-// Which of `sessions`, as Sessions.qml lists those running and parked, are
-// back here, as Places.lastBoot's `here` takes them, { id, quest }: each
-// one here, but one pi's host runs only once its viewer is open, or at once
-// when the boot being restored kept no place of its window (`arranged`, by
-// id), since it had none to bring back. Its host brings the conversation
-// back before Joel asks, so counting it back by that alone offered no
-// viewer (2026-11-11, 430 and 457 after the 11:06 boot).
-function backHere(sessions, arranged) {
-    return sessions.filter(one => one.here && (!one.presence?.hosted || one.window
-        || !arranged?.[one.presence.session]))
-        .map(one => ({ id: one.presence.session,
-            quest: one.presence.questInfo?.id ?? one.presence.quest ?? "" }));
-}

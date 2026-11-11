@@ -14,13 +14,14 @@ pragma ComponentBehavior: Bound
 // node says is parked is held apart from those running, and one it says
 // closed apart again, however each record reads; Wake, or talking to one
 // parked, asks the node, which wakes it. What an earlier boot's end took away is
-// offered whole, one that ran hosted too, whose host brings it back, so
-// asking reopens no pi for it (tests/sessions-hosted-reopen.qml), the rest
-// reopened held in its own folder, until put off, one pi
-// never saved started under its own id with its quest, and Reopen Them
-// All reopens even when niri never answers its ask for the screens; what
-// another machine carried here, or pi's host gave back, is offered after
-// it, the newest first, and never put off with it, and a window it had joined to a session another
+// offered as the agents daemon serves it, stood in for too, one that ran
+// hosted among it, whose host brings it back, so asking reopens no pi for
+// it (tests/sessions-hosted-reopen.qml), the rest reopened held in its
+// own folder, one pi never saved started under its own id with its
+// quest, and Reopen Them All reopens even when niri never answers its ask
+// for the screens; what another machine carried here, or pi's host gave
+// back, is offered after it; forgetting one and putting the last boot off
+// are asked of the daemon; and a window it had joined to a session another
 // machine holds is joined again by its words, once; a closed session
 // resumes in its own folder, and one whose folder is gone opens nowhere
 // but its quest's start folder, never the home folder. What the node tells
@@ -36,7 +37,9 @@ pragma ComponentBehavior: Bound
 // and a window retitled makes no session's window again;
 // one the node says has ended goes; and a node lost leaves what it said
 // shown. It exits 0 once every case holds, and otherwise 1, saying which
-// didn't.
+// didn't. Long because each stage hears what the one before set going,
+// over one shell's sessions and the stand-ins for the node and the agents
+// daemon, so split, each part would lay all of it out again.
 // Its stand-ins are in modules/quickshell/tests/stand-ins.
 import qs
 import Quickshell
@@ -83,6 +86,9 @@ ShellRoot {
         }
         function onClosedChanged() {
             root.retold.closed += 1;
+        }
+        function onToReopenChanged() {
+            Qt.callLater(root.check);
         }
     }
 
@@ -137,6 +143,8 @@ ShellRoot {
                 listed();
             else if (stage === "reopening")
                 reopening();
+            else if (stage === "forgetting")
+                forgetting();
             else if (stage === "forgotten")
                 forgotten();
             else if (stage === "differing")
@@ -176,7 +184,8 @@ ShellRoot {
     // drawing two windows found by its window's app id.
     function listed() {
         const other = find("OTHER2");
-        if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window)
+        if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window
+            || Sessions.toReopen.length === 0)
             return;
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
@@ -352,27 +361,32 @@ ShellRoot {
         };
     }
 
-    // The sessions another boot's end took away are offered, but for one
-    // with no folder or an id pi's command line can't take; each reopens
+    // The sessions another boot's end took away are offered as the agents
+    // daemon serves them, in its order, the last boot's apart from those
+    // carried or given back, and the boot they're of known; each reopens
     // in its own window and folder, held, and one whose folder is gone
     // since opens nowhere, never in the home folder. A closed session
     // resumes in the folder its own record says, which needn't be the
     // home folder; one whose folder is gone starts its quest afresh in
     // the quest's start folder, or nowhere when it has none.
     function lastBoot() {
-        expect("only the whole ones of another boot, one hosted among them",
+        expect("the last boot's, one hosted among them, in the daemon's order",
             Sessions.lastBoot.map(one => one.id).join(" ")
                 === "s-before s-fresh s-given-back s-hosted s-far",
             JSON.stringify(Sessions.lastBoot));
-        // Those another machine carried here or pi's host gave back
-        // apart, the newest first, and one saying where from badly, or
-        // both ways, left out.
-        expect("the carried and given back, newest first",
+        expect("the carried and given back apart, in its order",
             Sessions.apart.map(one => one.id).join(" ") === "s-ferry s-freed s-ferried",
             JSON.stringify(Sessions.apart));
         expect("the last boot's, then those apart", Sessions.toReopen.map(one => one.id).join(" ")
             === "s-before s-fresh s-given-back s-hosted s-far s-ferry s-freed s-ferried",
             JSON.stringify(Sessions.toReopen));
+        expect("the boot they're of, which places are kept by",
+            Sessions.restoring.boot === "an-earlier-boot", JSON.stringify(Sessions.restoring));
+        // Told, as it answered, which sessions that boot kept a place of,
+        // here none, since only the shell keeps the arrangement.
+        const arranged = agentsAsked.filter(one => one.ask === "arranged");
+        expect("the daemon told which the boot kept a place of", arranged.length > 0
+            && arranged.every(one => Array.isArray(one.ids)), JSON.stringify(agentsAsked));
         Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
         // One held elsewhere is joined again once, however often asked.
         Sessions.reopen(Sessions.lastBoot.find(one => one.id === "s-far"), told("s-far"));
@@ -463,26 +477,30 @@ ShellRoot {
         // before Return the next time it's listed.
         expect("a folder found gone is known gone", Sessions.folderGone("/given-back")
             && !Sessions.folderGone("/tmp"), JSON.stringify(Sessions.folders));
-        // Forgotten, one carried is offered no more, and only those
-        // restore.json still names are kept forgotten.
+        // Forgetting one, the daemon is asked, which keeps it, by pi's id
+        // for it, since the ask's own id is the interface's.
+        stage = "forgetting";
         Sessions.forgetReopen({ id: "s-ferried" });
-        expect("a forgotten one is offered no more",
-            Sessions.toReopen.map(one => one.id).join(" ")
-                === "s-before s-fresh s-given-back s-hosted s-far s-ferry s-freed",
-            JSON.stringify(Sessions.toReopen));
-        Sessions.forgotten = ["s-long-gone"];
-        Sessions.forgetReopen({ id: "s-ferried" });
-        expect("what restore.json no longer names isn't kept forgotten",
-            JSON.stringify(Sessions.forgotten) === '["s-ferried"]',
-            JSON.stringify(Sessions.forgotten));
-        Sessions.putOffLastBoot();
-        expect("put off, none", Sessions.lastBoot.length === 0, JSON.stringify(Sessions.lastBoot));
-        // Those apart are never put off with the last boot.
-        expect("put off, the carried and given back still",
-            Sessions.toReopen.map(one => one.id).join(" ") === "s-ferry s-freed",
-            JSON.stringify(Sessions.toReopen));
-        stage = "forgotten";
-        tell({ gone: ["session:s-LIVE01"] });
+    }
+
+    // Forgotten, one carried is offered no more, as the daemon says; put
+    // off, the last boot's go, as it says too, and those apart stay.
+    function forgetting() {
+        const asked = agentsAsked.filter(one => one.ask !== "arranged");
+        const ids = Sessions.toReopen.map(one => one.id).join(" ");
+        if (asked.length === 1 && ids === "s-before s-fresh s-given-back s-hosted s-far "
+            + "s-ferry s-freed") {
+            expect("forgetting asks the daemon, naming the session",
+                asked[0].session === "s-ferried" && asked[0].id.startsWith("ask-"),
+                JSON.stringify(asked[0]));
+            Sessions.putOffLastBoot();
+        } else if (asked.length === 2 && ids === "s-ferry s-freed") {
+            expect("Not Now asks the daemon to put the last boot off",
+                asked[1].ask === "put-off" && Sessions.lastBoot.length === 0,
+                JSON.stringify(asked[1]));
+            stage = "forgotten";
+            tell({ gone: ["session:s-LIVE01"] });
+        }
     }
 
     // One the node says is gone goes.
@@ -700,6 +718,90 @@ ShellRoot {
                     }
                     asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();
+                }
+            }
+        }
+    }
+
+    // What the shell asked of the agents daemon, past its hello and watch,
+    // each ask whole.
+    property var agentsAsked: []
+
+    // What the agents daemon serves of the sessions to reopen, as its
+    // reopen.rs works them out of what the harness's restore.json kept
+    // (modules/agents, whose tests say which are offered and why): the
+    // last boot's first, then those offered apart, the newest first, and
+    // the boot they're of. Answered out of order, as a watch's answer may
+    // be, so each is placed by its own.
+    function reopenRecords() {
+        const session = (id, address, title, fields) => Object.assign(
+            { id, address, title, cwd: "/tmp", lostAt: 1 }, fields);
+        const far = ["ssh", "-t", "lighthouse", "mycelium", "attach", "s-far"];
+        const offered = [
+            ["boot", session("s-before", "BEFORE", "Harbour",
+                { env: { PI_SANDBOX: "fence; rm -rf ~", LD_PRELOAD: "/tmp/x.so" } })],
+            ["boot", session("s-fresh", "FRESH7", "Fresh", { fresh: true, quest: "QEST-FRESH",
+                env: { PI_SANDBOX: "fence", PI_SPAWNER: "on" } })],
+            ["boot", session("s-given-back", "GIVENB", "Given Back", { cwd: "/given-back" })],
+            ["boot", session("s-hosted", "HOSTED", "Hosted", { hosted: true })],
+            ["boot", session("s-far", "FARLST", "Far",
+                { lostAt: "", machine: "lighthouse", attach: far })],
+            ["carried", session("s-ferry", "FERRYQ", "Ferry", { lostAt: "",
+                carried: { from: "lighthouse", at: "2026-10-30T12:00:00Z" } })],
+            ["released", session("s-freed", "FREEDQ", "Freed", { lostAt: "",
+                released: { from: "attended", at: "2026-10-30T11:00:00Z" } })],
+            ["carried", session("s-ferried", "FERRID", "Ferried", { lostAt: "",
+                carried: { from: "lighthouse", at: "2026-10-30T10:00:00Z" } })]
+        ];
+        return offered.map(([way, one], at) => ({ key: `reopen:agents:${one.id}`,
+            kind: "reopen", order: (at + 1) * 1024, way, session: one })).reverse()
+            .concat([{ key: "restoring:agents", kind: "restoring",
+                restoring: { boot: "an-earlier-boot" } }]);
+    }
+
+    // A stand-in for the agents daemon (modules/agents), speaking the
+    // daemon interface: hello, a watch of Agents' place's sessions to
+    // reopen answered whole, and the asks Joel's word on them makes, each
+    // answered and its change told as the daemon tells it: one forgotten
+    // goes, and putting off the last boot takes its sessions.
+    SocketServer {
+        active: true
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+        handler: Socket {
+            id: agentsAsk
+            parser: SplitParser {
+                onRead: line => {
+                    const ask = JSON.parse(line);
+                    const said = lines => {
+                        for (const one of lines)
+                            agentsAsk.write(`${JSON.stringify(one)}\n`);
+                        agentsAsk.flush();
+                    };
+                    if (ask.ask === "hello") {
+                        said([{ id: ask.id, version: 1, domain: "agents", state: "answering" }]);
+                        return;
+                    }
+                    if (ask.ask === "watch") {
+                        const watched = JSON.stringify([ask.kind, ask.place]);
+                        if (watched !== '[["reopen","restoring"],"agents"]')
+                            root.fail(`a watch the shell has no need of: ${line}`);
+                        said([{ id: ask.id, records: root.reopenRecords() }]);
+                        return;
+                    }
+                    root.agentsAsked = root.agentsAsked.concat([ask]);
+                    const boot = root.reopenRecords().filter(one => one.way === "boot")
+                        .map(one => one.key);
+                    if (ask.ask === "forget")
+                        said([{ id: ask.id, forgot: ask.session },
+                            { id: "all", changed: [], gone: [`reopen:agents:${ask.session}`] }]);
+                    else if (ask.ask === "put-off")
+                        said([{ id: ask.id, "put-off": true },
+                            { id: "all", changed: [], gone: boot }]);
+                    else if (ask.ask === "arranged")
+                        said([{ id: ask.id, arranged: ask.ids.length }]);
+                    else
+                        root.fail(`an ask of the agents daemon the shell has no need of: ${line}`);
+                    Qt.callLater(root.check);
                 }
             }
         }

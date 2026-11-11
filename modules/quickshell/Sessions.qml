@@ -37,6 +37,7 @@ import "Places.js" as Places
 import "SessionWindows.js" as SessionWindows
 import "Viewers.js" as Viewers
 import "Waiting.js" as Waiting
+import "launcher/Order.js" as Order
 
 Singleton {
     id: root
@@ -428,125 +429,74 @@ Singleton {
     // The sessions the last boot's end took away, to reopen after a cold
     // boot (Joel, 2026-10-26: one act brings back every session live at
     // shutdown, each in its own window and folder, never one from before
-    // that boot). The harness keeps them in restore.json (its #866),
-    // rewritten whole as each pi starts and ends, with the boot they ran
-    // in, so a reopened one leaves the list within seconds. Only another
-    // boot's are offered, and only until Joel puts that boot off, but for
-    // those offered apart (`apart`). This boot is
-    // `bootId`, as the records are read by.
-    readonly property var restoring: restoreOf(restoreFile.text())
-    FileView {
-        id: restoreFile
-        path: `${Quickshell.env("XDG_STATE_HOME") || `${root.home}/.local/state`}/pi/restore.json`
-        blockLoading: true
-        printErrors: false
-        // Written by rename and never removed, so it's seen each time.
-        watchChanges: true
-        onFileChanged: reload()
+    // that boot), as the agents daemon serves them (modules/agents's
+    // reopen.rs). It works them out of the harness's restore.json, what
+    // runs here and what Joel said of them, so the shell reads no file and
+    // works none of it out (Joel, 2026-11-10: "the daemons need to be the
+    // data layer"). Each is `reopen:agents:<id>`: the session as
+    // restore.json keeps it, the way it came and its place in the list.
+    // `restoring:agents` names the boot the file is of, which the places
+    // kept are by. With the daemon not answering, none is offered.
+    Daemon {
+        id: reopenKind
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+        kind: ["reopen", "restoring"]
+        watching: ({ place: "agents" })
+        answersWhole: true
+        // Told as it answers which sessions the boot being restored kept a
+        // place of, since only the shell keeps the arrangement.
+        onStateChanged: root.tellArranged()
+    }
+    readonly property var offered: {
+        void reopenKind.revision;
+        return Order.sorted(Object.values(reopenKind.held).filter(one => one.kind === "reopen"),
+            Order.smaller(one => one.order));
+    }
+    readonly property var restoring: {
+        void reopenKind.revision;
+        return { boot: String(reopenKind.held["restoring:agents"]?.restoring?.boot ?? "") };
     }
 
-    // What the file says, keeping only the sessions it names whole: an id
-    // safe to hand pi's command line and a folder to open in. One that ran
-    // hosted (`hosted`) is kept, but only its viewer is ever opened: its
-    // host's own unit brings the conversation back, so starting it would
-    // start it twice (N4S6OF, 2026-11-09), while leaving it out lost its
-    // window and place (viewers 430 and 457 after the 11:06 boot on
-    // 2026-11-11; OSPHT4 [1a117a39]).
-    function restoreOf(text) {
-        let read = null;
-        try {
-            read = JSON.parse(text);
-        } catch (error) {
-            read = null;
-        }
-        if (read === null || read.v !== 1 || !Array.isArray(read.sessions))
-            return { boot: "", sessions: [] };
-        // One held on another machine is joined again by its words, given
-        // as an argv (the harness's #872); its folder is only where the
-        // window opens here, and may be unknown.
-        const elsewhere = one => typeof one.machine === "string" && one.machine !== ""
-            && typeof one.address === "string" && Array.isArray(one.attach)
-            && one.attach.length > 0 && one.attach.every(word => typeof word === "string")
-            && typeof one.cwd === "string" && (one.cwd === "" || one.cwd.startsWith("/"));
-        // One another machine carried here, or pi's host gave back, says
-        // where from and when; one saying it badly is no last boot's
-        // either, so it's left out (Places.saysApart).
-        return {
-            boot: typeof read.boot === "string" ? read.boot : "",
-            sessions: read.sessions.filter(one => one !== null && typeof one === "object"
-                && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? "")) && Places.saysApart(one)
-                && (one.machine === undefined
-                    ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
-        };
+    // Which sessions the boot being restored kept a place of, said to the
+    // daemon, since one pi's host runs counts as back only once its viewer
+    // is open where a place of its window was kept: its host brings the
+    // conversation back before Joel asks, so counting it back by that
+    // alone offered no viewer (2026-11-11, 430 and 457 after the 11:06
+    // boot). Said as text, so it's told again only as the ids change.
+    readonly property string arrangedSaid: JSON.stringify(
+        Object.keys(arrangement[restoring.boot] ?? {}))
+    onArrangedSaidChanged: tellArranged()
+    function tellArranged() {
+        if (reopenKind.state === "answering")
+            reopenKind.ask({ ask: "arranged", ids: JSON.parse(arrangedSaid) });
     }
 
-    // The boot Joel said Not Now to, kept by the shell, so its sessions
-    // stay put off however often the shell starts on this boot. Putting
-    // one off says so at once, as its file is written behind.
-    property string putOff: {
-        try {
-            return String(JSON.parse(putOffFile.text()).boot ?? "");
-        } catch (error) {
-            return "";
-        }
-    }
-    FileView {
-        id: putOffFile
-        path: Quickshell.statePath("last-boot-put-off.json")
-        blockLoading: true
-        printErrors: false
-    }
-
-    // The last boot's sessions not back here, and which boot that was, as
-    // restore.json says (Places.js). After a boot they wait for Joel:
-    // Reopen Them All, or :reopen, brings them back in one act, each where
-    // the shell kept it, and nothing reopens them before he asks. The shell
-    // once reopened them by itself as it first saw niri, which he never
-    // wanted (Joel, 2026-11-07 20:2x: "no, i never wanted them automatic,
-    // you decided that by yourself"); on 11-01 he had chosen to reopen
-    // them by hand.
-    readonly property var lastBootOffered: Places.lastBoot(restoring, {
-        boot: bootId,
-        putOff: putOff,
-        here: Viewers.backHere(running.concat(parked), arrangement[restoring.boot])
-    })
-    readonly property string lastBootIs: lastBootOffered.boot
-    readonly property var lastBoot: lastBootOffered.sessions
+    // The last boot's sessions not back here. After a boot they wait for
+    // Joel: Reopen Them All, or :reopen, brings them back in one act, each
+    // where the shell kept it, and nothing reopens them before he asks.
+    // The shell once reopened them by itself as it first saw niri, which
+    // he never wanted (Joel, 2026-11-07 20:2x: "no, i never wanted them
+    // automatic, you decided that by yourself"); on 11-01 he had chosen
+    // to reopen them by hand.
+    readonly property var lastBoot: offered.filter(one => one.way === "boot")
+        .map(one => one.session)
 
     // The sessions offered apart from the last boot's, whatever the boot,
-    // until each runs here, when the harness drops it, and never put off
-    // with the last boot's (VKCF3Z, [17db838c]): those other machines
-    // carried here as they went away, and those pi's host gave back, so
-    // they run in plain pi again (2QZBX9, [44e65ce0]). The newest first,
-    // by id when two came at once.
-    readonly property var apart: Places.apart(restoring.sessions)
+    // until each runs here, and never put off with the last boot's
+    // (VKCF3Z, [17db838c]): those other machines carried here as they went
+    // away, and those pi's host gave back, so they run in plain pi again
+    // (2QZBX9, [44e65ce0]). The newest first, as the daemon orders them.
+    readonly property var apart: offered.filter(one => one.way !== "boot")
+        .map(one => one.session)
 
-    // Every session there is to reopen: the last boot's, then those apart,
-    // but those Joel forgot.
+    // Every session there is to reopen: the last boot's, then those apart.
     readonly property var toReopen: lastBoot.concat(apart)
-        .filter(one => !forgotten.includes(one.id))
 
-    // The sessions to reopen Joel forgot, by id, kept by the shell as the
-    // boot he put off is, since restore.json is the harness's to write. It
-    // keeps only those restore.json still names, so it never grows past it.
-    property var forgotten: {
-        try {
-            const ids = JSON.parse(forgottenFile.text()).ids;
-            return Array.isArray(ids) ? ids.map(String) : [];
-        } catch (error) {
-            return [];
-        }
-    }
-    FileView {
-        id: forgottenFile
-        path: Quickshell.statePath("reopen-forgotten.json")
-        blockLoading: true
-        printErrors: false
-    }
+    // Joel forgets one of them, which the daemon keeps, since restore.json
+    // is the harness's to write.
     function forgetReopen(lost) {
-        const named = restoring.sessions.map(one => one.id);
-        forgotten = forgotten.filter(id => named.includes(id)).concat([lost.id]);
-        forgottenFile.setText(JSON.stringify({ ids: forgotten }));
+        reopenKind.ask({ ask: "forget", session: lost.id });
     }
 
     // The landings Joel has read, by key (Landed.js's landingKey), and when
@@ -641,9 +591,10 @@ Singleton {
             lookFor([lost.cwd], there => open(there[0]));
     }
 
+    // Joel says Not Now to the last boot's, which the daemon keeps, so they
+    // stay put off however often the shell starts on this boot.
     function putOffLastBoot() {
-        putOff = lastBootIs;
-        putOffFile.setText(JSON.stringify({ boot: putOff }));
+        reopenKind.ask({ ask: "put-off" });
     }
 
     // Where each session's window sits, kept so Reopen Them All puts every

@@ -12,8 +12,10 @@
 # holds and makes nothing of Agents (Joel, 2026-11-10: "the daemons need
 # to be the data layer, and they need to serve the launcher").
 #
-# A machine with no realm runs no node and has no sessions to show, so it
-# runs no daemon. It reads Linux's inotify, so it runs only there.
+# A machine with no realm runs no node and has no sessions to show, so the
+# daemon follows none there, and serves only the sessions to reopen, which
+# pi keeps whether or not a node holds them. It reads Linux's inotify, so
+# it runs only there.
 {
   config,
   lib,
@@ -24,7 +26,7 @@ let
   package = pkgs.callPackage ./package.nix { };
   realm = config.jitsusama.mycelium.realm or null;
 in
-lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && realm != null) {
+lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
   systemd.user.services.agents = {
     Unit = {
       Description = "Makes Agents' rows ready for the launcher";
@@ -34,27 +36,33 @@ lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && realm != null) {
       After = [ "agents.socket" ];
     };
     Service = {
-      ExecStart = lib.escapeShellArgs [
-        (lib.getExe package)
-        "--vocabulary"
-        "${../quickshell/launcher/words.json}"
-        "--node"
-        "%t/mycelium/${realm}.sock"
-        "--to-do"
-        "%t/daemons/to-do.sock"
-        "--windows"
-        "%t/daemons/windows.sock"
-        "--spend"
-        "%t/spend-watch/collection.json"
-        "--orchestrators"
-        "${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow/orchestrators.json"
-        "--restore"
-        "${config.xdg.stateHome}/pi/restore.json"
-        "--kept"
-        "${config.xdg.stateHome}/agents/reopen.json"
-        "--socket"
-        "%t/daemons/agents.sock"
-      ];
+      ExecStart = lib.escapeShellArgs (
+        [
+          (lib.getExe package)
+          "--vocabulary"
+          "${../quickshell/launcher/words.json}"
+        ]
+        ++ lib.optionals (realm != null) [
+          "--node"
+          "%t/mycelium/${realm}.sock"
+        ]
+        ++ [
+          "--to-do"
+          "%t/daemons/to-do.sock"
+          "--windows"
+          "%t/daemons/windows.sock"
+          "--spend"
+          "%t/spend-watch/collection.json"
+          "--orchestrators"
+          "${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow/orchestrators.json"
+          "--restore"
+          "${config.xdg.stateHome}/pi/restore.json"
+          "--kept"
+          "${config.xdg.stateHome}/agents/reopen.json"
+          "--socket"
+          "%t/daemons/agents.sock"
+        ]
+      );
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";
