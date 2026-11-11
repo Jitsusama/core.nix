@@ -174,10 +174,14 @@ fn a_rate_keeps_every_digit_and_a_scale_two_places() {
     assert_eq!(scale(1.333_333), "1.33\u{d7}");
 }
 
-/// The rows where desk-facts says nothing of any screen, and none is
-/// looked at, so no light is said.
+/// The place's own rows where desk-facts says nothing of any screen, and
+/// none is looked at, so no light is said; the settings inside a screen's
+/// row are settings/tests.rs's.
 fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Words) -> Vec<Value> {
     super::rows(outputs, &BTreeMap::new(), focused, true, None, words)
+        .into_iter()
+        .filter(|row| row.get("parent").is_none())
+        .collect()
 }
 
 /// A screen's drawer where desk-facts says nothing of it, and no light.
@@ -483,7 +487,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        56,
+        68,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);
