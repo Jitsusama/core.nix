@@ -281,6 +281,31 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     assert shell.showing()["path"] == there, "filled in, it left the place its chord opened"
 
 
+def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:
+    """Kept over one window, a place whose rows follow none is drawn as kept over another's.
+
+    A place was drawn as kept only over a window of the app it was kept over, though only
+    Shortcuts' rows follow the window's keys and Windows' the window itself, so a chord pressed
+    over any other program's window made its place whole.
+    """
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    left = settled(shell)
+    shell.close_launcher()
+    window = shell.opened("Plover Notes", app="plover")
+    try:
+        # The span measured, for the window's focus to reach the shut shell, not a wait for an end.
+        time.sleep(SETTLING_S)
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        timed = latest(openings(shell))
+        shell.as_account(shell.ipc("collection", "on"))
+        opening = filled_after(shell, timed)
+        assert opening["shown"]["keys"] == left["keys"], f"kept, the rows moved: {opening}"
+    finally:
+        shell.close(window)
+
+
+
 def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     """Reopened as the closing's spots come due, the kept opening makes none before its frame.
 

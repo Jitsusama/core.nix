@@ -115,6 +115,13 @@ Provider {
     // The rows are listed in the order held, which the watch of when each
     // window was used keeps current while the launcher is shut (orderKept),
     // so then the first frame offers them in the order used now.
+    // What its rows follow of the window the launcher opens over: the
+    // window itself, which they leave out, so Windows kept shut is drawn
+    // again only over the same one (Launcher.qml's keptUnder).
+    function keptOver(window) {
+        return String(window?.id ?? "");
+    }
+
     readonly property bool waiting: !daemon.answeredThisWatch
         && daemon.state !== "not answering" && !provider.orderKept
         && provider.launcher?.open !== false

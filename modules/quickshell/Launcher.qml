@@ -7557,11 +7557,11 @@ Scope {
     }
 
     // Each place a chord opens, as it last opened: the steps to it, its
-    // rows, how deep it is and the app of the window it opened over, by
-    // the chord's name. Its chord opened it whole every time, 203 to 597
-    // ms to its frame, while home drew from what was kept in 27 to 56
-    // (Joel, 2026-11-10, 20:39 to 20:43). Plain, so keeping notifies
-    // nothing.
+    // rows, how deep it is and what its rows follow of the window it
+    // opened over (keptUnder), by the chord's name. Its chord opened it
+    // whole every time, 203 to 597 ms to its frame, while home drew from
+    // what was kept in 27 to 56 (Joel, 2026-11-10, 20:39 to 20:43). Plain,
+    // so keeping notifies nothing.
     readonly property var placesKept: ({})
     // The chord a kept opening is to fill in, and the one the opening
     // being timed came by, said in its line.
@@ -7571,17 +7571,25 @@ Scope {
         if (held.length === 0)
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
-            under: cameFrom()?.app_id ?? "" };
+            under: keptUnder(name) };
+    }
+    // What a place's rows follow of the window the launcher opens over, as
+    // its source says (keptOver): Shortcuts' the keys that work there,
+    // Windows' the window itself, which they leave out. The rest follow
+    // none, so they're drawn as kept over any window: kept with the app
+    // opened over, every other chord pressed over another program's window
+    // was made whole.
+    function keptUnder(name) {
+        const source = collections.find(one => one.settings.name === name);
+        return typeof source?.keptOver === "function" ? source.keptOver(cameFrom()) : "";
     }
     // Draws a place as it was kept, while the closed card holds home and
-    // the window under it is the kind it was kept over, since what some
-    // places show follows that window (Shortcuts' keys). It's filled in
-    // after its frame by opening it whole (filled), which lands its rows
-    // where the kept ones stood.
+    // what its rows follow of the window under it is as it was kept. It's
+    // filled in after its frame by opening it whole (filled), which lands
+    // its rows where the kept ones stood.
     function intoKept(name) {
         const kept = placesKept[name];
-        if (!kept || !homeHeld || parting !== ""
-            || kept.under !== (cameFrom()?.app_id ?? ""))
+        if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
             return false;
         keeping = true;
         try {
