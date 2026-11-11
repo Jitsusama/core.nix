@@ -2895,6 +2895,35 @@ mod tests {
     }
 
     #[test]
+    fn a_net_handing_over_leaves_its_search_under_way_to_the_next() {
+        // 10 November: a watcher told at 21:32 that another build was
+        // installed waited on its search's runs and tested nothing to 22:51.
+        let state = state("hands-over");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            runs_for: Duration::from_millis(500),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(search_for("vm-a"));
+        let left = std::thread::scope(|scope| {
+            settler.start(scope);
+            world.wait_while(|built| built.is_empty(), "the search's runs");
+            let left = settler.leave(|| (settler.holds("vm-a"), state.settling().len()));
+            settler.close();
+            left
+        });
+        assert!(
+            left.0,
+            "the net waited for its search to end before it left"
+        );
+        assert_eq!(left.1, 1, "the search wasn't kept for the next build");
+    }
+
+    #[test]
     fn a_search_cut_short_by_a_restart_is_taken_up_again() {
         let state = state("search-taken-up");
         state.set_heads("h", "h").unwrap();
