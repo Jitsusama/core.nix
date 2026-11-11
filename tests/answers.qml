@@ -1017,8 +1017,6 @@ QtObject {
             if (quoted(got) !== quoted(expected))
                 failures.push(`${what} gave ${quoted(got)}, not ${quoted(expected)}`);
         };
-        machine("a list of CPUs", Machine.cpus("0-3,8\n"), [0, 1, 2, 3, 8]);
-        machine("no list of CPUs", Machine.cpus(""), []);
         // A served row's times are worded here, by their form, into the
         // item's own words: the uptime counts up from the boot, the start
         // is a moment.
@@ -1141,49 +1139,6 @@ QtObject {
         machine("the processor's own parts, with no processor said",
             Heat.gather([heatChips[4]], [], {}, [{ part: "npu", celsius: 62 }]).temps
                 .map(p => [p.id, p.crit]), [["npu", null], ["battery", null]]);
-        // What held the processor back, as its telemetry says it: the whole
-        // processor's limit first, and each core by its cluster's.
-        const heldReading = {
-            heldBack: [{ by: "pl2", share: 0.4 }, { by: "pl1", share: 1 }],
-            clusters: [{ cpus: "4-5", heldBack: [{ by: "power", share: 0.98 },
-                { by: "heat", share: 0.1 }] }, { cpus: "0", heldBack: [] },
-                { cpus: "2", heldBack: [{ by: "heat", share: 0.5 }] }],
-            npu: []
-        };
-        machine("held back, by the whole processor's limit", Machine.heldBack(heldReading),
-            { share: 1, by: "pl1", whole: true, cores: [{ n: 2, share: 0.5, by: "heat" },
-                { n: 4, share: 0.98, by: "power" }, { n: 5, share: 0.98, by: "power" }] });
-        machine("held back by a cluster alone", Machine.heldBack({ heldBack: [],
-            clusters: [{ cpus: "12-13", heldBack: [{ by: "heat", share: 0.3 }] }] }),
-            { share: 0.3, by: "heat", whole: false, cores: [{ n: 12, share: 0.3, by: "heat" },
-                { n: 13, share: 0.3, by: "heat" }] });
-        machine("held back by nothing", [Machine.heldBack({ heldBack: [], clusters: [
-            { cpus: "0", heldBack: [] }] }), Machine.heldBack(null)], [null, null]);
-        machine("what held it back, as a note says it", ["pl1", "platformPl1", "prochot",
-            "heat", "novel"].map(Machine.limit), ["its power limit, PL1",
-            "the whole machine's power limit, PL1", "being told to slow down", "heat", "novel"]);
-        // What kept the package from resting, over the readings held: each
-        // part's share averaged over all of them, a part under a twentieth
-        // left out, longest first.
-        const rested = [{ kept: 0.2, by: [{ by: "display", share: 0.2 }] },
-            { kept: 0.1, by: [{ by: "display", share: 0.06 }, { by: "npu", share: 0.1 }] }];
-        const restedKept = Machine.kept(rested);
-        machine("kept from resting, on average", [restedKept.by.map(p => p.by),
-            restedKept.by.map(p => Math.round(p.share * 100)), Math.round(restedKept.share * 100),
-            restedKept.quiet], [["display", "npu"], [13, 5], 15, false]);
-        // Under a twentieth on average, nothing keeps it from resting: one
-        // second's 30% among six quiet ones is just over 5%, among seven
-        // just under.
-        const quiet = { kept: 0.01, by: [] };
-        const once = { kept: 0.3, by: [{ by: "cores", share: 0.3 }] };
-        machine("kept from resting, quiet under a twentieth on average", [
-            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, once]).quiet,
-            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, quiet, once]).quiet],
-            [false, true]);
-        machine("kept from resting, said by nothing", Machine.kept([]), null);
-        machine("what kept it from resting, as a note says it", ["display", "internal",
-            "novel"].map(by => Machine.keeper(by).said), ["the display engine",
-            "the processor's own power controller", "novel"]);
         // Bytes in decimal units to three significant digits, each
         // converted from bytes, stepping up past 999, whole below a kB.
         machine("bytes, each converted", [873 * 1048576, 6.4 * 1048576, 1.52e9, 873, 0, 999.7e3,

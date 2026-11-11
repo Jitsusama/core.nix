@@ -71,14 +71,20 @@ and caches, the Memory and each of its parts, and the Uptime, which travels as a
 shell words (`lasted`, and Started a `moment`). Using It names the
 programs only while something watches `using`, since that reads every
 process's files, and holds its place saying it's still reading
-otherwise. They're said
+otherwise. Held Back and Kept From Resting come from the processor's
+telemetry, asked only while something watches `telemetry`, whose one
+record, `telemetry:processor`, says in its `state` how that stands: `asking`,
+`heard`, `refused` once a reader that answered stops, or `missing` on a
+machine with none. While it's asked, each second heard makes Machine's
+rows again; Kept From Resting is the mean of the last ten. They're said
 in the launcher's words and number settings,
 handed on the command line (`--words`, `--numbers`) by home.nix from the
 launcher's own; handed none, it makes no rows.
 [`src/heat_rows.rs`][heat-rows], [`src/power_rows.rs`][power-rows],
 [`src/firmware_rows.rs`][firmware-rows],
 [`src/machine_rows.rs`][machine-rows] and
-[`src/processor_rows.rs`][processor-rows] make them,
+[`src/processor_rows.rs`][processor-rows] and
+[`src/telemetry_rows.rs`][telemetry-rows] make them,
 [`src/rows.rs`][rows] places and graphs them, and
 [`src/words.rs`][words] words them.
 
@@ -352,5 +358,6 @@ service's runtime folder, is looked for again every 10 seconds.
 [power-rows]: src/power_rows.rs
 [machine-rows]: src/machine_rows.rs
 [processor-rows]: src/processor_rows.rs
+[telemetry-rows]: src/telemetry_rows.rs
 [rows]: src/rows.rs
 [words]: src/words.rs

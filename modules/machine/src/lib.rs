@@ -12,9 +12,9 @@
 //! records and the processor's own telemetry ([`parts`], [`telemetry`]),
 //! and Heat's, Power's and Machine's own rows made of them, ready for the
 //! launcher ([`heat_rows`], [`power_rows`], [`machine_rows`],
-//! [`processor_rows`], placed and
-//! graphed through [`rows`] and worded through [`words`]). Every file is
-//! read through
+//! [`processor_rows`], and what held the processor back and kept it from
+//! resting, [`telemetry_rows`], placed and graphed through [`rows`] and
+//! worded through [`words`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before. What Firmware asks the
 //! machine to do is done through [`acts`].
@@ -55,6 +55,7 @@ pub mod status;
 pub mod steered;
 pub mod supply;
 pub mod telemetry;
+pub mod telemetry_rows;
 pub mod tree;
 pub mod units;
 pub mod using;
