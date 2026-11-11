@@ -157,6 +157,8 @@ pub fn sessions(proc: &Path, run: &Path) -> Vec<Session> {
             continue;
         };
         let comm = comm.trim();
+        // The names is_session takes, checked first so no other process's cgroup is read;
+        // is_session still decides which node is a host's.
         if (comm == "pi" || comm == "node")
             && let Some((unit, uid)) = fs::read_to_string(dir.join("cgroup"))
                 .ok()
