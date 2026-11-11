@@ -60,7 +60,7 @@
   "modules/quickshell/checks/sessions.nix" = 4;
   "modules/quickshell/checks/shell.nix" = 5;
   "modules/quickshell/checks/shortcuts.nix" = 3;
-  "modules/quickshell/checks/sound.nix" = 2;
+  "modules/quickshell/checks/sound.nix" = 1;
   "modules/quickshell/checks/spend.nix" = 2;
   "modules/quickshell/checks/windows.nix" = 2;
   "modules/quickshell/checks/words.nix" = 3;

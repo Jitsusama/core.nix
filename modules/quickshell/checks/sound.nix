@@ -1,11 +1,10 @@
-# The checks of the launcher's Sound, the music playing, and dictation, which
-# the folder's checks.nix gathers with every other place's; its opening comment
-# says why each place keeps its own.
+# The checks of the launcher's Sound and the music playing, which the folder's
+# checks.nix gathers with every other place's; its opening comment says why
+# each place keeps its own.
 {
   account,
   copied,
   graphical,
-  lib,
   noFonts,
   onLinux,
   pkgs,
@@ -93,37 +92,6 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml media.qml
-      touch $out
-    '';
-
-  # The shell follows dictation as its service says (tests/dictation-watch.py
-  # stands in for it): each state said, a service that stops watched again
-  # once its socket starts it, and a socket nothing listens on tried once,
-  # never in a loop.
-  the-desktop-follows-dictation =
-    let
-      niri = pkgs.writeText "Niri.qml" ''
-        pragma Singleton
-        import Quickshell
-        import QtQuick
-        Singleton {
-          property var windows: ({})
-          property var casts: ({})
-          function spawn(command) { }
-          function act(request) { }
-        }
-      '';
-    in
-    pkgs.runCommandLocal "the-desktop-follows-dictation" { } ''
-      cp ${../../dictation/Dictation.qml} Dictation.qml
-      cp ${../../../tests/dictation.qml} shell.qml
-      cp ${niri} Niri.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
-      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1
-      export FONTCONFIG_FILE=${noFonts}
-      mkdir -m 700 $XDG_RUNTIME_DIR
-      timeout 120 ${lib.getExe pkgs.python3} ${../../../tests/dictation-watch.py} \
-        ${qs}
       touch $out
     '';
 }

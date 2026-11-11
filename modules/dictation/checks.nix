@@ -50,6 +50,23 @@
       touch $out
     '';
 
+  # The shell follows dictation as its service says (tests/dictation-watch.py
+  # stands in for it): each state said, a service that stops watched again
+  # once its socket starts it, and a socket nothing listens on tried once,
+  # never in a loop.
+  the-desktop-follows-dictation = pkgs.runCommandLocal "the-desktop-follows-dictation" { } ''
+    cp ${./Dictation.qml} Dictation.qml
+    cp ${./tests/dictation.qml} shell.qml
+    cp ${./tests/Niri.qml} Niri.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
+    export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1
+    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    mkdir -m 700 $XDG_RUNTIME_DIR
+    timeout 120 ${lib.getExe pkgs.python3} ${./tests/dictation-watch.py} \
+      ${lib.getExe' graphical.pkgs.quickshell "qs"}
+    touch $out
+  '';
+
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its
   # vocabulary reads back into text and words into tokens, and silence or a
