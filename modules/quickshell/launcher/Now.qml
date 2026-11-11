@@ -286,56 +286,46 @@ Provider {
         const placed = differs ? elsewhere : within;
         const note = here ? placed : unfound;
         const now = clock.date.getTime();
-        const inside = () => {
-            const figure = (id, value) => copyRow({
-                key: `location:${id}`,
-                name: Words.name(`location:${id}`),
-                side: value
-            });
-            const rows = [figure("town", !here ? side : here.place ?? said.unnamed)]
-                .concat(here?.country ? [figure("country", here.country)] : [])
-                .concat([figure("knows", !here ? said.notFound : byHand ? said.hand
-                    : said.knows.replace("{within}", within))])
-                .concat(here ? [figure("located", Here.located(here.when, now, hereTold))]
-                    : []);
-            // Where GeoClue can't find the laptop, or finds it wrong, Joel
-            // names its town, and asks GeoClue again once he's moved on.
-            rows.push(thing({
-                key: "verb:location:set",
-                verb: Words.verb("verb:location:set"),
-                name: Words.name("verb:location:set"),
-                glyph: Words.glyph("verb:location:set"),
-                ask: Words.of("verb:location:set").ask ?? "",
-                chip: Words.name("location"),
-                hue: "action",
-                state: () => Location.told,
-                given: words => Location.setByHand(words)
-            }));
-            if (byHand)
-                rows.push(thing({
-                    key: "verb:location:again",
-                    verb: Words.verb("verb:location:again"),
-                    name: Words.name("verb:location:again"),
-                    glyph: Words.glyph("verb:location:again"),
-                    hue: "action",
-                    stays: true,
-                    run: () => Location.findAgain()
-                }));
-            // An act to copy, last as Copy always is, of what the town
-            // alone can't say: where on a map it is.
-            if (here)
-                rows.push(copyRow({
-                    key: "verb:location:copy",
-                    name: Words.name("verb:location:copy"),
-                    verb: Words.verb("verb:location:copy"),
-                    glyph: Words.glyph("verb:location:copy"),
-                    side: position,
-                    copy: position,
+        // Its rows inside, as whereabouts serves them worded and in order
+        // (whereabouts/src/rows.rs), so only drawn here: a figure copies
+        // what it shows, and an act asks whereabouts. When it was found is
+        // a time, worded here as the clock turns.
+        const inside = () => Here.placed(Location.held, "location").map(served => {
+            const act = served.acts?.[0];
+            const shown = Here.sideSaid(served.side, now, hereTold);
+            if (!act)
+                return copyRow({ key: served.row, name: served.name, side: shown, copy: "" });
+            if (act.copy !== undefined)
+                return copyRow({
+                    key: served.row,
+                    name: served.name,
+                    verb: act.verb,
+                    glyph: Theme.glyph[act.glyph] ?? "",
+                    side: shown,
+                    copy: act.copy,
                     figure: false,
                     plain: false
-                }));
-            return rows;
-        };
+                });
+            const asked = act.ask?.act;
+            return thing(Object.assign({
+                key: served.row,
+                verb: act.verb,
+                name: served.name,
+                glyph: Theme.glyph[act.glyph] ?? "",
+                hue: served.hue
+            }, asked === "set" ? {
+                // Where GeoClue can't find the laptop, or finds it wrong,
+                // Joel names its town.
+                ask: act.asks ?? "",
+                chip: act.chip ?? "",
+                state: () => Location.told,
+                given: words => Location.setByHand(words)
+            } : {
+                // And asks GeoClue again once he's moved on.
+                stays: true,
+                run: () => Location.findAgain()
+            }));
+        });
         // Its plate: how it was found, then its kind, as an eyebrow says
         // where then what, and what of it the side doesn't say; with
         // nothing found, none. It reads here as it's drawn, since the

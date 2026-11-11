@@ -2254,7 +2254,8 @@ onLinux {
       '"country":"Canada","source":"wifi"}' \
         > $XDG_RUNTIME_DIR/whereabouts/here.json
       ${lib.getExe whereabouts} $XDG_RUNTIME_DIR/daemons/location.sock root \
-        $XDG_RUNTIME_DIR/whereabouts/here.json $TMPDIR/pin.json $TMPDIR/moved.json &
+        $XDG_RUNTIME_DIR/whereabouts/here.json $TMPDIR/pin.json $TMPDIR/moved.json \
+        --words ${./launcher/words.json} &
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
