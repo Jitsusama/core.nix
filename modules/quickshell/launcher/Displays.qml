@@ -146,11 +146,21 @@ Provider {
         }
     })
 
-    // A change made to a screen here says nothing in niri's stream, so the
-    // windows daemon is asked to look at niri's screens again, and tells
-    // the rows that moved.
+    // A change made to a screen here says nothing in niri's stream, nor
+    // does a key waking the screens, so the windows daemon is asked to look
+    // at niri's screens again, here and as the launcher opens, and tells
+    // the rows that moved; the asking is the daemon's, off this thread.
     function refresh() {
         ready.link?.ask({ ask: "look" }, null);
+    }
+
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                provider.refresh();
+        }
     }
 
     // The lights are read once as the shell starts too, though the
