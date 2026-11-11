@@ -1,5 +1,7 @@
 use disk_guard::band::{Band, Space, Thresholds};
-use disk_guard::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, Report, pass, told};
+use disk_guard::pass::{
+    Disk, End, Failing, Goal, Learned, Outcome, Reclaimer, Report, failed_line, failing, pass, told,
+};
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::units::float;
 use std::collections::BTreeMap;
@@ -62,6 +64,75 @@ fn a_pass_that_only_judged_says_nothing() {
         told(&report(0, Vec::new()), 3.0, "2026-11-09 10:33:05"),
         None
     );
+}
+
+// On 11 November a laptop's system guard spent 90 minutes with every
+// delete of the store's garbage refused, each pass saying only that it
+// took 0 of the 6 it tried, and its notice that nothing was left to clear.
+#[test]
+fn a_filling_pass_that_freed_nothing_for_its_failures_is_an_error() {
+    let refused = "warning: unable to download 'https://cache.example/x.narinfo'\n\
+                   retrying in 250 ms\n\
+                   error: unable to download 'https://cache.example/x.narinfo': \
+                   Could not resolve hostname\n";
+    let report = report(
+        0,
+        vec![
+            Outcome::Failed(refused.to_string()),
+            Outcome::Kept("in use".to_string()),
+            Outcome::Failed(refused.to_string()),
+        ],
+    );
+    let failing = failing(&report).expect("a filling pass that freed nothing is failing");
+    assert_eq!(
+        failing,
+        Failing {
+            tried: 2,
+            failed: 2,
+            timed_out: false,
+            last: "error: unable to download 'https://cache.example/x.narinfo': Could not \
+                   resolve hostname"
+                .to_string(),
+        }
+    );
+    assert_eq!(
+        failed_line(&failing, &report, "2026-11-11 15:40:00"),
+        "disk-guard: error: at 2026-11-11 15:40:00 a pass while filling freed nothing: 2 of \
+         the 2 it tried failed; the last: error: unable to download \
+         'https://cache.example/x.narinfo': Could not resolve hostname"
+    );
+}
+
+#[test]
+fn a_timeout_is_an_error_even_when_the_rest_freed_something() {
+    let report = report(
+        3 * GIB,
+        vec![
+            Outcome::Reclaimed,
+            Outcome::Failed("nix ran past 600s".to_string()),
+        ],
+    );
+    let failing = failing(&report).expect("a delete timing out is failing");
+    assert!(failing.timed_out, "{failing:?}");
+    assert_eq!(
+        failed_line(&failing, &report, "2026-11-11 15:40:00"),
+        "disk-guard: error: at 2026-11-11 15:40:00 a pass while filling freed only 3.0 GiB: 1 \
+         of the 2 it tried failed, one timing out; the last: nix ran past 600s"
+    );
+}
+
+#[test]
+fn what_freed_something_failed_at_nothing_or_ran_while_healthy_isnt_an_error() {
+    let partly = report(
+        GIB,
+        vec![Outcome::Reclaimed, Outcome::Failed("refused".to_string())],
+    );
+    assert_eq!(failing(&partly), None, "a pass that freed something");
+    let kept = report(0, vec![Outcome::Kept("in use".to_string())]);
+    assert_eq!(failing(&kept), None, "a pass that only judged");
+    let mut healthy = report(0, vec![Outcome::Failed("nix ran past 600s".to_string())]);
+    healthy.band = Band::Healthy;
+    assert_eq!(failing(&healthy), None, "upkeep on a healthy disk");
 }
 const HOUR: f64 = 3600.0;
 

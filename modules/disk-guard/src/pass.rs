@@ -136,12 +136,7 @@ pub fn told(report: &Report, seconds: f64, when: &str) -> Option<String> {
         .iter()
         .filter(|(_, outcome)| *outcome == Outcome::Reclaimed)
         .count();
-    let band = match report.band {
-        Band::Healthy => "while healthy",
-        Band::Filling => "while filling",
-        Band::NearlyFull => "while nearly full",
-        Band::CriticallyFull => "while critically full",
-    };
+    let band = while_band(report.band);
     (tried > 0).then(|| {
         format!(
             "disk-guard: at {when} a pass {band} took {took} of the {tried} it tried, \
@@ -149,6 +144,102 @@ pub fn told(report: &Report, seconds: f64, when: &str) -> Option<String> {
             crate::units::shown(report.freed)
         )
     })
+}
+
+/// How a pass on a disk at least filling went wrong where nobody would
+/// see it: what it tried all failed or was kept and it freed nothing, or
+/// something it ran timed out. On 11 November a laptop's system guard
+/// went 90 minutes with every delete of the store's garbage refused,
+/// saying only that it had nothing left to clear.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Failing {
+    /// What it tried and didn't keep on judging again.
+    pub tried: usize,
+    pub failed: usize,
+    pub timed_out: bool,
+    /// Why the last that failed did.
+    pub last: String,
+}
+
+/// Whether `why`, an action's failure, says it ran out of time.
+pub fn timed_out(why: &str) -> bool {
+    why.contains(" ran past ")
+}
+
+/// How `report` went wrong, if it's a pass that ought to be told.
+pub fn failing(report: &Report) -> Option<Failing> {
+    let failures: Vec<&str> = report
+        .actions
+        .iter()
+        .filter_map(|(_, outcome)| match outcome {
+            Outcome::Failed(why) => Some(why.as_str()),
+            _ => None,
+        })
+        .collect();
+    let last = failures.last()?;
+    let timed_out = failures.iter().any(|why| timed_out(why));
+    let tried = report
+        .actions
+        .iter()
+        .filter(|(_, outcome)| !matches!(outcome, Outcome::Kept(_)))
+        .count();
+    (report.band >= Band::Filling && (report.freed == 0 || timed_out)).then(|| Failing {
+        tried,
+        failed: failures.len(),
+        timed_out,
+        last: gist(last),
+    })
+}
+
+/// The most a failure's reason says in a notice or a log line.
+const GIST_CHARS: usize = 300;
+
+/// A failure's reason in one line: a command's error stream can run to
+/// pages of warnings and retries before the error that ended it, as Nix's
+/// did asking each substituter four times, so the last line that says
+/// `error:` is the one, else the first, cut to `GIST_CHARS`.
+fn gist(why: &str) -> String {
+    let lines = || why.lines().map(str::trim).filter(|line| !line.is_empty());
+    let line = lines()
+        .rfind(|line| line.contains("error:"))
+        .or_else(|| lines().next())
+        .unwrap_or(why);
+    match line.char_indices().nth(GIST_CHARS) {
+        Some((end, _)) => format!("{}...", &line[..end]),
+        None => line.to_owned(),
+    }
+}
+
+/// The error line a failing pass leaves in the guard's log, said at
+/// `when`.
+pub fn failed_line(failing: &Failing, report: &Report, when: &str) -> String {
+    let freed = if report.freed == 0 {
+        "freed nothing".to_owned()
+    } else {
+        format!("freed only {}", crate::units::shown(report.freed))
+    };
+    let timing = if failing.timed_out {
+        ", one timing out"
+    } else {
+        ""
+    };
+    format!(
+        "disk-guard: error: at {when} a pass {} {freed}: {} of the {} it tried failed{timing}; \
+         the last: {}",
+        while_band(report.band),
+        failing.failed,
+        failing.tried,
+        failing.last
+    )
+}
+
+fn while_band(band: Band) -> &'static str {
+    match band {
+        Band::Healthy => "while healthy",
+        Band::Filling => "while filling",
+        Band::NearlyFull => "while nearly full",
+        Band::CriticallyFull => "while critically full",
+    }
 }
 
 /// Takes what the plan says until free space reaches the target, nothing

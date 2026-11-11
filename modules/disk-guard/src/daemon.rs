@@ -588,7 +588,15 @@ pub struct LastPass {
     pub band: Band,
     pub end: String,
     pub freed: u64,
+    /// How it went wrong, if it's a pass that ought to be told.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failing: Option<crate::pass::Failing>,
 }
+
+/// What marks a line on the error stream as an error for systemd's
+/// journal, so `journalctl -p err` finds it. A Mac's log file would show
+/// it as written, so there it's left off.
+const ERROR_LEVEL: &str = if cfg!(target_os = "linux") { "<3>" } else { "" };
 
 impl Guard {
     pub fn new(config: Config, places: &Places) -> io::Result<Guard> {
@@ -2166,8 +2174,16 @@ impl Guard {
         let seconds = started.elapsed().as_secs_f64();
         // Said where people look, the journal or the Mac's log file, since
         // the guard's own journal is read only by the guard.
-        if let Some(line) = crate::pass::told(&report, seconds, &crate::clock::stamp(tick.wall)) {
+        let when = crate::clock::stamp(tick.wall);
+        if let Some(line) = crate::pass::told(&report, seconds, &when) {
             eprintln!("{line}");
+        }
+        let failing = crate::pass::failing(&report);
+        if let Some(failing) = &failing {
+            eprintln!(
+                "{ERROR_LEVEL}{}",
+                crate::pass::failed_line(failing, &report, &when)
+            );
         }
         self.journal.write(&Line::Pass {
             at: tick.wall,
@@ -2182,6 +2198,7 @@ impl Guard {
             band: report.band,
             end,
             freed: report.freed,
+            failing,
         });
         Ok(report.end)
     }

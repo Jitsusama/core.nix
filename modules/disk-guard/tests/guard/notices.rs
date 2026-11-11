@@ -1,6 +1,7 @@
 use disk_guard::band::Band;
 use disk_guard::daemon::{FilesystemStatus, LastPass, Status, Writing};
 use disk_guard::notices::{Change, Notice, Urgency, change, standing};
+use disk_guard::pass::Failing;
 use std::path::PathBuf;
 
 const GIB: u64 = 1 << 30;
@@ -43,7 +44,53 @@ fn pass(at: f64, band: Band, end: &str, freed: u64) -> LastPass {
         band,
         end: end.to_owned(),
         freed: freed * GIB,
+        failing: None,
     }
+}
+
+/// A pass whose six deletes all failed, freeing nothing.
+fn refused(at: f64) -> LastPass {
+    LastPass {
+        failing: Some(Failing {
+            tried: 6,
+            failed: 6,
+            timed_out: false,
+            last: "error: unable to download 'https://cache.example/x.narinfo'".to_owned(),
+        }),
+        ..pass(at, Band::Filling, "exhausted", 0)
+    }
+}
+
+// On 11 November a laptop's system guard spent 90 minutes with every
+// delete refused, telling only that nothing was left to clear; a filling
+// disk is otherwise never a desktop notice.
+#[test]
+fn a_filling_disk_whose_clearing_fails_is_told_once_with_why() {
+    let spent = status(
+        &[("/", Band::Filling, 140)],
+        Some(pass(1.0, Band::Filling, "exhausted", 0)),
+    );
+    let failing = status(&[("/", Band::Filling, 140)], Some(refused(2.0)));
+    let notice = shown(change(&spent, &failing));
+    assert_eq!(notice.summary, "Clearing the disk is failing");
+    assert_eq!(
+        notice.body,
+        "Nothing cleared, with 140.0 GiB free: 6 of the 6 things the guard tried failed. The \
+         last said: error: unable to download 'https://cache.example/x.narinfo'. disk-guard \
+         journal says more."
+    );
+    assert_eq!(notice.urgency, Urgency::Normal);
+    assert_eq!(
+        standing(&failing),
+        Some(notice),
+        "and it stands for the status file"
+    );
+    let again = status(&[("/", Band::Filling, 139)], Some(refused(3.0)));
+    assert_eq!(
+        change(&failing, &again),
+        None,
+        "told once while it goes on failing"
+    );
 }
 
 fn shown(change: Option<Change>) -> Notice {

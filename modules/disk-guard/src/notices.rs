@@ -39,7 +39,8 @@ pub enum Change {
 }
 
 /// What to tell, given the status before a step and after it: a writer
-/// frozen, else a finished pass on a nearly full disk, else the worse band
+/// frozen, else a finished pass on a nearly full disk, else a pass on a
+/// filling one that failed where the last didn't, else the worse band
 /// a nearly full disk entered, else the notice withdrawn once no disk
 /// is nearly full.
 pub fn change(before: &Status, after: &Status) -> Option<Change> {
@@ -54,6 +55,16 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
     if let Some(last) = &after.last
         && after.last != before.last
         && last.band >= Band::NearlyFull
+    {
+        return Some(Change::Show(passed(last, after)));
+    }
+    // Failing is told once a filling disk starts it, not each pass after:
+    // it's the guard that's broken, and a notice a pass taught Joel to
+    // ignore the rest.
+    if let Some(last) = &after.last
+        && after.last != before.last
+        && last.failing.is_some()
+        && before.last.as_ref().is_none_or(|was| was.failing.is_none())
     {
         return Some(Change::Show(passed(last, after)));
     }
@@ -174,6 +185,27 @@ fn passed(last: &LastPass, after: &Status) -> Notice {
         Urgency::Normal
     };
     // Plain text: a notification server may show markup as it's written.
+    if let Some(failing) = &last.failing {
+        let cleared = if last.freed == 0 {
+            "Nothing cleared".to_owned()
+        } else {
+            format!("Cleared only {}", shown(last.freed))
+        };
+        let timing = if failing.timed_out {
+            ", one running out of time"
+        } else {
+            ""
+        };
+        return Notice {
+            summary: format!("Clearing {} is failing", lower(&disk)),
+            body: format!(
+                "{cleared}, with {free} free: {} of the {} things the guard tried failed{timing}. \
+                 The last said: {}. disk-guard journal says more.",
+                failing.failed, failing.tried, failing.last
+            ),
+            urgency,
+        };
+    }
     if last.end == "reached" {
         return Notice {
             summary: format!("Made room on {}", lower(&disk)),
