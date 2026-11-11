@@ -56,7 +56,7 @@ pub enum Change {
     },
 }
 
-/// What a stream sent nowhere is said to be sent to, as WirePlumber says
+/// What a stream sent nowhere is said to be sent to, as `WirePlumber` says
 /// it besides letting the key go.
 const NOWHERE: [&str; 2] = ["", "-1"];
 
@@ -89,7 +89,7 @@ pub struct Devices {
     /// The profile each card is in, by its id.
     profiles: BTreeMap<u32, i32>,
     /// Where each program's stream is sent, by the stream's id: a
-    /// device's node name or its object serial, as WirePlumber takes
+    /// device's node name or its object serial, as `WirePlumber` takes
     /// either. A stream not here follows the default.
     sent: BTreeMap<u32, String>,
 }
