@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-/// A sensor on a chip that measures many, as dell_ddv's are, by its label,
+/// A sensor on a chip that measures many, as `dell_ddv`'s are, by its label,
 /// as the part it stands for. One labelled "CPU" or "Other" is left out:
 /// the processor's own chip says the first, and the rest say nothing of
 /// what they measure.
@@ -442,7 +442,7 @@ pub fn trips_for(zones: &[Zone], part: &str) -> Vec<Trip> {
         for trip in &zone.trips {
             if !out
                 .iter()
-                .any(|each| each.kind == trip.kind && each.value == trip.value)
+                .any(|each| each.kind == trip.kind && each.value.total_cmp(&trip.value).is_eq())
             {
                 out.push(trip.clone());
             }
@@ -847,7 +847,7 @@ fn told_of(mut made: Fan, other: Option<&Fan>) -> Fan {
 }
 
 /// Two chips can report the same fans, one naming them and one not, as
-/// dell_ddv and dell_smm do: the named are the fans, and an unnamed chip
+/// `dell_ddv` and `dell_smm` do: the named are the fans, and an unnamed chip
 /// with as many says, fan by fan in order, their most, their aim and
 /// their power. Where none are named, the first chip's unnamed fans are.
 pub fn fans(chips: &[Chip]) -> Vec<Fan> {
@@ -925,9 +925,9 @@ mod tests {
         }
     }
 
-    /// The laptop's chips, as chips_of gives them: the disk's with its
-    /// hidden second sensor, the processor's, dell_ddv's named sensors
-    /// and fans, dell_smm's unnamed fans telling their most and power, and
+    /// The laptop's chips, as [`chips_of`] gives them: the disk's with its
+    /// hidden second sensor, the processor's, `dell_ddv`'s named sensors
+    /// and fans, `dell_smm`'s unnamed fans telling their most and power, and
     /// the battery's.
     fn laptop() -> Vec<Chip> {
         let unnamed = |n, value, power| Fan {
@@ -1171,7 +1171,7 @@ mod tests {
             held,
             Some(Throttled {
                 times: 3202,
-                ms: Some(19016),
+                ms: Some(19_016),
                 longest: Some(125),
                 cores: vec![(0, 24), (1, 8)],
                 total: 32,
