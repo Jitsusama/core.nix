@@ -9,17 +9,17 @@
 // choices when its configuration is next read, so they last the session,
 // and what lasts belongs in the configuration. Each screen's row comes
 // ready from the windows daemon (modules/windows, screens.rs), its name,
-// how it stands and what it runs said there, with niri's record of it,
-// which its settings, its drawer and its acts read here; the daemon asks
-// niri for its screens as a display comes or goes, so the shell asks
-// niri nothing of them itself. A change made here goes over niri's
+// how it stands, what it runs and its drawer, light and all, said there,
+// with niri's record of it, which its settings and acts read here; the
+// daemon asks niri for its screens as a display comes or goes, so the
+// shell asks niri nothing of them itself. A change made here goes over niri's
 // socket, which says nothing of it in niri's stream, so the daemon is
 // asked to look again (refresh). What a display's EDID says of itself, who
 // made it and when, its size, native mode, refresh range, colour depth,
 // colours, white point, primaries and HDR, desk-facts writes to a file
-// (modules/desk-facts), and the right arrow lists after the settings,
-// named first as parts are (Colour depth "10 bit"), Return copying one.
-// The white point and primaries come as figures, said here by Joel's
+// (modules/desk-facts), which the daemon's drawer says, and the right
+// arrow lists after the settings, named first as parts are (Colour depth
+// "10 bit"), Return copying one. The white point and primaries come as figures, said here by Joel's
 // grouping and decimal point (Screens.js).
 //
 // The panel's backlight is the one brightness, lid shut or not: the
@@ -57,7 +57,6 @@ import "../Fuzzy.js" as Fuzzy
 import "Backlight.js" as Backlight
 import "Numbers.js" as Numbers
 import "Order.js" as Order
-import "Plate.js" as Plate
 import "Power.js" as Power
 import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
@@ -72,13 +71,18 @@ Provider {
     collection: Words.collection("displays")
 
     // The screens' rows as the windows daemon serves them, each holding
-    // niri's record of its screen; Turn Every Screen Off is the daemon's
-    // row too, while one is lit.
+    // niri's record of its screen and its drawer; Turn Every Screen Off is
+    // the daemon's row too, while one is lit. The screen whose drawer
+    // shows is watched ahead, and the one holding the Brightness while a
+    // terminal looks, so the daemon reads its light from the machine
+    // daemon only then (modules/windows, light.rs).
     ReadyRows {
         id: ready
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
         place: "displays"
+        ahead: [provider.drawerWanted, provider.terminalLooks ? provider.backlitKey : ""]
+            .filter((key, at, keys) => key !== "" && keys.indexOf(key) === at)
         make: (row, key) => provider.madeFrom(row, key)
         maker: provider
         drawn: provider.launcher?.open ?? false
@@ -160,6 +164,9 @@ Provider {
         function onOpenChanged() {
             if (provider.launcher.open)
                 provider.refresh();
+            // Shut, no drawer shows, so none is watched ahead.
+            else
+                provider.drawerWanted = "";
         }
     }
 
@@ -292,18 +299,6 @@ Provider {
     // (Warmth.js's of), or null where nothing warms the screen.
     property var warmth: null
     onWarmthChanged: changed()
-
-    // The level the backlight program last settled, what its curve asks
-    // for the room it heard and whether it follows the room, as it says
-    // them each time a step ends or a pick is heard (Backlight.js's
-    // settled), or null where it says none.
-    property var settled: null
-    onSettledChanged: changed()
-
-    // Its curve, dimmest first, where it keeps it: its standard points
-    // with each of Joel's picks learned into them.
-    property var curve: []
-    onCurveChanged: changed()
 
     // How Warmth says a time and a kelvin: by the clock, and with its
     // thousands grouped (VKCF3Z, 2026-11-08: "4,000 K").
@@ -489,24 +484,18 @@ Provider {
         const records = Object.values(lights.held);
         const now = Backlight.lit(records);
         const sensed = Backlight.sensor(records);
-        const level = Backlight.settledOf(records);
-        const points = Backlight.curve(records);
         const warmed = Warmth.of(records);
         const moved = (was, is) => JSON.stringify(was) !== JSON.stringify(is);
         const lit = moved(light, now);
         const sensing = moved(roomSensor, sensed);
-        const steered = [moved(settled, level), moved(curve, points), moved(warmth, warmed)];
+        const warming = moved(warmth, warmed);
         if (lit)
             light = now;
         if (sensing)
             roomSensor = sensed;
-        if (steered[0])
-            settled = level;
-        if (steered[1])
-            curve = points;
-        if (steered[2])
+        if (warming)
             warmth = warmed;
-        if ((lit || sensing || steered.includes(true)) && lightShown)
+        if ((lit || sensing || warming) && lightShown)
             answered();
     }
 
@@ -517,8 +506,27 @@ Provider {
         .some(row => row?.from === provider || String(row?.key ?? "").startsWith("display:"))
     // A terminal's look waits for the daemon's whole answer to its watch,
     // as the launcher shows the light once it opens (Provider.stillReading).
-    stillReading: terminalLooks && !(launcher?.open ?? false) && !lights.answeredThisWatch
-        && lights.state !== "not answering"
+    // Its drawer waits too, while a backlight is told, for the daemon to say
+    // its Brightness, read or not yet read, which it does within a second
+    // of its look (modules/windows, light.rs's WAITED).
+    stillReading: terminalLooks && !(launcher?.open ?? false) && lights.state !== "not answering"
+        && (!lights.answeredThisWatch || light !== null && backlitKey !== ""
+            && brightnessServed(backlitKey) === "")
+
+    // The row's key of the screen whose place holds the Brightness, or "".
+    readonly property string backlitKey: {
+        const home = lit.find(output => backlit(output));
+        return home ? `row:displays:display:${home.name}` : "";
+    }
+
+    // What the drawer the daemon serves on the row of `key` says of the
+    // Brightness, "" while it says none.
+    function brightnessServed(key) {
+        void ready.placings;
+        const named = partName("brightness");
+        const fact = (ready.served(key)?.drawer?.facts ?? []).find(each => each.name === named);
+        return fact?.said ?? "";
+    }
 
     // Whether the lights can be seen, so are watched: Screens' answer,
     // Screens or a screen stepped into or found, a place holding Screens,
@@ -558,13 +566,13 @@ Provider {
         if (key === "row:displays:sleep")
             return sleepRow(row);
         const output = outputs[row.held?.output];
-        return output ? made(output, row) : null;
+        return output ? made(output, row, key) : null;
     }
 
     // A screen's row as the daemon says it, its name, how it stands and
     // what it runs, with its acts here: a screen dark by name is still in
     // niri's outputs, so it's turned on by name.
-    function made(output, row) {
+    function made(output, row, key) {
         const stands = Screens.standing(output);
         const turnsOn = stands === "dark" ? () => provider.ask({
             Action: { PowerOnMonitor: { output: output.name } }
@@ -583,7 +591,7 @@ Provider {
             run: stands === "lit" ? () => Niri.act({ FocusMonitor: { output: output.name } })
                 : turnsOn,
             verbs: () => provider.verbs(output),
-            drawer: () => provider.drawerOf(output),
+            drawer: () => provider.drawerOf(key),
             options: Object.assign({
                 power: provider.screenOption(output, "power"),
                 unplugged: provider.screenOption(output, "unplugged")
@@ -708,88 +716,22 @@ Provider {
         turned: transform => provider.turnedSaid(transform)
     })
 
-    // A screen's drawer: its connector and what it is over its name, both
-    // as written, since a connector is a name from the world (VKCF3Z,
-    // 2026-11-07); then what moves most, the light where it lights this
-    // screen (its Brightness with its steps, the Room light, the Warmth);
-    // then what niri says it runs, where it sits and what it offers
-    // (Screens.js); then what its EDID says, as its step lists it, its
-    // size from niri where desk-facts says none. Its focus is its row's
-    // to say, so it isn't said again.
-    function drawerOf(output) {
-        const facts = [];
-        const light = output.logical !== null && backlit(output) ? provider.light : null;
-        const told = Words.of("displays").said ?? {};
-        if (light !== null) {
-            facts.push({
-                label: partName("brightness"),
-                // A monitor following the panel has none of its steps,
-                // and a hundred steps are its share again.
-                value: !lightRead ? unreadSaid()
-                    : inTheRoom(output) && light.most !== 100 ? Plate.runs([`${light.share}%`,
-                        partSaid("", "steps").replace("{now}", grouped(light.now))
-                            .replace("{most}", grouped(light.most))])
-                    : `${light.share}%`,
-                figure: { shape: "stroke", values: [lightRead ? light.now / light.most : 0],
-                    warn: false }
+    // The screen whose drawer shows, by its row's key, which is watched
+    // ahead while it does (ready.ahead), so its light is read; set as the
+    // turn ends, never inside the drawer's own binding, as Agents' is.
+    property string drawerWanted: ""
+
+    // A screen's drawer as the windows daemon serves it on its row: its
+    // connector over its name, its light where it holds the Brightness,
+    // what niri says it runs, then what its EDID says, its serial last
+    // (modules/windows, screens.rs and light.rs).
+    function drawerOf(key) {
+        if (key !== drawerWanted)
+            Qt.callLater(() => {
+                provider.drawerWanted = key;
             });
-            // What the kernel says of the steps, only for the panel they
-            // are, after the share they make (VKCF3Z, 2026-11-09).
-            if (inTheRoom(output))
-                facts.push(...Backlight.kernelFacts(light, partName, told, grouped));
-            // The room as the sensor hears it now, which moves before the
-            // level does, and is asked only for the screen it lights; or
-            // that no light is heard, where the daemon follows nothing.
-            const said = (key, values) => Backlight.fill(partSaid("", key), values);
-            const heard = inTheRoom(output) ? Backlight.room(settled, lightRead ? room : null, said,
-                each => lux(each)) : "";
-            if (heard !== "")
-                facts.push({ label: partName("room"), value: heard });
-            // What the sensor counts, after the lux it makes of them.
-            if (inTheRoom(output) && roomSensor !== null)
-                facts.push(...Backlight.sensorFacts(lightRead ? roomSensor
-                    : Object.assign({}, roomSensor, { raw: null }), partName, told, grouped));
-            // What sets the level, the Warmth, then the curve, which moves
-            // only with a pick, so goes last of the light (VKCF3Z, 2026-11-08).
-            const follows = inTheRoom(output) ? Backlight.follows(settled, said) : "";
-            if (follows !== "")
-                facts.push({ label: partName("follows"), value: follows });
-            if (inTheRoom(output) && warmth !== null)
-                facts.push({
-                    label: partName("warmth"),
-                    value: Plate.runs([`${Numbers.format(warmth.kelvin, 0, settings.group,
-                        settings.point)} K`,
-                        // What holds it, as its row's note says it: the
-                        // night light by night, not the room.
-                        Warmth.note(warmth, Date.now(), warmthSaid, warmthTold)])
-                });
-            if (inTheRoom(output) && curve.length > 0)
-                facts.push({ label: partName("curve"),
-                    value: Backlight.curveSaid(curve, said,
-                        each => Backlight.chosen(each, settings.group, settings.point)) });
-            // The kernel's names for the backlight and the sensor identify
-            // them, so end the light, set as identifiers are (VKCF3Z,
-            // 2026-11-09).
-            if (inTheRoom(output))
-                facts.push({ label: partName("device"), value: light.device, identifies: true });
-            if (inTheRoom(output) && roomSensor !== null)
-                facts.push({ label: partName("sensor"), value: roomSensor.device,
-                    identifies: true });
-        }
-        const edid = Plate.facts(factRows(output));
-        const physical = edid.some(fact => fact.label === partName("size")) ? ""
-            : Screens.physical(output);
-        return {
-            eyebrow: Plate.runs([output.name, partSaid("", builtIn(output) ? "built-in"
-                : "screen")]),
-            eyebrowNames: true,
-            title: named(output),
-            // Its serial, from niri or the EDID, identifies it, so ends it.
-            facts: Plate.identified(facts.concat(Screens.facts(output, screenWords, settings),
-                edid,
-                physical === "" ? [] : [{ label: partName("size"), value: physical }]),
-                [partName("serial")])
-        };
+        const row = ready.served(key);
+        return row ? ready.drawerOf(row) : null;
     }
 
     readonly property var all: ready.rows()
