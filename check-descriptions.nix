@@ -3017,8 +3017,8 @@
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
     key, what was held stays through a gap unless the client lets it go there, a client of two
     kinds names both in every watch, a kind with none is known to hold none once answered, a
-    whole answer after a gap lets go what went in it, and a handler of a line reads when it was
-    heard while one it put off reads none
+    whole answer after a gap lets go what went in it, and a handler of a told change reads when its
+    line was heard while one of a watch's whole answer, or one it put off, reads none
   '';
   the-desktop-reads-the-spend-watch = ''
     the AI spend piece draws what the watch wrote, and the tokens piece is there only while the

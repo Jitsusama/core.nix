@@ -26,8 +26,9 @@
 // a gap. What each message changed and let go is heard apart, a key let
 // go never said as changed, and a whole answer says only the keys whose
 // records differ from what was held and those it dropped, so a rewatch
-// answered with the same records hears nothing. A handler of a line reads
-// when that line was heard, and one it puts off reads none. A client
+// answered with the same records hears nothing. A handler of a told change
+// reads when its line was heard, and one of a watch's whole answer, or one
+// it puts off, reads none. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -136,19 +137,26 @@ ShellRoot {
     property int rewatchHeard: -1
 
     // What a handler of its records reads as the time its line was heard,
-    // and what one it puts off reads, so the launcher times a change from
-    // its line and never one told later (Hearing.js).
+    // for the watch's whole answer and the change told after it, and what
+    // one it puts off reads, so the launcher times a change from its line,
+    // never what an opening's watch catches up on, and never one told
+    // later (Hearing.js).
     Daemon {
         id: marked
 
         socket: `${root.runtime}/daemons/kinds.sock`
         kind: "mark"
         onHeard: (changed, gone) => {
+            if (marked.held["mark:one"]?.heard === 1) {
+                root.wholeMarkedAt = Hearing.heardAt();
+                return;
+            }
             root.markedAt = Hearing.heardAt();
             root.markedThen = Date.now();
             Qt.callLater(() => root.markedLater = Hearing.heardAt());
         }
     }
+    property real wholeMarkedAt: -1
     property real markedAt: -1
     property real markedThen: -1
     property real markedLater: -1
@@ -429,8 +437,9 @@ ShellRoot {
             }
         },
         {
-            what: "a handler of a line reads when it was heard, and one put off reads none",
-            holds: () => root.markedAt > 0 && root.markedAt <= root.markedThen
+            what: "a handler of a change reads when its line was heard, one of a watch's"
+                + " whole answer and one put off read none",
+            holds: () => root.wholeMarkedAt === 0 && root.markedAt > 0 && root.markedAt <= root.markedThen
                 && root.markedThen - root.markedAt < 1000 && root.markedLater === 0
                 && Hearing.heardAt() === 0
         },

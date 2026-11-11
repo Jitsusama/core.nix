@@ -2,7 +2,8 @@
 // and the launcher, so a change a line makes can be timed from it to the
 // frame niri presents with it (Y2YBTS, 2026-11-11: Joel's 50 ms bar holds
 // for updates as for keys). Daemon.qml marks it from before it parses a
-// line until every handler that line called has returned, so a provider
+// line until every handler that line called has returned, a watch's whole
+// answer aside, which tells no change but what was missed, so a provider
 // telling its change from its handler is timed from the line, and one that
 // tells it later finds no mark and isn't timed from a line it didn't come
 // from. A library, so one is shared by everything that imports it.

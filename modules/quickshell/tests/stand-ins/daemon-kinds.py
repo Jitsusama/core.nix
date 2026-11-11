@@ -5,7 +5,9 @@ argument: hello, and a watch, answered with one record for each key asked, or el
 kind asked, `<kind>:one`. Each record says the kinds its watch asked for, so tests/daemon.qml can
 tell the client sent its list of kinds in every watch, the one ahead too, and not one kind alone.
 A watch of sessions is answered as mycelium's node answers one: a record whole, then a change
-saying only the fields that differ, one dropped as null. A watch of what waits is answered with
+saying only the fields that differ, one dropped as null. A watch of marks is answered whole,
+then told a change, so tests/daemon.qml can tell which of the two is heard under its line.
+A watch of what waits is answered with
 two records the first time, and the connection then dropped, and with one of them alone after,
 as the node's whole answer is once one went in a gap; one of verdicts with none. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
@@ -34,10 +36,8 @@ def kinds_of(asked: dict[str, object]) -> list[str]:
     return []
 
 
-def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
-    """Answer one ask, in the lines a daemon sends for it, its connection unwatched so often."""
-    if asked.get("ask") == "hello":
-        return [{"id": asked.get("id"), "version": 1, "domain": "kinds", "state": "answering"}]
+def told_after_whole(asked: dict[str, object]) -> list[dict[str, object]] | None:
+    """Answer a watch of a kind answered whole and then told a change, or None for another."""
     if asked.get("kind") == "session":
         whole = {"key": "session:a", "kind": "session", "heard": 1}
         return [
@@ -47,6 +47,22 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
                 "changed": [{"key": "session:a", "state": "busy", "step": None}],
             },
         ]
+    if asked.get("kind") == "mark":
+        mark = {"key": "mark:one", "kind": "mark"}
+        return [
+            {"id": asked.get("id"), "records": [{**mark, "heard": 1}]},
+            {"id": asked.get("id"), "changed": [{**mark, "heard": 2}]},
+        ]
+    return None
+
+
+def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
+    """Answer one ask, in the lines a daemon sends for it, its connection unwatched so often."""
+    if asked.get("ask") == "hello":
+        return [{"id": asked.get("id"), "version": 1, "domain": "kinds", "state": "answering"}]
+    told = told_after_whole(asked)
+    if told is not None:
+        return told
     if asked.get("kind") == "waiting":
         with WAITED_LOCK:
             WAITED["count"] += 1
