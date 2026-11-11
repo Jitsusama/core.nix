@@ -1749,7 +1749,10 @@ mod tests {
     #[test]
     fn a_copy_read_as_no_text_says_none() {
         let said = offered(&types(&["image/png"]), picture(b"a picture").as_ref());
-        assert_eq!(said, "{\"now\":{\"types\":[\"image/png\"],\"text\":\"\"}}\n");
+        assert_eq!(
+            said,
+            "{\"now\":{\"types\":[\"image/png\"],\"text\":\"\"}}\n"
+        );
         // Text too large to read, or a program that never handed it over.
         assert_eq!(
             offered(&types(&["text/plain"]), None),
@@ -1799,7 +1802,7 @@ mod tests {
     fn keeping_none_keeps_nothing_to_give_back() {
         let mut history = history(0);
         assert_eq!(history.copied(text("one")), None);
-        assert!(history.copies.is_empty());
+        assert_eq!(history.copies.len(), 0);
         assert_eq!(history.current, None);
     }
 

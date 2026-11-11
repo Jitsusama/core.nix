@@ -82,7 +82,7 @@ Singleton {
     // after each refusal, a minute at most, and one with nothing at its
     // path once the socket appears.
     LazyLoader {
-        id: link
+        id: listening
         active: true
 
         Socket {
@@ -130,8 +130,8 @@ Singleton {
 
     function connectAgain() {
         again.stop();
-        link.active = false;
-        link.active = true;
+        listening.active = false;
+        listening.active = true;
     }
 
     // How many times it's been refused since it last answered.
