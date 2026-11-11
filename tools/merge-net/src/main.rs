@@ -13,8 +13,9 @@
 //! that fails and then passes goes on the quarantine list
 //! (`quarantine.json`) instead, and nothing is reverted for it. It starts
 //! nothing while the machine is held or paused (`holds.rs`, `state.rs`).
-//! `watch.rs` says what a round does, `watch/settling.rs` how what it found
-//! settles beside the next, and `state.rs` what it keeps, and where.
+//! `watch.rs` says what a round does and what the quick look beside it runs
+//! every five minutes, `watch/settling.rs` how what they found settles
+//! beside the next, and `state.rs` what it keeps, and where.
 //!
 //! `merge-net needs`, on a branch, says whether its change runs VM tests
 //! before it merges, rather than after on the net, and which: a change to
@@ -65,6 +66,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use state::{State, short};
 use watch::Round;
@@ -155,9 +157,14 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
     // waits behind the round's tests alone. The net ends only once the
     // settler has finished what it was handed.
     let settler = watch::Settler::new(&world, &state);
+    let done = AtomicBool::new(false);
     let ended = std::thread::scope(|scope| {
         settler.start(scope);
+        if !once {
+            scope.spawn(|| watch::quick(&world, &state, &settler, &done));
+        }
         let ended = rounds(&world, &state, &start, &settler, once, follow.as_deref());
+        done.store(true, Ordering::Relaxed);
         settler.close();
         ended
     });
