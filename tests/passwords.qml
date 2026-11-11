@@ -272,8 +272,8 @@ QtObject {
             now, "away"), now, said),
         "GitHub's password not copied \u00b7 1Password asks you to let the launcher in");
         check("with nobody to ask", Passwords.told(Passwords.answered(asking, null, now,
-            "the passwords daemon isn't answering"), now, said),
-        "GitHub's password not copied \u00b7 the passwords daemon isn't answering");
+            "not answering"), now, said),
+        "GitHub's password not copied \u00b7 not answering");
         check("nothing copied says nothing", Passwords.told(null, now, said), "");
         // The row and the foot say a copy only while it's asked, or why it
         // was refused; once on the clipboard, the margin's mark says it.
@@ -410,8 +410,8 @@ QtObject {
             Managers.unread(kinds, {}), []);
 
         // While the place is off, its row opens the browser a manager's
-        // extension fills, else a manager's own app, else nothing, its note
-        // saying which, so none is a Return that does nothing.
+        // extension fills, else a manager's own app, else its drawer saying
+        // why, its note saying which, so none is a Return that does nothing.
         const filling = { name: "one", fills: "chrome", program: "one-app" };
         const bare = { name: "two", program: "two-app" };
         const entries = { chrome: "Chrome", "one-app": "One", "two-app": "Two" };
@@ -420,19 +420,23 @@ QtObject {
             const said = Managers.offOpens(managers,
                 manager => has(manager.fills) ? entry(manager.fills) : null,
                 manager => has(manager.program) ? entry(manager.program) : null);
-            return [said.manager?.name ?? null, said.opened, said.note];
+            return [said.manager?.name ?? null, said.opened, said.note, said.act];
         };
         const all = () => true;
         check("off, it opens the browser a manager fills", opens([bare, filling], all),
-            ["one", "Chrome", "offNote"]);
+            ["one", "Chrome", "offNote", "open"]);
         check("off, with no browser it opens the manager's own app", opens([bare], all),
-            ["two", "Two", "offNoBrowser"]);
+            ["two", "Two", "offNoBrowser", "open"]);
         check("off, a browser the machine hasn't is no browser",
-            opens([filling], id => id !== "chrome"), ["one", "One", "offNoBrowser"]);
-        check("off, with no manager it opens nothing and says so", opens([], all),
-            [null, null, "offNoManager"]);
-        check("off, with no app it opens nothing", opens([bare], () => false),
-            ["two", null, "offNoBrowser"]);
+            opens([filling], id => id !== "chrome"), ["one", "One", "offNoBrowser", "open"]);
+        check("off, with no manager its Return goes into its drawer", opens([], all),
+            [null, null, "offNoManager", "drawer"]);
+        check("off, with no app its Return goes into its drawer", opens([bare], () => false),
+            ["two", null, "offNoBrowser", "drawer"]);
+        check("off, no row's Return is no act",
+            [[bare, filling], [bare], [filling], []].reduce((acts, managers) =>
+                acts.concat([all, () => false].map(has => opens(managers, has)[3])), [])
+                .filter(act => act !== "open" && act !== "drawer"), []);
 
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);

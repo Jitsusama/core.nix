@@ -89,20 +89,24 @@ function noted(reason, called) {
 // What the place's one row opens while it's off, and the word its note
 // is said by: the browser the first manager filling one fills sign-ins
 // in (`offNote`), or where none fills one, the first manager's own app
-// (`offNoBrowser`); where the machine has neither, nothing, so Return is
-// no act rather than one that does nothing, as with no manager at all
-// (`offNoManager`; Y2YBTS's review of #3001). `browserOf` and `appOf`
-// give a manager's desktop entry, or null.
+// (`offNoBrowser`); where the machine has neither, or has no manager at
+// all (`offNoManager`), nothing. Its Return, `act`, opens what it opens,
+// or with nothing to open goes into the row's drawer, which says why and
+// what would, since every row's Return does something (Y2YBTS's reviews
+// of #3001 and #3037). `browserOf` and `appOf` give a manager's desktop
+// entry, or null.
 function offOpens(managers, browserOf, appOf) {
     const filling = managers.find(one => browserOf(one) !== null);
     if (filling !== undefined) {
-        return { manager: filling, opened: browserOf(filling), note: "offNote" };
+        return { manager: filling, opened: browserOf(filling), note: "offNote", act: "open" };
     }
     if (managers.length === 0) {
-        return { manager: null, opened: null, note: "offNoManager" };
+        return { manager: null, opened: null, note: "offNoManager", act: "drawer" };
     }
     const own = managers.find(one => appOf(one) !== null) ?? managers[0];
-    return { manager: own, opened: appOf(own), note: "offNoBrowser" };
+    const opened = appOf(own);
+    const act = opened === null ? "drawer" : "open";
+    return { manager: own, opened, note: "offNoBrowser", act };
 }
 
 // The row leading the place for each manager that can't read, by how its
