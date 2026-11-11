@@ -24,6 +24,7 @@
 mod card;
 mod idle;
 mod mesh;
+mod net;
 mod records;
 mod revive;
 mod start;
@@ -41,7 +42,8 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use mesh::{Mesh, Message};
-use watch::{Landing, Round, Snapshot, State, To};
+use net::Round;
+use watch::{Landing, Snapshot, State, To};
 
 /// The address cadence's questions come from.
 const FROM: &str = "CADENCE";

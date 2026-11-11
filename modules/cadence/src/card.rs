@@ -249,7 +249,7 @@ mod tests {
     fn a_net_between_rounds_behind_main_is_not_said_caught_up() {
         let s = Snapshot {
             now: 100_000,
-            round: Some(crate::watch::Round {
+            round: Some(crate::net::Round {
                 head: "7ee4bf22c8fa".into(),
                 merged: 100_000 - 3 * 3600,
                 behind: 40,
