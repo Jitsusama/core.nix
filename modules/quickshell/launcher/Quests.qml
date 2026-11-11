@@ -53,7 +53,8 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/quests.sock`
         place: "quests"
         beside: ["summary"]
-        make: row => provider.made(row)
+        make: (row, key) => provider.made(row, key)
+        maker: provider
         drawn: provider.launcher?.open ?? false
     }
     // What the daemon serves, for a reader told of each change it hears.
@@ -178,24 +179,21 @@ Provider {
         });
     }
 
-    function made(served) {
+    // A quest's row as the daemon serves it, made as every place's ready
+    // rows are (ReadyRows.qml's thing), with what only a quest's session
+    // knows over it until the daemon serves its acts (RCTRF8).
+    function made(served, key) {
         const quest = questOf(served);
         const session = quest.session;
-        const row = member({
+        const row = ready.thing(served, key, {
             thing: true,
-            key: served.thing,
             rich: 1,
             // Return does the first of its acts (verbs), so it says that
             // act's verb, and a step in lifts no second act before them.
             verb: session ? (session.parked ? Words.verb("verb:quest:wake") : "go to")
                 : Words.verb("verb:quest:open"),
-            name: served.name,
-            unfinished: served.unfinished === true,
             glyph: Theme.glyph[served.glyph] ?? Theme.glyph.pending,
             hue: served.hue ?? "program",
-            side: ready.sideOf(served),
-            note: served.note ?? "",
-            reads: served.reads ?? "",
             later: true,
             run: () => provider.go(quest),
             verbs: () => provider.verbs(quest),

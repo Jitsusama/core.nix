@@ -187,3 +187,74 @@ function ticks(row) {
     }
     return times.every(time => DAILY.has(time.as)) ? "day" : "minute";
 }
+
+// The keys of the rows inside the row of key `parent`, in their order, or
+// with `parent` "" a place's own rows, those inside none: a row inside
+// another names it as its `parent`, so the shell walks nothing.
+function inside(keys, held, parent) {
+    return keys.filter(key => (rowOf(held[key])?.parent ?? "") === parent);
+}
+
+// The drawer a row serves: its own, or, where it names one by key, the
+// drawer the record beside it holds, `{ key: "drawer:<place>:<id>", kind:
+// "drawer", drawer }`, so a drawer served apart changes without its row.
+// Null where there's none, or none yet.
+function drawerServed(row, held) {
+    const drawer = row?.drawer;
+    if (typeof drawer === "string") {
+        return held?.[drawer]?.drawer ?? null;
+    }
+    return drawer ?? null;
+}
+
+// What a served act asks of the shell, by its form (ready-rows.md's
+// acts): "ask", back on the socket; "copy" its words; "open" its link;
+// "step", into the row's drawer or the rows inside it; or "" for a form
+// the shell doesn't know, which is never guessed at, and so never offered.
+function actForm(act) {
+    if (typeof act?.key !== "string" || act.key === "") {
+        return "";
+    }
+    if (act.ask !== null && typeof act.ask === "object") {
+        return "ask";
+    }
+    if (typeof act.copy === "string") {
+        return "copy";
+    }
+    if (typeof act.open === "string" && act.open !== "") {
+        return "open";
+    }
+    return act.step === "drawer" || act.step === "rows" ? "step" : "";
+}
+
+// A row's acts the shell can do, in the order served, Return's first.
+function actsOf(row) {
+    return (row?.acts ?? []).filter(act => actForm(act) !== "");
+}
+
+// The verb the foot says for an act: words.json's for its key, `worded`,
+// else the one every act of its form says.
+function verbOf(act, worded) {
+    if (worded) {
+        return worded;
+    }
+    const form = actForm(act);
+    if (form === "step") {
+        return act.step === "rows" ? "more" : "read";
+    }
+    return form === "copy" || form === "open" ? form : "";
+}
+
+// Why an ask wasn't done, in words, or "" where it was: the daemon's own
+// words for a refusal, else the launcher's, `said.couldNot`, and
+// `said.noAnswer` where no answer came, since nothing fails silently.
+function refusal(answer, said) {
+    if (answer === null || answer === undefined) {
+        return said.noAnswer ?? "";
+    }
+    if (!answer.error) {
+        return "";
+    }
+    const own = answer.error.said;
+    return typeof own === "string" && own !== "" ? own : said.couldNot ?? "";
+}
