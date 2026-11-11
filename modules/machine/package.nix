@@ -1,7 +1,8 @@
 # The machine daemon, built from this directory, its tests run as it builds.
-# Its socket's tests ask it with a crate every daemon's tests share
+# Its rows take the form every daemon's do (../ready-rows), and its
+# socket's tests ask it with a crate every daemon's tests share
 # (../daemon-client), so the source is cut from the modules folder holding
-# both, and built from this one.
+# all three, and built from this one.
 {
   lib,
   rustPlatform,
@@ -19,6 +20,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../daemon-client/Cargo.toml
       ../daemon-client/src
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
     ];
   };
   sourceRoot = "${src.name}/machine";

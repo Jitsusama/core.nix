@@ -1,15 +1,15 @@
 //! What every place's ready rows share, in Y2YBTS's ready-row form
 //! (QEST-20261023-Y2YBTS attachments/speed/ready-rows.md): a row as it's
-//! made, each placed under its parent with its depth and spaced order
-//! among its siblings, and the graphs worked out whole in the steps the
-//! shell draws, so a reading that leaves a drawing as it was changes
-//! nothing and the row isn't sent again. Heat's rows ([`crate::heat_rows`])
+//! made, each placed under its parent with its depth, in the order shown,
+//! and the graphs worked out whole in the steps the shell draws, so a
+//! reading that leaves a drawing as it was changes nothing and the row
+//! isn't sent again. Each place's rows are given their spaced order as
+//! they're kept (ready-rows' `Kept`, in `main.rs`), each keeping its last,
+//! so a row coming or going sends itself alone. Heat's rows ([`crate::heat_rows`])
 //! are made with it, and Power's, Firmware's and Machine's own are to be.
 
 use serde_json::{Map, Value, json};
 
-/// How far apart siblings are ordered, so one moving sends one row.
-pub const SPACED: u64 = 1024;
 /// How many reads a spark holds, two to each of its ten characters.
 pub const GRAPHED: usize = 20;
 /// The steps a bar fills in, one to each place of its twenty.
@@ -103,8 +103,9 @@ pub fn spark(values: &[f64]) -> Value {
     json!({ "shape": "spark", "values": drawn, "warn": false })
 }
 
-/// Each made row as a record of `place`, its siblings ordered among
-/// themselves.
+/// Each made row as a record of `place`, in the order it's shown, each
+/// under its parent. What it copies is its first act, which the shell
+/// copies itself and never asks back (Y2YBTS, 2026-11-10).
 pub fn placed(
     place: &str,
     made: Vec<Made>,
@@ -112,7 +113,7 @@ pub fn placed(
     depth: u64,
     out: &mut Vec<Value>,
 ) {
-    for (at, row) in (1..).zip(made) {
+    for row in made {
         let key = format!("row:{place}:{}", row.id);
         let mut record = Map::new();
         record.insert("key".to_owned(), Value::String(key.clone()));
@@ -123,7 +124,6 @@ pub fn placed(
             record.insert("parent".to_owned(), json!(parent));
         }
         record.insert("depth".to_owned(), json!(depth));
-        record.insert("order".to_owned(), json!(at * SPACED));
         record.insert("name".to_owned(), json!(row.name));
         let mut set = |field: &str, value: Value| {
             record.insert(field.to_owned(), value);
@@ -146,7 +146,7 @@ pub fn placed(
         }
         let mut acts = Vec::new();
         if !row.copies.is_empty() {
-            acts.push(json!({ "key": "verb:copy", "ask": { "copy": row.copies } }));
+            acts.push(json!({ "key": "verb:copy", "copy": row.copies }));
         }
         acts.extend(row.acts);
         if !row.inside.is_empty() {
@@ -190,14 +190,13 @@ mod tests {
         )];
         let mut out = Vec::new();
         placed("p", vec![made], None, 0, &mut out);
-        assert_eq!(out[0]["acts"][1]["key"], "verb:more");
         assert_eq!(
-            (
-                out[1]["parent"].clone(),
-                out[1]["depth"].clone(),
-                out[1]["order"].clone()
-            ),
-            (json!("row:p:a"), json!(1), json!(SPACED))
+            out[0]["acts"],
+            json!([{ "key": "verb:copy", "copy": "1" }, { "key": "verb:more", "step": "rows" }])
+        );
+        assert_eq!(
+            (out[1]["parent"].clone(), out[1]["depth"].clone()),
+            (json!("row:p:a"), json!(1))
         );
     }
 }

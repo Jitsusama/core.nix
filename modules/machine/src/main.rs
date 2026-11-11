@@ -72,6 +72,7 @@ use machine::{
     power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree, units, using,
     written::Written,
 };
+use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 
 /// How often what's watched is read.
@@ -374,6 +375,11 @@ struct Daemon {
     heat: heat_rows::Heat,
     /// The reads Power's sparks keep while its rows are watched.
     power: power_rows::Power,
+    /// Each place's rows and headline as last told, by the place's name,
+    /// so each row keeps its order and one coming or going sends itself
+    /// alone, where ordering siblings by where they stood sent every one
+    /// after it again (FEH1HE, 2026-11-10).
+    kept: BTreeMap<&'static str, Kept>,
     /// The processor's telemetry's temperatures, as last told.
     telemetry: Vec<Value>,
     /// The kinds whose source said they changed, to be asked again now.
@@ -523,6 +529,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             words,
             heat: heat_rows::Heat::default(),
             power: power_rows::Power::default(),
+            kept: BTreeMap::new(),
             telemetry: Vec::new(),
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
@@ -649,6 +656,7 @@ fn let_go(daemon: &mut Daemon) {
         } else {
             daemon.power.forget();
         }
+        daemon.kept.remove(place.name);
         daemon.held.retain(|key, _| !place.holds(key));
     }
 }
@@ -697,36 +705,23 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
 /// and says those that changed and the keys of those gone.
 fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
     let ready = ready(daemon, place);
-    let kept = &mut daemon.held;
-    let rows = ready
-        .rows
-        .into_iter()
-        .map(|row| json!({"key": row["key"].clone(), "kind": "row", "row": row}));
     let head = ready
         .head
         .map(|head| json!({"key": place.head(), "kind": "head", "head": head}));
-    let made: Vec<Value> = rows.chain(head).collect();
-    let keys: HashSet<&str> = made
-        .iter()
-        .filter_map(|record| record["key"].as_str())
-        .collect();
-    let gone: Vec<String> = kept
-        .keys()
-        .filter(|key| place.holds(key) && !keys.contains(key.as_str()))
-        .cloned()
-        .collect();
-    for key in &gone {
-        kept.remove(key);
+    let moved = daemon
+        .kept
+        .entry(place.name)
+        .or_default()
+        .take(ready.rows, head.into_iter().collect());
+    for key in &moved.gone {
+        daemon.held.remove(key);
     }
-    let mut changed = Vec::new();
-    for record in made {
-        let key = record["key"].as_str().unwrap_or_default().to_owned();
-        if kept.get(&key) != Some(&record) {
-            kept.insert(key, record.clone());
-            changed.push(record);
+    for record in &moved.changed {
+        if let Some(key) = record["key"].as_str() {
+            daemon.held.insert(key.to_owned(), record.clone());
         }
     }
-    (changed, gone)
+    (moved.changed, moved.gone)
 }
 
 /// Asks the processor's telemetry at `path` for its temperatures while
@@ -1115,6 +1110,11 @@ fn kept_loop(shared: &Shared, root: &Root) {
         // first answer and each get alone.
         return;
     };
+    // A file written after a watch was answered but before the kernel's
+    // watch began would be heard by neither, so what's there is read once
+    // now, telling only the kinds watched: a test that keeps itself awake
+    // just after watching waited the whole of its patience for it.
+    heard(shared, &KEPT);
     loop {
         let names = written.wait(KEPT_LOOKS_AGAIN);
         let locks = names
