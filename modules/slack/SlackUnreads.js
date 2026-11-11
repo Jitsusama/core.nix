@@ -2,8 +2,8 @@
 // it (src/daemon.rs) and the shell watches it (SlackUnreads.qml), Now's
 // Slack piece says what of it wants him (NewSlack.qml) and Slack's
 // program lists it as Unread and Recent (SlackProgram.qml): how what's
-// held stands, how many to read, from whom, and each conversation's row's
-// words. A count is shown only while the daemon answers and Slack answered
+// held stands, how many to read and from whom; each conversation's row
+// and each message's are the daemon's, served ready (SlackRows.qml). A count is shown only while the daemon answers and Slack answered
 // it, since the daemon holds conversations only then and the shell lets
 // them go once it stops answering: an old count is never shown as though
 // it were Slack's (Joel, 2026-10-28: "out of date information also sucks
@@ -247,24 +247,6 @@ function context(told, stands) {
         return names.join(" and ");
     }
     return `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
-}
-
-// A conversation's row's words: how many to read beside it, when it's
-// counted, and what kind it is in its note.
-function beside(one) {
-    return one.count > 0 ? `${one.count} to read` : "";
-}
-
-const kinds = {
-    dm: "a direct message",
-    mention: "mentions you",
-    thread: "replies in threads",
-    unread: "a channel",
-    channel: "a channel"
-};
-
-function note(one) {
-    return kinds[one.kind] ?? "";
 }
 
 // Slack's own desktop notices say what they're of only in words: a direct

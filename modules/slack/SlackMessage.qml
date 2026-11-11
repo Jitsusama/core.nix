@@ -11,7 +11,9 @@ pragma Singleton
 // made with the launcher's `thing` of the surface showing it. Return
 // opens the message where Slack shows it; inside are Open in Slack, then
 // Copy the Link, Copy last as everywhere. What it works out is
-// SlackMessage.js's.
+// SlackMessage.js's. Where Slack's daemon serves the row ready, as For
+// You's are (src/message_rows.rs), `served` makes it from what's served,
+// its words, drawer and acts the daemon's.
 import qs
 import Quickshell
 import QtQuick
@@ -85,6 +87,29 @@ Singleton {
             later: true,
             run: open,
             verbs: () => acts(one, open, thing, found)
+        });
+    }
+
+    // A message's row as Slack's daemon serves it, made by its place's
+    // ReadyRows as every served row is, and this component's as `row`'s
+    // is, so it's the one row of the message. The daemon serves its first
+    // words as its note, which follow its name here as `row`'s do, given
+    // way by whole words, and its drawer apart, said whole as prose.
+    function served(ready, row, key) {
+        return ready.thing(row, key, {
+            what: "slack message",
+            component: "slackMessage",
+            thing: true,
+            of: "program:slack",
+            part: row.name ?? "",
+            count: ready.noteOf(row),
+            countWords: true,
+            note: "",
+            later: true,
+            drawer: () => {
+                const drawn = ready.drawerOf(row);
+                return drawn === null ? null : Object.assign(drawn, { prose: true });
+            }
         });
     }
 

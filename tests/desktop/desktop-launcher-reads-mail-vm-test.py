@@ -235,8 +235,8 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
 
     Each is named by who said it, its first words after its name and its side when alone,
     newest first, then Threads, whose replies aren't held (VKCF3Z, 2026-11-08). One read in
-    Slack leaves
-    by itself and History says so, "read in Slack 14:02", with nothing marked here.
+    Slack leaves by itself and History says so, "read in Slack 14:02", with nothing marked
+    here. Each row is the daemon's, served ready with its drawer apart.
     """
     machine = desktop.machine
     ada = {"channel": "D1", "place": "Ada Lovelace", "who": "Ada Lovelace"}

@@ -146,16 +146,6 @@ QtObject {
         check("not answering says nothing", Unreads.programNote(Unreads.standing(null)), "");
         check("no sign-in says nothing", Unreads.programNote(Unreads.standing(none)), "");
 
-        // Each conversation's own words.
-        check("beside", Unreads.beside(ada), "2 to read");
-        check("a direct message", Unreads.note(ada), "a direct message");
-        check("a mention", Unreads.note(deploys), "mentions you");
-        check("threads", Unreads.note(threads), "replies in threads");
-        check("nothing beside one uncounted", Unreads.beside(random), "");
-        check("nothing beside one read", Unreads.beside(read), "");
-        check("a channel merely unread", Unreads.note(random), "a channel");
-        check("a channel read", Unreads.note(read), "a channel");
-
         // Each message wanting Joel, newest first whatever order it was
         // heard in, done ones too; one missing who said it or when is no
         // message to list.
