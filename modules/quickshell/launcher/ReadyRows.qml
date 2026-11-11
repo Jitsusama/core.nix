@@ -74,6 +74,10 @@ Scope {
     // Which row names each drawer served apart, by the drawer's key, so
     // the row is made again once its drawer changes.
     readonly property var drawers: ({})
+    // The act keys each row has served more than once, by the row's key,
+    // so they're told apart for as long as it's held (ReadyRows.js's
+    // actKeys).
+    readonly property var repeats: ({})
     // The rows that say a time, by key, each saying how often it says a
     // new one, "minute" or "day" (ReadyRows.js's ticks), and how many say
     // one at all and how many each minute, so a binding is told.
@@ -108,7 +112,7 @@ Scope {
     onActiveChanged: {
         if (active)
             return;
-        for (const store of [made, drawers, ticking, clocked]) {
+        for (const store of [made, drawers, ticking, clocked, repeats]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -128,6 +132,8 @@ Scope {
             said.push(changed[at]);
         for (let at = 0; at < gone.length; at += 1)
             dropped.push(gone[at]);
+        for (const key of dropped)
+            delete repeats[key];
         for (const key of said.concat(dropped)) {
             if (key in drawers)
                 delete made[drawers[key]];
@@ -247,7 +253,13 @@ Scope {
         const acts = actsOf(row);
         const first = acts[0] ?? null;
         const steps = acts.some(one => one.step === "rows");
-        const verbs = () => steps ? inside(key) : acts.map(one => actRow(key, one));
+        const verbs = () => {
+            if (steps)
+                return inside(key);
+            repeats[key] = repeats[key] ?? {};
+            const kept = Ready.actKeys(acts, repeats[key]);
+            return acts.map((one, at) => actRow(key, one, kept[at]));
+        };
         // How a Return leaves the launcher is ReadyRows.js's leaving's. A
         // row whose Return asks is that act's for the key language, so its
         // command is read from the act's words (CommandBinding.wordsFor), as
@@ -343,12 +355,14 @@ Scope {
         return Ready.verbOf(one, Words.verb(one.key));
     }
 
-    // An act as a row of its own, among a row's verbs.
-    function actRow(key, one) {
+    // An act as a row of its own, among a row's verbs, kept by `kept`
+    // (ReadyRows.js's actKeys), its words by its own key.
+    function actRow(key, one, kept) {
         const said = Ready.actWorded(one,
             { name: Words.name(one.key), glyph: Words.glyph(one.key) }, Theme.glyph);
         return maker.thing({
-            key: one.key,
+            key: kept ?? one.key,
+            wordsId: one.key,
             what: "",
             verb: verbOf(one),
             name: said.name,

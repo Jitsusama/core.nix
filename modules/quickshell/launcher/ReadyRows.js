@@ -409,6 +409,36 @@ function actWorded(act, worded, roles) {
     };
 }
 
+// What each of a row's acts is kept by as a row of its own, since the
+// launcher holds its selection by key: its key where the row holds it
+// once, so every other place's keys stay as they were; where two share
+// one, as two links' "Open the Link", the key and what the act goes to,
+// so one going leaves the cursor on the other rather than moving it
+// along; only an act with no target of its own takes its place in the
+// row (Y2YBTS, 2026-11-11). A key the row has repeated before, in
+// `repeated`, is still told apart once it's held once, or the last link
+// left would take its bare key and the cursor go from it; each key
+// repeated now is added there.
+function actKeys(acts, repeated) {
+    const times = {};
+    for (const one of acts) {
+        times[one.key] = (times[one.key] ?? 0) + 1;
+    }
+    for (const key of Object.keys(times)) {
+        if (times[key] > 1) {
+            repeated[key] = true;
+        }
+    }
+    return acts.map((one, at) => {
+        if (repeated[one.key] !== true) {
+            return one.key;
+        }
+        const target = [one.open, one.go, one.copy, one.ask?.action]
+            .find(each => typeof each === "string" && each !== "");
+        return `${one.key}:${target ?? at}`;
+    });
+}
+
 // The verb the foot says for an act: the name the daemon served it with,
 // as Unmute on a muted switch, lowercased as the foot says verbs; else
 // words.json's for its key, `worded`; else the one every act of its form
