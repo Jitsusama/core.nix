@@ -56,8 +56,10 @@
   # keys typed as it opens all land (tests/opening-on-niri-test.py).
   # Its `lab` times each chord's opening, the one way every launcher change
   # quotes (docs/testing.md's Timing the Launcher), built only when asked for
-  # by name, since no gate runs it (tests/launcher-lab-on-niri.py). It's
-  # passed through, which outlasts the description checks.nix adds.
+  # by name, since no gate runs it (tests/launcher-lab-on-niri.py), and its
+  # `keys-lab` each key typed from home as Joel types them, with Qt's
+  # profiler at hand for a run that asks (tests/launcher-keys-lab-on-niri.py).
+  # They're passed through, which outlasts the description checks.nix adds.
   the-launcher-opens-on-what-it-kept-on-niri =
     (launcherOnNiri {
       name = "the-launcher-opens-on-what-it-kept-on-niri";
@@ -68,6 +70,14 @@
           lab = launcherOnNiri {
             name = "the-launcher-lab-on-niri";
             tests = ../../../tests/launcher-lab-on-niri.py;
+          };
+          keys-lab = launcherOnNiri {
+            name = "the-launcher-keys-lab-on-niri";
+            tests = ../../../tests/launcher-keys-lab-on-niri.py;
+            # The profiler of the Qt the shell runs on.
+            given = [
+              "QMLPROFILER=${lib.getExe' graphical.pkgs.qt6.qtdeclarative "qmlprofiler"}"
+            ];
           };
         };
       });

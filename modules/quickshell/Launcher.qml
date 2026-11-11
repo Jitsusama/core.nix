@@ -5286,15 +5286,21 @@ Scope {
             forgetGone();
             traces.began("search", { letters: letters.length, depth: held.length });
         }
+        // What the search spent before it searched, by what it set, since
+        // each wakes what reads it there and then: Joel's first letters
+        // spent 15 and 19 ms there, later ones 6 to 9 (2026-11-11).
+        const countedAt = Date.now();
         const narrowing = typed !== "" && letters.startsWith(typed);
         // Inside a step, the row selected as what's typed is taken away,
         // to stay on.
         const cleared = letters === "" && typed !== "" && held.length > 0 && selected
             ? steadyId(selected) : "";
         typed = letters;
+        const typedOn = Date.now();
         if (acted && (letters !== acted.typed || held.length !== acted.depth))
             acted = null;
         words = Fuzzy.words(letters);
+        const wordedAt = Date.now();
         // A step whose line holds its words is told each change to them.
         if (holdsWords)
             held[held.length - 1].row.worded?.(letters);
@@ -5514,7 +5520,9 @@ Scope {
             list.positionViewAtBeginning();
         searchParts = { before: began - searchBegan, lists: listed - began, rows: matched - listed,
             answers: Date.now() - matched, each: listsTook, within: costs,
-            composing: composeParts };
+            composing: composeParts, beforeParts: { counting: countedAt - searchBegan,
+                typed: typedOn - countedAt, words: wordedAt - typedOn,
+                readying: began - wordedAt } };
     }
 
     // What the last search of what's typed spent its time on, at the top
