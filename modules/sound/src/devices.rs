@@ -22,8 +22,11 @@ pub enum Change {
         volumes: Option<Vec<f32>>,
         muted: Option<bool>,
     },
-    /// A node or the default metadata going away, by its id.
+    /// A node, a card or the default metadata going away, by its id.
     Gone { id: u32 },
+    /// A card saying which of its routes plays one of its profile's
+    /// devices, as its Route param does.
+    Route { card: u32, index: i32, device: i32 },
     /// The default metadata saying a key, or no key for every key at
     /// once, its value none where it's let go of.
     Chose {
@@ -48,6 +51,22 @@ pub struct Devices {
     nodes: BTreeMap<u32, Node>,
     output: Option<String>,
     input: Option<String>,
+    /// The route each card plays each of its profile's devices through,
+    /// by the card's id and the profile's device.
+    routes: BTreeMap<(u32, i32), i32>,
+}
+
+/// One device as an act finds it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Device<'a> {
+    pub id: u32,
+    pub name: &'a str,
+    pub sink: bool,
+    /// Each channel's volume as PipeWire holds it, a linear share.
+    pub volumes: &'a [f32],
+    /// The card playing it, the route it plays it through and the
+    /// profile's device it is, where a card plays it.
+    pub route: Option<(u32, i32, i32)>,
 }
 
 /// Which way a node goes by its media class: an output (true), an input
@@ -103,7 +122,19 @@ impl Devices {
                 }
                 true
             }
-            Change::Gone { id } => self.nodes.remove(&id).is_some(),
+            Change::Gone { id } => {
+                self.routes.retain(|(card, _), _| *card != id);
+                self.nodes.remove(&id).is_some()
+            }
+            // A route changes no record: only how an act is done.
+            Change::Route {
+                card,
+                index,
+                device,
+            } => {
+                self.routes.insert((card, device), index);
+                false
+            }
             Change::Chose { key, value } => {
                 match key.as_deref() {
                     Some("default.audio.sink") => self.output = named(value.as_deref()),
@@ -122,6 +153,29 @@ impl Devices {
     /// Lets go of everything heard, as the sound server going away does.
     pub fn forget(&mut self) {
         *self = Devices::default();
+    }
+
+    /// The device a record's key names, as an act finds it.
+    pub fn device(&self, key: &str) -> Option<Device<'_>> {
+        let name = key.strip_prefix("device:")?;
+        let (id, node) = self
+            .nodes
+            .iter()
+            .find(|(_, node)| node.properties.get("node.name").is_some_and(|n| n == name))?;
+        let said = |key: &str| node.properties.get(key).map(String::as_str);
+        let card: Option<u32> = said("device.id").and_then(|card| card.parse().ok());
+        let device: Option<i32> = said("card.profile.device").and_then(|d| d.parse().ok());
+        let route = card.zip(device).and_then(|(card, device)| {
+            let index = self.routes.get(&(card, device))?;
+            Some((card, *index, device))
+        });
+        Some(Device {
+            id: *id,
+            name: said("node.name")?,
+            sink: direction(said("media.class")?)?,
+            volumes: &node.volumes,
+            route,
+        })
     }
 
     /// Each device as a record, keyed by its node's name, which a device
@@ -266,6 +320,29 @@ mod tests {
             value: None,
         });
         assert_eq!(chosen(&devices), [false, false, false]);
+    }
+
+    #[test]
+    fn an_act_finds_the_route_a_card_plays_its_device_through() {
+        let mut devices = Devices::default();
+        let Change::Node { mut properties, .. } = node(40, "speakers", "Audio/Sink") else {
+            unreachable!("node says a node");
+        };
+        properties.insert("device.id".into(), "7".into());
+        properties.insert("card.profile.device".into(), "1".into());
+        devices.hear(Change::Node { id: 40, properties });
+        let routed = |devices: &Devices| devices.device("device:speakers").and_then(|d| d.route);
+        assert_eq!(routed(&devices), None);
+        let route = Change::Route {
+            card: 7,
+            index: 2,
+            device: 1,
+        };
+        assert!(!devices.hear(route), "a route changes no record");
+        assert_eq!(routed(&devices), Some((7, 2, 1)));
+        devices.hear(Change::Gone { id: 7 });
+        assert_eq!(routed(&devices), None);
+        assert_eq!(devices.device("device:headphones"), None);
     }
 
     #[test]

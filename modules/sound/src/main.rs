@@ -13,6 +13,12 @@
 //! and those gone, so a volume moving tells its one device. Nothing runs
 //! on a timer: with PipeWire gone, it tries again every two seconds until
 //! it's back.
+//!
+//! An act (acts.rs) is worked out where it's asked, then done on
+//! PipeWire's own loop, where the proxies live, through a channel the
+//! loop hears; what it moved comes back to every watch as the server
+//! says it. A card is heard for the route that plays each of its devices,
+//! since a card's device takes its levels on that route.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -29,17 +35,20 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pipewire as pw;
 use pw::context::ContextRc;
+use pw::device::{Device, DeviceListener};
 use pw::main_loop::MainLoopRc;
 use pw::metadata::{Metadata, MetadataListener};
 use pw::node::{Node, NodeChangeMask, NodeInfoRef, NodeListener};
 use pw::registry::{GlobalObject, RegistryRc};
 use pw::spa::param::ParamType;
+use pw::spa::pod::Pod;
 use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
 use serde_json::{Value, json};
+use sound::acts::{Move, act, planned};
 use sound::devices::{Change, Devices, direction};
 use sound::interface::{Ask, VERSION, ask, error, kind_of};
-use sound::levels::levels;
+use sound::levels::{levels, route};
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -48,6 +57,15 @@ const QUEUED: usize = 256;
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 /// How long to wait before asking PipeWire again once it's gone.
 const SERVER_AGAIN: Duration = Duration::from_secs(2);
+/// How long an act waits for PipeWire's loop to take it.
+const ACT_PATIENCE: Duration = Duration::from_secs(2);
+
+/// One act's move, for PipeWire's loop to do, and where to say how it
+/// went.
+struct Doing {
+    done: Move,
+    answer: mpsc::Sender<Result<(), String>>,
+}
 
 /// One watch a client holds.
 struct Watch {
@@ -78,6 +96,8 @@ struct Daemon {
     server: &'static str,
     changes: u64,
     since: u64,
+    /// Where an act goes to be done, while PipeWire answers.
+    acting: Option<pw::channel::Sender<Doing>>,
 }
 
 fn main() {
@@ -101,6 +121,7 @@ fn main() {
         server: "starting",
         changes: 0,
         since: now_ms(),
+        acting: None,
     }));
     {
         let shared = Arc::clone(&shared);
@@ -169,6 +190,7 @@ fn follow(shared: &Arc<Mutex<Daemon>>) {
         }
         let mut daemon = lock(shared);
         daemon.server = "not answering";
+        daemon.acting = None;
         daemon.devices.forget();
         refresh(&mut daemon);
         drop(daemon);
@@ -181,11 +203,15 @@ fn follow(shared: &Arc<Mutex<Daemon>>) {
 /// being heard.
 enum Bound {
     Node {
-        _proxy: Node,
+        proxy: Node,
         _listener: NodeListener,
     },
+    Card {
+        proxy: Device,
+        _listener: DeviceListener,
+    },
     Defaults {
-        _proxy: Metadata,
+        proxy: Metadata,
         _listener: MetadataListener,
     },
 }
@@ -201,6 +227,13 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
         .get_registry_rc()
         .map_err(|why| format!("its registry: {why}"))?;
     let bound: Rc<RefCell<HashMap<u32, Bound>>> = Rc::default();
+    let (acting, acts) = pw::channel::channel::<Doing>();
+    let _acts = acts.attach(main_loop.loop_(), {
+        let bound = Rc::clone(&bound);
+        move |doing: Doing| {
+            let _ = doing.answer.send(done(&bound.borrow(), &doing.done));
+        }
+    });
     let quit = main_loop.downgrade();
     let _core_listener = core
         .add_listener_local()
@@ -221,6 +254,7 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
             move |global| {
                 let found = match global.type_ {
                     ObjectType::Node => node(&shared, &registry, global),
+                    ObjectType::Device => card(&shared, &registry, global),
                     ObjectType::Metadata => defaults(&shared, &registry, global),
                     _ => None,
                 };
@@ -232,7 +266,7 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
         .global_remove({
             let shared = Arc::clone(shared);
             move |id| match bound.borrow_mut().remove(&id) {
-                Some(Bound::Node { .. }) => told(&shared, Change::Gone { id }),
+                Some(Bound::Node { .. } | Bound::Card { .. }) => told(&shared, Change::Gone { id }),
                 Some(Bound::Defaults { .. }) => told(
                     &shared,
                     Change::Chose {
@@ -244,9 +278,53 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
             }
         })
         .register();
-    lock(shared).server = "answering";
+    {
+        let mut daemon = lock(shared);
+        daemon.server = "answering";
+        daemon.acting = Some(acting);
+    }
     main_loop.run();
     Ok(())
+}
+
+fn pod_of(bytes: &[u8]) -> Result<&Pod, String> {
+    Pod::from_bytes(bytes).ok_or_else(|| "the act's pod didn't hold together".to_owned())
+}
+
+/// Does one act's move on PipeWire's loop, where its proxies are.
+fn done(bound: &HashMap<u32, Bound>, doing: &Move) -> Result<(), String> {
+    match doing {
+        Move::Node { id, pod } => match bound.get(id) {
+            Some(Bound::Node { proxy, .. }) => {
+                proxy.set_param(ParamType::Props, 0, pod_of(pod)?);
+                Ok(())
+            }
+            _ => Err(format!("node {id} is gone")),
+        },
+        Move::Card { id, pod } => match bound.get(id) {
+            Some(Bound::Card { proxy, .. }) => {
+                proxy.set_param(ParamType::Route, 0, pod_of(pod)?);
+                Ok(())
+            }
+            _ => Err(format!("card {id} is gone")),
+        },
+        Move::Choose { key, value } => {
+            let defaults = bound.values().find_map(|bound| match bound {
+                Bound::Defaults { proxy, .. } => Some(proxy),
+                _ => None,
+            });
+            let Some(defaults) = defaults else {
+                return Err("the default metadata is gone".to_owned());
+            };
+            defaults.set_property(
+                pw::core::PW_ID_CORE,
+                key,
+                Some("Spa:String:JSON"),
+                Some(value),
+            );
+            Ok(())
+        }
+    }
 }
 
 /// Binds a node that's an output or an input, by the class the registry
@@ -295,7 +373,46 @@ fn node(
         .register();
     node.subscribe_params(&[ParamType::Props]);
     Some(Bound::Node {
-        _proxy: node,
+        proxy: node,
+        _listener: listener,
+    })
+}
+
+/// Binds a card, hearing which route plays each of its profile's devices.
+fn card(
+    shared: &Arc<Mutex<Daemon>>,
+    registry: &RegistryRc,
+    global: &GlobalObject<&DictRef>,
+) -> Option<Bound> {
+    if global.props?.get("media.class")? != "Audio/Device" {
+        return None;
+    }
+    let id = global.id;
+    let card: Device = registry.bind(global).ok()?;
+    let listener = card
+        .add_listener_local()
+        .param({
+            let shared = Arc::clone(shared);
+            move |_, kind, _, _, pod| {
+                let (Some(pod), ParamType::Route) = (pod, kind) else {
+                    return;
+                };
+                if let Some((index, device)) = route(pod.as_bytes()) {
+                    told(
+                        &shared,
+                        Change::Route {
+                            card: id,
+                            index,
+                            device,
+                        },
+                    );
+                }
+            }
+        })
+        .register();
+    card.subscribe_params(&[ParamType::Route]);
+    Some(Bound::Card {
+        proxy: card,
         _listener: listener,
     })
 }
@@ -329,7 +446,7 @@ fn defaults(
         })
         .register();
     Some(Bound::Defaults {
-        _proxy: metadata,
+        proxy: metadata,
         _listener: listener,
     })
 }
@@ -448,6 +565,39 @@ fn held(daemon: &Daemon, kinds: &[String], keys: Option<&[String]>) -> Vec<Value
     }
 }
 
+/// Works out what an act asks and has PipeWire's loop do it, saying it's
+/// done or why not. What it moved comes to every watch as the server says
+/// it back, so a watch's records are always the server's own.
+fn acted(shared: &Mutex<Daemon>, id: &Value, name: &str, said: &Value) -> Value {
+    let asked = match act(name, said) {
+        Ok(asked) => asked,
+        Err(refused) => return error(id, refused.code, &refused.message),
+    };
+    let (done, acting) = {
+        let daemon = lock(shared);
+        let Some(device) = daemon.devices.device(asked.key()) else {
+            return error(id, "no-device", &format!("no device {} here", asked.key()));
+        };
+        match planned(&asked, &device) {
+            Ok(done) => (done, daemon.acting.clone()),
+            Err(refused) => return error(id, refused.code, &refused.message),
+        }
+    };
+    let not_answering = || error(id, "not-answering", "the sound server isn't answering");
+    let Some(acting) = acting else {
+        return not_answering();
+    };
+    let (answer, answered) = mpsc::channel();
+    if acting.send(Doing { done, answer }).is_err() {
+        return not_answering();
+    }
+    match answered.recv_timeout(ACT_PATIENCE) {
+        Ok(Ok(())) => json!({"id": id, "done": true}),
+        Ok(Err(why)) => error(id, "not-done", &why),
+        Err(_) => not_answering(),
+    }
+}
+
 /// How the daemon stands, as hello and health say it.
 fn standing(daemon: &Daemon, id: &Value) -> Value {
     json!({
@@ -506,6 +656,7 @@ fn answer(
             health["watches"] = json!(daemon.watches.len());
             health
         }
+        Ask::Act { id, act, said } => acted(shared, &id, &act, &said),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }

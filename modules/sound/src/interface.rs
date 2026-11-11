@@ -44,6 +44,13 @@ pub enum Ask {
     Health {
         id: Value,
     },
+    /// Something to do to a device, named by `act`, with the rest of what
+    /// was said as its arguments (acts.rs).
+    Act {
+        id: Value,
+        act: String,
+        said: Value,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -113,6 +120,15 @@ pub fn ask(line: &str) -> Ask {
         },
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
+        "act" => Ask::Act {
+            id,
+            act: said
+                .get("act")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_owned(),
+            said,
+        },
         _ => Ask::Unknown { id, ask: asked },
     }
 }
@@ -136,6 +152,16 @@ mod tests {
                 keys: Some(vec!["device:speakers".into(), "device:mic".into()])
             }
         );
+    }
+
+    #[test]
+    fn an_act_keeps_what_it_was_asked_with() {
+        let line = r#"{"id":4,"ask":"act","act":"mute","key":"device:speakers","muted":true}"#;
+        let Ask::Act { id, act, said } = ask(line) else {
+            panic!("not an act");
+        };
+        assert_eq!((id, act.as_str()), (json!(4), "mute"));
+        assert_eq!(said["key"], json!("device:speakers"));
     }
 
     #[test]
