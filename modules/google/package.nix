@@ -19,7 +19,9 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      ./tests
+      # Cargo's tests alone: the shell script beside them is checks.nix's,
+      # and a change to it rebuilds nothing the machine runs.
+      (lib.fileset.fileFilter (file: file.hasExt "rs") ./tests)
       ../ready-rows/Cargo.toml
       ../ready-rows/src
     ];
