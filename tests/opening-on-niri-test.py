@@ -157,12 +157,14 @@ def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> 
 
 
 def test_a_chord_into_a_place_finds_no_home_first(shell: Shell) -> None:
-    """Opened into a place by its chord, the launcher makes no row of home's on the way.
+    """Opened into a place by its chord, the launcher searches the place alone, not home first.
 
     Home was found as every opening began and then put away for the place: Super+V's openings
-    made home's 51 and 60 rows first (Joel's journal, 2026-11-10, 20:40).
+    made home's 51 and 60 rows first (Joel's journal, 2026-11-10, 20:40). This account's home
+    rows are kept unchanged, so the searches counted, which no refresh adds to, show it instead.
     """
     timed = latest(openings(shell))
+    before = int(shell.as_account(shell.ipc("searched")).strip())
     shell.as_account(shell.ipc("collection", "on"))
     shell.launcher_ready()
     each: list[Json] = []
@@ -172,8 +174,8 @@ def test_a_chord_into_a_place_finds_no_home_first(shell: Shell) -> None:
         return latest(each) > timed
 
     shell.launcher_until(timed_after)
-    made = {part.rsplit(" ", 1)[0] for part in each[-1]["made"].split(", ") if part}
-    assert made <= {"on"}, f"opening into On made home's rows: {each[-1]}"
+    searches = int(shell.as_account(shell.ipc("searched")).strip()) - before
+    assert searches == 1, f"opening into On searched {searches} times: {each[-1]}"
 
 
 def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
