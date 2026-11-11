@@ -67,9 +67,8 @@ Singleton {
         }
     }
 
-    // A fresh connection each time, as ProcessorTelemetry.qml makes its
-    // own: a socket refused once never connects again, so it's made anew
-    // while something still watches.
+    // A fresh connection each time: a socket refused once never connects
+    // again, so it's made anew while something still watches.
     LazyLoader {
         active: root.watching > 0 && root.trying
 
