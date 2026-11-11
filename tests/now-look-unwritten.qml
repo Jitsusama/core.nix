@@ -4,8 +4,10 @@
 // look shows cleared at once, in the act's own frame, and is put back as
 // it read once the write fails, rather than shown done until the next
 // read of its file brings it back with nothing said (Y2YBTS, 2026-11-10).
+// Shut, the launcher keeps the looks it read: its listing of files, given
+// no folder, lists the shell's working one, which once dropped them all,
+// so each opening parsed every look again.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
-import qs
 import Quickshell
 import QtQuick
 import "launcher" as Launcher

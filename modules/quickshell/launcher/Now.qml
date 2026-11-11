@@ -873,8 +873,12 @@ Provider {
         lookTexts = Object.assign({}, lookTexts, { [file]: text });
     }
 
+    // Only the looks folder's listing says which looks are gone: shut, the
+    // model is given no folder and lists the shell's working one instead,
+    // which holds none of them.
     function relisted() {
-        if (lookFiles.folder.toString() === "" || lookFiles.status !== FolderListModel.Ready)
+        if (lookFiles.folder.toString() !== `file://${looksAt}`
+            || lookFiles.status !== FolderListModel.Ready)
             return;
         const listed = {};
         for (let at = 0; at < lookFiles.count; at += 1)
@@ -928,8 +932,10 @@ Provider {
             lookWriters[one.file] = lookWrite.createObject(provider, { file: one.file,
                 was: lookTexts[one.file] ?? "", path: `${provider.looksAt}/${one.file}` });
         lookWriters[one.file].wrote = text;
-        lookWriters[one.file].setText(text);
+        // Taken before it's written, so a write that fails, even within
+        // setText, finds the text it wrote.
         heardLook(one.file, text);
+        lookWriters[one.file].setText(text);
     }
 
     // Put back only while nothing has read or written the file since.
