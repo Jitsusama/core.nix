@@ -11,7 +11,7 @@ let
   # What the tests need of the above, as their values fixture.
   values = pkgs.writeText "gnome-keyring-values.json" (builtins.toJSON { inherit runtime; });
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "gnome-keyring";
 
   nodes.machine = {

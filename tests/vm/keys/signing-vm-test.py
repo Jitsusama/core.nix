@@ -1,11 +1,11 @@
 """Commits signed in a virtual machine with keys made in its TPM, as Joel and his agents commit.
 
-tests/signing.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Each test asks for the state it starts from as a
-fixture: Joel's account up with the askpass answering for him, then both keys made in the TPM.
-A fixture's work is done once a run, however many tests ask for it, and each test reads only
-the prompts its own commit asked, so any test runs alone with `-k`. The PIN, the askpasses
-and the signer the module lists are signing.nix's, given as the `values` fixture.
+signing.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Each test asks for the state it starts from as a
+fixture: Joel's account up with the askpass answering for him, then both keys made in the TPM. A
+fixture's work is done once a run, however many tests ask for it, and each test reads only the
+prompts its own commit asked, so any test runs alone with `-k`. The PIN, the askpasses and the
+signer the module lists are signing.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations

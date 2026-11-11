@@ -1,9 +1,9 @@
 """Passkeys and security keys made in a virtual machine's TPM through linux-id, each after a yes.
 
-tests/linux-id.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Each test starts with nothing asked yet, and makes
-the keys it signs in with, so any runs alone. The account's runtime folder is linux-id.nix's,
-whose askpass writes there too, so it comes from the `values` fixture.
+linux-id.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Each test starts with nothing asked yet, and makes
+the keys it signs in with, so any runs alone. The account's runtime folder is linux-id.nix's, whose
+askpass writes there too, so it comes from the `values` fixture.
 """
 
 from __future__ import annotations

@@ -405,7 +405,7 @@ each state a test starts from, booted or with the network let down, is a
 fixture of its own, made once a run however many tests ask for it. What
 the tests need from Nix is one JSON file, the helper's `values`, or a
 function of the test's nodes giving it, which a test reads parsed through
-the `values` fixture, as `tests/signing.nix` does. Each
+the `values` fixture, as `tests/vm/keys/signing.nix` does. Each
 test is one of the driver's subtests in the log, named by its docstring's
 first line, so a test runs alone, after only what it asks for. A program
 the test runs on the machine is a file beside it too, never a script in a

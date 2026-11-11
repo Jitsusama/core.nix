@@ -1,6 +1,6 @@
 """A keyring in a virtual machine that opens with its TPM-sealed password, asking nobody.
 
-tests/gnome-keyring.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+gnome-keyring.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. Each test asks for the state it starts
 from as a fixture: Joel's account up, then signed in once, which seals the keyring's password,
 then a secret stored. A fixture's work is done once a run, however many tests ask for it, so

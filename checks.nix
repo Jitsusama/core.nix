@@ -290,7 +290,7 @@ let
     vm-guide-signs-a-stick-for-two-machines = import ./tests/vm/guide/guide-one-stick.nix {
       inherit self pkgs;
     };
-    vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
+    vm-commits-are-signed = import ./tests/vm/keys/signing.nix { inherit self pkgs; };
     # Only a running machine attaches a loop device, mounts it, and says
     # whether Btrfs copies the image on write.
     vm-cargo-builds-on-their-own-filesystem = import ./tests/cargo-builds.nix {
@@ -298,8 +298,8 @@ let
     };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.
-    vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
-    vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
+    vm-passkeys-come-from-the-tpm = import ./tests/vm/keys/linux-id.nix { inherit self pkgs; };
+    vm-keyring-opens-without-asking = import ./tests/vm/keys/gnome-keyring.nix { inherit self pkgs; };
     # Only Chrome, started, says whether it installed what the preferences
     # file names, and writes a session file as it browses.
     vm-chrome-says-its-open-tabs = import ./tests/chrome-extension.nix {

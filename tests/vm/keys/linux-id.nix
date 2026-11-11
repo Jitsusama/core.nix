@@ -21,7 +21,7 @@ let
     doCheck = false;
   } (builtins.readFile ./passkey.py);
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "linux-id";
 
   nodes.machine = {

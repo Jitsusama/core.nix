@@ -11,7 +11,7 @@ boot: modules/plymouth/* modules/console/* modules/kmscon/* modules/systemd/* te
 initrd: modules/bluetooth-disk-prompt/* tests/bluetooth-disk-prompt* => vm-boot-* vm-bluetooth-types-at-the-disk-prompt
 kernel: modules/kernel/* hardware/* tests/patched-kernel-source.sh tests/kernel-settings-hold.sh => vm-boot-* vm-reboot-cannot-hang vm-hibernation-comes-back
 disk: modules/disko/* modules/btrfs/* modules/disk-guard/* modules/disk-loss-panic/* modules/hibernate/* tests/disk-* tests/hibernate* => vm-disk-* vm-boot-asks-* vm-hibernation-comes-back
-tpm: modules/tpm/* modules/tpm-signing/* modules/ssh-tpm-agent/* modules/signing/* tests/signing* => vm-passkeys-come-from-the-tpm vm-commits-are-signed vm-boot-asks-*
+tpm: modules/tpm/* modules/tpm-signing/* modules/ssh-tpm-agent/* modules/signing/* tests/vm/keys/signing* => vm-passkeys-come-from-the-tpm vm-commits-are-signed vm-boot-asks-*
 secure boot: modules/lanzaboote/* => vm-secure-boot-installs vm-boot-*
 install: modules/guide/* tests/vm/guide/* => vm-guide-* vm-secure-boot-installs
 greeter and lock: modules/greetd/* modules/swayidle/* modules/quickshell/Lock.qml tests/greeter* tests/sessions-behind-the-lock* => vm-greeter-signs-in vm-desktop-locks-and-asks
