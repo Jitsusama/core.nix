@@ -201,7 +201,7 @@ fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()
                 logged.get(&p.session).copied(),
                 boot.as_deref(),
                 mesh.is_parked(&p.session),
-                start::is_pi,
+                |p| p.runs(start::is_pi, start::is_host),
             )
         })
         .collect();
