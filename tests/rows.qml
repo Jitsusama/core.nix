@@ -800,6 +800,24 @@ ShellRoot {
             && pluses.length === 2 && pluses.every(p => p.width > Theme.space.rung.tie)
             && Math.abs(kept.leftPadding - pluses[0].width) < 0.5,
             `${kept} at ${kept?.leftPadding}, +s ${pluses.map(p => p.width)}`);
+        // Given fewer keys and then more, as a reused row is from one
+        // chord to the next, it keeps every key it made and draws only
+        // those it's given: making them again was about 1,100 Texts over 24
+        // keys typed into home, the most a row's own work made (prof-home,
+        // 2026-11-11).
+        const three = textItemsOf(countedChord, []);
+        countedChord.chord = [{ text: "Esc" }];
+        const one = drawn(countedChord, []).filter(t => t.text !== "12" && t.text !== "Agents"
+            && t.text !== "\u00b7" && t.text !== "$");
+        countedChord.chord = [{ text: "Ctrl" }, { text: "Alt" }, { text: "Q" }];
+        const threeAgain = textItemsOf(countedChord, []);
+        expect("a row given fewer keys and then more keeps the keys it made",
+            threeAgain.length === three.length
+                && threeAgain.every((item, at) => item === three[at]),
+            `${three.length} Texts, then ${threeAgain.length}, `
+                + `${threeAgain.filter((item, at) => item !== three[at]).length} made again`);
+        expect("and draws only the keys it's given",
+            one.length === 1 && one[0].text === "Esc", said(one));
         countedChord.chord = [{ text: "Super" }, { text: "9" }];
         const laid = textsSaying(saying, saying.side, []);
         expect("a side said with no chord is laid out once", laid.length === 1,
@@ -831,6 +849,32 @@ ShellRoot {
             `${washing} then ${rewashed}`);
         expect("and washes nothing once nothing's found", washedNone.washed.length === 0,
             root.places(washedNone.washed));
+        // Its finds moved, as each key typed moves them, it keeps the
+        // grounds it laid and lays them anew: laying each again made 420
+        // over 24 keys typed into home (prof-home, 2026-11-11).
+        const grounds = groundsUnder(washedTwice);
+        washedTwice.finds = [[1, 3]];
+        const fewer = groundsUnder(washedTwice).filter(ground => ground.visible)
+            .map(ground => [ground.x, ground.width]);
+        const fewerLaid = root.places(washUnder(washedTwice)?.laid ?? []);
+        washedTwice.finds = [[0, 2], [9, 12]];
+        const regrounded = groundsUnder(washedTwice);
+        washedTwice.finds = [[0, 4], [9, 13]];
+        expect("a row whose finds move keeps the grounds it laid", grounds.length === 2
+            && regrounded.length === 2 && regrounded.every((item, at) => item === grounds[at]),
+            `${grounds.length} grounds, then ${regrounded.length}, `
+                + `${regrounded.filter((item, at) => item !== grounds[at]).length} laid again`);
+        const em = mono.advanceWidth("f");
+        expect("and shows only the grounds its finds lay", fewer.length === 1
+            && Math.abs(fewer[0][0] - em) < 0.5 && Math.abs(fewer[0][1] - 2 * em) < 0.5,
+            `${root.places(fewer)} shown of ${fewerLaid} laid, a letter ${em} wide`);
+    }
+
+    // The grounds a row's wash has laid (Wash.qml), shown or not, in the
+    // order they stand, so two readings tell whether one was laid again.
+    function groundsUnder(item) {
+        const wash = washUnder(item);
+        return wash === null ? [] : wash.children.filter(child => child.radius !== undefined);
     }
 
     // The wash under an item's words (Wash.qml), or null while it has none.

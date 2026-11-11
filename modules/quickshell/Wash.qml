@@ -51,15 +51,26 @@ Item {
         font: wash.font
     }
 
+    // How many grounds it has laid, which only grows. A Repeater given a
+    // new list makes each of its items again, and every key typed moves a
+    // row's finds, so each ground was laid afresh at every key, 420 over
+    // 24 keys typed into home (prof-home, 2026-11-11). So each ground laid
+    // is kept, reading its place anew, and one past the finds is hidden.
+    property int grounds: 0
+    onLaidChanged: grounds = Math.max(grounds, laid.length)
+    Component.onCompleted: grounds = Math.max(grounds, laid.length)
+
     Repeater {
-        model: wash.laid
+        model: wash.grounds
 
         Rectangle {
-            required property var modelData
-            x: modelData[0]
-            width: modelData[1]
+            required property int index
+            readonly property var place: wash.laid[index] ?? null
+            visible: place !== null
+            x: place === null ? 0 : place[0]
+            width: place === null ? 0 : place[1]
             height: wash.height
-            color: modelData[2]
+            color: place === null ? "transparent" : place[2]
         }
     }
 }

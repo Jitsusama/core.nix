@@ -26,15 +26,23 @@ Flow {
         font.pointSize: chord.level.pointSize
     }
 
-    // By how many keys, not the keys themselves: a Repeater given a new
-    // list makes each of its Texts again, even one alike, as a row reused
-    // for another, or refreshed, is; a count that stays the same keeps
-    // them, each reading its key anew.
+    // How many keys it has made, which only grows. A Repeater given a new
+    // list makes each of its Texts again, even one alike, and one given
+    // another count makes those past the shorter again, as a row reused
+    // from one chord to the next is: about 1,100 Texts over 24 keys typed
+    // into home (prof-home, 2026-11-11). So each key made is kept, reading
+    // its key anew, and one past the keys given is hidden, which a Flow
+    // leaves out of its layout.
+    property int made: 0
+    onKeysChanged: made = Math.max(made, keys.length)
+    Component.onCompleted: made = Math.max(made, keys.length)
+
     Repeater {
-        model: chord.keys.length
+        model: chord.made
 
         Text {
             required property int index
+            visible: index < chord.keys.length
             readonly property var modelData: chord.keys[index] ?? ({})
 
             // An icon's advance and its ink rarely agree, one drawing past
@@ -48,7 +56,7 @@ Flow {
             leftPadding: index === 0 ? 0
                 : modelData.after === true ? Theme.space.rung.tie : plus.width
             width: modelData.wide ? leftPadding + ink.x + ink.width : undefined
-            text: modelData.text
+            text: modelData.text ?? ""
             color: chord.colour
             font.family: chord.level.family
             font.pointSize: chord.level.pointSize

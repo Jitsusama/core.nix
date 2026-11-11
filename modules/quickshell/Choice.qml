@@ -552,8 +552,8 @@ Rectangle {
             id: keys
             anchors.right: parent.right
             visible: atRight.chorded
-            // None where it isn't drawn, since each key is a Text made
-            // afresh whenever the row is given other keys.
+            // None where it isn't drawn, so a row with no chord lays out no
+            // keys; those it made are kept hidden for the next it's given.
             keys: atRight.chorded ? row.chord : []
             colour: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         }
