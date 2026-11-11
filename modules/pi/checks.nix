@@ -42,6 +42,7 @@ let
       ./pi-host-committed-turn.patch
       ./pi-host-interactive-lifecycle.patch
       ./pi-host-model-auth-context.patch
+      ./pi-host-extension-realpath.patch
     ];
     patchFlags = [
       "-p1"
@@ -365,6 +366,16 @@ in
       ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
     touch $out
   '';
+
+  # A hosted pi loads a linked extension through where its link points now,
+  # so a reload after a harness update moved the link loads the new copy.
+  pi-hosted-loads-where-a-link-points =
+    pkgs.runCommandLocal "pi-hosted-loads-where-a-link-points" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-loads-where-a-link-points.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
 
   # A hosted pi's conversations each read their keys and headers from their
   # own auth context and never from the process, while a pi given none
