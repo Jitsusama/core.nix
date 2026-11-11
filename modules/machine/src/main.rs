@@ -71,7 +71,7 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, keyboards, kept, light,
+    Root, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, kept, keyboards, light,
     memory, now_ms, power_rows, processor, rounded, rows, sleep, status, steered, supply, telemetry,
     tree, units, using, written::Written,
 };
