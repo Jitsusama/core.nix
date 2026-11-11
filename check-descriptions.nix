@@ -1409,8 +1409,8 @@
   '';
   notices-starts-in-each-account = ''
     each graphical account's session starts the notices daemon from its socket, the bus starts it
-    for a notice sent while it's down, and no QML of the shell serves the notifications name
-    besides; it reads the shell's levels, Quiet's file and its socket
+    for a notice sent while it's down, it restarts with no start limit, and no QML of the shell
+    serves the notifications name besides; it reads the shell's levels, Quiet's file and its socket
   '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes

@@ -41,6 +41,10 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       # Its socket is systemd's, handed to it as it starts.
       Requires = [ "notices.socket" ];
       After = [ "notices.socket" ];
+      # Starting again each second while another holds the name would pass
+      # systemd's default limit of five starts in ten seconds, failing the
+      # unit and its socket, so no limit is kept: it never gives up.
+      StartLimitIntervalSec = 0;
     };
     Service = {
       ExecStart = lib.escapeShellArgs [
