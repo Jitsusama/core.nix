@@ -220,6 +220,26 @@ ShellRoot {
                     .join(", "), keys);
             }
         },
+        {
+            // Someone the daemon holds but doesn't list, as a guest seen
+            // only at a meeting still to come, was no one once Google's
+            // people were the daemon's rather than merged here, so their
+            // meeting counted them out.
+            what: "one the daemon holds and doesn't list is known by their address once asked",
+            run: () => {
+                root.unlistedFirst = people.whoIs("zoe@example.com");
+            },
+            holds: () => people.whoIs("zoe@example.com") !== null,
+            check: () => {
+                expect("no one until the daemon answers", root.unlistedFirst === null,
+                    root.unlistedFirst?.name);
+                const zoe = people.whoIs(" Zoe@Example.com ");
+                expect("named as the daemon holds them", zoe?.name === "Zo\u00eb \"Zed\" Quill"
+                    && zoe.key === "zoe@example.com", `${zoe?.name} ${zoe?.key}`);
+                expect("and still not listed, nor held with those listed",
+                    people.persons().length === 4, names(people.persons()));
+            }
+        },
         seeking("eli@example.com", "a stranger found by their email", () => {
             const eli = found("eli@example.com");
             expect("found", names(eli) === "Eli Fenwick", names(eli));
@@ -434,6 +454,8 @@ ShellRoot {
     // How many merges and changes People had before a change heard while
     // nobody looks.
     property var mergedBefore: null
+    // Who an unlisted address was the moment it was first asked after.
+    property var unlistedFirst: undefined
     property int heardBefore: 0
 
     // The steps in order, each waited on up to 30 s from when it starts,

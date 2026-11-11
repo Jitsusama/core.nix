@@ -13,6 +13,7 @@
 //!
 //! A `get` is a step-in: each source is asked about each address, and the
 //! answer waits, at most its patience, for every source that can answer.
+//! A `known` is the records held for its keys, with no source asked.
 //! A `watch` asks ahead about its addresses, says each record held at
 //! once, then each change, gathered and said at most four times a second,
 //! so a burst of answers is one change to the client, and how every
@@ -576,6 +577,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             })
         }
         Ask::Get { id, keys, patience } => get(shared, &id, &keys, patience),
+        Ask::Known { id, keys } => json!({"id": id, "records": lock(shared).book.known(&keys)}),
         Ask::List { id, limit, listed } => {
             let daemon = lock(shared);
             let records: Vec<Value> = daemon
