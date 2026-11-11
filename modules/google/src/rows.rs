@@ -442,7 +442,7 @@ mod tests {
         let keys: Vec<&str> = rows.iter().filter_map(|row| row["key"].as_str()).collect();
         assert_eq!(keys, ["row:mail:b", "row:mail:c", "row:mail:a"]);
         let first = &rows[0];
-        assert_eq!(first["row"], "mail:b");
+        assert_eq!(first["thing"], "mail:b");
         assert_eq!(first["place"], "mail");
         assert_eq!(first["kind"], "mail");
         assert_eq!(first["name"], "Engines");

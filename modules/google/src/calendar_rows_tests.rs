@@ -396,7 +396,7 @@ fn meets_recent_is_each_call_held_on_a_meet_link_once_by_code_saying_who_it_was_
         ["row:meet:abc-defg-hij", "row:meet:xyz-wxyz-xyz"],
         "one room is one call however its link is written, and Zoom's is none"
     );
-    assert_eq!(calls[0]["row"], "meet:held:abc-defg-hij");
+    assert_eq!(calls[0]["thing"], "meet:held:abc-defg-hij");
     assert_eq!(calls[0]["kind"], "call");
     assert_eq!(calls[0]["glyph"], "joinCall");
     assert_eq!(
