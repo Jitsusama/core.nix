@@ -538,7 +538,10 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
     // Lin, asked ahead, has her conversation with Joel as a row ready for
     // her Recent, with its messages in its drawer.
     let lin = said_to(
-        program(&stand_in.origin, &path).spawn().unwrap(),
+        program(&stand_in.origin, &path)
+            .env("LAUNCHER_WORDS", WORDS)
+            .spawn()
+            .unwrap(),
         "?lin@example.com\n",
     );
     let lin: serde_json::Value = serde_json::from_str(&lin[0]).unwrap();
