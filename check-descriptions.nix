@@ -918,7 +918,7 @@
     reads ~/.ssh/config's machines but patterns and Match blocks and ~/.ssh/known_hosts' but
     hashed, marked and pattern lines, with each one's keys, other names and port, how many times
     and when zsh's history last reached each, orders them most used first, says each one's row,
-    drawer and ssh, and orders fd's repositories by zoxide's last visit
+    drawer and ssh, and orders the repositories under ~/src by zoxide's last visit
   '';
   lag-watch-passes-clippy = ''
     clippy finds nothing in lag-watch or its tests
@@ -1679,10 +1679,11 @@
     not while nobody watches, says a list whose command fails as empty and why, reads a list of
     folders itself with no command, one not there holding nothing, and again as a file comes in
     one, reads a folder named by its key as its watch begins and as a file comes in it, one not
-    there holding nothing, reads the repositories under a folder three folders deep with their
-    remotes and one's files as git lists them, hidden ones but not what it ignores, as each is
-    asked, reads what a program has open as it's asked, asks what a file shows of one
-    file-preview it keeps, again only once the file changed, follows a data folder through each
+    there holding nothing, reads the repositories under a folder four folders deep, past no
+    hidden one, with their remotes and one's files as git lists them, hidden ones but not what
+    it ignores, as each is asked, reads when zoxide's database saw each folder, ssh's config
+    and known hosts, and the ssh lines of zsh's history as each is asked, reads what a program
+    has open as it's asked, asks what a file shows of one file-preview it keeps, again only once the file changed, follows a data folder through each
     link a switch replaces, and refuses an ask or a kind it doesn't know
   '';
   programs-passes-clippy = ''

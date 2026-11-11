@@ -20,9 +20,10 @@
 //! a folder asked for by its path, as `folder`, as each ask names it and
 //! on each change in it while watched (folder.rs); and the repositories
 //! under a folder, or one's files, as each ask names them
-//! (repositories.rs); and what a file shows of itself, by one
-//! file-preview kept, as each ask names it (preview.rs). Each command runs on
-//! a thread of its own, without a shell, so a slow one never holds an
+//! (repositories.rs); what a file shows of itself, by one file-preview
+//! kept, as each ask names it (preview.rs); and what kitty's page reads
+//! of zoxide and ssh, as each ask names it (visited.rs, machines.rs).
+//! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -41,7 +42,7 @@ use programs::mime::Mime;
 use programs::notify::Notify;
 use programs::preview::{self, Previewer};
 use programs::source::{self, Source};
-use programs::{command, entry, now_ms, repositories, xdg};
+use programs::{command, entry, machines, now_ms, repositories, visited, xdg};
 use serde_json::{Value, json};
 
 /// How many of the last answers' times health says.
@@ -342,7 +343,8 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
         .collect()
 }
 
-/// Reads each folder, repository or preview a key names, on this thread,
+/// Reads each folder, repository, preview or file of kitty's a key names,
+/// on this thread,
 /// and keeps its record, watching a folder from the first time it's asked
 /// for, and asking a preview again only of a file changed since.
 fn read_named(shared: &Shared, keys: &[String]) {
@@ -352,7 +354,10 @@ fn read_named(shared: &Shared, keys: &[String]) {
                 .looked
                 .watch(shared.notify.as_ref(), key, path);
             folder::record(key, path)
-        } else if let Some(record) = repositories::record(key) {
+        } else if let Some(record) = repositories::record(key)
+            .or_else(|| visited::record(key))
+            .or_else(|| machines::record(key))
+        {
             record
         } else if let Some(path) = preview::path_of(key) {
             if preview::current(lock(&shared.daemon).held.get(key), path) {

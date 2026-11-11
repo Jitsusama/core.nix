@@ -1,8 +1,8 @@
 //! The git repositories under a folder, and one repository's files, asked
 //! for by their keys, as the acts that list them want them
 //! (modules/quickshell/launcher/Repositories.qml): `repositories:<folder>`
-//! says each `.git` three folders deep at most, a folder or a worktree's
-//! file, dated, and each repository's config lines naming a section or a
+//! says each `.git` four folders deep at most, past no hidden folder, a
+//! folder or a worktree's file, dated, and each repository's config lines naming a section or a
 //! url; `files:<repository>` says its files as git would list them, its
 //! hidden ones too but not what it ignores, dated, the newest few
 //! thousand. Each is read as a watch or a get names it, never otherwise,
@@ -18,9 +18,9 @@ use serde_json::{Value, json};
 
 use crate::command;
 
-/// How deep a `.git` is looked for under the folder: in `src/a/b/.git`, a
-/// repository two folders deep.
-const DEEPEST: usize = 3;
+/// How deep a `.git` is looked for under the folder: in
+/// `src/github.com/someone/a/.git`, a repository three folders deep.
+const DEEPEST: usize = 4;
 
 /// The most of one repository's files its record holds, the ones changed
 /// last, as the largest repository Joel keeps holds over 23,000.
@@ -74,7 +74,7 @@ fn found(folder: &Path) -> (Vec<String>, Vec<String>) {
                 if kind.is_dir() {
                     configs.extend(config_lines(&path.join("config")));
                 }
-            } else if kind.is_dir() && depth < DEEPEST {
+            } else if kind.is_dir() && depth < DEEPEST && !hidden(&entry.file_name()) {
                 under.push((path, depth + 1));
             }
         }
@@ -82,6 +82,12 @@ fn found(folder: &Path) -> (Vec<String>, Vec<String>) {
     dated.sort();
     configs.sort_by(|a, b| config_of(a).cmp(config_of(b)));
     (dated, configs)
+}
+
+/// Whether a folder is hidden, as a repository's worktrees and caches
+/// are, which hold no repository of their own to list.
+fn hidden(name: &std::ffi::OsStr) -> bool {
+    name.as_encoded_bytes().starts_with(b".")
 }
 
 /// The config a line is of, so a repository's lines stay together and in

@@ -143,7 +143,20 @@ in
   config.systemd.user.tmpfiles.rules =
     lib.optional config.programs.zoxide.enable "d ${config.xdg.dataHome}/zoxide 0700 - - -";
 
-  config.jitsusama.quickshell.launcher.recents = lib.optional config.programs.zoxide.enable {
+  config.jitsusama.quickshell.launcher.recents = [
+    # What every kitty has open, which its page reads through the
+    # programs daemon as the launcher opens.
+    {
+      app = "kitty";
+      name = "open";
+      asked = true;
+      list = [
+        (lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now")
+        "kitty"
+      ];
+    }
+  ]
+  ++ lib.optional config.programs.zoxide.enable {
     app = "kitty";
     kind = "folder";
     watch = "${config.xdg.dataHome}/zoxide/db.zo";
@@ -175,27 +188,19 @@ in
 
   # kitty's own in Programs › kitty (Kitty.qml): its tabs and panes as its
   # remote control lists them, which open-now asks every kitty for at once,
-  # a new window in a repository fd finds under ~/src, most recently
-  # visited first where zoxide knows one, and one running ssh to a machine
-  # ~/.ssh/config or ~/.ssh/known_hosts names, by how many times zsh's
-  # history ran ssh to it. Each is read ahead, as the shell starts and as
-  # the launcher closes, so its act is in its place from the first frame.
-  # zoxide's database is read whole, through od, since only it holds when
-  # each folder was visited, which a repository's row says.
+  # a new window in a repository under ~/src, most recently visited first
+  # where zoxide knows one, and one running ssh to a machine ~/.ssh/config
+  # or ~/.ssh/known_hosts names, by how many times zsh's history ran ssh
+  # to it. The programs daemon reads each as the shell starts and as the
+  # launcher opens, zoxide's database whole, since only it holds when each
+  # folder was visited, which a repository's row says.
   config.jitsusama.quickshell.launcher.providers.kitty = {
     order = 52;
     source = ./Kitty.qml;
-    openNow = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
-    fd = lib.getExe pkgs.fd;
-    zoxide = lib.optionalString config.programs.zoxide.enable (
-      lib.getExe config.programs.zoxide.package
-    );
+    open = "listed:kitty:open";
     zoxideData = lib.optionalString config.programs.zoxide.enable "${config.xdg.dataHome}/zoxide/db.zo";
-    od = lib.getExe' pkgs.coreutils "od";
-    grep = lib.getExe pkgs.gnugrep;
     history = lib.optionalString config.programs.zsh.enable config.programs.zsh.history.path;
-    sshConfig = "${config.home.homeDirectory}/.ssh/config";
-    knownHosts = "${config.home.homeDirectory}/.ssh/known_hosts";
+    ssh = "${config.home.homeDirectory}/.ssh";
     src = "${config.home.homeDirectory}/src";
     kitten = lib.getExe' package "kitten";
     kitty = lib.getExe package;
