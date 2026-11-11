@@ -486,10 +486,23 @@ onLinux {
   # An opening draws home as the closed launcher kept it, each row as it
   # stood, then fills it in where its rows stand with nothing flashing; and
   # keys typed as it opens all land (tests/opening-on-niri-test.py).
-  the-launcher-opens-on-what-it-kept-on-niri = launcherOnNiri {
-    name = "the-launcher-opens-on-what-it-kept-on-niri";
-    tests = ../../tests/opening-on-niri-test.py;
-  };
+  # Its `lab` times each chord's opening, the one way every launcher change
+  # quotes (docs/testing.md's Timing the Launcher), built only when asked for
+  # by name, since no gate runs it (tests/launcher-lab-on-niri.py). It's
+  # passed through, which outlasts the description checks.nix adds.
+  the-launcher-opens-on-what-it-kept-on-niri =
+    (launcherOnNiri {
+      name = "the-launcher-opens-on-what-it-kept-on-niri";
+      tests = ../../tests/opening-on-niri-test.py;
+    }).overrideAttrs
+      (old: {
+        passthru = old.passthru or { } // {
+          lab = launcherOnNiri {
+            name = "the-launcher-lab-on-niri";
+            tests = ../../tests/launcher-lab-on-niri.py;
+          };
+        };
+      });
 
   # The launcher, the held notices and a window share the keys by one rule:
   # the newest Joel opened takes them, a notice arriving never does, and a
