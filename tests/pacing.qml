@@ -281,6 +281,29 @@ QtObject {
             + "launcher: 2 changes in windows presented a median 30 ms from the line, "
             + "the slowest 90 ms, 1 within 50 ms");
         check(failures, "none presented says nothing", Presented.changesSaid([]).length, 0);
+
+        // Joel's 12:06 keys each came to their frame in 10 to 53 ms but
+        // were presented a median 101 ms from the key, and nothing said
+        // where the rest went (ZINAWZ, 2026-11-11).
+        const keys = [
+            { from: 0, heard: 60, begun: 80, at: 100 },
+            { from: 1000, heard: 1010, begun: 1040, at: 1050 },
+            { from: 2000, heard: 2005, begun: 2015, at: 2300 }
+        ];
+        check(failures, "keys say where their time went, each part's median apart",
+            Presented.keysSaid("presented", keys, true),
+            "launcher: 3 keys presented a median 100 ms from the key, the slowest 300 ms, "
+            + "1 within 50 ms: a median 10 ms before the shell heard it, 20 in the shell "
+            + "and 20 from its frame's start");
+        check(failures, "keys said landed say how long alone",
+            Presented.keysSaid("landed", keys.slice(0, 1), false),
+            "launcher: 1 keys landed a median 100 ms from the key, the slowest 100 ms, "
+            + "0 within 50 ms");
+        check(failures, "as do keys timed with no frame begun",
+            Presented.keysSaid("presented", [{ from: 0, at: 70 }], true),
+            "launcher: 1 keys presented a median 70 ms from the key, the slowest 70 ms, "
+            + "0 within 50 ms");
+        check(failures, "no keys say nothing", Presented.keysSaid("presented", [], true), "");
     }
 
     function run() {
