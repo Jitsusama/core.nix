@@ -214,6 +214,18 @@
         touch $out
       '';
 
+  # A Map and a Set mean what the language says, in the shell's own Qt,
+  # whose tables find string and number keys by hash
+  # (qtdeclarative-maps-find-keys-by-hash.patch).
+  maps-keep-their-meaning = pkgs.runCommandLocal "maps-keep-their-meaning" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${../../../tests/maps-keep-their-meaning.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # A file reloaded while it's still being read is read once more as that
   # read lands, so the view holds what was written last, as
   # tests/reloaded.qml drives it in the Quickshell the machine runs

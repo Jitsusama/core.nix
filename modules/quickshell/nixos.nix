@@ -84,8 +84,11 @@ let
   # fields, or past the object's end, which crashed the shell on
   # 2026-11-11 (qtdeclarative-accessor-keeps-its-own-table.patch). The
   # three fixes to its collector that Qt's 6.12 branch has since 6.12.0
-  # come with it. Only the shell and the modules it loads are built with
-  # it, so nothing else on the machine is rebuilt for it.
+  # come with it, and a Map or a Set finds a string or a number key by
+  # its hash rather than comparing it with every key it holds
+  # (qtdeclarative-maps-find-keys-by-hash.patch). Only the shell and the
+  # modules it loads are built with it, so nothing else on the machine is
+  # rebuilt for it.
   shellQt =
     prev:
     prev.qt6.overrideScope (
@@ -98,6 +101,7 @@ let
             ./qtdeclarative-sweep-keeps-what-it-allocates.patch
             ./qtdeclarative-generator-frames-marked.patch
             ./qtdeclarative-generator-frames-checked.patch
+            ./qtdeclarative-maps-find-keys-by-hash.patch
           ];
         });
       }

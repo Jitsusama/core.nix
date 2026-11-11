@@ -1065,6 +1065,11 @@
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
   '';
+  maps-keep-their-meaning = ''
+    in the shell's own Qt, a Map or a Set finds keys equal by value and only those, objects by
+    who they are, in the order they came through deletes, clears and walks that change it, and
+    every one of forty thousand keys it holds
+  '';
   marks-past-the-basic-plane = ''
     a mark past U+FFFF reaches the shell whole
   '';
