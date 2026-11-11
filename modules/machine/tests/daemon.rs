@@ -9,9 +9,10 @@
 //! told as it writes them, as are Keep Awake's locks and the machine's
 //! chosen profile; who has each camera is told as its file is; the
 //! keyboards, caps lock and a board's layer are told as their watchers
-//! write them; a charge limit set is told before it's answered; Heat's
-//! rows are made for a watch of their place and told as they move; and
-//! an ask, act or kind it doesn't know is refused.
+//! write them; a watcher's status is told as it writes it, and silent
+//! once its heartbeat is late; a charge limit set is told before it's
+//! answered; Heat's rows are made for a watch of their place and told as
+//! they move; and an ask, act or kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -1021,6 +1022,45 @@ fn what_key_counts_tallied_is_told_as_it_writes_its_counts_again() {
     assert_eq!(client.changed("counts:ergodox")["presses"], 12);
     write(13);
     assert_eq!(client.changed("counts:ergodox")["presses"], 13);
+}
+
+#[test]
+fn a_watchers_status_is_told_as_it_writes_it_and_said_silent_once_its_heartbeat_is_late() {
+    let running = Running::new("status");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "status"}));
+    assert_eq!(said["records"], json!([]), "no watcher has written yet");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    // Written beside and renamed into place, as every watcher writes it.
+    let write = |folder: &str, text: String| {
+        let folder = running.root().join(folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join(".writing"), text).unwrap();
+        std::fs::rename(folder.join(".writing"), folder.join("status.json")).unwrap();
+    };
+    write(
+        "run/disk-guard",
+        format!(r#"{{"heartbeat": {now}, "at": {now}, "filesystems": []}}"#),
+    );
+    let guard = client.changed("status:disk-guard-machine");
+    assert_eq!(
+        guard["said"],
+        json!({"filesystems": []}),
+        "told without its beats"
+    );
+    assert_eq!(guard["silent"], false);
+    // A window that ended two seconds short of lag-watch's thirty, and
+    // nothing after it, so only its deadline can say it silent.
+    let ended = now - 28.0;
+    write(
+        "run/user/1000/lag-watch",
+        format!(r#"{{"ended": {ended}, "trouble": []}}"#),
+    );
+    assert_eq!(client.changed("status:lag-watch")["silent"], false);
+    assert_eq!(client.changed("status:lag-watch")["silent"], true);
 }
 
 #[test]

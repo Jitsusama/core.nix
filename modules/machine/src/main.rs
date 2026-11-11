@@ -72,8 +72,8 @@ use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_o
 use machine::words::Words;
 use machine::{
     Root, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, keyboards, kept, light,
-    memory, now_ms, power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree,
-    units, using, written::Written,
+    memory, now_ms, power_rows, processor, rounded, rows, sleep, status, steered, supply, telemetry,
+    tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -103,7 +103,7 @@ const LEEWAY: Duration = Duration::from_millis(50);
 /// the second.
 const STEERED: [&str; 2] = ["brightness", "warmth"];
 const KEYBOARDS: [&str; 2] = ["keyboards", "capslock"];
-const HEARD: [&str; 7] = [
+const HEARD: [&str; 8] = [
     "brightness",
     "warmth",
     "camera",
@@ -111,6 +111,7 @@ const HEARD: [&str; 7] = [
     "capslock",
     "layer",
     "counts",
+    "status",
 ];
 /// How often a watch on files heard looks to see whether it's still
 /// wanted, once every folder is watched.
@@ -221,12 +222,16 @@ struct Reader {
     /// Where a board's watcher says its layer, or none for a session with
     /// no runtime folder.
     layer: Option<String>,
+    /// The watchers whose status files are read, and the heartbeat each
+    /// was last heard at.
+    watchers: Vec<status::Watcher>,
+    statuses: status::Kept,
 }
 
 impl Reader {
     /// Reads the kinds of these that are heard as their files are
     /// written (`HEARD`).
-    fn heard(&self, kinds: &HashSet<String>) -> Vec<Value> {
+    fn heard(&mut self, kinds: &HashSet<String>) -> Vec<Value> {
         let wants = |kind: &str| kinds.contains(kind);
         let mut records = Vec::new();
         if let Some(files) = self.steered.as_ref() {
@@ -251,6 +256,14 @@ impl Reader {
         }
         if wants("counts") {
             records.extend(counts::boards(&self.root));
+        }
+        if wants("status") {
+            records.extend(self.statuses.records(
+                &self.root,
+                &self.watchers,
+                Instant::now(),
+                status::since_epoch(),
+            ));
         }
         records
     }
@@ -527,6 +540,21 @@ fn main() {
     }
     {
         let shared = Arc::clone(&shared);
+        let folders = lock(&shared.reader)
+            .watchers
+            .iter()
+            .map(|watcher| root.path(&watcher.folder))
+            .collect::<Vec<_>>();
+        std::thread::spawn(move || {
+            let due = |shared: &Shared| {
+                let reader = lock(&shared.reader);
+                reader.statuses.due(&reader.watchers)
+            };
+            heard_until(&shared, &["status"], &folders, status::names, due);
+        });
+    }
+    {
+        let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
@@ -599,6 +627,8 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
                 .ok()
                 .filter(|folder| !folder.is_empty()),
             layer: keyboards::layer_file(),
+            watchers: status::of_session(),
+            statuses: status::Kept::default(),
         }),
         woken: Condvar::new(),
     }
@@ -1095,6 +1125,18 @@ fn light_loop(shared: &Shared, root: &Root) {
 /// said all the same. With the last watch the files are let be, so an
 /// idle machine is woken by none of their writes.
 fn heard_loop(shared: &Shared, kinds: &[&str], folders: &[PathBuf], ours: impl Fn(&str) -> bool) {
+    heard_until(shared, kinds, folders, ours, |_| None);
+}
+
+/// As `heard_loop`, and read again too when `due` says, as a watcher's
+/// status is when its heartbeat is late, though nothing was written.
+fn heard_until(
+    shared: &Shared,
+    kinds: &[&str],
+    folders: &[PathBuf],
+    ours: impl Fn(&str) -> bool,
+    due: impl Fn(&Shared) -> Option<Instant>,
+) {
     let kinds: HashSet<String> = kinds.iter().map(|kind| (*kind).to_owned()).collect();
     let watching = |daemon: &Daemon| watched(daemon).iter().any(|kind| kinds.contains(kind));
     loop {
@@ -1122,8 +1164,13 @@ fn heard_loop(shared: &Shared, kinds: &[&str], folders: &[PathBuf], ours: impl F
             // of them watched, only to see whether the watch has ended,
             // which can wait, since a file heard while nothing watches
             // tells nobody.
-            let heard = written.wait(if written.looking() { EVERY } else { RESTING });
-            if heard.iter().any(|name| name.is_empty() || ours(name)) {
+            let resting = if written.looking() { EVERY } else { RESTING };
+            let wait = due(shared).map_or(resting, |at| {
+                resting.min(at.saturating_duration_since(Instant::now()))
+            });
+            let heard = written.wait(wait);
+            let late = due(shared).is_some_and(|at| at <= Instant::now());
+            if late || heard.iter().any(|name| name.is_empty() || ours(name)) {
                 read(shared, &kinds, &[]);
             }
         }

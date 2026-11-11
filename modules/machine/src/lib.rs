@@ -5,14 +5,14 @@
 //! [`supply`], [`sleep`], [`firmware`], [`light`], and what the backlight
 //! program steers the screen to, [`steered`], who has each camera open,
 //! [`camera`], and the keyboards connected, caps lock and a board's layer,
-//! [`keyboards`], and what key-counts has tallied of each, [`counts`],
-//! each heard as it's written through [`written`]), and the user units
-//! the shell may restart, [`units`], and the parts Heat's rows say,
-//! gathered from those records and the processor's own telemetry
-//! ([`parts`], [`telemetry`]), and Heat's and Power's rows made of them,
-//! ready for the launcher ([`heat_rows`], [`power_rows`], placed and
-//! graphed through [`rows`] and worded through [`words`]). Every file is
-//! read through
+//! [`keyboards`], what key-counts has tallied of each, [`counts`], and
+//! what the desktop's watchers say of themselves, [`status`], each heard
+//! as it's written through [`written`]), and the user units the shell may
+//! restart, [`units`], and the parts Heat's rows say, gathered from those
+//! records and the processor's own telemetry ([`parts`], [`telemetry`]),
+//! and Heat's and Power's rows made of them, ready for the launcher
+//! ([`heat_rows`], [`power_rows`], placed and graphed through [`rows`] and
+//! worded through [`words`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before.
 //!
@@ -44,6 +44,7 @@ pub mod pressure;
 pub mod processor;
 pub mod rows;
 pub mod sleep;
+pub mod status;
 pub mod steered;
 pub mod supply;
 pub mod telemetry;
