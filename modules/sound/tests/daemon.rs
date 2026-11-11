@@ -1,9 +1,11 @@
 //! The daemon over its socket, with no sound server to hear, as the
 //! build's sandbox has none: hello says how it stands on the socket
 //! systemd hands it, and that PipeWire isn't answering; a list or a
-//! watch answers no devices rather than waiting on one; and an ask or a
-//! kind it doesn't know is refused. What it hears of a server is proven
-//! in devices.rs and levels.rs, over the changes PipeWire says.
+//! watch answers no devices rather than waiting on one; an ask or a kind
+//! it doesn't know is refused, and so is an act on a device it hasn't
+//! heard, or one missing what it needs. What it hears of a server is
+//! proven in devices.rs and levels.rs, over the changes PipeWire says,
+//! and how each act is done in acts.rs.
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -92,4 +94,17 @@ fn an_ask_or_kind_it_doesnt_know_is_refused() {
     assert_eq!(said["error"]["code"], "unknown-ask");
     let said = client.ask(&json!({"id": 2, "ask": "list", "kind": "window"}));
     assert_eq!(said["error"]["code"], "unknown-kind");
+}
+
+#[test]
+fn an_act_it_cant_do_is_refused_at_once() {
+    let daemon = started("acts", &[]);
+    let mut client = daemon.client();
+    let mut refusal = |asked: serde_json::Value| client.ask(&asked)["error"]["code"].clone();
+    let muting = json!({"id": 1, "ask": "act", "act": "mute", "key": "device:a", "muted": true});
+    assert_eq!(refusal(muting), "no-device");
+    let volume = json!({"id": 2, "ask": "act", "act": "volume", "key": "device:a"});
+    assert_eq!(refusal(volume), "bad-act");
+    let louder = json!({"id": 3, "ask": "act", "act": "louder", "key": "device:a"});
+    assert_eq!(refusal(louder), "unknown-act");
 }
