@@ -330,7 +330,9 @@ impl Reader {
         let at = clock_ms();
         let mut records = Vec::new();
         let wants = |kind: &str| kinds.contains(kind);
-        if wants("processor") {
+        // A processor read just now stands: one measured over less than
+        // a few of the kernel's ticks would say no busy share at all.
+        if wants("processor") && !processor::too_soon(self.processor.as_ref(), at) {
             let now = processor::counters(&self.root, at);
             records.push(processor::record(
                 &self.root,
