@@ -4,16 +4,22 @@
 //! nothing (Joel, 2026-11-10: "the daemons need to be the data layer, and
 //! they need to serve the launcher"). The shape is Y2YBTS's ready-row
 //! record (QEST-20261023-Y2YBTS attachments/speed/ready-rows.md), as
-//! Google's daemon serves Mail's: a `row:<place>:<id>` record, the place
-//! `slack-unread` or `slack-recent`, whose `row` is the launcher's own key
-//! for the conversation, `slack:conversation:<id>`, so one in both places
-//! is one thing. SlackUnreads.js and SlackProgram.qml make the same rows
+//! Google's daemon serves Mail's: a `row:<place>:<id>` record of kind
+//! `row`, the place `slack-unread` or `slack-recent`, whose row's `thing`
+//! is the launcher's own key for the conversation,
+//! `slack:conversation:<id>`, so one in both places is one thing. Each
+//! place's rows go through the ready-rows crate's `Kept`, the one shape
+//! every daemon's rows take (Y2YBTS, 2026-11-11), so each keeps the order
+//! it was told at where it can, and one conversation coming first is one
+//! row changed rather than every row below it. SlackUnreads.js and SlackProgram.qml make the same rows
 //! today; these take their place as the shell reads them. Each message
 //! wanting Joel is a row too, of `slack-messages` (`message_rows.rs`).
 
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
+
+use ready_rows::kept::Kept;
 
 use crate::message_rows;
 use crate::unreads::{Conversation, Kind, Said, State};
@@ -25,10 +31,6 @@ pub const UNREAD: &str = "slack-unread";
 
 /// The place of each conversation Joel read last, newest first.
 pub const RECENT: &str = "slack-recent";
-
-/// How far apart rows' orders are, so a row placed between two later
-/// needs no other moved (ready-rows.md's spaced order).
-const SPACED: u64 = 1024;
 
 /// The kinds a conversation's note names, as Slack's daemon says them.
 const KINDS: [&str; 5] = ["dm", "mention", "thread", "unread", "channel"];
@@ -71,49 +73,66 @@ impl Words {
     }
 }
 
-/// Every record of a row what Slack last said makes, keyed as the
-/// launcher watches them: each conversation's row, then each message's
-/// row and its drawer. A message is said through Slack refusing or out
-/// of reach, as `daemon::records` holds it, since one unread stays
-/// unread until Slack says it was read.
-#[must_use]
-pub fn records(said: &Said, words: &Words) -> Vec<(String, Value)> {
-    let mut made: Vec<(String, Value)> = rows(said, words)
-        .into_iter()
-        .map(|row| {
-            let key = row["key"].as_str().unwrap_or_default().to_owned();
-            (key.clone(), json!({"key": key, "kind": "row", "row": row}))
-        })
-        .collect();
-    made.extend(message_rows::records(&said.messages, &words.messages));
-    made
+/// Each place's rows as last told, so the next making keeps each row's
+/// order where it can.
+#[derive(Debug, Default)]
+pub struct Told {
+    places: BTreeMap<&'static str, Kept>,
 }
 
-/// Every row what Slack last said makes, unread first and then Recent,
-/// each in its place's order; none but while Slack answered, so an old
-/// count is never shown as a current one, as `daemon::records` holds
+impl Told {
+    /// Every record of a row what Slack last said makes, keyed as the
+    /// launcher watches them and in the order shown: each conversation's
+    /// row, then each message's row and its drawer. A message is said
+    /// through Slack refusing or out of reach, as `daemon::records`
+    /// holds it, since one unread stays unread until Slack says it was
+    /// read.
+    pub fn records(&mut self, said: &Said, words: &Words) -> Vec<(String, Value)> {
+        let (messages, drawers) = message_rows::rows(&said.messages, &words.messages);
+        let placed = [
+            (
+                UNREAD,
+                rows(said, UNREAD, &said.conversations, words),
+                Vec::new(),
+            ),
+            (RECENT, rows(said, RECENT, &said.recent, words), Vec::new()),
+            (message_rows::MESSAGES, messages, drawers),
+        ];
+        let mut made = Vec::new();
+        for (place, rows, beside) in placed {
+            // Each row, then the drawer it names, as they're shown.
+            let keys: Vec<String> = rows
+                .iter()
+                .flat_map(|row| [&row["key"], &row["drawer"]])
+                .filter_map(|key| key.as_str().map(str::to_owned))
+                .collect();
+            let kept = self.places.entry(place).or_default();
+            kept.take(rows, beside);
+            made.extend(keys.into_iter().filter_map(|key| {
+                let record = kept.get(&key)?.clone();
+                Some((key, record))
+            }));
+        }
+        made
+    }
+}
+
+/// Each conversation's row in `place`, in Slack's order, for `Kept` to
+/// set its `order`; none but while Slack answered, so an old count is
+/// never shown as a current one, as `daemon::records` holds
 /// conversations.
-#[must_use]
-pub fn rows(said: &Said, words: &Words) -> Vec<Value> {
+fn rows(said: &Said, place: &'static str, all: &[Conversation], words: &Words) -> Vec<Value> {
     if said.state != State::Ok {
         return Vec::new();
     }
-    let placed = |place: &'static str, all: &[Conversation]| -> Vec<Value> {
-        all.iter()
-            .zip(1..)
-            .map(|(one, at)| row(one, place, at * SPACED, words))
-            .collect()
-    };
-    let mut made = placed(UNREAD, &said.conversations);
-    made.extend(placed(RECENT, &said.recent));
-    made
+    all.iter().map(|one| row(one, place, words)).collect()
 }
 
 /// One conversation's row in `place`: its name as Slack says it, how
 /// many to read beside it where it's counted, what kind it is in its
 /// note, and Open in Slack, the one act a conversation has without a
 /// link to share. Return opens it, as its act does.
-fn row(one: &Conversation, place: &str, order: u64, words: &Words) -> Value {
+fn row(one: &Conversation, place: &str, words: &Words) -> Value {
     let kind = kind(one.kind);
     let side = if one.count > 0 {
         vec![json!({"said": words.count.replace("{count}", &one.count.to_string())})]
@@ -122,10 +141,9 @@ fn row(one: &Conversation, place: &str, order: u64, words: &Words) -> Value {
     };
     json!({
         "key": format!("row:{place}:{}", one.id),
-        "row": format!("slack:conversation:{}", one.id),
+        "thing": format!("slack:conversation:{}", one.id),
         "place": place,
         "kind": kind,
-        "order": order,
         "name": one.name,
         "glyph": words.glyph,
         "hue": "program",
@@ -186,15 +204,18 @@ mod tests {
         }
     }
 
+    /// Each row's key and order, as shown.
+    fn placed(made: &[(String, Value)]) -> Vec<(&str, i64)> {
+        made.iter()
+            .map(|(key, record)| (key.as_str(), record["row"]["order"].as_i64().unwrap()))
+            .collect()
+    }
+
     #[test]
     fn each_conversation_is_a_row_of_its_place_in_slacks_order() {
-        let made = rows(&said(State::Ok), &words());
-        let placed: Vec<(&str, u64)> = made
-            .iter()
-            .map(|row| (row["key"].as_str().unwrap(), row["order"].as_u64().unwrap()))
-            .collect();
+        let made = Told::default().records(&said(State::Ok), &words());
         assert_eq!(
-            placed,
+            placed(&made),
             [
                 ("row:slack-unread:D1", 1024),
                 ("row:slack-unread:C3", 2048),
@@ -202,33 +223,53 @@ mod tests {
             ]
         );
         assert_eq!(
-            made[0],
-            json!({
-                "key": "row:slack-unread:D1", "row": "slack:conversation:D1",
+            made[0].1,
+            json!({"key": "row:slack-unread:D1", "kind": "row", "row": {
+                "key": "row:slack-unread:D1", "thing": "slack:conversation:D1",
                 "place": "slack-unread", "kind": "dm", "order": 1024, "name": "D1's",
                 "glyph": "chat", "hue": "program", "depth": 0,
                 "side": [{"said": "2 to read"}], "note": "a dm",
                 "acts": [{"key": "verb:slack:open", "open": "slack://channel?team=T1&id=D1"}],
                 "held": {"id": "D1", "count": 2, "at": "1730300000.000100"},
-            })
+            }})
         );
+    }
+
+    #[test]
+    fn one_coming_first_takes_an_order_of_its_own_and_the_rest_keep_theirs() {
+        let mut told = Told::default();
+        let before = told.records(&said(State::Ok), &words());
+        let mut now = said(State::Ok);
+        now.conversations.insert(0, one("D9", Kind::Dm, 1));
+        let after = told.records(&now, &words());
+        assert_eq!(
+            placed(&after),
+            [
+                ("row:slack-unread:D9", 0),
+                ("row:slack-unread:D1", 1024),
+                ("row:slack-unread:C3", 2048),
+                ("row:slack-recent:C1", 1024),
+            ]
+        );
+        // Only the new row reads differently from what was told.
+        let moved: Vec<&(String, Value)> =
+            after.iter().filter(|one| !before.contains(one)).collect();
+        assert_eq!(moved, [&after[0]]);
     }
 
     #[test]
     fn one_uncounted_says_nothing_beside_it() {
-        let made = rows(&said(State::Ok), &words());
-        assert_eq!(made[1]["side"], json!([]));
-        assert_eq!(made[2]["side"], json!([]));
-        assert_eq!(made[2]["note"], "a channel");
+        let made = Told::default().records(&said(State::Ok), &words());
+        assert_eq!(made[1].1["row"]["side"], json!([]));
+        assert_eq!(made[2].1["row"]["side"], json!([]));
+        assert_eq!(made[2].1["row"]["note"], "a channel");
     }
 
     #[test]
     fn no_row_is_made_while_slack_doesnt_answer() {
-        assert_eq!(
-            rows(&said(State::Unreachable), &words()),
-            Vec::<Value>::new()
-        );
-        assert_eq!(rows(&said(State::SignedOut), &words()), Vec::<Value>::new());
+        let mut told = Told::default();
+        assert_eq!(told.records(&said(State::Unreachable), &words()), []);
+        assert_eq!(told.records(&said(State::SignedOut), &words()), []);
     }
 
     #[test]
