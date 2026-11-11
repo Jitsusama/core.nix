@@ -1,0 +1,17 @@
+// The machine's administrators, the account's jobs-sorter among them, may
+// start memory-swap-in@PID.service for a process without a password, and
+// do nothing else with it: modules/slices/nixos.nix says why. The unit only
+// asks for the memory of a process in the focused session window to be
+// read back, and checks that itself. polkit's own engine reads this, in
+// the JavaScript it knows.
+polkit.addRule(function (action, subject) {
+  if (
+    action.id === "org.freedesktop.systemd1.manage-units" &&
+    action.lookup("verb") === "start" &&
+    /^memory-swap-in@[1-9][0-9]*\.service$/.test(action.lookup("unit")) &&
+    subject.isInGroup("wheel")
+  ) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

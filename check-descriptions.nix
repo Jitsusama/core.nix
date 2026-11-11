@@ -3233,6 +3233,11 @@
     to one it never ran only by authenticating; one outside wheel, and what isn't a NixOS system in
     the store, is refused; and with a YubiKey named but not there, polkit takes the password alone
   '';
+  vm-a-focused-window-reads-its-swap-back = ''
+    an administrator's memory-swap-in@ reads back what swap holds of a pid's scope when it belongs to
+    the session window niri says has the focus, once a window in 30 s; never another window's, a
+    window that's no session, root's, or for an account outside wheel
+  '';
   vm-admins-tune-memory = ''
     an account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU and
     swappiness to a listed value with no password; one outside wheel can't, and an unlisted value needs one

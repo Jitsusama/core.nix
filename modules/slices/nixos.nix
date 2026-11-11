@@ -432,6 +432,51 @@ in
           ];
         };
       };
+      # The sorter asks for a session window's swapped memory to be read
+      # back the moment the focus comes to it, rather than a page at a time
+      # as Joel types (jobs-sorter/src/swap_in.rs): from disk, 505 MiB came
+      # back in 0.56 s that way against 8.3 s, on 11 November. Asking for
+      # another process's memory takes CAP_SYS_NICE, which no user service
+      # holds, so the unit starts as root, becomes the process's own account
+      # with that capability alone, and reads nothing back unless niri says
+      # the process's window has the focus. Administrators may start it
+      # (swap-in.rules), at most once a window every 30 s.
+      "memory-swap-in@" = {
+        description = "Reads back the swapped memory of focused window process %i";
+        path = [ pkgs.util-linux ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${lib.getExe sorter} swap-in %i";
+          CapabilityBoundingSet = [
+            "CAP_SETUID"
+            "CAP_SETGID"
+            "CAP_SETPCAP"
+            "CAP_SYS_NICE"
+          ];
+          NoNewPrivileges = true;
+          # Its capability can't turn to taking real time.
+          RestrictRealtime = true;
+          ProtectSystem = "strict";
+          # Where the account's niri listens, and the stamps of when each
+          # window was last read back.
+          ReadWritePaths = [ "/run/user" ];
+          PrivateTmp = true;
+          PrivateDevices = true;
+          PrivateNetwork = true;
+          RestrictAddressFamilies = "AF_UNIX";
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictNamespaces = true;
+          SystemCallFilter = [
+            "@system-service"
+            "pidfd_open"
+            "process_madvise"
+          ];
+        };
+      };
     }
     // lib.mapAttrs (_: floor: { serviceConfig.MemoryLow = "${toString floor.mib}M"; }) systemFloors
     // lib.mapAttrs' (
@@ -675,7 +720,10 @@ in
     # `systemctl revert build.slice`; this configuration still sets the
     # slices as they boot.
     security.polkit.enable = true;
-    security.polkit.extraConfig = builtins.readFile ./work-slices.rules;
+    security.polkit.extraConfig = lib.concatMapStringsSep "\n" builtins.readFile [
+      ./work-slices.rules
+      ./swap-in.rules
+    ];
     systemd.user.slices.user.sliceConfig = {
       CPUWeight = "idle";
       IOWeight = 1;

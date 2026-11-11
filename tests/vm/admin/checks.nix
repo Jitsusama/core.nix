@@ -33,6 +33,9 @@ onLinux {
   # Whether polkit lets an administrator tune the kernel's memory, and
   # only to the values listed, shows only with polkit, systemd and a kernel.
   vm-admins-tune-memory = import ./memory-tune.nix { inherit self pkgs; };
+  # Whether a focused window's memory comes back from swap, and nobody
+  # else's, shows only with polkit, systemd, swap and a kernel to hint.
+  vm-a-focused-window-reads-its-swap-back = import ./swap-in.nix { inherit self pkgs; };
   # Whether polkit asks an administrator before firmware is written, even
   # of the seat's session, shows only with polkit, logind and fwupd's rules.
   vm-firmware-asks-an-administrator = import ./firmware-asks.nix { inherit self pkgs; };
