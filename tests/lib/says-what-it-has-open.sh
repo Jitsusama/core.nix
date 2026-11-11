@@ -36,8 +36,6 @@ reading=("$@")
 "${program[@]}" "$file" > said 2>&1 &
 opened=$!
 
-read_now() { "${reading[@]}" 2>&1 || true; }
-
 # Waits up to two minutes for what the command reads to be `wanted`,
 # reading it a tenth of a second apart and doing what's left of the words
 # before each reading, and says what it read when it never is: a busy host
@@ -48,10 +46,11 @@ reads() {
   shift 2
   for _ in $(seq 1200); do
     "$@"
-    if [ "$(read_now)" = "$wanted" ]; then return 0; fi
+    now=$("${reading[@]}" 2>&1) || true
+    if [ "$now" = "$wanted" ]; then return 0; fi
     sleep 0.1
   done
-  echo "never read $what; it read: $(read_now)" >&2
+  echo "never read $what; it read: $now" >&2
   cat said >&2
   kill "$opened" 2> /dev/null || true
   exit 1

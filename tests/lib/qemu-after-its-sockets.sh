@@ -24,6 +24,7 @@ for argument in "$@"; do
       case $option in
         path=*) path=${option#path=} ;;
         server | server=on) serves=yes ;;
+        *) ;;
       esac
     done
     if [ -n "$path" ] && [ -z "$serves" ]; then

@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2310 # exempted is a test, read in a condition.
 # Fails on a doc naming a file or folder that isn't there: a relative link or
 # reference definition in any markdown file, read from the file's own folder,
 # or a backticked path from one of the tree's top folders, read from the root
@@ -34,7 +35,9 @@ exempted() {
   named+=("$1 $2")
 }
 
+docs=$(find . -name '*.md' -not -path './.git/*' | sort)
 while IFS= read -r file; do
+  [ -n "$file" ] || continue
   file=${file#./}
   dir=$(dirname "$file")
   # Code blocks are examples, so only prose is read.
@@ -58,7 +61,7 @@ while IFS= read -r file; do
     grep -oE '`('"$tops"')/[^` *<>{}]+`' <<<"$prose" |
       tr -d '`' | sed -E 's/:[0-9]+(-[0-9]+)?$//' || true
   )
-done < <(find . -name '*.md' -not -path './.git/*' | sort)
+done <<<"$docs"
 
 stale=()
 while IFS= read -r line; do

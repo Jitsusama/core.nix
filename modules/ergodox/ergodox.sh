@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2310 # channel and send say whether the board is there.
 # The ErgoDox's command: what can be done to the board from a terminal, and
 # what the shell runs when it's asked from the launcher. ERGODOX_FIRMWARE is
 # this machine's build of the firmware (firmware.nix), and ERGODOX_LAYERS
@@ -6,6 +7,9 @@
 # go over Oryx's raw HID channel (keymap/host.c), which only Linux's hidraw
 # reaches from a script; ERGODOX_ROOT stands in for / when a check gives it
 # a copy of sysfs.
+# writeShellApplication sets these already; they're said here so a reader,
+# and shellcheck, see what the script runs under.
+set -euo pipefail
 
 usage() {
   cat <<'EOF'
@@ -29,7 +33,8 @@ root=${ERGODOX_ROOT-}
 channel() {
   for node in "$root"/sys/class/hidraw/*; do
     grep -q '^HID_ID=0003:00003297:' "$node/device/uevent" 2>/dev/null || continue
-    [ "$(od -An -tx1 -N3 "$node/device/report_descriptor" | tr -d ' \n')" = 0660ff ] || continue
+    descriptor=$(od -An -tx1 -N3 "$node/device/report_descriptor" | tr -d ' \n') || continue
+    [ "$descriptor" = 0660ff ] || continue
     printf '%s\n' "$root/dev/${node##*/}"
     return 0
   done
@@ -62,17 +67,17 @@ flash)
   # its bootloader key instead: Delete's key on either thumb while Numb is
   # held.
   send 128 || true
-  exec zapp flash "$ERGODOX_FIRMWARE/ergodox.hex"
+  exec zapp flash "${ERGODOX_FIRMWARE:?the package gives its firmware}/ergodox.hex"
   ;;
 serial)
-  cat "$ERGODOX_FIRMWARE/serial"
+  cat "${ERGODOX_FIRMWARE:?the package gives its firmware}/serial"
   ;;
 bootloader)
   ask 128
   ;;
 layer)
   index=0
-  for name in $ERGODOX_LAYERS; do
+  for name in ${ERGODOX_LAYERS:?the package gives the layer names}; do
     if [ "${2-}" = "$index" ] || [ "${2,,}" = "${name,,}" ]; then
       ask 130 "$index"
       exit 0

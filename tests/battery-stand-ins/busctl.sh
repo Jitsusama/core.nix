@@ -11,14 +11,7 @@
 # written as refused.
 # usage: busctl.sh <busctl's arguments>
 set -euo pipefail
-
-profile() {
-  if [ -e "$STATE/active" ]; then
-    cat "$STATE/active"
-  else
-    echo balanced
-  fi
-}
+: "${STATE:?run.sh gives the folder the states are in}"
 
 # The daemon's interface, org.freedesktop.UPower.PowerProfiles, holds the name
 # of one of its properties, so the daemon's are told apart by the arguments
@@ -46,14 +39,23 @@ case "$*" in
     wanted=${*: -1}
     read -r _ _ refused < "$STATE/now"
     if [ "$wanted" = "${refused:-}" ]; then
-      echo "$(cat "$STATE/now"): refused $wanted" >> "$STATE/calls"
+      echo "$(< "$STATE/now"): refused $wanted" >> "$STATE/calls"
       echo "Operation not supported" >&2
       exit 1
     fi
     echo "$wanted" > "$STATE/active"
-    echo "$(cat "$STATE/now"): $wanted" >> "$STATE/calls"
+    echo "$(< "$STATE/now"): $wanted" >> "$STATE/calls"
     ;;
   *" ActiveProfile")
-    echo "s \"$(profile)\""
+    active=balanced
+    if [ -e "$STATE/active" ]; then
+      active=$(< "$STATE/active")
+    fi
+    echo "s \"$active\""
+    ;;
+  # A call this doesn't know would be answered wrongly, so it fails the run.
+  *)
+    echo "busctl.sh doesn't stand in for: $*" >> "$STATE/errors"
+    exit 1
     ;;
 esac

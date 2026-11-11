@@ -9,6 +9,7 @@
 # (qmllint-counted.sh).
 #
 # usage: shell-folder-lint <Quickshell's types> <Qt's QML modules>
+set -euo pipefail
 
 types=$1
 qt=$2
@@ -41,8 +42,9 @@ done
 # Each file is named by its real, whole path, as Qt 6.12's qmllint names a
 # qmldir's entries: named any other way, the file it lints and the qmldir's
 # entry are two types to it, the first never told it's a singleton.
-cd "$module" || exit
-find "$(pwd -P)/qs" -name '*.qml' -print0 | sort -z |
+cd "$module"
+here=$(pwd -P)
+find "$here/qs" -name '*.qml' -print0 | sort -z |
   xargs -0 qmllint-counted --ignore-settings --max-warnings 0 \
     -I "$types" -I "$qt" -I . \
     --unresolved-type disable --signal-handler-parameters disable
