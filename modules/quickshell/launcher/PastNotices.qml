@@ -155,7 +155,7 @@ Provider {
         const reading = readingOf(acts);
         const read = reading === null ? {} : { ends: Words.field.operators?.read ?? "" };
         return [Object.assign({ key: "verb:notice:forget" }, Words.ending("verb:notice:forget"),
-            read, done(ready, key, held, forgetting, reading))].concat(copy);
+            read, done(held, forgetting, reading))].concat(copy);
     }
 
     // Its sender's own Read among what it offers (Notice.js's readOffer),
@@ -172,16 +172,19 @@ Provider {
     // once, at its sender too where it offers Read, and let go as the
     // launcher closes, a dismissed notice being gone for good, so u brings
     // it back until then, its read state staying, as the spec's notices do.
-    function done(ready, key, held, forgetting, reading) {
+    // Each is asked through the place every notice is in, which stays
+    // watched as the launcher closes, where Desktop's is let go.
+    function done(held, forgetting, reading) {
+        const key = `row:${mixed.place}:${held.id}`;
         return {
             run: () => {
                 if (reading !== null)
-                    ready.act(key, reading);
+                    mixed.act(key, reading);
                 else if (held.read !== true)
-                    ready.act(key, { key: "verb:notice:read",
+                    mixed.act(key, { key: "verb:notice:read",
                         ask: { ask: "mark", notices: [held.id], read: true } });
                 provider.parting = provider.parting.concat([
-                    { id: held.id, ready: ready, key: key, act: forgetting }]);
+                    { id: held.id, key: key, act: forgetting }]);
             },
             undo: () => {
                 provider.parting = provider.parting.filter(one => one.id !== held.id);
@@ -202,8 +205,8 @@ Provider {
             // A sender's Read closes a notice it doesn't keep, so only one
             // still open, still offering to be let go, is let go.
             for (const one of provider.parting) {
-                if ((one.ready.served(one.key)?.acts ?? []).some(act => act.key === one.act.key))
-                    one.ready.act(one.key, one.act);
+                if ((mixed.served(one.key)?.acts ?? []).some(act => act.key === one.act.key))
+                    mixed.act(one.key, one.act);
             }
             provider.parting = [];
         }
