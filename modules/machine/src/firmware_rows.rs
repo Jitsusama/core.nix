@@ -1381,7 +1381,11 @@ mod tests {
         flashed["update"]["urgency"] = json!("high");
         let said = facts(flashed);
         let fact = |name: &str, said: &str| json!({ "name": name, "said": said });
-        assert_eq!(said[0], fact("firmware:lowest", "1.2.0"), "the lowest it takes first");
+        assert_eq!(
+            said[0],
+            fact("firmware:lowest", "1.2.0"),
+            "the lowest it takes first"
+        );
         assert!(
             said.contains(&fact("firmware:urgency", "high")),
             "how urgent fwupd says it is"
@@ -1422,7 +1426,8 @@ mod tests {
             json!([{ "said": "1.13.0 at the restart \u{b7} from 1.12.0" }]),
             "pending, and held back by nothing"
         );
-        let install = row(&waiting("pending", "1.12.0"), "row:firmware:b10:install");
+        let pending = waiting("pending", "1.12.0");
+        let install = row(&pending, "row:firmware:b10:install");
         assert_eq!(
             (install["gone"].clone(), install["acts"].clone()),
             (json!(true), json!([])),
