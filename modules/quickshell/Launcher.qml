@@ -158,6 +158,18 @@ Scope {
     // The providers, made from their files as the shell starts, each given
     // its settings and weight; one that fails to load is said and skipped.
     property var sources: []
+    // The providers by name, made again only as they are, since the rows
+    // a key makes look them up by it member by member: a place's row
+    // naming what it holds scanned them all for each, 30,552 times in 40
+    // of home's keys (2026-11-11).
+    readonly property var sourcesNamed: {
+        const named = {};
+        for (const one of sources) {
+            if (named[one.settings.name] === undefined)
+                named[one.settings.name] = one;
+        }
+        return named;
+    }
 
     Component.onCompleted: {
         // Made now, so it hears the first key pressed (key-times/).
@@ -1849,7 +1861,7 @@ Scope {
     function standsOf(category) {
         if (!category.stands)
             return "";
-        const source = sources.find(one => one.settings.name === category.stands);
+        const source = sourcesNamed[category.stands];
         return source?.stands?.() ?? "";
     }
 
@@ -1871,7 +1883,7 @@ Scope {
         if (known && !known.category)
             return known.name;
         const entry = Words.of(id);
-        const there = sources.some(one => one.settings.name === (entry.provider ?? id));
+        const there = sourcesNamed[entry.provider ?? id] !== undefined;
         return there && !entry.name.includes("{") ? entry.name : "";
     }
 
@@ -1906,7 +1918,7 @@ Scope {
         if (known && !known.category)
             return known;
         const entry = Words.of(id);
-        const source = sources.find(one => one.settings.name === (entry.provider ?? id));
+        const source = sourcesNamed[entry.provider ?? id];
         if (!source)
             return null;
         if (source.collection && !entry.question)
@@ -3436,12 +3448,15 @@ Scope {
     }
 
     readonly property bool atHome: typed === "" && held.length === 0
+    // Whether anything's typed, what a source's wanted reads rather than
+    // what is, so it's asked again only as this turns (launcher/Wanted.js).
+    readonly property bool typing: typed !== ""
 
     // Whether a source's rows are wanted now (launcher/Wanted.js), which
     // each source's own wanted asks.
     function wants(source) {
         return Wanted.wanted({ cataloguing: cataloguing, open: open, held: held,
-            becoming: Object.values(becoming), typed: typed, entering: entering }, source);
+            becoming: Object.values(becoming), typing: typing, entering: entering }, source);
     }
     // The place into() opens, from before the launcher opens until its
     // step is held, so no source home names is wanted in between.
@@ -5276,6 +5291,12 @@ Scope {
     // The words typed, and every choice they found before the finest were
     // kept: a longer query can only find fewer, so it searches these.
     property var words: []
+    // The words the rows drawn are washed by: what's typed, once the rows
+    // it no longer finds are let go (list.keep), so none is washed on its
+    // way out. Read from the words themselves, every row drawn washed
+    // itself again as they changed, before the search said which stay:
+    // 615 names marked again in 40 of home's keys (2026-11-11).
+    property var washedBy: []
     property var candidates: []
     // Which joining of the choices the candidates were taken from: a
     // search said again in place looks through them all once they were
@@ -6345,7 +6366,7 @@ Scope {
             return [];
         const drawn = choice.prepared?.text === choice.name ? choice.prepared
             : Fuzzy.prepare(choice.name);
-        return Fuzzy.match(drawn, words, true).positions ?? [];
+        return Fuzzy.match(drawn, washedBy, true).positions ?? [];
     }
 
     // A name with the letters that matched in Search's ink, as styled
@@ -10311,12 +10332,14 @@ Scope {
                                 list.afresh = RowsKept.whole(list.keptKeys, steps);
                                 list.keptKeys = keys;
                                 if (steps.length === 0) {
+                                    root.washedBy = root.words;
                                     list.rows = rows;
                                     list.keptLast = { fresh: 0, laying: 0 };
                                     return true;
                                 }
                                 for (const step of steps.filter(one => one.remove !== undefined))
                                     rowsKept.remove(step.remove, step.count);
+                                root.washedBy = root.words;
                                 list.rows = rows;
                                 // Listed afresh, the rows let go are laid
                                 // aside before the new ones are put in, so
