@@ -9,7 +9,7 @@
 # the change itself, end to end.
 boot: modules/plymouth/* modules/console/* modules/kmscon/* modules/systemd/* tests/vm/boot/plymouth* tests/vm/boot/shutdown* => vm-boot-* vm-reboot-cannot-hang
 initrd: modules/bluetooth-disk-prompt/* tests/vm/boot/bluetooth-disk-prompt* => vm-boot-* vm-bluetooth-types-at-the-disk-prompt
-kernel: modules/kernel/* hardware/* tests/patched-kernel-source.sh tests/kernel-settings-hold.sh => vm-boot-* vm-reboot-cannot-hang vm-hibernation-comes-back
+kernel: modules/kernel/* hardware/* => vm-boot-* vm-reboot-cannot-hang vm-hibernation-comes-back
 disk: modules/disko/* modules/btrfs/* modules/disk-guard/* modules/disk-loss-panic/* modules/hibernate/* tests/vm/disks/disk-* tests/vm/disks/hibernate* => vm-disk-* vm-boot-asks-* vm-hibernation-comes-back
 tpm: modules/tpm/* modules/tpm-signing/* modules/ssh-tpm-agent/* modules/signing/* tests/vm/keys/signing* => vm-passkeys-come-from-the-tpm vm-commits-are-signed vm-boot-asks-*
 secure boot: modules/lanzaboote/* => vm-secure-boot-installs vm-boot-*

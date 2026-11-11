@@ -56,8 +56,8 @@ in
     # byte for byte, and the stand-in keys and signatures they sign with.
     "modules/eero/src/views/golden/*"
     "modules/guide/fixtures/*"
+    "modules/inkscape/tests/inkscape-recent.xbel"
     "modules/signing/tests/*.sig"
-    "tests/inkscape-recent.xbel"
     "*.pem"
     "tests/vm/admin/update-to-main-signer"
     # C and C++ built by the kernel's, QMK's and CMake's own builds, which

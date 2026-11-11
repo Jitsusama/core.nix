@@ -32,7 +32,8 @@ expect() {
 }
 
 with=$here/bin:$PATH
-without=$here/without:$(dirname "$(command -v cat)")
+cat=$(command -v cat)
+without=$here/without:${cat%/*}
 
 expect "$with" https://tuple.app/c/abc123 "tuple call join https://tuple.app/c/abc123"
 expect "$with" https://production.tuple.app/c/abc123 \

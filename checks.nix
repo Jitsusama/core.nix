@@ -94,25 +94,6 @@ let
 
   account = machine: machine.config.home-manager.users.someone;
 
-  # Puts an account's Neovim where Neovim looks for it, under $PWD: every
-  # file the account has in ~/.config/nvim, and the plugins.
-  neovimAt =
-    home:
-    let
-      files = home.xdg.configFile;
-      names = lib.filter (lib.hasPrefix "nvim/") (lib.attrNames files);
-    in
-    ''
-      export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
-      export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
-      mkdir -p data/nvim/site/pack
-      ln -s ${home.xdg.dataFile."nvim/site/pack/hm".source} data/nvim/site/pack/hm
-      ${lib.concatMapStrings (name: ''
-        mkdir -p config/${dirOf name}
-        cp ${files.${name}.source} config/${name}
-      '') names}
-    '';
-
   # Runs a test that times itself in Qt's engine, in a fresh process each
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
@@ -122,44 +103,6 @@ let
     ${shellFolderLint}
     ${lib.getExe pkgs.bash} ${./tests/lib/qml-in-time.sh} ${pkgs.qt6.qtdeclarative} ${file}
   '';
-
-  # The line a kernel setting leaves in the finished configuration.
-  kernelConfigLine =
-    option: setting:
-    if setting ? freeform then
-      "CONFIG_${option}=${setting.freeform}"
-    else if setting.tristate == "n" then
-      "# CONFIG_${option} is not set"
-    else
-      "CONFIG_${option}=${setting.tristate}";
-
-  # The kernel's patches apply, its configuration resolves, and every setting
-  # in settings.nix is in the result: Kconfig quietly drops a setting whose
-  # dependencies aren't met. An optional setting also holds when the kernel
-  # doesn't offer its option at all. Only the configuration is built, in
-  # minutes; the kernel itself takes far longer than a check should
-  # (tests/kernel-settings-hold.sh).
-  kernelSettingsHold =
-    name: kernel:
-    let
-      # The kernel's own, as package.nix gave them, so a machine's theme
-      # colours are held as well as the settings every kernel shares.
-      settings = lib.mapAttrs (_option: setting: setting.content or setting) kernel.structuredExtraConfig;
-      # A setting's line in the configuration, its option, and whether it's
-      # optional, by tabs.
-      row =
-        option: setting:
-        lib.concatStringsSep "\t" [
-          (kernelConfigLine option setting)
-          option
-          (if setting.optional or false then "optional" else "required")
-        ];
-      rows = pkgs.writeText "${name}-settings" (lib.concatLines (lib.mapAttrsToList row settings));
-    in
-    pkgs.runCommandLocal name { } ''
-      ${lib.getExe pkgs.bash} ${./tests/kernel-settings-hold.sh} ${kernel.configfile} ${rows}
-      touch $out
-    '';
 
   # The machines most checks read, each evaluated once and shared, since an
   # evaluation is most of what a check costs.
@@ -480,10 +423,7 @@ let
       holds
       failure
       account
-      neovimAt
       timedQml
-      kernelConfigLine
-      kernelSettingsHold
       workstation
       graphical
       macWorkstation

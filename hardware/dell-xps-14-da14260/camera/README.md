@@ -11,6 +11,7 @@ says why each piece is there.
 | `board.nix`                    | the option naming which colour camera board is fitted, for its tuning |
 | `ir-camera-pipeline.sh`        | the IR sensor's link, set up at each boot                |
 | `camera-cvs.patch`             | the HAL, made to route this sensor through the CVS bridge |
+| `cvs-privacy-led.patch`        | the CVS bridge's driver, made to leave the privacy light to the bridge's firmware, so it lights while the camera streams |
 | `ipu7-psys-*.patch`            | the out-of-tree IPU7 driver, as its processing module needs it |
 | `v4l2-relayd-restarts-a-stalled-camera.patch` | the relay, made to start the camera again when a client gets no frames |
 
@@ -20,7 +21,10 @@ same kernel and regenerated with it, and `camera.nix` applies them:
 `ipu7-survives-resume`, `cvs-link-owner-wait`,
 `ipu-bridge-da14260-upside-down`, `hm1092-ir-sensor`, `hm1092-ir-flood`,
 `ipu7-mono-formats`, `ipu7-outlives-open-files`,
-`ipu7-isys-skips-unread-log` and `ipu7-isys-releases-firmware`.
+`ipu7-isys-skips-unread-log` and `ipu7-isys-releases-firmware`. The one
+exception is `cvs-privacy-led.patch`, kept here as it was fetched from the
+media list, under that name and hash, so the kernel built from it keeps its
+store path now that the list turns fetches away.
 
 [hardware]: ../../../docs/hardware.md
 [local]: ../kernel/local/
