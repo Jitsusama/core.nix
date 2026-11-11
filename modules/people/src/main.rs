@@ -29,13 +29,13 @@
 //! with `listed` only those a source lists with nothing typed.
 //!
 //! A `list` or `watch` of kind `listing` is those People lists with
-//! nothing typed, as it shows them (listing.rs): a record for each, as
-//! one person, with how they stand by each source's `stands` in People's
-//! words as WORDS, the launcher's words.json, says them, and a
-//! `people:order` record of their keys in order. A watch of it is told
-//! again only once the book changed, or the clock reached a meeting's
-//! start or end, and then only the persons that changed, so the shell
-//! remakes nothing for everyone else.
+//! nothing typed, as it shows them (listing.rs): for each, a ready row
+//! in its order, kept as every daemon's are (../ready-rows), and a record
+//! as one person, with how they stand by each source's `stands` in
+//! People's words as WORDS, the launcher's words.json, says them. A
+//! watch of it is told again only once the book changed, or the clock
+//! reached a meeting's start or end, and then only the records that
+//! changed and the keys that went, so the shell remakes nothing else.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -487,12 +487,12 @@ fn say_gathered(daemon: &mut Daemon) {
                 return true;
             }
             *seen = *revision;
-            let changed = told.changes(book, sources, at);
-            if changed.is_empty() {
+            let moved = told.changes(book, sources, at);
+            if moved.is_empty() {
                 return true;
             }
-            let line = json!({"id": watch.id, "changed": changed}).to_string();
-            return watch.told.send(line).is_ok();
+            let line = json!({"id": watch.id, "changed": moved.changed, "gone": moved.gone});
+            return watch.told.send(line.to_string()).is_ok();
         }
         if watch.pending.is_empty() {
             return true;
@@ -542,7 +542,8 @@ fn listing(
 ) -> Option<Value> {
     let mut daemon = lock(shared);
     let mut said = Told::default();
-    let records = said.changes(&daemon.book, &daemon.sources, clock());
+    said.changes(&daemon.book, &daemon.sources, clock());
+    let records = said.all();
     if !watch {
         return Some(json!({"id": id, "records": records}));
     }

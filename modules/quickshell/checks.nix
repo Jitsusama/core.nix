@@ -3599,6 +3599,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../people/People.qml} launcher/People.qml
+      cp ${./launcher/Placed.js} launcher/Placed.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${../people/Person.js} launcher/Person.js
       cp ${./launcher/Order.js} launcher/Order.js
