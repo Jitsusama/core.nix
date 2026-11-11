@@ -777,47 +777,9 @@ mod tests {
 
     use super::*;
 
-    /// The words these cases say, as words.json has them.
+    /// The words these cases say: the launcher's own (`Words::launchers`).
     fn words() -> Words {
-        let vocabulary = json!({ "things": [
-            { "id": "machine:memory", "name": "Memory", "glyph": "memory",
-                "said": { "head": "{used} used, {share}",
-                    "moving": "{in} in \u{b7} {out} out", "still": "none" },
-                "parts": ["machine:memory:used", "machine:memory:pressure",
-                    "machine:memory:using", "machine:memory:held",
-                    "machine:memory:counts", "machine:memory:type"] },
-            { "id": "machine:memory:used", "name": "Used",
-                "said": { "side": "{used} of {total}", "note": "{available} available" } },
-            { "id": "machine:memory:pressure", "name": "Pressure", "said": {
-                "side": "{pct}% held up", "note": "something waited for memory",
-                "pair": "{some}% something waited \u{b7} {full}% everything",
-                "some": "{some}% something waited" } },
-            { "id": "machine:memory:pressure-10", "name": "Last 10 Seconds" },
-            { "id": "machine:memory:held", "name": "Held By" },
-            { "id": "machine:memory:cached", "name": "Cached" },
-            { "id": "machine:memory:held-programs", "name": "Programs" },
-            { "id": "machine:memory:held-files", "name": "Files" },
-            { "id": "machine:memory:held-compressed", "name": "Compressed",
-                "said": { "side": "{stored} in {pool}", "note": "{ratio} times smaller" } },
-            { "id": "machine:memory:using", "name": "Using It",
-                "said": { "processes": "{n} processes" } },
-            { "id": "machine:memory:counts", "name": "Every Count" },
-            { "id": "machine:memory:type", "name": "Type", "said": {
-                "speed": "{type} at {speed}", "by": "by {maker}",
-                "module": "{count} module of {size}",
-                "modules": "{count} modules of {size}" } },
-            { "id": "machine:cpu", "name": "Processor", "glyph": "processor" },
-            { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {time}" },
-                "parts": ["machine:uptime:idle", "machine:uptime:asleep",
-                    "machine:uptime:started", "machine:uptime:kernel"] },
-            { "id": "machine:uptime:idle", "name": "Idle" },
-            { "id": "machine:uptime:asleep", "name": "Asleep", "said": { "never": "never",
-                "note": "{share} of the time since it started" } },
-            { "id": "machine:uptime:started", "name": "Started" },
-            { "id": "machine:uptime:kernel", "name": "Linux" },
-            { "id": "machine:uptime:release", "name": "Version" },
-            { "id": "machine:uptime:build", "name": "Build" }] });
-        Words::new(&vocabulary, "", "")
+        Words::launchers("", "")
     }
 
     const GB: f64 = 1e9;
@@ -878,12 +840,37 @@ mod tests {
                 "Used",
                 "Pressure",
                 "Using It",
+                "Cached",
                 "Held By",
                 "Every Count",
-                "Type",
-                "Cached"
+                "Type"
             ],
-            "its parts as its words list them, one they don't list last"
+            "its parts as its words list them"
+        );
+        // Words that don't list Cached put it last, rather than leave it out.
+        let mut unlisted = Words::launchers_vocabulary();
+        for thing in unlisted["things"]
+            .as_array_mut()
+            .expect("things are a list")
+        {
+            if thing["id"] == "machine:memory" {
+                let parts = thing["parts"]
+                    .as_array_mut()
+                    .expect("Memory lists its parts");
+                parts.retain(|part| part != "machine:memory:cached");
+            }
+        }
+        let unlisted = Words::new(&unlisted, "", "");
+        let last = read(held, 0, &unlisted).rows;
+        let last: Vec<&str> = last
+            .iter()
+            .filter(|row| row["parent"] == "row:machine:memory")
+            .filter_map(|row| row["name"].as_str())
+            .collect();
+        assert_eq!(
+            last.last(),
+            Some(&"Cached"),
+            "a part its words don't list goes last"
         );
         assert_eq!(said(row(&rows, "memory:used")), "8.00 GB of 16.0 GB");
         let pressure = row(&rows, "memory:pressure");

@@ -711,47 +711,9 @@ mod tests {
 
     use super::*;
 
-    /// The words these cases say, as words.json has them.
+    /// The words these cases say: the launcher's own (`Words::launchers`).
     fn words() -> Words {
-        let vocabulary = json!({ "things": [
-            { "id": "machine:cpu", "name": "Processor", "glyph": "processor",
-                "said": { "head": "{busy} busy", "since-boot": "since the machine started",
-                    "since-asked": "since you last asked", "since-now": "just now" },
-                "parts": ["machine:cpu:spent", "machine:cpu:cores", "machine:cpu:maxed",
-                    "machine:cpu:clock", "machine:cpu:using", "machine:cpu:load",
-                    "machine:cpu:npu-load", "machine:cpu:kinds", "machine:cpu:model"] },
-            { "id": "machine:cpu:spent", "name": "Time Spent" },
-            { "id": "machine:cpu:spent-user", "name": "Programs" },
-            { "id": "machine:cpu:spent-stolen", "name": "Stolen" },
-            { "id": "machine:cpu:cores", "name": "Cores", "said": { "one": "core {n}",
-                "run": "cores {first} to {last}", "list": "cores {list} and {last}" } },
-            { "id": "machine:cpu:core", "name": "Core {n}" },
-            { "id": "machine:cpu:maxed", "name": "Maxed", "said": { "none": "none",
-                "many": "{n} of {all}", "note": "at 95% or more" } },
-            { "id": "machine:cpu:clock", "name": "Clock Speed",
-                "said": { "of": "on average, of {most} at most", "mean": "on average" } },
-            { "id": "machine:cpu:clock-range", "name": "Range", "said": {
-                "side": "{low} to {high}", "kinds": "its slowest cores top out at {least}" } },
-            { "id": "machine:cpu:clock-turbo", "name": "Turbo", "said": { "side-on": "on",
-                "on": "it may clock past its base" } },
-            { "id": "machine:cpu:temperature", "name": "Temperature",
-                "said": { "degrees": "{n} \u{b0}C" } },
-            { "id": "machine:cpu:using", "name": "Using It",
-                "said": { "note": "of the whole processor", "processes": "{n} processes" } },
-            { "id": "machine:cpu:load", "name": "Load" },
-            { "id": "machine:cpu:npu-load", "name": "NPU Load", "said": {
-                "at": "at {clock} of {most}", "resting": "resting" } },
-            { "id": "machine:cpu:kinds", "name": "Kinds", "said": { "at": "{n} at {clock}" } },
-            { "id": "machine:cpu:performance", "name": "Performance" },
-            { "id": "machine:cpu:efficient", "name": "Efficient" },
-            { "id": "machine:cpu:model", "name": "Model" },
-            { "id": "machine:cpu:model-name", "name": "Name" },
-            { "id": "machine:cpu:caches", "name": "Caches" },
-            { "id": "machine:cpu:cache", "name": "L{level} {type}", "said": {
-                "own": "one a core", "shared": "each shared by {n} cores",
-                "times": "{size} \u{d7} {count}" } },
-            { "id": "machine:cpu:cache-data", "name": "L{level} Data" }] });
-        Words::new(&vocabulary, "", "")
+        Words::launchers("", "")
     }
 
     fn core(n: u64, kind: &str, load: f64, clock_khz: u64) -> Value {

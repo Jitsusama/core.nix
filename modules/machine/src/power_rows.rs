@@ -901,39 +901,9 @@ impl Say<'_> {
 mod tests {
     use super::*;
 
+    /// The words these cases say: the launcher's own (`Words::launchers`).
     fn words() -> Words {
-        let vocabulary = json!({ "things": [
-            { "id": "power", "name": "Battery", "said": { "full": "{time} to full",
-                "charging": "charging", "empty": "{time} to empty", "battery": "on battery",
-                "whole": "full", "holding": "on power, holding" } },
-            { "id": "power:charger", "name": "Charger", "said": {
-                "charging": "{watts} W on port {n}", "on": "on port {n}",
-                "plugged": "plugged in", "none": "none plugged in",
-                "port": "one USB-C port", "ports": "{count} USB-C ports" } },
-            { "id": "power:port", "name": "Port {n}", "said": { "charging": "charging",
-                "giving": "powering what's plugged in", "plugged": "plugged in, giving nothing",
-                "empty": "empty" } },
-            { "id": "power:port:drawer", "said": { "eyebrow": "on this machine \u{b7} charger",
-                "range": "{from} to {to} V", "at": "{offers} at {amps} A",
-                "mode:usb_power_delivery": "USB Power Delivery",
-                "accessory": "{mode} accessory" } },
-            { "id": "power:port:offers", "name": "Offers" },
-            { "id": "power:port:supply", "name": "Supply" },
-            { "id": "power:charge", "name": "Charge", "said": { "level": "its level {level}" } },
-            { "id": "power:energy", "name": "Energy", "said": { "of": "{now} of {full} Wh",
-                "eyebrow": "on this machine \u{b7} battery" } },
-            { "id": "power:rate", "name": "Drawing", "states": { "charging":
-                { "name": "Charging" } }, "said": { "into": "into the battery",
-                "from": "from the battery" } },
-            { "id": "power:health", "name": "Health", "said": { "design": "{pct}% of design",
-                "cycle": "1 cycle", "cycles": "{count} cycles",
-                "says": "the battery says it's {health}" } },
-            { "id": "power:limit", "name": "Charge Limit", "said": { "full": "charges fully",
-                "stop": "stops at {stop}%", "both": "stops at {stop}%, starts below {start}%",
-                "firmware": "set in the firmware's settings" } },
-            { "id": "power:limit:stop", "name": "Stop at {n}%", "said": { "chosen": "chosen" } }
-        ] });
-        Words::new(&vocabulary, "", "")
+        Words::launchers("", "")
     }
 
     fn battery() -> Value {

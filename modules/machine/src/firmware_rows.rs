@@ -1023,58 +1023,9 @@ impl Say<'_> {
 mod tests {
     use super::*;
 
+    /// The words these cases say: the launcher's own (`Words::launchers`).
     fn words() -> Words {
-        let vocabulary = json!({ "things": [
-            { "id": "firmware", "name": "Firmware", "glyph": "firmware", "said": {
-                "current": "up to date", "one": "1 update ready", "many": "{count} updates ready",
-                "ready": "{version} ready \u{b7} from {was}",
-                "restart": "{version} at the restart \u{b7} from {was}" } },
-            { "id": "firmware:version", "name": "Version" },
-            { "id": "firmware:vendor", "said": { "alone": "firmware",
-                "from": "from {vendor} \u{b7} firmware" } },
-            { "id": "firmware:last-updated", "name": "Last Updated" },
-            { "id": "firmware:size", "name": "Size" },
-            { "id": "firmware:released", "name": "Released" },
-            { "id": "firmware:takes", "name": "Takes", "said": { "minutes": "{count} min" } },
-            { "id": "firmware:held", "name": "Blocked By", "said": {
-                "require-ac-power": "no charger" } },
-            { "id": "firmware:serial", "name": "Serial" },
-            { "id": "firmware:security", "name": "Security Level", "said": {
-                "1": "only the most basic protections", "eyebrow": "on this machine \u{b7} rating",
-                "lowered": "lowered by what's running",
-                "sentence": "level {level} holds {meaning}.",
-                "sentence-lowered":
-                    "level {level} holds {meaning}, and what's running lowers it." } },
-            { "id": "firmware:needed", "name": "Needed for Level {level}" },
-            { "id": "firmware:lowered", "name": "Lowered By" },
-            { "id": "firmware:result", "said": { "enabled": "enabled",
-                "not-enabled": "not enabled", "missing": "unread" } },
-            { "id": "firmware:group", "said": { "level": "level {level}", "running": "running",
-                "kind": "check" } },
-            { "id": "firmware:fixed-in", "said": { "setup": "firmware setup" } },
-            { "id": "firmware:setting", "name": "Firmware Setting" },
-            { "id": "firmware:attribute", "name": "Attribute" },
-            { "id": "verb:firmware:install", "name": "Install {version}", "glyph": "firmware",
-                "sure": "Install {version} on {device} Now", "said": {
-                "final": "it can't be undone",
-                "final-at-restart": "it can't be undone, and finishes at a restart",
-                "installing": "installing", "waits": "restart to finish",
-                "installed": "installed", "failed": "didn't install",
-                "stopped": "stopped waiting after {count} min" } },
-            { "id": "verb:firmware:fix", "name": "Secure It", "glyph": "firmware",
-                "sure": "Secure {attribute} Now", "said": { "what": "fwupd changes the setting",
-                "final": "it may need a restart", "changing": "securing",
-                "changed": "secured", "failed": "didn't secure",
-                "stopped": "stopped waiting after {count} min" } },
-            { "id": "verb:firmware:undo", "name": "Undo It", "glyph": "firmware",
-                "sure": "Undo {attribute} Now", "said": { "what": "fwupd puts it back",
-                "final": "it may need a restart" } },
-            { "id": "verb:firmware:setup", "name": "Reboot Into Firmware Setup",
-                "glyph": "firmware", "sure": "Reboot Into Firmware Setup Now", "said": {
-                "set": "set {setting} to {target} there", "find": "set it there",
-                "final": "it closes every window", "failed": "didn't reboot" } }
-        ] });
-        Words::new(&vocabulary, "", "")
+        Words::launchers("", "")
     }
 
     fn bios() -> Value {
@@ -1630,7 +1581,7 @@ mod tests {
             "failing first, each part by level, what's running last, a name without a summary"
         );
         let facts = &row(&ready, "row:firmware:security")["drawer"]["facts"];
-        let needed = "rollback summary not enabled \u{b7} mtd summary not-supported \u{b7} unread";
+        let needed = "rollback summary not enabled \u{b7} mtd summary not supported \u{b7} unread";
         assert_eq!(
             facts[0],
             json!({ "name": "Needed for Level 2", "said": needed }),
