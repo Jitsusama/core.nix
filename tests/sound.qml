@@ -367,23 +367,11 @@ ShellRoot {
         targets();
     }
 
-    // Where a program's sound goes: what pw-metadata says each stream is
-    // sent to, only by target.object, a deletion sending it nowhere; the
-    // one a program's streams share; the default chosen where they're sent
-    // to no device listed; and what sends them, or brings them back.
+    // Where a program's sound goes: the one target the sound daemon says a
+    // program's streams share; the default chosen where they're sent to no
+    // device listed; and which streams a send moves.
     function targets() {
-        let sent = {};
-        for (const line of ["Found \"default\" metadata 48",
-            "update: id:0 key:'default.audio.sink' value:'{\"name\":\"x\"}' type:'Spa:String:JSON'",
-            "update: id:90 key:'target.object' value:'stand-in-headphones' type:''",
-            "update: id:91 key:'target.object' value:'61' type:''",
-            "update: id:92 key:'target.object' value:'stand-in-headphones' type:''",
-            "update: id:92 key:'target.object' value:(null) type:(null)",
-            "update: id:91 key:(null) value:(null) type:(null)"])
-            sent = Targets.heard(sent, line);
-        expect("only a target is heard, and a deleted one goes",
-            JSON.stringify(sent) === JSON.stringify({ 90: "stand-in-headphones" }),
-            JSON.stringify(sent));
+        const sent = { 90: "stand-in-headphones" };
         const ninety = { id: 90 };
         expect("a program's streams sent alike are sent there",
             Targets.sentTo([ninety, ninety], sent) === "stand-in-headphones"
@@ -401,22 +389,9 @@ ShellRoot {
             chosen(Targets.choices([speakers, out], "61")) === "default "
             + "alsa_output.pci.speakers stand-in-headphones*",
             chosen(Targets.choices([speakers, out], "61")));
-        const held = Targets.sentAs({ 90: "x", 91: "y" }, [ninety, { id: 92 }], "z");
-        expect("what's sent is held as sent, and brought back, forgotten",
-            JSON.stringify(held) === JSON.stringify({ 90: "z", 91: "y", 92: "z" })
-            && JSON.stringify(Targets.sentAs(held, [ninety], ""))
-            === JSON.stringify({ 91: "y", 92: "z" }), JSON.stringify(held));
-        const commands = (streams, target) => JSON.stringify(Targets.sending("pw-metadata",
-            streams, target).map(each => each.command));
-        expect("each stream is sent, or brought back to the default, its options ended first",
-            commands([ninety], "stand-in-headphones") === JSON.stringify([["pw-metadata", "-n",
-                "default", "--", "90", "target.object", "stand-in-headphones"]])
-            && commands([ninety], "") === JSON.stringify([["pw-metadata", "-n", "default",
-                "-d", "--", "90", "target.object"]]), commands([ninety], ""));
-        expect("only a stream with a whole id is sent",
-            commands([{ id: "90 -d" }, { id: 9.5 }, { id: -1 }, {}], "x") === "[]"
-            && Targets.sending("pw-metadata", [ninety], "x")[0].id === "90",
-            commands([{ id: "90 -d" }, { id: 9.5 }, { id: -1 }, {}], "x"));
+        const ids = Targets.sendable([{ id: "90 -d" }, { id: 9.5 }, { id: -1 }, {}, ninety]);
+        expect("only a stream with a whole id is sent", JSON.stringify(ids) === '["90"]',
+            JSON.stringify(ids));
     }
 
     function calling() {
