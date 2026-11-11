@@ -550,21 +550,25 @@ ShellRoot {
         expect("a window opened anew by its app id is its session's once niri says so",
             find("OTHER2")?.window?.id === 23, JSON.stringify(find("OTHER2")?.window));
         // A window used is told with when, and the one used last goes
-        // first.
-        const before = () => {
-            const order = Sessions.running.map(session => session.address);
-            return order.indexOf("NOWIN6") < order.indexOf("OTHER2");
-        };
+        // first where they're shown or picked, while the focus moving,
+        // as it does while the launcher is shut, makes nothing again: no
+        // windows by process, no sessions running.
+        const inUse = () => Sessions.inUse(Sessions.running).map(session => session.address);
+        const before = () => inUse().indexOf("NOWIN6") < inUse().indexOf("OTHER2");
         const nowin = find("NOWIN6").window;
+        const made = root.windowsMade;
+        const running = Sessions.running;
         windowsTell({ changed: [Object.assign({}, nowin, { order: 200000 }),
             windowRecord(23, 600, "pi-session.7", { order: 300000 })] });
         expect("the session whose window was used last goes first", !before(),
-            Sessions.running.map(session => session.address).join(" "));
+            inUse().join(" "));
         windowsTell({ changed: [Object.assign({}, nowin, { order: 400000 })] });
-        expect("and the other once its window is used", before(),
-            Sessions.running.map(session => session.address).join(" "));
+        expect("and the other once its window is used", before(), inUse().join(" "));
+        expect("the focus moving makes nothing again",
+            root.windowsMade === made && Sessions.running === running,
+            `windows made ${root.windowsMade - made} times, running `
+            + `${Sessions.running === running ? "kept" : "made again"}`);
         // A window retitled, or the keys leaving it, makes nothing again.
-        const made = root.windowsMade;
         windowsTell({ changed: [Object.assign({}, nowin, { order: 400000, title: "renamed",
             focused: false })] });
         expect("a window retitled makes no session's window again", root.windowsMade === made,

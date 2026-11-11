@@ -121,10 +121,11 @@ Provider {
             .concat((orchestrators?.closed ?? []).map(one => closedRow(one, orchestrators)));
     }
 
-    // Every session, those parked after, standing last in the one order,
-    // under their orchestrators as the rest are.
+    // Every session, the one whose window was used last first as it is
+    // now (Sessions' inUse), those parked after, standing last in the one
+    // order, under their orchestrators as the rest are.
     function sessionsInOrder() {
-        return Sessions.running.concat(Sessions.parked);
+        return Sessions.inUse(Sessions.running).concat(Sessions.parked);
     }
 
     // Where each session stands in the tree, read from Sessions alone.
