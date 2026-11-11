@@ -38,12 +38,10 @@ onLinux {
       service = home.systemd.user.services.sound;
       started = lib.concatStringsSep " " (lib.toList service.Service.ExecStart);
     in
-    holds "sound-runs-beside-the-shell"
-      "The sound daemon doesn't run beside the shell on its socket."
-      (
-        lib.hasInfix "%t/daemons/sound.sock" started
-        && service.Unit.X-SwitchMethod == "restart"
-        && builtins.elem "sound.socket" service.Unit.Requires
-        && home.systemd.user.sockets.sound.Socket.ListenStream == "%t/daemons/sound.sock"
-      );
+    holds "sound-runs-beside-the-shell" "The sound daemon doesn't run beside the shell on its socket." (
+      lib.hasInfix "%t/daemons/sound.sock" started
+      && service.Unit.X-SwitchMethod == "restart"
+      && builtins.elem "sound.socket" service.Unit.Requires
+      && home.systemd.user.sockets.sound.Socket.ListenStream == "%t/daemons/sound.sock"
+    );
 }

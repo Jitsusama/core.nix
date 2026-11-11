@@ -119,7 +119,9 @@ fn main() {
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 /// The socket systemd holds for it (sound.socket), or, run by hand, its
@@ -214,7 +216,8 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
     let _registry_listener = registry
         .add_listener_local()
         .global({
-            let (shared, bound, registry) = (Arc::clone(shared), Rc::clone(&bound), registry.clone());
+            let (shared, bound, registry) =
+                (Arc::clone(shared), Rc::clone(&bound), registry.clone());
             move |global| {
                 let found = match global.type_ {
                     ObjectType::Node => node(&shared, &registry, global),
@@ -464,7 +467,9 @@ fn answer(
 ) -> Option<Value> {
     Some(match asked {
         Ask::Hello { id } => standing(&lock(shared), &id),
-        Ask::Get { id, keys } => json!({"id": id, "records": held(&lock(shared), &[], Some(&keys))}),
+        Ask::Get { id, keys } => {
+            json!({"id": id, "records": held(&lock(shared), &[], Some(&keys))})
+        }
         Ask::List { id, kinds } => json!({"id": id, "records": held(&lock(shared), &kinds, None)}),
         Ask::Watch { id, kinds, keys } => {
             let mut daemon = lock(shared);
@@ -507,4 +512,3 @@ fn answer(
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
     })
 }
-

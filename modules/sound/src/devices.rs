@@ -187,9 +187,18 @@ mod tests {
     #[test]
     fn outputs_and_inputs_are_devices_and_streams_arent() {
         let mut devices = Devices::default();
-        assert!(devices.hear(node(40, "speakers", "Audio/Sink")));
-        assert!(devices.hear(node(41, "microphone", "Audio/Source")));
-        assert!(!devices.hear(node(42, "spotify", "Stream/Output/Audio")));
+        assert!(
+            devices.hear(node(40, "speakers", "Audio/Sink")),
+            "an output is a device"
+        );
+        assert!(
+            devices.hear(node(41, "microphone", "Audio/Source")),
+            "an input is a device"
+        );
+        assert!(
+            !devices.hear(node(42, "spotify", "Stream/Output/Audio")),
+            "a program's stream isn't a device"
+        );
         assert_eq!(keys(&devices), ["device:speakers", "device:microphone"]);
         let records = devices.records();
         assert_eq!(records[0]["sink"], json!(true));
@@ -201,11 +210,12 @@ mod tests {
     fn a_volume_is_said_as_the_shell_shows_it() {
         let mut devices = Devices::default();
         devices.hear(node(40, "speakers", "Audio/Sink"));
-        assert!(devices.hear(Change::Levels {
+        let heard = devices.hear(Change::Levels {
             id: 40,
             volumes: Some(vec![0.125, 0.125]),
             muted: Some(true),
-        }));
+        });
+        assert!(heard, "a device's levels change its record");
         let record = &devices.records()[0];
         assert_eq!(record["volume"], json!(0.5));
         assert_eq!(record["volumes"], json!([0.125, 0.125]));
@@ -217,12 +227,16 @@ mod tests {
             muted: Some(false),
         });
         let record = &devices.records()[0];
-        assert_eq!((record["volume"].clone(), record["muted"].clone()), (json!(0.5), json!(false)));
-        assert!(!devices.hear(Change::Levels {
+        assert_eq!(
+            (record["volume"].clone(), record["muted"].clone()),
+            (json!(0.5), json!(false))
+        );
+        let heard = devices.hear(Change::Levels {
             id: 99,
             volumes: Some(vec![1.0]),
             muted: None,
-        }));
+        });
+        assert!(!heard, "levels of a node not heard change nothing");
     }
 
     #[test]
@@ -233,7 +247,10 @@ mod tests {
         devices.hear(node(41, "microphone", "Audio/Source"));
         devices.hear(chose("default.audio.sink", "headphones"));
         devices.hear(chose("default.audio.source", "microphone"));
-        assert!(!devices.hear(chose("default.video.source", "camera")));
+        assert!(
+            !devices.hear(chose("default.video.source", "camera")),
+            "a video default chooses no sound device"
+        );
         let chosen = |devices: &Devices| -> Vec<bool> {
             devices
                 .records()
@@ -256,9 +273,18 @@ mod tests {
         let mut devices = Devices::default();
         devices.hear(node(40, "speakers", "Audio/Sink"));
         devices.hear(node(41, "microphone", "Audio/Source"));
-        assert!(devices.hear(Change::Gone { id: 40 }));
-        assert!(!devices.hear(Change::Gone { id: 40 }));
-        assert!(devices.hear(node(41, "microphone", "Video/Source")));
+        assert!(
+            devices.hear(Change::Gone { id: 40 }),
+            "a device gone is let go"
+        );
+        assert!(
+            !devices.hear(Change::Gone { id: 40 }),
+            "a device gone twice changes nothing"
+        );
+        assert!(
+            devices.hear(node(41, "microphone", "Video/Source")),
+            "a device become a video node is let go"
+        );
         assert_eq!(keys(&devices), Vec::<String>::new());
         devices.hear(node(44, "speakers", "Audio/Sink"));
         devices.forget();

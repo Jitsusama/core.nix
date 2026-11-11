@@ -71,7 +71,10 @@ mod tests {
 
     #[test]
     fn what_a_props_leaves_out_is_none() {
-        assert_eq!(levels(&props(vec![(SPA_PROP_mute, Value::Bool(false))])), (None, Some(false)));
+        assert_eq!(
+            levels(&props(vec![(SPA_PROP_mute, Value::Bool(false))])),
+            (None, Some(false))
+        );
         assert_eq!(levels(&[1, 2, 3]), (None, None));
     }
 }
