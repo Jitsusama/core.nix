@@ -117,6 +117,11 @@ QtObject {
             Captured.drawer(Object.assign({}, file, { path: "/home/joel/notes.txt" }), null,
                 told).eyebrow, "in ~/Pictures/Screenshots");
 
+        expect("file-preview's line is its facts, nothing where it couldn't say or said"
+            + " no facts", [`{"size": 3, "picture": "${shot}"}`, '{"error": "unreadable"}',
+            "", "not json", "null", "[1]", "7"].map(Captured.shownFrom),
+            [{ size: 3, picture: shot }, null, null, null, null, null, null]);
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);

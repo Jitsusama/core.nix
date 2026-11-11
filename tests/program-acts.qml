@@ -155,6 +155,29 @@ ShellRoot {
         })
     }
 
+    // Neovim given a file-preview, stood in, which says which process
+    // answered each file's drawer.
+    Launcher.NeovimProgram {
+        id: previewed
+
+        launcher: theLauncher
+        settings: ({
+            folder: root.src,
+            openNow: Quickshell.env("OPEN_NOW"),
+            preview: [Quickshell.env("PREVIEWER")]
+        })
+    }
+
+    // What file-preview said of each file's drawer, by its path.
+    function previewsSaid() {
+        return previewed.previews.previews ?? previewed.previews;
+    }
+
+    // A file of Neovim's open now, its row as Neovim lists it.
+    function openFile(provider, at) {
+        return provider.programActs("nvim").filter(row => String(row.key).startsWith("file:"))[at];
+    }
+
     Launcher.ChromeProgram {
         id: chrome
 
@@ -571,6 +594,24 @@ ShellRoot {
             what: "what each Neovim holds, read ahead",
             until: () => held.neovims.length === 2,
             then: () => root.neovimsOpen()
+        }, {
+            // Each file's drawer is asked of one file-preview, kept, rather
+            // than one started for each drawer shown (Y2YBTS, 2026-11-10).
+            what: "the Neovim with a file-preview read ahead",
+            until: () => previewed.neovims.length === 2,
+            then: () => root.openFile(previewed, 0).drawer()
+        }, {
+            what: "file-preview's answer for the first file's drawer",
+            until: () => Object.keys(root.previewsSaid()).length === 1,
+            then: () => root.openFile(previewed, 1).drawer()
+        }, {
+            what: "file-preview's answer for the second file's drawer",
+            until: () => Object.keys(root.previewsSaid()).length === 2,
+            then: () => {
+                const by = Object.values(root.previewsSaid()).map(shown => shown?.by);
+                expect("both asked of one file-preview, kept",
+                    by[0] !== undefined && by[0] === by[1], JSON.stringify(by));
+            }
         }];
     }
 }

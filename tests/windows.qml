@@ -8,8 +8,10 @@
 // changed are made again, the rest kept as they were, while a window
 // renamed is made again with its new name, the same whole answer again
 // makes none, and a window closed goes. Capture lists every window but the
-// one Joel's in, and keeps a window's row the same way. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// one Joel's in, and keeps a window's row the same way, and asks each
+// thing taken's drawer of one file-preview it keeps, the newest wanted
+// next. It exits 0 once every case holds, and otherwise 1, saying which
+// didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -41,12 +43,26 @@ ShellRoot {
         settings: ({ name: "capture", camera: false })
     }
 
-    // One whose file-preview answers slowly, so what's wanted next waits.
+    // One with a file-preview stood in, which answers each picture with its
+    // own sides and the process it was asked of.
     Launcher.Capture {
         id: previewer
 
         launcher: launcher
-        settings: ({ name: "previews", camera: false, preview: ["sh", "-c", "sleep 5", "preview"] })
+        settings: ({ name: "previews", camera: false, preview: [Quickshell.env("PREVIEWER")] })
+    }
+
+    // Which of file-preview's answers the case waits for, and the one
+    // file-preview it keeps (Previewer.qml).
+    property int previewing: 0
+    readonly property var kept: previewer.previews
+
+    Connections {
+        target: root.kept
+
+        function onPreviewsChanged() {
+            root.previewed();
+        }
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
@@ -172,10 +188,10 @@ ShellRoot {
 
             // The same whole answer again, as the launcher opens, makes none.
             const counted = windows.tally.rows;
-            const kept = rowOf(12);
+            const draftRow = rowOf(12);
             told({ id: "all", records: [logbook, draft, notes] }, desktop(logbook));
             Expect.same("the same whole answer again makes no row", windows.tally.rows - counted, 0);
-            Expect.expect("and keeps each row", rowOf(12) === kept, names(windows.things));
+            Expect.expect("and keeps each row", rowOf(12) === draftRow, names(windows.things));
 
             // The focus moves from the logbook to the notes, as a click or a
             // key does: the daemon tells of both windows, and of the rest
@@ -188,7 +204,7 @@ ShellRoot {
                 desktop(movedTo));
             Expect.same("the one used last first still", names(windows.things),
                 "This Window, Notes, Logbook, Draft");
-            Expect.expect("a window whose focus didn't change kept", rowOf(12) === kept,
+            Expect.expect("a window whose focus didn't change kept", rowOf(12) === draftRow,
                 names(windows.things));
             Expect.same("only This Window and the two whose focus changed made again",
                 windows.tally.rows - counted, 3);
@@ -246,17 +262,48 @@ ShellRoot {
             windows.quietFor();
             Expect.same("nor for a restart answered within the second", windows.noted(), "");
 
-            // Only the newest wanted waits for file-preview, so one it
-            // replaces is asked again when its drawer is next shown.
-            previewer.previewAsked = { "/a.png": true, "/b.png": true, "/c.png": true };
-            previewer.preview("/a.png");
-            previewer.preview("/b.png");
-            previewer.preview("/c.png");
-            const asked = Object.keys(previewer.previewAsked).join(", ");
-            Expect.expect("a picture replaced while it waits is no longer asked",
-                asked === "/a.png, /c.png" && previewer.previewNext === "/c.png",
-                `${asked}; next ${previewer.previewNext}`);
-            Qt.callLater(() => Qt.exit(0));
+            // Only the newest wanted waits while file-preview starts, so one
+            // it replaces is asked again when its drawer is next shown.
+            kept.asked = { "/a.png": true, "/b.png": true, "/c.png": true };
+            kept.preview("/a.png");
+            kept.preview("/b.png");
+            kept.preview("/c.png");
+            Expect.same("a picture replaced while file-preview starts is no longer asked",
+                Object.keys(kept.asked).join(", "), "/c.png");
+            root.previewing = 1;
+            root.waiting = "file-preview's first answer";
+        } catch (error) {
+            Expect.fail(error.message);
+        }
+    }
+
+    // Then, while it answers one, only the newest wanted waits too, and
+    // each is asked of the one file-preview, kept, rather than one started
+    // for each.
+    function previewed() {
+        try {
+            const said = kept.previews;
+            if (root.previewing === 1 && "/c.png" in said) {
+                Expect.same("its answer is the picture's facts", [said["/c.png"].picture,
+                    said["/c.png"].across, said["/c.png"].down].join(" "), "/c.png 4 3");
+                root.previewing = 2;
+                root.waiting = "file-preview's next answers";
+                kept.asked = Object.assign({}, kept.asked,
+                    { "/d.png": true, "/e.png": true, "/f.png": true });
+                kept.preview("/d.png");
+                kept.preview("/e.png");
+                kept.preview("/f.png");
+                Expect.expect("a picture replaced while another is asked is no longer asked",
+                    !("/e.png" in kept.asked) && kept.asking === "/d.png" && kept.next === "/f.png",
+                    `asking ${kept.asking}, next ${kept.next}`);
+            } else if (root.previewing === 2 && "/d.png" in said && "/f.png" in said) {
+                Expect.same("each wanted is asked in turn", Object.keys(said).join(", "),
+                    "/c.png, /d.png, /f.png");
+                const by = Object.values(said).map(shown => shown.by);
+                Expect.expect("every picture is asked of one file-preview",
+                    by.every(one => one === by[0]), by.join(", "));
+                Qt.callLater(() => Qt.exit(0));
+            }
         } catch (error) {
             Expect.fail(error.message);
         }

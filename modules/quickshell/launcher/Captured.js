@@ -70,6 +70,18 @@ function preview(file, shown) {
     return PICTURE.test(file.path) ? { picture: file.path, across: 0, down: 0 } : null;
 }
 
+// What file-preview said of one thing, from the line it answered with:
+// null where it couldn't say, or said anything but an object of facts.
+function shownFrom(line) {
+    try {
+        const said = JSON.parse(line);
+        return typeof said === "object" && said !== null && !Array.isArray(said) && !said.error
+            ? said : null;
+    } catch (_malformed) {
+        return null;
+    }
+}
+
 // The drawer for one thing taken: `file` its { path, name, where, at, size },
 // where its folder from ~; `shown` what file-preview said of it, or null;
 // and `told` the moment it's drawn (now), the label of each fact by its id

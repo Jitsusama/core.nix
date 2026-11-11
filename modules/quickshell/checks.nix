@@ -3105,10 +3105,12 @@ onLinux {
   # rest the one used last first, and when the focus moves make again only
   # the rows of the windows it moved between, as Capture's do
   # (tests/windows.qml), with what the windows daemon tells given as its
-  # lines, and niri, pi's sessions, the recorder, the shortcuts and what
-  # was taken stood in.
+  # lines, and niri, pi's sessions, the recorder, the shortcuts, what was
+  # taken and file-preview stood in.
   the-launcher-remakes-only-the-windows-that-changed =
     let
+      # file-preview stood in, saying which process answered.
+      previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../tests/file-preview.sh);
       # What a window's verbs read of niri as they're asked.
       niri = singleton "Niri.qml" ''
         property var windows: ({
@@ -3166,6 +3168,7 @@ onLinux {
       cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./launcher/Previewer.qml} launcher/Previewer.qml
       cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/Order.js} launcher/Order.js
@@ -3182,7 +3185,7 @@ onLinux {
       cp ${files} Files.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${noFonts}
+      export FONTCONFIG_FILE=${noFonts} PREVIEWER=${previewer}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
@@ -4665,6 +4668,8 @@ onLinux {
       # What open-now says two Neovims in one kitty hold, as
       # tests/neovim-open-now.sh says.
       openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../../tests/neovim-open-now.sh);
+      # file-preview stood in, saying which process answered.
+      previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../tests/file-preview.sh);
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
       programs = pkgs.callPackage ../programs/package.nix { };
       # Chrome's downloads, as chrome-recent-sites prints them: one from a
@@ -4748,6 +4753,10 @@ onLinux {
       cp ${./launcher/Repositories.qml} launcher/Repositories.qml
       cp ${./launcher/Repositories.js} launcher/Repositories.js
       cp ${../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
+      cp ${./launcher/Previewer.qml} launcher/Previewer.qml
+      cp ${./launcher/Captured.js} launcher/Captured.js
+      cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${../neovim/NeovimOpening.js} launcher/NeovimOpening.js
       cp ${../neovim/Neovim.js} launcher/Neovim.js
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
@@ -4770,7 +4779,7 @@ onLinux {
           pkgs.gnugrep
         ]
       }:$PATH
-      export OPEN_NOW=${openNow}
+      export OPEN_NOW=${openNow} PREVIEWER=${previewer}
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
       mkdir $XDG_RUNTIME_DIR/daemons

@@ -32,7 +32,6 @@
 // their programs (VKCF3Z, 2026-10-29), and a picture taken holds what each
 // program that edits it gives (`fileActs`), as Edit in GIMP.
 import Quickshell
-import Quickshell.Io
 import qs
 import QtQuick
 import "../FileFacts.js" as FileFacts
@@ -493,11 +492,7 @@ Provider {
     // would change what it reads.
     function takenDrawer(path, name) {
         const read = Taken.files.find(file => file.path === path) ?? { path };
-        const shown = provider.previews[path];
-        if (shown === undefined && provider.canPreview && !provider.previewAsked[path]) {
-            provider.previewAsked[path] = true;
-            Qt.callLater(() => provider.preview(path));
-        }
+        const shown = previewing.shown(path);
         return Captured.drawer({
             path,
             name,
@@ -512,56 +507,12 @@ Provider {
         });
     }
 
-    // What file-preview said of each thing taken, by its path (null where
-    // it couldn't), and which were asked; the file it's asked of now, and
-    // the next wanted while it answers.
-    readonly property bool canPreview: (settings.preview ?? []).length > 0
-    property var previews: ({})
-    property var previewAsked: ({})
-    property string previewNext: ""
-
-    // Only the newest wanted waits, so one it replaces is no longer asked,
-    // and its drawer asks again when it's next shown rather than never.
-    function preview(path) {
-        if (previewing.running) {
-            if (provider.previewNext !== "" && provider.previewNext !== path)
-                delete provider.previewAsked[provider.previewNext];
-            provider.previewNext = path;
-            return;
-        }
-        previewing.path = path;
-        previewing.command = settings.preview.concat(["show", path]);
-        previewing.running = true;
-    }
-
-    function previewed(path, text) {
-        let shown = null;
-        try {
-            const parsed = JSON.parse(text);
-            shown = typeof parsed === "object" && parsed !== null && !parsed.error
-                ? parsed : null;
-        } catch (error) {
-            shown = null;
-        }
-        provider.previews = Object.assign({}, provider.previews, { [path]: shown });
-    }
-
-    Process {
+    // What file-preview said of each thing taken, from the one kept.
+    readonly property var previews: previewing
+    Previewer {
         id: previewing
 
-        property string path: ""
-
-        stdout: StdioCollector {
-            onStreamFinished: provider.previewed(previewing.path, text)
-        }
-        // The next is asked once this one has ended, its answer read.
-        onRunningChanged: {
-            if (running || provider.previewNext === "")
-                return;
-            const next = provider.previewNext;
-            provider.previewNext = "";
-            provider.preview(next);
-        }
+        command: provider.settings.preview ?? []
     }
 
     // A row's words, its name's and those beside it, made ready once.
