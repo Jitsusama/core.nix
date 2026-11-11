@@ -1088,6 +1088,8 @@
         "unfinished": "{title}'s {detail} not copied \u00b7 {why}",
         "away": "the passwords daemon isn't answering",
         "offNote": "use {manager}'s browser extension",
+        "offNoBrowser": "no browser extension is set up",
+        "offNoManager": "no password manager is set up",
         "offSide": "off",
         "password": "password",
         "code": "one-time code",

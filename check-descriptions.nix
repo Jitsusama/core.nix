@@ -3457,7 +3457,8 @@
     each left out at none, and For You's one to-do for what the last check found stands while
     some login is breached or reused, is done once a later check finds none, says how many are
     breached then reused at its side, each left out at none, and is weighed as a thing to do
-    ready now
+    ready now; and while the place is off, its one row opens the browser a manager fills, else
+    a manager's own app, else nothing, its note saying which
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
