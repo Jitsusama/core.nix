@@ -336,7 +336,11 @@ impl Way {
     /// What this direction has learned that outlasts the stay.
     pub fn learned(&self) -> Learned {
         Learned {
-            base: self.base,
+            // What a clear spell proved outlasts a lower base, so a base
+            // learned wrong is put right by the first fast, clear stay. It
+            // makes none where none was learned, which would hold a start
+            // the plateau sets.
+            base: self.base.map(|base| base.max(self.proven * 0.9)),
             plateau: self.plateau,
         }
     }
@@ -576,7 +580,15 @@ impl Way {
                 self.plateau = Some(plateau.min(carried));
             }
             self.elsewhere = None;
-            self.cut(at, delay_ms, carried);
+            // Only the line sets what got through while something of ours
+            // waited to go; otherwise it is what was wanted. Filling a
+            // rate says no more: a cut holds a flow just under what it
+            // wants, which it then fills, and on 8 November that taught
+            // the download a line of a few Mbit/s again and again. A
+            // download can't hear its senders wait, so it learns its line
+            // from clear spells alone.
+            let filled = ours.is_some_and(|ours| ours.waiting);
+            self.cut(at, delay_ms, carried, filled);
         } else if let Some(ours) = ours
             && !standing
             && self.own(at, dt, ours, carried)
@@ -591,6 +603,17 @@ impl Way {
                 self.rate < ceiling * FAR || self.rate > ceiling * PAST || at - met >= CEILING_S
             });
             self.rate *= if far { FAST_CLIMB } else { CLIMB }.powf(dt);
+        } else if self.base.is_none()
+            && carried < self.rate * FULL
+            && !standing
+            && at - self.last_cut >= CEILING_S
+        {
+            // With no line learned, a cut held what was wanted, and once
+            // the line has likely moved there is nothing left to hold to:
+            // the direction goes back to unlimited until a queue stands.
+            // What an idle spell proved is no line: it proves the idle
+            // rate.
+            self.rate = f64::INFINITY;
         } else if let Some(base) = self.connection()
             && carried < self.rate * FULL
             && !standing
@@ -604,7 +627,7 @@ impl Way {
         }
     }
 
-    fn cut(&mut self, at: f64, delay_ms: f64, carried: f64) {
+    fn cut(&mut self, at: f64, delay_ms: f64, carried: f64, filled: bool) {
         // Cut under a sliver, a queue this machine hardly feeds drains no
         // faster and the machine starves, so the reach is halved instead.
         // A connection that really fell that far is met in a few halvings;
@@ -617,10 +640,12 @@ impl Way {
             self.last_cut = at;
             return;
         }
-        // With the rate well over what got through, the connection, not
-        // this machine, set what it carried, and that is what the base
-        // learns.
-        if carried * 1.15 <= self.rate {
+        // With the rate well over what got through, and the line setting
+        // it, the connection, not this machine, set what it carried, and
+        // that is what the base learns. A download left unlimited carries
+        // what it wanted: on 10 November one carrying 26 Mbit/s of a 370
+        // Mbit/s line taught a base of 23.9.
+        if filled && carried * 1.15 <= self.rate {
             self.learned.push_back(carried);
             if self.learned.len() > LEARNED {
                 self.learned.pop_front();
@@ -1141,13 +1166,68 @@ mod tests {
     }
 
     #[test]
-    fn a_standing_queue_cuts_a_tenth_under_what_got_through_and_learns_the_connection() {
+    fn a_standing_queue_cuts_a_tenth_under_what_got_through() {
         let mut c = Controller::new(None, None);
         let limits = run(&mut c, 0.0, 1.15, queued(40.0, 300_000.0));
         // 300,000 × 0.9 × (1 − 0.04).
         assert_eq!(limits.down, Some(259_200));
         assert_eq!(limits.up, None, "the upload's own delay never rose");
-        assert_eq!(c.down.base.map(f64::round), Some(270_000.0));
+    }
+
+    #[test]
+    fn an_unlimited_download_s_cut_learns_no_line() {
+        // On 10 November a download carrying 26 Mbit/s of a 370 Mbit/s
+        // line met a spike, and the base it learned held every later
+        // stay's download to 23.9: it carried what it wanted, not what the
+        // line could.
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.15, queued(40.0, 26_000.0));
+        assert!(c.down.limit().is_some(), "the queue is still cut");
+        assert_eq!(c.down.base, None, "learned {:?}", c.down.base);
+    }
+
+    #[test]
+    fn a_download_filling_what_its_own_cut_held_it_to_learns_no_line() {
+        // As on 8 November: cut just under what it wanted, a flow fills
+        // the rate, and the next spike would teach that as the line.
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.15, queued(40.0, 26_000.0));
+        let held = c.down.limit().map(crate::rate::float).expect("cut");
+        run(&mut c, 1.15, 3.3, queued(40.0, held));
+        assert!(
+            c.down.limit() < Some(23_000),
+            "cut again: {:?}",
+            c.down.limit()
+        );
+        assert_eq!(c.down.base, None, "learned {:?}", c.down.base);
+    }
+
+    #[test]
+    fn what_a_clear_spell_proved_is_kept_over_a_lower_base() {
+        let mut c = Controller::from_learned(
+            Learned::default(),
+            Learned {
+                base: Some(23_907.0),
+                plateau: None,
+            },
+        );
+        let mut at = 0.0;
+        while at < 30.0 {
+            let down_kbit = c
+                .down
+                .limit()
+                .map_or(200_000.0, |r| crate::rate::float(r).min(200_000.0));
+            c.step(&Seen {
+                at_s: at,
+                ..quiet(300.0, down_kbit)(at)
+            });
+            at += 0.1;
+        }
+        let kept = c.down.learned().base.expect("a base");
+        assert!(
+            kept >= 170_000.0,
+            "kept {kept}, after carrying 200,000 clear"
+        );
     }
 
     #[test]
@@ -1194,7 +1274,7 @@ mod tests {
             100.0, 900.0, 450.0, 800.0, 500.0, 700.0, 550.0, 600.0, 650.0, 1_000.0, 400.0,
         ] {
             way.rate = f64::INFINITY;
-            way.cut(at, 20.0, carried * 1_000.0);
+            way.cut(at, 20.0, carried * 1_000.0, true);
             at += 2.0;
         }
         // The first, 100, is gone; of the rest the middle is 650.
@@ -1318,8 +1398,9 @@ mod tests {
     fn a_queue_met_half_a_minute_ago_no_longer_slows_the_climb() {
         // As the replay found of downloads on Wi-Fi: cut where the air
         // once queued, a rate climbed gently for many seconds after the
-        // air had cleared and the connection carried twice that.
-        let mut c = Controller::new(None, None);
+        // air had cleared and the connection carried twice that. A line
+        // learned keeps it held while idle.
+        let mut c = Controller::new(None, Some(400_000.0));
         run(&mut c, 0.0, 1.2, queued(40.0, 100_000.0));
         run(&mut c, 1.2, 32.0, quiet(300.0, 1_000.0));
         let held = c.down.limit().map(crate::rate::float).expect("held");
@@ -1327,6 +1408,16 @@ mod tests {
         let climbed = limits.down.map(crate::rate::float).expect("held") / held;
         // Five seconds at 1.25 a second is 3.05.
         assert!(climbed > 2.9, "climbed {climbed}");
+    }
+
+    #[test]
+    fn with_no_line_learned_a_cut_is_let_go_half_a_minute_on() {
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.2, queued(40.0, 26_000.0));
+        let early = run(&mut c, 1.2, 30.0, quiet(300.0, 1_000.0));
+        assert!(early.down.is_some(), "held until the line has likely moved");
+        let limits = run(&mut c, 30.0, 32.0, quiet(300.0, 1_000.0));
+        assert_eq!(limits.down, None, "unlimited until a queue stands");
     }
 
     #[test]
