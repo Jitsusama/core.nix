@@ -583,12 +583,17 @@ fn hub(config: &Config) -> Result<Arc<Hub>, String> {
 /// written again is told as a pass's changes are, so a fixture changes
 /// what's shown by writing it.
 pub fn serve(config: &Config) -> Result<(), String> {
+    // The files are watched before they're first read, so one written
+    // between the two is heard rather than lost, as a fixture writing them
+    // just as serve starts would otherwise leave it showing nothing.
+    let runtime = config.runtime()?;
+    std::fs::create_dir_all(&runtime)
+        .map_err(|error| format!("making {}: {error}", runtime.display()))?;
+    let (wake, inbox) = mpsc::channel();
+    rewrites(&runtime, wake.clone());
     let hub = hub(config)?;
     hub.answering();
-    let runtime = config.runtime()?;
-    let (wake, inbox) = mpsc::channel();
-    listen(&config.socket(), wake.clone(), Arc::clone(&hub))?;
-    rewrites(&runtime, wake);
+    listen(&config.socket(), wake, Arc::clone(&hub))?;
     for woken in inbox {
         match woken {
             // A file written again is told as a pass would tell it, so a
@@ -609,15 +614,23 @@ pub fn serve(config: &Config) -> Result<(), String> {
 }
 
 /// Tells the loop whenever a file in the runtime directory is written, put
-/// in place or removed, for `serve`.
+/// in place or removed, for `serve`. Where it can't hear them it says so,
+/// once, so a fixture's rewrite gone unheard says why rather than leaving
+/// a check to wait out its timeout.
 #[cfg(target_os = "linux")]
 fn rewrites(runtime: &std::path::Path, wake: Sender<Wake>) {
     use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
-    let Ok(fd) = inotify::init(CreateFlags::CLOEXEC) else {
-        return;
+    let folder = runtime.display().to_string();
+    let fd = match inotify::init(CreateFlags::CLOEXEC) {
+        Ok(fd) => fd,
+        Err(error) => {
+            eprintln!("serve: can't hear {folder} rewritten: {error}");
+            return;
+        }
     };
     let flags = WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO | WatchFlags::DELETE;
-    if inotify::add_watch(&fd, runtime, flags).is_err() {
+    if let Err(error) = inotify::add_watch(&fd, runtime, flags) {
+        eprintln!("serve: can't hear {folder} rewritten: {error}");
         return;
     }
     std::thread::spawn(move || {
@@ -630,7 +643,10 @@ fn rewrites(runtime: &std::path::Path, wake: Sender<Wake>) {
                     }
                 }
                 Err(rustix::io::Errno::INTR) => {}
-                Err(_) => return,
+                Err(error) => {
+                    eprintln!("serve: no longer hears {folder} rewritten: {error}");
+                    return;
+                }
             }
         }
     });

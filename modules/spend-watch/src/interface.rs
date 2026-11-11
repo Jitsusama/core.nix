@@ -155,7 +155,10 @@ pub fn refusals(vocabulary: &str) -> BTreeMap<String, String> {
         .filter_map(|thing| thing["said"].as_object())
         .flatten()
         .filter_map(|(key, said)| {
-            Some((key.strip_prefix("refused:")?.to_owned(), said.as_str()?.to_owned()))
+            Some((
+                key.strip_prefix("refused:")?.to_owned(),
+                said.as_str()?.to_owned(),
+            ))
         })
         .collect()
 }
