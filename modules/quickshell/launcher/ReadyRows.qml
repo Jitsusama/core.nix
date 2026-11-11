@@ -35,6 +35,12 @@ Scope {
     // Whether it's watched: false where there's no runtime folder, as in
     // a test with no session, so nothing is asked of a socket never made.
     property bool active: !!Quickshell.env("XDG_RUNTIME_DIR")
+    // Whether the rows are watched now, as Daemon.qml's `live`: a place
+    // whose daemon reads only while watched, as Heat's reads its sensors
+    // each second, is live only while it's seen, and keeps its rows held
+    // meanwhile. `paced` waits a watch begun by a key on the next frame.
+    property bool live: true
+    property var paced: null
     // Whether what it makes is drawn now, so a row saying a time is said
     // again as the minute turns: the place's launcher open.
     property bool drawn: false
@@ -83,9 +89,25 @@ Scope {
             kind: ["row"].concat(ready.beside)
             watching: Object.assign({ place: ready.place }, ready.watching)
             answersWhole: true
+            live: ready.live
+            paced: ready.paced
             ahead: ready.ahead
             onHeard: (changed, gone) => ready.took(changed, gone)
         }
+    }
+
+    // Not watched, nothing is held, so nothing it made stands.
+    onActiveChanged: {
+        if (active)
+            return;
+        for (const store of [made, drawers, ticking]) {
+            for (const key of Object.keys(store))
+                delete store[key];
+        }
+        timed = 0;
+        eachMinute = 0;
+        keys = [];
+        placings += 1;
     }
 
     // Each key a change names let go of what was made of it, and the rows
@@ -200,28 +222,43 @@ Scope {
         const first = acts[0] ?? null;
         const steps = acts.some(one => one.step === "rows");
         const verbs = () => steps ? inside(key) : acts.map(one => actRow(key, one));
+        // Only a Return that steps into rows leaves the launcher open; one
+        // that copies closes it, as a value's row always has.
         const acting = acts.length === 0 ? {} : {
             verb: verbOf(first),
-            stays: steps,
+            stays: first.step === "rows",
             run: () => act(key, first),
             verbs: verbs,
             targets: verbs
         };
+        // A row whose Return copies is a value, drawn as Provider.qml's
+        // copyRow draws one, and what it copies is what y joins.
+        const copying = Ready.actForm(first) !== "copy" ? {} : {
+            figure: true,
+            plain: true,
+            now: true,
+            copies: () => first.copy
+        };
+        const items = Ready.sideItems(row.side, Date.now(), timeWords);
         return maker.member(Object.assign({
             key: row.thing ?? key,
             thing: !!row.drawer,
             name: row.name ?? "",
             glyph: Theme.glyph[row.glyph ?? ""] ?? "",
             hue: row.hue ?? "",
-            side: sideOf(row),
+            side: Ready.sideJoined(items),
+            // Each item, so the row keeps an item's width and draws its hue.
+            sideItems: items,
             note: noteOf(row),
+            // Its bar, strip or spark, { shape, values, warn }, as served.
+            graph: row.graph ?? null,
             reads: row.reads ?? "",
             unfinished: row.unfinished === true,
             // A row a step in that asks Joel to be sure, so its Return does
             // its act (Launcher.lands), as an act that can't be taken back is.
             sure: row.sure === true,
             drawer: () => drawerOf(row)
-        }, acting, fields ?? {}));
+        }, acting, copying, fields ?? {}));
     }
 
     // The acts of a row the launcher can do here: a step into the drawer

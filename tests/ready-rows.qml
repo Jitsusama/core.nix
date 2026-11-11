@@ -125,6 +125,11 @@ QtObject {
         Expect.same("a side's items are joined by a dot, those saying nothing left out",
             Ready.sideSaid(side, now, said), "3 sessions \u00b7 3 h");
         Expect.same("no side says nothing", Ready.sideSaid(undefined, now, said), "");
+        Expect.same("each item is kept apart with its width and its hue", Ready.sideItems([
+                { said: "71 \u00b0C", keep: 3 }, { said: "29 \u00b0C below high", hue: "warning" },
+                { said: "" }
+            ], now, said), [{ said: "71 \u00b0C", keep: 3 },
+                { said: "29 \u00b0C below high", hue: "warning" }]);
         Expect.same("a time worded into its words",
             Ready.itemSaid({ at: morning, as: "moment", said: "since {time}" }, now, said),
             "since 09:05");

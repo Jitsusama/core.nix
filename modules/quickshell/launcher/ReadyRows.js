@@ -135,8 +135,27 @@ function noteSaid(note, now, said) {
 // A side's items as one line, each said and joined by a dot, those saying
 // nothing left out.
 function sideSaid(items, now, said) {
-    return (items ?? []).map(item => itemSaid(item, now, said)).filter(one => one !== "")
-        .join(JOINT);
+    return sideJoined(sideItems(items, now, said));
+}
+
+// A side's items as a row draws them apart, each said, with the width it
+// keeps and the role it warns in where it says them, those saying nothing
+// left out.
+function sideItems(items, now, said) {
+    return (items ?? []).map(item => {
+        const drawn = { said: itemSaid(item, now, said) };
+        for (const field of ["keep", "hue"]) {
+            if (item?.[field] !== undefined) {
+                drawn[field] = item[field];
+            }
+        }
+        return drawn;
+    }).filter(one => one.said !== "");
+}
+
+// Side items said, as one line joined by a dot.
+function sideJoined(items) {
+    return items.map(one => one.said).join(JOINT);
 }
 
 // A drawer's fact as Drawer.qml draws one: a heading its own, else named
