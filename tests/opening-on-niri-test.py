@@ -265,10 +265,33 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
     such a try counts nothing of the opening's, so it's closed, its own spots waited for, and
     made again.
     """
+    made = made_by_others(shell, "windows")
+    assert not made, f"opening into Windows, other sources made rows: {made}"
+
+
+def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) -> None:
+    """The first chord after a restart, with home kept as the shell started, makes only its rows.
+
+    Home kept as the shell started wasn't counted as kept for an opening into a place, so the
+    first chord after each switch found home again whole on its way into the place, as no
+    later one does.
+    """
+    shell.restart()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    made = made_by_others(shell, "windows")
+    assert not made, f"first into Windows after a restart, other sources made rows: {made}"
+
+
+def made_by_others(shell: Shell, place: str) -> dict[str, int]:
+    """Open into the place by its chord, and give the rows each other source made meanwhile.
+
+    A try a closing's spots landed in counts nothing of the opening's, so it's closed, its own
+    spots waited for, and made again.
+    """
     for _ in range(REOPENINGS_TRIED):
         began = shell.mark()
         before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
-        shell.as_account(shell.ipc("collection", "windows"))
+        shell.as_account(shell.ipc("collection", place))
         shell.launcher_ready()
         after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
         said, _ = shell.said_since(began)
@@ -279,12 +302,11 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
         shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
     else:
         pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
-    made = {
+    return {
         name: rows - before.get(name, 0)
         for name, rows in after.items()
-        if name != "windows" and rows > before.get(name, 0)
+        if name != place and rows > before.get(name, 0)
     }
-    assert not made, f"opening into Windows, other sources made rows: {made}"
 
 
 def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:

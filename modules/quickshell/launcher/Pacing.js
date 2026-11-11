@@ -107,12 +107,16 @@ function verbRoom(kept, words, face, weigh) {
 // weighed before says the same keys at the same widths. Weighed afresh each
 // time, one act in For You's 115 rows weighed every row again, 7 to 46 ms of
 // the 11 to 52 its rows took to be shown, where one row had changed
-// (2026-11-10).
+// (2026-11-10). Each weighing holds only the rows the one before it saw
+// (`seen`, carried as `rows`), so a row replaced goes at the next: home's
+// key stays the same across every opening, and a Map of every row it
+// ever weighed held each replaced row for the life of the shell (Y2YBTS,
+// 2026-11-11). Not a WeakMap, which crashed the shell once its rows were
+// collected.
 function weighing(kept, key, words, face) {
-    if (kept !== null && kept.key === key && kept.words === words && kept.face === face) {
-        return kept;
-    }
-    return { key, words, face, rows: new Map(), weighed: 0 };
+    const same = kept !== null && kept.key === key && kept.words === words && kept.face === face;
+    return { key, words, face, rows: same ? kept.seen : new Map(), seen: new Map(),
+        weighed: same ? kept.weighed : 0 };
 }
 
 // The rows the foot weighs keys for, of `rows` listed: each, but only the
@@ -138,14 +142,24 @@ function toWeigh(rows, selected) {
 // A row's keys and widths, as `kept` holds them or as `weigh` weighs them
 // now, kept for the next time.
 function weighedRow(kept, row, weigh) {
-    const known = kept.rows.get(row);
+    const known = kept.seen.get(row) ?? kept.rows.get(row);
     if (known !== undefined) {
+        kept.seen.set(row, known);
         return known;
     }
     const made = weigh(row);
-    kept.rows.set(row, made);
+    kept.seen.set(row, made);
     kept.weighed += 1;
     return made;
+}
+
+// Keeps a row weighed before for the next weighing, as the selected one is
+// while it's weighed afresh, so it isn't weighed again once it's left.
+function keptRow(kept, row) {
+    const known = kept.rows.get(row);
+    if (known !== undefined) {
+        kept.seen.set(row, known);
+    }
 }
 
 // What an opening's own work went on, from each part's milliseconds by its

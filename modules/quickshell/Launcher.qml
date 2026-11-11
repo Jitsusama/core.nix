@@ -2930,10 +2930,14 @@ Scope {
         footRowsWeighed = kept;
         const before = kept.weighed;
         const weigh = row => weighedKeys(keysFor(row));
+        const afresh = row => {
+            Pacing.keptRow(kept, row);
+            return weigh(row);
+        };
         // A run of rows alike in their keys, as Emoji's, is weighed once.
         const alike = Pacing.toWeigh(matches, selected);
         const listed = asking ? alike.concat([asking]) : alike;
-        const said = listed.map(row => row === selected || visual ? weigh(row)
+        const said = listed.map(row => row === selected || visual ? afresh(row)
             : Pacing.weighedRow(kept, row, weigh)).filter(one => one.keys.length > 0);
         rowsWeighed += kept.weighed - before;
         if (kept.weighed > before)
@@ -8456,6 +8460,10 @@ Scope {
             : homeKept;
         if (home.length === 0)
             return;
+        // Home found while shut, as the shell starts (warmNext), is kept as
+        // an opening's find is, so the first chord after a restart goes into
+        // its place alone rather than finding home again on its way.
+        homeKept = home;
         keeping = true;
         try {
             held = [];
