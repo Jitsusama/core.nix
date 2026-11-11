@@ -32,8 +32,8 @@
 //! pictures kept take up at most `--room`, the oldest going first, their
 //! rows and files going with them.
 //!
-//! The shell asks it, as its own asks, `{"ask": "copy", "id": N}` to put
-//! copy N back on the clipboard, or with `"text"` in place of the number to
+//! The shell asks it, as its own asks, `{"ask": "copy", "copy": N}` to put
+//! copy N back on the clipboard (not `id`, which names the ask itself), or with `"text"` in place of the number to
 //! put the shell's own text there, kept as a copy is. `"paste"`, with
 //! `"into": "terminal"` or `"plain"`, puts it there and then presses the
 //! paste keys for the window the launcher closed over: Ctrl+Shift+V for a
@@ -244,10 +244,12 @@ fn wanted(said: &Value) -> Option<Wanted> {
 
 /// The copy an ask names: one kept by its number, or text of the shell's.
 fn which(said: &Value) -> Option<Which> {
-    if let Some(id) = said["id"].as_u64() {
+    if let Some(id) = said["copy"].as_u64() {
         return Some(Which::Kept(id));
     }
-    said["text"].as_str().map(|text| Which::Text(text.to_owned()))
+    said["text"]
+        .as_str()
+        .map(|text| Which::Text(text.to_owned()))
 }
 
 /// Whether niri's answer to `Layers` says the launcher holds no keys: none
@@ -1119,7 +1121,9 @@ fn own(asked: mpsc::Sender<Asked>, wake: PipeWriter) -> Own {
         let wanted = wanted(said)?;
         let (reply, answer) = mpsc::channel();
         let handed = asked.send(Asked::Wanted(wanted, reply)).is_ok()
-            && wake.lock().is_ok_and(|mut wake| wake.write_all(b"!").is_ok());
+            && wake
+                .lock()
+                .is_ok_and(|mut wake| wake.write_all(b"!").is_ok());
         let silent = || refused("not-answering", "the clipboard isn't answering", "");
         if !handed {
             return Some(silent());
@@ -1622,7 +1626,7 @@ mod tests {
     #[test]
     fn the_shell_asks_for_a_copy_by_its_number_or_its_text() {
         assert_eq!(
-            wanted(&json!({ "ask": "copy", "id": 12 })),
+            wanted(&json!({ "ask": "copy", "copy": 12, "id": "ask-1" })),
             Some(Wanted::Copy(Which::Kept(12)))
         );
         assert_eq!(
@@ -1635,7 +1639,7 @@ mod tests {
     #[test]
     fn the_shell_asks_for_a_paste_with_the_keys_its_window_takes() {
         assert_eq!(
-            wanted(&json!({ "ask": "paste", "id": 3, "into": "terminal" })),
+            wanted(&json!({ "ask": "paste", "copy": 3, "into": "terminal" })),
             Some(Wanted::Paste(Which::Kept(3), Keys::Terminal))
         );
         assert_eq!(
@@ -1648,9 +1652,10 @@ mod tests {
     fn an_ask_the_shell_never_sends_wants_nothing() {
         for said in [
             json!({ "ask": "copy" }),
-            json!({ "ask": "copy", "id": "x" }),
-            json!({ "ask": "paste", "id": 3 }),
-            json!({ "ask": "paste", "id": 3, "into": "loud" }),
+            json!({ "ask": "copy", "copy": "x" }),
+            json!({ "ask": "copy", "id": 3 }),
+            json!({ "ask": "paste", "copy": 3 }),
+            json!({ "ask": "paste", "copy": 3, "into": "loud" }),
             json!({ "ask": "press" }),
             json!({}),
         ] {
@@ -1670,7 +1675,7 @@ mod tests {
             assert_eq!(wanted, Wanted::Copy(Which::Kept(3)));
             reply.send(json!({ "copied": true })).unwrap();
         });
-        let answer = own(&json!({ "ask": "copy", "id": 3 }));
+        let answer = own(&json!({ "ask": "copy", "copy": 3 }));
         answering.join().unwrap();
         assert_eq!(answer, Some(json!({ "copied": true })));
         let mut wakes = [0; 1];
@@ -1817,8 +1822,14 @@ mod tests {
         let mut served = served();
         let mut history = history(5);
         served.send(&history);
-        assert_eq!(served.kept.get("summary:copies").unwrap()["summary"]["said"], "empty");
-        assert_eq!(served.kept.get("now:clipboard").unwrap()["now"]["types"], json!([]));
+        assert_eq!(
+            served.kept.get("summary:copies").unwrap()["summary"]["said"],
+            "empty"
+        );
+        assert_eq!(
+            served.kept.get("now:clipboard").unwrap()["now"]["types"],
+            json!([])
+        );
         history.copied(text("one"));
         history.copied(text("two"));
         history.holds_current();
@@ -1828,7 +1839,10 @@ mod tests {
             order("row:copies:2") < order("row:copies:1"),
             "the newest copy is served first"
         );
-        assert_eq!(served.kept.get("summary:copies").unwrap()["summary"]["said"], "2 copies");
+        assert_eq!(
+            served.kept.get("summary:copies").unwrap()["summary"]["said"],
+            "2 copies"
+        );
         assert_eq!(
             served.kept.get("now:clipboard").unwrap()["now"]["text"],
             "two"

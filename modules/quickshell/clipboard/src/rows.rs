@@ -143,7 +143,9 @@ fn is_link(one: &str) -> bool {
         return false;
     };
     let mut letters = scheme.chars();
-    letters.next().is_some_and(|first| first.is_ascii_alphabetic())
+    letters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
         && letters.all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c))
         && !rest.is_empty()
         && !rest.chars().any(char::is_whitespace)
@@ -199,8 +201,8 @@ fn came(at: u128) -> Value {
 /// verb order; the shell adds which keys the window under takes.
 fn acts(id: u64) -> Value {
     json!([
-        { "key": "verb:copy:paste", "ask": { "ask": "paste", "id": id } },
-        { "key": "verb:copy:copy", "ask": { "ask": "copy", "id": id } }
+        { "key": "verb:copy:paste", "ask": { "ask": "paste", "copy": id } },
+        { "key": "verb:copy:copy", "ask": { "ask": "copy", "copy": id } }
     ])
 }
 
@@ -353,7 +355,7 @@ mod tests {
             json!([{ "said": "2 lines" }, { "at": 1_000, "as": "came" }])
         );
         assert_eq!(row["held"]["reads"], "first\nsecond");
-        assert_eq!(row["acts"][0]["ask"], json!({ "ask": "paste", "id": 7 }));
+        assert_eq!(row["acts"][0]["ask"], json!({ "ask": "paste", "copy": 7 }));
         let one = text(8, 2_000, "one line", &words());
         assert_eq!(one["side"], json!([{ "at": 2_000, "as": "came" }]));
     }

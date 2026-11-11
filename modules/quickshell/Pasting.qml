@@ -103,9 +103,9 @@ Singleton {
     }
 
     // The copy `what` names, as the history's asks name it: its number, or
-    // text spelled as JSON.
+    // text spelled as JSON. Not by `id`, which Daemon.qml gives the ask.
     function named(what) {
-        return /^\d+$/.test(what) ? { id: Number(what) } : { text: JSON.parse(what) };
+        return /^\d+$/.test(what) ? { copy: Number(what) } : { text: JSON.parse(what) };
     }
 
     // Copies, through the history, which names the copy by what: its
