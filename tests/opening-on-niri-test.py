@@ -63,11 +63,6 @@ SETTLING_S = 2
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
 FRESHENING = timedelta(seconds=75)
 
-# The sources that make rows as any opening begins, by a handler of their own on the launcher's
-# open rather than as they're wanted: Capture reads what was taken (2026-11-11). Now's retime
-# and Agents' own rows did too, until #3111 and #3112 put them off until they're read.
-MADE_AS_ANY_OPENS = frozenset({"capture"})
-
 # How long the closed launcher's frame count must hold to count as having drawn what it kept:
 # keeping home says so before the pixel left on the screen draws it, which a loaded builder
 # shows a frame late, and well inside the half second before a closing makes its spots.
@@ -249,9 +244,9 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
 
     The launcher was opened before the place's step was held, so for that instant it stood at
     home and every source home names made its rows, put away at once: each Super+Tab reopening
-    made 35, of Capture, Today, Time and Agents (3TXW9E's measure, 2026-11-10). Those that
-    make rows as any opening begins, whatever it opens into, are their owners' to put off
-    (MADE_AS_ANY_OPENS), so they're left out here.
+    made 35, of Capture, Today, Time and Agents (3TXW9E's measure, 2026-11-10). Now, Agents and
+    Capture also made theirs as any opening began, by handlers of their own, until #3111, #3112
+    and #3083 put each off until it's read or changed.
     """
     before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
     shell.as_account(shell.ipc("collection", "windows"))
@@ -260,7 +255,7 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
     made = {
         name: rows - before.get(name, 0)
         for name, rows in after.items()
-        if name != "windows" and name not in MADE_AS_ANY_OPENS and rows > before.get(name, 0)
+        if name != "windows" and rows > before.get(name, 0)
     }
     assert not made, f"opening into Windows, other sources made rows: {made}"
 
@@ -513,9 +508,7 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
     def since(before: dict[str, int]) -> dict[str, int]:
         now = made()
         return {
-            name: now[name] - before.get(name, 0)
-            for name in now
-            if now[name] > before.get(name, 0) and name not in MADE_AS_ANY_OPENS
+            name: now[name] - before.get(name, 0) for name in now if now[name] > before.get(name, 0)
         }
 
     def in_for_you() -> None:
