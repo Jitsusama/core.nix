@@ -87,6 +87,7 @@ mod door;
 mod focus;
 mod hosts;
 mod keep;
+mod kitty;
 mod low;
 mod oom;
 mod quests;
@@ -602,6 +603,10 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
         .found
         .retain(|id, _| wanted.iter().any(|window| window.id == *id));
     let mut scopes: Option<Vec<PathBuf>> = None;
+    // What each kitty drawing a window not found by its app id says it
+    // shows, asked once a look, as its answer runs to megabytes.
+    let mut kitties: HashMap<u32, Vec<kitty::Shown>> = HashMap::new();
+    let at = following.at().map(|window| window.id);
     let mut held = Vec::new();
     for window in &wanted {
         let known = match ranks.found.get(&window.id) {
@@ -615,7 +620,16 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                         .flat_map(|slice| homes(slice, windows.prefixes))
                         .collect()
                 });
-                let unit = focus::scope_of(window, &started_with(all)).map(str::to_owned);
+                let unit = focus::scope_of(window, &started_with(all))
+                    .map(str::to_owned)
+                    .or_else(|| {
+                        let shown = kitties.entry(window.pid).or_insert_with(|| {
+                            kitty::me()
+                                .and_then(|me| kitty::ask(window, me).ok())
+                                .unwrap_or_default()
+                        });
+                        kitty::named(window, at == Some(window.id), shown)
+                    });
                 let scope = all
                     .iter()
                     .find(|scope| {

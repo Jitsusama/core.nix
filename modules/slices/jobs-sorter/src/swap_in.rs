@@ -15,8 +15,10 @@
 //! account can't reach ([`STAMPS`]) and runs the rest as the pid's own
 //! account with `CAP_SYS_NICE` alone ([`as_owner`]). As that account it
 //! asks the account's own niri ([`is_niri`]) which window has the focus,
-//! and reads nothing back unless the pid belongs to it ([`belongs`]); a
-//! window is read back at most every [`EVERY`]. It only hints: nothing is
+//! and reads nothing back unless the pid belongs to it ([`belongs`]), or
+//! the kitty drawing that window, asked the same way, says the pid's scope
+//! is its focused window's ([`named_by_kitty`], `src/kitty.rs`); a window
+//! is read back at most every [`EVERY`]. It only hints: nothing is
 //! changed but what memory is resident.
 
 use std::ffi::{c_long, c_void};
@@ -33,6 +35,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde_json::Value;
 
 use crate::focus::{self, Window};
+use crate::kitty;
 
 /// How long the focus must stay on a window before its memory is read
 /// back, so passing over windows on the way to another reads none of
@@ -222,6 +225,16 @@ pub fn belongs(process: &Process, window: &Window, kittys: usize) -> bool {
         && process.ancestors.contains(&window.pid)
 }
 
+/// Whether `process` runs in `window`, a session window, by what the kitty
+/// drawing it says: `named`, the scope of the program in its focused OS
+/// window, is the process's, under that kitty. On 11 November 48 of 58 pi
+/// windows shared one kitty with no app id, so [`belongs`] found none.
+pub fn named_by_kitty(process: &Process, window: &Window, named: Option<&str>) -> bool {
+    window.session()
+        && process.ancestors.contains(&window.pid)
+        && named.is_some_and(|named| named == process.scope)
+}
+
 /// Whether a window last read back at `last` may be read back `now`.
 pub fn due(last: Option<SystemTime>, now: SystemTime) -> bool {
     last.is_none_or(|last| now.duration_since(last).is_ok_and(|since| since >= EVERY))
@@ -277,7 +290,7 @@ fn niri_service(runtime: &Path) -> Option<u32> {
 }
 
 /// The pid and uid on the far end of `stream`.
-fn peer(stream: &UnixStream) -> Option<(u32, u32)> {
+pub fn peer(stream: &UnixStream) -> Option<(u32, u32)> {
     let mut peer = Peer::default();
     let mut len = u32::try_from(size_of::<Peer>()).ok()?;
     // SAFETY: `peer` is a live ucred, `len` its size, as SO_PEERCRED fills.
@@ -413,9 +426,21 @@ fn read_back(pid: u32) -> Result<String, String> {
         return Ok("No window has the focus, so nothing is read back.".to_owned());
     };
     let found = process(pid)?;
-    if !belongs(&found, &window, kittys(pid, window.pid)) {
-        return Err(format!(
-            "process {pid} isn't in the focused window {} ({}), so nothing is read back",
+    if !belongs(&found, &window, kittys(pid, window.pid))
+        && !named_by_kitty(
+            &found,
+            &window,
+            kitty::ask(&window, me)
+                .ok()
+                .and_then(|shown| kitty::named(&window, true, &shown))
+                .as_deref(),
+        )
+    {
+        // The focus moving on within SETTLE is the most common reason, as
+        // Joel passes over windows, so it's an answer rather than a
+        // failure: on 11 November two such left their units failed.
+        return Ok(format!(
+            "Process {pid} isn't in the focused window {} ({}), so nothing is read back.",
             window.id, window.app_id
         ));
     }
@@ -495,7 +520,46 @@ mod tests {
             id: 7,
             app_id: app_id.to_owned(),
             pid,
+            title: String::new(),
         }
+    }
+
+    #[test]
+    fn one_in_a_shared_kitty_belongs_to_the_window_its_kitty_names() {
+        let process = Process {
+            app_id: None,
+            scope: "kitty-2684-128.scope".into(),
+            ancestors: vec![3_451_126, 2684, 1],
+        };
+        let shared = window("pi-spawned", 2684);
+        assert!(
+            named_by_kitty(&process, &shared, Some("kitty-2684-128.scope")),
+            "its kitty names its scope"
+        );
+        assert!(
+            !named_by_kitty(&process, &shared, Some("kitty-2684-121.scope")),
+            "its kitty names another"
+        );
+        assert!(
+            !named_by_kitty(&process, &shared, None),
+            "its kitty names none"
+        );
+        assert!(
+            !named_by_kitty(
+                &process,
+                &window("pi-spawned", 4242),
+                Some("kitty-2684-128.scope")
+            ),
+            "not under the kitty drawing the window"
+        );
+        assert!(
+            !named_by_kitty(
+                &process,
+                &window("kitty", 2684),
+                Some("kitty-2684-128.scope")
+            ),
+            "a window holding no session"
+        );
     }
 
     #[test]

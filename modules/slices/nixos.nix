@@ -465,7 +465,11 @@ in
           RuntimeDirectoryPreserve = true;
           PrivateTmp = true;
           PrivateDevices = true;
-          PrivateNetwork = true;
+          # No network but Unix sockets, and those of the host's network
+          # namespace: the kitty drawing many windows answers which has
+          # the focus only on its abstract socket (src/kitty.rs), which a
+          # private network would hide.
+          IPAddressDeny = "any";
           RestrictAddressFamilies = "AF_UNIX";
           ProtectKernelTunables = true;
           ProtectKernelModules = true;
