@@ -17,7 +17,9 @@
 //! - `file`: files another program writes whole, heard as each lands.
 //! - `inputs`: what every source last said, and every record made of it.
 //! - `sources`: each source followed on its own thread, heard in one loop.
+//! - `acts`: a session's acts, done by asking the node as the shell asks.
 
+pub mod acts;
 pub mod clock;
 pub mod drawer;
 pub mod figures;

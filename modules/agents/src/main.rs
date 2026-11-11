@@ -1,7 +1,8 @@
 //! The agents daemon: follows what each source says of Joel's sessions,
 //! makes Agents' rows from all of it in one loop, and serves them to the
 //! launcher over the socket systemd holds for it, each watch told only
-//! the rows that moved.
+//! the rows that moved; and does a row's act as the shell asks by it,
+//! steering its session through the node (acts.rs).
 //!
 //! Usage: `agents --vocabulary WORDS --node NODE --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --socket SOCKET`,
@@ -13,7 +14,9 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use agents::acts;
 use agents::inputs::Inputs;
 use agents::row::Words;
 use agents::served::Served;
@@ -84,12 +87,17 @@ fn main() -> ExitCode {
     // The shell says whether the screen is shared, as Quiet.qml knows it
     // from niri's casts, so no amount is served while it is.
     let told = to.clone();
+    let node = args.node.clone();
     let own: Own = Box::new(move |said| {
-        (said["ask"] == "sharing").then(|| {
+        if said["ask"] == "sharing" {
             let sharing = said["sharing"].as_bool().unwrap_or(false);
             let _ = told.send(Heard::Sharing(sharing));
-            json!({"sharing": sharing})
-        })
+            return Some(json!({"sharing": sharing}));
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
+        acts::steer_of(said, now).map(|steer| acts::done(steer, &node))
     });
     let shared = Shared::new(DOMAIN, own);
     match serve::listen(&args.socket) {

@@ -1998,18 +1998,25 @@ Singleton {
     function steer(address, fields, then) {
         const upper = String(address).toUpperCase();
         PiSource.steer(upper, fields, answer => {
-            const machine = answer?.steered?.machine;
-            if (machine) {
-                Report.say(`steered ${upper} on ${machine}`);
-            } else {
-                const why = String(answer?.error?.message ?? "");
-                Report.say(`unsteered ${upper}: ${why}`);
-                unsteered(running.find(one => String(one.address).toUpperCase() === upper)
-                    ?? parkedAs(upper) ?? { address: upper }, why);
-            }
+            const put = steered(upper, answer);
             if (then)
-                then(Boolean(machine));
+                then(put);
         });
+    }
+    // Says what became of a steer by the node's answer, the agents
+    // daemon's to an act it did by one included, and whether it was put.
+    function steered(address, answer) {
+        const upper = String(address).toUpperCase();
+        const machine = answer?.steered?.machine;
+        if (machine) {
+            Report.say(`steered ${upper} on ${machine}`);
+            return true;
+        }
+        const why = String(answer?.error?.message ?? "");
+        Report.say(`unsteered ${upper}: ${why}`);
+        unsteered(running.find(one => String(one.address).toUpperCase() === upper)
+            ?? parkedAs(upper) ?? { address: upper }, why);
+        return false;
     }
 
     // Talks to a session: the words go with an id, so the session writes
