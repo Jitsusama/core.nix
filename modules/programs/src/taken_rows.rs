@@ -16,6 +16,8 @@ use serde_json::{Value, json};
 
 /// A number keeps to its unit, and a dimension's two sides to the ×.
 const KEPT: &str = "\u{a0}";
+/// What stands between an eyebrow's parts, as between a side's.
+const BETWEEN: &str = " \u{b7} ";
 /// SI's steps, largest first, each a thousand of the one after it.
 const UNITS: [(f64, &str); 4] = [(1e12, "TB"), (1e9, "GB"), (1e6, "MB"), (1e3, "kB")];
 
@@ -264,7 +266,15 @@ fn drawer(
         };
         facts.push(json!({"name": id, "said": words.silent}));
     }
+    // The eyebrow whole as well as its parts, since the drawer reads the
+    // whole where there's room for it and the parts only as it gives way.
+    let eyebrow = items
+        .iter()
+        .filter_map(|item| item["said"].as_str())
+        .collect::<Vec<_>>()
+        .join(BETWEEN);
     let mut drawn = json!({
+        "eyebrow": eyebrow,
         "eyebrowItems": items,
         "eyebrowNames": true,
         "title": name,
@@ -432,6 +442,7 @@ mod tests {
         assert_eq!(
             before["drawer"],
             json!({
+                "eyebrow": "in ~/Pictures/Screenshots \u{b7} picture",
                 "eyebrowItems": [
                     {
                         "said": "in ~/Pictures/Screenshots", "keep": 2,

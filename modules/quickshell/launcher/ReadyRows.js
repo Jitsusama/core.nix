@@ -187,8 +187,13 @@ function drawerOf(drawer, now, said) {
         facts: (drawer.facts ?? []).map(fact => factOf(fact, now, said)),
         body: drawer.body ?? ""
     };
-    if (drawer.eyebrow !== undefined) {
-        drawn.eyebrow = drawer.eyebrow;
+    // What a drawer shows and the eyebrow's parts each pass through only
+    // where served: a picture's path and size, never its bytes, and parts
+    // that, where given, are drawn over the eyebrow's one text.
+    for (const field of ["eyebrow", "preview", "eyebrowItems"]) {
+        if (drawer[field] !== undefined) {
+            drawn[field] = drawer[field];
+        }
     }
     // An eyebrow that names something from the world, a budget's, set as
     // it's written rather than in the launcher's capitals.

@@ -336,16 +336,51 @@ Provider {
     readonly property string home: Quickshell.env("HOME")
     readonly property var takenIn: [`${home}/Pictures/Screenshots`, `${home}/Videos/Recordings`]
         .concat(settings.camera ? [`${home}/Pictures/Camera`, `${home}/Videos/Camera`] : [])
-    // What was taken lately, newest first, nine at most, from the one
-    // reader of these folders (Taken.qml): read as the shell starts, so
-    // the first step-in draws Recent where it stays, and as the launcher
-    // opens, which is asked here.
-    readonly property var taken: Recent.listed([Taken.files
-        .filter(file => provider.takenIn.includes(file.folder))
-        .map(file => ({ key: `file:${file.path}`, at: file.at, row: file.path }))], [])
-        .map(one => one.row)
+    // What was taken lately, newest first, nine at most, as the programs
+    // daemon serves them ready (modules/programs/src/taken_rows.rs): it
+    // watches these folders and tells of each change, so nothing here
+    // reads, sorts or words them. Each row's drawer is served whole, its
+    // picture's dimensions or recording's length too, while it's the one
+    // ahead (`takenWanted`).
+    ReadyRows {
+        id: ready
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
+        place: "taken"
+        watching: ({ folders: provider.takenIn })
+        ahead: provider.takenWanted !== "" ? [provider.takenWanted] : []
+        make: (row, key) => provider.servedTaken(row, key)
+        drawn: provider.launcher?.open ?? false
+    }
+    readonly property var takenRows: ready.rows()
+    readonly property var taken: takenRows.map(row => row.path)
 
     onTakenChanged: changed()
+
+    // The key of the row whose drawer shows, named just after it first
+    // asks, as Agents' drawer is, so the daemon reads what file-preview
+    // says of that one file alone.
+    property string takenWanted: ""
+
+    // A served row as Recent draws it: its words, side and drawer as
+    // served, and what's done with it made by its path, as a found one's
+    // is (`takenRow`), since its acts are other providers' too.
+    function servedTaken(served, key) {
+        const path = served.held?.path ?? key.slice("row:taken:".length);
+        const row = provider.takenRow(path, "");
+        return Object.assign(row, {
+            path,
+            name: served.name ?? row.name,
+            glyph: Theme.glyph[served.glyph ?? ""] ?? row.glyph,
+            side: ready.sideOf(served),
+            drawer: () => {
+                if (key !== provider.takenWanted)
+                    Qt.callLater(() => {
+                        provider.takenWanted = key;
+                    });
+                return ready.drawerOf(served);
+            }
+        });
+    }
 
     // When each thing taken was, by its path, so its row says it. Qt's
     // engine has no Object.fromEntries.
@@ -359,6 +394,9 @@ Provider {
     readonly property var factWords: FileFacts.wordsOf(id => Words.of(id),
         (at, format) => Qt.formatDate(at, format))
 
+    // Typed into, Recent still finds among these folders as the shell reads
+    // them (Taken.qml): a stopgap until the programs daemon ranks what's
+    // typed itself, by Fri 2026-11-13 12:00, as Programs' search goes.
     Component.onCompleted: {
         for (const folder of provider.takenIn)
             Taken.want(folder);
@@ -370,6 +408,9 @@ Provider {
         function onOpenChanged() {
             if (provider.launcher.open)
                 Taken.read();
+            // Shut, no drawer shows, so none is read ahead.
+            else
+                provider.takenWanted = "";
         }
     }
 
@@ -394,7 +435,7 @@ Provider {
             heldNames: stands.held,
             ask: "which?",
             empty: Words.of("capture:recent").empty
-        }), () => provider.taken.map(path => provider.takenRow(path, ""))), {
+        }), () => provider.takenRows), {
             finds: letters => provider.found(letters, true)
         })]
 

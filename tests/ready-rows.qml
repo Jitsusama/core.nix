@@ -202,6 +202,25 @@ QtObject {
             title: "Ada Lovelace",
             prose: "yes"
         }, now, said), { title: "Ada Lovelace", facts: [], body: "" });
+        const items = [{ said: "in ~/Videos/Recordings", keep: 2, path: "~/Videos/Recordings" },
+            { said: "video", keep: 1 }];
+        const shown = Ready.drawerOf({
+            title: "take.mp4",
+            facts: [],
+            preview: { picture: "/run/frame.png", across: 640, down: 360 },
+            eyebrowItems: items,
+            eyebrowNames: true
+        }, now, said);
+        Expect.same("a drawer's picture and its eyebrow's parts pass through as served", shown, {
+            title: "take.mp4",
+            facts: [],
+            body: "",
+            preview: { picture: "/run/frame.png", across: 640, down: 360 },
+            eyebrowItems: items,
+            eyebrowNames: true
+        });
+        Expect.same("nothing served of them is none",
+            Object.keys(Ready.drawerOf({ title: "plain" }, now, said)), ["title", "facts", "body"]);
     }
 
     function insides() {
