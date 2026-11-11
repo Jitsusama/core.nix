@@ -520,6 +520,20 @@ impl Say<'_> {
             .join(DOT)
     }
 
+    /// An act going: its row saying so, holding in the asking step's
+    /// place the same row, by its key and name, saying so too and asking
+    /// nothing, so the step Joel pressed Return in still holds it as it
+    /// goes, as the shell's own asking rows did (Firmware.qml's standingOf).
+    fn going(&self, id: String, verb: &str, name: String, asked: String, note: &str) -> Made {
+        let said = self.said(verb, note, &[]);
+        let mut row = self.act(id.clone(), verb, name, said.clone());
+        row.inside = vec![Made {
+            hue: "alert",
+            ..self.act(format!("{id}:sure"), verb, asked, said)
+        }];
+        row
+    }
+
     /// Install, as it stands: ready, holding the step that asks once,
     /// saying it can't be undone; installing, asking nothing more; or done
     /// with, once it waits for the restart or has gone in. One fwupd won't
@@ -533,12 +547,14 @@ impl Say<'_> {
         let id = format!("{}:install", device.id);
         let name = self.name(VERB, &[("version", version)]);
         let held = self.held(device);
+        let fill = [("version", version), ("device", device.name.as_str())];
         let done = |note: String| Made {
             gone: true,
             ..self.act(id.clone(), VERB, name.clone(), note)
         };
         let note = if self.acting.going.as_deref() == Some(key) {
-            said("installing")
+            let asked = self.words.sure(VERB, &fill);
+            return self.going(id, VERB, name, asked, "installing");
         } else if device.waits.is_some() {
             return done(said("waits"));
         } else if device.offered.is_none() || ended == Some(&Ended::Done) {
@@ -547,7 +563,6 @@ impl Say<'_> {
             held
         } else {
             let mut row = self.act(id.clone(), VERB, name, self.failed(VERB, ended));
-            let fill = [("version", version), ("device", device.name.as_str())];
             let last = if device.restarts {
                 "final-at-restart"
             } else {
@@ -903,7 +918,8 @@ impl Say<'_> {
         let name = self.name(&verb, &[]);
         let ended = self.acting.ended.get(&key);
         if self.acting.going.as_ref() == Some(&key) {
-            return self.act(id, &verb, name, self.said(&verb, "changing", &[]));
+            let asked = self.words.sure(&verb, &[("attribute", attribute.name)]);
+            return self.going(id, &verb, name, asked, "changing");
         }
         if ended == Some(&Ended::Done) {
             return Made {
@@ -1138,6 +1154,20 @@ mod tests {
         assert!(
             going.rows.iter().all(|row| row["sure"] != true),
             "nothing more is asked"
+        );
+        let asking = row(&going, "row:firmware:b10:install:sure");
+        assert_eq!(
+            (
+                asking["name"].clone(),
+                asking["note"].clone(),
+                asking["acts"].clone()
+            ),
+            (
+                json!("Install 1.13.0 on System Firmware Now"),
+                json!("installing"),
+                json!([])
+            ),
+            "the asking step's row says it goes, in its place, and asks nothing"
         );
         acting.going = None;
         acting.ended.insert(

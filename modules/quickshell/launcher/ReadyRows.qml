@@ -225,6 +225,12 @@ Scope {
         // A Return that steps into rows or asks leaves the launcher open, so
         // Joel sees what it became, as a setting's choice always has; one
         // that copies or opens closes it, as a value's row always has.
+        // A row whose Return asks is that act's for the key language, so its
+        // command is read from the act's words (CommandBinding.wordsFor), as
+        // Firmware's Install Now ends something and writes `install!` on
+        // the line rather than running at the first Return (RCTRF8,
+        // 2026-11-11).
+        const asking = Ready.actForm(first) === "ask" ? { wordsId: first.key } : {};
         const acting = acts.length === 0 ? {} : {
             verb: verbOf(first),
             stays: first.step === "rows" || Ready.actForm(first) === "ask",
@@ -262,7 +268,7 @@ Scope {
             // nothing (RCTRF8's Firmware, 2026-11-11).
             gone: row.gone === true,
             drawer: () => drawerOf(row)
-        }, acting, copying, fields ?? {}));
+        }, acting, asking, copying, fields ?? {}));
     }
 
     // The acts of a row the launcher can do here: a step into the drawer
