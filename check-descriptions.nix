@@ -777,7 +777,8 @@
     and says so while the others serve on, say no word but the vocabulary's, a meeting's, a file's
     or a mail's own and the clock's, sizes to three figures, and a documents watch hears its rows
     and a drawer watch only the drawer a change touched, each place's rows spaced 1024 apart, one
-    row moving told alone, midway, as the rest keep their order
+    row moving told alone, midway, as the rest keep their order; and google-people watches for
+    people the moment google's socket is made, past the wait it would otherwise back off to
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
