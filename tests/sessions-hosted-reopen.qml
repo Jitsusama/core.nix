@@ -92,6 +92,10 @@ ShellRoot {
                 waiting();
             else if (stage === "left")
                 left();
+            else if (stage === "present")
+                present();
+            else if (stage === "back")
+                back();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -198,6 +202,49 @@ ShellRoot {
             JSON.stringify(Niri.acts));
         Expect.expect("and is kept no more", Sessions.keptPlaces["s-second"] === undefined,
             JSON.stringify(Sessions.keptPlaces));
+        // Joel comes back to the machine with three places kept on a
+        // workspace he isn't on: one now, one by a shell before this one,
+        // as a switch's restart finds, and one now for a session parked in
+        // its host. Then the host serves all three.
+        Away.now = false;
+        const place = at => ({ workspace: 41, column: 2, at });
+        Sessions.keepPlaces(Object.assign({}, Sessions.keptPlaces, {
+            "s-third": place(Date.now()), "s-old": place(Sessions.startedAt - 1),
+            "s-parked": place(Date.now()) }));
+        const parked = hosted("s-parked", "PARKED");
+        parked.presence.parked = { since: new Date().toISOString() };
+        stage = "present";
+        Watch.tell(root.watch, { changed: [
+            Object.assign(hosted("s-third", "THIRD"), { told: "0000000000000002" }),
+            Object.assign(hosted("s-old", "OLD"), { told: "0000000000000003" }),
+            Object.assign(parked, { told: "0000000000000004" })] });
+    }
+
+    // While Joel is at the machine none opens by itself (OSPHT4
+    // [0762284c], 13:41:38 on 11 November): each is still kept.
+    function present() {
+        if (!find("THIRD") || !find("OLD") || !find("PARKED"))
+            return;
+        Expect.expect("with Joel there, none opens", ["s-third", "s-old", "s-parked"]
+            .every(id => viewerSpawns(id).length === 0
+                && Sessions.keptPlaces[id] !== undefined),
+            `${Niri.spawns.join("\n")} ${JSON.stringify(Sessions.keptPlaces)}`);
+        stage = "back";
+        Away.now = true;
+    }
+
+    // Once he's away, the one kept this shell opens where it was kept; the
+    // one kept before it and the parked one, which viewing would wake, wait.
+    function back() {
+        if (viewerSpawns("s-third").length === 0)
+            return;
+        Expect.expect("it opens where it was kept",
+            opensOn("s-third").some(one => one.reference.Id === 41 && one.column === 2),
+            JSON.stringify(Niri.acts));
+        Expect.expect("the one kept before this shell and the parked one still wait",
+            ["s-old", "s-parked"].every(id => viewerSpawns(id).length === 0
+                && Sessions.keptPlaces[id] !== undefined),
+            `${Niri.spawns.join("\n")} ${JSON.stringify(Sessions.keptPlaces)}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }

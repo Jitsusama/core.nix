@@ -13,6 +13,10 @@
   singleton,
   ...
 }:
+let
+  # Joel away, so what waits for him to go opens; a case sets it as it needs.
+  away = singleton "Away.qml" "property bool now: true";
+in
 {
   # A switch never restarts the kitty every session's window is in, so no
   # switch closes them.
@@ -126,6 +130,7 @@
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
+      cp ${away} Away.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons
@@ -198,6 +203,7 @@
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
+      cp ${away} Away.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
@@ -254,6 +260,7 @@
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
+      cp ${away} Away.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
