@@ -119,6 +119,27 @@ pub fn first(
     needs(areas, files, moved.as_deref().or(known))
 }
 
+/// What `changed-checks` is asked to say moved from `base`. Sent to a
+/// builder, as `nix-offload there --run` sets `elsewhere`, it compares
+/// there, since that machine's nix-offload sends nothing on: on 11 November
+/// `merge-net needs` run on a builder couldn't compare, and named all 31
+/// VM tests of a change that moved none.
+pub fn changed_checks_asks<'a>(base: &'a str, system: &'a str) -> Vec<&'a str> {
+    asked_of_changed_checks(
+        base,
+        system,
+        std::env::var_os("WORK_RUNS_ELSEWHERE").is_some(),
+    )
+}
+
+fn asked_of_changed_checks<'a>(base: &'a str, system: &'a str, elsewhere: bool) -> Vec<&'a str> {
+    let mut asked = vec!["--base", base, "--name-only", "--system", system];
+    if elsewhere {
+        asked.push("--here");
+    }
+    asked
+}
+
 /// The VM tests `said`, what `changed-checks --name-only` printed, names as
 /// moved from main or broken.
 pub fn moved(said: &str) -> Vec<String> {
@@ -226,6 +247,21 @@ mod tests {
         assert_eq!(
             needs.tests,
             words("vm-boot-asks-in-the-theme vm-reboot-cannot-hang")
+        );
+    }
+
+    #[test]
+    fn changed_checks_compares_where_needs_was_sent() {
+        let asked = asked_of_changed_checks("abc", "x86_64-linux", true);
+        assert!(
+            asked.contains(&"--here"),
+            "sent to a builder, changed-checks wasn't asked to compare there: {asked:?}"
+        );
+        let asked = asked_of_changed_checks("abc", "x86_64-linux", false);
+        assert_eq!(
+            asked,
+            words("--base abc --name-only --system x86_64-linux"),
+            "on the machine, changed-checks was asked to compare here rather than send it"
         );
     }
 

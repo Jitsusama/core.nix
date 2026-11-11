@@ -20,7 +20,9 @@ onLinux {
   # are each asked about once; an overdue card is asked for; a question
   # unanswered twenty minutes, or a watcher gone ten, goes to the steward
   # once; a question lands whole and wakes a parked session; the card says
-  # the hour's merges, switches and runs; and of the orchestrators and
+  # the hour's merges, switches and runs; a failed fetch of core is tried
+  # again, and a second failure leaves the tick to go on; and of the
+  # orchestrators and
   # their sessions, one that crashed is revived, one a live pi host holds
   # runs, and one ended or done is left, once per address, not twice in
   # ten minutes nor past three an hour.
