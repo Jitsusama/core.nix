@@ -1279,6 +1279,17 @@ fn follow_focus(niri: Option<&Path>, watch: Option<&mut low::Watch>) -> Option<f
     }
 }
 
+/// Weighs each quest's slice under each of the `bases` that isn't yet weighed as
+/// its quest's priority says.
+fn weigh_quests(weights: &mut quests::Weights, bases: &[String]) {
+    weights.refresh();
+    for base in bases {
+        for (slice, weight) in weights.unweighed(&weights.current(base)) {
+            weigh(weights, &slice, weight);
+        }
+    }
+}
+
 fn run() -> Result<(), String> {
     let settings = settings(std::env::args().skip(1))?;
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
@@ -1356,12 +1367,7 @@ fn run() -> Result<(), String> {
         }
         sorter.told.say(&under);
         // After the terminals' work is moved, so what moved is split too.
-        weights.refresh();
-        for base in &settings.by_quest {
-            for (slice, weight) in weights.unweighed(&weights.current(base)) {
-                weigh(&mut weights, &slice, weight);
-            }
-        }
+        weigh_quests(&mut weights, &settings.by_quest);
         for (cgroup, holder) in settings.split.iter().zip(holders.iter_mut()) {
             let quest_slices = slice_and_unit(cgroup)
                 .is_some_and(|(_, slice, _)| settings.by_quest.iter().any(|base| base == slice));
