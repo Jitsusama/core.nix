@@ -369,14 +369,17 @@ fn keep_head(url: &str, clone: &Path, head: &str) -> Result<bool, String> {
 
 /// The system whose checks are the most, `checks::busiest` says why. Only
 /// the names are counted, which took 1.1 s and 158 MB for core's 580 checks
-/// on 30 October, against 4.8 GB for evaluating them.
+/// on 30 October, against 4.8 GB for evaluating them. They're counted
+/// through the flake's own `checks`, as the rest is evaluated, since
+/// `builtins.getFlake` on a flake not yet locked needs `--impure`.
 fn busiest_system(flake: &str) -> Result<String, String> {
     let here = this_system();
-    let counting = format!(
-        "builtins.mapAttrs (_: checks: builtins.length (builtins.attrNames checks)) \
-         ((builtins.getFlake \"{flake}\").checks or {{ }})"
-    );
-    let counted = run("nix", &["eval", "--json", "--impure", "--expr", &counting])?;
+    let checks = format!("{flake}#checks");
+    let counting = "builtins.mapAttrs (_: checks: builtins.length (builtins.attrNames checks))";
+    let counted = run(
+        "nix",
+        &pure(&["eval", "--json", &checks, "--apply", counting]),
+    )?;
     let counts = serde_json::from_str(&counted)
         .map_err(|error| format!("reading how many checks each system has: {error}"))?;
     Ok(checks::busiest(&counts, &here))
@@ -619,6 +622,7 @@ fn build(flake: &str, system: &str, targets: &[&str], after: &Derivations) -> Re
     // store has collected since is built from the flake, as before.
     let built = Command::new("nix")
         .args(["build", "--no-link", "--keep-going", "-L"])
+        .args(PURE)
         .args(standing())
         .args(
             targets
@@ -713,6 +717,25 @@ fn clean_commit() -> Result<Option<String>, String> {
 /// at once, or two runs, found its database busy.
 const UNCACHED: &str = "--no-eval-cache";
 
+/// Every evaluation is pure, and no flake's own config is taken. A fenced
+/// session's run goes to a lent builder with a flake it chose, which may
+/// read only what the commit holds there (ISXEG8, 11 November): an impure
+/// evaluation reads the machine's files and environment, and a flake's
+/// `nixConfig`, once taken, could turn purity off again.
+const PURE: [&str; 6] = [
+    "--option",
+    "pure-eval",
+    "true",
+    "--option",
+    "accept-flake-config",
+    "false",
+];
+
+/// Nix's words `asked`, then those that keep its evaluation [`PURE`].
+fn pure<'a>(asked: &[&'a str]) -> Vec<&'a str> {
+    asked.iter().copied().chain(PURE).collect()
+}
+
 /// Evaluate each of a flake's checks for a system to its derivation's path,
 /// noting in the run what each chunk of them took, as the side named.
 fn derivations(
@@ -723,17 +746,15 @@ fn derivations(
 ) -> Result<Derivations, String> {
     let mut evaluation = Run::evaluating(side);
     let checks = format!("{flake}#checks.{system}");
-    let listed = run(
-        "nix",
-        &[
-            "eval",
-            "--json",
-            &checks,
-            "--apply",
-            "builtins.attrNames",
-            UNCACHED,
-        ],
-    )?;
+    let naming: [&str; 6] = [
+        "eval",
+        "--json",
+        &checks,
+        "--apply",
+        "builtins.attrNames",
+        UNCACHED,
+    ];
+    let listed = run("nix", &pure(&naming))?;
     let names: Vec<String> = serde_json::from_str(&listed)
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
     let chunks = checks::chunks(&names);
@@ -748,10 +769,8 @@ fn derivations(
         |chunk| {
             let selecting = checks::selecting(chunk)?;
             let began = Instant::now();
-            let evaluated = run(
-                "nix",
-                &["eval", "--json", &checks, "--apply", &selecting, UNCACHED],
-            )?;
+            let asked: [&str; 6] = ["eval", "--json", &checks, "--apply", &selecting, UNCACHED];
+            let evaluated = run("nix", &pure(&asked))?;
             let took = began.elapsed();
             let derivations: Derivations = serde_json::from_str(&evaluated)
                 .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;

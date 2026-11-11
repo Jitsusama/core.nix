@@ -57,11 +57,21 @@ esac
 /// derivations waits for another to be under way beside it before
 /// answering, and fails if none comes within ten seconds. Asked how many
 /// checks each system has, it answers `systems.json`, or x86_64-linux's
-/// alone.
+/// alone. Every evaluation and build must be pure and take no flake's
+/// config, since a fenced session's flake is evaluated on a lent builder.
 const NIX: &str = r#"#!/bin/sh
+case " $* " in
+  *" --impure "*) echo "evaluated impurely" >&2; exit 1 ;;
+esac
+case " $* " in
+  *" --option pure-eval true --option accept-flake-config false"*) ;;
+  *) echo "not kept pure, or a flake's config taken: $*" >&2; exit 1 ;;
+esac
 case "$1" in
   build)
-    shift; echo "$@" >> "$STAND_IN/built"
+    shift
+    echo "$@" | sed 's/ --option pure-eval true --option accept-flake-config false//' \
+      >> "$STAND_IN/built"
     for word in "$@"; do
       while read -r check; do
         case "$word" in *".$check") exit 1 ;; esac
