@@ -6,9 +6,8 @@
 .import "../Warmth.js" as Warmth
 .import "../Here.js" as Here
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
     const quoted = Common.quoted;
     const at = Common.at;
     // The clock's and the calendar's figures: the equinoxes, the
@@ -42,20 +41,20 @@ function run(failures, fromRoot) {
     // A night in Toronto's November as the daemon says it, the clock
     // given as hours and minutes in local time and a kelvin bare, so
     // the cases read the same wherever they run.
-    const local = (year, month, day, hour, minute) =>
-        new Date(year, month - 1, day, hour, minute).getTime();
+    const local = (date, time) =>
+        new Date(date[0], date[1] - 1, date[2], time[0], time[1]).getTime();
     const WarmthCases = {
         night: { kelvin: 4000, followsTheRoom: true, seesColour: true, roomWhite: 3200,
-            nightLight: true, nightWhite: 4000, sunset: local(2026, 11, 8, 16, 59),
-            sunrise: local(2026, 11, 9, 7, 4) },
-        evening: local(2026, 11, 8, 21, 0),
-        noon: local(2026, 11, 8, 12, 0),
+            nightLight: true, nightWhite: 4000, sunset: local([2026, 11, 8], [16, 59]),
+            sunrise: local([2026, 11, 9], [7, 4]) },
+        evening: local([2026, 11, 8], [21, 0]),
+        noon: local([2026, 11, 8], [12, 0]),
         said: { until: "night light until {time}", from: "night light from {time}",
             waits: "night light waits for where you are", following: "following the room",
             own: "the screen's own white", tomorrow: "tomorrow", yesterday: "yesterday" },
         told: {
-            clock: at => {
-                const moment = new Date(at);
+            clock: instant => {
+                const moment = new Date(instant);
                 const two = value => String(value).padStart(2, "0");
                 return `${two(moment.getHours())}:${two(moment.getMinutes())}`;
             },
@@ -313,7 +312,7 @@ function run(failures, fromRoot) {
         ["near, a thousand kilometres on, to three figures",
             Here.within(1_234_000, hereSaid, hereTold), "within 1,240 km"],
         ["located within the day", Here.located(1000, 1000 * 1000 + 720_000,
-            { ago: (at, now) => `${(now - at) / 60_000} min ago` }), "12 min ago"],
+            { ago: (since, now) => `${(now - since) / 60_000} min ago` }), "12 min ago"],
         ["located days ago", Here.located(1000, 1000 * 1000 + 3 * 86_400_000,
             { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"],
         ["how near goes from the plate while the note says it",
@@ -373,8 +372,9 @@ function run(failures, fromRoot) {
     ];
     for (const [what, got, expected] of figures) {
         asked++;
-        if (got !== expected)
+        if (got !== expected) {
             failures.push(`${what} was ${quoted(got)}, not ${quoted(expected)}`);
+        }
     }
     return asked;
 }

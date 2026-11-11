@@ -5,7 +5,7 @@
 
 // What's typed, the answer's headline, what Return copies, and its
 // parts, each its id (or a split's subnet) and what it says.
-var subnets = [
+const subnets = [
     ["10.0.0.0/22", "1,022 hosts", "10.0.0.0/22", ["range 10.0.0.0 \u2013 10.0.3.255",
         "mask 255.255.252.0", "wildcard 0.0.3.255", "network 10.0.0.0/22",
         "broadcast 10.0.3.255", "first 10.0.0.1", "last 10.0.3.254",
@@ -47,34 +47,36 @@ var subnets = [
         "full 2001:0db8:0000:0000:0000:0000:0000:0001"]]
 ];
 
-var notSubnets = ["10.0.0.0 255.255.253.0", "/129", "is 10.0.0.1 in",
+const notSubnets = ["10.0.0.0 255.255.253.0", "/129", "is 10.0.0.1 in",
     "10.0.0.0/24 in /22s", "10.0.0.0/22 in /33s", "is kitty in 10.0.0.0/8", "/", "22"];
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
     const quoted = Common.quoted;
     const parted = Common.parted;
     for (const [typed, headline, copy, rows] of subnets) {
         asked++;
         const got = Subnets.answer(typed);
         if (!got || got.headline !== headline || got.copy !== copy
-                || quoted(parted(got.rows)) !== quoted(rows))
+                || quoted(parted(got.rows)) !== quoted(rows)) {
             failures.push(`"${typed}" told ${quoted(got && [got.headline, got.copy,
                 parted(got.rows)])}, not ${quoted([headline, copy, rows])}`);
+        }
     }
     for (const typed of notSubnets) {
         asked++;
         const got = Subnets.answer(typed);
-        if (got)
+        if (got) {
             failures.push(`"${typed}" told ${quoted(got.headline)}, but nothing should`);
+        }
     }
     // A split into more than it lists says how many it lists.
     const split = Subnets.answer("10.0.0.0/8 in /24s");
     asked++;
-    if (!split || split.headline !== "65,536 /24s" || split.rows.length !== 256
-            || split.note !== "the first 256")
+    if (split?.headline !== "65,536 /24s" || split.rows.length !== 256
+            || split.note !== "the first 256") {
         failures.push(`"10.0.0.0/8 in /24s" told ${quoted(split && [split.headline,
             split.rows.length, split.note])}`);
+    }
     return asked;
 }

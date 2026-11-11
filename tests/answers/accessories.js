@@ -3,10 +3,8 @@
 .import "common.js" as Common
 .import "../Links.js" as Links
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // How each Bluetooth link is doing, from what bluetooth-links writes.
     const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;

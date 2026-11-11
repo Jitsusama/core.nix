@@ -7,8 +7,6 @@
 
 function run(failures, fromRoot) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // WARP, from the record warp prints (modules/warp/warp.json), the
     // same one its own tests read warp-cli's answers into, in the
@@ -29,7 +27,7 @@ function run(failures, fromRoot) {
     const linked = warpTold(warp);
     machine("WARP connected, as its row says it", linked && [linked.headline, linked.warns],
         ["connected \u00b7 127 ms", false]);
-    machine("WARP's parts", linked && linked.parts, [
+    machine("WARP's parts", linked?.parts, [
         figure("state", "connected", "", "connected"),
         figure("health", "healthy", "", "healthy"),
         Object.assign(figure("settings", "warp+doh", "always on \u00b7 split tunnel",
@@ -102,35 +100,37 @@ function run(failures, fromRoot) {
         for (const part of parts ?? []) {
             // An entry of a list is named by itself, as a host is.
             const word = vocabulary.find(thing => thing.id === `warp:${part.id}`);
-            if (part.name === undefined && (!word || !word.name || word.in !== within))
+            if (part.name === undefined && (!word?.name || word.in !== within)) {
                 nameless.push(part.id);
+            }
             partsNamed(part.parts, `warp:${part.id}`);
         }
     };
-    partsNamed(linked && linked.parts, "warp");
+    partsNamed(linked?.parts, "warp");
     machine("every part of WARP named where it is", nameless, []);
     // Named as Network names the same figures elsewhere, Traffic's
     // Round Trip among them (VKCF3Z and YI77D3, 2026-11-08).
     machine("WARP's figures named as Network names them",
         ["latency", "colo", "traffic"].map(id =>
-            (vocabulary.find(thing => thing.id === `warp:${id}`) ?? {}).name),
+            vocabulary.find(thing => thing.id === `warp:${id}`)?.name),
         ["Round Trip", "Data Centre", "Traffic"]);
     // A run of items joins with dots, never commas (docs/design.md,
     // Typesetting).
     const commas = [];
     const noCommas = parts => {
         for (const part of parts ?? []) {
-            if (`${part.side}${part.note}`.includes(","))
+            if (`${part.side}${part.note}`.includes(",")) {
                 commas.push(part.id);
+            }
             noCommas(part.parts);
         }
     };
-    noCommas(linked && linked.parts);
+    noCommas(linked?.parts);
     machine("no part of WARP joins its words with a comma", commas, []);
     const slight = warpTold(Object.assign({}, warp, { tunnel: Object.assign({}, warp.tunnel,
         { loss_fraction: 0.0053708, received_bytes: null }) }));
     machine("a slight loss keeps three digits, and one way's traffic says only it",
-        slight && slight.parts.filter(part => ["loss", "traffic"].includes(part.id))
+        slight?.parts.filter(part => ["loss", "traffic"].includes(part.id))
             .map(part => part.side),
         ["0.537%", "9.26 GB out"]);
     const degraded = warpTold(Object.assign({}, warp, { status: { state: "Connected",
@@ -141,7 +141,7 @@ function run(failures, fromRoot) {
     // its note, whose they are first, since the note gives way from its
     // end and Round Trip and Loss below are the tunnel's own (VKCF3Z).
     machine("WARP's health degraded, saying whose measure first",
-        degraded && degraded.parts.find(part => part.id === "health"),
+        degraded?.parts.find(part => part.id === "health"),
         { id: "health", side: "degraded",
             note: "WARP's measure \u00b7 5.37% loss \u00b7 170 ms round trip",
             copy: "degraded", warns: true });
@@ -153,17 +153,17 @@ function run(failures, fromRoot) {
     ]);
     const connecting = warpTold({ status: { state: "Connecting",
         reason: "PerformingHappyEyeballs", reason_figures: null }, tunnel: null });
-    machine("WARP connecting, saying why", connecting && connecting.parts[0].note,
+    machine("WARP connecting, saying why", connecting?.parts[0].note,
         "performing happy eyeballs");
     const thin = warpTold(Object.assign({}, warp, { tunnel: { on: true, latency_ms: null,
         loss_fraction: null, protocol: "WireGuard", edge: null, sent_bytes: null,
         received_bytes: null }, settings: null, dns: null }));
     machine("a figure warp didn't give is left out",
-        thin && thin.parts.map(part => part.id), ["state", "health", "protocol"]);
+        thin?.parts.map(part => part.id), ["state", "health", "protocol"]);
     const off = warpTold(Object.assign({}, warp, { tunnel: { on: false, v4_endpoint: null,
         v6_endpoint: "2001:db8::2" } }));
     machine("a tunnel that's off, its one endpoint IPv6",
-        off && off.parts.filter(part => ["tunnel", "endpoint"].includes(part.id)), [
+        off?.parts.filter(part => ["tunnel", "endpoint"].includes(part.id)), [
         figure("tunnel", "off", "", "off"),
         figure("endpoint", "2001:db8::2", "no IPv4", "2001:db8::2")
     ]);
@@ -173,7 +173,7 @@ function run(failures, fromRoot) {
         dns: { proxy_enabled: false, average_ms: null,
         total: 0, success: 0, no_records_found: 0, timed_out: 0, other_error: 0 } }));
     machine("settings warp gave some of, each said as it's set",
-        policed && policed.parts.find(part => part.id === "settings"),
+        policed?.parts.find(part => part.id === "settings"),
         Object.assign(figure("settings", "tunnel only", "split tunnel", "tunnel_only"),
             { parts: [
                 figure("settings:mode", "tunnel only",
@@ -187,17 +187,17 @@ function run(failures, fromRoot) {
         settings: Object.assign({}, warp.settings, { emergency_disconnect: true }),
         override: { set: true, ends_in_secs: 700 } }));
     machine("an emergency disconnect said after the state, warning",
-        emergency && emergency.parts[1], Object.assign(figure("emergency", "on",
+        emergency?.parts[1], Object.assign(figure("emergency", "on",
             "every device disconnected", "on"), { warns: true }));
     machine("an override in force, with the minutes it has left",
-        emergency && emergency.parts.find(part => part.id === "settings").parts
+        emergency?.parts.find(part => part.id === "settings").parts
             .find(part => part.id === "settings:override"),
         figure("settings:override", "on", "12 min left", "on"));
     machine("a DNS proxy that's off says so in its place",
-        policed && (policed.parts.find(part => part.id === "dns") ?? {}).side, "proxy off");
+        policed?.parts.find(part => part.id === "dns")?.side, "proxy off");
     // Not answering, its note says what warp-cli's error means, and the
     // error as written is kept for the drawer (VKCF3Z, 2026-11-09).
-    const notAnswering = said => Warp.failed({ error: "not-answering", said: said }, warpSaid);
+    const notAnswering = said => Warp.failed({ error: "not-answering", said }, warpSaid);
     machine("WARP's service not answering, with no socket to reach",
         notAnswering("No such file or directory (os error 2)"), { headline: "not answering",
             warns: true, note: "its service isn't running",

@@ -10,7 +10,7 @@
 // What's typed, the answer's headline, what Return copies, and its
 // rows: a part's id and what it says, or a character of several, what
 // it says and its name.
-var characters = [
+const characters = [
     ["ascii 65", "A", "A", ["decimal 65", "hex 0x41", "binary 0b1000001", "point U+0041",
         "name latin capital letter a", "utf8 41"]],
     ["char A", "65", "65", ["hex 0x41", "binary 0b1000001", "point U+0041",
@@ -46,7 +46,7 @@ var characters = [
         "length 3 bytes"]]
 ];
 
-var notCharacters = ["char", "char ", "char 0xd800", "char 1114112",
+const notCharacters = ["char", "char ", "char 0xd800", "char 1114112",
     "U+41", "u+12345678", "0xzz as text", "kitty", "charm 65", "ord", "12*7"];
 
 function run(failures, fromRoot) {
@@ -65,46 +65,53 @@ function run(failures, fromRoot) {
         // Bytes name no character, so they say nothing of the names.
         const note = typed.startsWith("utf") ? "" : `names from Unicode ${names.version}`;
         if (!got || got.headline !== headline || got.copy !== copy
-                || quoted(parted(got.rows)) !== quoted(rows) || got.note !== note)
+                || quoted(parted(got.rows)) !== quoted(rows) || got.note !== note) {
             failures.push(`"${typed}" told ${quoted(got && [got.headline, got.copy,
                 parted(got.rows), got.note])}, not ${quoted([headline, copy, rows])}`);
+        }
     }
     for (const typed of notCharacters) {
         asked++;
         const got = Characters.answer(typed, names);
-        if (got)
+        if (got) {
             failures.push(`"${typed}" told ${quoted(got.headline)}, but nothing should`);
+        }
     }
     // Without the names, a character is told by its numbers alone.
     const unnamed = Characters.answer("ascii 65");
     asked++;
-    if (!unnamed || unnamed.rows.some(r => r.id === "name") || unnamed.note !== "")
+    if (!unnamed || unnamed.rows.some(r => r.id === "name") || unnamed.note !== "") {
         failures.push(`"ascii 65" without names told ${quoted(unnamed)}`);
+    }
     // A character of several holds its own parts.
     const held = Characters.answer("72 105 as text", names);
     asked++;
     if (!held || quoted(parted(held.rows[0].parts)) !== quoted(["decimal 72", "hex 0x48",
-            "binary 0b1001000", "point U+0048", "name latin capital letter h", "utf8 48"]))
+            "binary 0b1001000", "point U+0048", "name latin capital letter h", "utf8 48"])) {
         failures.push(`"72 105 as text" held ${quoted(held && parted(held.rows[0].parts))}`);
+    }
     // The answers asked before these leave what they ask alone, and
     // each of these leaves the other's.
     for (const [typed] of subnets.concat(characters)) {
         asked++;
         const sum = Numbers.answer(typed, undefined, Maths);
         const measure = Units.answer(typed, undefined, Maths);
-        if (sum || measure)
+        if (sum || measure) {
             failures.push(`"${typed}" was answered ${quoted((sum || measure).headline)} `
                 + "by the sums or the units first");
+        }
     }
     for (const [typed] of characters) {
         asked++;
-        if (Subnets.answer(typed))
+        if (Subnets.answer(typed)) {
             failures.push(`"${typed}" was told as a network first`);
+        }
     }
     for (const [typed] of subnets) {
         asked++;
-        if (Characters.answer(typed, names))
+        if (Characters.answer(typed, names)) {
             failures.push(`"${typed}" was told as characters`);
+        }
     }
     return asked;
 }

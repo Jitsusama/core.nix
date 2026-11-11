@@ -3,10 +3,8 @@
 .import "common.js" as Common
 .import "../Heat.js" as Heat
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // A temperature drawn against its most, as Machine draws the
     // processor's and the disk's (Heat.js's level); Heat's own rows are

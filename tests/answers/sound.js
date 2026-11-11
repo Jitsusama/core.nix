@@ -4,10 +4,8 @@
 .import "../Numbers.js" as Numbers
 .import "../Sounds.js" as Sounds
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // What Sound makes of what a device and a stream say of themselves.
     const soundTuning = Sounds.target("{\n  node.name = \"alsa_output.speaker\"\n}");

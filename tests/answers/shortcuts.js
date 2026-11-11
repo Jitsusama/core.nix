@@ -4,10 +4,8 @@
 .import "../Keyboards.js" as Keyboards
 .import "../KeyCounts.js" as KeyCounts
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // The keyboards connected, the laptop's and an ErgoDox's, as the
     // machine daemon lists them from the kernel's list of input devices

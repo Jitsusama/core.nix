@@ -3,10 +3,8 @@
 .import "common.js" as Common
 .import "../Cameras.js" as Cameras
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // A camera's drawer says its parts, what moves first and what
     // identifies it last, its holders left to its row's side, how long

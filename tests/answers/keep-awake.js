@@ -7,8 +7,6 @@
 
 function run(failures, fromRoot) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     const vocabulary = JSON.parse(Common.read(fromRoot, "words.json")).things;
     // How sleep stands, from the daemon's sleep:main record, in Sleep's

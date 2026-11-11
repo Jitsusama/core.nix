@@ -5,7 +5,7 @@
 
 // What's typed, when (in UTC), and the time there, from the zones
 // zones.py built, told against Toronto.
-var times = [
+const times = [
     ["time in tokyo", "2026-01-15T12:00", "21:00"],
     ["london time", "2026-01-15T12:00", "12:00"],
     ["london time", "2026-07-15T12:00", "13:00"],
@@ -24,12 +24,11 @@ var times = [
     ["time", "2026-03-08T07:00", "03:00"]
 ];
 
-var notTimes = ["bedtime", "uptime", "timer", "bed time", "kitty",
+const notTimes = ["bedtime", "uptime", "timer", "bed time", "kitty",
     "time out"];
 
 function run(failures, fromRoot) {
     let asked = 0;
-    const Maths = fromRoot.maths;
     const quoted = Common.quoted;
     const at = Common.at;
     const read = new XMLHttpRequest();
@@ -39,15 +38,17 @@ function run(failures, fromRoot) {
     for (const [typed, when, time] of times) {
         asked++;
         const got = Zones.answer(typed, zones, at(when), "America/Toronto", 0);
-        if (!got || got.headline !== time)
-            failures.push(`"${typed}" at ${when} said ${quoted(got && got.headline)}, `
+        if (!got || got.headline !== time) {
+            failures.push(`"${typed}" at ${when} said ${quoted(got?.headline)}, `
                 + `not "${time}"`);
+        }
     }
     for (const typed of notTimes) {
         asked++;
         const got = Zones.answer(typed, zones, at("2026-01-15T12:00"), "America/Toronto", 0);
-        if (got)
+        if (got) {
             failures.push(`"${typed}" told ${quoted(got)}, but nothing should`);
+        }
     }
     // The day of the year, in a zone with summer time (the check runs
     // in Toronto's): either side of the spring change, and the last.
@@ -55,8 +56,9 @@ function run(failures, fromRoot) {
             [2026, 2, 9, 68], [2026, 9, 22, 295], [2024, 11, 31, 366]]) {
         asked++;
         const got = Zones.dayOfYear(new Date(year, month, date));
-        if (got !== day)
+        if (got !== day) {
             failures.push(`${year}-${month + 1}-${date} was day ${got}, not ${day}`);
+        }
     }
     const told = Zones.answer("time in auckland", zones, at("2026-01-15T12:00"),
         "America/Toronto", 0);
@@ -65,8 +67,9 @@ function run(failures, fromRoot) {
     const lines = answer => answer.rows.map(r => [r.part, r.text, r.note].filter(s => s)
         .join(" "));
     if (!told || quoted(lines(told)) !== quoted(["day Friday 16 January tomorrow",
-            "apart 18 h ahead", "zone Pacific/Auckland NZDT, UTC+13"]))
-        failures.push(`"time in auckland" gave the rows ${quoted(told && told.rows)}`);
+            "apart 18 h ahead", "zone Pacific/Auckland NZDT, UTC+13"])) {
+        failures.push(`"time in auckland" gave the rows ${quoted(told?.rows)}`);
+    }
     // Here, the day needs no "today", and UTC is said once.
     const cases = [
         ["time", ["day Thursday 15 January", "zone America/Toronto EST, UTC\u22125"]],
@@ -77,19 +80,22 @@ function run(failures, fromRoot) {
     for (const [typed, expected] of cases) {
         asked++;
         const got = Zones.answer(typed, zones, at("2026-01-15T12:00"), "America/Toronto", 0);
-        if (!got || quoted(lines(got)) !== quoted(expected))
+        if (!got || quoted(lines(got)) !== quoted(expected)) {
             failures.push(`"${typed}" gave the rows ${quoted(got && lines(got))}`);
+        }
     }
     asked++;
     const away = Zones.answer("time in narnia", zones, at("2026-01-15T12:00"),
         "America/Toronto", 0);
-    if (!away || away.unknown !== "narnia")
+    if (away?.unknown !== "narnia") {
         failures.push(`"time in narnia" gave ${quoted(away)}, not a place to look up`);
+    }
     asked++;
     const change = Zones.nextChange(zones.zones["America/Toronto"],
         at("2026-11-04T22:00") / 1000);
     if (!change || new Date(change.when).toISOString() !== "2027-03-14T07:00:00.000Z"
-        || change.abbreviation !== "EDT" || change.minutes !== -240)
+        || change.abbreviation !== "EDT" || change.minutes !== -240) {
         failures.push(`Toronto next changed at ${quoted(change)}`);
+    }
     return asked;
 }

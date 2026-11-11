@@ -6,10 +6,8 @@
 .import "../Interfaces.js" as Interfaces
 .import "../Networkd.js" as Networkd
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // The network's figures, from /proc/net/dev and the shaper's file.
     const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"
@@ -26,8 +24,9 @@ function run(failures, fromRoot) {
     const cardKinds = { lo: "", wlp0s20f3: "wifi", tailscale0: "tunnel", shaper2: "" };
     const named = all => {
         const out = {};
-        for (const name of Object.keys(all))
+        for (const name of Object.keys(all)) {
             out[name] = { kind: cardKinds[name], counters: all[name] };
+        }
         return out;
     };
     const recounted = Traffic.counters(netdev([3000, 600], [1400, 300]));
@@ -100,8 +99,9 @@ function run(failures, fromRoot) {
     }];
     const networkLinks = Interfaces.interfaces(networkListed, ["wlp0s20f3"]);
     const networkKinds = {};
-    for (const each of networkLinks)
+    for (const each of networkLinks) {
         networkKinds[each.name] = each.kind;
+    }
     machine("each connection by what it is", networkKinds, {
         wlp0s20f3: "wifi", enp1s0: "wired", virbr0: "bridge", tailscale0: "tunnel",
         veth0: "virtual"
@@ -127,18 +127,19 @@ function run(failures, fromRoot) {
         { ifname: "vxlan0", link_type: "ether", linkinfo: { info_kind: "vxlan" } },
         { ifname: "gre1", link_type: "gre", linkinfo: { info_kind: "gre" } }
     ]);
-    const sturdyKinds = (named) => {
+    const sturdyKinds = kindOf => {
         const out = {};
-        for (const link of sturdyIp)
-            out[link.ifname] = named(link);
+        for (const iface of sturdyIp) {
+            out[iface.ifname] = kindOf(iface);
+        }
         return out;
     };
-    const sturdyAddresses = sturdyKinds(link => Interfaces.kind(link,
-        link.ifname === "wlp0s20f3"));
+    const sturdyAddresses = sturdyKinds(iface => Interfaces.kind(iface,
+        iface.ifname === "wlp0s20f3"));
     machine("the tunnels by what they are", [sturdyAddresses.wg0, sturdyAddresses.vxlan0,
         sturdyAddresses.gre1], ["tunnel", "tunnel", "tunnel"]);
     machine("each connection named alike from sysfs",
-        sturdyKinds(link => Interfaces.sysKind(link.ifname, sturdySys[link.ifname])),
+        sturdyKinds(iface => Interfaces.sysKind(iface.ifname, sturdySys[iface.ifname])),
         sturdyAddresses);
     const networkLink = name => networkLinks.find(each => each.name === name);
     machine("a card's address, past its own link only", networkLink("wlp0s20f3").four,

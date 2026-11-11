@@ -6,10 +6,8 @@
 .import "../Cameras.js" as Cameras
 .import "../Seen.js" as Seen
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // What a URL said stands while it's asked, then for its fresh
     // time after an answer, or the failure's time after a failure, and
@@ -24,8 +22,9 @@ function run(failures, fromRoot) {
     ];
     for (const [what, entry, now, stands] of standing) {
         asked++;
-        if (Asking.stands(entry, now, 60000, 10000) !== stands)
+        if (Asking.stands(entry, now, 60000, 10000) !== stands) {
             failures.push(`${what} ${stands ? "was asked again" : "wasn't asked again"}`);
+        }
     }
 
     // One still being asked is given up on once its patience has
@@ -42,8 +41,9 @@ function run(failures, fromRoot) {
     for (const [what, entry, now, left] of overdue) {
         asked++;
         const got = Asking.overdueIn(entry, now, 5000);
-        if (got !== left)
+        if (got !== left) {
             failures.push(`${what} was given up on in ${got}, not ${left}`);
+        }
     }
 
     // How things stand in the foot, as room runs short: the least of
@@ -67,8 +67,9 @@ function run(failures, fromRoot) {
         // Every glyph stays, however short the room, as the time does.
         [12, "17:30  B  N  V  R"],
         [3, "17:30  B  N  V  R"]
-    ])
+    ]) {
         machine(`how things stand in ${room}`, footFor(room), said);
+    }
     // Once the foot has had to read shorter, it reads no longer until
     // the launcher closes, though there's room again.
     const roomy = told => told.reduce((sum, one) => sum + one.said.length, 0)
@@ -97,9 +98,10 @@ function run(failures, fromRoot) {
         [33, "\u21b5 y Space ?"],
         [26, "\u21b5 Space ?"],
         [5, "\u21b5 Space ?"]
-    ])
+    ]) {
         machine(`the foot's keys in ${room}`, Standing.keysFitted(visualKeys, keysWide, room)
             .map(key => key[0]).join(" "), kept);
+    }
     machine("Return alone stays", Standing.keysFitted([["\u21b5", "open"]], keysWide, 0)
         .length, 1);
     // On the find they give way by need instead, the words named first
@@ -114,9 +116,10 @@ function run(failures, fromRoot) {
         [40, "\u21b5 Ctrl+] Super+\u21b5"],
         [30, "\u21b5 Ctrl+]"],
         [5, "\u21b5 Ctrl+]"]
-    ])
+    ]) {
         machine(`the find's keys in ${room}`, Standing.keysFitted(findKeys, keysWide, room,
             ["complete", "next time"]).map(key => key[0]).join(" "), kept);
+    }
     // The foot is told the selected row's d and y again only where
     // they'd say something new.
     const notes = { name: "Notes" };
@@ -132,8 +135,9 @@ function run(failures, fromRoot) {
         ["and none where keys were", { row: notes, keys: closes }, screens, [], true],
         ["and a key's other word", { row: notes, keys: closes }, notes,
             [["d", "quit"]], true]
-    ])
+    ]) {
         machine(what, Standing.toldAnew(last, row, keys), anew);
+    }
 
     // Whether a provider's rows can be seen, so it watches its daemon
     // only then: never once only asked, and never with the launcher
@@ -226,9 +230,9 @@ function run(failures, fromRoot) {
         { name: "field of view", value: "90\u00b0" }, { name: "USB", value: "5 Gbit/s" },
         { name: "firmware", value: "release 3.17" }];
     const cameraSplit = Cameras.formats(cameraFacts);
-    machine("a camera's formats", cameraSplit.modes.map(fact => fact.name),
+    machine("a camera's formats", cameraSplit.modes.map(shown => shown.name),
         ["MJPEG", "YUYV", "H.264"]);
-    machine("a camera's other facts", cameraSplit.rest.map(fact => fact.name),
+    machine("a camera's other facts", cameraSplit.rest.map(shown => shown.name),
         ["streaming", "field of view", "USB", "firmware"]);
     machine("a camera with no facts", Cameras.formats(undefined), { modes: [], rest: [] });
     return asked;

@@ -4,7 +4,7 @@
 .import "../Numbers.js" as Numbers
 
 // What's typed, and the answer's headline.
-var sums = ({
+const sums = ({
     "12*7": "84",
     "2^10": "1,024",
     "2**10": "1,024",
@@ -47,7 +47,7 @@ var sums = ({
 // said infinity, which it isn't from both sides. What other answers
 // own stays theirs: addresses, a hardware address, a time, money,
 // measures, a colour and words.
-var notSums = ["2", "-5", "pi", "kitty", "ws 3", "1password", "12*",
+const notSums = ["2", "-5", "pi", "kitty", "ws 3", "1password", "12*",
     "(3", "sqrt", "3.5 in hex", "2fa", "e", "1/0", "8.8.8.8", "10.0.0.0/22",
     "3c:22:fb:12:34:56", "12:30", "100 USD in CAD", "5 km * 2", "350 f in c",
     "brightness 40", "volume 40", "time in utc", "#f53", "now", "command(\"true\")",
@@ -57,27 +57,30 @@ function run(failures, fromRoot) {
     let asked = 0;
     const Maths = fromRoot.maths;
     const quoted = Common.quoted;
-    for (const typed in sums) {
+    for (const typed of Object.keys(sums)) {
         asked++;
         const got = Numbers.answer(typed, undefined, Maths);
-        if (!got || got.headline !== sums[typed])
-            failures.push(`"${typed}" answered ${quoted(got && got.headline)}, `
+        if (!got || got.headline !== sums[typed]) {
+            failures.push(`"${typed}" answered ${quoted(got?.headline)}, `
                 + `not "${sums[typed]}"`);
+        }
     }
     for (const typed of notSums) {
         asked++;
         const got = Numbers.answer(typed, undefined, Maths);
-        if (got)
+        if (got) {
             failures.push(`"${typed}" answered ${quoted(got.headline)}, but nothing should`);
+        }
     }
     // Whole numbers keep their zeros, with or without decimals asked for.
     for (const [value, places, written] of [[10, 0, "10"], [1200, 0, "1,200"],
             [2.50, 2, "2.5"], [100, 2, "100"], [0, 0, "0"]]) {
         asked++;
         const got = Numbers.format(value, places);
-        if (got !== written)
+        if (got !== written) {
             failures.push(`${value} to ${places} places was written "${got}", `
                 + `not "${written}"`);
+        }
     }
     // A collection's count: its own one and many, grouped in threes, the
     // bare figure where it has none, and none held said as empty.
@@ -86,16 +89,18 @@ function run(failures, fromRoot) {
             [1204, keys, "1,204 keys"], [3, {}, "3"], [1, undefined, "1"]]) {
         asked++;
         const got = Numbers.counted(count, said);
-        if (got !== written)
+        if (got !== written) {
             failures.push(`${count} was counted "${got}", not "${written}"`);
+        }
     }
     // Places in a line, the teens apart.
     for (const [place, said] of [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"], [11, "11th"],
             [12, "12th"], [13, "13th"], [21, "21st"], [22, "22nd"], [111, "111th"]]) {
         asked++;
         const got = Numbers.ordinal(place);
-        if (got !== said)
+        if (got !== said) {
             failures.push(`place ${place} was said "${got}", not "${said}"`);
+        }
     }
     // A base's answer, or a sum on bits, shows each other base as a row,
     // a negative number signed rather than in two's complement.
@@ -105,14 +110,16 @@ function run(failures, fromRoot) {
             ["255 in hex", ["255", "0o377", "0b11111111"]]]) {
         asked++;
         const got = Numbers.answer(typed, undefined, Maths);
-        if (!got || quoted(got.rows.map(r => r.text)) !== quoted(rows))
-            failures.push(`"${typed}" gave the rows ${quoted(got && got.rows)}`);
+        if (!got || quoted(got.rows.map(r => r.text)) !== quoted(rows)) {
+            failures.push(`"${typed}" gave the rows ${quoted(got?.rows)}`);
+        }
     }
     // A plain sum has none, and what's copied is never grouped.
     const plain = Numbers.answer("1000 * 1000", undefined, Maths);
     asked++;
-    if (!plain || plain.rows.length !== 0 || plain.copy !== "1000000")
+    if (plain?.rows.length !== 0 || plain.copy !== "1000000") {
         failures.push(`"1000 * 1000" gave ${quoted(plain)}`);
+    }
     // A sum past its patience is late, not refused, and isn't kept: asked
     // again with time enough it's worked out, rather than late for good.
     // This one takes tens of milliseconds, so a millisecond is too few.
@@ -120,7 +127,8 @@ function run(failures, fromRoot) {
     const hurried = Maths.calculate(slow, 1);
     const given = Maths.calculate(slow, 0);
     asked++;
-    if (!hurried.late || given.late)
+    if (!hurried.late || given.late) {
         failures.push(`"${slow}" was late ${hurried.late} hurried, then ${given.late}`);
+    }
     return asked;
 }

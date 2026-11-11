@@ -3,10 +3,8 @@
 .import "common.js" as Common
 .import "../Power.js" as Power
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // The power profile's drawer: its holds one fact parted by dots,
     // why it's slowed in words, the firmware's and the processor's

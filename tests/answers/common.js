@@ -24,8 +24,9 @@ function parted(rows) {
 function checker(failures, ask) {
     return (what, got, expected) => {
         ask();
-        if (quoted(got) !== quoted(expected))
+        if (quoted(got) !== quoted(expected)) {
             failures.push(`${what} gave ${quoted(got)}, not ${quoted(expected)}`);
+        }
     };
 }
 

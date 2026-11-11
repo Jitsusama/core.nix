@@ -4,29 +4,31 @@
 .import "../Colours.js" as Colours
 .import "../colour-cases.js" as ColourCases
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
     const quoted = Common.quoted;
     for (const [typed, headline, rows] of ColourCases.answers) {
         asked++;
         const got = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
-        const said = got && got.rows.map(r => [r.text, r.side, r.note].filter(s => s)
+        const said = got?.rows.map(r => [r.text, r.side, r.note].filter(s => s)
             .join(" "));
-        if (!got || got.headline !== headline || quoted(said) !== quoted(rows))
-            failures.push(`"${typed}" gave ${quoted(got && got.headline)} and `
+        if (!got || got.headline !== headline || quoted(said) !== quoted(rows)) {
+            failures.push(`"${typed}" gave ${quoted(got?.headline)} and `
                 + `${quoted(said)}, not "${headline}" and ${quoted(rows)}`);
+        }
     }
     asked++;
-    const [typed, worn] = ColourCases.swatch;
-    const swatched = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
-    if (!swatched || swatched.rows[0].swatch !== worn)
-        failures.push(`"${typed}" wore ${quoted(swatched && swatched.rows[0].swatch)}`);
+    const [swatchTyped, worn] = ColourCases.swatch;
+    const swatched = Colours.answer(swatchTyped, ColourCases.palette, ColourCases.roles);
+    if (!swatched || swatched.rows[0].swatch !== worn) {
+        failures.push(`"${swatchTyped}" wore ${quoted(swatched?.rows[0].swatch)}`);
+    }
     for (const typed of ColourCases.not) {
         asked++;
         const got = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
-        if (got)
+        if (got) {
             failures.push(`"${typed}" gave ${quoted(got.headline)}, but nothing should`);
+        }
     }
     return asked;
 }

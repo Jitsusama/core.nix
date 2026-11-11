@@ -4,10 +4,8 @@
 .import "../Numbers.js" as Numbers
 .import "../Machine.js" as Machine
 
-function run(failures, fromRoot) {
+function run(failures) {
     let asked = 0;
-    const Maths = fromRoot.maths;
-    const quoted = Common.quoted;
     const machine = Common.checker(failures, () => asked++);
     // The machine's figures, from its files as the kernel writes them.
     // A served row's times are worded here, by their form, into the

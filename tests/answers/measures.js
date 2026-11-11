@@ -4,7 +4,7 @@
 .import "../Units.js" as Units
 
 // What's typed, and the conversion's headline.
-var conversions = ({
+const conversions = ({
     "5 km in mi": "3.10686 mi",
     "1 mi to km": "1.60934 km",
     "6 ft in cm": "182.88 cm",
@@ -46,7 +46,7 @@ var conversions = ({
 
 // A letter after a number is a word's end as often as a unit ("4k",
 // "3d", "1st"), so a measure alone needs a longer name.
-var notConversions = ["5 km in kg", "5 km in km", "100 usd in cad",
+const notConversions = ["5 km in kg", "5 km in km", "100 usd in cad",
     "100 USD in CAD", "255 in hex", "km in mi", "kitty", "4k", "3d", "1st", "100 c",
     "ws 3", "2fa", "5 km + 3 kg", "1 m / 1 cm", "12*7", "5 m"];
 
@@ -54,30 +54,34 @@ function run(failures, fromRoot) {
     let asked = 0;
     const Maths = fromRoot.maths;
     const quoted = Common.quoted;
-    for (const typed in conversions) {
+    for (const typed of Object.keys(conversions)) {
         asked++;
         const got = Units.answer(typed, undefined, Maths);
-        if (!got || got.headline !== conversions[typed])
-            failures.push(`"${typed}" converted to ${quoted(got && got.headline)}, `
+        if (!got || got.headline !== conversions[typed]) {
+            failures.push(`"${typed}" converted to ${quoted(got?.headline)}, `
                 + `not "${conversions[typed]}"`);
+        }
     }
     for (const typed of notConversions) {
         asked++;
         const got = Units.answer(typed, undefined, Maths);
-        if (got)
+        if (got) {
             failures.push(`"${typed}" converted to ${quoted(got.headline)}, `
                 + "but nothing should");
+        }
     }
     const rated = Units.answer("5 km in mi", undefined, Maths);
     asked++;
     if (!rated || quoted(rated.rows.map(r => `${r.text} ${r.side}`))
-            !== quoted(["1 km 0.621371 mi", "1 mi 1.60934 km"]))
-        failures.push(`"5 km in mi" gave the rows ${quoted(rated && rated.rows)}`);
+            !== quoted(["1 km 0.621371 mi", "1 mi 1.60934 km"])) {
+        failures.push(`"5 km in mi" gave the rows ${quoted(rated?.rows)}`);
+    }
     // A temperature's third scale is named first, as a part is.
     const scaled = Units.answer("100 c in f", undefined, Maths);
     asked++;
     if (!scaled || quoted(scaled.rows.map(r => `${r.text} ${r.side}`))
-            !== quoted(["Kelvin 373.15 K"]))
-        failures.push(`"100 c in f" gave the rows ${quoted(scaled && scaled.rows)}`);
+            !== quoted(["Kelvin 373.15 K"])) {
+        failures.push(`"100 c in f" gave the rows ${quoted(scaled?.rows)}`);
+    }
     return asked;
 }
