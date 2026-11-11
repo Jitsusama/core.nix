@@ -25,7 +25,8 @@
 // answer is the whole of its kind, as the node's is, lets go what went in
 // a gap. What each message changed and let go is heard apart, a key let
 // go never said as changed, and a whole answer says every key it holds
-// and those it dropped. A socket that refuses is tried again twice as late
+// and those it dropped. A client holding its wire watches neither its
+// socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
@@ -176,6 +177,22 @@ ShellRoot {
 
         command: [Quickshell.env("PEOPLE"), `${root.runtime}/daemons/people.sock`,
             Quickshell.env("SOURCES")]
+    }
+
+    // The shell's inotify watches on the daemons' folder and its two
+    // sockets, read from its own /proc as the shell's parent of the count,
+    // since a watch held is a wake for every file written there.
+    property int watches: -1
+    Process {
+        id: watchesCounted
+
+        command: ["sh", "-c", `cd ${root.runtime}/daemons
+            set -- $(stat -c %i . people.sock kinds.sock)
+            grep -h '^inotify' /proc/$PPID/fdinfo/* \\
+                | grep -c -w $(printf -- '-e ino:%x ' "$@")`]
+        stdout: StdioCollector {
+            onStreamFinished: root.watches = Number(text.trim())
+        }
     }
 
     function fail(what) {
@@ -360,6 +377,14 @@ ShellRoot {
                 && "waiting:b" in whole.held && !("waiting:a" in whole.held)
                 && JSON.stringify(root.wholeHeard)
                 === '{"changed":["waiting:b"],"gone":["waiting:a"]}'
+        },
+        {
+            what: "a client holding its wire watches neither its socket nor its folder",
+            holds: () => {
+                if (!watchesCounted.running)
+                    watchesCounted.running = true;
+                return root.watches === 0;
+            }
         },
         {
             what: "a socket that refuses is tried twice as late each time, a minute at most",
