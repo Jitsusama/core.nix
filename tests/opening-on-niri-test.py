@@ -788,9 +788,9 @@ def test_openings_make_only_the_notices_rows_that_came(shell: Shell) -> None:
     """Opened again and searched, the launcher makes only the notice rows of notices come since.
 
     Joel's first opening after a restart made 942 notices' rows in its settling (2026-11-10).
-    That was the first making since the start: each row is kept by its notice and its sender's
-    window and program as niri and the desktop entries say (launcher/PastNotices.qml), so an
-    opening makes none again, and a notice arriving makes its own row alone.
+    That was the first making since the start: each row is kept by its key as the notices
+    daemon serves it (launcher/ReadyRows.qml), so an opening makes none again, and a notice
+    arriving makes its own row alone.
     """
 
     def notices_rows() -> int:
