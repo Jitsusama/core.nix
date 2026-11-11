@@ -2183,8 +2183,8 @@
     window Joel types in
   '';
   a-paste-lands-while-the-shell-is-busy-on-niri = ''
-    on niri, Return on a copy in the launcher pastes it into the terminal under within 500 ms,
-    though the shell is held stopped the moment it has asked and let go of the keys, since the
+    on niri, Return on a copy in the launcher pastes it into the terminal under, though the
+    shell is held stopped the moment it has asked and let go of the keys, since the
     clipboard's history serves the copy and presses the paste keys through a virtual keyboard,
     within 20 ms of the launcher letting go
   '';

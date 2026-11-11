@@ -10,9 +10,11 @@ here the shell is held stopped, a stand-in for a busy thread, the moment it has 
 paste and closed, and the copy still lands in the terminal under, which it never did before.
 Joel's bar for a paste under load is 50 ms from his chord (2026-11-10), which a builder can't
 show: the launcher lets go of the keys on the shell's closing frame, and niri moves them to the
-terminal on its next pass, and here both are drawn in software, about 95 ms each. So the whole
-paste is held to 500 ms, and the daemon's own part, from the launcher letting go to the keys
-pressed, to 20 ms, as the daemon tells its journal each paste.
+terminal on its next pass, and here both are drawn in software, about 95 ms each, on a builder
+shared with other builds, where the whole paste took from 0.3 to 0.6 s as its load changed
+(2026-11-10). So the whole paste is only said, and what's held is what the daemon owns: the
+paste lands while the shell is stopped, and the keys are pressed within 20 ms of the launcher
+letting go, as the daemon tells its journal each paste.
 """
 
 from __future__ import annotations
@@ -39,8 +41,6 @@ if TYPE_CHECKING:
 LOGS = Path(os.environ["LOGS"]).resolve()
 # What's copied and then pasted, a phrase no other row holds.
 COPIED = "pasted while the shell is busy"
-# How soon after Return the paste has to land, in seconds, with two frames drawn in software.
-BAR = 0.5
 # How soon after the launcher lets go the daemon has to press the keys, in milliseconds.
 PRESSING = 20.0
 # What the daemon says of a paste's time.
@@ -181,6 +181,5 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
         f" and pressed {pressing:.1f} ms later"
     )
     print(took)
-    assert at - pressed < BAR, took
     assert pressing < PRESSING, took
     shell.as_account("niri msg action close-window")
