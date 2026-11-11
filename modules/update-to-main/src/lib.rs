@@ -12,6 +12,8 @@
 //! - `config`: what the module tells it.
 //! - `serve`: the socket, and asks joining the update that's running.
 //! - `update`: one update, from fetching main to its ending.
+//! - `held`: a pause, and holds on commits, that refuse updates until
+//!   an asker lets them through.
 //! - `git`: root's copy of main, its history and its signature.
 //! - `hosted`: main as its host names it, for a host that signs nothing.
 //! - `read`: a hosted main's folder read from its host's API, unfetched.
@@ -34,6 +36,7 @@ pub mod config;
 pub mod follow;
 pub mod follows;
 pub mod git;
+pub mod held;
 pub mod hosted;
 pub mod line;
 pub mod power;

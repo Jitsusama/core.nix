@@ -39,8 +39,14 @@ fn asking(socket: &Path, word: &str, hear: &mut dyn FnMut(&Line)) -> io::Result<
 /// Asks the machine's update-to-main to stop the update it's fetching or
 /// building, and gives its one answer, which says what it did.
 pub fn stop(socket: &Path) -> io::Result<Line> {
+    once(socket, STOP)
+}
+
+/// Sends an ask with one answer, such as a pause or a hold on a commit,
+/// and gives that answer.
+pub fn once(socket: &Path, ask: &str) -> io::Result<Line> {
     let mut stream = UnixStream::connect(socket)?;
-    writeln!(stream, "{STOP}")?;
+    writeln!(stream, "{ask}")?;
     let mut said = String::new();
     BufReader::new(stream).read_line(&mut said)?;
     serde_json::from_str(&said).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))

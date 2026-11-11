@@ -14,6 +14,7 @@
 use crate::config::{Busy, Config, Kind};
 use crate::follows;
 use crate::git::{self, Repo};
+use crate::held;
 use crate::hosted;
 use crate::line::Line;
 use crate::power::{self, Power};
@@ -86,14 +87,20 @@ fn run(
     tell: &mut dyn FnMut(&Line),
 ) -> Line {
     let last = last(config);
-    if let Some(why) = too_low(config).or_else(|| busy(config)) {
+    if let Some(why) = held::paused(config)
+        .or_else(|| too_low(config))
+        .or_else(|| busy(config))
+    {
         return Line::Refused { commit: last, why };
     }
     // The ask that brings the grant a built switch waited for switches to
     // that one, rather than fetch main again and build what merged since:
     // on 8 November the morning switch started over three times for newer
     // heads while Joel waited.
-    if granted && let Some(waiting) = waited(config) {
+    if granted
+        && let Some(waiting) = waited(config)
+        && held::stops(config, &waiting.commit, &waiting.followed).is_none()
+    {
         return switch_waiting(config, waiting, last, tell);
     }
     tell(&Line::Fetching);
@@ -118,34 +125,11 @@ fn run(
             followed,
         };
     }
-    if let Some(last) = &last {
-        let descends = match &config.hosted {
-            Some(_) => hosted::descends(config, last, &head),
-            None => git::descends(&main, last, &head),
-        };
-        match descends {
-            Ok(true) => {}
-            Ok(false) => {
-                return Line::Refused {
-                    commit: Some(last.clone()),
-                    why: format!(
-                        "main at {} doesn't descend from {}, which this machine last switched to",
-                        git::short(&head),
-                        git::short(last)
-                    ),
-                };
-            }
-            Err(failure) => return failed(Some(last.clone()), failure),
-        }
+    if let Some(refused) = untrusted(config, &main, last.as_deref(), &head) {
+        return refused;
     }
-    // A hosted main is the host's word, asked over TLS; any other is only
-    // as good as its signature.
-    if config.hosted.is_none() {
-        match git::signed(&main, &head) {
-            Ok(Ok(())) => {}
-            Ok(Err(why)) => return Line::Refused { commit: last, why },
-            Err(failure) => return failed(last, failure),
-        }
+    if let Some(why) = held::stops(config, &head, &followed) {
+        return Line::Refused { commit: last, why };
     }
 
     tell(&Line::Building {
@@ -183,7 +167,13 @@ fn run(
             followed,
         };
     }
-    if let Some(why) = quiet(config, following).or_else(|| busy(config)) {
+    // A pause or hold asked while it built or waited, up to an hour, is
+    // seen here, before anything switches.
+    if let Some(why) = quiet(config, following)
+        .or_else(|| busy(config))
+        .or_else(|| held::paused(config))
+        .or_else(|| held::stops(config, &head, &followed))
+    {
         return Line::Refused { commit: last, why };
     }
 
@@ -255,6 +245,46 @@ fn switch_waiting(
         waiting.commit,
         waiting.followed,
     )
+}
+
+/// Why main at `head` mustn't be built, if it mustn't: it doesn't descend
+/// from `last`, which the machine last switched to, or it isn't signed.
+fn untrusted(config: &Config, main: &Repo<'_>, last: Option<&str>, head: &str) -> Option<Line> {
+    if let Some(last) = last {
+        let descends = match &config.hosted {
+            Some(_) => hosted::descends(config, last, head),
+            None => git::descends(main, last, head),
+        };
+        match descends {
+            Ok(true) => {}
+            Ok(false) => {
+                return Some(Line::Refused {
+                    commit: Some(last.to_owned()),
+                    why: format!(
+                        "main at {} doesn't descend from {}, which this machine last switched to",
+                        git::short(head),
+                        git::short(last)
+                    ),
+                });
+            }
+            Err(failure) => return Some(failed(Some(last.to_owned()), failure)),
+        }
+    }
+    // A hosted main is the host's word, asked over TLS; any other is only
+    // as good as its signature.
+    if config.hosted.is_none() {
+        match git::signed(main, head) {
+            Ok(Ok(())) => {}
+            Ok(Err(why)) => {
+                return Some(Line::Refused {
+                    commit: last.map(str::to_owned),
+                    why,
+                });
+            }
+            Err(failure) => return Some(failed(last.map(str::to_owned), failure)),
+        }
+    }
+    None
 }
 
 /// The system waiting for a hold, while it's still in the store and isn't

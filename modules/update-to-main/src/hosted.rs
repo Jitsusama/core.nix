@@ -130,6 +130,25 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
     }
 }
 
+/// Whether main at `head` holds `commit`: by root's copy when it has
+/// `head`, whose history it then has whole, and otherwise by the host's
+/// word.
+pub fn holds(config: &Config, hosted: &Hosted, commit: &str, head: &str) -> Result<bool, Failure> {
+    let main = Repo::main(config);
+    if git::has(&main, head) {
+        return git::descends(&main, commit, head);
+    }
+    let Some(api) = &hosted.api else {
+        return Err(Failure::new(format!(
+            "root's copy hasn't got {}, and no host's API is configured to ask",
+            git::short(head)
+        )));
+    };
+    let account = run::account(&hosted.user)?;
+    let token = token(hosted, &account)?;
+    read::descends(config, api, &token, commit, head)
+}
+
 /// The file at `path` in the folder at `commit`, or none.
 pub fn show(config: &Config, hosted: &Hosted, commit: &str, path: &str) -> Option<String> {
     let tree = folder(config, hosted, commit)?;

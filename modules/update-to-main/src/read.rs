@@ -83,6 +83,18 @@ pub fn read(
     Ok(found)
 }
 
+/// Whether `head` descends from `older`, by the host's word, for a head
+/// root's copy hasn't got.
+pub fn descends(
+    config: &Config,
+    api: &str,
+    token: &str,
+    older: &str,
+    head: &str,
+) -> Result<bool, Failure> {
+    Host::new(config, api, token)?.descends(older, head)
+}
+
 fn keep(config: &Config, head: &str, found: &Found, from: Option<&str>) -> Result<(), Failure> {
     let reads = config.reads();
     fs::create_dir_all(&reads).map_err(|e| Failure::new(format!("{}: {e}", reads.display())))?;

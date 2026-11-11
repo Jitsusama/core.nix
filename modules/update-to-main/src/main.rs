@@ -8,6 +8,11 @@
 //!   when the daemon couldn't be asked or stopped answering.
 //! - `update-to-main stop [--socket FILE]`: stops the update the daemon is
 //!   fetching or building, and prints what it did. A switch runs on.
+//! - `update-to-main pause|resume [--socket FILE]`: refuses every update,
+//!   stopping the one that runs, until resumed; and `update-to-main
+//!   hold|lift COMMIT [--socket FILE]` refuses any main holding the
+//!   commit, by its full id, until lifted (src/held.rs). Each prints what
+//!   holds now, and exits 0, or 2 when the daemon refused the ask.
 //! - `update-to-main follow [--config FILE] [--every SECONDS]`: an
 //!   account's service that asks whenever main moves (src/follow.rs), and
 //!   at least every SECONDS, 600 unless given. It runs until the system's
@@ -45,6 +50,8 @@ const FOLLOW_EVERY: u64 = 600;
 const USAGE: &str = "usage: update-to-main serve --config FILE
        update-to-main ask [--socket FILE]
        update-to-main stop [--socket FILE]
+       update-to-main pause|resume [--socket FILE]
+       update-to-main hold|lift COMMIT [--socket FILE]
        update-to-main follow [--config FILE] [--every SECONDS]
        update-to-main job FOLDER";
 
@@ -65,6 +72,12 @@ fn main() -> ExitCode {
         ["ask", "--socket", file] => asked(Path::new(file)),
         ["stop"] => stopped(Path::new(SOCKET)),
         ["stop", "--socket", file] => stopped(Path::new(file)),
+        [how @ ("pause" | "resume")] => held(Path::new(SOCKET), how),
+        [how @ ("pause" | "resume"), "--socket", file] => held(Path::new(file), how),
+        [how @ ("hold" | "lift"), commit] => held(Path::new(SOCKET), &format!("{how} {commit}")),
+        [how @ ("hold" | "lift"), commit, "--socket", file] => {
+            held(Path::new(file), &format!("{how} {commit}"))
+        }
         ["follow", rest @ ..] => {
             if let Some((config, every)) = follow_args(rest) {
                 followed(&config, Duration::from_secs(every))
@@ -216,6 +229,25 @@ fn stopped(socket: &Path) -> ExitCode {
         Ok(line) => {
             println!("{}", line.json());
             ExitCode::SUCCESS
+        }
+        Err(e) => {
+            if let Line::Refused { why, .. } = ask::unanswered(socket, &e) {
+                eprintln!("update-to-main: {why}");
+            }
+            ExitCode::from(3)
+        }
+    }
+}
+
+fn held(socket: &Path, how: &str) -> ExitCode {
+    match ask::once(socket, how) {
+        Ok(Line::Refused { why, .. }) if update_to_main::held::says(&why) => {
+            println!("{why}");
+            ExitCode::SUCCESS
+        }
+        Ok(line) => {
+            eprintln!("update-to-main: {}", line.json());
+            ExitCode::from(2)
         }
         Err(e) => {
             if let Line::Refused { why, .. } = ask::unanswered(socket, &e) {
