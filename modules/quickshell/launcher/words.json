@@ -8096,8 +8096,7 @@
         "line": "{count} line",
         "lines": "{count} lines",
         "image": "image",
-        "imageSized": "image {across} \u00d7 {down}",
-        "picture": "picture"
+        "imageSized": "image {across} \u00d7 {down}"
       },
       "glyph": "clipboard",
       "ask": "which copy?"

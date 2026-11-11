@@ -253,14 +253,23 @@ pub fn picture(picture: &Picture, words: &Words) -> Value {
     };
     let (across, down) = picture.size.unwrap_or((0, 0));
     // Said by its format's own name, which no vocabulary words, as a
-    // document's "PDF" is: "PNG" for image/png.
+    // document's "PDF" is: "PNG" for image/png. One without a name says
+    // only its size, since its row already says it's an image.
     let kind = match picture.kind {
-        "image/png" => "PNG".to_owned(),
-        "image/jpeg" => "JPEG".to_owned(),
-        "image/webp" => "WebP".to_owned(),
-        "image/gif" => "GIF".to_owned(),
-        _ => capitalised(&words.said("picture")),
+        "image/png" => Some("PNG"),
+        "image/jpeg" => Some("JPEG"),
+        "image/webp" => Some("WebP"),
+        "image/gif" => Some("GIF"),
+        _ => None,
     };
+    let side: Vec<Value> = kind
+        .map(|said| json!({ "said": said }))
+        .into_iter()
+        .chain([
+            json!({ "said": words.bytes(picture.bytes) }),
+            came(picture.at),
+        ])
+        .collect();
     json!({
         "key": format!("row:{PLACE}:{}", picture.id),
         "thing": format!("picture:{}", picture.id),
@@ -269,7 +278,7 @@ pub fn picture(picture: &Picture, words: &Words) -> Value {
         "name": capitalised(&name),
         "glyph": "picture",
         "hue": "text",
-        "side": [{ "said": kind }, { "said": words.bytes(picture.bytes) }, came(picture.at)],
+        "side": side,
         "acts": acts(picture.id),
         "held": { "id": picture.id, "picture": picture.path, "across": across, "down": down },
     })
@@ -398,8 +407,10 @@ mod tests {
         kept.bytes = 512;
         let unknown = picture(&kept, &words());
         assert_eq!(unknown["name"], "Image");
-        assert_eq!(unknown["side"][0]["said"], "Picture");
-        assert_eq!(unknown["side"][1]["said"], "512 B");
+        assert_eq!(
+            unknown["side"][0]["said"], "512 B",
+            "a format without a name says only its size"
+        );
     }
 
     #[test]
