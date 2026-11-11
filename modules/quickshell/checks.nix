@@ -1235,6 +1235,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-closes-only-for-keys-it-held" { } ''
       cp ${../../tests/keys-held.qml} keys-held.qml
       cp ${./launcher/KeysHeld.js} KeysHeld.js
+      cp ${../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
