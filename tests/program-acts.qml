@@ -13,7 +13,8 @@
 // zathura the document at the page copied after it, Chrome the link in a
 // new window, and GIMP the picture in a file of its own, copied from the history's or written by wl-paste where the history
 // has none. The repositories are read once for both acts that list them,
-// as the shell starts, and each is listed only while a read found one it
+// by the real programs daemon over its socket, as the shell starts, and
+// each is listed only while a read found one it
 // can open: Open a File by Name lists them, the one whose git last wrote
 // first, and a repository's files as it's stepped into, hidden ones but
 // not what git ignores, each beside its folder there, opening the one

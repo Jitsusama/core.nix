@@ -300,8 +300,8 @@ in
     }
   ];
   # Neovim's own in the launcher (NeovimProgram.qml): Open a File by Name,
-  # through the git repositories under ~/src, which fd finds and stat
-  # dates, Open the Copied Path, and the files each Neovim has open, which
+  # through the git repositories under ~/src, which the programs daemon
+  # reads, Open the Copied Path, and the files each Neovim has open, which
   # open-now asks of them, each file opening Neovim in kitty
   # (NeovimOpening.js), and each one's drawer previewing it as file-preview
   # reads it, the file chooser's own (../open-with/file-preview.nix). After
@@ -310,8 +310,6 @@ in
     order = 52;
     source = ./NeovimProgram.qml;
     folder = "${config.home.homeDirectory}/src";
-    fd = lib.getExe pkgs.fd;
-    stat = lib.getExe' pkgs.coreutils "stat";
     openNow = open-now;
     open = "listed:nvim:open";
     preview = [ (lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })) ];

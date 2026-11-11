@@ -4,8 +4,9 @@
 //! kinds it opens ([`mime`]), the package its command comes from
 //! ([`package`]), each program's lists of what it had open ([`source`]),
 //! the commands that read them ([`command`]), a folder asked for by its
-//! path ([`folder`]), and inotify, which says when any of them changes
-//! ([`notify`]).
+//! path ([`folder`]), the git repositories under one and their files
+//! ([`repositories`]), the socket it answers on ([`listen`]), and
+//! inotify, which says when any of them changes ([`notify`]).
 //!
 //! A record names every figure its source has, as the source says it,
 //! with its unit in its key (`_s` seconds since 1970, `_ms`
@@ -16,9 +17,11 @@ pub mod command;
 pub mod entry;
 pub mod folder;
 pub mod interface;
+pub mod listen;
 pub mod mime;
 pub mod notify;
 pub mod package;
+pub mod repositories;
 pub mod source;
 pub mod xdg;
 

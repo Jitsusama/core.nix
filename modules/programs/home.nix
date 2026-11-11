@@ -40,6 +40,9 @@ in
     };
     Service = {
       ExecStart = "${lib.getExe programs} %t/daemons/programs.sock ${sources}";
+      # The git it lists a repository's files with, as Neovim's Open a
+      # File by Name steps into one (src/repositories.rs).
+      Environment = "PROGRAMS_GIT=${lib.getExe pkgs.git}";
       Restart = "on-failure";
       RestartSec = 5;
     };
