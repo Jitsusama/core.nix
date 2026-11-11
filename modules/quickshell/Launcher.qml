@@ -524,9 +524,15 @@ Scope {
         // (Disk), so home is never made again under him.
         if (!open || (held.length === 0 && typed.trim() === ""))
             return;
-        Report.say(`asked again by ${source.settings.name}`);
+        // Timed from its daemon's line to the frame niri presents with it,
+        // as a change is (refreshed): Power's, Heat's and every answer's
+        // moves came here untimed (RCTRF8, 2026-11-11). One that shows
+        // nothing new is let go untimed, as a refresh's is.
+        const place = source.settings.name;
+        updatedFrom(source);
+        Report.say(`asked again by ${place}`);
         if (held.length > 0) {
-            relive(source);
+            updateDrawn(place, relive(source));
             return;
         }
         const at = current;
@@ -541,6 +547,7 @@ Scope {
             steadying = false;
         }
         root.showMoved(at);
+        updateDrawn(place, true);
     }
 
     // After a refresh, the list stays where it was and moves only to show a
@@ -584,10 +591,11 @@ Scope {
     // What a source's answers say now, wherever they're shown below the
     // top: an answer stepped into, its parts and what's held in them made
     // again, or a category's own answers, listed or asked in it. What's
-    // shown refreshes in place, as `refreshed` says.
+    // shown refreshes in place, as `refreshed` says. It answers whether
+    // anything shown was made again, for the updates measure (reanswer).
     function relive(source) {
         if (asking)
-            return;
+            return false;
         const steps = held.slice();
         const at = steps.findIndex(step => step.row.asker === source);
         const last = steps.length - 1;
@@ -595,7 +603,7 @@ Scope {
             const was = steps[at];
             const row = again(was.row);
             if (!row)
-                return;
+                return false;
             steps[at] = Object.assign({}, was, {
                 row: row,
                 rows: Steady.kept(was.rows, led(row, row.verbs()), pairedId)
@@ -607,7 +615,7 @@ Scope {
                     rows: steps[at - 1].rows.map(one => one === was.row ? row : one)
                 });
             if (!remade(steps, at + 1))
-                return;
+                return false;
         } else if (category !== null && (steps[last].rows.some(row => row.asker === source)
             || (answer && answer.asker === source))) {
             // A row a condition holds back stays dimmed as it's said again,
@@ -627,12 +635,14 @@ Scope {
             // before its reading, has no row there to say again, so the
             // place is made again from its members, the row in its place.
             const place = steps[last].row.category ?? category;
-            if (place && members(place).some(row => row.asker === source))
+            const member = !!place && members(place).some(row => row.asker === source);
+            if (member)
                 placesRead();
-            return;
+            return member;
         }
         held = steps;
         reshow(steps.length);
+        return true;
     }
 
     // The headline as a row of its own, for Return and the footer. Return
@@ -4524,13 +4534,16 @@ Scope {
     // before the rows read from them (choices, partsOfRows) have heard;
     // each source heard is made again once, in the order heard.
     property var refreshing: []
-    function refreshed(source) {
-        // A change told from a daemon's line is timed from it, on the
-        // monotonic clock, to the frame niri presents with it (Hearing.js).
+    // A change told from a daemon's line is timed from it, on the
+    // monotonic clock, to the frame niri presents with it (Hearing.js).
+    function updatedFrom(source) {
         const line = Hearing.heardAt();
         if (open && line > 0)
             updatesWaiting = Presented.heard(updatesWaiting, source.settings.name,
                 line + KeyTimes.now() - Date.now());
+    }
+    function refreshed(source) {
+        updatedFrom(source);
         // A collection's note is read as the corpus is joined, so a source
         // saying it changed marks it stale even when its things are the
         // same.

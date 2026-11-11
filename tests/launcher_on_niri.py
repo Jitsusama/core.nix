@@ -73,7 +73,7 @@ class Shell:
         self.folder = folder
         self.log = logs / "shell.log"
         self.process: subprocess.Popen[bytes] | None = None
-        self.daemons: list[subprocess.Popen[bytes]] = []
+        self.daemons: dict[str, subprocess.Popen[bytes]] = {}
 
     def start(self) -> None:
         """Start the shell, and wait until its launcher answers, closed."""
@@ -81,8 +81,7 @@ class Shell:
         # socket the account's systemd would hold for it, saying its rows in the words the check
         # gives as MACHINE_WORDS.
         if "MACHINE" in os.environ:
-            words = os.environ.get("MACHINE_WORDS")
-            self.daemon("machine", os.environ["MACHINE"], *(["--words", words] if words else []))
+            self.machine()
         # The windows come from the windows daemon, hearing this niri as the account's does, and
         # the screens' rows with them, in the words the check gives as WINDOWS_WORDS.
         if "WINDOWS" in os.environ:
@@ -160,18 +159,30 @@ class Shell:
         """Start a daemon on the socket the account's systemd would hold for it, its log beside."""
         daemons = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons"
         daemons.mkdir(mode=0o700, exist_ok=True)
-        with (self.log.parent / f"{name}.log").open("wb") as log:
-            self.daemons.append(
-                subprocess.Popen(  # noqa: S603
-                    [program, str(daemons / f"{name}.sock"), *given],
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                )
+        # Appended to, so one started again after a case stood in keeps what it said before.
+        with (self.log.parent / f"{name}.log").open("ab") as log:
+            self.daemons[name] = subprocess.Popen(  # noqa: S603
+                [program, str(daemons / f"{name}.sock"), *given],
+                stdout=log,
+                stderr=subprocess.STDOUT,
             )
+
+    def machine(self) -> None:
+        """Start the machine daemon the check gives as MACHINE, in MACHINE_WORDS' words."""
+        words = os.environ.get("MACHINE_WORDS")
+        self.daemon("machine", os.environ["MACHINE"], *(["--words", words] if words else []))
+
+    def daemon_stopped(self, name: str) -> None:
+        """Stop the daemon started as `name`, so a case may stand in on its socket."""
+        process = self.daemons.pop(name, None)
+        if process is not None:
+            process.terminate()
+            process.wait(timeout=10)
+        (Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / f"{name}.sock").unlink(missing_ok=True)
 
     def stop(self) -> None:
         """End the shell."""
-        for process in (self.process, *self.daemons):
+        for process in (self.process, *self.daemons.values()):
             if process is not None:
                 process.terminate()
                 process.wait(timeout=10)

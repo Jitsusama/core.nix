@@ -2286,18 +2286,20 @@ CLOCKS_APART_MS = 2
 ADDED = 6
 
 
-class ReadyQuests:
-    """Serve Quests' rows ready, as the quests daemon does, and tell each client a change.
+class StandIn:
+    """Serve a daemon's records, as the quests or machine daemon does, and tell each a change.
 
     It answers the shell's daemon interface on the socket the account's systemd holds for the
-    quests daemon, which nothing else serves here: hello, a watch with every row held, and any
-    other ask with none.
+    daemon, which nothing else serves while it stands in: hello, a watch with every record held of the one kind
+    it names, and any other ask with none.
     """
 
     def __init__(self, path: Path) -> None:
-        """Listen on `path`, holding one quest's row."""
+        """Listen on `path`, holding nothing yet."""
+        self.path = path
         self.held: dict[str, Json] = {}
-        self.clients: list[socket.socket] = []
+        # Each client watching, by the kind it watches, "" for every kind.
+        self.clients: dict[socket.socket, str] = {}
         self.lock = threading.Lock()
         path.parent.mkdir(mode=0o700, exist_ok=True)
         self.listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -2353,50 +2355,107 @@ class ReadyQuests:
                 if asked.get("ask") == "hello":
                     self.write(client, {"id": "hello", "version": 1, "state": "answering"})
                 elif asked.get("ask") == "watch" and asked.get("id") == "all":
-                    self.write(client, {"id": "all"}, watching=True)
+                    kind = asked.get("kind")
+                    one = kind if isinstance(kind, str) else ""
+                    self.write(client, {"id": "all"}, watching=one)
                 else:
                     self.write(client, {"id": asked.get("id"), "records": []})
 
-    def write(self, client: socket.socket, said: Json, *, watching: bool = False) -> None:
-        """Send one line to a client, a watch with every row held, which it's told of after.
+    def write(self, client: socket.socket, said: Json, *, watching: str | None = None) -> None:
+        """Send one line to a client, a watch with every record held, which it's told of after.
 
-        Under the lock, so no change is told between a watch's rows and its being told.
+        A watch naming one kind gets only that kind, as each of the machine daemon's kinds is
+        watched apart, and "" every record. Under the lock, so no change is told between a watch's
+        records and its being told.
         """
         with self.lock:
-            if watching:
-                said = {**said, "records": list(self.held.values())}
-                self.clients.append(client)
+            if watching is not None:
+                records = [
+                    record
+                    for record in self.held.values()
+                    if watching in ("", record.get("kind"))
+                ]
+                said = {**said, "records": records}
+                self.clients[client] = watching
             client.sendall((json.dumps(said) + "\n").encode())
 
     def told(self, changed: list[Json], gone: list[str]) -> float:
-        """Tell every client watching a change, and give when, on the monotonic clock in ms."""
+        """Tell each client watching a change of its kind, and give when, in monotonic ms."""
         with self.lock:
             for record in changed:
                 self.held[record["key"]] = record
             for key in gone:
                 self.held.pop(key, None)
-            line = (json.dumps({"id": "all", "changed": changed, "gone": gone}) + "\n").encode()
             at = time.monotonic() * 1000
-            for client in list(self.clients):
+            for client, kind in list(self.clients.items()):
+                theirs = [record for record in changed if kind in ("", record.get("kind"))]
+                said = {"id": "all", "changed": theirs, "gone": gone}
                 try:
-                    client.sendall(line)
+                    client.sendall((json.dumps(said) + "\n").encode())
                 except OSError:
                     # A connection the shell let go, as Daemon.qml does once it's refused.
-                    self.clients.remove(client)
+                    del self.clients[client]
         return at
 
+    def watching(self, kind: str, deadline: float) -> bool:
+        """Give whether a client watches `kind` by `deadline`, so what it's told is heard."""
+        while time.monotonic() < deadline:
+            with self.lock:
+                if kind in self.clients.values():
+                    return True
+            time.sleep(launcher_on_niri.POLL)
+        return False
+
     def close(self) -> None:
-        """Stop listening."""
+        """Stop listening, let every client go and take the socket away, as a daemon stopped."""
         self.listening.close()
+        with self.lock:
+            for client in self.clients:
+                client.close()
+            self.clients.clear()
+        self.path.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="module")
-def quests() -> Iterator[ReadyQuests]:
+def quests() -> Iterator[StandIn]:
     """Give Quests' daemon, stood in for, holding one quest, served until the run ends."""
-    served = ReadyQuests(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "quests.sock")
-    served.told([ReadyQuests.row(0, "Kestrel 0")], [])
+    served = StandIn(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "quests.sock")
+    served.told([StandIn.row(0, "Kestrel 0")], [])
     yield served
     served.close()
+
+
+def battery(pct: int) -> Json:
+    """Give the machine's battery at `pct`, as the machine daemon says it (tests/power.qml)."""
+    return {
+        "key": "supply:BAT0",
+        "kind": "supply",
+        "type": "Battery",
+        "scope": "System",
+        "name": "BAT0",
+        "status": "Discharging",
+        "capacity_pct": pct,
+        "energy_wh": pct / 2,
+        "energy_full_wh": 50,
+    }
+
+
+@pytest.fixture
+def machine(shell: Shell) -> Iterator[StandIn]:
+    """Give the machine daemon, stood in for, holding the battery, for one case alone.
+
+    The check's own machine daemon reads the builder, which has no battery, so it's stopped for
+    the case and started again after. The shell's connections hear the socket made and come to
+    the stand-in at once (Daemon.qml's FileView), as they come back to the daemon after.
+    """
+    shell.daemon_stopped("machine")
+    served = StandIn(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "machine.sock")
+    served.told([battery(80)], [])
+    try:
+        yield served
+    finally:
+        served.close()
+        shell.machine()
 
 
 def updates_presented(shell: Shell, after: int, deadline: float) -> list[Json]:
@@ -2427,11 +2486,11 @@ def quests_shown(shell: Shell) -> int:
 
 def added() -> list[Json]:
     """Give the rows a change adds, after the one held."""
-    return [ReadyQuests.row(order, f"Kestrel {order}") for order in range(1, ADDED + 1)]
+    return [StandIn.row(order, f"Kestrel {order}") for order in range(1, ADDED + 1)]
 
 
 def test_a_daemons_change_is_presented_as_niri_first_shows_it(
-    shell: Shell, quests: ReadyQuests
+    shell: Shell, quests: StandIn
 ) -> None:
     """A daemon's change is timed from its line to the frame niri showed with it.
 
@@ -2467,7 +2526,7 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
 
 
 def test_a_daemons_change_niri_holds_back_is_presented_late(
-    shell: Shell, quests: ReadyQuests
+    shell: Shell, quests: StandIn
 ) -> None:
     """A change drawn while niri is held is said presented only once niri shows it, too late.
 
@@ -2524,6 +2583,42 @@ def test_a_return_sent_as_it_shuts_takes_no_step(shell: Shell) -> None:
     said = shell.log.read_bytes()[since:].decode(errors="replace")
     stepped = [line for line in said.splitlines() if '"\u2192 ' in line]
     assert stepped == [], f"the shut launcher took a step: {stepped}"
+
+
+def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:
+    """Give Power's changes said presented from no sooner than `written`, once there are any."""
+    while time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("updatesPresented")))
+        moved = [
+            one
+            for one in presented
+            if one["place"] == "power" and one["from"] >= written - CLOCKS_APART_MS
+        ]
+        if moved:
+            return moved
+        time.sleep(launcher_on_niri.POLL)
+    return []
+
+
+def test_an_answer_its_daemon_moves_is_presented_as_a_change_is(
+    shell: Shell, machine: StandIn
+) -> None:
+    """An answer its daemon's line moves is timed from the line to the frame niri showed.
+
+    Joel's 50 ms bar holds for every update (2026-11-10), and Power's, Heat's and every answer's
+    moves are said again by asking it, which timed none of them (RCTRF8, 2026-11-11), so no
+    figure could say how soon the battery's charge reached his screen.
+    """
+    shell.answer("battery")
+    shell.launcher_until(lambda shown: shown["kind"] == "answer")
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    assert machine.watching("supply", deadline), "the shell never watched the battery"
+    written = machine.told([battery(79)], [])
+    presented = moved_presented(shell, written, deadline)
+    shell.close_launcher()
+    assert presented, "the battery's move was never said presented"
+    change = presented[0]
+    assert change["at"] >= change["from"], f"said {change}, presented before its line"
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
