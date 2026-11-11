@@ -209,13 +209,14 @@ impl Warmth {
                 .said
                 .is_none_or(|said| (mireds(f64::from(said)) - settled).abs() >= BAND);
             if moved {
+                let kelvin = ((1e6 / settled).clamp(1000.0, 40_000.0) / 100.0).round() * 100.0;
                 #[expect(
                     clippy::cast_possible_truncation,
                     clippy::cast_sign_loss,
                     reason = "a light's colour, held between 1,000 and 40,000 K, fits"
                 )]
-                let kelvin = ((1e6 / settled).clamp(1000.0, 40_000.0) / 100.0).round() * 100.0;
-                self.said = Some(kelvin as u16);
+                let kelvin = kelvin as u16;
+                self.said = Some(kelvin);
             }
         }
         self.follow(now);
