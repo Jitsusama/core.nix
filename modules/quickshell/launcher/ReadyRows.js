@@ -522,3 +522,13 @@ function foundOf(words, answer) {
 function foundRecord(found, held, key) {
     return held[key] ?? found.rows[key] ?? null;
 }
+
+// Whether a change moves what a search found among: a row placed before
+// it or after, which the daemon must be asked of again. A row served with
+// no order, one a search found that's ahead and so served whole, only
+// replaces the answer's copy, which stands, as a drawer served apart
+// changes no row's place.
+function reranks(before, after, moved) {
+    const placed = new Set(before.concat(after));
+    return moved.some(key => placed.has(key));
+}

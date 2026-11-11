@@ -63,11 +63,13 @@ pub enum Ask {
         also: BTreeMap<String, String>,
     },
     /// The rows of a place whose names, or what else they're called, start
-    /// with the words typed, best first (search.rs).
+    /// with the words typed, best first (search.rs), at most `most` of
+    /// them where the ask says.
     Search {
         id: Value,
         place: String,
         words: String,
+        most: Option<usize>,
     },
     Unwatch {
         id: Value,
@@ -184,6 +186,10 @@ pub fn ask(line: &str) -> Ask {
             id,
             place: text_of(&said, "place"),
             words: text_of(&said, "words"),
+            most: said
+                .get("most")
+                .and_then(Value::as_u64)
+                .and_then(|most| usize::try_from(most).ok()),
         },
         "unwatch" => Ask::Unwatch { id },
         "changed" => Ask::Changed {
@@ -258,7 +264,17 @@ mod tests {
             Ask::Search {
                 id: json!(7),
                 place: "programs".into(),
-                words: "chr".into()
+                words: "chr".into(),
+                most: None,
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id":8,"ask":"search","place":"taken","words":"zz","most":50}"#),
+            Ask::Search {
+                id: json!(8),
+                place: "taken".into(),
+                words: "zz".into(),
+                most: Some(50),
             }
         );
     }

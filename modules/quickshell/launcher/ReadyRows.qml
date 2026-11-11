@@ -176,11 +176,12 @@ Scope {
             if (every === "minute")
                 eachMinute += 1;
         }
+        const before = keys;
         keys = Ready.placed(keys, held, said, dropped);
         placings += 1;
         // What was found was found among the rows before, so it's asked
-        // again of these.
-        if (found.words !== null)
+        // again of these, unless none of them moved (Ready.reranks).
+        if (found.words !== null && Ready.reranks(before, keys, said.concat(dropped)))
             ended();
         heard(said, dropped);
     }

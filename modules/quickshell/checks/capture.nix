@@ -20,8 +20,9 @@
   # (tests/desktop/stand-in-screen-text.py) over one connection made on the
   # first search and let go at rest, each text once, the last few kept,
   # none for fewer than three letters, a ragged line given as one short
-  # one, and finds a few thousand files by name within a frame, as
-  # tests/taken.qml holds it to, with what each screenshot says in
+  # one, and finds a few thousand files by name, newest first, as Recent
+  # does should the programs daemon not search, as tests/taken.qml holds it
+  # to, with what each screenshot says in
   # modules/quickshell/tests/stand-ins/taken-texts.json.
   the-desktop-finds-screenshots-by-their-words =
     let

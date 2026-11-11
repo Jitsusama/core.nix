@@ -8,26 +8,42 @@
 //! of it written with a hyphen closed up, what it is, its comment, its
 //! entry's keywords and what its key binds do, which the shell's watch
 //! says (`also`), since niri's binds are the shell's. Those alike in score
-//! keep the order the rows are served in, open programs first.
+//! keep the order the rows are served in, open programs first. What was
+//! taken is searched by taken.rs, newest first as Capture's Recent lists
+//! it.
 
 use std::collections::BTreeMap;
 
 use ready_rows::fuzzy::{self, Item, Typed, runs};
 use serde_json::{Map, Value, json};
 
-use super::Daemon;
+use super::{Daemon, Shared, taken};
 
-/// The one place this daemon searches.
+/// The place of programs.
 const PLACE: &str = "programs";
 
-/// What a search of `place` for `words` is answered with.
-pub fn answer(daemon: &Daemon, id: &Value, place: &str, words: &str) -> Value {
-    if place != PLACE {
-        return json!({
+/// What a search of `place` for `words` is answered with, at most `most`
+/// rows where the place lists no more.
+pub fn answer(
+    shared: &Shared,
+    daemon: &Daemon,
+    id: &Value,
+    place: &str,
+    words: &str,
+    most: Option<usize>,
+) -> Value {
+    match place {
+        PLACE => programs(daemon, id, words),
+        taken::PLACE => taken::search(shared, daemon, id, words, most.unwrap_or(taken::FOUND)),
+        _ => json!({
             "id": id, "words": words,
             "error": {"code": "unknown-place", "message": format!("no place {place:?} here")},
-        });
+        }),
     }
+}
+
+/// Programs' rows that what's typed finds, best first.
+fn programs(daemon: &Daemon, id: &Value, words: &str) -> Value {
     let typed = Typed::of(words);
     let programs: BTreeMap<&str, &Value> = daemon
         .catalogue

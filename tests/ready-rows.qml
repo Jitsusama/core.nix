@@ -510,6 +510,11 @@ QtObject {
             Ready.foundRecord(found, held, "far"), held.far);
         Expect.same("a key served by neither is none", Ready.foundRecord(found, held, "lost"),
             null);
+        Expect.same("a row placed or let go asks the search again",
+            [Ready.reranks(["a"], ["a", "b"], ["b"]), Ready.reranks(["a", "b"], ["a"], ["b"])],
+            [true, true]);
+        Expect.same("a found row served whole with no order, or a drawer, leaves it standing",
+            Ready.reranks(["a"], ["a"], ["far", "drawer:taken:a"]), false);
     }
 
     function ticking() {

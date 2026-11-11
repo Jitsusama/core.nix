@@ -1806,8 +1806,10 @@
     answer within its deadline as not answering, stopping it and what it waits on, and goes on to
     the next, serves Programs' rows open first, counting the windows the windows daemon says each
     has open and going to the latest, and again as those change, finds them for what's typed by
-    name, keyword, comment and what their binds do, best first with the letters matched, counts
-    the changes programs tell of in its health, follows a data folder through each link a switch
+    name, keyword, comment and what their binds do, best first with the letters matched, finds
+    what was taken by name, newest first, past Recent's nine and no more than asked, with the rows
+    it never served and each served whole, unplaced, once it's ahead, counts the changes programs
+    tell of in its health, follows a data folder through each link a switch
     replaces, and refuses an ask, a kind or a place to search it doesn't know
   '';
   programs-passes-clippy = ''
@@ -3098,7 +3100,7 @@
     by their words from the screen-text daemon, on one
     connection made only at the first search and let go at rest, each text asked once and the last
     four answers kept, each screenshot found with the line that matched; and finds a few thousand
-    files by name, newest first, each key within a frame
+    files by name, newest first, as Recent does should the programs daemon not search
   '';
   the-desktop-hears-tuples-call = ''
     the shell's Tuple holds the call through the real tuple-call: who's in it, since when, mutes,
