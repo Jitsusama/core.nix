@@ -214,10 +214,12 @@ Provider {
     // The levels a step into Brightness offers, brightest first.
     readonly property var levels: [100, 90, 80, 70, 60, 50, 40, 30, 20, 10]
 
-    // Sets the screen to a share, as the brightness keys do; the first step
-    // stays lit, since none at all leaves the screen black.
+    // Sets the screen to a share, as the brightness keys do, through the
+    // machine daemon (modules/machine/src/screen_acts.rs) rather than a
+    // program started for each step; the first step stays lit, since none
+    // at all leaves the screen black.
     function brighten(share) {
-        Niri.spawn(["brightnessctl", "--class=backlight", "set", `${Math.max(1, share)}%`]);
+        lights.ask({ ask: "act", act: "brightness", share: Math.max(1, share) }, null);
     }
 
     // A share as a bar. However bright, it wants nothing, so it never warns.
@@ -370,18 +372,16 @@ Provider {
             }))));
     }
 
-    // Tells the backlight daemon whether the night light is on.
+    // Tells the backlight daemon whether the night light is on, through
+    // the machine daemon, which sets its property on the session's bus.
     function nightLight(on) {
-        Niri.spawn(["busctl", "--user", "set-property", "io.jitsusama.Backlight",
-            "/io/jitsusama/Backlight", "io.jitsusama.Backlight", "NightLight", "b",
-            on ? "true" : "false"]);
+        lights.ask({ ask: "act", act: "night-light", on: on }, null);
     }
 
-    // Tells the backlight daemon whether the screen follows the room.
+    // Tells the backlight daemon whether the screen follows the room, the
+    // same way.
     function followTheRoom(follows) {
-        Niri.spawn(["busctl", "--user", "set-property", "io.jitsusama.Backlight",
-            "/io/jitsusama/Backlight", "io.jitsusama.Backlight", "FollowsTheRoom", "b",
-            follows ? "true" : "false"]);
+        lights.ask({ ask: "act", act: "follow-the-room", follows: follows }, null);
     }
 
     // Setting the screen to a share, Return doing it.
