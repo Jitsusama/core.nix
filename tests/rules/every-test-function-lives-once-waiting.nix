@@ -1,11 +1,16 @@
 # The test files holding functions copied from another before
 # every-test-function-lives-once, each with how many, waiting while each copy
-# moves to the test library. The check fails on a file holding more, and on one
+# moves to the test library. Rust files' #[cfg(test)] modules are read from
+# 2026-11-11, so the copies in them wait here too. The check fails on a file holding more, and on one
 # holding fewer until its count here is lowered, so the list only shrinks.
 {
   "hardware/microsoft-surface-laptop-4-1958/firmware/tests/offers-its-firmware.sh" = 1;
+  "modules/agents/src/served.rs" = 1;
+  "modules/backlight/src/monitor.rs" = 1;
   "modules/bluetooth-disk-prompt/seal-test.sh" = 1;
+  "modules/chrome/recent-sites/src/session.rs" = 1;
   "modules/collector/tests/collector.rs" = 1;
+  "modules/desk-facts/facts.rs" = 2;
   "modules/device-check/tests/devices-that-stop-working-are-named.sh" = 1;
   "modules/device-check/tests/kernel-trouble-is-named.sh" = 1;
   "modules/disk-guard/tests/disk-guard-asks-github-what-merged.sh" = 1;
@@ -27,9 +32,21 @@
   "modules/disk-guard/tests/guard/workspaces.rs" = 2;
   "modules/ergodox/tests/ergodox-command-reaches-the-board.sh" = 1;
   "modules/firmware-settings/tests/the-firmware-takes-what-is-declared.sh" = 1;
+  "modules/google/src/calendar_rows_tests.rs" = 1;
   "modules/google/tests/daemon.rs" = 1;
+  "modules/guide/src/screen/run_tests.rs" = 1;
+  "modules/guide/src/screen/view_tests.rs" = 1;
+  "modules/guide/src/vault/vault_tests.rs" = 1;
   "modules/guide/tests/finish.rs" = 1;
   "modules/guide/tests/github.rs" = 1;
+  "modules/guide/tests/stick.rs" = 1;
+  "modules/ir-camera/src/grey.rs" = 1;
+  "modules/lag-watch/src/kernel.rs" = 1;
+  "modules/machine/src/camera.rs" = 1;
+  "modules/machine/src/counts.rs" = 1;
+  "modules/machine/src/firmware_rows.rs" = 1;
+  "modules/machine/src/light.rs" = 1;
+  "modules/machine/src/power_rows.rs" = 1;
   "modules/meaning/tests/a-picture-is-found-by-what-it-shows.sh" = 1;
   "modules/meaning/tests/a-thing-is-found-by-its-meaning.sh" = 1;
   "modules/mpv/keys-test.sh" = 1;
@@ -40,8 +57,18 @@
   "modules/pi/tests/pi-claude-keeps-to-the-plan.sh" = 1;
   "modules/pi/tests/pi-keeps-its-own-settings.sh" = 1;
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 1;
+  "modules/programs/src/interface.rs" = 1;
+  "modules/programs/src/notify.rs" = 1;
+  "modules/quickshell/whereabouts/src/notify.rs" = 1;
+  "modules/quickshell/whereabouts/src/rows_tests.rs" = 1;
+  "modules/ready-rows/src/order.rs" = 1;
+  "modules/sound/src/interface.rs" = 1;
   "modules/spend-watch/feeds/claude/tests/feed.rs" = 1;
   "modules/spend-watch/feeds/claude/tests/schedule.rs" = 1;
+  "modules/spend-watch/src/collection.rs" = 1;
+  "modules/spend-watch/src/detect.rs" = 1;
+  "modules/spend-watch/src/status.rs" = 1;
+  "modules/windows/src/interface.rs" = 1;
   "modules/zathura/keys-test.sh" = 1;
   "tests/agents-on-niri-test.py" = 1;
   "tests/arrivals.qml" = 2;
@@ -140,4 +167,8 @@
   "tests/waits.qml" = 1;
   "tests/weather.qml" = 2;
   "tests/vm/network/wifi-check-page.py" = 1;
+  "tools/merge-net/src/main.rs" = 1;
+  "tools/merge-net/src/world.rs" = 1;
+  "tools/shell-preview/src/layout.rs" = 1;
+  "tools/shell-preview/tests/shell_preview.rs" = 1;
 }
