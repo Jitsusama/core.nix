@@ -117,9 +117,14 @@ Scope {
     readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
         (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - Theme.space.beat)
             / rowTall)))
-    // How tall the card is but for its rows: the line, its hairline and the
-    // foot, which no screen changes.
-    readonly property real cardChrome: card.height - listBox.height
+    // How tall the card is but for its rows: its frame, the line and its
+    // hairline, the ties either side of the rows, and the foot and its
+    // hairline, which no screen changes. Summed from its parts rather than
+    // read off the card, whose height follows the rows a layout late, so
+    // how many rows fit never reads itself (the net, 2026-11-10: Qt warned
+    // of a binding loop for rows at bf0d237ec).
+    readonly property real cardChrome: 2 * Theme.border + 2 * card.above + headTall
+        + Theme.border + 2 * Theme.space.rung.tie + Theme.border + statusLine.tall
     // How tall the drawer stands in the card's place: down to the rows'
     // end, so the foot stays in sight under it, saying how to come back.
     readonly property real rowsEnd: Theme.border + headTall + Theme.border
@@ -7105,7 +7110,10 @@ Scope {
                 // And its sides, on a screen this wide.
                 left: root.cardLeft,
                 right: root.cardLeft + root.width,
-                across: root.screenHere ? root.screenHere.width : 0
+                across: root.screenHere ? root.screenHere.width : 0,
+                // Its height but for its rows, as summed and as drawn.
+                chrome: root.cardChrome,
+                drawn: card.height - listBox.height
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether

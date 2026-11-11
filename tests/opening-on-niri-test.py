@@ -174,9 +174,12 @@ def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> 
     """Kept at one scale and opened at a larger, the card fits inside the screen it opens on.
 
     The kept card was drawn at the height it was kept at, so kept at 1 and opened at 1.5, its
-    foot ran 30 px off the bottom (vm-desktop-says-what-happens, 2026-11-10).
+    foot ran 30 px off the bottom (vm-desktop-says-what-happens, 2026-11-10). How many rows fit
+    reads the card's height but for its rows, and read from the card's height as it followed
+    them, Qt warned of a loop for rows (the net, 2026-11-10, at bf0d237ec).
     """
     before = shell.showing()["card"]
+    since = shell.mark()
     shell.as_account("niri msg output winit scale 2")
     try:
         shell.launcher_until(lambda shown: shown["card"]["screen"] < before["screen"])
@@ -184,6 +187,10 @@ def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> 
         opened_from_kept(shell)
         card = shell.showing()["card"]
         assert card["foot"] < card["screen"], f"kept at 1, opened at 2, it's off the bottom: {card}"
+        assert card["chrome"] == card["drawn"], f"its rows were fitted to a card it isn't: {card}"
+        warned = shell.log.read_text(errors="replace")[since:].splitlines()
+        looped = [line for line in warned if "Binding loop" in line]
+        assert not looped, f"refitting, it looped: {looped}"
     finally:
         shell.as_account("niri msg output winit scale 1")
 
