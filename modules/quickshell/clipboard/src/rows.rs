@@ -293,14 +293,16 @@ pub fn now<T: AsRef<str>>(types: &[T], text: &str) -> Value {
     })
 }
 
+/// The launcher's own words, which every test of the crate words its rows in.
+#[cfg(test)]
+pub fn words() -> Words {
+    let vocabulary = include_str!("../../launcher/words.json");
+    Words::from_vocabulary(vocabulary, Numbers::default()).expect("words.json is JSON")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn words() -> Words {
-        let vocabulary = include_str!("../../launcher/words.json");
-        Words::from_vocabulary(vocabulary, Numbers::default()).expect("words.json is JSON")
-    }
 
     #[test]
     fn a_copy_runs_its_lines_together_cut_short() {

@@ -1333,6 +1333,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rows::words;
 
     fn types(names: &[&str]) -> Vec<String> {
         names.iter().map(ToString::to_string).collect()
@@ -1393,11 +1394,6 @@ mod tests {
 
     fn history(keep: usize) -> History {
         History::new(keep, None, 0)
-    }
-
-    fn words() -> Words {
-        let vocabulary = include_str!("../../launcher/words.json");
-        Words::from_vocabulary(vocabulary, Numbers::default()).expect("words.json is JSON")
     }
 
     /// The keys of the rows it serves, in their order.
