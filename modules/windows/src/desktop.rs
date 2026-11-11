@@ -2,7 +2,7 @@
 //! stream, and the records the shell draws from it: a `window` record of
 //! each window, a `workspace` record of each workspace, and one `desktop`
 //! record of what holds the keys; and for the few readers that draw them,
-//! a `cast` record of each screen or window niri casts, a `layout` record
+//! a `focus` record of the window niri says has the keys, a `cast` record of each screen or window niri casts, a `layout` record
 //! of each window's tile, and one `screenshot` record of the last taken.
 //!
 //! A record holds only what a row draws, or places it by, so a change
@@ -293,6 +293,10 @@ impl Desktop {
             "overview": self.overview,
             "settings_failed": self.settings_failed,
         }));
+        // niri's own word, none while a layer such as the launcher has the
+        // keys, apart from `current`, so the launcher opening changes only
+        // this record, which only what follows niri's focus watches.
+        records.push(json!({"key": "focus", "window": self.focused}));
         self.kept_records(&mut records);
         records
     }
@@ -566,7 +570,7 @@ mod tests {
         let after = records(&desktop);
         assert_eq!(
             changed(&before, &after),
-            ["desktop", "window:10", "window:11", "workspace:1"]
+            ["desktop", "focus", "window:10", "window:11", "workspace:1"]
         );
         assert_eq!(after["window:11"]["order"], 1_100_000);
         assert_eq!(after["window:10"]["order"], before["window:10"]["order"]);
@@ -579,7 +583,10 @@ mod tests {
         // niri says no window has focus while a layer has the keys; the
         // window the keys were in is still the one in front.
         hear(&mut desktop, r#"{"WindowFocusChanged":{"id":null}}"#);
-        assert_eq!(changed(&before, &records(&desktop)), Vec::<String>::new());
+        let after = records(&desktop);
+        assert_eq!(changed(&before, &after), ["focus"]);
+        assert_eq!(before["focus"]["window"], 10);
+        assert_eq!(after["focus"]["window"], Value::Null);
     }
 
     #[test]

@@ -114,15 +114,21 @@ Singleton {
             return;
         starting = true;
         settled.restart();
-        Niri.request("Outputs", answer => {
+        // Its size is asked of niri as it's recorded, since Niri.qml holds
+        // tiles only while something draws them.
+        Niri.request("Outputs", answer => Niri.request("Windows", windows => {
             const workspace = Niri.workspaces[target.workspace_id] ?? null;
             const output = workspace === null ? null : answer.Outputs[workspace.output] ?? null;
             const scale = output?.logical?.scale ?? 1;
-            const [width, height] = target.layout.window_size;
+            // A window closed meanwhile isn't recorded; settled gives up.
+            const size = windows.Windows.find(one => one.id === target.id)?.layout?.window_size;
+            if (!size)
+                return;
+            const [width, height] = size;
             what = "a window";
             Niri.spawn(["sh", "-c", windowScript, "recorder", folder, String(target.id),
                 String(Math.round(width * scale)), String(Math.round(height * scale))]);
-        });
+        }, null), null);
     }
 
     // Escape in the picker calls back, if given.

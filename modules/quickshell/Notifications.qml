@@ -163,6 +163,12 @@ Scope {
             root.settled++;
         }
     }
+    // Whether anything's drawn, so the tiles are held only meanwhile: niri
+    // says one moving at each resize and scroll, which woke the shell with
+    // nothing up. Drawn only once they're held, so a notice opens beside
+    // the window under it rather than moving there a moment later.
+    readonly property bool drawing: shown.length > 0 || playing || holding
+    onDrawingChanged: Niri.wantTiles("notices", drawing)
     // Led by how wide a card would be with room for it, which its words set.
     onInsideChanged: Report.say(
         `places notices ${root.width} ${inside.right} ${inside.top} ${inside.width}`)
@@ -554,8 +560,7 @@ Scope {
             areas = drawn().map(one => one.framed);
         }
 
-        visible: (root.shown.length > 0 || root.playing || root.holding)
-            && !Notices.gathered && !root.remaking
+        visible: root.drawing && Niri.tilesReady && !Notices.gathered && !root.remaking
         anchors.top: true
         anchors.right: true
         implicitWidth: noticeColumn.x + noticeColumn.width + root.inside.right

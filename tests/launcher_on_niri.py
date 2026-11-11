@@ -22,6 +22,7 @@ import contextlib
 import functools
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -434,6 +435,20 @@ class Shell:
                 return True
             time.sleep(POLL)
         return False
+
+    def wakes(self) -> int:
+        """Give how often the shell's own thread, where its QML runs, has slept and been woken.
+
+        Read from /proc, a count the kernel keeps whatever the shell does, so a case can compare
+        the shell's wakes over two spans though the shell counts none itself.
+        """
+        assert self.process is not None, "the shell isn't started"
+        status = Path(f"/proc/{self.process.pid}/status").read_text()
+        switches = re.findall(r"^(?:non)?voluntary_ctxt_switches:\s+(\d+)$", status, re.MULTILINE)
+        assert len(switches) == len(("voluntary", "nonvoluntary")), (
+            f"/proc says no wakes of the shell: {status}"
+        )
+        return sum(int(count) for count in switches)
 
     def frames(self) -> int:
         """Give how many frames the launcher has drawn since the shell started."""
