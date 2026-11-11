@@ -281,6 +281,15 @@ function going(act, byApp, entry) {
     return entry ? { entry } : null;
 }
 
+// The ask an act the shell does itself sends once it's done, its `also`,
+// as a notice's going to its program reads it; null for any other act,
+// an ask's own being its ask (Y2YBTS, 2026-11-11, a9bce629).
+const DONE_HERE = new Set(["go", "open", "copy"]);
+function alsoOf(act) {
+    return DONE_HERE.has(actForm(act)) && act.also !== null && typeof act.also === "object"
+        ? act.also : null;
+}
+
 // An ask as it's sent: with the activation token the act was given where
 // it carries `token: true`, so its sender can bring its window forward;
 // null where it needs one and none came, so it isn't sent without.
@@ -292,10 +301,13 @@ function tokened(act, token) {
         ? Object.assign({}, act.ask, { token }) : null;
 }
 
-// An act's row as it's said: the name, glyph and side it's served with
-// where the daemon words it itself, as a notice's offer in its sender's
-// words or its Read once read, else `worded`, its key's words.json name
-// and glyph, with nothing at its side. `roles` are the theme's glyphs.
+// An act's row as it's said: `worded`, its key's words.json name and
+// glyph, with nothing at its side, but for words from outside the
+// vocabulary, which the daemon serves with it: a `name`, as a notice's
+// offer in its sender's words, and a `side`, as a link's host; and a
+// `glyph`, a role or `{ code }`, as rows' are. A verb whose words are the
+// launcher's has a key of its own instead (Y2YBTS, 2026-11-11, a9bce629).
+// `roles` are the theme's glyphs.
 function actWorded(act, worded, roles) {
     return {
         name: typeof act.name === "string" && act.name !== "" ? act.name : worded.name,

@@ -329,9 +329,11 @@ Scope {
         case "copy":
             if (one.copy !== "")
                 Quickshell.clipboardText = one.copy;
+            alsoAsked(one);
             return;
         case "open":
             Niri.spawn(["xdg-open", one.open]);
+            alsoAsked(one);
             return;
         case "go": {
             // The entry's looked up here, at Return, never as rows are
@@ -342,6 +344,7 @@ Scope {
                 Niri.act({ FocusWindow: { id: where.window } });
             else if (where?.entry && maker)
                 Niri.spawn(maker.command(where.entry));
+            alsoAsked(one);
             return;
         }
         case "step":
@@ -353,6 +356,21 @@ Scope {
         case "ask":
             asked(key, one);
         }
+    }
+
+    // Sends what an act the shell did asks besides, once it's done, as a
+    // notice gone to is read (ReadyRows.js's alsoOf). Nothing waits on it:
+    // its row moves as the daemon tells the change, so a refusal goes to
+    // the journal alone, the row as it was saying it on screen.
+    function alsoAsked(one) {
+        const also = Ready.alsoOf(one);
+        if (also === null)
+            return;
+        link.ask(also, answer => {
+            const why = Ready.refusal(answer, Words.field.becoming ?? {});
+            if (why !== "")
+                console.info(`launcher: ${one.key}'s also refused: ${why}`);
+        });
     }
 
     // Asks an act of the daemon on the rows' own connection, its row drawn

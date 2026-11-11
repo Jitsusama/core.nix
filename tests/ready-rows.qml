@@ -221,13 +221,26 @@ QtObject {
             ["agent", { code: "f198" }, "absent", { code: "" }, { code: "zz" }, null]
                 .map(glyph => Ready.glyphOf(glyph, roles)),
             ["A", "\uf198", "", "", "", ""]);
-        const worded = { name: "Mark It Read", glyph: "R" };
+        const worded = { name: "Open the Link", glyph: "L" };
         Expect.same("an act is said in its key's words where it's served none",
             Ready.actWorded(acts[0], worded, roles),
-            { name: "Mark It Read", glyph: "R", side: "" });
-        Expect.same("and in its own where it is", Ready.actWorded({ key: "verb:notice:reply",
-            name: "Reply", glyph: "agent", side: "slack.com" }, worded, roles),
-            { name: "Reply", glyph: "A", side: "slack.com" });
+            { name: "Open the Link", glyph: "L", side: "" });
+        Expect.same("and in its sender's where it is", Ready.actWorded({
+            key: "verb:notice:reply", name: "Reply", glyph: "agent" }, worded, roles),
+            { name: "Reply", glyph: "A", side: "" });
+        const reads = { ask: "mark", notices: [7], read: true };
+        Expect.same("an act the shell does sends its also once done", [
+            { key: "verb:notice:goTo", go: "slack", also: reads },
+            { key: "verb:open", open: "https://example.org", also: reads },
+            { key: "verb:copy", copy: "hi", also: reads }].map(Ready.alsoOf),
+            [reads, reads, reads]);
+        Expect.same("an ask, a step or an act with none sends nothing besides", [
+            { key: "verb:a", ask: { ask: "act" }, also: reads },
+            { key: "verb:more", step: "rows", also: reads },
+            { key: "verb:copy", copy: "hi" }].map(Ready.alsoOf), [null, null, null]);
+        Expect.same("a link says its host at its side", Ready.actWorded({
+            key: "verb:notice:link", side: "github.com" }, worded, roles),
+            { name: "Open the Link", glyph: "L", side: "github.com" });
         const asking = { key: "verb:notice:open", ask: { ask: "invoke", id: 4 }, token: true };
         Expect.same("an ask that takes a token is sent with it",
             Ready.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });
