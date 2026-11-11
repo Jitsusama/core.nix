@@ -1,6 +1,6 @@
 //! What the shell asks spend-watch to do over its socket, of a line the
-//! collection holds: run what the line offers, or mark its finding
-//! expected. The shell spawns nothing for an act (Y2YBTS's data-layer
+//! collection holds or an action the bar's piece offers: run what it
+//! offers, or mark its finding expected. The shell spawns nothing for an act (Y2YBTS's data-layer
 //! rule, 2026-11-10), so the daemon that made the line does it.
 //!
 //! An act names its line by key and never says what to run, so the socket
@@ -59,6 +59,13 @@ pub fn asked(act: &str, key: &str, line: Option<&Value>) -> Result<Act, Refusal>
                 [] => Err(refused("bad-act", format!("{key} has nothing to run"))),
                 [program, go, session] if program == "spend-watch" && go == "go" => {
                     Ok(Act::Go(session.clone()))
+                }
+                // The bar's mark runs the command line's own ask, done
+                // here rather than in a program of its own.
+                [program, findings, expect, finding]
+                    if program == "spend-watch" && findings == "findings" && expect == "expect" =>
+                {
+                    Ok(Act::Expect(finding.clone()))
                 }
                 _ => Ok(Act::Launch(run)),
             }
@@ -133,6 +140,15 @@ mod tests {
             Ok(Act::Launch(login.map(str::to_owned).to_vec())),
             "any other run should be started as a program"
         );
+        let mark = json!({
+            "key": "status:mark:burn:s1",
+            "run": ["spend-watch", "findings", "expect", "burn:s1"]
+        });
+        assert_eq!(
+            asked("run", "status:mark:burn:s1", Some(&mark)),
+            Ok(Act::Expect("burn:s1".into())),
+            "the bar's mark should be done in the daemon"
+        );
         let code = |act: &str, line: Option<&Value>| asked(act, key, line).map_err(|no| no.code);
         assert_eq!(code("run", None), Err("no-line"));
         assert_eq!(code("expect", Some(&sign_in)), Err("bad-act"));
@@ -145,6 +161,13 @@ mod tests {
         let hub = Arc::new(Hub::new(0));
         let written = json!({"v": crate::collection::VERSION, "findings": [burn()]});
         hub.seed(&written.to_string());
+        let report = ["kitty", "--hold", "spend-watch", "report"].map(str::to_owned);
+        hub.offer(&[crate::status::ShellAction {
+            kind: "report".into(),
+            key: "status:report".into(),
+            name: "Read this week's report".into(),
+            run: report.to_vec(),
+        }]);
         let done = Arc::new(Mutex::new(Vec::new()));
         let doing = Arc::clone(&done);
         hub.doing(Box::new(move |act| {
@@ -158,6 +181,8 @@ mod tests {
         let served = std::thread::spawn(move || serving.serve(first, reading, theirs));
         let second = r#"{"id":2,"ask":"act","act":"run","line":"finding:gone"}"#;
         writeln!(ours, "{second}").expect("asked");
+        let third = r#"{"id":3,"ask":"act","act":"run","line":"status:report"}"#;
+        writeln!(ours, "{third}").expect("asked");
         ours.shutdown(Shutdown::Write).expect("done asking");
         let answers: Vec<Value> = BufReader::new(&ours)
             .lines()
@@ -172,14 +197,15 @@ mod tests {
                 json!({
                     "id": 2,
                     "error": {"code": "no-line", "message": "no line finding:gone here"}
-                })
+                }),
+                json!({"id": 3, "done": true})
             ],
-            "a line held should be acted on, and one not held refused"
+            "a line or an action held should be acted on, and one not held refused"
         );
         assert_eq!(
             *done.lock().expect("the acts done"),
-            [Act::Go("s1".into())],
-            "the act should be what the line offers"
+            [Act::Go("s1".into()), Act::Launch(report.to_vec())],
+            "each act should be what its line or action offers"
         );
     }
 }

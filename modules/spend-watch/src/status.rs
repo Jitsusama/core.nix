@@ -56,6 +56,9 @@ pub struct ShellAction {
     /// What kind of thing it does, for its glyph: go, ask, sign-in,
     /// report, mark.
     pub kind: String,
+    /// What the shell names it by in an act over the socket, which runs
+    /// only an action the last pass offered under it (src/acts.rs).
+    pub key: String,
     pub name: String,
     pub run: Vec<String>,
 }
@@ -194,12 +197,17 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
 }
 
 /// What the margin offers: the finding's own action and its mark, a
-/// sign-in for each source signed out, and the week's report.
+/// sign-in for each source signed out, and the week's report. A finding's
+/// are keyed by the finding too, so an act asked of one the next pass put
+/// down does nothing rather than act on another.
 fn actions(picture: &Picture, top: Option<&Finding>) -> Vec<ShellAction> {
     let mut actions: Vec<ShellAction> = Vec::new();
-    if let Some(action) = top.and_then(|finding| finding.action.as_ref()) {
+    if let Some(finding) = top
+        && let Some(action) = &finding.action
+    {
         actions.push(ShellAction {
             kind: action_kind(action).into(),
+            key: format!("status:finding:{}", finding.key),
             name: action.name.clone(),
             run: action.run.clone(),
         });
@@ -207,6 +215,7 @@ fn actions(picture: &Picture, top: Option<&Finding>) -> Vec<ShellAction> {
     if let Some(top) = top {
         actions.push(ShellAction {
             kind: "mark".into(),
+            key: format!("status:mark:{}", top.key),
             name: "It's expected".into(),
             run: vec![
                 "spend-watch".into(),
@@ -227,6 +236,7 @@ fn actions(picture: &Picture, top: Option<&Finding>) -> Vec<ShellAction> {
         {
             actions.push(ShellAction {
                 kind: "sign-in".into(),
+                key: format!("status:sign-in:{}", source.feed),
                 name: action.name.clone(),
                 run: action.run.clone(),
             });
@@ -234,6 +244,7 @@ fn actions(picture: &Picture, top: Option<&Finding>) -> Vec<ShellAction> {
     }
     actions.push(ShellAction {
         kind: "report".into(),
+        key: "status:report".into(),
         name: "Read this week's report".into(),
         run: ["kitty", "--hold", "spend-watch", "report"]
             .map(str::to_owned)
@@ -458,6 +469,16 @@ mod tests {
             assert!(!said.contains('$'), "{said}");
         }
         assert_ne!(quiet.hint, "");
+        // Each action is keyed for an act over the socket, a finding's by
+        // the finding.
+        let keys: Vec<&str> = status
+            .actions
+            .iter()
+            .map(|action| action.key.as_str())
+            .collect();
+        let marked = format!("status:mark:{}", found[0].key);
+        assert!(keys.contains(&marked.as_str()), "{keys:?}");
+        assert_eq!(keys.last(), Some(&"status:report"));
     }
 
     // The margin's AI Spend piece had no drawer, though the collection's

@@ -18,6 +18,7 @@ use crate::acts::{self, Doer};
 use crate::collection::Collection;
 use crate::records::{BUDGETS, KINDS, budget_records, cut, cut_budgets, kind_of, records};
 use crate::standing::Standing;
+use crate::status::ShellAction;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, Write};
@@ -171,6 +172,9 @@ impl Watch {
 #[derive(Default)]
 struct Held {
     records: BTreeMap<String, Value>,
+    /// What the bar's piece offers, as the last pass wrote `status.json`,
+    /// by each action's key.
+    offered: BTreeMap<String, Value>,
     /// Whether a pass has said the collection yet: until it has, the
     /// state is "starting".
     passed: bool,
@@ -202,15 +206,24 @@ impl Hub {
         let _ = self.doer.set(doer);
     }
 
-    /// An act asked of the line `line` names, done off the lock, since
-    /// bringing a window forward waits on kitty and niri.
+    /// Holds what the bar's piece offers, as a pass wrote it.
+    pub fn offer(&self, actions: &[ShellAction]) {
+        let offered = actions.iter().map(|one| (one.key.clone(), json!(one)));
+        self.lock().offered = offered.collect();
+    }
+
+    /// An act asked of the line `line` names, a row's or an action the
+    /// bar's piece offers, done off the lock, since bringing a window
+    /// forward waits on kitty and niri.
     fn act(&self, id: &Value, act: &str, line: &str) -> Value {
-        let held = self
-            .lock()
-            .records
-            .values()
-            .find(|record| record["line"]["key"] == line)
-            .map(|record| record["line"].clone());
+        let held = {
+            let held = self.lock();
+            held.records
+                .values()
+                .find(|record| record["line"]["key"] == line)
+                .map(|record| record["line"].clone())
+                .or_else(|| held.offered.get(line).cloned())
+        };
         let doing = match acts::asked(act, line, held.as_ref()) {
             Ok(doing) => doing,
             Err(refusal) => return error(id, refusal.code, &refusal.message),

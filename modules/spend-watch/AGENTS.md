@@ -19,7 +19,8 @@ the shell remakes only what a pass moved and watches each kind only while
 it draws it. The socket takes the shell's acts too (`src/acts.rs`): `run`
 does what a row offers, going to a session or starting its sign-in through
 niri, and `expect` marks its finding expected, each named by the row's key
-so the socket runs only what a pass put in a row. The files stay for pi,
+so the socket runs only what a pass put in a row. The bar's piece acts the
+same way, naming an action of `status.json` by its `key`. The files stay for pi,
 the command line and the checks, and for the shell while the socket isn't
 there.
 [`home.nix`][1] renders its config and runs it; the [contract][2] says what a
