@@ -6,8 +6,8 @@
 //! Usage: `agents --vocabulary WORDS --node NODE --to-do TODO --spend
 //! SPEND --orchestrators ORCHESTRATORS --socket SOCKET`, where WORDS is
 //! the launcher's words.json, NODE the mycelium node's socket, TODO the
-//! to-do daemon's, SPEND spend-watch's collection and ORCHESTRATORS the
-//! harness's list of them.
+//! to-do daemon's, SPEND spend-watch's collection (its budgets.json read
+//! from beside it) and ORCHESTRATORS the harness's list of them.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -21,11 +21,11 @@ use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use serde_json::json;
 
-/// The daemon as the launcher knows it: Agents' ready rows, and how its
-/// sessions stand together.
+/// The daemon as the launcher knows it: Agents' ready rows, how its
+/// sessions stand together, and each session's drawer.
 const DOMAIN: Domain = Domain {
     name: "agents",
-    kinds: &["row", "summary"],
+    kinds: &["row", "summary", "drawer"],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS --node NODE --to-do TODO \
@@ -99,6 +99,7 @@ fn main() -> ExitCode {
     sources::follow(args.node, "job", Heard::Jobs, to.clone());
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
     let paths = Paths {
+        budgets: args.spend.with_file_name("budgets.json"),
         spend: args.spend,
         orchestrators: args.orchestrators,
     };
