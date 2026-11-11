@@ -12,7 +12,8 @@
 //! its first whole `lines` and the `count` of them all, or, past 64 MB,
 //! of those in its first 64 MB with `more` true; a folder how many
 //! `items` it shows and the `names` of its first; and anything else only
-//! its facts.
+//! its facts, which is all a FIFO, a socket or a device says, as none of
+//! them is opened.
 //!
 //! `file-preview items FOLDER` prints one line of JSON saying, for each
 //! folder inside FOLDER, how many items it shows, by its path.
@@ -125,6 +126,11 @@ fn shown(path: &Path) -> Result<Value, String> {
         let (count, names) = listed(path);
         said.insert("items".into(), json!(count));
         said.insert("names".into(), json!(names));
+        return Ok(Value::Object(said));
+    }
+    // Only a file is opened: a FIFO, a socket or a device would hold the
+    // read open, and every ask behind it, until something wrote to it.
+    if !facts.is_file() {
         return Ok(Value::Object(said));
     }
     let ending = ending_of(path);
@@ -582,6 +588,31 @@ mod tests {
         // However small the cap, the one just made, the newest, is kept.
         pruned(&folder, 0);
         assert!(folder.join("new.png").is_file());
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
+    fn a_fifo_says_only_its_facts_and_is_never_opened() {
+        // Opened, it would wait for a writer that never comes, so it's asked on a thread of
+        // its own and given SAID_WITHIN, and the case fails rather than hangs.
+        const SAID_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
+        let folder = folder("fifo");
+        let fifo = folder.join("pipe.txt");
+        let made = Command::new("mkfifo").arg(&fifo).status();
+        assert!(
+            made.is_ok_and(|made| made.success()),
+            "mkfifo made {}",
+            fifo.display()
+        );
+        let (tell, told) = std::sync::mpsc::channel();
+        let asked = fifo.clone();
+        std::thread::spawn(move || tell.send(shown(&asked).ok()));
+        let said = told
+            .recv_timeout(SAID_WITHIN)
+            .expect("a FIFO is said without being opened")
+            .expect("a FIFO is said");
+        let keys: Vec<&String> = said.as_object().expect("its facts").keys().collect();
+        assert_eq!(keys, ["changed", "size"], "only its facts: {said}");
         fs::remove_dir_all(folder).unwrap();
     }
 
