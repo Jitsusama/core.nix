@@ -7,7 +7,9 @@
 //! [`camera`], and the keyboards connected, caps lock and a board's layer,
 //! [`keyboards`], what key-counts has tallied of each, [`counts`], and
 //! what the desktop's watchers say of themselves, [`status`], each heard
-//! as it's written through [`written`]), and the user units the shell may
+//! as it's written through [`written`]), the network links and their
+//! addresses, heard from the kernel's route socket ([`links`]), and the
+//! user units the shell may
 //! restart, [`units`], and the parts Heat's rows say, gathered from those
 //! records and the processor's own telemetry ([`parts`], [`telemetry`]),
 //! and Heat's, Power's and Machine's own rows made of them, ready for the
@@ -42,6 +44,7 @@ pub mod interface;
 pub mod kept;
 pub mod keyboards;
 pub mod light;
+pub mod links;
 pub mod machine_rows;
 pub mod memory;
 pub mod parts;

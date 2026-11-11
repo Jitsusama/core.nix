@@ -1141,6 +1141,32 @@ fn the_brightness_and_warmth_steered_are_told_as_theyre_written() {
 }
 
 #[test]
+fn the_links_are_said_from_the_kernel_with_what_their_folders_say() {
+    let running = Running::new("link");
+    // The kernel's own links are the build's, which always has loopback;
+    // what its folder says is the fixture's.
+    let folder = running.root().join("sys/class/net/lo");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("addr_assign_type"), "0\n").unwrap();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "link"}));
+    let loopback = record(&said["records"], "link:lo");
+    assert_eq!(loopback["kind"], json!("link"));
+    assert_eq!(loopback["ifname"], json!("lo"));
+    assert_eq!(loopback["link_type"], json!("loopback"));
+    assert_eq!(loopback["addr_assign_type"], json!(0));
+    assert_eq!(loopback["wireless"], json!(false));
+    assert!(
+        loopback["mtu"].as_u64().is_some(),
+        "no MTU said: {loopback}"
+    );
+    assert!(
+        loopback["addr_info"].is_array(),
+        "no addresses said: {loopback}"
+    );
+}
+
+#[test]
 fn who_has_each_camera_is_told_as_its_file_is_written() {
     let running = Running::new("camera");
     let folder = running.root().join("run/camera-holders");
