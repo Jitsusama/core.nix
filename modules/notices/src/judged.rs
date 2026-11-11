@@ -236,7 +236,8 @@ mod tests {
 
     #[test]
     fn quiet_is_kept_while_its_file_says_so_and_its_time_isnt_up() {
-        let folder = std::env::temp_dir().join(format!("notices-quiet-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("notices-judged-quiet-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder");
         let file = folder.join("quiet");
         assert!(!kept_quiet(&file, 5_000), "no file, no quiet");
