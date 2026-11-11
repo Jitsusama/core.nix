@@ -2291,6 +2291,14 @@ onLinux {
     test = ../../tests/now-moment.qml;
   };
 
+  # An opening into a place that shows none of For You's rows places no
+  # time or date, which makes Time's and Today's rows, until Now's rows are
+  # wanted, and an opening onto them places it once (tests/now-retime.qml).
+  the-launcher-places-the-time-only-when-now-is-wanted = nowShown {
+    name = "the-launcher-places-the-time-only-when-now-is-wanted";
+    test = ../../tests/now-retime.qml;
+  };
+
   # A look Joel acts on whose file can't be written, its folder a file
   # here, is put back as it read and said in the journal, rather than shown
   # done until it comes back at the next read (tests/now-look-unwritten.qml).

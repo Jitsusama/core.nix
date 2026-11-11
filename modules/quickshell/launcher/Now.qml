@@ -162,7 +162,13 @@ Provider {
             if (provider.launcher.open) {
                 provider.openedAt = Date.now();
                 provider.reweather();
-                provider.retime();
+                // Placing the time and the date makes Time's and Today's
+                // rows, so an opening into a place that shows none of Now's
+                // leaves them stale until Now is wanted (H6EDLC, 2026-11-11).
+                if (provider.wanted)
+                    provider.retime();
+                else
+                    provider.timeStale = true;
             } else {
                 provider.openedAt = Number.POSITIVE_INFINITY;
             }
@@ -177,7 +183,8 @@ Provider {
     // bound: the launcher's answers are made from every provider's rows,
     // Now's among them, so a binding here would read itself back (a loop
     // Quickshell warns of as it starts). Read as the clock turns a minute,
-    // as the launcher opens, and once the shell has started.
+    // as the launcher opens onto Now's rows or comes to them, and once the
+    // shell has started.
     property var timeRow: null
     property var dateRow: null
 
@@ -188,9 +195,10 @@ Provider {
         timeStale = false;
     }
 
-    // Whether a minute turned while Now's rows weren't wanted, so it's read
-    // as they are again. Placing the time and the date makes Time's and
-    // Today's rows, so an opening, which retimes already, retimes once.
+    // Whether a minute turned, or the launcher opened, while Now's rows
+    // weren't wanted, so it's read as they are again. Placing the time and
+    // the date makes Time's and Today's rows, so an opening onto Now's
+    // rows, which retimes already, retimes once.
     property bool timeStale: false
 
     function retimeIfStale() {
