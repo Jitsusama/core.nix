@@ -1,11 +1,11 @@
 """The MV7's voice filter levels a voice and leaves another microphone as played.
 
-tests/shure-mv7-voice.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what each tone stands for and the level it should come through
-at. Players presenting themselves as sources stand in for the microphones, one with the MV7's
-USB id. Each test asks for the state it starts from as a fixture: Joel's session with the tones
-made and the filter running, and a quiet voice measured with the filter stopped. So any test
-runs alone with `-k`. The tests need no value from Nix.
+shure-mv7-voice.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what each tone stands for and the level it
+should come through at. Players presenting themselves as sources stand in for the microphones, one
+with the MV7's USB id. Each test asks for the state it starts from as a fixture: Joel's session with
+the tones made and the filter running, and a quiet voice measured with the filter stopped. So any
+test runs alone with `-k`. The tests need no value from Nix.
 """
 
 from __future__ import annotations

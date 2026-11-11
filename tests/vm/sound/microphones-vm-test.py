@@ -1,11 +1,10 @@
 """A webcam's microphone ranks below a USB microphone's, and others keep their own rank.
 
-tests/microphones.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. Two dummy sound cards stand in for microphones,
-the second marked a webcam by udev, and each test reads the rank WirePlumber gave them from
-pw-dump. Each asks for the session with both cards heard as a fixture, so any test runs alone
-with `-k`. The cards are named in the machine microphones.nix builds, so the tests need no
-value from Nix.
+microphones.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+and its opening comment says what the test proves. Two dummy sound cards stand in for microphones,
+the second marked a webcam by udev, and each test reads the rank WirePlumber gave them from pw-dump.
+Each asks for the session with both cards heard as a fixture, so any test runs alone with `-k`. The
+cards are named in the machine microphones.nix builds, so the tests need no value from Nix.
 """
 
 from __future__ import annotations

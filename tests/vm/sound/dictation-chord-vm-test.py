@@ -1,9 +1,9 @@
 """Dictation's chord held and tapped on a stand-in keyboard, heard by an account.
 
-tests/dictation-chord.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the test proves. Each test asks for the account listening
-to dictation-chord as a fixture, and reads only what was heard since it began, so any test
-runs alone with `-k`.
+dictation-chord.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Each test asks for the
+account listening to dictation-chord as a fixture, and reads only what was heard since it began, so
+any test runs alone with `-k`.
 """
 
 from __future__ import annotations

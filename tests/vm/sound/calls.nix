@@ -4,15 +4,15 @@
 # PulseAudio recorder copied under a call program's name stands in for the
 # call. The tests are calls-vm-test.py, which pytest runs inside the driver.
 { pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "calls";
 
   nodes.machine = {
-    imports = [ ../modules/pipewire/nixos.nix ];
+    imports = [ ../../../modules/pipewire/nixos.nix ];
 
     users.users.joel.isNormalUser = true;
     environment.systemPackages = [
-      (pkgs.callPackage ../modules/calls/package.nix { })
+      (pkgs.callPackage ../../../modules/calls/package.nix { })
       pkgs.jq
       pkgs.pulseaudio
     ];

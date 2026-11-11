@@ -1,11 +1,11 @@
 """The XPS 14's speakers hear the speaker tuning, and its headphones hear what was played.
 
-tests/speakers.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the tests prove. Two silent sinks stand in for the speakers and the
-headphone jack under the laptop's own names, given as the `values` fixture. Each test asks for
-the state it starts from as a fixture, Joel's sound running with the tuning on and the tones
-written, and sets its own default sink, so any test runs alone with `-k`; what was played is
-measured once, with the tuning stopped, and the tuning is started again straight after.
+speakers.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the tests prove. Two silent sinks stand in for the speakers and the
+headphone jack under the laptop's own names, given as the `values` fixture. Each test asks for the
+state it starts from as a fixture, Joel's sound running with the tuning on and the tones written,
+and sets its own default sink, so any test runs alone with `-k`; what was played is measured once,
+with the tuning stopped, and the tuning is started again straight after.
 """
 
 from __future__ import annotations

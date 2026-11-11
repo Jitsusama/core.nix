@@ -6,11 +6,11 @@
 # own, which starts from 1600. The webcam's card is then unplugged and plugged
 # back in, and must yield again. The script is microphones-vm-test.py.
 { pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "microphones";
 
   nodes.machine = {
-    imports = [ ../modules/pipewire/nixos.nix ];
+    imports = [ ../../../modules/pipewire/nixos.nix ];
 
     # Sound cards are opened to whoever sits at the seat, and nobody does
     # here, so the account reads them as a member of audio.

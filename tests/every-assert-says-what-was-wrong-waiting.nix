@@ -328,7 +328,7 @@
   "modules/wifid/sign-in/src/socks.rs" = 4;
   "modules/zathura/command/src/main.rs" = 5;
   "modules/zathura/next-document/src/main.rs" = 4;
-  "tests/call-transcripts-vm-test.py" = 9;
+  "tests/vm/sound/call-transcripts-vm-test.py" = 9;
   "tests/desk-facts-vm-test.py" = 4;
   "tests/desktop/desktop-launcher-answers-vm-test.py" = 5;
   "tests/desktop/desktop-launcher-finds-by-name-vm-test.py" = 1;
@@ -344,8 +344,8 @@
   "tests/lib/vm-helpers-test.py" = 3;
   "tests/lib/vm-pytest-test.py" = 1;
   "tests/niri-off-cpu-vm-test.py" = 1;
-  "tests/noise-cancelled-vm-test.py" = 2;
-  "tests/pebble-x-plus-vm-test.py" = 3;
+  "tests/vm/sound/noise-cancelled-vm-test.py" = 2;
+  "tests/vm/sound/pebble-x-plus-vm-test.py" = 3;
   "tests/plymouth-restore-vm-test.py" = 1;
   "tests/shaper-vm-test.py" = 3;
   "tests/update-to-main-vm-test.py" = 1;

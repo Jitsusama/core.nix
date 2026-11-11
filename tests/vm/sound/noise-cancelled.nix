@@ -10,8 +10,8 @@
 # are noise-cancelled-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
-  dictation = pkgs.callPackage ../modules/dictation/package.nix { };
-  model = pkgs.callPackage ../modules/noise-cancelled/model.nix { };
+  dictation = pkgs.callPackage ../../../modules/dictation/package.nix { };
+  model = pkgs.callPackage ../../../modules/noise-cancelled/model.nix { };
   # Noise alone, then a person speaking over a room's noise, each a 48 kHz
   # mono WAV. The voice has a second of the room before it, while the
   # denoiser learns it.
@@ -27,7 +27,7 @@ let
     sox -m -v 1 voice.wav -v 1 room.wav $out/spoken.wav
   '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "noise-cancelled";
 
   nodes.machine = {

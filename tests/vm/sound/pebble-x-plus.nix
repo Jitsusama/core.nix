@@ -25,11 +25,11 @@ let
     // properties;
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "pebble-x-plus";
 
   nodes.machine = {
-    imports = [ ../modules/creative-pebble-x-plus/nixos.nix ];
+    imports = [ ../../../modules/creative-pebble-x-plus/nixos.nix ];
 
     users.users.joel.isNormalUser = true;
     environment.systemPackages = [
