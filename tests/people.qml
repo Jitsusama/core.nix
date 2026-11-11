@@ -125,11 +125,11 @@ ShellRoot {
         {
             // Who someone is was read with nothing to follow, so a guest
             // or a sender drawn before People answered stayed unnamed
-            // (Y2YBTS, 2026-11-10).
+            // (Y2YBTS, 2026-11-10), or known only by their address, as a
+            // page that names no one knows them.
             what: "a guest asked after before People answers is named once it does",
-            holds: () => guest.named !== null,
+            holds: () => guest.named?.name === "Ada Brook",
             check: () => {
-                expect("named", guest.named.name === "Ada Brook", guest.named.name);
                 guest.merges = people.merging.merges;
                 guest.asking = false;
             }
