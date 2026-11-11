@@ -35,7 +35,7 @@ use serde_json::json;
 /// there are to reopen.
 const DOMAIN: Domain = Domain {
     name: "agents",
-    kinds: &["row", "summary", "drawer", "reopen"],
+    kinds: &["row", "summary", "drawer", "reopen", "recent"],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS --node NODE --to-do TODO \

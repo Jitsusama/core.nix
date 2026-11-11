@@ -19,6 +19,7 @@
 //! - `sources`: each source followed on its own thread, heard in one loop.
 //! - `acts`: a session's acts, done by asking the node as the shell asks.
 //! - `reopen`: the sessions there are to reopen, and what Joel said of them.
+//! - `recent`: the sessions closed this boot that Recent lists.
 
 pub mod acts;
 pub mod clock;
@@ -26,6 +27,7 @@ pub mod drawer;
 pub mod figures;
 pub mod file;
 pub mod inputs;
+pub mod recent;
 pub mod reopen;
 pub mod row;
 pub mod said;

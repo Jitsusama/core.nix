@@ -30,11 +30,10 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use crate::served::{PLACE, SPACING};
+
 /// The ways a session comes to be offered apart from a boot.
 const APART: [&str; 2] = ["carried", "released"];
-
-/// How far apart each record's `order` is set, as the rows' are.
-const SPACING: i64 = 1024;
 
 /// What Joel said of the sessions to reopen: the boot he put off, and
 /// the sessions he forgot, by id.
@@ -160,7 +159,8 @@ fn whole(one: &Value) -> bool {
     safe && placed
 }
 
-/// Every session there is to reopen, each a record keyed `reopen:<id>`
+/// Every session there is to reopen, each a record keyed
+/// `reopen:agents:<id>`, in Agents' place, so a watch of its place hears it,
 /// in the order offered, the last boot's first: `restore` as the harness
 /// keeps it, `boot` this one, `kept` what Joel said, and `here` the
 /// sessions running or parked here now.
@@ -203,7 +203,7 @@ pub fn offered(restore: Option<&Value>, boot: &str, kept: &Kept, here: &[Here]) 
         .zip(1..)
         .map(|((one, mut record), at)| {
             let id = one["id"].as_str().unwrap_or("");
-            record["key"] = json!(format!("reopen:{id}"));
+            record["key"] = json!(format!("reopen:{PLACE}:{id}"));
             record["kind"] = json!("reopen");
             record["order"] = json!(at * SPACING);
             record["session"] = one.clone();
@@ -245,7 +245,7 @@ mod tests {
         );
         assert_eq!(
             all[0],
-            json!({"key": "reopen:01-kept", "kind": "reopen", "order": 1024, "way": "boot",
+            json!({"key": "reopen:agents:01-kept", "kind": "reopen", "order": 1024, "way": "boot",
                 "boot": "the-last", "session": restore()["sessions"][0]}),
             "each says how it came, keyed by its id and placed by a spaced order"
         );
