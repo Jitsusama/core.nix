@@ -14,7 +14,9 @@
 // changes how they stand, as Tuple says it, keeping the favourites
 // changed here until Tuple says them, and a place holding a row People
 // lent it, as a mail its sender, is told to ask for it again. A guest
-// asked after before the daemon answers is named once it does. It exits 0 once every case
+// asked after before the daemon answers is named once it does, and one
+// Tuple comes to know after their name was typed is found without typing
+// it again. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -376,6 +378,12 @@ ShellRoot {
                 names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore",
                 names(people.all));
         }),
+        // Words that find Eli too, whose favourite changed here is kept
+        // while the search holds his record.
+        seeking("f", "one Tuple doesn't know yet isn't found", () => {
+            expect("not found", !names(found("f")).includes("Fay Gale"), names(found("f")));
+            root.foundBefore = root.foundMore;
+        }),
         {
             // Tuple's change heard while People's rows aren't wanted, as
             // with the launcher shut: merging everyone at every change
@@ -401,6 +409,16 @@ ShellRoot {
                     mailer.told > 0, `told ${mailer.told} times`);
                 launcher.held = [];
                 launcher.wanting = true;
+            }
+        },
+        {
+            // Google's people came 14 s after a name was typed, and the
+            // person never showed until the words changed (80ECO2,
+            // 2026-11-11, vm-desktop-looks-plates).
+            what: "one Tuple comes to know after the words were typed is found, untyped again",
+            holds: () => root.foundMore > root.foundBefore,
+            check: () => {
+                expect("found", names(found("f")).includes("Fay Gale"), names(found("f")));
             }
         },
         {
@@ -450,6 +468,17 @@ ShellRoot {
 
     // When the people daemon was stopped.
     property real stoppedAt: 0
+
+    // How often People found more once asked, as the launcher hears it,
+    // and how often before Tuple came to know Fay.
+    property int foundMore: 0
+    property int foundBefore: 0
+    Connections {
+        target: people
+        function onFoundMore() {
+            root.foundMore += 1;
+        }
+    }
 
     // How many merges and changes People had before a change heard while
     // nobody looks.
