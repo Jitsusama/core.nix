@@ -147,7 +147,7 @@ onLinux {
   # stand-ins for Tuple, the window and the browser
   # (tests/google-opens-its-links.sh).
   google-opens-its-links = pkgs.runCommandLocal "google-opens-its-links" { } ''
-    ${lib.getExe pkgs.bash} ${../../tests/google-opens-its-links.sh} ${./opens.sh}
+    ${lib.getExe pkgs.bash} ${./tests/google-opens-its-links.sh} ${./opens.sh}
     touch $out
   '';
 }

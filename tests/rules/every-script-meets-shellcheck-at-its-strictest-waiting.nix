@@ -82,7 +82,6 @@
   "tests/desktop/op-stand-in.sh" = 3;
   "tests/desktop/stand-in-virsh.sh" = 1;
   "tests/desktop/tuple-stand-in.sh" = 2;
-  "tests/google-opens-its-links.sh" = 1;
   "tests/vm/devices/lid-hinge-stand-in-hinge.sh" = 1;
   "tests/nested-niri.sh" = 1;
   "tests/vm/network/network-revive-stand-in.sh" = 4;
