@@ -21,7 +21,8 @@
 //! pressure near half while Joel's keys came 440 ms late. So a scope there
 //! whose first process was started from inside jobs goes back at once to
 //! where its starter is, unless it sets limits of its own, which moving it
-//! out of the scope would drop.
+//! out of the scope would drop. A service made the same way is only said
+//! of, since who asked for it can't be seen, as `src/strays.rs` says.
 //!
 //! Work lands in a few services' cgroups, pi's in jobs.service and a
 //! terminal's in awaited.service, each one cgroup for every command written
@@ -86,6 +87,7 @@ mod oom;
 mod quests;
 mod real_time;
 mod revive;
+mod strays;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -186,6 +188,8 @@ struct Sorter {
     busy: HashMap<(String, u32), u32>,
     /// When the last look was, in ticks since boot.
     last: u64,
+    /// systemd-run's services already said of.
+    told: strays::Told,
 }
 
 impl Sorter {
@@ -1216,6 +1220,7 @@ fn run() -> Result<(), String> {
         {
             return_stray(&scope, &root, &manager, &slice, &mut warned);
         }
+        sorter.told.say(&under);
         // After the terminals' work is moved, so what moved is split too.
         weights.refresh();
         for base in &settings.by_quest {

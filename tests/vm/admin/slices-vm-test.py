@@ -277,6 +277,28 @@ def test_an_agents_run_naming_no_slice_stays_in_jobs(jobs: Account) -> None:
     jobs.wait_until_in(1005, "jobs.slice/.*bare.service$")
 
 
+def test_a_service_nothing_named_a_slice_for_is_said_of_and_left(jobs: Account) -> None:
+    """A service systemd-run puts in app.slice unasked is said of, and stays there."""
+    # An agent's shell in jobs asks through systemd's own systemd-run, as a call that skips
+    # the one in front of it does. Who asked can't be seen, since systemd-run asks the user
+    # manager over its private socket, so the sorter names what it runs and moves nothing.
+    real = "/run/current-system/systemd/bin/systemd-run"
+    jobs.machine.succeed(
+        "systemd-run -M alice@ --user --slice=jobs.slice --unit=asking-unnamed"
+        f" --expand-environment=no -p KillMode=process {jobs.bash} -c"
+        f" 'echo $$ > {JOBS}/jobs.service/cgroup.procs;"
+        f" {real} --user {jobs.sleep} 1008; exec {jobs.sleep} infinity'"
+    )
+    jobs.wait_until_in(1008, r"app.slice/run-[^/]*\.service$")
+    jobs.machine.wait_until_succeeds(
+        "journalctl _SYSTEMD_USER_UNIT=jobs-sorter.service -o cat | grep -q"
+        f" 'Stray service run-.* in app.slice runs {jobs.sleep} 1008;'",
+        timeout=30,
+    )
+    cgroup = jobs.cgroup_of(1008).strip()
+    assert "/app.slice/run-" in cgroup, f"the service stays where systemd put it: {cgroup}"
+
+
 def test_a_scope_from_jobs_goes_back_unless_it_sets_limits(jobs: Account) -> None:
     """A scope that work in jobs starts goes back, unless it sets limits."""
     # An agent's shell in jobs starts two scopes with no slice through systemd's own
