@@ -163,6 +163,7 @@ mod progress;
 mod proof;
 mod queue;
 mod relay;
+mod running;
 mod sleep;
 #[cfg(test)]
 mod testing;
@@ -1342,6 +1343,12 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         waiting,
         moves: false,
     };
+    // Said while it runs, so a merge sharing its files waits for it
+    // (`running.rs`).
+    let started = now();
+    let _running = at.as_ref().and_then(|at| {
+        running::Running::start(&state(), std::process::id(), &at.commit, &folder, started)
+    });
     let more_dir = more_dir();
     let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
@@ -1360,7 +1367,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         return not_taken("no builder or evaluator answered");
     };
     if let (0, Some(at), Some(printed)) = (finished.status, &at, &finished.printed) {
-        passed.keep_run(at, arguments, printed);
+        passed.keep_run(at, arguments, printed, started);
         if let (true, Some(system)) = (wanted.build, &wanted.system) {
             let built: Vec<String> = changed::to_build(printed, wanted.vm)
                 .iter()
