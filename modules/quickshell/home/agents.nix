@@ -1,0 +1,15 @@
+# The files the shell links as they are for Agents and Orchestrators. home.nix
+# joins every place's list; README.md says which list a file goes in.
+[
+  "AgentSources.qml"
+  "PiSource.qml"
+  "PiSource.js"
+  "Sessions.qml"
+  "SessionWindows.js"
+  "WaitingOnYou.qml"
+  "Waiting.js"
+  "launcher/SessionRow.js"
+  "launcher/Landed.js"
+  "launcher/SessionDrawer.js"
+  "launcher/Holders.js"
+]

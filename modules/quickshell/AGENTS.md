@@ -98,6 +98,8 @@ machine, one path through each connection.
 - [`checks/`][checks-folder]: the shell's checks, one file a place, named
   as the launcher names it. `checks.nix` lists each file by name, so only a
   new place edits it, and two places' changes never share a file.
+- [`home/`][home-folder]: the files the shell links as they are, a list a
+  place, which `home.nix` joins by name; a new file goes in its place's list.
 
 ## QML
 
@@ -166,6 +168,7 @@ another.
 
 [checks]: checks/shell.nix
 [checks-folder]: checks/
+[home-folder]: home/
 [clipboard]: clipboard/
 [design]: ../../docs/design.md
 [desktop]: ../../tests/desktop.nix
