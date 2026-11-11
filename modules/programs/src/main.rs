@@ -16,31 +16,31 @@
 //! change of its file while it's watched; what a program has open, as a
 //! watch of its key begins and on each get. A page's list of folders is
 //! read by this daemon itself, with no command, as its watch begins if
-//! one of them changed since, and on each change in them while watched.
-//! Each command runs on a thread of its own, without a shell, so a slow
-//! one never holds an answer back, and is stopped past ten seconds.
+//! one of them changed since, and on each change in them while watched;
+//! a folder asked for by its path, as `folder`, as each ask names it and
+//! on each change in it while watched (folder.rs). Each command runs on
+//! a thread of its own, without a shell, so a slow one never holds an
+//! answer back, and is stopped past ten seconds (command.rs).
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 
+use programs::folder::{self, Looked};
 use programs::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use programs::mime::Mime;
 use programs::notify::Notify;
 use programs::source::{self, Source};
-use programs::{entry, now_ms, xdg};
+use programs::{command, entry, now_ms, xdg};
 use serde_json::{Value, json};
 
-/// The longest a source's command may run before it's stopped.
-const COMMAND_WAIT: Duration = Duration::from_secs(10);
 /// How many of the last answers' times health says.
 const TIMES: usize = 32;
 /// How many lines a connection may have waiting to be written before
@@ -94,10 +94,14 @@ struct Daemon {
     commands: BTreeMap<String, Value>,
     took: VecDeque<u64>,
     since: u64,
+    /// The folders asked for by their paths, watched since first asked.
+    looked: Looked,
 }
 
 struct Shared {
     daemon: Mutex<Daemon>,
+    /// Where changes are heard, unless inotify isn't there.
+    notify: Option<Notify>,
     sources: Vec<Source>,
     folders: Vec<PathBuf>,
     search: String,
@@ -128,6 +132,9 @@ fn main() {
         }
     };
     let folders = xdg::folders_here();
+    let notify = Notify::new()
+        .inspect_err(|why| eprintln!("<4>inotify isn't there, so changes aren't heard: {why}"))
+        .ok();
     let shared = Arc::new(Shared {
         daemon: Mutex::new(Daemon {
             held: BTreeMap::new(),
@@ -141,20 +148,19 @@ fn main() {
             commands: BTreeMap::new(),
             took: VecDeque::new(),
             since: now_ms(),
+            looked: Looked::default(),
         }),
+        notify,
         sources,
         folders,
         search: std::env::var("PATH").unwrap_or_default(),
     });
-    match Notify::new() {
-        Ok(notify) => {
-            // Its folders are watched before the socket answers, so no
-            // change after a first answer goes unheard.
-            let folders = heard(&shared, &notify);
-            let shared = Arc::clone(&shared);
-            std::thread::spawn(move || notice(&shared, &notify, &folders));
-        }
-        Err(why) => eprintln!("<4>inotify isn't there, so changes aren't heard: {why}"),
+    if let Some(notify) = &shared.notify {
+        // Its folders are watched before the socket answers, so no
+        // change after a first answer goes unheard.
+        let folders = heard(&shared, notify);
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || notice(&shared, &folders));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -357,36 +363,18 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
         .collect()
 }
 
-/// Runs a command without a shell, answering what it printed, or why it
-/// couldn't: it isn't there, it failed, or it ran past [`COMMAND_WAIT`].
-fn run(argv: &[String]) -> Result<String, String> {
-    let (program, arguments) = argv.split_first().ok_or("no command")?;
-    let mut child = Command::new(program)
-        .args(arguments)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|why| format!("{program} couldn't start: {why}"))?;
-    let mut out = child.stdout.take().ok_or("no output")?;
-    let (said, heard) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut text = String::new();
-        let read = out.read_to_string(&mut text).map(|_| text);
-        let _ = said.send(read);
-    });
-    let printed = if let Ok(read) = heard.recv_timeout(COMMAND_WAIT) {
-        read.map_err(|why| format!("{program}'s output couldn't be read: {why}"))
-    } else {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(format!("{program} ran past {}s", COMMAND_WAIT.as_secs()));
-    };
-    let status = child.wait().map_err(|why| why.to_string())?;
-    if !status.success() {
-        return Err(format!("{program} exited with {status}"));
+/// Reads each folder a key names, on this thread, and keeps its record,
+/// watching it from the first time it's asked for.
+fn read_folders(shared: &Shared, keys: &[String]) {
+    for key in keys {
+        let Some(path) = folder::path_of(key) else {
+            continue;
+        };
+        let record = folder::record(key, path);
+        let mut daemon = lock(&shared.daemon);
+        daemon.looked.watch(shared.notify.as_ref(), key, path);
+        keep(&mut daemon, vec![record], &[]);
     }
-    printed
 }
 
 /// Runs a source's command now, on this thread, and keeps its record. A
@@ -406,7 +394,7 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
     let printed = if what == Run::List && source.list.is_empty() {
         Ok(source::files_in(&source.folders))
     } else {
-        run(argv)
+        command::run(argv)
     };
     let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut daemon = lock(&shared.daemon);
@@ -514,10 +502,11 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
             start(shared, at, Run::List);
         }
     }
-    if keys.is_some() {
-        for at in sources_of(shared, Run::Opened, kinds, keys) {
+    if let Some(keys) = keys {
+        for at in sources_of(shared, Run::Opened, kinds, Some(keys)) {
             start(shared, at, Run::Opened);
         }
+        read_folders(shared, keys);
     }
 }
 
@@ -540,6 +529,7 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     for at in sources_of(shared, Run::Opened, kinds, keys) {
         read_source(shared, at, Run::Opened);
     }
+    read_folders(shared, keys.unwrap_or_default());
 }
 
 /// What a watched folder is to this daemon; one can be more than one.
@@ -613,11 +603,24 @@ fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
 }
 
 /// Hears every change inotify says, for as long as the daemon runs.
-fn notice(shared: &Arc<Shared>, notify: &Notify, folders: &HashMap<i32, Heard>) {
+fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
+    let Some(notify) = &shared.notify else {
+        return;
+    };
     loop {
         let Ok(changes) = notify.changes() else {
             return;
         };
+        let looked: Vec<String> = {
+            let daemon = lock(&shared.daemon);
+            let keys: HashSet<&String> = changes
+                .iter()
+                .flat_map(|(watch, _)| daemon.looked.keys_of(*watch))
+                .filter(|key| watched(&daemon, key))
+                .collect();
+            keys.into_iter().cloned().collect()
+        };
+        read_folders(shared, &looked);
         let mut entries = false;
         let mut lists = HashSet::new();
         for (watch, name) in changes {

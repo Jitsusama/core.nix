@@ -3,14 +3,18 @@
 //! desktop entries are ([`xdg`]), what one says ([`entry`]), the file
 //! kinds it opens ([`mime`]), the package its command comes from
 //! ([`package`]), each program's lists of what it had open ([`source`]),
-//! and inotify, which says when any of them changes ([`notify`]).
+//! the commands that read them ([`command`]), a folder asked for by its
+//! path ([`folder`]), and inotify, which says when any of them changes
+//! ([`notify`]).
 //!
 //! A record names every figure its source has, as the source says it,
 //! with its unit in its key (`_s` seconds since 1970, `_ms`
 //! milliseconds), and none it doesn't have: what a source doesn't say is
 //! null, never a guess. Words are the shell's.
 
+pub mod command;
 pub mod entry;
+pub mod folder;
 pub mod interface;
 pub mod mime;
 pub mod notify;

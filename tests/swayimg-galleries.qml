@@ -75,15 +75,12 @@ QtObject {
             [{ folder: "/", pictures: ["/a.png"] }]);
         expect("nothing in Recent is no folder", Swayimg.folders([], []), []);
 
-        expect("the folders are read a file a line, when it changed and its path,"
-            + " none inside them and none hidden",
-            Swayimg.listing(["/home/joel/Downloads", "/home/joel"]),
-            ["find", "/home/joel/Downloads", "/home/joel", "-maxdepth", "1", "-type", "f",
-                "-not", "-name", ".*", "-printf", "%T@\\t%p\\n"]);
+        expect("a folder is asked of the programs daemon by its path",
+            Swayimg.folderKey("/home/joel/Downloads"), "folder:/home/joel/Downloads");
 
-        // Each file as the listing prints it: when it last changed, in
-        // seconds, then its path.
-        const changed = (seconds, path) => `${seconds}\t${path}`;
+        // Each file as the daemon says it: when it last changed, in
+        // seconds, its size, then its path.
+        const changed = (seconds, path) => `${seconds}\t2048\t${path}`;
         const within = ["/home/joel/Downloads", "/home/joel", "/home/joel/Empty"];
         const listed = Swayimg.read([changed("1794070100.25", "/home/joel/Downloads/dog.webp"),
             changed("1794070900", "/home/joel/Downloads/notes.txt"),

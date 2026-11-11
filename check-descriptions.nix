@@ -1646,7 +1646,9 @@
     and one removed as gone, reads a program's list as its watch begins and as its file changes and
     not while nobody watches, says a list whose command fails as empty and why, reads a list of
     folders itself with no command, one not there holding nothing, and again as a file comes in
-    one, reads what a program has open as it's asked, follows a data folder through each link a
+    one, reads a folder named by its key as its watch begins and as a file comes in it, one not
+    there holding nothing, reads what a program has open as it's asked, follows a data folder
+    through each link a
     switch replaces, and refuses an ask or a kind it doesn't know
   '';
   programs-passes-clippy = ''
