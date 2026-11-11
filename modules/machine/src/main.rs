@@ -39,8 +39,8 @@
 //! read on a clock, so watching them wakes nothing until they change.
 //!
 //! Heat's and Power's rows and headlines are made here too, ready for
-//! the launcher (heat_rows.rs, power_rows.rs), in the launcher's words
-//! (`--words`, its words.json) and number settings (`--numbers`,
+//! the launcher (`heat_rows.rs`, `power_rows.rs`), in the launcher's words
+//! (`--words`, its `words.json`) and number settings (`--numbers`,
 //! `{ group, point }`): a watch of kind `row` or `head` with `place`
 //! `heat` has the sensors, zones, cooling and processor read as their
 //! own watch would, and one with `place` `power` the supplies, and each
