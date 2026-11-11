@@ -250,7 +250,6 @@
   "modules/reader/src/reading.rs" = 10;
   "modules/reader/src/select.rs" = 15;
   "modules/reader/src/theme.rs" = 2;
-  "modules/session-backup/tests/backup.rs" = 14;
   "modules/shaper/src/classes.rs" = 6;
   "modules/shaper/src/links.rs" = 1;
   "modules/shaper/src/live.rs" = 1;

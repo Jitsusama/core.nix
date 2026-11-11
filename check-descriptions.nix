@@ -1875,9 +1875,12 @@
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
   '';
   session-backup-passes-clippy = ''
-    clippy finds nothing in session-backup or its tests, which hold it to only adding to its one
-    folder, sealed copies that open, carrying on where a stopped run left off, and removing an
-    old log from the machine only once Drive still holds its copy
+    clippy finds nothing in session-backup or its tests
+  '';
+  session-backup-sends-each-log-once = ''
+    session-backup only adds to its one folder, sealed copies that open, carrying on where a
+    stopped run left off, and removes an old log from the machine only once Drive still holds
+    its copy
   '';
   session-backup-stays-in-the-background = ''
     an account naming a folder, or one of the backup's own, backs its sessions up hourly in
