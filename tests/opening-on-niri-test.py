@@ -56,6 +56,9 @@ REOPENINGS_TRIED = 3
 # What the shell says once when it can't write the open mark (Launcher.qml's markFailed).
 MARK_UNWRITTEN = "launcher: couldn't write the open mark"
 
+# The title a window takes while the launcher is shut, so its row is another.
+RETITLED = "Gannet, retitled"
+
 # How long niri leaves a surface wholly off the screen before it answers a frame of its: once
 # a second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
 UNANSWERED_MS = 900
@@ -433,6 +436,57 @@ def test_an_open_mark_it_cannot_write_is_said_once(shell: Shell) -> None:
         log.seek(began)
         said = log.read().decode(errors="replace").count(MARK_UNWRITTEN)
     assert said == 1, f"an unwritten mark was said {said} times over two openings"
+
+
+def weighed_reopening(shell: Shell, shown: Callable[[Json], bool]) -> int:
+    """Reopen Windows by its chord from what it kept, and give how many rows its foot weighed."""
+    before = cast("int", shell.showing()["weighed"])
+    timed = latest(openings(shell))
+    shell.as_account(shell.ipc("collection", "windows"))
+    filled_after(shell, timed)
+    shell.launcher_until(shown)
+    settled(shell)
+    weighed = cast("int", shell.showing()["weighed"]) - before
+    shell.close_launcher()
+    shell.launcher_until(lambda now: now.get("kept"))
+    return weighed
+
+
+def test_a_kept_place_shown_again_weighs_only_the_row_that_changed(shell: Shell) -> None:
+    """Reopened from what it kept, a place weighs none of its rows' keys but one that changed.
+
+    Going home and back weighed every one of Windows' rows again on each kept opening, 3.5 to
+    4.8 ms of it over 40 windows on a builder (ZINAWZ, 2026-11-11). A window retitled while
+    the launcher is shut is another row, so its keys are weighed again, and only its.
+    """
+    retitling = Path(os.environ["XDG_RUNTIME_DIR"]) / "reweighing"
+    go = retitling.with_suffix(".go")
+    # foot takes its title from what runs in it, once the test says to.
+    retitling.write_text(
+        f"while [ ! -e {go} ]; do sleep 0.1; done\nprintf '\\033]2;{RETITLED}\\007'\nsleep 3600\n"
+    )
+    # Opened first, as Windows leaves out the window that has the focus.
+    opened = [shell.opened("Gannet", running=f"sh {retitling}")]
+    opened.extend(shell.opened(f"Reweighed {at}") for at in range(WINDOWS_WEIGHED))
+    try:
+        shell.as_account(shell.ipc("collection", "windows"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Gannet" in shown["rows"])
+        settled(shell)
+        shell.close_launcher()
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        # The first reopening after the shell starts makes Windows' rows
+        # again, whole, so it's the next that's shown as it was.
+        weighed_reopening(shell, lambda shown: "Gannet" in shown["rows"])
+        again = weighed_reopening(shell, lambda shown: "Gannet" in shown["rows"])
+        go.touch()
+        changed = weighed_reopening(shell, lambda shown: RETITLED in shown["rows"])
+    finally:
+        for window in opened:
+            shell.close(window)
+        go.unlink(missing_ok=True)
+    assert again == 0, f"Windows shown again weighed {again} rows' keys"
+    assert changed == 1, f"Windows with one window retitled weighed {changed} rows' keys"
 
 
 def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:

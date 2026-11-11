@@ -2862,10 +2862,11 @@ Scope {
     property real footKeysWidest: 0
     // The step and what's typed that the foot's room was last weighed for.
     property string footWeighedFor: ""
-    // Each row's keys as the foot weighed them for that, and the mode
-    // (Pacing.weighing), with how many rows were weighed afresh in all,
-    // for the check that an act changing one row weighs none but it.
-    property var footRowsWeighed: null
+    // Each row's keys as the foot weighed them for that and the mode, for
+    // it and the last places shown, newest first (Pacing.weighingAmong),
+    // with how many rows were weighed afresh in all, for the check that an
+    // act changing one row weighs none but it.
+    property var footRowsWeighed: []
     property int rowsWeighed: 0
     // How many times the foot weighed any row afresh, so an opening says
     // how often it weighed its rows before its frame (openDrawn).
@@ -2927,9 +2928,12 @@ Scope {
         // widths, so only a row new to them is weighed. The selection says
         // more than its keys elsewhere, and visual's keys move with its
         // rows, so those are weighed each time (keysFor).
-        const kept = Pacing.weighing(footRowsWeighed, `${weighing}|${prompt.mode}`,
-            Words.all, statusLine.keys.measured);
-        footRowsWeighed = kept;
+        // Held for the last few places shown, so one shown again, as a
+        // chord's kept place is, weighs only its rows new since then.
+        const held = Pacing.weighingAmong(footRowsWeighed, `${weighing}|${prompt.mode}`,
+            { words: Words.all, face: statusLine.keys.measured }, typed === "");
+        footRowsWeighed = held;
+        const kept = held[0];
         const before = kept.weighed;
         const weigh = row => weighedKeys(keysFor(row));
         const afresh = row => {
@@ -8030,7 +8034,12 @@ Scope {
             // room, cutting the glance's date and charge.
             footReset();
             lap("foot");
-            noteKeys();
+            // Into a place, its steps come next (into), and its rows note
+            // their keys as they're listed: noted here, with the steps let
+            // go, a kept place's rows were weighed under home's key, and
+            // home's own weighed again after (ZINAWZ, 2026-11-11).
+            if (!openingInto)
+                noteKeys();
             lap("noting");
             if (toldOnOpen.length > 0) {
                 say(toldOnOpen, toldLoose);
