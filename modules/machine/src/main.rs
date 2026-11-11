@@ -57,7 +57,7 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use machine::{
     Root, boot, camera, clock_ms, disk, firmware, heat, kept, light, memory, now_ms, processor,
-    rounded, sleep, steered, supply, tree, using, written::Written,
+    rounded, sleep, steered, supply, tree, units, using, written::Written,
 };
 use serde_json::{Value, json};
 
@@ -1619,6 +1619,10 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
             read(shared, &HashSet::from(["supply".to_owned()]), &[]);
             json!({"id": id, "done": true})
         }
+        "restart-unit" => match units::restart(said["unit"].as_str().unwrap_or("")) {
+            Ok(()) => json!({"id": id, "done": true}),
+            Err(unrestarted) => error(id, unrestarted.code, &unrestarted.message),
+        },
         _ => error(id, "unknown-act", &format!("no act {act:?} here")),
     }
 }

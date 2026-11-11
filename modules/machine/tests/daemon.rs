@@ -659,6 +659,20 @@ fn a_charge_limit_set_is_told_before_its_answer() {
     assert_eq!(unknown["error"]["code"], "unknown-act");
 }
 
+// Only the units the shell may restart are, refused before the bus is
+// reached, so a unit outside the list is never restarted, and one not
+// named says so.
+#[test]
+fn a_unit_the_shell_may_not_restart_is_refused() {
+    let running = Running::new("units");
+    let mut client = running.client();
+    let refused = client.ask(&json!({"id": 1, "ask": "act", "act": "restart-unit",
+        "unit": "sshd.service"}));
+    assert_eq!(refused["error"]["code"], "not-allowed", "{refused}");
+    let unnamed = client.ask(&json!({"id": 2, "ask": "act", "act": "restart-unit"}));
+    assert_eq!(unnamed["error"]["code"], "bad-act", "{unnamed}");
+}
+
 #[test]
 fn the_screens_light_and_the_rooms_are_said_as_they_move() {
     let running = Running::new("light");
