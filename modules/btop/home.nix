@@ -69,18 +69,6 @@ let
         does = "Back out a step";
       }
       {
-        chord = "h";
-        does = "Sort by the column to the left";
-      }
-      {
-        chord = "l";
-        does = "Sort by the column to the right";
-      }
-      {
-        chord = "r";
-        does = "Reverse the sort";
-      }
-      {
         chord = "f";
         does = "Filter the processes";
       }
@@ -92,6 +80,24 @@ let
         chord = "Space";
         does = "Open or close the chosen branch";
       }
+    ]
+    # The sort's keys, beside the groups, as the processes' has no room
+    # left for them under the launcher's thirteen rows.
+    ++ [
+      {
+        chord = "h";
+        does = "Sort by the column to the left";
+      }
+      {
+        chord = "l";
+        does = "Sort by the column to the right";
+      }
+      {
+        chord = "r";
+        does = "Reverse the sort";
+      }
+    ]
+    ++ grouped "processes" [
       {
         chord = "t";
         does = "End the chosen process";
