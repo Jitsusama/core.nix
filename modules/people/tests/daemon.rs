@@ -34,6 +34,22 @@ while read -r line; do
 done
 "#;
 
+/// The launcher's own words for what these cases say (tests/words.json),
+/// which `the-daemons-test-the-launchers-words` holds to words.json, so a
+/// case holds the daemon to the words Joel reads. Its word for one standing
+/// is changed from the one a source stands by, "available", so a case sees
+/// the launcher's said and not the source's.
+fn launchers() -> Value {
+    let mut words: Value =
+        serde_json::from_str(include_str!("words.json")).expect("the launcher's words parse");
+    for thing in words["things"].as_array_mut().into_iter().flatten() {
+        if thing["id"] == "people" {
+            thing["said"]["available"] = json!("around");
+        }
+    }
+    words
+}
+
 /// A source whose sign-in is refused, as slack-people says it.
 const SIGNED_OUT: &str = r#"
 while read -r line; do echo '{"signedOut":true}'; done
@@ -131,14 +147,8 @@ impl Running {
             .collect();
         let config = folder.join("sources.json");
         std::fs::write(&config, json!({"sources": listed}).to_string()).unwrap();
-        // The launcher's vocabulary, as far as People's words go, worded
-        // apart from any source's own word so a test sees whose it says.
         let words = folder.join("words.json");
-        let vocabulary = json!({"things": [
-            {"id": "people", "said": {"available": "around"}},
-            {"id": "people:email", "name": "her address"}
-        ]});
-        std::fs::write(&words, vocabulary.to_string()).unwrap();
+        std::fs::write(&words, launchers().to_string()).unwrap();
         let socket = folder.join("daemons").join("people.sock");
         // Made here, since a launcher listens there before the daemon runs.
         std::fs::create_dir_all(folder.join("daemons")).unwrap();
@@ -565,7 +575,7 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
         (&drawer["drawer"]["title"], &drawer["drawer"]["facts"]),
         (
             &json!("Ada Brightwater"),
-            &json!([{"name": "her address", "said": "ada@example.com"}])
+            &json!([{"name": "Email", "said": "ada@example.com"}])
         ),
         "her drawer ready, its words the launcher's: {said}"
     );

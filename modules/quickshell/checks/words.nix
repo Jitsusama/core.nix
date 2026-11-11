@@ -41,6 +41,8 @@
         pkgs.writeText "words.json"
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
     in
+    # Kept in Nix because each line copies a fixture Nix gives it, under the
+    # name the test is told, or runs the test on them.
     pkgs.runCommandLocal "the-daemons-test-the-launchers-words" { } ''
       cp ${../../to-do/tests/words.json} to-do.json
       cp ${../whereabouts/tests/words.json} whereabouts.json
@@ -48,8 +50,10 @@
       cp ${../../machine/tests/words.json} machine.json
       cp ${../../slack/tests/words.json} slack.json
       cp ${../../wifid/daemon/tests/words.json} wifid.json
+      cp ${../../people/tests/words.json} people.json
       ${lib.getExe pkgs.python3} ${../../../tests/daemon-words.py} ${words} \
-        to-do.json whereabouts.json windows-screens.json machine.json slack.json wifid.json
+        to-do.json whereabouts.json windows-screens.json machine.json slack.json wifid.json \
+        people.json
       touch $out
     '';
 
