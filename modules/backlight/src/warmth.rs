@@ -8,7 +8,7 @@
 //! the dark, so below a dim light the warmth last seen holds, and while the
 //! lid is shut the light is the lid's, so nothing follows it.
 //!
-//! A sensor's colour flickers: at night on 2026-11-11 optimus's said 2700,
+//! A sensor's colour flickers: at night on 2026-11-11 an XPS 14's said 2700,
 //! 5200 and 8000 K within seconds. So no one reading is believed. Each
 //! counts for the time it held, and the room's colour settles toward it
 //! over about 20 seconds, so a flicker is taken for the light between and
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn a_flickering_sensor_settles_before_it_is_said_or_followed() {
-        // At night on 2026-11-11 optimus's sensor said 2700, 5200 and
+        // At night on 2026-11-11 an XPS 14's sensor said 2700, 5200 and
         // 8000 K within seconds, and each was written for the shell.
         let start = Instant::now();
         let mut warmth = Warmth::new(WHITE);
