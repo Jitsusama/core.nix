@@ -269,9 +269,20 @@ impl State {
         eprintln!("merge-net: {what}");
         let _ = append_line(
             &self.root.join("logs/net.log"),
-            &format!("{} {what}", now()),
+            &format!("{} {}", now(), one_line(what)),
         );
     }
+}
+
+/// What's said as one line of net.log, whose every line opens with its
+/// time: a failed git's hints, said on lines of their own, are joined on
+/// to the line before rather than left as lines with no time.
+fn one_line(what: &str) -> String {
+    what.split('\n')
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" / ")
 }
 
 /// Each run of `check` at `commit` in a results journal's text.
@@ -360,6 +371,24 @@ mod tests {
         let state = State { root };
         state.make().expect("made");
         state
+    }
+
+    #[test]
+    fn what_is_said_over_several_lines_is_one_line_of_the_log() {
+        let state = state("said-once");
+        state.say(
+            "couldn't revert abc: git failed: error: could not revert\nhint: after resolving\n",
+        );
+        let log = fs::read_to_string(state.root.join("logs/net.log")).expect("the log");
+        assert_eq!(
+            log.lines().count(),
+            1,
+            "one thing said took several lines: {log:?}"
+        );
+        assert!(
+            log.ends_with("could not revert / hint: after resolving\n"),
+            "its lines weren't joined on: {log:?}"
+        );
     }
 
     #[test]

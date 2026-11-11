@@ -1187,6 +1187,12 @@ fn list_flaky(
 ) -> Result<(), String> {
     let reason = format!("failed, then passed, at {}", short(head));
     let made = world.quarantine(test, owner, head, &reason);
+    // On 10 November a refused merge was kept only in the finding, and the
+    // list it would have landed sat unmerged for an hour and a half.
+    match &made {
+        Ok(landed) => state.say(&format!("listed {test} as quarantined in #{}", landed.pr)),
+        Err(why) => state.say(&format!("listing {test} as quarantined failed: {why}")),
+    }
     state.find(&json!({
         "kind": "flaky",
         "test": test,
@@ -1609,8 +1615,8 @@ fn list_broken(
         .pr
         .map_or_else(|| short(&found.commit).to_owned(), |pr| format!("#{pr}"));
     let reason = format!(
-        "broken since {what}, whose revert won't apply; its owner fixes it forward and takes \
-         it off this list"
+        "has been broken since {what}, whose revert won't apply; its owner fixes it forward \
+         and takes it off this list"
     );
     let made = world.quarantine(&found.test, found.pr, head, &reason)?;
     state.clear_hold()?;
