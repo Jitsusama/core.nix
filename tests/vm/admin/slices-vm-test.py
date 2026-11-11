@@ -266,18 +266,31 @@ def test_work_in_jobs_moves_itself_in(jobs: Account) -> None:
     jobs.machine.wait_until_succeeds("grep -q timed.service /tmp/moved", timeout=APPEARING)
 
 
+def test_an_agents_run_naming_no_slice_stays_in_jobs(jobs: Account) -> None:
+    """A unit an agent's shell in jobs starts with systemd-run, naming no slice, stays there."""
+    jobs.machine.succeed(
+        "systemd-run -M alice@ --user --slice=jobs.slice --unit=asker"
+        f" --expand-environment=no -p KillMode=process {jobs.bash} -c"
+        f" 'echo $$ > {JOBS}/jobs.service/cgroup.procs;"
+        f" systemd-run --user --unit=bare {jobs.sleep} 1005; exec {jobs.sleep} infinity'"
+    )
+    jobs.wait_until_in(1005, "jobs.slice/.*bare.service$")
+
+
 def test_a_scope_from_jobs_goes_back_unless_it_sets_limits(jobs: Account) -> None:
     """A scope that work in jobs starts goes back, unless it sets limits."""
-    # An agent's shell in jobs starts two scopes with no slice, which systemd puts in
+    # An agent's shell in jobs starts two scopes with no slice through systemd's own
+    # systemd-run, as a call that skips the one in front of it does, so systemd puts them in
     # app.slice: one with a memory ceiling, then, once that one runs, one without, so the
     # sorter has looked at both by the time it moves the second.
+    real = "/run/current-system/systemd/bin/systemd-run"
     jobs.machine.succeed(
         "systemd-run -M alice@ --user --slice=jobs.slice --unit=agent"
         f" --expand-environment=no -p KillMode=process {jobs.bash} -c"
         f" 'echo $$ > {JOBS}/jobs.service/cgroup.procs;"
-        f" systemd-run --user --scope --unit=kept -p MemoryMax=1G {jobs.sleep} 1002 &"
+        f" {real} --user --scope --unit=kept -p MemoryMax=1G {jobs.sleep} 1002 &"
         " until systemctl --user is-active --quiet kept.scope; do sleep 0.1; done;"
-        f" systemd-run --user --scope --unit=stray {jobs.sleep} 1001 & wait'"
+        f" {real} --user --scope --unit=stray {jobs.sleep} 1001 & wait'"
     )
     # The shell itself was given a scope of its own in jobs by then, and the stray goes back
     # to it.

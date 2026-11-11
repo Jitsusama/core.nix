@@ -312,6 +312,21 @@
   # busy seconds and not one, the shell's group and pi's never move, a busy
   # process inside them moves alone, and a process first seen counts nothing.
   jobs-sorter-sorts-by-behaviour = pkgs.callPackage ./jobs-sorter/package.nix { };
+
+  # systemd-run, in front of a stand-in that says what it was given, adds
+  # --slice-inherit for an agent's --user call alone: not Joel's terminal
+  # or launcher, nor a call naming a slice, nor one to the system manager.
+  an-agents-run-stays-in-its-slice =
+    let
+      run = pkgs.callPackage ./systemd-run.nix {
+        real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
+        cgroup = "cgroup";
+      };
+    in
+    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { } ''
+      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run}
+      touch $out
+    '';
 }
 // onLinux {
   # clippy finds nothing in the jobs sorter, its tests included.
