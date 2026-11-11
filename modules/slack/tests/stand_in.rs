@@ -533,6 +533,11 @@ fn unreads_from(
     credentials: &std::path::Path,
     run: &std::path::Path,
 ) -> Child {
+    // Rows only where a case hands it words, as the unit does, so the
+    // others hear the records they always have.
+    if !command.get_envs().any(|(name, _)| name == "LAUNCHER_WORDS") {
+        command.env_remove("LAUNCHER_WORDS");
+    }
     command
         .arg(credentials)
         .arg(socket(run))
@@ -895,6 +900,54 @@ fn keys(records: &serde_json::Value) -> Vec<&str> {
         .iter()
         .map(|record| record["key"].as_str().unwrap())
         .collect()
+}
+
+#[test]
+fn handed_the_launchers_words_it_serves_each_conversation_as_its_row() {
+    let stand_in = StandIn::new(wanting);
+    let path = credentials("unreads-rows");
+    let run = path.with_extension("rows");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_slack-unreads"));
+    command.env(
+        "LAUNCHER_WORDS",
+        std::env::var_os("LAUNCHER_WORDS").expect("LAUNCHER_WORDS names words.json"),
+    );
+    let mut program = unreads_from(command, &stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
+    let rows = |place: &str| {
+        asked(
+            &run,
+            &serde_json::json!({"id": 1, "ask": "list", "kind": "row", "place": place}),
+        )["records"]
+            .clone()
+    };
+    until("no row was served", || {
+        rows("slack-unread")
+            .as_array()
+            .is_some_and(|all| !all.is_empty())
+    });
+    let unread = rows("slack-unread");
+    assert_eq!(
+        keys(&unread),
+        [
+            "row:slack-unread:D1",
+            "row:slack-unread:C2",
+            "row:slack-unread:threads",
+            "row:slack-unread:C3"
+        ]
+    );
+    let ada = &unread[0]["row"];
+    assert_eq!(
+        (&ada["name"], &ada["side"], &ada["note"]),
+        (
+            &serde_json::json!("Ada Lovelace"),
+            &serde_json::json!([{"said": "2 to read"}]),
+            &serde_json::json!("a direct message")
+        )
+    );
+    assert_eq!(keys(&rows("slack-recent"))[0], "row:slack-recent:C3");
+    program.kill().unwrap();
+    program.wait().unwrap();
 }
 
 #[test]

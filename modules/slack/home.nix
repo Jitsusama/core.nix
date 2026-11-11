@@ -21,6 +21,9 @@ let
   # Where Slack's ask of Joel waits, beside each quest's in For You
   # (WaitingOnYou.qml), named so no quest's address is it.
   waiting = "${config.xdg.stateHome}/mission/waiting/slack.json";
+  # The launcher's vocabulary, which the rows slack-unreads serves are
+  # said in (src/rows.rs).
+  words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
 in
 {
   imports = [
@@ -158,6 +161,8 @@ in
         "%t/daemons/slack.sock"
         (lib.escapeShellArg waiting)
       ];
+      # The vocabulary by its store path, read once as it starts.
+      Environment = "LAUNCHER_WORDS=${words}";
       Restart = "on-failure";
       RestartSec = 30;
       # It tells the watchdog after each ask, half a minute apart, so one
