@@ -1625,6 +1625,11 @@
     session's agent from pi's own options through the host, and a turn its durable generation
     commits waits for the host to end or continue it, once, across recovery
   '';
+  pi-hosted-loads-where-a-link-points = ''
+    pi built with the host's patches, applied exactly, loads a linked extension through the file
+    its link points at now, so once the link moves, a reload loads the new copy and its own helpers,
+    still known by the link, whether the copy it first loaded is gone or still there
+  '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
     headers through an auth context, gives each runtime the key, provider headers, model headers
