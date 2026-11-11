@@ -1546,15 +1546,13 @@ in
         order = 103;
         source = "sound";
         weight = 0.9;
-        # What reads a card's ports, what moves one onto another, and what
-        # reads how a device keeps time while its drawer is out, a line at
-        # a time through stdbuf, and what hears and sets where each
-        # program's streams are sent.
-        pwDump = lib.getExe' pkgs.pipewire "pw-dump";
+        # What reads how a device keeps time while its drawer is out, a
+        # line at a time through stdbuf, and what hears and sets where each
+        # program's streams are sent. The sound daemon reads and moves a
+        # card's ports.
         pwMetadata = lib.getExe' pkgs.pipewire "pw-metadata";
         pwTop = lib.getExe' pkgs.pipewire "pw-top";
         stdbuf = lib.getExe' pkgs.coreutils "stdbuf";
-        wpctl = lib.getExe' pkgs.wireplumber "wpctl";
       };
       # Every media player and what it plays, beside Sound, which holds the
       # devices it plays through.

@@ -80,7 +80,11 @@ Provider {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/sound.sock`
         place: "sound"
-        make: (row, key) => provider.servedRow(row, key)
+        // A device's row is made with its parts; a part the daemon serves
+        // inside one, as its Port, as every place's rows are, a setting
+        // drawn as one.
+        make: (row, key) => row.kind === "device" ? provider.servedRow(row, key)
+            : ready.thing(row, key, row.kind === "setting" ? { offers: true } : {})
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -91,13 +95,7 @@ Provider {
     Connections {
         target: ready
 
-        // A jack, not a card starting to play, changes which port is in
-        // use, and the daemon serves its device's row anew when one does,
-        // saying whether anything's plugged in.
-        function onHeard(changed, gone) {
-            const watched = provider.porting;
-            if (watched && changed.includes(`row:sound:${watched.name}`))
-                provider.readPorts(watched);
+        function onHeard() {
             provider.changed();
         }
     }
@@ -375,14 +373,16 @@ Provider {
 
     function deviceOptions(node) {
         const options = nodeOptions([node]);
-        const ports = portChoices(node);
-        if (ports !== null)
+        const choices = portsServed(node).slice(1);
+        if (choices.length > 0)
             options.port = {
                 kind: "choice",
-                values: ports.choosable.map(port => port.name),
-                now: () => ports.now.name,
+                values: choices.map(choice => choice.held.port),
+                now: () => choices.find(choice => choice.held.chosen)?.held.port ?? "",
                 set: to => {
-                    provider.movePort(node, ports.choosable.find(port => port.name === to));
+                    const choice = choices.find(one => one.held.port === to);
+                    if (choice)
+                        ready.act(choice.key, choice.acts[0]);
                     return "";
                 }
             };
@@ -612,7 +612,7 @@ Provider {
             filter.audio?.muted, flowing(filter, node)]);
         return JSON.stringify([says(node), switches(node), carried(node), node.properties,
             Array.from(node.audio?.channels ?? []), Array.from(node.audio?.volumes ?? []),
-            node === metered ? heard : [], programs, filters, portChoices(node),
+            node === metered ? heard : [], programs, filters, portsServed(node),
             facts[factKey(node)] ?? []]);
     }
 
@@ -1142,69 +1142,27 @@ Provider {
     }
 
     // Its Port, when its card offers it several, as one card's analog
-    // output offers its speakers and a headphone jack: a setting, saying
-    // the one chosen, the others a step in, each saying when nothing's
-    // plugged into it. Quickshell carries no card's ports, so pw-dump is
-    // asked for them, once a device the sound server says has several is
-    // stepped into, and again when a jack or the port changes.
-    property var portsOf: ({})
-
-    function routed(node) {
-        return !!node && Number(node.properties["device.routes"] ?? 0) > 1
-            && node.properties["device.id"] !== undefined;
+    // output offers its speakers and a headphone jack: the sound daemon
+    // serves it inside the device's row, a setting saying the one in use,
+    // and inside that each it can be moved to, which the daemon does when
+    // asked, from the card it watches, as it hears each jack.
+    function portKey(node) {
+        return `row:sound:${node.name}:port`;
     }
 
-    readonly property var porting: routed(watched) ? watched : null
-    onPortingChanged: readPorts(porting)
-
-    // One read at a time (Sounds.portReads): a read asked while another
-    // runs, as a jack changing or a port moved asks one, waits for it, and
-    // each run keeps the device it's for, so its output is only that one's.
-    property var portReading: null
-
-    function readPorts(node) {
-        if (routed(node))
-            portStep({ asked: node });
+    // The Port's row as served, then each of its choices', or none for a
+    // device with no choice of port.
+    function portsServed(node) {
+        const part = portKey(node);
+        const held = ready.served(part);
+        if (!held)
+            return [];
+        const inside = ready.keys.filter(key => ready.served(key)?.parent === part);
+        return [held].concat(inside.map(key => ready.served(key)));
     }
 
-    function portStep(event) {
-        const after = Sounds.portReads(portReading, event);
-        portReading = after.reads;
-        const done = after.take;
-        if (done !== null && done.node.audio) {
-            const read = Object.assign({}, portsOf);
-            read[done.node.name] = Sounds.ports(done.text, done.node.properties,
-                done.node.isSink);
-            portsOf = read;
-            changed();
-        }
-        if (after.start === null)
-            return;
-        // Only a card's object id is given to pw-dump; a device whose isn't
-        // one isn't read, and the next asked is, if any.
-        const card = Sounds.dumpable(after.start.properties["device.id"]);
-        if (card === "") {
-            portStep({ gaveUp: true });
-            return;
-        }
-        portReader.command = [provider.settings.pwDump ?? "pw-dump", card];
-        portReader.running = true;
-        portsGiven.restart();
-    }
-
-    // A sound server that never answers mustn't leave the reader running,
-    // which would leave every later read waiting on it for good: three
-    // seconds is many times what pw-dump takes. One that never started
-    // ends nothing, so its run is given up here.
-    Timer {
-        id: portsGiven
-        interval: 3000
-        onTriggered: {
-            if (portReader.running)
-                portReader.running = false;
-            else
-                provider.portStep({ gaveUp: true });
-        }
+    function portPart(node) {
+        return ready.served(portKey(node)) ? ready.rowAt(portKey(node)) : null;
     }
 
     // How a process says it ended of itself (QProcess's NormalExit), rather
@@ -1270,26 +1228,6 @@ Provider {
             driving = timed;
         if (timed !== null)
             timing[timed.id] = timed;
-    }
-
-    Process {
-        id: portReader
-        onExited: (code, status) => {
-            portsGiven.stop();
-            provider.portStep({ ended: code === 0 && status === provider.normalExit });
-        }
-        stdout: StdioCollector {
-            id: dump
-            onStreamFinished: provider.portStep({ printed: dump.text })
-        }
-    }
-
-    // Moves a device to a port, by its card's index for it, then reads its
-    // ports again to say so.
-    Process {
-        id: portMover
-        property var moving: null
-        onExited: provider.readPorts(portMover.moving)
     }
 
     // Which device each stream is sent to, by its id, as WirePlumber keeps
@@ -1529,46 +1467,6 @@ Provider {
             { program: went.program, device: named(went.to) }));
     }
 
-    function movePort(node, port) {
-        portMover.moving = node;
-        portMover.command = [provider.settings.wpctl ?? "wpctl", "set-route", String(node.id),
-            String(port.index)];
-        portMover.running = true;
-    }
-
-    // The ports a device has a choice of, { now, choosable }, or null where
-    // it has none. A port nothing's plugged into is no choice, unless it's
-    // chosen.
-    function portChoices(node) {
-        const offered = portsOf[node.name] ?? [];
-        const now = offered.find(port => port.active) ?? null;
-        const choosable = offered.filter(port => port.active || port.available !== "no");
-        return !routed(node) || now === null || choosable.length < 2 ? null
-            : { now, choosable };
-    }
-
-    function portPart(node) {
-        const ports = portChoices(node);
-        if (ports === null)
-            return null;
-        const { now, choosable } = ports;
-        const mark = glyph(kind(node));
-        return holderRow({
-            key: `sound:${node.name}:port`,
-            name: Words.name("sound:port"),
-            side: now.available === "no" ? `${now.name} \u00b7 ${said("unplugged")}` : now.name,
-            glyph: mark,
-            offers: true
-        }, () => choosable.map(port => provider.act("verb:sound-port", "", {
-            key: `verb:sound-port-${port.index}`,
-            fill: { port: port.name },
-            glyph: mark,
-            side: port.active ? provider.said("chosen") : "",
-            note: port.available === "no" ? provider.said("unplugged") : "",
-            run: () => provider.movePort(node, port)
-        })));
-    }
-
     // A Bluetooth device's Profile: what its sound is for now, music or
     // calls, said in those words. Its Codec and link are said once, in
     // Bluetooth, which the footer points to. A headset microphone's
@@ -1683,7 +1581,7 @@ Provider {
         .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
             switches(node), programsOf(node).map(program => program.name),
             filtersOf(node).map(filter => filter.name),
-            (portChoices(node)?.choosable ?? []).map(port => port.name),
+            portsServed(node).slice(1).map(choice => choice.held.port),
             Array.from(node.audio.channels ?? []).length, carried(node),
             factsOf(node).map(fact => fact.name)]))
 

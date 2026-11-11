@@ -77,9 +77,6 @@ const BUILT_IN = [
 // A Bluetooth headset's microphone, which the sound server names as it
 // does the headset itself.
 const HEADSET_INPUT = /^bluez_input\./;
-// A sound card's object id, as the sound server numbers it, and all pw-dump
-// is ever given: anything else could be taken for one of its options.
-const OBJECT_ID = /^[0-9]+$/;
 
 // What a smart filter's target says a device must have, by property:
 // { "node.name": "alsa_output…" }, or nothing when it says nothing.
@@ -337,57 +334,6 @@ function called(name, shared) {
     return HEADSET_INPUT.test(text) || shared === true ? "its-microphone" : "";
 }
 
-// What pw-dump is given to read a device's card: its card's object id,
-// or "" when that isn't one, and nothing is read.
-function dumpable(id) {
-    const said = String(id ?? "");
-    return OBJECT_ID.test(said) ? said : "";
-}
-
-// Port reads, one at a time, as a read is asked, prints and ends. `reads`
-// is { run, next }: the run under way, { node, text, ended, ok }, and the
-// device asked for while it was, read once it's done. Each run keeps the
-// device it's for, and is done only once it has both printed and ended,
-// whichever comes first, so one device's ports are never taken for
-// another's. An event is { asked: node }, { printed: text }, { ended: ok }
-// or { gaveUp: true }, for a run that never ended of itself. It gives the
-// reads after, a device to start reading now or null, and what was read,
-// { node, text }, from a run that ended well, or null.
-function portReads(reads, event) {
-    const now = reads ?? { run: null, next: null };
-    const begun = (node) => ({ node, text: null, ended: false, ok: false });
-    if (event.asked !== undefined) {
-        if (now.run !== null) {
-            return { reads: { run: now.run, next: event.asked }, start: null, take: null };
-        }
-        return { reads: { run: begun(event.asked), next: null }, start: event.asked, take: null };
-    }
-    if (now.run === null) {
-        return { reads: now, start: null, take: null };
-    }
-    const run = Object.assign({}, now.run);
-    if (event.printed !== undefined) {
-        run.text = String(event.printed);
-    }
-    if (event.ended !== undefined) {
-        run.ended = true;
-        run.ok = event.ended === true;
-    }
-    if (event.gaveUp) {
-        run.text = run.text ?? "";
-        run.ended = true;
-        run.ok = false;
-    }
-    if (run.text === null || !run.ended) {
-        return { reads: { run, next: now.next }, start: null, take: null };
-    }
-    const take = run.ok ? { node: run.node, text: run.text } : null;
-    if (now.next === null) {
-        return { reads: { run: null, next: null }, start: null, take };
-    }
-    return { reads: { run: begun(now.next), next: null }, start: now.next, take };
-}
-
 // The Bluetooth address a device's sound is of, from the sound server's
 // properties or, for a headset microphone's stand-in, its name, or "".
 function address(name, properties) {
@@ -410,45 +356,4 @@ function standIn(properties) {
 function carries(profile) {
     const found = CARRIES.find((each) => each[0].test(String(profile ?? "")));
     return found ? found[1] : "";
-}
-
-// What pw-dump says, as a list, or none when it isn't pw-dump's.
-function dumped(text) {
-    let said = null;
-    try {
-        said = JSON.parse(text);
-    } catch (_error) {
-        return [];
-    }
-    return Array.isArray(said) ? said : [];
-}
-
-// The ports a device's card offers it, from what pw-dump says of the card
-// (its EnumRoute, Route and Profile), each { index, name, available,
-// active }: those of the device's own part of the card (its
-// card.profile.device), in the profile the card is in, going its way, by
-// the index wpctl set-route takes. `available` is the server's "yes",
-// "no" or "unknown".
-function ports(text, properties, playing) {
-    const said = properties ?? {};
-    const card = Number(said["device.id"]);
-    const device = Number(said["card.profile.device"]);
-    const found = dumped(text).find((each) => each?.id === card && Boolean(each.info));
-    const params = found ? (found.info.params ?? {}) : {};
-    const [profile] = (params.Profile ?? []).map((each) => each.index);
-    const route = (params.Route ?? []).find((each) => each.device === device);
-    const way = playing ? "Output" : "Input";
-    return (params.EnumRoute ?? [])
-        .filter(
-            (each) =>
-                each.direction === way &&
-                (each.devices ?? []).includes(device) &&
-                (profile === undefined || (each.profiles ?? []).includes(profile)),
-        )
-        .map((each) => ({
-            index: each.index,
-            name: String(each.description || each.name || ""),
-            available: String(each.available ?? "unknown"),
-            active: route !== undefined && route.index === each.index,
-        }));
 }

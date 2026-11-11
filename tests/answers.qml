@@ -1665,40 +1665,6 @@ QtObject {
         const usb = "alsa_input.usb-Shure_Inc_Shure_MV7-00.mono-fallback";
         machine("a microphone named as an output", [Sounds.called(usb, true),
             Sounds.called(usb, false)], ["its-microphone", ""]);
-        // pw-dump is given a card's object id, and nothing it could take for
-        // an option or a pattern.
-        machine("what pw-dump is given", ["65", 65, "--monitor", "65 -m", "alsa*", "", undefined]
-            .map(id => Sounds.dumpable(id)), ["65", "65", "", "", "", "", ""]);
-        // Port reads, one at a time: one asked mid-read waits, and each run's
-        // output is its own device's, whether it prints or ends first.
-        const sturdyOut = { name: "out" };
-        const sturdyIn = { name: "in" };
-        let sturdyReads = Sounds.portReads(null, { asked: sturdyOut });
-        machine("a port read starts", sturdyReads.start, sturdyOut);
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { asked: sturdyIn });
-        machine("one asked mid-read waits", sturdyReads.start, null);
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { printed: "out's" });
-        machine("nothing taken before it ends", sturdyReads.take, null);
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { ended: true });
-        machine("the first read is the first device's", sturdyReads.take,
-            { node: sturdyOut, text: "out's" });
-        machine("the one waiting starts after it", sturdyReads.start, sturdyIn);
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { ended: true });
-        machine("nothing taken before it prints", sturdyReads.take, null);
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { printed: "in's" });
-        machine("the second read is the second device's", sturdyReads.take,
-            { node: sturdyIn, text: "in's" });
-        machine("nothing waiting, nothing starts", [sturdyReads.start, sturdyReads.reads.run],
-            [null, null]);
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { asked: sturdyOut });
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { asked: sturdyIn });
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { printed: "half" });
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { ended: false });
-        machine("a read stopped at its limit gives nothing, and the next starts",
-            [sturdyReads.take, sturdyReads.start], [null, sturdyIn]);
-        sturdyReads = Sounds.portReads(sturdyReads.reads, { gaveUp: true });
-        machine("one that never ended is given up", [sturdyReads.take, sturdyReads.reads.run],
-            [null, null]);
 
         // What Sound says of Bluetooth headphones, as the sound server has
         // them while they play music in AAC: their output, and WirePlumber's
@@ -1719,36 +1685,6 @@ QtObject {
         machine("calls, not hfp", [Sounds.carries("headset-head-unit"),
             Sounds.carries("hfp-hf")], ["calls", "calls"]);
         machine("no profile, nothing carried", Sounds.carries(undefined), "");
-
-        // A card's ports, as pw-dump says them: one analog output with its
-        // speakers and a headphone jack nothing's plugged into, and its
-        // microphone, in the profile it's in.
-        const soundCard = JSON.stringify([{ id: 7, type: "PipeWire:Interface:Device", info: {
-            params: {
-                Profile: [{ index: 1, name: "output:analog-stereo+input:analog-stereo" }],
-                Route: [{ index: 3, device: 4, direction: "Output" }],
-                EnumRoute: [
-                    { index: 3, name: "analog-output-speaker", description: "Speakers",
-                        direction: "Output", available: "unknown", devices: [4],
-                        profiles: [1] },
-                    { index: 4, name: "analog-output-headphones", description: "Headphones",
-                        direction: "Output", available: "no", devices: [4], profiles: [1] },
-                    { index: 5, name: "analog-input-mic", description: "Microphone",
-                        direction: "Input", available: "unknown", devices: [5],
-                        profiles: [1] },
-                    { index: 6, name: "hdmi-output-0", description: "HDMI",
-                        direction: "Output", available: "no", devices: [4], profiles: [2] }
-                ]
-            } } }]);
-        machine("an output's ports, the one in use", Sounds.ports(soundCard,
-            { "device.id": "7", "card.profile.device": "4" }, true), [
-            { index: 3, name: "Speakers", available: "unknown", active: true },
-            { index: 4, name: "Headphones", available: "no", active: false }]);
-        machine("an input's, the other way", Sounds.ports(soundCard,
-            { "device.id": "7", "card.profile.device": "5" }, false).map(port => port.name),
-            ["Microphone"]);
-        machine("another card's, none", Sounds.ports(soundCard, { "device.id": "8" }, true), []);
-        machine("no dump, no ports", Sounds.ports("", { "device.id": "7" }, true), []);
 
         // The format the graph moves a node's audio in, as the patched
         // PwNodeAudio says it: its rate to three significant digits and its
