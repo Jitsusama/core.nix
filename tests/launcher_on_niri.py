@@ -106,19 +106,18 @@ class Shell:
         if "CLIPBOARD" in os.environ:
             socket = Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"
             with (self.log.parent / "clipboard-history.log").open("wb") as log:
-                self.daemons.append(
-                    subprocess.Popen(  # noqa: S603, the program the check gives
-                        [
-                            os.environ["CLIPBOARD"],
-                            "--socket",
-                            str(socket),
-                            "--vocabulary",
-                            os.environ["CLIPBOARD_WORDS"],
-                        ],
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                    )
+                history = subprocess.Popen(  # noqa: S603, the program the check gives
+                    [
+                        os.environ["CLIPBOARD"],
+                        "--socket",
+                        str(socket),
+                        "--vocabulary",
+                        os.environ["CLIPBOARD_WORDS"],
+                    ],
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
                 )
+                self.daemons["clipboard-history"] = history
         self.launch("wb")
 
     def restart(self) -> None:
