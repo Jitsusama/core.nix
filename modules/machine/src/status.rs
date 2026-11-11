@@ -153,7 +153,7 @@ impl Kept {
             for beat in BEATS {
                 said.remove(beat);
             }
-            records.push(record(watcher.name, said, heard.silent));
+            records.push(record(watcher.name, &said, heard.silent));
         }
         records
     }
@@ -171,7 +171,7 @@ impl Kept {
     }
 }
 
-fn record(name: &str, said: Map<String, Value>, silent: bool) -> Value {
+fn record(name: &str, said: &Map<String, Value>, silent: bool) -> Value {
     json!({
         "key": format!("status:{name}"),
         "kind": "status",
@@ -340,6 +340,6 @@ mod tests {
         let Value::Object(said) = said else {
             unreachable!("a status is an object")
         };
-        record(name, said, silent)
+        record(name, &said, silent)
     }
 }

@@ -126,7 +126,7 @@ fn usb_device(device: &Value) -> String {
     };
     steps
         .iter()
-        .rposition(|step| is_device(step))
+        .rposition(is_device)
         .map(|last| format!("/sys{}", steps[..=last].join("/")))
         .unwrap_or_default()
 }
