@@ -16,14 +16,15 @@
 // the guard is taking all it safely can. A writer the guard froze for
 // filling a disk wants him now too, with Thaw It to let it carry on. It's true
 // as well when a guard has stopped, since then nothing watches the disks: its
-// status going quiet is only the cue to ask its unit, once, and only a unit
-// that says it isn't running shows, since every switch restarts the guards
+// status going quiet is only the cue for the machine daemon to ask its unit,
+// once, and only a unit that says it isn't running shows, since every switch
+// restarts the guards
 // (Joel, 2026-10-28: "why do i sometimes see disks not watching, wtf does
 // that mean?"). Nothing else asks for him, since nothing else needs him. It also
 // holds what the guards measured filling the disks, for the launcher's
-// Disk to list.
+// Disk to list. Keep, Release and Clear are acts the machine daemon carries
+// out with the account's guard, so the piece spawns nothing.
 import qs
-import Quickshell.Io
 import QtQuick
 import "../FileFacts.js" as FileFacts
 import "Drawers.js" as Drawers
@@ -66,13 +67,13 @@ Piece {
     readonly property bool fullSoon: filling !== null
         && filling.full_at - Date.now() / 1000 < day
     // Each guard writes its status at least every 30 seconds while it runs,
-    // so a quiet one is asked about, and counts only once its unit says it
-    // stopped.
-    readonly property bool accountStopped: account.silent && accountUnit.stopped
-    readonly property bool machineStopped: machine.silent && machineUnit.stopped
+    // so a quiet one's unit is asked about, and it counts only once its unit
+    // says it stopped.
+    readonly property bool accountStopped: account.silent && account.unit?.stopped === true
+    readonly property bool machineStopped: machine.silent && machine.unit?.stopped === true
     readonly property bool silent: accountStopped || machineStopped
-    // What each guard's unit said when last asked, for its tests.
-    readonly property var units: ({ account: accountUnit, machine: machineUnit })
+    // What each guard's unit said as it fell silent, for its tests.
+    readonly property var units: ({ account: account.unit, machine: machine.unit })
     readonly property var last: account.said?.last ?? null
     // What the account's guard froze for filling a disk, if anything.
     readonly property var frozen: account.said?.frozen ?? []
@@ -141,7 +142,7 @@ Piece {
                 : `its last pass ${last.end}`);
         }
         if (silent)
-            parts.push(stoppedFor((accountStopped ? accountUnit : machineUnit).result));
+            parts.push(stoppedFor((accountStopped ? account : machine).unit.result));
         return parts.join("; ");
     }
     actions: (frozen.length > 0 ? [{
@@ -149,12 +150,14 @@ Piece {
         name: "Thaw It",
         verb: "thaw",
         stays: true,
-        run: () => Niri.spawn(["disk-guard", "thaw"])
+        // The guard's status says it's thawed, which takes the row away.
+        run: () => Watchers.act({ act: "disk-thaw" }, null)
     }] : []).concat(accountStopped ? [{
         glyph: Theme.glyph.resume,
         name: "Start the Guard",
         stays: true,
-        run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
+        // Its status beating again is what says it started.
+        run: () => Watchers.act({ act: "restart-unit", unit: "disk-guard.service" }, null)
     }] : [])
 
     // Everything the guards say of the disk shortest of room, under Now's
@@ -183,33 +186,32 @@ Piece {
     // it go again; the account's guard rewrites its status before it
     // answers, so the row has flipped by the time the foot says so.
     function keep(path, reason) {
-        tell(["keep", path, reason]);
+        tell("disk-keep", { path: path, reason: reason });
     }
 
     function release(path) {
-        tell(["unkeep", path]);
+        tell("disk-unkeep", { path: path });
     }
 
     // Asks the account's guard to clear what it would take of a folder
     // now, which it starts on its next step, marking the holder clearing.
     function clear(path) {
-        tell(["clear", path]);
+        tell("disk-clear", { path: path });
     }
 
-    function tell(words) {
-        if (keeping.running)
+    // One at a time, as the guard's foot says one sentence.
+    property bool telling: false
+
+    function tell(act, said) {
+        if (telling)
             return;
+        telling = true;
         told = "\u2026";
-        keeping.command = ["sh", "-c", "exec \"$0\" \"$@\" 2>&1", "disk-guard"].concat(words);
-        keeping.running = true;
-    }
-
-    Process {
-        id: keeping
-        stdout: StdioCollector {
-            id: keepingSaid
-            onStreamFinished: piece.told = keepingSaid.text.trim()
-        }
+        Watchers.act(Object.assign({ act: act }, said), answer => {
+            telling = false;
+            told = answer === null ? "the machine daemon isn't answering"
+                : answer.error?.message ?? answer.said ?? "";
+        });
     }
 
     // Why a guard stopped, in a phrase, from what its unit's Result says.
@@ -251,78 +253,25 @@ Piece {
     }
 
     // Each guard's status, the account's and the machine's, as the machine
-    // daemon tells it: what it says, and whether it's gone quiet.
+    // daemon tells it: what it says, whether it's gone quiet, and how its
+    // unit stood as it did.
     component Status: QtObject {
         property var said: null
         property bool silent: false
+        property var unit: null
     }
 
     Status {
         id: account
         said: Watchers.guard
         silent: Watchers.guardSilent
+        unit: Watchers.guardUnit
     }
 
     Status {
         id: machine
         said: Watchers.machineGuard
         silent: Watchers.machineGuardSilent
-    }
-
-    // Each guard's unit, asked once each time its status goes quiet.
-    Unit {
-        id: accountUnit
-        quiet: account.silent
-        command: piece.settings.accountUnit ?? ["systemctl", "--user", "show", "-p",
-            "ActiveState,Result", "disk-guard.service"]
-    }
-
-    Unit {
-        id: machineUnit
-        quiet: machine.silent
-        command: piece.settings.machineUnit ?? ["systemctl", "show", "-p",
-            "ActiveState,Result", "disk-guard.service"]
-    }
-
-    // What a guard's unit says of it, asked as its status goes quiet, or as
-    // the piece starts on one already quiet, and never again until it's
-    // heard from: stopped once the unit says it isn't running or starting,
-    // or can't be asked, with the Result that says why.
-    component Unit: Process {
-        id: unit
-
-        property bool quiet: false
-        property bool asked: false
-        property string state: ""
-        property string result: ""
-        readonly property bool stopped: asked
-            && !["active", "activating", "deactivating", "reloading", "refreshing"]
-                .includes(state)
-
-        function ask() {
-            asked = false;
-            state = "";
-            result = "";
-            running = true;
-        }
-
-        onQuietChanged: quiet ? ask() : asked = false
-        Component.onCompleted: if (quiet) ask()
-        onExited: code => {
-            if (code !== 0)
-                asked = true;
-        }
-        stdout: StdioCollector {
-            onStreamFinished: {
-                for (const line of text.split("\n")) {
-                    const [key, value] = line.split("=");
-                    if (key === "ActiveState")
-                        unit.state = value;
-                    else if (key === "Result")
-                        unit.result = value;
-                }
-                unit.asked = true;
-            }
-        }
+        unit: Watchers.machineGuardUnit
     }
 }
