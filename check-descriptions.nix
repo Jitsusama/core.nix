@@ -2562,8 +2562,8 @@
     clippy finds nothing in pi-agent-proxy or its tests, the SSH agent a fenced pi command reaches,
     which signs only logins to the hosts it's told of
   '';
-  pi-agent-proxy-runs-only-with-hosts = ''
-    pi's SSH agent proxy runs only where it's given hosts, never on a Mac, started by the first ssh
+  pi-agent-proxy-runs-only-with-machines = ''
+    pi's SSH agent proxy runs only where it's given machines, never on a Mac, started by the first ssh
     that asks on a socket only the account reaches, told of those hosts and the agents behind it
   '';
   pi-agent-proxy-signs-only-logins = ''

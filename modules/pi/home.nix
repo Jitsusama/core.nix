@@ -155,7 +155,7 @@ let
   # It depends on the hosts alone, since the upstreams' default looks at
   # which sockets are declared, these among them.
   agentProxy = pkgs.callPackage ./agent-proxy/package.nix { };
-  proxied = pkgs.stdenv.hostPlatform.isLinux && config.jitsusama.pi.agentProxy.hosts != [ ];
+  proxied = pkgs.stdenv.hostPlatform.isLinux && config.jitsusama.pi.agentProxy.machines != [ ];
 
   # Each plan's small, quick model, for answers that take a second or two.
   quickModels = {
@@ -210,7 +210,7 @@ in
   };
 
   options.jitsusama.pi.agentProxy = {
-    hosts = lib.mkOption {
+    machines = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
       example = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... builder" ];
@@ -351,7 +351,7 @@ in
       }
       {
         assertion = proxied -> config.jitsusama.pi.agentProxy.upstreams != [ ];
-        message = "jitsusama.pi.agentProxy.hosts names hosts, but no agent's socket is given in jitsusama.pi.agentProxy.upstreams to sign their logins with.";
+        message = "jitsusama.pi.agentProxy.machines names machines, but no agent's socket is given in jitsusama.pi.agentProxy.upstreams to sign their logins with.";
       }
     ];
 
@@ -392,7 +392,7 @@ in
 
     # The one SSH agent the agent fence lets in, at %t/pi-agent.sock: it
     # signs, with the agents' key, only logins to the hosts named in
-    # jitsusama.pi.agentProxy.hosts, each proved by the host's own
+    # jitsusama.pi.agentProxy.machines, each proved by the machine's own
     # signature over the session (agent-proxy/src/bind.rs). Started by the
     # first ssh that asks; every refusal says why in the journal.
     systemd.user.sockets.pi-agent-proxy = lib.mkIf proxied {
@@ -414,7 +414,7 @@ in
         [
           (lib.getExe agentProxy)
           "--hosts"
-          "${pkgs.writeText "pi-agent-proxy-hosts" (lib.concatLines config.jitsusama.pi.agentProxy.hosts)}"
+          "${pkgs.writeText "pi-agent-proxy-hosts" (lib.concatLines config.jitsusama.pi.agentProxy.machines)}"
         ]
         ++ lib.concatMap (socket: [
           "--upstream"

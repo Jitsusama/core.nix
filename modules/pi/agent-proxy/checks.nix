@@ -16,7 +16,7 @@
   # The fence's SSH agent runs only where it's given hosts, started by the
   # first ssh that asks, on a socket only the account can reach, told of
   # those hosts and of each agent behind it; a Mac gets none.
-  pi-agent-proxy-runs-only-with-hosts =
+  pi-agent-proxy-runs-only-with-machines =
     let
       key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
       home = account (bareNixos [
@@ -25,7 +25,7 @@
           home-manager.sharedModules = [
             {
               jitsusama.pi.agentProxy = {
-                hosts = [ key ];
+                machines = [ key ];
                 upstreams = [ "%t/agents.sock" ];
               };
             }
@@ -37,7 +37,7 @@
       socket = home.systemd.user.sockets.pi-agent-proxy.Socket;
       start = lib.head (lib.toList home.systemd.user.services.pi-agent-proxy.Service.ExecStart);
     in
-    holds "pi-agent-proxy-runs-only-with-hosts"
+    holds "pi-agent-proxy-runs-only-with-machines"
       "pi's SSH agent proxy runs with no hosts or on a Mac, listens elsewhere than %t/pi-agent.sock or to more than the account, or isn't told of its hosts or the agents behind it."
       (
         lib.head (lib.toList socket.ListenStream) == "%t/pi-agent.sock"

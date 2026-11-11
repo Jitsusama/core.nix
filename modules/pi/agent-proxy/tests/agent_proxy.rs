@@ -169,7 +169,7 @@ fn fake_agent(path: &Path, signed: Arc<AtomicUsize>) {
     let listener = UnixListener::bind(path).expect("the fake agent binds");
     thread::spawn(move || {
         for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { return };
+            let mut stream = stream.expect("the fake agent takes each client");
             let signed = Arc::clone(&signed);
             thread::spawn(move || {
                 while let Some(request) = receive(&mut stream) {
