@@ -80,7 +80,7 @@ pub fn revive(
                     Held::Not
                 }
             },
-            |all| revive::held(all, &s.session, is_pi),
+            |all| revive::held(all, &s.session, lives),
         );
         let named = matches!(hold, Held::Running | Held::Parked);
         let Verdict::Died { cwd } = revive::judge(s, quest.as_ref(), is_pi, named) else {
@@ -340,7 +340,29 @@ fn close_dead(session: &str, hold: &Held, holders: &[Holder]) -> usize {
         .count()
 }
 
-/// Whether a pi runs at or below `pid`.
+/// Whether `pid` shows a session: a pi, or a viewer of one a host runs.
+/// A window handed into a host keeps its session's mark, and its holder
+/// runs the viewer, not pi, so counting only a pi would close the window
+/// Joel reads a hosted session in whenever its host restarts.
+fn lives(pid: u32) -> bool {
+    is_pi(pid) || fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| views(&line))
+}
+
+/// Whether a command line, its words split by NUL, is a hosted session's
+/// viewer: node running the harness's `scripts/host-join.ts`, or
+/// `mycelium attach`.
+fn views(line: &[u8]) -> bool {
+    let words: Vec<&[u8]> = line.split(|&b| b == 0).collect();
+    let mycelium = words
+        .first()
+        .is_some_and(|program| program.rsplit(|&b| b == b'/').next() == Some(b"mycelium"));
+    words
+        .iter()
+        .any(|word| word.ends_with(b"/scripts/host-join.ts"))
+        || (mycelium && words.contains(&b"attach".as_slice()))
+}
+
+/// Whether a pi, or a hosted session's viewer, runs at or below `pid`.
 fn pi_under(pid: u32) -> bool {
     let mut queue = vec![pid];
     let mut seen = std::collections::BTreeSet::new();
@@ -348,7 +370,7 @@ fn pi_under(pid: u32) -> bool {
         if !seen.insert(at) {
             continue;
         }
-        if is_pi(at) {
+        if lives(at) {
             return true;
         }
         let Ok(tasks) = fs::read_dir(format!("/proc/{at}/task")) else {
@@ -466,6 +488,31 @@ fn windows() -> Vec<Window> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hosted_sessions_viewer_counts_as_showing_it() {
+        for viewer in [
+            b"node\0/h/agentic-harness.pi/scripts/host-join.ts\0--session\0s\0".as_slice(),
+            b"/nix/store/x-mycelium/bin/mycelium\0attach\0s\0",
+        ] {
+            assert!(
+                views(viewer),
+                "a viewer counted as dead: {}",
+                String::from_utf8_lossy(viewer)
+            );
+        }
+        for other in [
+            b"node\0/h/agentic-harness.pi/scripts/pi-host.ts\0".as_slice(),
+            b"zsh\0-c\0mycelium attach s\0",
+            b"/bin/mycelium\0held\0",
+        ] {
+            assert!(
+                !views(other),
+                "not a viewer, yet counted as one: {}",
+                String::from_utf8_lossy(other)
+            );
+        }
+    }
 
     #[test]
     fn a_revived_window_and_its_pi_say_the_same_numbered_class() {
