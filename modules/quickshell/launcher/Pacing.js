@@ -40,9 +40,15 @@ function took(now) {
 // refreshed at once on its frame: only after a key that acted, within
 // `within`. A key that only `moved` changed nothing, so a change beside it,
 // as Now's each second, waits on the pace like any other (Joel,
-// 2026-11-08: "weird lag can happen").
-function keyed(ago, moved, within) {
-    return !moved && ago < within;
+// 2026-11-08: "weird lag can happen"). Nor is a change to a place none of
+// whose rows are on screen as it comes (`shown`, a held step's or those
+// listed), which nothing needs in the key's frame: Runs changing just
+// after a key in Emoji was timed as its act, and its refresh, drawing
+// nothing, waited 631 ms for a frame drawn for something else (Joel's
+// journal, 2026-11-11). A place a key brings into view, as Backspace to
+// home brings Windows', is on screen by the time its change is heard.
+function keyed(ago, moved, within, shown) {
+    return shown && !moved && ago < within;
 }
 
 // How long after the last key's work, taken at `taken` and done at `done`,
