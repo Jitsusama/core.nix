@@ -8,8 +8,8 @@
 //! user units the shell may restart, [`units`], and the parts Heat's rows
 //! say, gathered from those records and the processor's own telemetry
 //! ([`parts`], [`telemetry`]), and Heat's rows made of them, ready for the
-//! launcher ([`heat_rows`], worded through [`words`]). Every file is read
-//! through
+//! launcher ([`heat_rows`], placed and graphed through [`rows`] and worded
+//! through [`words`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before.
 //!
@@ -36,6 +36,7 @@ pub mod memory;
 pub mod parts;
 pub mod pressure;
 pub mod processor;
+pub mod rows;
 pub mod sleep;
 pub mod steered;
 pub mod supply;

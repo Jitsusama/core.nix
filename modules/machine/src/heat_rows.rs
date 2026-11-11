@@ -20,21 +20,15 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::parts::{self, Fan, Gathered, Left, Part, Throttled, Trip, Zone};
+pub use crate::rows::Ready;
+use crate::rows::{GRAPHED, Made, bar, figure, item, spark, strip};
 use crate::words::Words;
 
 /// The place the launcher shows these rows in.
 const PLACE: &str = "heat";
-/// How far apart siblings are ordered, so one moving sends one row.
-const SPACED: u64 = 1024;
-/// How many reads a spark holds, two to each of its ten characters.
-const GRAPHED: usize = 20;
-/// The steps a bar fills in, one to each place of its twenty.
-const BAR_STEPS: f64 = 20.0;
-/// The steps a spark's or strip's reading is drawn in, four dots high.
-const DOT_STEPS: f64 = 4.0;
 /// Reads further apart than this start a spark afresh.
 const STALE_MS: u64 = 5000;
 /// The firmware's points that act on heat, in the order it acts.
@@ -51,13 +45,6 @@ pub struct Held<'a> {
     pub telemetry: &'a [Value],
 }
 
-/// Heat's rows and its headline, each a record the daemon serves.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Ready {
-    pub rows: Vec<Value>,
-    pub head: Option<Value>,
-}
-
 /// The reads kept between one and the next while Heat is watched: each
 /// spark's, by its part, and the read before's time and throttling.
 #[derive(Clone, Debug, Default)]
@@ -72,22 +59,6 @@ struct Read {
     throttled: Option<Throttled>,
     zones: Vec<Zone>,
     cooling: Vec<parts::Cooling>,
-}
-
-/// One row as it's made, before it's placed among its siblings.
-#[derive(Default)]
-struct Made {
-    id: String,
-    kind: &'static str,
-    name: String,
-    glyph: String,
-    hue: &'static str,
-    side: Vec<Value>,
-    copies: String,
-    graph: Option<Value>,
-    note: String,
-    drawer: Option<Value>,
-    inside: Vec<Made>,
 }
 
 impl Heat {
@@ -129,7 +100,7 @@ impl Heat {
         }
         made.extend(fans.iter().map(|fan| say.fan_row(fan)));
         let mut rows = Vec::new();
-        placed(made, None, 0, &mut rows);
+        crate::rows::placed(PLACE, made, None, 0, &mut rows);
         Ready {
             rows,
             head: Some(say.head(temps, fans)),
@@ -204,105 +175,15 @@ fn fan_key(fan: &Fan) -> String {
     format!("fan:{}:{}", fan.id, fan.n)
 }
 
-/// A value kept between 0 and 1, in `steps` steps, any above nothing at
-/// least one, as the shell lights it.
-fn stepped(value: f64, steps: f64) -> f64 {
-    let kept = if value.is_nan() {
-        0.0
-    } else {
-        value.clamp(0.0, 1.0)
-    };
-    if kept <= 0.0 {
-        0.0
-    } else {
-        (kept * steps).round().max(1.0) / steps
-    }
-}
-
-fn bar(value: f64, warn: bool) -> Value {
-    json!({ "shape": "bar", "values": [stepped(value, BAR_STEPS)], "warn": warn })
-}
-
-/// A strip: one value a member, as many members to a place as it takes
-/// to fit twenty, each place its most.
-fn strip(values: &[f64], warn: bool) -> Value {
-    let per = values.len().div_ceil(GRAPHED).max(1);
-    let drawn: Vec<f64> = values
-        .chunks(per)
-        .map(|chunk| stepped(chunk.iter().copied().fold(0.0, f64::max), DOT_STEPS))
-        .collect();
-    json!({ "shape": "strip", "values": drawn, "warn": warn })
-}
-
-fn spark(values: &[f64]) -> Value {
-    let from = values.len().saturating_sub(GRAPHED);
-    let drawn: Vec<f64> = values[from..]
-        .iter()
-        .map(|value| stepped(*value, DOT_STEPS))
-        .collect();
-    json!({ "shape": "spark", "values": drawn, "warn": false })
-}
-
 /// A temperature's bar, against its most, warning near it.
 fn level(value: f64, part: &Part) -> Value {
     let said = parts::level(value, part.high, part.crit, &part.id);
     bar(said.value, said.warn)
 }
 
-fn item(said: &str) -> Value {
-    json!({ "said": said })
-}
-
 fn hottest<T>(list: &[T], value: impl Fn(&T) -> f64) -> Option<&T> {
     list.iter()
         .reduce(|a, b| if value(a) >= value(b) { a } else { b })
-}
-
-/// Each made row as a record, its siblings ordered among themselves.
-fn placed(made: Vec<Made>, parent: Option<&str>, depth: u64, out: &mut Vec<Value>) {
-    for (at, row) in (1..).zip(made) {
-        let key = format!("row:{PLACE}:{}", row.id);
-        let mut record = Map::new();
-        record.insert("key".to_owned(), Value::String(key.clone()));
-        record.insert("row".to_owned(), json!(format!("{PLACE}:{}", row.id)));
-        record.insert("place".to_owned(), json!(PLACE));
-        record.insert("kind".to_owned(), json!(row.kind));
-        if let Some(parent) = parent {
-            record.insert("parent".to_owned(), json!(parent));
-        }
-        record.insert("depth".to_owned(), json!(depth));
-        record.insert("order".to_owned(), json!(at * SPACED));
-        record.insert("name".to_owned(), json!(row.name));
-        let mut set = |field: &str, value: Value| {
-            record.insert(field.to_owned(), value);
-        };
-        if !row.glyph.is_empty() {
-            set("glyph", json!(row.glyph));
-        }
-        if !row.hue.is_empty() {
-            set("hue", json!(row.hue));
-        }
-        set("side", Value::Array(row.side));
-        if let Some(graph) = row.graph {
-            set("graph", graph);
-        }
-        if !row.note.is_empty() {
-            set("note", json!(row.note));
-        }
-        if let Some(drawer) = row.drawer {
-            set("drawer", drawer);
-        }
-        let mut acts = Vec::new();
-        if !row.copies.is_empty() {
-            acts.push(json!({ "key": "verb:copy", "ask": { "copy": row.copies } }));
-        }
-        if !row.inside.is_empty() {
-            acts.push(json!({ "key": "verb:more", "step": "rows" }));
-        }
-        set("acts", Value::Array(acts));
-        out.push(Value::Object(record));
-        placed(row.inside, Some(key.as_str()), depth + 1, out);
-    }
 }
 
 /// What the rows are said with: the words, and each spark's reads.
@@ -958,20 +839,6 @@ impl Say<'_> {
     }
 }
 
-/// A row that says a figure and copies it.
-fn figure(id: String, name: String, said: String, graph: Option<Value>, note: String) -> Made {
-    Made {
-        id,
-        kind: "figure",
-        name,
-        side: vec![item(&said)],
-        copies: said,
-        graph,
-        note,
-        ..Made::default()
-    }
-}
-
 /// A share as a whole percentage, a half rounded up as the shell did.
 fn percent(share: f64) -> String {
     format!("{:.0}", (share * 100.0).round())
@@ -987,6 +854,7 @@ fn capitalised(label: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rows::SPACED;
 
     /// The words these cases say, as words.json has them.
     fn words() -> Words {
@@ -1239,18 +1107,6 @@ mod tests {
         assert_eq!(
             lately(&read(&mut heat, 75.0, 79.0, 9000)),
             "one read so far"
-        );
-    }
-
-    #[test]
-    fn steps_are_the_shells() {
-        assert_eq!(
-            [0.0, 0.001, 0.5, 0.52, 2.0, f64::NAN].map(|v| stepped(v, BAR_STEPS)),
-            [0.0, 0.05, 0.5, 0.5, 1.0, 0.0]
-        );
-        assert_eq!(
-            strip(&[0.1, 0.9, 0.3], true)["values"],
-            json!([0.25, 1.0, 0.25])
         );
     }
 }
