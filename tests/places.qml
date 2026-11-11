@@ -288,18 +288,18 @@ QtObject {
         // Back here is each one here, but one pi's host runs only once its
         // viewer is open, when the last boot kept a place of its window:
         // its host brings the conversation back before Joel asks.
-        const here = (session, fields) => Object.assign({ here: true, window: null,
+        const isHere = (session, fields) => Object.assign({ here: true, window: null,
             presence: { session, quest: "QEST-HERE" } }, fields);
-        const hostedHere = (session, window) => here(session, { window,
+        const hostedHere = (session, window) => isHere(session, { window,
             presence: { session, hosted: { host: "work-background", conversation: session } } });
         const backIds = (sessions, arranged) => Places.backHere(sessions, arranged)
             .map(one => one.id);
         expect("a hosted one is back once its viewer is, or when it had none", backIds([
-            here("plain"), hostedHere("viewless"), hostedHere("windowed", { id: 4 }),
-            hostedHere("unkept"), here("elsewhere", { here: false })],
+            isHere("plain"), hostedHere("viewless"), hostedHere("windowed", { id: 4 }),
+            hostedHere("unkept"), isHere("elsewhere", { here: false })],
         { viewless: { workspace: 2 }, windowed: { workspace: 2 } }),
             ["plain", "windowed", "unkept"]);
-        expect("each back with its quest", Places.backHere([here("plain")], {}),
+        expect("each back with its quest", Places.backHere([isHere("plain")], {}),
             [{ id: "plain", quest: "QEST-HERE" }]);
         expect("with no places kept, each hosted one is back",
             backIds([hostedHere("viewless")], undefined), ["viewless"]);

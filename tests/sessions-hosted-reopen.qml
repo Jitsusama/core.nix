@@ -168,10 +168,12 @@ ShellRoot {
             !Niri.acts.some(act => act.MoveWindowToWorkspace || act.MoveColumnToIndex
                 || act.FocusWindow || act.FocusWorkspace || act.FocusMonitor
                 || act.FocusColumnLast), JSON.stringify(Niri.acts));
-        // Joel goes to the empty workspace, and another host serves one.
+        // Joel goes to the empty workspace, and another host serves one,
+        // told with a new digest, since the launcher is shut.
         joelOn(42);
         stage = "joel";
-        tell({ changed: [hosted("s-second", "SECOND")] });
+        tell({ changed: [Object.assign(hosted("s-second", "SECOND"),
+            { told: "0000000000000001" })] });
     }
 
     function joel() {

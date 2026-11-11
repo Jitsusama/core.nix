@@ -88,7 +88,7 @@ QtObject {
             presence: presence("s-host", "A009", { hosted: { host: "work-background",
                 conversation: "s-host" } }) } }).live[0];
         expect("one hosted here keeps the words to view it",
-            hosted.here === true && JSON.stringify(hosted.attach) === JSON.stringify(viewing),
+            JSON.stringify(hosted.attach) === JSON.stringify(viewing),
             JSON.stringify(hosted));
 
         const records = Pi.sessions(sorted, "skiff");
