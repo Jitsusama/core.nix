@@ -67,6 +67,13 @@ Singleton {
     property var workspaces: ({})
     property var focused: null
     property int revision: 0
+    // Each program's newest window, by its app id in lower case, made again
+    // only as the windows a list shows change, so a row going to a program
+    // looks it up rather than walking every window (NiriRecords.js's byApp).
+    readonly property var byApp: {
+        void revision;
+        return NiriRecords.byApp(windows);
+    }
 
     // The window the keys were in, by id. niri says no window has focus
     // while a layer such as the launcher has the keys, so it's the focused

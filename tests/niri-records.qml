@@ -163,5 +163,15 @@ QtObject {
             sessions.push(NiriRecords.isSessionApp(app));
         Expect.same("a hosted viewer is a session's window, a bare pi-hosted isn't", sessions,
             [true, true, true, true, false, false, false, false, false, false]);
+
+        const programs = NiriRecords.byApp({
+            4: window(4, { app_id: "Slack" }),
+            9: window(9, { app_id: "slack" }),
+            7: window(7, { app_id: "foot" }),
+            8: window(8, { app_id: "" })
+        });
+        Expect.same("each program's newest window, by its app id in lower case",
+            Object.keys(programs).sort().map(app => [app, programs[app].id]),
+            [["foot", 7], ["slack", 9]]);
     }
 }

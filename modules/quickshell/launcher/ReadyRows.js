@@ -243,12 +243,38 @@ function actForm(act) {
     if (typeof act.open === "string" && act.open !== "") {
         return "open";
     }
+    if (typeof act.go === "string" && act.go !== "") {
+        return "go";
+    }
     return act.step === "drawer" || act.step === "rows" ? "step" : "";
 }
 
 // A row's acts the shell can do, in the order served, Return's first.
 function actsOf(row) {
     return (row?.acts ?? []).filter(act => actForm(act) !== "");
+}
+
+// Where an act going to a program takes Joel (ready-rows.md's `go`, the
+// program's desktop entry id): its newest window, from `byApp`, Niri.qml's
+// windows by app id in lower case, else `entry`, the program's desktop
+// entry, to open; null where there's neither, so the act isn't offered.
+function going(act, byApp, entry) {
+    const window = byApp[String(act?.go ?? "").toLowerCase()] ?? null;
+    if (window !== null) {
+        return { window: window.id };
+    }
+    return entry ? { entry } : null;
+}
+
+// An ask as it's sent: with the activation token the act was given where
+// it carries `token: true`, so its sender can bring its window forward;
+// null where it needs one and none came, so it isn't sent without.
+function tokened(act, token) {
+    if (act.token !== true) {
+        return act.ask;
+    }
+    return typeof token === "string" && token !== ""
+        ? Object.assign({}, act.ask, { token }) : null;
 }
 
 // The verb the foot says for an act: words.json's for its key, `worded`,
