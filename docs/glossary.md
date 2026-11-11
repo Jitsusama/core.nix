@@ -553,7 +553,7 @@ entry can be copied from, opened at its site and filled in.
 | detail | one part of an entry, as its username, its password or its one-time code | | 1Password's fields |
 | one-time code | the code an entry gives for signing in, new every half-minute | OTP, TOTP | |
 | hidden | of a part of an entry, shown only when asked, as a password is | concealed | 1Password's `CONCEALED` |
-| audit | every entry's password checked for reuse and breaches, only when Joel asks, as Check Every Password does | | `passwords audit`, the daemon's `audit` |
+| audit | every entry's password checked for reuse and breaches, only when Joel asks, as Check Every Password does | | the daemon's `audit` |
 | greeter | what asks Joel to sign in when the machine starts | | greetd, tuigreet |
 | lock screen | what hides the desktop while Joel is away, until he signs in again | | swayidle |
 | stick | the USB stick the guide writes for one machine, to install or reinstall it | reinstall stick | |

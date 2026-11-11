@@ -170,7 +170,7 @@ fn main() {
     };
     match typed.command {
         cli::Command::Daemon { managers, words } => daemon(&managers, words.as_deref()),
-        command => std::process::exit(command_line(command, typed.json)),
+        command => std::process::exit(command_line(&command, typed.json)),
     }
 }
 
@@ -1234,7 +1234,7 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
 /// terminal or for a program reading a pipe, or as `--json`, and its exit
 /// status as the usage says. None reaches the daemon, which answers the
 /// shell alone.
-fn command_line(command: cli::Command, json: bool) -> i32 {
+fn command_line(command: &cli::Command, json: bool) -> i32 {
     let terminal = std::io::stdout().is_terminal();
     match command {
         cli::Command::Help => {
