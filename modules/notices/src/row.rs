@@ -1,0 +1,561 @@
+//! Each notice's rows, in the launcher's one form for every daemon's rows
+//! (Y2YBTS's ready-rows.md), made here from the record its card reads, so
+//! cards and rows come off one record and the shell sorts, words and
+//! builds nothing (Y2YBTS, 2026-11-11). They're what the shell's
+//! PastNotices.qml and Notice.js made: the same name, drawer and acts, in
+//! the same order, since Joel learns one notice, not two.
+//!
+//! Each list says a notice's standing its own way, so each is a place of
+//! its own, ordered newest first (Y2YBTS, 1dad3527):
+//!
+//! - `notices`, the lists of read and unread together (a search, a
+//!   program's), where an unread one says so before its age.
+//! - `notices-desktop`, For You's Desktop, the unread, its age alone,
+//!   since Desktop's head says they're unread; one read while Joel looks
+//!   stays in place saying "read", until he no longer does (VKCF3Z,
+//!   2026-11-09).
+//! - `notices-history`, For You's History, the read, its age alone.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde_json::{Value, json};
+
+use crate::body::{self, Body};
+use crate::notice::{Notice, Urgency};
+use crate::sender::{Sender, Signs};
+use crate::words::Words;
+
+/// The places a notice's rows are in.
+pub const PLACE: &str = "notices";
+pub const DESKTOP: &str = "notices-desktop";
+pub const HISTORY: &str = "notices-history";
+
+/// The minute a moment falls in, so two times said alike are known alike.
+const MINUTE: i64 = 60_000;
+
+/// What a notice's name and note are: its title, its note its body's first
+/// line; or, with no title, its body's first line, with nothing in its
+/// note.
+fn named(summary: &str, plain: &str) -> (String, String) {
+    let first = plain
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("")
+        .to_owned();
+    let title = summary.trim();
+    if title.is_empty() {
+        (first, String::new())
+    } else {
+        (title.to_owned(), first)
+    }
+}
+
+/// What kind of notice it is, in its drawer's words, from the category its
+/// sender gives as the spec's `class.subtype`: "message" for `im`, an
+/// error subtype as "transfer failed", a bounced mail as "mail bounced"
+/// (VKCF3Z, 2026-11-08), and one it doesn't name left out, never shown
+/// raw.
+fn kind(category: &str, words: &Words) -> String {
+    let (class, subtype) = category.split_once('.').unwrap_or((category, ""));
+    let word = words.state_said("notices:kind", class);
+    if word.is_empty() {
+        return String::new();
+    }
+    if category == "email.bounced" {
+        return words.said(PLACE, "bounced").to_owned();
+    }
+    if subtype == "error" {
+        return words.said(PLACE, "failed").replace("{kind}", word);
+    }
+    word.to_owned()
+}
+
+/// Its drawer's eyebrow: where it's from, then its kind, never a time,
+/// which a fact says (VKCF3Z, 2026-11-08). One signed as the desktop's,
+/// which For You's path already names, is from the program it came
+/// through, "from notify-send", and one whose category names no kind is a
+/// notice (VKCF3Z, 2026-11-09).
+fn eyebrow(notice: &Notice, sender: &Sender, words: &Words) -> String {
+    let signed = if notice.app.is_empty() {
+        ""
+    } else {
+        sender.name.as_str()
+    };
+    let who = if signed == words.name("for-you:source:desktop", "") {
+        notice.app.as_str()
+    } else {
+        signed
+    };
+    let mut said = kind(&notice.category, words);
+    if said.is_empty() {
+        words.said(PLACE, "notice").clone_into(&mut said);
+    }
+    let from = (!who.is_empty()).then(|| words.said(PLACE, "from").replace("{who}", who));
+    from.into_iter()
+        .chain((!said.is_empty()).then_some(said))
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
+/// Its drawer's facts: when it arrived, how it left and when, or that
+/// it's still open, and the urgency its sender asked where it isn't
+/// normal, the urgency nearly every notice is sent at (VKCF3Z,
+/// 2026-11-09). Arrived goes where Left says the same minute, "put away at
+/// 10:51" then standing for both (VKCF3Z, 2026-11-08). Each time is a
+/// moment, since its row's side says when it came.
+fn facts(notice: &Notice, words: &Words) -> Vec<Value> {
+    let how = notice.left.as_deref().unwrap_or(if notice.resting {
+        "resting"
+    } else if notice.live {
+        "shown"
+    } else {
+        ""
+    });
+    let left = words.state_said("notices:left", how);
+    let left_at = notice.left_at.filter(|_| left.contains("{at}"));
+    let same = left_at.is_some_and(|at| at / MINUTE == notice.at / MINUTE);
+    let mut facts = Vec::new();
+    if notice.at > 0 && !same {
+        facts.push(json!({
+            "name": words.name("notices:arrived", ""),
+            "at": notice.at, "as": "moment",
+        }));
+    }
+    let name = words.name("notices:left", "");
+    match left_at {
+        Some(at) => facts.push(json!({
+            "name": name, "said": left.replace("{at}", "{time}"), "at": at, "as": "moment",
+        })),
+        None if !left.is_empty() => facts.push(json!({
+            "name": name, "said": left.replace("{at}", ""),
+        })),
+        None => {}
+    }
+    if notice.urgency != Urgency::Normal {
+        let urgency = if notice.urgency == Urgency::Low {
+            "low"
+        } else {
+            "critical"
+        };
+        facts.push(json!({
+            "name": words.name("notices:urgency", ""),
+            "said": words.state_said("notices:urgency", urgency),
+        }));
+    }
+    facts
+}
+
+/// The ask marking it read, which every act on it sends besides, as each
+/// act on its card reads it.
+fn reads(notice: &Notice) -> Value {
+    json!({ "ask": "mark", "notices": [notice.id], "read": true })
+}
+
+/// What can be done to it, in the order its card lists them (Notice.js's
+/// acts): first going to what it's about, which Return does, by opening
+/// it through its sender while it's open and offers that, else going to
+/// its program where one is known, else into its drawer. Then what its
+/// sender offers while it's open, the links in what it said, whether it's
+/// read, and forgetting it while it's open, since what changes a notice
+/// comes before what ends it; then copying what it said, last, never
+/// first (Joel, 2026-10-28: "having the separate copy option at the top is
+/// very confusing"). Each act reads it as it's done.
+fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str) -> Vec<Value> {
+    let invoke = |action: &str| {
+        let id = notice.id;
+        json!({ "ask": "invoke", "notice": id, "action": action, "read": true })
+    };
+    let mut acts = Vec::new();
+    let opens = notice.live && notice.actions.iter().any(|action| action.id == "default");
+    if opens {
+        acts.push(json!({ "key": "verb:notice:open", "ask": invoke("default"), "token": true }));
+    } else if let Some(entry) = &sender.entry {
+        acts.push(json!({
+            "key": "verb:notice:goTo", "go": entry, "side": sender.name, "also": reads(notice),
+        }));
+    } else {
+        acts.push(json!({ "key": "verb:details", "step": "drawer" }));
+    }
+    if notice.live {
+        for offer in notice
+            .actions
+            .iter()
+            .filter(|action| action.id != "default")
+        {
+            let glyph = if offer.text.to_lowercase().contains("reply") {
+                "reply"
+            } else {
+                "offer"
+            };
+            acts.push(json!({
+                "key": format!("verb:notice:offer:{}", offer.id), "name": offer.text,
+                "glyph": glyph, "ask": invoke(&offer.id), "token": true,
+            }));
+        }
+    }
+    // Each link keyed by the words it's said in, which the shell tells
+    // apart by where it goes (Y2YBTS, 19edbd31).
+    for link in &read.links {
+        acts.push(json!({
+            "key": "verb:notice:link", "open": link.href,
+            "side": body::host(&link.href), "also": reads(notice),
+        }));
+    }
+    let (key, now) = if notice.read {
+        ("verb:notice:unread", false)
+    } else {
+        ("verb:notice:read", true)
+    };
+    acts.push(json!({
+        "key": key, "ask": { "ask": "mark", "notices": [notice.id], "read": now },
+    }));
+    if notice.live {
+        acts.push(json!({
+            "key": "verb:notice:forget", "ask": { "ask": "dismiss", "notices": [notice.id] },
+        }));
+    }
+    acts.push(json!({ "key": "verb:notice:copy", "copy": said, "also": reads(notice) }));
+    acts
+}
+
+/// A notice's row in `place`, not yet given its `order`, its side saying
+/// its standing where `standing` holds words, then its age.
+fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &str) -> Value {
+    let read = body::read(&notice.body);
+    let (name, note) = named(&notice.summary, &read.plain);
+    let said = if read.plain.is_empty() {
+        notice.summary.clone()
+    } else {
+        format!("{}\n{}", notice.summary, read.plain)
+    };
+    let marked = body::marked(&read);
+    let side: Vec<Value> = (!standing.is_empty())
+        .then(|| json!({ "said": standing }))
+        .into_iter()
+        .chain(std::iter::once(json!({ "at": notice.at, "as": "came" })))
+        .collect();
+    // Its words styled as its card draws them where they carry markup or
+    // a link, and plain otherwise, so a long log keeps its own lines; its
+    // sender a name from the world, set as it's written (VKCF3Z,
+    // 2026-11-07).
+    let drawer = json!({
+        "eyebrow": eyebrow(notice, sender, words), "eyebrowNames": true,
+        "title": notice.summary,
+        "body": if marked { &read.styled } else { &read.plain }, "styled": marked,
+        "prose": true, "picture": notice.picture, "facts": facts(notice, words),
+    });
+    json!({
+        "key": format!("row:{place}:{}", notice.id), "thing": notice.key(), "place": place,
+        "kind": "notice", "name": name, "note": note, "glyph": sender.glyph,
+        "hue": if notice.urgency == Urgency::Low { "muted" } else { sender.hue.as_str() },
+        "side": side, "drawer": drawer, "acts": acts(notice, sender, &read, &said),
+        "held": {
+            "id": notice.id, "app": notice.app, "entry": sender.entry, "read": notice.read,
+            "at": notice.at, "live": notice.live, "said": said,
+        },
+    })
+}
+
+/// What one notice was made into: its card's sender and words, and its
+/// row in each place it's in, as it read when made.
+struct Made {
+    notice: Notice,
+    looked: bool,
+    card: Value,
+    rows: [Option<Value>; 3],
+}
+
+/// A notice's rows in each place: in the mixed place always, Desktop's
+/// while unread or while it's `looked` at there, and History's once read.
+/// One passing unkept is in none, since the history never holds it.
+fn placed(notice: &Notice, sender: &Sender, words: &Words, looked: bool) -> [Option<Value>; 3] {
+    if notice.transient {
+        return [None, None, None];
+    }
+    let (unread, read) = (words.said(PLACE, "unread"), words.said(PLACE, "read"));
+    let standing = if notice.read { "" } else { unread };
+    let desktop = match (notice.read, looked) {
+        (false, _) => Some(row(notice, sender, words, DESKTOP, "")),
+        (true, true) => Some(row(notice, sender, words, DESKTOP, read)),
+        (true, false) => None,
+    };
+    [
+        Some(row(notice, sender, words, PLACE, standing)),
+        desktop,
+        notice.read.then(|| row(notice, sender, words, HISTORY, "")),
+    ]
+}
+
+/// Each notice's rows and its card's sender and words, each made again
+/// only once its notice reads differently, so a notice arriving reads
+/// one body rather than every one the history keeps.
+#[derive(Default)]
+pub struct Rows {
+    made: BTreeMap<u32, Made>,
+}
+
+impl Rows {
+    /// Lets everything made go, as when the desktop entries change, which
+    /// may sign any notice anew.
+    pub fn forget(&mut self) {
+        self.made.clear();
+    }
+
+    /// Every notice's rows, by place, newest first as `notices` are: the
+    /// mixed place's, then Desktop's, then History's. `looked` are the
+    /// notices Desktop shows while Joel looks at it, kept there once read.
+    pub fn make<'a>(
+        &mut self,
+        notices: impl Iterator<Item = &'a Notice>,
+        signs: &Signs,
+        looked: &BTreeSet<u32>,
+    ) -> [Vec<Value>; 3] {
+        let mut places: [Vec<Value>; 3] = Default::default();
+        let mut made = BTreeMap::new();
+        for notice in notices {
+            let shown = looked.contains(&notice.id);
+            let one = match self.made.remove(&notice.id) {
+                Some(was) if was.notice == *notice && was.looked == shown => was,
+                _ => {
+                    let sender = signs.sender(&notice.app, &notice.entry);
+                    Made {
+                        notice: notice.clone(),
+                        looked: shown,
+                        card: json!({
+                            "sender": {
+                                "glyph": sender.glyph, "hue": sender.hue, "name": sender.name,
+                            },
+                            "body": body::read(&notice.body),
+                        }),
+                        rows: placed(notice, &sender, signs.words, shown),
+                    }
+                }
+            };
+            for (place, row) in places.iter_mut().zip(&one.rows) {
+                place.extend(row.iter().cloned());
+            }
+            made.insert(notice.id, one);
+        }
+        self.made = made;
+        places
+    }
+
+    /// What a notice's card reads beside the notice: who sent it, signed
+    /// as its row is, and what it said, plain and styled, and its links.
+    pub fn card(&self, id: u32) -> Option<&Value> {
+        self.made.get(&id).map(|made| &made.card)
+    }
+}
+
+/// The notices Desktop shows, by id, so those read while it's looked at
+/// stay there.
+pub fn shown(desktop: &[Value]) -> BTreeSet<u32> {
+    desktop
+        .iter()
+        .filter_map(|row| row["held"]["id"].as_u64())
+        .filter_map(|id| u32::try_from(id).ok())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use windows::entries::Entries;
+
+    use super::*;
+    use crate::sender::{Marks, Senders};
+
+    fn notice(id: u32, fields: &Value) -> Notice {
+        let mut record = json!({ "id": id, "at": 1_000 * i64::from(id), "app": "Slack",
+            "summary": format!("Message {id}"), "body": "hi\nthere" });
+        if let (Some(record), Some(fields)) = (record.as_object_mut(), fields.as_object()) {
+            record.extend(fields.clone());
+        }
+        serde_json::from_value(record).expect("a notice")
+    }
+
+    fn making(notices: &[Notice], looked: &[u32]) -> [Vec<Value>; 3] {
+        making_into(&mut Rows::default(), notices, looked)
+    }
+
+    fn making_into(rows: &mut Rows, notices: &[Notice], looked: &[u32]) -> [Vec<Value>; 3] {
+        let senders: Senders =
+            serde_json::from_str(include_str!("../senders.json")).expect("senders.json reads");
+        let entries =
+            Entries::from_texts([("slack", "[Desktop Entry]\nType=Application\nName=Slack\n")]);
+        let marks = Marks::of(&[("slack", "f198")]);
+        let words = crate::words::tests::core();
+        let signs = Signs {
+            senders: &senders,
+            marks: &marks,
+            entries: &entries,
+            words: &words,
+        };
+        rows.make(notices.iter(), &signs, &looked.iter().copied().collect())
+    }
+
+    #[test]
+    fn a_card_reads_its_sender_and_words_off_what_its_rows_were_made_from() {
+        let mut rows = Rows::default();
+        let sent = notice(10, &json!({ "body": "<b>hi</b> there" }));
+        making_into(&mut rows, std::slice::from_ref(&sent), &[]);
+        let card = rows.card(10).expect("its card");
+        assert_eq!(
+            card["sender"],
+            json!({ "glyph": { "code": "f198" }, "hue": "person",
+            "name": "Slack" })
+        );
+        assert_eq!(card["body"]["plain"], "hi there");
+        let read = Notice { read: true, ..sent };
+        let [mixed, _, history] = making_into(&mut rows, &[read], &[]);
+        assert_eq!(
+            mixed[0]["side"],
+            json!([{ "at": 10_000, "as": "came" }]),
+            "made anew once read"
+        );
+        assert_eq!(keys(&history), ["row:notices-history:10"]);
+        making_into(&mut rows, &[], &[]);
+        assert!(
+            rows.card(10).is_none(),
+            "gone from the history, its card goes"
+        );
+    }
+
+    fn keys(rows: &[Value]) -> Vec<&str> {
+        rows.iter().filter_map(|row| row["key"].as_str()).collect()
+    }
+
+    fn act_keys(row: &Value) -> Vec<&str> {
+        row["acts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|act| act["key"].as_str())
+            .collect()
+    }
+
+    #[test]
+    fn each_list_is_a_place_worded_for_it() {
+        let notices = [
+            notice(3, &json!({})),
+            notice(2, &json!({ "read": true })),
+            notice(1, &json!({ "read": true })),
+        ];
+        let [mixed, desktop, history] = making(&notices, &[2]);
+        assert_eq!(
+            keys(&mixed),
+            ["row:notices:3", "row:notices:2", "row:notices:1"]
+        );
+        assert_eq!(
+            mixed[0]["side"],
+            json!([{ "said": "unread" }, { "at": 3000, "as": "came" }])
+        );
+        assert_eq!(mixed[1]["side"], json!([{ "at": 2000, "as": "came" }]));
+        assert_eq!(
+            keys(&desktop),
+            ["row:notices-desktop:3", "row:notices-desktop:2"],
+            "one read while Desktop's looked at stays there"
+        );
+        assert_eq!(desktop[0]["side"], json!([{ "at": 3000, "as": "came" }]));
+        assert_eq!(desktop[1]["side"][0], json!({ "said": "read" }));
+        assert_eq!(
+            keys(&history),
+            ["row:notices-history:2", "row:notices-history:1"]
+        );
+        assert_eq!(shown(&desktop), BTreeSet::from([3, 2]));
+        let passing = [notice(4, &json!({ "transient": true, "live": true }))];
+        assert!(
+            making(&passing, &[]).iter().all(Vec::is_empty),
+            "one passing is in none"
+        );
+    }
+
+    #[test]
+    fn a_row_is_named_and_marked_as_its_card() {
+        let [mixed, ..] = making(&[notice(5, &json!({ "urgency": "low" }))], &[]);
+        let row = &mixed[0];
+        assert_eq!(
+            (row["name"].as_str(), row["note"].as_str()),
+            (Some("Message 5"), Some("hi"))
+        );
+        assert_eq!(row["thing"], "notice:5");
+        assert_eq!(row["glyph"], json!({ "code": "f198" }));
+        assert_eq!(row["hue"], "muted", "low urgency is muted");
+        assert_eq!(row["held"]["said"], "Message 5\nhi\nthere");
+        assert_eq!(row["held"]["entry"], "slack");
+        assert_eq!(row["drawer"]["eyebrow"], "from Slack \u{b7} notice");
+        assert_eq!(row["drawer"]["body"], "hi\nthere");
+        assert_eq!(row["drawer"]["styled"], false);
+        let facts: Vec<&str> = row["drawer"]["facts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|fact| fact["name"].as_str())
+            .collect();
+        assert_eq!(facts, ["Arrived", "Urgency"]);
+        let [untitled, ..] = making(&[notice(6, &json!({ "summary": "" }))], &[]);
+        assert_eq!(
+            (untitled[0]["name"].as_str(), untitled[0]["note"].as_str()),
+            (Some("hi"), Some(""))
+        );
+    }
+
+    #[test]
+    fn its_acts_are_its_cards_in_order() {
+        let live = notice(
+            7,
+            &json!({ "live": true, "body": "see <a href=\"https://x.example/a\">a</a>",
+                "category": "im.received",
+                "actions": [{ "id": "default", "text": "Open" }, { "id": "r", "text": "Reply" }] }),
+        );
+        let [mixed, ..] = making(&[live], &[]);
+        assert_eq!(
+            act_keys(&mixed[0]),
+            [
+                "verb:notice:open",
+                "verb:notice:offer:r",
+                "verb:notice:link",
+                "verb:notice:read",
+                "verb:notice:forget",
+                "verb:notice:copy"
+            ]
+        );
+        let acts = &mixed[0]["acts"];
+        assert_eq!(acts[0]["token"], true);
+        assert_eq!(acts[0]["ask"]["read"], true, "opening it reads it");
+        assert_eq!(
+            (acts[1]["name"].as_str(), acts[1]["glyph"].as_str()),
+            (Some("Reply"), Some("reply"))
+        );
+        assert_eq!(acts[2]["side"], "x.example");
+        assert_eq!(
+            acts[2]["also"],
+            json!({ "ask": "mark", "notices": [7], "read": true })
+        );
+        assert_eq!(mixed[0]["drawer"]["eyebrow"], "from Slack \u{b7} message");
+        assert_eq!(mixed[0]["drawer"]["styled"], true);
+        let gone = notice(
+            8,
+            &json!({ "read": true, "left": "dismissed", "leftAt": 8_000 }),
+        );
+        let [mixed, ..] = making(&[gone], &[]);
+        assert_eq!(
+            act_keys(&mixed[0]),
+            ["verb:notice:goTo", "verb:notice:unread", "verb:notice:copy"],
+            "gone, it goes to its program"
+        );
+        assert_eq!(mixed[0]["acts"][0]["go"], "slack");
+        assert_eq!(
+            mixed[0]["drawer"]["facts"],
+            json!([{ "name": "Left", "said": "put away at {time}", "at": 8000, "as": "moment" }]),
+            "left the minute it came, Left says both"
+        );
+        let nowhere = notice(9, &json!({ "app": "some-tool" }));
+        let [mixed, ..] = making(&[nowhere], &[]);
+        assert_eq!(
+            act_keys(&mixed[0])[0],
+            "verb:details",
+            "with nowhere to go, its drawer"
+        );
+    }
+}

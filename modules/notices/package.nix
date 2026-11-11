@@ -1,9 +1,12 @@
 # The notices daemon, built from this directory, its tests run as it
 # builds. It serves with the serving side every daemon shares
-# (../daemon-serve), and its test asks it with the client every daemon's
-# tests share (../daemon-client), so the source is cut from the modules
-# folder holding all three, and built from this one. Its test starts a
-# session bus of its own, so dbus-daemon is there as the tests run.
+# (../daemon-serve) in the one form every daemon's rows take
+# (../ready-rows), names senders by the desktop entries the windows
+# daemon reads (../windows, ../programs), and its test asks it with the
+# client every daemon's tests share (../daemon-client), so the source is
+# cut from the modules folder holding them all, and built from this one.
+# Its tests read the launcher's words.json, which its rows are said in,
+# and start a session bus of their own, so dbus-daemon is there.
 {
   dbus,
   lib,
@@ -24,6 +27,13 @@ rustPlatform.buildRustPackage rec {
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../programs/Cargo.toml
+      ../programs/src
+      ../quickshell/launcher/words.json
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
+      ../windows/Cargo.toml
+      ../windows/src
     ];
   };
   sourceRoot = "${src.name}/notices";

@@ -256,8 +256,11 @@ impl State {
             self.owed.push(Signal::Token(id, token.to_owned()));
         }
         self.owed.push(Signal::Invoked(id, action.to_owned()));
+        // Read as it's acted on where the ask says, as a row's acts each
+        // read it, in the one change rather than another ask after.
+        let read = said["read"] == true && self.holding.mark(&[id], true, None, now);
         let closed = !resident && self.close(id, Closed::Dismissed, now);
-        (json!({ "done": true }), closed)
+        (json!({ "done": true }), closed || read)
     }
 
     fn reply(&mut self, id: Option<u32>, text: &str, now: i64) -> (Value, bool) {
@@ -450,6 +453,20 @@ mod tests {
             12,
         );
         assert_eq!(refused["error"]["code"], "not-open");
+    }
+
+    #[test]
+    fn an_action_done_that_says_so_reads_it() {
+        let mut state = state("invoke-read");
+        let id = state.notify(sent("mail", &["default", "Open"]), 10);
+        state.ask(
+            &json!({ "ask": "invoke", "notice": id, "action": "default", "read": true }),
+            11,
+        );
+        assert!(
+            state.holding.get(id).is_some_and(|notice| notice.read),
+            "read as it's done"
+        );
     }
 
     #[test]
