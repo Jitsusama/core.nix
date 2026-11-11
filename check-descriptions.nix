@@ -3927,7 +3927,8 @@
     each said in a line with a code of its own and with --json as a record; still reads the rest
     when a part besides the status isn't given; draws each page as its golden one; and connects
     and disconnects only where the organisation doesn't hold the switch, saying when WARP always
-    on comes back and warp-cli refusing in its words
+    on comes back and warp-cli refusing in its words; and serving it, reads the link at once when
+    a listening warp-cli tells a status or reason other than the last, and on nothing else
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and

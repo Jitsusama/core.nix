@@ -6,8 +6,10 @@
 //! The link is one record, `warp:link`: what `warp --json` prints, the
 //! record or `{ error, said }`, under `said`, with when it was read. It's
 //! read only while someone watches it, every two seconds as WARP's figures
-//! move, and once more at once after a switch, so nothing is asked of
-//! warp-cli while the launcher shows something else. A watch is answered
+//! move, once more at once after a switch, and at once each time WARP's
+//! status changes, as a warp-cli held listening tells it, so a link that
+//! drops or degrades is said as it does rather than up to two seconds on.
+//! Nothing is asked of warp-cli while the launcher shows something else. A watch is answered
 //! with what's held only while it's that fresh, and otherwise with
 //! nothing until the read it sets off, so an hour-old link is never shown
 //! as now. A get reads afresh where what's held is older. `act` switches
@@ -30,7 +32,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-use crate::ask::Ask;
+use crate::ask::{Ask, Listening};
 
 /// The interface's version this speaks.
 const VERSION: u64 = 1;
@@ -41,6 +43,11 @@ const KEY: &str = "warp:link";
 /// be and still answer for now: WARP's figures move by the second, and
 /// warp-cli's five answers take about 80 ms together.
 const FRESH: Duration = Duration::from_secs(2);
+/// How long a status stream that ended by itself, as one from a warp-cli
+/// that can't listen does, waits before it's asked for again: such a
+/// warp-cli is then run twice a minute while WARP is shown rather than in
+/// a loop, and the two-second reads still say each change meanwhile.
+const LISTEN_AGAIN: Duration = Duration::from_secs(30);
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
 const QUEUED: usize = 256;
@@ -63,6 +70,8 @@ struct Held {
     watches: Vec<Watch>,
     /// Whether it's to be read at once, rather than when it's next due.
     now: bool,
+    /// How to stop the warp-cli listening to WARP's status, while one is.
+    listening: Option<Box<dyn FnOnce() + Send>>,
     /// When it started, in milliseconds since the epoch.
     since: u64,
 }
@@ -118,6 +127,7 @@ pub fn serve(socket: &Path, cli: impl Ask + Send + 'static) -> std::io::Result<(
             link: None,
             watches: Vec::new(),
             now: false,
+            listening: None,
             since: now_ms(),
         }),
         woken: Condvar::new(),
@@ -127,6 +137,10 @@ pub fn serve(socket: &Path, cli: impl Ask + Send + 'static) -> std::io::Result<(
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || read_loop(&shared));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || listen_loop(&shared));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -168,11 +182,18 @@ fn handed() -> Option<UnixListener> {
 }
 
 /// Reads the link while anyone watches it, as each read comes due or at
-/// once when asked to, and sleeps while nobody does.
+/// once when asked to, and sleeps while nobody does, once it has stopped
+/// the warp-cli listening for them.
 fn read_loop<A: Ask>(shared: &Shared<A>) {
     loop {
         let mut held = lock(&shared.held);
         while held.watches.is_empty() && !held.now {
+            if let Some(stop) = held.listening.take() {
+                drop(held);
+                stop();
+                held = lock(&shared.held);
+                continue;
+            }
             held = shared
                 .woken
                 .wait(held)
@@ -195,6 +216,76 @@ fn read_loop<A: Ask>(shared: &Shared<A>) {
         drop(held);
         read(shared);
     }
+}
+
+/// Holds a warp-cli listening to WARP's status while anyone watches, and
+/// has the link read at once on each change it tells, rather than when
+/// the next read comes due; `read_loop` stops it once nobody watches.
+fn listen_loop<A: Ask>(shared: &Shared<A>) {
+    loop {
+        {
+            let mut held = lock(&shared.held);
+            while held.watches.is_empty() {
+                held = shared
+                    .woken
+                    .wait(held)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+        let Some(Listening { lines, stop }) = shared.cli.listen() else {
+            std::thread::sleep(LISTEN_AGAIN);
+            continue;
+        };
+        {
+            let mut held = lock(&shared.held);
+            // The last watch may have gone while it started.
+            if held.watches.is_empty() {
+                drop(held);
+                stop();
+                continue;
+            }
+            held.listening = Some(stop);
+        }
+        let mut last = None;
+        for line in lines.lines() {
+            let Ok(line) = line else { break };
+            if changed(&line, &mut last) {
+                lock(&shared.held).now = true;
+                shared.woken.notify_all();
+            }
+        }
+        // Still held, it ended by itself rather than being stopped.
+        let ended = lock(&shared.held).listening.take();
+        if let Some(stop) = ended {
+            stop();
+            std::thread::sleep(LISTEN_AGAIN);
+        }
+    }
+}
+
+/// Whether a line a listening warp-cli wrote tells a status or a reason
+/// other than the last it told, which it keeps as the last. The first
+/// says only how WARP stands, which a watch's own read says; a reason's
+/// figures moving are the two-second reads' to say; and a line of
+/// anything else, as its DNS logs are, sets nothing off.
+fn changed(line: &str, last: &mut Option<(String, String)>) -> bool {
+    let Ok(said) = serde_json::from_str::<Value>(line) else {
+        return false;
+    };
+    let Some(status) = said["status"].as_str() else {
+        return false;
+    };
+    // A reason is a word, or a word holding figures, as NetworkDegraded is.
+    let reason = match &said["reason"] {
+        Value::String(word) => word.clone(),
+        Value::Object(named) => named.keys().next().cloned().unwrap_or_default(),
+        _ => String::new(),
+    };
+    let now = Some((status.to_owned(), reason));
+    let first = last.is_none();
+    let moved = *last != now;
+    *last = now;
+    moved && !first
 }
 
 /// Reads the link afresh, holds it, and tells every watch. A connection
@@ -346,16 +437,26 @@ mod tests {
 
     use super::*;
     use crate::ask::{Said, Unasked};
-    use crate::contract::Contract;
+    use crate::contract::{self, Contract};
 
     /// warp-cli as the contract answers it, but for a link that goes down
-    /// once it's asked to disconnect.
+    /// once it's asked to disconnect or the test takes it down, listening
+    /// once, where the test gives it lines to tell.
     struct Switching {
         cli: Contract,
-        up: AtomicBool,
+        up: Arc<AtomicBool>,
+        listened: Mutex<Option<std::io::PipeReader>>,
     }
 
     impl Ask for Switching {
+        fn listen(&self) -> Option<Listening> {
+            let lines = lock(&self.listened).take()?;
+            Some(Listening {
+                lines: Box::new(BufReader::new(lines)),
+                stop: Box::new(|| {}),
+            })
+        }
+
         fn ask(&self, question: &[&str]) -> Result<Said, Unasked> {
             match question {
                 ["status"] => Ok(Said {
@@ -422,14 +523,73 @@ mod tests {
     }
 
     fn serving(name: &str) -> std::path::PathBuf {
+        serving_listened(name, None, Arc::new(AtomicBool::new(true)))
+    }
+
+    fn serving_listened(
+        name: &str,
+        listened: Option<std::io::PipeReader>,
+        up: Arc<AtomicBool>,
+    ) -> std::path::PathBuf {
         let socket = std::env::temp_dir().join(format!("warp-{name}-{}.sock", std::process::id()));
         let cli = Switching {
             cli: Contract::whole(),
-            up: AtomicBool::new(true),
+            up,
+            listened: Mutex::new(listened),
         };
         let at = socket.clone();
         std::thread::spawn(move || serve(&at, cli));
         socket
+    }
+
+    #[test]
+    fn only_a_status_or_reason_other_than_the_last_sets_a_read_off() {
+        let told = contract::file("listen-status.jsonl");
+        let told: Vec<&str> = told.lines().collect();
+        let mut last = None;
+        assert!(
+            !changed(told[0], &mut last),
+            "the first says only how it stands"
+        );
+        assert!(!changed(told[0], &mut last), "the same again is no change");
+        assert!(changed(told[1], &mut last), "a link degrading is a change");
+        assert!(
+            !changed(told[2], &mut last),
+            "a degraded link's figures moving are the two-second reads'"
+        );
+        assert!(
+            !changed("resolved example.com", &mut last),
+            "a DNS log sets nothing off"
+        );
+        assert!(changed(told[3], &mut last), "a link going down is a change");
+    }
+
+    #[test]
+    fn a_change_warp_tells_is_read_at_once() {
+        let (lines, mut tell) = std::io::pipe().expect("a pipe opens");
+        let up = Arc::new(AtomicBool::new(true));
+        let mut client = Client::new(&serving_listened("listened", Some(lines), Arc::clone(&up)));
+        client.say(&json!({"id": "all", "ask": "watch", "kind": "warp"}));
+        assert_eq!(client.heard()["records"], json!([]));
+        let first = client.heard();
+        assert_eq!(first["changed"][0]["said"]["status"]["state"], "Connected");
+        let told = contract::file("listen-status.jsonl");
+        let told: Vec<&str> = told.lines().collect();
+        writeln!(tell, "{}", told[0]).expect("the daemon listens");
+        up.store(false, Ordering::SeqCst);
+        writeln!(tell, "{}", told[3]).expect("the daemon listens");
+        let next = client.heard();
+        assert_eq!(
+            next["changed"][0]["said"]["status"]["state"],
+            "Disconnected"
+        );
+        let read_at = |told: &Value| told["changed"][0]["read_at_ms"].as_u64().unwrap_or(0);
+        let between = read_at(&next).saturating_sub(read_at(&first));
+        assert!(
+            between < 1000,
+            "the link is read as WARP tells it went down, not when the next read comes due \
+             two seconds on, but {between} ms after the first"
+        );
     }
 
     #[test]

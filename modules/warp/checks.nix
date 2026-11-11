@@ -21,7 +21,10 @@ onLinux {
   # degraded and disconnected; and connect and disconnect leave a switch
   # the organisation holds as it is, asking warp-cli nothing, say WARP
   # already as asked, say when WARP always on comes back, and say warp-cli
-  # refusing in its words, each ending with its own code.
+  # refusing in its words, each ending with its own code; and serving the
+  # shell, a status or reason a listening warp-cli tells, other than the
+  # last, has the link read at once, and a figure moving or a DNS log
+  # doesn't.
   warp-reads-what-warp-cli-says = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in warp, its tests included.
   warp-passes-clippy = passesClippy "warp-passes-clippy" (pkgs.callPackage ./package.nix { });
