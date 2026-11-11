@@ -94,6 +94,12 @@ pub enum Ask {
     Look {
         id: Value,
     },
+    /// An act on the screens, as a Screens row serves it (screens/acts.rs),
+    /// the whole line, which says which.
+    Screen {
+        id: Value,
+        said: Value,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -189,6 +195,10 @@ pub fn ask(line: &str) -> Ask {
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
         "look" => Ask::Look { id },
+        "screen" => Ask::Screen {
+            id,
+            said: said.clone(),
+        },
         _ => Ask::Unknown { id, ask: asked },
     }
 }
@@ -373,6 +383,18 @@ mod tests {
                 id: json!(2),
                 kind: "disk".into()
             }
+        );
+    }
+
+    #[test]
+    fn an_act_on_a_screen_keeps_the_line_saying_which() {
+        assert_eq!(
+            ask(r#"{"id":9,"ask":"screen","do":"focus","output":"eDP-1"}"#),
+            Ask::Screen {
+                id: json!(9),
+                said: json!({"id": 9, "ask": "screen", "do": "focus", "output": "eDP-1"})
+            },
+            "the act was read otherwise"
         );
     }
 

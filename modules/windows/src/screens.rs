@@ -8,13 +8,14 @@
 //! Each row carries its drawer, what niri says of the screen past its
 //! row and what desk-facts reads of its EDID (`drawer`), and holds what
 //! the shell's own acts need of it (`held`: its connector, how it stands
-//! and niri's whole record of it), since its settings and every act on it
-//! are the shell's until they move here, and the shell asks niri nothing
-//! of its own. While a screen is looked at, the drawer of the one whose
-//! place holds the Brightness leads with the light (light.rs). A change
-//! the shell makes to a screen says
-//! nothing in niri's stream, so it asks this daemon to look again
-//! (main.rs's `look`).
+//! and niri's whole record of it), since its settings and the ways it
+//! turns off are the shell's until they move here. Its Return, focusing
+//! it or turning it on, and Turn Every Screen Off's, are served as acts
+//! this daemon does on niri (acts.rs). While a screen is looked at, the
+//! drawer of the one whose place holds the Brightness leads with the
+//! light (light.rs). A change to a screen says nothing in niri's stream,
+//! so each act looks again, and the shell asks this daemon to look after
+//! a change of its own (main.rs's `look`).
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -26,6 +27,10 @@ use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
 use crate::light::{self, Seen};
+
+pub mod acts;
+pub mod vocabulary;
+use acts::Act;
 
 /// The place the launcher shows them in.
 pub const PLACE: &str = "displays";
@@ -84,6 +89,11 @@ pub struct Words {
     focused: String,
     hub_on: String,
     scale_at: String,
+    /// A screen niri wouldn't turn on, and why: "{thing} not turned on
+    /// · {why}".
+    not_on: String,
+    /// A screen gone before niri came to it: "{name} is unplugged".
+    is_unplugged: String,
     sleep: Sleep,
     told: Told,
     pub(crate) light: light::Words,
@@ -168,6 +178,8 @@ impl Words {
             focused: said("focused"),
             hub_on: said("hubOn"),
             scale_at: said("scaleAt"),
+            not_on: said("not-on"),
+            is_unplugged: said("isUnplugged"),
             sleep: Sleep {
                 name: word("displays:sleep", &["name"], "displays:sleep"),
                 glyph: word("displays:sleep", &["glyph"], ""),
@@ -280,6 +292,15 @@ fn built_in(name: &str) -> bool {
 
 /// Its maker and model, leaving out a model that's only a number, or
 /// its connector where niri says neither.
+/// A screen's row's name, by its connector, from niri's outputs; its
+/// connector where niri has none of it.
+#[must_use]
+pub fn named_of(outputs: &BTreeMap<String, Value>, name: &str, words: &Words) -> String {
+    outputs
+        .get(name)
+        .map_or_else(|| name.to_owned(), |output| named(name, output, words))
+}
+
 fn named(name: &str, output: &Value, words: &Words) -> String {
     if built_in(name) {
         return words.built_in.clone();
@@ -665,6 +686,13 @@ pub fn rows(
             } else {
                 described(output, words)
             };
+            // Return focuses a lit screen and turns on any other, a dark
+            // one by name, since it's still in niri's outputs.
+            let (verb, act) = match stands {
+                "lit" => ("displays:focus", Act::Focus((*name).clone())),
+                "dark" => ("verb:display-on", Act::Wake((*name).clone())),
+                _ => ("verb:display-on", Act::On((*name).clone())),
+            };
             json!({
                 "key": key(&format!("display:{name}")),
                 "thing": format!("display:{name}"),
@@ -682,6 +710,7 @@ pub fn rows(
                     lit_by(name), words),
                 "held": {"output": name, "standing": stands, "builtIn": built_in(name),
                     "niri": output},
+                "acts": [{"key": verb, "ask": act.ask()}],
             })
         })
         .collect();
@@ -697,6 +726,7 @@ pub fn rows(
             "depth": 0,
             "side": [],
             "note": words.sleep.note,
+            "acts": [{"key": "displays:sleep", "ask": Act::Sleep.ask()}],
         }));
     }
     rows

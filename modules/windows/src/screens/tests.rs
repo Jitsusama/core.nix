@@ -11,7 +11,9 @@ fn vocabulary() -> Value {
         .expect("the test's words are JSON")
 }
 
-fn words() -> Words {
+/// The words, every one the daemon reads there, which acts.rs's cases
+/// are said in too.
+pub(super) fn words() -> Words {
     let (words, lacked) = Words::read(&vocabulary());
     assert!(lacked.is_empty(), "the test's words lack {lacked:?}");
     words
@@ -101,6 +103,52 @@ fn a_screen_dark_by_name_says_its_hub_is_on() {
     assert_eq!(rows[0]["side"], json!([{"said": "dark"}]));
     assert_eq!(rows[0]["note"], "hub on");
     assert_eq!(rows.len(), 1, "with none lit, none is turned off");
+}
+
+#[test]
+fn return_focuses_a_lit_screen_and_turns_on_any_other_and_every_one_off() {
+    let mut outputs = desk();
+    let mut dark = output("Dell Inc.", "U2723QE", &lit(1.0));
+    dark["powered_off"] = json!(true);
+    outputs.insert("DP-1".to_owned(), dark);
+    let made = rows(&outputs, None, &words());
+    let acts: Vec<(&str, Value)> = made
+        .iter()
+        .map(|row| {
+            let act = &row["acts"][0];
+            (
+                row["key"].as_str().unwrap_or(""),
+                json!([act["key"], act["ask"]]),
+            )
+        })
+        .collect();
+    let screen = |done: &str, output: &str| json!({"ask": "screen", "do": done, "output": output});
+    assert_eq!(
+        acts,
+        [
+            (
+                "row:displays:display:eDP-1",
+                json!(["displays:focus", screen("focus", "eDP-1")])
+            ),
+            (
+                "row:displays:display:DP-1",
+                json!(["verb:display-on", screen("wake", "DP-1")])
+            ),
+            (
+                "row:displays:display:DP-2",
+                json!(["verb:display-on", screen("on", "DP-2")])
+            ),
+            (
+                "row:displays:display:HDMI-A-1",
+                json!(["displays:focus", screen("focus", "HDMI-A-1")])
+            ),
+            (
+                "row:displays:sleep",
+                json!(["displays:sleep", {"ask": "screen", "do": "sleep"}])
+            ),
+        ],
+        "a dark screen is turned on by name, being niri's still"
+    );
 }
 
 #[test]
@@ -428,7 +476,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        50,
+        52,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);

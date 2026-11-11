@@ -10,6 +10,8 @@
         "focused": "focused",
         "hubOn": "hub on",
         "scaleAt": "scale {scale}",
+        "not-on": "{thing} not turned on \u00b7 {why}",
+        "isUnplugged": "{name} is unplugged",
         "steps": "{now} of {most} steps",
         "stepping-linear": "linear",
         "stepping-non-linear": "non-linear",

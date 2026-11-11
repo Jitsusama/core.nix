@@ -104,16 +104,17 @@ Provider {
     // :set brightness=60 sets the screen as its Brightness row does, on a
     // machine with a backlight, and :set nowarmth gives it its own white by
     // day as Warmth's Follow the Room does, where a sensor sees colour. :set
-    // noscreens turns every screen off, as Turn Every Screen Off does; they
-    // are on whenever the launcher can be seen, so screens alone does
+    // noscreens turns every screen off, doing Turn Every Screen Off's act;
+    // they are on whenever the launcher can be seen, so screens alone does
     // nothing.
     setOptions: Object.assign({
         screens: {
             kind: "switch",
             now: () => true,
             set: to => {
-                if (!to)
-                    provider.sleepAll();
+                const sleep = ready.served("row:displays:sleep")?.acts?.[0];
+                if (!to && sleep)
+                    ready.act("row:displays:sleep", sleep);
                 return "";
             }
         }
@@ -570,26 +571,18 @@ Provider {
     }
 
     // A screen's row as the daemon says it, its name, how it stands and
-    // what it runs, with its acts here: a screen dark by name is still in
-    // niri's outputs, so it's turned on by name.
+    // what it runs, and its Return, focusing it or turning it on, the
+    // daemon's act (modules/windows, screens/acts.rs). Its settings and
+    // the ways it turns off are its verbs here still, so Return, done, closes
+    // the launcher as it did, and the key language reads none of its act.
     function made(output, row, key) {
         const stands = Screens.standing(output);
-        const turnsOn = stands === "dark" ? () => provider.ask({
-            Action: { PowerOnMonitor: { output: output.name } }
-        }, { thing: named(output), done: "on" }, output)
-            : () => provider.change(output, "On", { thing: named(output), done: "on" });
-        return member({
+        return ready.thing(row, key, {
             thing: true,
-            key: `display:${output.name}`,
-            verb: partSaid("", stands === "lit" ? "focus" : "turnOn"),
-            name: row.name,
             keywords: output.name,
-            glyph: Theme.glyph[row.glyph] ?? Theme.glyph.display,
-            hue: row.hue ?? "machine",
-            side: ready.sideOf(row),
-            note: ready.noteOf(row),
-            run: stands === "lit" ? () => Niri.act({ FocusMonitor: { output: output.name } })
-                : turnsOn,
+            stays: false,
+            wordsId: undefined,
+            targets: undefined,
             verbs: () => provider.verbs(output),
             drawer: () => provider.drawerOf(key),
             options: Object.assign({
@@ -683,17 +676,14 @@ Provider {
     // to turn my external display off without shutting down its hub or
     // network card or anything? i want the laptop to be able to keep going
     // without blinding me in my sleep"). Any key or the pointer wakes them.
-    // Its row is the daemon's, served while a screen is lit; its act is
-    // made here.
+    // Its row and its act are the daemon's, served while a screen is lit,
+    // which turns them off once the key that asked is up, so Return closes
+    // the launcher first (modules/windows, screens/acts.rs).
     function sleepRow(row) {
-        return thing({
-            key: "displays:sleep",
-            verb: Words.verb("displays:sleep"),
-            name: row.name,
-            glyph: Theme.glyph[row.glyph] ?? "",
-            hue: row.hue ?? "action",
-            note: ready.noteOf(row),
-            run: () => provider.sleepAll()
+        return ready.thing(row, "row:displays:sleep", {
+            stays: false,
+            targets: undefined,
+            verbs: null
         });
     }
 
@@ -738,18 +728,12 @@ Provider {
     onAllChanged: changed()
 
     // niri wakes the screens at any key, so the one that asked, still held
-    // or let go just after, would wake them at once: they're turned off
-    // once it has come up and the launcher has closed.
-    function sleepAll() {
-        darkening = null;
-        sleeping.restart();
-    }
-
+    // or let go just after, would wake the last lit screen at once: it's
+    // darkened once it has come up and the launcher has closed.
     Timer {
         id: sleeping
         interval: 750
-        onTriggered: provider.darkening === null ? Niri.act({ PowerOffMonitors: {} })
-            : provider.ask(provider.darkening)
+        onTriggered: provider.ask(provider.darkening)
     }
 
     // A setting's choice, said by its value alone, its setting named in the
@@ -900,8 +884,7 @@ Provider {
         sleeping.restart();
     }
 
-    // What the last lit screen's darkening asks, once the key is up; none
-    // when every screen goes off.
+    // What the last lit screen's darkening asks, once the key is up.
     property var darkening: null
 
     // A setting as a part: its name, how it's set, and the choices a step
