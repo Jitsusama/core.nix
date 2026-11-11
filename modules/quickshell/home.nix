@@ -624,6 +624,7 @@ let
   # Emoji's rows are served by the clipboard's history, which pastes them,
   # from the list in the tone the collection names.
   listsEmoji = launcher.providers.emoji.enable or false;
+  emojiListed = emojiList (launcher.providers.emoji.tone or "none");
 
   # The daemon that says where the laptop is, for the weather's here, and
   # the zone the clock keeps. It asks GeoClue only while the weather may
@@ -2261,9 +2262,7 @@ in
             else
               [ "--keep 0" ]
           )
-          ++ lib.optional listsEmoji "--emoji ${
-            emojiList (launcher.providers.emoji.tone or "none")
-          }"
+          ++ lib.optional listsEmoji "--emoji ${emojiListed}"
         );
         Restart = "on-failure";
         RestartSec = 1;

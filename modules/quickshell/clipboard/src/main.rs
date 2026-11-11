@@ -957,6 +957,26 @@ impl State {
         let _ = reply.send(answer);
     }
 
+    /// Does what was asked of the clipboard's thread: what the shell
+    /// wanted, or a paste's keys pressed once the launcher let go of them.
+    fn asked(&mut self, asked: Asked, handle: &QueueHandle<Self>) {
+        match asked {
+            Asked::Wanted(wanted, reply) => self.wanted(wanted, reply, handle),
+            Asked::Press(keys, letting_go, let_go, reply) => {
+                let answer = if self.press(keys) {
+                    eprintln!("{}", pasted(letting_go, let_go.elapsed()));
+                    json!({ "pasted": true })
+                } else {
+                    self.unpasted()
+                };
+                let _ = reply.send(answer);
+            }
+            Asked::Unpasted(reply) => {
+                let _ = reply.send(self.unpasted());
+            }
+        }
+    }
+
     /// The answer to a paste that never landed.
     fn unpasted(&self) -> Value {
         let said = self.served.words.said("unpasted");
@@ -1389,22 +1409,8 @@ fn run() -> Result<(), String> {
                 state.hold(&handle);
             }
         }
-        for wanted in wanted.try_iter() {
-            match wanted {
-                Asked::Wanted(wanted, reply) => state.wanted(wanted, reply, &handle),
-                Asked::Press(keys, letting_go, let_go, reply) => {
-                    let answer = if state.press(keys) {
-                        eprintln!("{}", pasted(letting_go, let_go.elapsed()));
-                        json!({ "pasted": true })
-                    } else {
-                        state.unpasted()
-                    };
-                    let _ = reply.send(answer);
-                }
-                Asked::Unpasted(reply) => {
-                    let _ = reply.send(state.unpasted());
-                }
-            }
+        for asked in wanted.try_iter() {
+            state.asked(asked, &handle);
         }
         queue.flush().map_err(lost)?;
         state.served.send(&state.history);

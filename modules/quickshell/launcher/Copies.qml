@@ -18,10 +18,11 @@
 // there, Return only copies, as the right arrow's Copy always does.
 // Forget the Clipboard, the clipboard's last row while there's something
 // to forget and found by its words from anywhere, asks the history to
-// forget every copy, and what the clipboard holds with them. Once the history has been silent a second, its row says "not
-// answering" where it counts the copies, and its head says so while it's
-// entered, as People's does; a paste that never landed is said there the
-// same way (Pasting.qml's pressing). Each copy's row keeps its own note.
+// forget every copy, and what the clipboard holds with them. Once the
+// history has been silent a second, its row says "not answering" where it
+// counts the copies, and its head says so while it's entered, as People's
+// does; a paste that never landed is said there the same way (Pasting.qml's
+// pressing). Each copy's row keeps its own note.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
