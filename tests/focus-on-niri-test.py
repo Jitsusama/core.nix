@@ -100,6 +100,20 @@ def focused_window(shell: Shell) -> Json | None:
     return focused
 
 
+def focus_reaches(shell: Shell, window: Json) -> None:
+    """Wait for niri to focus this window, which the launcher asks of it as it closes.
+
+    The ask goes down niri's socket after the launcher has said it closed, so a busy
+    builder can read the focus before niri has done it (2026-11-10).
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    focused = focused_window(shell)
+    while focused is None or focused["id"] != window["id"]:
+        assert time.monotonic() < deadline, f"niri never focused {window['title']}: {focused}"
+        time.sleep(launcher_on_niri.POLL)
+        focused = focused_window(shell)
+
+
 def click(shell: Shell, x: int, y: int) -> None:
     """Click the left button at a point on the screen, through a virtual pointer."""
     wlrctl = os.environ["WLRCTL"]
@@ -159,9 +173,7 @@ def test_a_click_on_a_window_takes_the_keys_and_closes_the_launcher(shell: Shell
     opened(shell)
     click(shell, int(place[0]) + INSIDE, int(place[1] + size[1]) - INSIDE)
     shell.launcher_closed()
-    focused = focused_window(shell)
-    assert focused is not None
-    assert focused["id"] == window["id"], focused
+    focus_reaches(shell, window)
     # A key reaches only the window: foot writes the line, and the launcher's find is empty.
     shell.send_chars("z\n")
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
@@ -185,9 +197,7 @@ def test_a_window_of_the_program_handed_to_closes_the_launcher_and_takes_the_foc
     with shell.told(f"handed to {HANDED_TO}"):
         handed = window_of(shell, HANDED_TO, "Unlock")
     shell.launcher_closed()
-    focused = focused_window(shell)
-    assert focused is not None, "niri focuses no window once the launcher went"
-    assert focused["id"] == handed["id"], f"the window handed to isn't focused: {focused}"
+    focus_reaches(shell, handed)
     # Handed over once, the next opening is the launcher's own again.
     opened(shell)
     again = window_of(shell, HANDED_TO, "Again")

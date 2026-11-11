@@ -162,6 +162,16 @@ Provider {
     readonly property var windowsHeld: HeldWindows.kept()
     readonly property var windowsDaemon: daemon
 
+    // With the daemon down its row says so, since the counts it keeps
+    // through the gap may no longer be true. It never says it's still
+    // reading (Provider.stillReading), though its counts are the last
+    // opening's until this watch's first answer: Programs is a home row,
+    // so every terminal's show from home would ask twice, for counts the
+    // daemon answers within a frame.
+    function noted() {
+        return daemon.state === "not answering" ? Words.of("windows").said.silent : "";
+    }
+
     Daemon {
         id: daemon
 
@@ -175,7 +185,10 @@ Provider {
 
     // Takes what the daemon said, and lists each program's windows again
     // only when a window's record differs, so a whole answer as the
-    // launcher opens that reads the same changes nothing.
+    // launcher opens that reads the same changes nothing. The rows read
+    // their counts and Go To as they're drawn, so they're drawn again
+    // when a program's windows came or went or another was used last;
+    // a title alone changes only what a row stepped into holds.
     function hearWindows(changed, gone) {
         provider.tally.looked += changed.length + gone.length;
         const held = provider.windowsHeld;
@@ -188,7 +201,12 @@ Provider {
             if (owner !== null)
                 (by[owner] ?? (by[owner] = [])).push(held.windows[key]);
         }
+        const was = provider.running;
         provider.running = by;
+        if (HeldWindows.ownersMoved(was, by))
+            provider.changed();
+        else
+            redrawHeld();
     }
 
     // When a window was last looked at, in nanoseconds, or 0 for never.

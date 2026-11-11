@@ -76,5 +76,23 @@ QtObject {
             HeldWindows.spacesFrom(said, 9), []);
         Expect.same("nor any, before the desktop is said",
             HeldWindows.spacesFrom({ "workspace:1": space(1, "eDP-1") }, 1), []);
+
+        // Applications draws a program's count and Go To again only when
+        // its windows came, went or another was used last.
+        const one = { id: 1, title: "a" };
+        const two = { id: 2, title: "b" };
+        const kitty = list => ({ "kitty.desktop": list });
+        Expect.expect("the same windows move nothing",
+            !HeldWindows.ownersMoved(kitty([one, two]), kitty([one, two])), "moved");
+        Expect.expect("nor does a retitle alone", !HeldWindows.ownersMoved(kitty([one, two]),
+            kitty([one, { id: 2, title: "renamed" }])), "moved");
+        Expect.expect("a window opened moves its program",
+            HeldWindows.ownersMoved(kitty([one]), kitty([one, two])), "unmoved");
+        Expect.expect("so does another used last",
+            HeldWindows.ownersMoved(kitty([one, two]), kitty([two, one])), "unmoved");
+        Expect.expect("and a program's last window closing",
+            HeldWindows.ownersMoved(kitty([one]), {}), "unmoved");
+        Expect.expect("and a program's first opening",
+            HeldWindows.ownersMoved({}, kitty([one])), "unmoved");
     }
 }

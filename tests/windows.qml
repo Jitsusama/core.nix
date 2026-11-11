@@ -70,6 +70,10 @@ ShellRoot {
         return windows.things.find(row => row.id === id && row.is !== "windows:this") ?? null;
     }
 
+    function fixedNamed(key) {
+        return (capture.fixed.find(row => row.key === key) ?? { name: "none" }).name;
+    }
+
     function takingOf(name) {
         return capture.windows.find(row => row.name === name) ?? null;
     }
@@ -114,6 +118,9 @@ ShellRoot {
             const logbook = window(11, "Logbook", 1, 200000, true, 1);
             const draft = window(12, "Draft", 2, 100000, false, 1);
             const notes = window(13, "Notes", 1, 50000, false, 2);
+            // Nothing listens at the socket here, so the daemon is first
+            // greeted as if one did.
+            windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             Expect.expect("nothing held before the daemon's first answer",
                 windows.things.length === 0 && windows.collection.empty === "\u2026",
                 windows.collection.empty);
@@ -198,6 +205,34 @@ ShellRoot {
             Expect.same("a window closed goes", names(windows.things),
                 "This Window, Notes, Logbook");
             Expect.same("from Capture too", names(capture.windows), "Logbook");
+
+            // Print, then Return on This Window, as the launcher opens
+            // after a pick moved the keys unheard: until the watch's
+            // answer, niri's word on where the keys are is the window
+            // taken and recorded, both named by its title.
+            capture.windowsDaemon.answeredThisWatch = false;
+            Niri.focused = 11;
+            Niri.revision += 1;
+            Expect.same("before the answer, This Window is where niri says the keys are",
+                fixedNamed("capture:window"), "This Window \u00b7 Logbook");
+            Expect.same("and Record This Window the same one",
+                fixedNamed("capture:record-window"), "Record This Window \u00b7 Logbook");
+            told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
+                movedTo] }, desktop(movedTo));
+            Expect.same("once answered, the desktop record says it",
+                fixedNamed("capture:window"), "This Window \u00b7 Notes");
+
+            // The daemon gone: its rows say so, rather than reading on or
+            // saying there are none.
+            windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
+            Expect.same("answering, Windows' row notes nothing", windows.noted(), "");
+            windows.windowsDaemon.gone();
+            Expect.same("a down daemon is said on Windows' row", windows.noted(),
+                "windows not answering");
+            Expect.same("and inside", windows.collection.empty,
+                "The windows program isn't answering.");
+            windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
+            Expect.same("and no more once it answers", windows.noted(), "");
 
             // Only the newest wanted waits for file-preview, so one it
             // replaces is asked again when its drawer is next shown.

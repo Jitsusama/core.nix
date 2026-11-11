@@ -114,6 +114,17 @@ Provider {
     // title, app id and program, or null.
     property var focused: null
 
+    // The window This Window and Record This Window both take. Until this
+    // watch's first answer, or with the daemon down, the desktop record is
+    // the last opening's, and a window picked as the launcher closed moved
+    // the keys unheard; so niri's own word holds until then, or a quick
+    // Print then Return shot the window left under its old title. Only
+    // where the keys are is read of niri, so its other events remake no
+    // row here. With the launcher shut nothing is watched and nothing
+    // read of niri either, so the keys moving remake no row then.
+    readonly property var here: daemon.answeredThisWatch || !daemon.live ? focused
+        : Niri.current === null ? null : Niri.windows[Niri.current] ?? null
+
     // Takes what the daemon said: the window the keys are in, when that
     // reads otherwise, and each window's row whose program or title
     // changed, so a whole answer as the launcher opens makes nothing anew
@@ -212,17 +223,17 @@ Provider {
 
     readonly property var fixed: (Recorder.recording ? [stop] : []).concat([
         wholeScreen
-    ], focused === null ? [] : [
+    ], here === null ? [] : [
         member({
             key: "capture:window",
             verb: "take",
-            name: Words.name("capture:window", "", { title: titled(focused) }),
+            name: Words.name("capture:window", "", { title: titled(here) }),
             keywords: "screenshot picture focused",
             glyph: picture,
             hue: "action",
             chord: chord("niri msg action screenshot-window"),
             later: true,
-            run: () => provider.shoot(focused)
+            run: () => provider.shoot(here)
         })
     ], [
         member({
@@ -247,17 +258,19 @@ Provider {
             later: true,
             run: () => Recorder.screen()
         })
-    ], Recorder.recording || focused === null ? [] : [
+    ], Recorder.recording || here === null ? [] : [
         member({
             key: "capture:record-window",
             verb: "record",
-            name: Words.name("capture:record-window", "", { title: titled(focused) }),
+            name: Words.name("capture:record-window", "", { title: titled(here) }),
             keywords: "video recording screencast focused",
             glyph: Theme.glyph.recording,
             hue: "action",
             chord: chord("qs ipc call recording window"),
             later: true,
-            run: () => Recorder.window(null)
+            // The window its title names, as niri describes it, since the
+            // recorder reads its size.
+            run: () => Recorder.window(Niri.windows[provider.here.id] ?? null)
         })
     ], Recorder.recording ? [] : [
         member({

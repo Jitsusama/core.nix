@@ -73,6 +73,16 @@ function asWindow(record) {
     };
 }
 
+// Whether any program's windows, as Applications lists them by owner,
+// came, went or were used in another order between `was` and `now`: what
+// a program's row says beside its name and where Go To goes. A window
+// retitled alone moves nothing here.
+function ownersMoved(was, now) {
+    const ids = windows => (windows ?? []).map(window => window.id).join(" ");
+    const owners = Object.keys(was).concat(Object.keys(now));
+    return owners.some(owner => ids(was[owner]) !== ids(now[owner]));
+}
+
 // Takes these records and lets these keys go, answering the keys whose
 // records differ from what was held, in the order they came: a whole
 // answer says every window again, and only those that changed are

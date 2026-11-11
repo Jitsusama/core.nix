@@ -259,6 +259,11 @@ mod tests {
     fn a_browser_window_opened_deeper_is_its_pages_program() {
         let entries = joels();
         let owner = |app: &str| entries.owner(app).map(|entry| entry.id.clone());
+        // A program's own page is its own.
+        assert_eq!(
+            owner("chrome-docs.google.com__document_-Default").as_deref(),
+            Some("chrome-docs")
+        );
         assert_eq!(
             owner("chrome-docs.google.com__document_create-Default").as_deref(),
             Some("chrome-docs")
@@ -286,6 +291,14 @@ mod tests {
         // entry takes none.
         assert_eq!(owner("chrome-meet.google.com__abc-Profile_1"), None);
         assert_eq!(owner("chrome-docs.google.com__document_-Profile_2"), None);
+        // A window with no app id is nobody's, and with no entries none is.
+        assert_eq!(owner(""), None);
+        assert_eq!(
+            Entries::from_texts(std::iter::empty())
+                .owner("chrome-docs.google.com__document_create-Default")
+                .map(|entry| entry.id.clone()),
+            None
+        );
         // The lookup alone, as Windows' rows name a program, finds none.
         assert_eq!(
             named(&entries, "chrome-docs.google.com__document_create-Default"),

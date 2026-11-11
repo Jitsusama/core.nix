@@ -10,8 +10,10 @@
 // window is found by its work too, its quest's title and what its session
 // says it's on, and one waiting on Joel says so beside its name. What niri
 // says of its windows comes ready from the windows daemon (modules/windows),
-// which hears niri's event stream so the shell needn't, and tells of only
-// the windows a change moved.
+// which hears niri's event stream and tells of only the windows a change
+// moved. Until its first answer, and while it's down, what has the keys
+// and the workspaces a verb offers still come from Niri.qml, which hears
+// the stream too until the shell's last reader of it moves here.
 //
 // They're also a collection, which Super+Tab opens on its own: every window
 // but this one, the one used last first, so Super+Tab and Return go back to
@@ -44,9 +46,19 @@ Provider {
     }
 
     // Before the daemon's first answer it holds no windows it can say are
-    // all there are, so it says it's still reading rather than none.
-    collection: Words.collection("windows",
-        Object.assign({ searched: false }, daemon.answered ? {} : { empty: "\u2026" }))
+    // all there are, so it says it's still reading rather than none; and
+    // with the daemon down it says so, rather than reading forever or
+    // saying there are none (Daemon.qml's gone).
+    readonly property bool silent: daemon.state === "not answering"
+    collection: Words.collection("windows", Object.assign({ searched: false },
+        silent ? { empty: Words.of("windows", "silent").empty }
+            : daemon.answered ? {} : { empty: "\u2026" }))
+
+    // Its row says so too while the daemon is down, since the rows it
+    // keeps through the gap may no longer be true.
+    function noted() {
+        return silent ? Words.of("windows").said.silent : "";
+    }
     stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
 
     // An open list follows windows opening, closing and being renamed, and

@@ -590,8 +590,12 @@ ShellRoot {
         root.waiting = "the cases";
         // The windows are matched to programs as niri's change, and these
         // were there before the entries were read.
+        const redrawn = root.redrawn;
         windowsChanged();
         try {
+            same("the programs' windows heard draw their rows again", root.redrawn - redrawn, 1);
+            windowsChanged();
+            same("and the same windows again don't", root.redrawn - redrawn, 1);
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
             const tester = program("tester").verbs();
