@@ -152,7 +152,8 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
 }
 
 /// The derivations the system needs built, by their paths, as a dry run
-/// lists them.
+/// lists them, each kept from being collected until the next build lists
+/// its own.
 pub(crate) fn needed(
     config: &Config,
     flake: &str,
@@ -164,7 +165,41 @@ pub(crate) fn needed(
         .args(overrides);
     // Nix says what it would build on its error stream.
     let said = run::said(listing, "listing what the system needs", [flake])?;
-    Ok(to_build(&said))
+    let needed = to_build(&said);
+    keep(config, &needed);
+    Ok(needed)
+}
+
+/// Keeps `drvs`, and what each is built from, from being collected, in
+/// place of those the last build kept. The dry run writes each derivation
+/// with nothing holding it, and the build of the pieces kept apart can run
+/// for many minutes before anything else builds: on 11 November the disk
+/// guard's collection took the launcher's derivation 13 minutes into one,
+/// and the switch failed when its build came to it. A derivation's own
+/// path, with no outputs named, is linked as it is, with nothing built. A
+/// derivation left unkept only risks that again, so a failure is said and
+/// the build goes on.
+fn keep(config: &Config, drvs: &[String]) {
+    let folder = config.evaluated_folder();
+    let kept = match fs::remove_dir_all(&folder) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => fs::create_dir_all(&folder),
+    };
+    if let Err(error) = kept {
+        eprintln!(
+            "keeping what the system needs: {}: {error}",
+            folder.display()
+        );
+        return;
+    }
+    if drvs.is_empty() {
+        return;
+    }
+    let mut link = nix(config);
+    link.args(["build", "--out-link"]).arg(folder.join("drv"));
+    if let Err(failure) = run::output(link, "keeping what the system needs", drvs) {
+        eprintln!("{}", failure.why);
+    }
 }
 
 /// Builds the big pieces on the builders and, beside them, the small ones
