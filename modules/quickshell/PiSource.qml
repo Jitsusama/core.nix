@@ -76,6 +76,14 @@ Singleton {
         Daemon {
             socket: root.nodePath
             kind: "session"
+            // While the launcher is shut, only a change moving a session's
+            // `told` (what a shut launcher reads), or bringing or taking
+            // one: of Joel's 103 sessions' 56 changes in a minute on
+            // 2026-11-11, none moved it, and each change had woken the
+            // shut shell to read about 4 KB of steps and times it never
+            // shows, its largest waker (RO9YDD). The node holds the rest
+            // back and sends it once the launcher shows them again.
+            watching: root.showing ? ({}) : ({ when: ["told"] })
             changesDiffer: true
             onTold: answer => root.resort(answer)
         }
@@ -128,15 +136,23 @@ Singleton {
     readonly property var ending: sorting.ending
     signal sorted()
     // Whether the launcher shows them (shell.qml). While it doesn't, a
-    // change only to what it alone shows (Pi.movesShut) is held back, and
-    // taken once it shows them again: just after, so opening isn't slowed by
-    // it, since what it first shows, how each session stands, was never held.
+    // change only to what it alone shows is held back, by the node where
+    // it knows how (`watching`), else here (Pi.movesShut), and taken once
+    // it shows them again: just after, so opening isn't slowed by it,
+    // since what it first shows, how each session stands, was never held.
+    // Asking the node again under the same watch has it send what it held
+    // back, not every session whole; asked once the turn is over, so
+    // `watching` already says what showing now asks for.
     property bool showing: false
     onShowingChanged: {
+        Qt.callLater(rewatch);
         if (showing && heldBack)
             Qt.callLater(resort);
     }
     property bool heldBack: false
+    function rewatch() {
+        node?.watchAll();
+    }
     // Sorts what the node holds again for `answer`, one of its answers as
     // Daemon.qml tells it, or for what was held back when there is none.
     // An answer that holds no records moved nothing.

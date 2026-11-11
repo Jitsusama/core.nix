@@ -547,8 +547,13 @@ ShellRoot {
     // Only a running session moved, so what reads the parked and the
     // closed isn't told they did.
     function resting() {
-        if (find("NOWIN6")?.presence.busy !== false)
+        if (find("NOWIN6")?.presence.busy !== false || !whens.includes(null))
             return;
+        // Shut, it watched only what moves a session's `told`, and shown,
+        // it asked again under the same watch for every change.
+        expect("a shut launcher's watch asks for what it reads, a shown one's for all",
+            JSON.stringify(whens[0]) === '["told"]' && rewatched,
+            `${JSON.stringify(whens)}, asked again under its id: ${rewatched}`);
         expect("a running session moving alone tells no parked or closed one",
             retold.parked === retoldBefore.parked && retold.closed === retoldBefore.closed,
             `parked told ${retold.parked - retoldBefore.parked}, closed `
@@ -656,6 +661,10 @@ ShellRoot {
         answering.flush();
     }
     property var watchId: null
+    // The fields each watch of sessions was asked to be sent for, or null
+    // for every change, and whether one was asked again under its id.
+    property var whens: []
+    property bool rewatched: false
 
     // A stand-in for the machine's node, listening only once asked, which
     // speaks the daemon interface as mycelium's does (its PROTOCOL.md, The
@@ -676,6 +685,15 @@ ShellRoot {
                         answer = { id: ask.id, version: 1, domain: "node", state: "running" };
                     } else if (ask.ask === "watch" && ask.kind === "session"
                         && ask.keys === undefined) {
+                        root.whens = root.whens.concat([ask.when ?? null]);
+                        if (root.answering === asked && ask.id === root.watchId) {
+                            // Asked again under its id, as the launcher
+                            // showing or shutting asks: the watch keeps on,
+                            // and sends what it held back, here nothing.
+                            root.rewatched = true;
+                            Qt.callLater(root.check);
+                            return;
+                        }
                         // The connection watching sessions, which pi's
                         // source makes beside its watches of runs and talks.
                         root.answering = asked;
