@@ -49,6 +49,9 @@ PARTS = ("searching", "rows", "answers", "before", "counting", "typed", "words",
 # How long the profiler may take to write its trace once asked, in seconds.
 FLUSHING = 60
 
+# How many of the shell's lines LAB_HEARD asks for are said, at most.
+HEARD = 400
+
 # How many of the slowest searches' time before gathering is said apart.
 SLOWEST = 6
 
@@ -255,6 +258,19 @@ def flushed(profiler: subprocess.Popen[bytes], trace: Path) -> None:
     commands.flush()
 
 
+def say_heard(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Print what else the shell said that LAB_HEARD asks for, where it asks for any.
+
+    The collector's own category says each run it makes, for one, when the shell is given
+    `--log-rules qt.qml.gc.statistics=true`.
+    """
+    if asked := os.environ.get("LAB_HEARD"):
+        logged = log.read_text(errors="replace").splitlines()
+        with capsys.disabled():
+            for line in [line for line in logged if re.search(asked, line)][:HEARD]:
+                print(f"lab-heard {line}", flush=True)
+
+
 def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     """Type each word from home, round after round, and print each key's line and medians.
 
@@ -313,5 +329,6 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         medians = ", ".join(f"{name} {statistics.median(spans):g}" for name, spans in each.items())
         with capsys.disabled():
             print(f"lab-keys {typed!r}: {len(each['took'])} typed, medians {medians}", flush=True)
+    say_heard(shell.log, capsys)
     if profiler is not None:
         say_profiled(trace, heard, capsys)
