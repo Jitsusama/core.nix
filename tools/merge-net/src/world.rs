@@ -641,8 +641,8 @@ impl World for Real {
         let body = quarantine_body(test, owner, commit, reason);
         self.land(
             &format!("merge-net/quarantine-{test}"),
-            &format!("test(merge-net): quarantine a flaky check\n\n{test} {reason}, so the net reverts nothing for it\nuntil its owner makes it steady."),
-            &format!("Quarantine {test}, Which Failed Then Passed"),
+            &format!("test(merge-net): quarantine a failing check\n\n{test} {reason}, so the net reverts nothing for it\nuntil its owner mends it."),
+            &format!("Quarantine {test} Until Its Owner Mends It"),
             &body,
             &|_, _| Ok(true),
             || {
@@ -744,12 +744,12 @@ pub fn quarantine_body(test: &str, owner: Option<u64>, commit: &str, reason: &st
     format!(
         "### 💡 TL;DR\n\n{test} goes on the net's quarantine list, since it {reason}. The net still runs it, \
          but reverts nothing when it fails.\n\n\
-         ### 🧩 Problem\n\n{test} {reason} on the same input, so a failure of it says nothing about the merge \
-         it ran for, and reverting for it would undo good work.\n\n\
+         ### 🧩 Problem\n\n{test} {reason}, so its failures say nothing about the merges the net checks, \
+         and reverting for them would undo good work.\n\n\
          ### 🔧 Solution\n\nThis adds {test} to the quarantine list, with its reason and owner, {owner}, who \
-         makes it steady and takes it off.\n\n\
+         mends it and takes it off.\n\n\
          ### 🔬 Validation\n\n\
-         - Checked: {test} failed and then passed at {commit} on the VM builder.\n\
+         - Checked: on the VM builder, {test} {reason}, as of {commit}.\n\
          - Checked: changed-checks passed on this branch, for the checks it names other than those \
          that fail before it too.\n"
     )
@@ -1147,6 +1147,24 @@ mod tests {
             "built on this machine, then this machine"
         );
         assert_eq!(unnamed("nothing", ""), "nothing");
+    }
+
+    #[test]
+    fn a_quarantine_of_a_broken_test_says_it_broke_rather_than_that_it_passed() {
+        let body = quarantine_body(
+            "vm-a",
+            Some(2900),
+            "e38290ad",
+            "has been broken since #2900, whose revert won't apply",
+        );
+        assert!(
+            body.contains("since it has been broken since #2900"),
+            "the TL;DR doesn't give the reason: {body}"
+        );
+        assert!(
+            !body.contains("passed at"),
+            "a broken test's quarantine says it passed: {body}"
+        );
     }
 
     #[test]
