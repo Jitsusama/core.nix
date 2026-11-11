@@ -118,7 +118,13 @@ FREEZING = timedelta(minutes=3)
 # middle with the load frozen and STEPPED_MORE ms more, as a key may. Each place is moved in
 # once after its step, and the drawer made for the row moved onto, off the key's path as the
 # selection rests, is timed by the launcher from the work begun for it to its frame
-# (Launcher.qml's drawerMade) and held to the same.
+# (Launcher.qml's drawerMade), and the launcher's own making of it is held to the same. Its
+# wait for its frame and its drawing are said beside it, not judged: under load they took 68
+# to 148 ms and 23 to 83 of a drawer's 100 to 218, its making 2 to 19, and Qt's render loop
+# put that frame time in the swap onto niri, 11 to 183 ms, where polish and render took 0 to
+# 12. Judged whole, the same commit passed in one run and failed in the next (2026-11-11). The
+# render thread's swap reaches QML only queued, behind whatever the GUI thread does, so it
+# can't be taken out as a key's is.
 ROUNDS = 6
 STEPPED_MORE = 50
 STEP_SAID = re.compile(r'"\u2192 ([^"]+)" took (\d+) ms to its frame, (\d+) ms searching')
@@ -461,6 +467,10 @@ class Drawn(NamedTuple):
     waiting: int
     drawing: int
 
+    def judged(self) -> int:
+        """Give the part of the drawer's time that's the launcher's own: its making."""
+        return self.making
+
 
 def moved(desktop: Desktop) -> Drawn | None:
     """Move onto the place's next row and give its drawer's time, once it's drawn.
@@ -540,14 +550,18 @@ def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
 
 
 def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
-    """Say each place's drawers by turns, and give those the load slowed past their bound."""
+    """Say each place's drawers by turns, and give those the load slowed past their bound.
+
+    Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it.
+    """
     slowed = []
     for place in sorted(drawn[True]):
-        loaded = sorted(one.took for one in drawn[True][place])
-        frozen = sorted(one.took for one in drawn[False].get(place, []))
+        loaded = sorted(one.judged() for one in drawn[True][place])
+        frozen = sorted(one.judged() for one in drawn[False].get(place, []))
         print(
-            f"{place}'s drawer: under load {sorted(drawn[True][place])} ms,"
-            f" against {sorted(drawn[False].get(place, []))} with the load frozen"
+            f"{place}'s drawer: under load {sorted(drawn[True][place])} ms, made in {loaded},"
+            f" against {sorted(drawn[False].get(place, []))}, made in {frozen},"
+            " with the load frozen"
         )
         if frozen and loaded[(len(loaded) - 1) // 2] > (
             SLOWER_MOST * frozen[(len(frozen) - 1) // 2] + STEPPED_MORE
