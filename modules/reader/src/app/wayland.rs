@@ -5,7 +5,9 @@
 use super::{
     ZOOM_UNTIL, current_marks, cursor_marks, ground, page_ink, search_marks, selection_marks,
 };
-use crate::{App, Feedback, Presentation, Scaling, Viewporting, gl, keys, keys_logged, theme};
+use crate::{
+    App, Feedback, Presentation, Scaling, Viewporting, blend, gl, keys, keys_logged, theme,
+};
 use smithay_client_toolkit::compositor::CompositorHandler;
 use smithay_client_toolkit::dispatch2::Dispatch2;
 use smithay_client_toolkit::output::{OutputHandler, OutputState};
@@ -271,7 +273,7 @@ impl WindowHandler for App {
                         }
                     }
                     let make = |(ground, ink): ([f32; 3], [f32; 3])| {
-                        let blend = gl::Blend::between(self::ground(), page_ink(), ground, ink);
+                        let blend = blend::Blend::between(self::ground(), page_ink(), ground, ink);
                         gl.swatch(blend.source).ok().map(|swatch| (swatch, blend))
                     };
                     self.lit = make(search_marks())

@@ -239,15 +239,12 @@
   "modules/quickshell/timers/tests/daemon.rs" = 1;
   "modules/quickshell/whereabouts/src/fix.rs" = 16;
   "modules/quickshell/whereabouts/src/named.rs" = 2;
-  "modules/reader/src/gl.rs" = 15;
-  "modules/reader/src/keys.rs" = 29;
   "modules/reader/src/links.rs" = 2;
   "modules/reader/src/menu.rs" = 1;
   "modules/reader/src/motion.rs" = 10;
   "modules/reader/src/outline.rs" = 5;
   "modules/reader/src/prompt_tests.rs" = 7;
   "modules/reader/src/reading.rs" = 10;
-  "modules/reader/src/select.rs" = 15;
   "modules/reader/src/theme.rs" = 2;
   "modules/shaper/src/classes.rs" = 6;
   "modules/shaper/src/links.rs" = 1;

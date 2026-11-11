@@ -53,7 +53,7 @@ pub struct Said {
     pub through: Option<f64>,
 }
 
-/// A block of the page, as its metadata says it (walk.rs): its number,
+/// A block of the page, as its metadata says it (walk/): its number,
 /// where it starts, the source lines it was written on, and a heading's
 /// level and words.
 #[derive(Clone, Debug, PartialEq)]
