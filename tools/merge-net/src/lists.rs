@@ -24,7 +24,7 @@ pub fn list(path: &str) -> Option<List> {
     if path == "check-descriptions.nix" {
         return Some(List::Judged("every-check-says-what-it-proves".to_owned()));
     }
-    path.strip_prefix("tests/")
+    path.strip_prefix("tests/rules/")
         .and_then(|name| name.strip_suffix("-waiting.nix"))
         .filter(|check| !check.contains('/'))
         .map(|check| List::Judged(check.to_owned()))
@@ -105,7 +105,7 @@ mod tests {
         let quarantine = "[{\"test\":\"vm-a\"},{\"test\":\"vm-b\"}]";
         let shared = owned(&[
             "check-descriptions.nix",
-            "tests/every-fixed-wait-says-why-waiting.nix",
+            "tests/rules/every-fixed-wait-says-why-waiting.nix",
             "tools/merge-net/quarantine.json",
         ]);
         assert_eq!(
@@ -124,7 +124,7 @@ mod tests {
             "{\"check\":\"checks.x86_64-linux.every-fixed-wait-says-why\",\"dir\":\"sub\"}\n";
         assert_eq!(
             lists(
-                &owned(&["tests/every-fixed-wait-says-why-waiting.nix"]),
+                &owned(&["tests/rules/every-fixed-wait-says-why-waiting.nix"]),
                 elsewhere,
                 ""
             ),
@@ -135,12 +135,21 @@ mod tests {
         assert_eq!(lists(&mixed, record, quarantine), Lists::NotAll);
         assert_eq!(
             lists(
-                &owned(&["tests/lib/waiting-waiting.nix/x"]),
+                &owned(&["tests/rules/lib/waiting-waiting.nix/x"]),
                 record,
                 quarantine
             ),
             Lists::NotAll,
-            "a file under tests/ in a folder isn't a list"
+            "a file in a folder under tests/rules/ isn't a list"
+        );
+        assert_eq!(
+            lists(
+                &owned(&["tests/every-fixed-wait-says-why-waiting.nix"]),
+                record,
+                quarantine
+            ),
+            Lists::NotAll,
+            "a waiting list outside tests/rules/ isn't one the net knows"
         );
     }
 

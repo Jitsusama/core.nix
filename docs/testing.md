@@ -61,7 +61,8 @@ Biome refuse theirs without one, and `every-suppression-says-why` holds the
 rest: a `# noqa`, `# type: ignore`, `# shellcheck disable=` or `qmllint
 disable` says why after the codes it names or in a comment just above.
 Those before the rule wait, counted by file, in
-`tests/every-suppression-says-why-waiting.nix`, where a count only falls.
+`tests/rules/every-suppression-says-why-waiting.nix`, where a count only
+falls.
 shellcheck's four optional checks that find faults but that many scripts
 still break, for a hidden failure, a `set -e` turned off, an uppercase
 variable nothing sets and a `case` with no default, run in
@@ -198,7 +199,7 @@ rebase moved and takes the rest from the builders. The one exception is a
 list every change adds to, which main moves faster than a run takes: when
 each shared file is one, the run at the head is that list's own check
 (`every-check-says-what-it-proves` for `check-descriptions.nix`, the check
-a `tests/<check>-waiting.nix` is named for) with
+a `tests/rules/<check>-waiting.nix` is named for) with
 `nix-offload there . checks.x86_64-linux.<check>`, and the quarantine list
 needs only to read as a list of tests, each once. Nor is there ever a third
 run: once the same change passed whole at two commits, a clean rebase onto
@@ -297,8 +298,8 @@ under pytest do, nothing is added; where it can't, as with Rust's `assert!`
 and a Python `assert` of anything but a comparison, the assertion carries a
 message saying what was expected. `every-assert-says-what-was-wrong` holds
 it, and those before the rule wait, counted by file, in
-`tests/every-assert-says-what-was-wrong-waiting.nix`, where a count only
-falls.
+`tests/rules/every-assert-says-what-was-wrong-waiting.nix`, where a count
+only falls.
 
 ### Promises
 
@@ -443,14 +444,15 @@ emptying, and then look. `every-fixed-wait-says-why` holds it: a sleep in
 a test polls, inside a loop that looks again, or says what passes while it
 waits, in a comment on its line or just above, or by sleeping for a named
 constant such as `UNHEARD`. Those before the rule wait, counted by file, in
-`tests/every-fixed-wait-says-why-waiting.nix`, and a count only falls.
+`tests/rules/every-fixed-wait-says-why-waiting.nix`, and a count only falls.
 
 A test that can't run, for want of a filesystem, a device or a tool, fails
 rather than returning early, since a skip nobody sees passes a gate that
 proved nothing; it runs where it can, such as in a VM. An `#[ignore]` says
 what runs it instead, as `#[ignore = "needs OpenSSH, which ... gives"]`
 does. `every-test-runs-or-fails` holds it, and the skips before the rule
-wait, counted by file, in `tests/every-test-runs-or-fails-waiting.nix`.
+wait, counted by file, in
+`tests/rules/every-test-runs-or-fails-waiting.nix`.
 
 A function, fake or fixture two tests need lives once, in the test
 library both import (`tests/lib/` for VM tests' Python), since a copy
@@ -458,7 +460,7 @@ drifts from the first the next time one is fixed.
 `every-test-function-lives-once` finds a function's body of two lines or
 more in a second test file, whatever its name there, and the copies before
 the rule wait, counted by file, in
-`tests/every-test-function-lives-once-waiting.nix`.
+`tests/rules/every-test-function-lives-once-waiting.nix`.
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and

@@ -15,5 +15,4 @@ repositories built on core, through `core.lib` in `flake.nix`.
 | `every-pattern-names-a-file.py`            | every tool's path pattern still names a file |
 
 The checks that hold every file to a rule, with a shrinking list of the files
-still waiting on it, stay at the top of `tests/` beside their lists, since
-merge-net reads a list there by its name.
+still waiting on it, live in `tests/rules/`.
