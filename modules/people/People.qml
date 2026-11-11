@@ -161,8 +161,10 @@ Provider {
         if (renamed)
             namesRevision += 1;
         // Who the daemon told whoIs of is asked again once anything's
-        // heard, since what told the listing anew may have told them too.
+        // heard, since what told the listing anew may have told them too,
+        // and so is what was typed.
         unlisted.by = {};
+        seekAgain();
     }
     // Whether the people daemon has been silent a second, so home says so:
     // a restart or a reconnect answers within it, and saying so at once
@@ -355,7 +357,9 @@ Provider {
     // comes within milliseconds and is searched as the rest are, so a
     // search never waits on it. With the daemon gone the text is asked
     // again once it's back.
-    function seek(typed) {
+    // Asked `again`, the answer is searched again only when it finds
+    // others than it found before.
+    function seek(typed, again) {
         const words = String(typed).trim().toLowerCase();
         if (heldBy.length === 0 || words === "" || words === seeking)
             return;
@@ -368,9 +372,29 @@ Provider {
                 seeking = "";
                 return;
             }
+            const before = sought.words === words ? keysOf(sought.records) : null;
             sought = { words: words, records: answer.records ?? [] };
-            foundMore(Date.now() - seekAt < freshFor);
+            if (again !== true || keysOf(sought.records) !== before)
+                foundMore(Date.now() - seekAt < freshFor);
         });
+    }
+    function keysOf(records) {
+        return records.map(record => record.key).join("\n");
+    }
+    // The words last asked, asked again as the daemon hears anything while
+    // the launcher is open, so someone it comes to know after they were
+    // typed is found without typing again: Google's people, which came 14
+    // s after a name was typed once google-people's look for Google's
+    // daemon had backed off, never showed until the words changed
+    // (80ECO2, 2026-11-11, vm-desktop-looks-plates). A stopgap until the
+    // people daemon ranks everyone itself and streams a held search's
+    // answer as it changes, by Fri 13 Nov 18:00.
+    function seekAgain() {
+        if (seeking === "" || !provider.launcher?.open)
+            return;
+        const words = seeking;
+        seeking = "";
+        seek(words, true);
     }
     property real seekAt: 0
     // How soon an answer is ranked as the key's own search: it most often
