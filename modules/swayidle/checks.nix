@@ -55,21 +55,24 @@
       (hint != null && lib.length away == 4 && idleAt == lib.elemAt away 3);
 
   # A switch the follower asked for waits while someone is at the machine
-  # (../update-to-main/nixos.nix), which this marks from the session's start
-  # and from any key or touch until two minutes pass without one.
+  # (../update-to-main/nixos.nix), which this marks from any key or touch
+  # until two minutes pass without one, and never from swayidle-away's start,
+  # which a switch brings while Joel is away.
   someone-at-the-machine-is-marked =
     let
       service = (account graphical).systemd.user.services.swayidle-away.Service;
       marks = line: lib.hasInfix "someone-at-the-machine" (toString line);
       away = lib.splitString " " (toString service.ExecStart);
+      script = builtins.readFile ./away.sh;
     in
     holds "someone-at-the-machine-is-marked"
       "swayidle doesn't mark someone at the machine for a followed switch to wait on."
       (
         lib.length away == 4
         && lib.elemAt away 1 == "120"
-        && lib.hasInfix "rm -f '$here'" (builtins.readFile ./away.sh)
-        && marks service.ExecStartPre
+        && lib.hasInfix "timeout 1 true resume \"touch '$here'\"" script
+        && lib.hasInfix "timeout \"$mark\" \"rm -f '$here'\"" script
+        && !(service ? ExecStartPre)
         && marks service.ExecStopPost
       );
 
