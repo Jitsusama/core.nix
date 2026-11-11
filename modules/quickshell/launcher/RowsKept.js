@@ -60,6 +60,12 @@ function apart(was, now) {
     return !more.some(key => held.has(key));
 }
 
+// Every row held gone and every row now put in, in one step each.
+function afresh(was, now) {
+    return (was.length > 0 ? [{ remove: 0, count: was.length }] : [])
+        .concat(now.length > 0 ? [{ insert: 0, keys: now.slice() }] : []);
+}
+
 // The steps that make `was` into `now`, done in order to a ListModel: the
 // rows gone, last first, as { remove, count }, so each place counts from
 // the rows still there; then each row in its place, as { move, to }, or
@@ -72,10 +78,16 @@ function apart(was, now) {
 // into its place, or, in a staying row's way, down to just before the
 // next row listed after it now that stays or has already moved down, or
 // the end. None where the two are the same.
-function steps(was, now) {
+// More than `most` rows moving are listed afresh too, as the same two
+// steps. Each move shifts the rows in view, and each row shifted reads its
+// row again: "f" in Emoji ranked 838 of its 1,914 rows, whose 550 moves
+// took 2.4 to 6.7 s before the key's frame, and their steps 0.15 to 0.57 s
+// more, in the sandbox (2026-11-11). Listed afresh, the list reads each
+// row in view once, from the rows it set aside. Leaving `most` out moves
+// every row, however many.
+function steps(was, now, most) {
     if (apart(was, now)) {
-        return (was.length > 0 ? [{ remove: 0, count: was.length }] : [])
-            .concat(now.length > 0 ? [{ insert: 0, keys: now.slice() }] : []);
+        return afresh(was, now);
     }
     const from = tagged(was);
     const into = tagged(now);
@@ -95,6 +107,9 @@ function steps(was, now) {
     // Each tagged key's place now, read once rather than searched for.
     const placeOf = new Map(into.map((key, at) => [key, at]));
     const stay = staying(held, placeOf);
+    if (most !== undefined && held.length - stay.size > most) {
+        return afresh(was, now);
+    }
     const settled = new Set(stay);
     const holds = new Set(held);
     for (let at = 0; at < into.length; at += 1) {

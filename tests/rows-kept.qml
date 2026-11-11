@@ -86,6 +86,21 @@ QtObject {
         const emoji = Array.from({ length: 1924 }, (_, at) => `emoji:${at}`);
         Expect.same("a first list of many is one step", RowsKept.steps([], emoji),
             [{ insert: 0, keys: emoji }]);
+        // "f" in Emoji ranks 838 of its rows, best first, which moved 550 of
+        // them one at a time, each move reading the rows in view again.
+        const narrowed = emoji.filter((_, at) => at % 16 < 7);
+        const ranked = narrowed.map((key, at) => [key, (at * 7919) % narrowed.length])
+            .sort((one, other) => one[1] - other[1])
+            .map(([key]) => key);
+        Expect.same("a reorder moving more rows than the card shows is listed afresh",
+            RowsKept.steps(emoji, ranked, 8),
+            [{ remove: 0, count: emoji.length }, { insert: 0, keys: ranked }]);
+        Expect.same("and one moving no more keeps its rows",
+            RowsKept.steps("a b c d e".split(" "), "e a b c d".split(" "), 1),
+            [{ move: 4, to: 0 }]);
+        Expect.same("and narrowing moves none, however many go",
+            RowsKept.steps(emoji, narrowed, 8).filter(step =>
+                step.move !== undefined || step.insert !== undefined), []);
 
         // Lists drawn from a seeded sequence (Park and Miller's), the same
         // every run, each ending where it's listed and drawing only the
