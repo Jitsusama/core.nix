@@ -761,7 +761,7 @@ mod tests {
             { "id": "machine:disk:temperature", "name": "Temperature",
                 "said": { "degrees": "{n} \u{b0}C", "most": "at most {degrees}" } },
             { "id": "machine:disk:health", "name": "Health",
-                "said": { "side": "{n}% worn", "asked": "as its controller said at {when}",
+                "said": { "side": "{n}% worn", "asked": "as its controller said at {time}",
                     "failing": "its controller says it's failing",
                     "told": "as its controller says" } },
             { "id": "machine:disk:spare", "name": "Spare",
@@ -888,7 +888,7 @@ mod tests {
         assert_eq!(
             health["note"],
             json!({ "at": 1_700_000_000_000_i64, "as": "moment",
-                "said": "as its controller said at {when}" }),
+                "said": "as its controller said at {time}" }),
             "the time should travel for the shell to word"
         );
         let mut failing = disk();

@@ -28,6 +28,7 @@ import qs
 import QtQuick
 import "../FileFacts.js" as FileFacts
 import "Drawers.js" as Drawers
+import "../launcher/ReadyRows.js" as Ready
 
 Piece {
     id: piece
@@ -209,9 +210,21 @@ Piece {
         told = "\u2026";
         Watchers.act(Object.assign({ act: act }, said), answer => {
             piece.guardAsked = false;
-            piece.told = answer === null ? "the machine daemon isn't answering"
-                : answer.error?.message ?? answer.said ?? "";
+            piece.told = piece.toldOf(answer);
         });
+    }
+
+    // The foot's words for an act's answer, as every place words one: what
+    // the guard printed where it was done, the daemon's words for a
+    // refusal, else "couldn't", and "not answering" where nothing came. A
+    // refusal's cause goes to the journal, never the foot.
+    function toldOf(answer) {
+        if (answer === null || answer === undefined)
+            return (Words.of("on:disk").said ?? {}).silent ?? "";
+        if (answer.error)
+            console.info(`disk: the guard's act was refused: ${answer.error.code}: `
+                + `${answer.error.message ?? ""}`);
+        return Ready.refusal(answer, Words.field.becoming ?? {}) || (answer.said ?? "");
     }
 
     // Why a guard stopped, in a phrase, from what its unit's Result says.

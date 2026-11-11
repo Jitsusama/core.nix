@@ -76,6 +76,20 @@ pub struct Counters {
 
 const NPU: &str = "/sys/class/accel/accel0/device";
 
+/// How soon after a read another measures nothing: the kernel counts a
+/// processor's time in ticks of 10 ms, so two reads a few apart see no
+/// tick pass, and a share of nothing is no figure. Read so soon, the
+/// record held from the last read stands, where it would have said the
+/// processor's busy share was unknown and its row gone until the next
+/// (a watch's first read landing beside the second's tick).
+const SOONEST_MS: u64 = 250;
+
+/// Whether a read at `at_ms` comes too soon after `before` to measure.
+#[must_use]
+pub fn too_soon(before: Option<&Counters>, at_ms: u64) -> bool {
+    before.is_some_and(|before| at_ms.saturating_sub(before.at_ms) < SOONEST_MS)
+}
+
 /// A processor's model as `/proc/cpuinfo` names it, without its trade
 /// marks or the clock some add: "Intel(R) Core(TM) Ultra X7 358H" is an
 /// Intel Core Ultra X7 358H.
@@ -485,6 +499,30 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_read_within_a_few_ticks_of_the_last_measures_nothing() {
+        let before = Counters {
+            at_ms: 10_000,
+            whole: vec![],
+            cores: BTreeMap::new(),
+            switches: None,
+            interrupts: None,
+            softirqs: None,
+            forks: None,
+            npu_busy_us: None,
+        };
+        assert!(!too_soon(None, 10_000), "a first read always measures");
+        assert!(too_soon(Some(&before), 10_004), "no tick has passed");
+        assert!(
+            too_soon(Some(&before), 10_249),
+            "too few ticks to say a share"
+        );
+        assert!(
+            !too_soon(Some(&before), 10_250),
+            "a quarter second is enough"
+        );
+    }
 
     #[test]
     fn a_model_loses_its_marks() {

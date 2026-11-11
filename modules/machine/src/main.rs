@@ -86,7 +86,7 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
+use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of, refused};
 use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
@@ -255,6 +255,10 @@ struct Reader {
     fixed: processor::Fixed,
     page_b: u64,
     processor: Option<processor::Counters>,
+    /// The processor's last record, said again while a read comes too
+    /// soon to measure, since a kind read that says nothing of a key is
+    /// taken to have let it go.
+    processor_said: Option<Value>,
     memory: Option<memory::Counters>,
     disks: Option<disk::Counters>,
     disk_sensors: disk::Kept,
@@ -276,6 +280,21 @@ struct Reader {
 }
 
 impl Reader {
+    /// The processor's record at `at`, or the one read just now, said
+    /// again: one measured over less than a few of the kernel's ticks
+    /// would say no busy share at all, and one left unsaid would be let
+    /// go of.
+    fn processor_record(&mut self, at: u64) -> Option<Value> {
+        if processor::too_soon(self.processor.as_ref(), at) {
+            return self.processor_said.clone();
+        }
+        let now = processor::counters(&self.root, at);
+        let record = processor::record(&self.root, &self.fixed, &now, self.processor.as_ref());
+        self.processor_said = Some(record.clone());
+        self.processor = Some(now);
+        Some(record)
+    }
+
     /// Reads the kinds of these that are heard as their files are
     /// written (`HEARD`).
     fn heard(&mut self, kinds: &HashSet<String>) -> Vec<Value> {
@@ -331,14 +350,7 @@ impl Reader {
         let mut records = Vec::new();
         let wants = |kind: &str| kinds.contains(kind);
         if wants("processor") {
-            let now = processor::counters(&self.root, at);
-            records.push(processor::record(
-                &self.root,
-                &self.fixed,
-                &now,
-                self.processor.as_ref(),
-            ));
-            self.processor = Some(now);
+            records.extend(self.processor_record(at));
         }
         if wants("memory") {
             let now = memory::counters(&self.root, at);
@@ -688,6 +700,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             root: root.clone(),
             page_b: u64::try_from(page).unwrap_or(4096),
             processor: None,
+            processor_said: None,
             memory: None,
             disks: None,
             disk_sensors: disk::Kept::default(),
@@ -2275,7 +2288,7 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
         // write of it is.
         "disk-keep" | "disk-unkeep" | "disk-clear" | "disk-thaw" => match guard::told(act, said) {
             Ok(told) => json!({"id": id, "done": true, "said": told}),
-            Err(untold) => error(id, untold.code, &untold.message),
+            Err(untold) => refused(id, untold.code, &untold.message, &untold.said),
         },
         _ => error(id, "unknown-act", &format!("no act {act:?} here")),
     }
@@ -2391,6 +2404,32 @@ mod tests {
         assert_eq!(said.len(), 2, "the whole answer, then the change: {said:?}");
         assert_eq!(said[0]["records"][0]["raw"], Value::Null, "{said:?}");
         assert_eq!(said[1]["changed"][0]["raw"], json!(0.0), "{said:?}");
+    }
+
+    // A read that comes too soon after the last to measure the processor,
+    // as a watch's first read and the loop it wakes do, keeps its record
+    // held as it was, rather than letting it go: Processor's row went
+    // for a second as a cold ask ended reading (the nested-niri check,
+    // 2026-11-11).
+    #[test]
+    fn a_processor_read_too_soon_keeps_its_record() {
+        let folder = std::env::temp_dir().join(format!("machine-soon-{}", std::process::id()));
+        std::fs::create_dir_all(folder.join("proc")).unwrap();
+        std::fs::write(
+            folder.join("proc/stat"),
+            "cpu  100 0 100 800 0 0 0 0 0 0\ncpu0 100 0 100 800 0 0 0 0 0 0\n",
+        )
+        .unwrap();
+        let shared = Arc::new(shared(&Root::new(&folder), None));
+        let kinds = HashSet::from(["processor".to_owned()]);
+        read(&shared, &kinds, &[]);
+        let first = lock(&shared.daemon).held.get("processor:0").cloned();
+        read(&shared, &kinds, &[]);
+        let again = lock(&shared.daemon).held.get("processor:0").cloned();
+        std::fs::remove_dir_all(&folder).unwrap();
+        let first = first.expect("the first read holds the processor");
+        assert_eq!(first["busy_ratio"], json!(0.2), "{first}");
+        assert_eq!(again, Some(first), "the second read let the record go");
     }
 
     // Firmware's rows say an act is going while it goes, and how it

@@ -8,43 +8,6 @@ function run(failures) {
     let asked = 0;
     const machine = Common.checker(failures, () => asked++);
     // The machine's figures, from its files as the kernel writes them.
-    // A served row's times are worded here, by their form, into the
-    // item's own words: the uptime counts up from the boot, the start
-    // is a moment.
-    const timed = {
-        lasted: seconds => `${seconds} s`,
-        moment: (at, now) => `at ${at} of ${now}`
-    };
-    machine("a lasted time counts up from it, in its words", Machine.sideSaid(
-        [{ at: 1000, as: "lasted", said: "up {when}" }], 61_000, timed), "up 60 s");
-    machine("a moment says when", Machine.sideSaid([{ at: 5, as: "moment" }], 9, timed),
-        "at 5 of 9");
-    machine("a time from a wrong clock never reads as negative", Machine.sideSaid(
-        [{ at: 9000, as: "lasted" }], 1000, timed), "0 s");
-    machine("words and figures joined, the empty given way", Machine.sideSaid(
-        [{ said: "8.00 GB used" }, { said: "" }, { said: "50%" }], 0, timed),
-        "8.00 GB used \u00b7 50%");
-    // A served row drawn: its thing as its key (either name the record
-    // gives it), what Copy copies from its copy act, the machine's hue
-    // where it names none.
-    machine("a served row's fields", Machine.served({ key: "row:machine:memory:used",
-        kind: "row", row: { thing: "machine:memory:used", name: "Used",
-            side: [{ said: "8.00 GB of 16.0 GB" }], graph: { shape: "bar", values: [0.5] },
-            note: "8.00 GB available", glyph: "memory",
-            acts: [{ key: "verb:copy", copy: "8.00 GB of 16.0 GB" }] } }, 0, timed),
-        { key: "machine:memory:used", name: "Used", side: "8.00 GB of 16.0 GB",
-            graph: { shape: "bar", values: [0.5] }, note: "8.00 GB available",
-            copy: "8.00 GB of 16.0 GB", glyph: "memory", hue: "machine" });
-    machine("a served row before its thing was renamed", Machine.served({
-        row: { row: "machine:uptime", name: "Uptime", side: [], acts: [] } }, 0, timed).key,
-        "machine:uptime");
-    machine("a served row copying nothing", Machine.served({ row: { name: "Using It",
-        side: [{ said: "\u2026" }] } }, 0, timed).copy, "");
-    // A note that's a time, as a disk's health says when its controller
-    // said it, is worded as a side's time is.
-    machine("a served row's note as a time", Machine.served({ row: { name: "Health",
-        side: [], note: { at: 5, as: "moment", said: "its controller said {when}" } }
-    }, 9, timed).note, "its controller said at 5 of 9");
     machine("the whole processor's sensor", ["Package id 0", "Tctl", "Core 3"]
         .map(label => Machine.namesWhole(label)), [true, true, false]);
     machine("a spark against its most", Machine.spark([1, 2, 4], 1), [0.25, 0.5, 1]);

@@ -94,7 +94,10 @@ launcher's own; handed none, it makes no rows.
 done, or an error: `bad-act` for what this machine hasn't, `refused`
 where the kernel or a service said no, in its words, `stopped` for a
 firmware act waited for past its `patience_s`, `busy` while another
-firmware act goes, and `unknown-act` for a name it doesn't know. What a
+firmware act goes, and `unknown-act` for a name it doesn't know. An
+error's `message` is its cause, for the journal; where the daemon has
+words for Joel it says them in `said` beside it, as the ready-rows form
+has it, and where it has none the shell says "couldn't". What a
 charge limit moved is read again before it's answered, so a watch hears
 the change first, never a second late. A firmware act can wait minutes
 on fwupd or a polkit prompt, so each goes on a thread of its own, the
@@ -145,7 +148,9 @@ The disk guard's four are its own `keep`, `unkeep`, `clear` and `thaw`,
 run here on the act (`src/guard.rs`) so the shell spawns nothing, from
 `disk-guard` on the service's path or the program `MACHINE_DISK_GUARD`
 names. Each answers `said`, the sentence the guard printed, for Disk's
-foot, or is refused with it. The guard marks its status before it ends,
+foot, or is refused with it in `said`, without the program's name it
+opens its errors with; an act asked without its folder or reason is
+refused with no `said`, never reaching the guard. The guard marks its status before it ends,
 so the status the shell hears has moved by the time the act answers.
 
 ## Every Figure, and Where It Shows

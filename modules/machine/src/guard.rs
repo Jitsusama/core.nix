@@ -17,18 +17,32 @@ use serde_json::Value;
 /// as a test gives its stand-in.
 pub const DISK_GUARD: &str = "MACHINE_DISK_GUARD";
 
-/// Why an act wasn't done, and what to say of it.
+/// Why an act wasn't done: its cause, for the journal, and what Joel
+/// reads of it, the guard's own sentence where it ran and refused, or
+/// nothing where it couldn't be asked, which the shell words itself.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Untold {
     pub code: &'static str,
     pub message: String,
+    pub said: String,
 }
 
 fn untold(code: &'static str, message: impl Into<String>) -> Untold {
     Untold {
         code,
         message: message.into(),
+        said: String::new(),
     }
+}
+
+/// What Joel reads of the guard's refusal: the sentence it printed,
+/// without the program's name it opens its errors with.
+fn refusal_said(printed: &str) -> String {
+    printed
+        .lines()
+        .map(|line| line.strip_prefix("disk-guard: ").unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The guard's words for an act, or why the act can't be one: each but a
@@ -83,7 +97,11 @@ pub fn told(act: &str, said: &Value) -> Result<String, Untold> {
     if ran.status.success() {
         Ok(both)
     } else {
-        Err(untold("refused", both))
+        Err(Untold {
+            code: "refused",
+            said: refusal_said(&both),
+            message: both,
+        })
     }
 }
 
@@ -119,5 +137,20 @@ mod tests {
             code("disk-wipe", json!({"path": "/srv"})),
             Err("unknown-act")
         );
+        let said = |act: &str, said: Value| words(act, &said).map_err(|no| no.said);
+        assert_eq!(
+            said("disk-keep", json!({"path": "/srv"})),
+            Err(String::new()),
+            "a badly asked act leaves its words to the shell"
+        );
+    }
+
+    #[test]
+    fn a_refusal_says_the_guards_sentence_without_its_name() {
+        assert_eq!(
+            refusal_said("disk-guard: /srv stays: you keep it: the build's"),
+            "/srv stays: you keep it: the build's"
+        );
+        assert_eq!(refusal_said("/srv wasn't kept."), "/srv wasn't kept.");
     }
 }
