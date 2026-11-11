@@ -235,12 +235,21 @@ Provider {
     // agents daemon takes it on Fri 13 Nov, serving the closed
     // orchestrators' rows ready.
     property bool questsUnread: true
+    // Whether an opening's read of the index is still to land, which
+    // orders the closed ones as it does: ordered before it, they'd keep
+    // the order the orchestrators' file lists them in, which the first
+    // opening after the shell starts always did (vm-desktop-looks,
+    // 2026-11-11: Beacon then Lamplight). It lands before a key can move
+    // the cursor.
+    property bool orderAsRead: false
     function showing() {
         return !!provider.launcher && (provider.launcher.open || provider.launcher.cataloguing);
     }
+    // Whether the index is being read.
     function readQuests() {
         if (questsUnread)
             questIndex.reload();
+        return questsUnread;
     }
 
     // Read again as the launcher opens too, since a file that wasn't there
@@ -253,8 +262,9 @@ Provider {
         function onOpenChanged() {
             if (provider.launcher.open) {
                 orchestrators.reload();
-                provider.readQuests();
-                provider.orderClosed();
+                provider.orderAsRead = provider.readQuests();
+                if (!provider.orderAsRead)
+                    provider.orderClosed();
                 provider.lookForFolders();
             } else {
                 provider.orderClosed();
@@ -294,7 +304,12 @@ Provider {
             if (provider.showing())
                 reload();
         }
-        onLoadFailed: provider.questsUnread = true
+        onLoadFailed: {
+            provider.questsUnread = true;
+            if (provider.orderAsRead)
+                provider.orderClosed();
+            provider.orderAsRead = false;
+        }
         onLoaded: {
             provider.questsUnread = false;
             try {
@@ -322,10 +337,12 @@ Provider {
                 provider.resumeFolders = {};
                 provider.resumedAt = {};
             }
-            // Ordered afresh while the launcher is shut, never under the
-            // cursor while it's open.
-            if (!provider.launcher?.open)
+            // Ordered afresh while the launcher is shut, or as the read
+            // its opening began lands, never under the cursor while it's
+            // open.
+            if (!provider.launcher?.open || provider.orderAsRead)
                 provider.orderClosed();
+            provider.orderAsRead = false;
             provider.lookForFolders();
         }
     }

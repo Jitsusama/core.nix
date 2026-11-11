@@ -2394,7 +2394,8 @@
   '';
   the-launcher-hears-talks-from-the-node = ''
     Agents hears each talk from the node by its session's address, newest first, moves it on as
-    its session writes a line, hears one made since and lets one go, reading no talk's file
+    its session writes a line, hears one made since and lets one go, reading no talk's file; and
+    the opening that reads the quest index orders the closed orchestrators by it
   '';
   the-launcher-finds-the-runs = ''
     the launcher lists the day's fleets and councils, running first, with progress or cost and time,
