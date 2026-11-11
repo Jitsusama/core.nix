@@ -3,7 +3,7 @@
 // Today's rows, so an opening into a place that shows none of Now's rows
 // leaves them until Now is wanted, where every opening once made all 17
 // as it began (H6EDLC, 2026-11-11), and an opening onto Now's rows places
-// them once.
+// them once, and only once a minute has turned since they were placed.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -72,7 +72,13 @@ ShellRoot {
                 theLauncher.open = false;
                 theLauncher.placed = 0;
                 theLauncher.open = true;
-                Expect.same("opened onto Now's rows, it places the time once",
+                Expect.same("opened onto Now's rows within the minute, it places no time",
+                    theLauncher.placed, 0);
+                theLauncher.open = false;
+                // As if it were placed in the minute before this one.
+                now.timedMinute -= 1;
+                theLauncher.open = true;
+                Expect.same("opened onto Now's rows a minute on, it places the time once",
                     theLauncher.placed, 1);
                 Qt.exit(0);
             } catch (error) {
