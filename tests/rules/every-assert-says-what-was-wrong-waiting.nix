@@ -203,9 +203,8 @@
   "modules/open-with/src/bin/file-preview.rs" = 4;
   "modules/open-with/src/open.rs" = 1;
   "modules/passwords/src/audit.rs" = 2;
-  "modules/passwords/src/cli.rs" = 7;
+  "modules/passwords/src/cli.rs" = 2;
   "modules/passwords/src/lib.rs" = 17;
-  "modules/passwords/tests/command.rs" = 4;
   "modules/passwords/tests/daemon.rs" = 3;
   "modules/passwords/tests/keys.rs" = 3;
   "modules/people/src/lib.rs" = 22;
