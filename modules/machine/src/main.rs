@@ -280,6 +280,21 @@ struct Reader {
 }
 
 impl Reader {
+    /// The processor's record at `at`, or the one read just now, said
+    /// again: one measured over less than a few of the kernel's ticks
+    /// would say no busy share at all, and one left unsaid would be let
+    /// go of.
+    fn processor_record(&mut self, at: u64) -> Option<Value> {
+        if processor::too_soon(self.processor.as_ref(), at) {
+            return self.processor_said.clone();
+        }
+        let now = processor::counters(&self.root, at);
+        let record = processor::record(&self.root, &self.fixed, &now, self.processor.as_ref());
+        self.processor_said = Some(record.clone());
+        self.processor = Some(now);
+        Some(record)
+    }
+
     /// Reads the kinds of these that are heard as their files are
     /// written (`HEARD`).
     fn heard(&mut self, kinds: &HashSet<String>) -> Vec<Value> {
@@ -334,20 +349,8 @@ impl Reader {
         let at = clock_ms();
         let mut records = Vec::new();
         let wants = |kind: &str| kinds.contains(kind);
-        // A processor read just now stands, said again: one measured over
-        // less than a few of the kernel's ticks would say no busy share at
-        // all, and one left unsaid would be let go of.
         if wants("processor") {
-            if processor::too_soon(self.processor.as_ref(), at) {
-                records.extend(self.processor_said.clone());
-            } else {
-                let now = processor::counters(&self.root, at);
-                let record =
-                    processor::record(&self.root, &self.fixed, &now, self.processor.as_ref());
-                self.processor_said = Some(record.clone());
-                records.push(record);
-                self.processor = Some(now);
-            }
+            records.extend(self.processor_record(at));
         }
         if wants("memory") {
             let now = memory::counters(&self.root, at);
