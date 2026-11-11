@@ -1,4 +1,5 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 // What the clipboard holds now, for everything that acts on a copy:
 // Tuple's joining a call whose link was copied (Tuple.qml), and the
 // programs' acts in the launcher that take one, GIMP's picture, Neovim's
