@@ -146,22 +146,19 @@ Provider {
     function withoutWindow(row, served, key) {
         const copying = (served.acts ?? []).find(one => one.key === "verb:copy:copy");
         const verbs = row.verbs;
-        const run = row.run;
-        // Said for the checks that wait on a paste, which program it went to.
-        row.run = () => {
-            const under = Pasting.under();
-            if (under !== null)
-                Report.say(`pastes into ${under.app_id ?? ""}`);
-            run();
-        };
+        row.run = pastes(row.run);
         Object.defineProperty(row, "verb", {
             enumerable: true,
             get: () => Pasting.verb()
         });
         row.verbs = () => {
             const all = verbs();
-            return Pasting.under() === null
-                ? all.filter(one => one.key !== "verb:copy:paste") : all;
+            if (Pasting.under() === null)
+                return all.filter(one => one.key !== "verb:copy:paste");
+            for (const one of all)
+                if (one.key === "verb:copy:paste")
+                    one.run = pastes(one.run);
+            return all;
         };
         row.targets = row.verbs;
         row.operands = () => copying === undefined ? [] : [{
@@ -171,6 +168,17 @@ Provider {
             run: () => ready.act(key, copying)
         }];
         return row;
+    }
+
+    // A paste's run, saying for the checks that wait on one which program
+    // it goes to.
+    function pastes(run) {
+        return () => {
+            const under = Pasting.under();
+            if (under !== null)
+                Report.say(`pastes into ${under.app_id ?? ""}`);
+            run();
+        };
     }
 
     // Each copy heard, said for the checks that wait on it: a picture by
