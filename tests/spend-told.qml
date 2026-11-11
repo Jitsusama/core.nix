@@ -267,7 +267,7 @@ ShellRoot {
                 && SpendWatch.budgets === budgets, Object.keys(SpendWatch.budgets).join(" "));
             Expect.expect("starting, its figures are still being read, said as its last run's",
                 spend.stillReading && spend.answer("spend").note
-                === "the watch is still reading; these are its last run's figures",
+                === "still reading · its last figures",
                 `${spend.stillReading} ${spend.answer("spend").note}`);
             passed();
             until("the daemon answering", () => !spend.stillReading, current);

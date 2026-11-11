@@ -547,7 +547,7 @@ ShellRoot {
 
     function refusedActs() {
         // In words.json's words for serve's refusal, not its message.
-        const why = "the watch can't act yet";
+        const why = "still reading";
         expect("asking serve to act runs nothing and says why", Niri.spawned.length === 0
             && shutLauncher.refusals.join(", ") === `spend:finding:burn:s1 ${why}, `
             + `spend:finding:burn:s1:expect ${why}`,
