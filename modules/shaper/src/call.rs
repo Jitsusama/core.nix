@@ -6,14 +6,14 @@ use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-const STUN: &str = "stun.l.google.com:19302";
+pub const STUN: &str = "stun.l.google.com:19302";
 /// A STUN probe's spacing, and how long one goes unanswered before it's
 /// lost.
 const CALL_EVERY: Duration = Duration::from_millis(200);
 const CALL_LOST: Duration = Duration::from_secs(2);
 
 /// A STUN binding request with this transaction id.
-fn stun_request(id: [u8; 12]) -> [u8; 20] {
+pub fn stun_request(id: [u8; 12]) -> [u8; 20] {
     let mut packet = [0_u8; 20];
     packet[0..2].copy_from_slice(&0x0001_u16.to_be_bytes());
     packet[4..8].copy_from_slice(&0x2112_A442_u32.to_be_bytes());
@@ -22,7 +22,7 @@ fn stun_request(id: [u8; 12]) -> [u8; 20] {
 }
 
 /// The transaction id a STUN binding success answers, if it is one.
-fn stun_answer(packet: &[u8]) -> Option<[u8; 12]> {
+pub fn stun_answer(packet: &[u8]) -> Option<[u8; 12]> {
     let head = packet.get(0..20)?;
     (head[0..2] == 0x0101_u16.to_be_bytes() && head[4..8] == 0x2112_A442_u32.to_be_bytes())
         .then(|| head[8..20].try_into().ok())

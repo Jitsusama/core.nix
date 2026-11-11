@@ -237,6 +237,7 @@ fn run(scenario: &Scenario, bases: Option<[Option<f64>; 2]>, rough: bool) -> Sco
                 up_kbit: carried[0],
                 down_kbit: carried[1],
                 up_ours: None,
+                vpn_ms: None,
             });
             held = [limits.up, limits.down].map(|l| l.map_or(GREEDY, float));
         }
@@ -490,6 +491,7 @@ fn flow_queued(shaped: bool) -> (f64, f64) {
                     waiting: true,
                     ..Ours::default()
                 }),
+                vpn_ms: None,
             });
             rate = limits.up.map_or(f64::INFINITY, float);
         }

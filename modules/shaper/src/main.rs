@@ -42,6 +42,7 @@ mod replay;
 #[cfg(test)]
 mod sim;
 mod stamp;
+mod vpndelay;
 mod waiting;
 
 use memory::{Held, Memory};
@@ -562,17 +563,8 @@ fn run(options: &Options) -> ExitCode {
             follow_vpns(&mut vpns, &options.vpns, base, t);
             reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
-            // The one-way controller hears, each second, whose each
-            // upload's queue is, which its probes can't see behind a
-            // router that queues flow by flow.
             if let Some(l) = live.as_mut() {
-                let waiting = waiting::read(&options.proc);
-                let resent = resent_kbit(&mut last_resent, waiting::resent(&options.proc), now);
-                for (name, s) in &mut shaped {
-                    if let Some(ours) = s.ours(waiting, resent, now) {
-                        l.see(name, ours);
-                    }
-                }
+                tell_live(l, options, &mut shaped, &vpns.0, (&mut last_resent, now));
             }
         }
         // A slice or unit made a moment ago reaches its set at the next
@@ -616,6 +608,26 @@ fn run(options: &Options) -> ExitCode {
         write_status(&options.runtime, &shaped);
         thread::sleep(STEP);
     }
+}
+
+/// Tells the one-way controller, each second, whose each upload's queue
+/// is, and has it hear a call's round trip through the VPN riding the link:
+/// behind a router that queues flow by flow, its probes see neither.
+fn tell_live(
+    l: &mut live::Live,
+    options: &Options,
+    shaped: &mut BTreeMap<String, Shaped>,
+    vpns: &BTreeMap<String, Vpn>,
+    (last_resent, now): (&mut Option<(u64, Instant)>, Instant),
+) {
+    let waiting = waiting::read(&options.proc);
+    let resent = resent_kbit(last_resent, waiting::resent(&options.proc), now);
+    for (name, s) in shaped {
+        if let Some(ours) = s.ours(waiting, resent, now) {
+            l.see(name, ours);
+        }
+    }
+    l.hear_vpn(vpns.keys().next().map(String::as_str));
 }
 
 /// Remembers what a link learned of its network's rates, each direction
