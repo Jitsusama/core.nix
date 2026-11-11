@@ -15,7 +15,6 @@
   "tests/desktop/desktop-launcher-holds-meetings-vm-test.py" = 2;
   "tests/desktop/desktop-launcher-reads-mail-vm-test.py" = 2;
   "tests/desktop/desktop-looks-machine-vm-test.py" = 2;
-  "tests/desktop/desktop-looks-vm-test.py" = 1;
   "tests/desktop/desktop-opens-and-sets-vm-test.py" = 1;
   "tests/dictation-watch.py" = 1;
   "tests/vm/boot/greeter-vm-test.py" = 2;

@@ -3384,13 +3384,18 @@
     and holds through a shell's restart; polkit's prompt and the askpass answer and hold
   '';
   vm-desktop-looks = ''
-    on the laptop's screen at 1.5 and at 2, the launcher's drawer takes the room beside the card,
-    up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
-    eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
-    a whole number of half rows below; and a row's words, home's lists and a found row's note,
-    are in the serif a step after its name and on its baseline to half a device pixel; and WARP,
-    from the real warp over a stand-in warp-cli, stands in Network connected, degraded and not
-    answering, for its gallery to shoot
+    on the laptop's screen at 1.5 and at 2, a session sits a step in under its orchestrator, a
+    meter stands over dictation rather than on it, AI spend's budgets stand behind one row, and
+    what's found by its meaning sits below what typing found; an unplugged ErgoDox is shown
+    nowhere until it's back; the Home Network and Nearby list what's around; and WARP, from the
+    real warp over a stand-in warp-cli, stands in Network connected, degraded and not answering,
+    each shot for a person to judge
+  '';
+  vm-desktop-looks-file-picker = ''
+    on the laptop's screen at 1.5 and at 2, the file picker's plate previews each kind of file on
+    the card's lines; a picker for one file asks for one and says Return opens it, a save is
+    named on the line and a name taken asks once, :arga gathers files across folders, and :sort
+    lists a folder in the order chosen, folders first
   '';
   vm-desktop-looks-machine = ''
     on the laptop's screen at 1.5 and at 2, Machine's processor, memory, disk and uptime step
@@ -3400,6 +3405,14 @@
     update's, its Security Level says what falls short and steps into each attribute, and
     Sleep says where it failed
   '';
+  vm-desktop-looks-plates = ''
+    on the laptop's screen at 1.5 and at 2, the launcher's drawer takes the room beside the card,
+    up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
+    eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
+    a whole number of half rows below, for a notice, a time server and a device; a person's
+    Unread and Recent say how many at their right; and Now's plate sets its head as one unit and
+    its groups as a body under it
+  '';
   vm-desktop-looks-programs = ''
     on the laptop's screen at 1.5 and at 2, Drive's places and Recent, Spotify and its podcasts,
     what mpv stopped, GIMP's acts and Recent, Neovim's files open in two kitty windows, Chrome's
@@ -3407,6 +3420,16 @@
     drawer saying it runs in a terminal, Shortcuts over Mail and a Docs tab, Passwords, an entry
     and its copy in the margin, and 1Password's program
     holding Check Every Password after its vaults, each drawn for a person to judge
+  '';
+  vm-desktop-looks-rows = ''
+    on the laptop's screen at 1.5 and at 2, a found row's note is in the serif a step after its
+    name and on its baseline to half a device pixel
+  '';
+  vm-desktop-looks-vi = ''
+    on the laptop's screen at 1.5 and at 2, y flashes the rows it copies and d's ask stands on the
+    line, visual counts its rows while a window arriving waits in the foot, space-right goes into
+    the key list's drawer with its rule on the cursor's line, and the drawer's search and visual
+    are shot for a person to judge
   '';
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not

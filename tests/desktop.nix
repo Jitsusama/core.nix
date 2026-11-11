@@ -37,10 +37,10 @@
   pkgs,
   area,
   gallery ? false,
-  # The screen's size in pixels. Every area but looks, looks-machine,
-  # looks-programs and launcher-keeps-up keeps the one its pictures were
-  # taken on; those have the laptop's, so the launcher and its drawer fit
-  # at both of Joel's scales.
+  # The screen's size in pixels. Every area but the looks areas,
+  # looks-machine, looks-programs and launcher-keeps-up keeps the one its
+  # pictures were taken on; those have the laptop's, so the launcher and its
+  # drawer fit at both of Joel's scales.
   screen ? {
     width = 1280;
     height = 800;
@@ -49,6 +49,18 @@
 let
   account = "jitsusama";
   secret = "correct-horse";
+  # The areas the launcher's looks are measured in, split so they run side
+  # by side rather than one taking half an hour: looks itself, and its rows,
+  # vi modes, plates and file picker. Each brings what looks brought, and
+  # imports what they share from desktop/looks_session.py.
+  looksAreas = [
+    "looks"
+    "looks-rows"
+    "looks-vi"
+    "looks-plates"
+    "looks-file-picker"
+  ];
+  isLooks = builtins.elem area looksAreas;
   # The areas whose machine brings Slack, as a machine of Joel's does: what
   # reads mail and Slack, and the shortcuts, which list Slack's own.
   bringsSlack = builtins.elem area [
@@ -90,28 +102,26 @@ let
   clearsToDos = area == "launcher-waits-on-joel";
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
-  # from the node alone, and looks-machine, which shoots Machines from
-  # the record the node measures of its own machine, and launcher-answers,
-  # whose Queue the node tells of the machine queue (Jobs.qml). Those two
-  # link nothing, so they need no key.
-  runsTheNode = builtins.elem area [
-    "launcher-answers"
-    "launcher-finds-sessions"
-    "reopens-under-orchestrators"
-    "launcher-draws-still"
-    "launcher-waits-on-joel"
-    "launcher-goes-places"
-    "launcher-keeps-up"
-    "looks"
-    "looks-machine"
-  ];
+  # from the node alone, the looks areas, and looks-machine, which shoots
+  # Machines from the record the node measures of its own machine, and
+  # launcher-answers, whose Queue the node tells of the machine queue
+  # (Jobs.qml). Those two link nothing, so they need no key.
+  runsTheNode =
+    isLooks
+    || builtins.elem area [
+      "launcher-answers"
+      "launcher-finds-sessions"
+      "reopens-under-orchestrators"
+      "launcher-draws-still"
+      "launcher-waits-on-joel"
+      "launcher-goes-places"
+      "launcher-keeps-up"
+      "looks-machine"
+    ];
   # The areas whose launcher has WARP, as a machine whose system installs
   # warp-cli does: where its looks are shot, and where a terminal is shown
   # it through `launcher show`.
-  standsInForWarp = builtins.elem area [
-    "looks"
-    "launcher-finds-by-name"
-  ];
+  standsInForWarp = isLooks || area == "launcher-finds-by-name";
   # The area that switches its home, onto the sessions' kitty kept through
   # a switch from one that wasn't, as a machine first switching onto it
   # does: it boots on the unit before, which says no switch method, and
@@ -456,10 +466,17 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   extraPythonPackages = python: [
     python.pillow
     (python.toPythonModule (
-      pkgs.runCommandLocal "desktop-session" { } ''
-        mkdir -p $out/${python.python.sitePackages}
-        cp ${./desktop/desktop_session.py} $out/${python.python.sitePackages}/desktop_session.py
-      ''
+      pkgs.runCommandLocal "desktop-session" { } (
+        ''
+          mkdir -p $out/${python.python.sitePackages}
+          cp ${./desktop/desktop_session.py} $out/${python.python.sitePackages}/desktop_session.py
+        ''
+        # And what the looks areas share, only where it's read, so no other
+        # area's test moves with it.
+        + pkgs.lib.optionalString isLooks ''
+          cp ${./desktop/looks_session.py} $out/${python.python.sitePackages}/looks_session.py
+        ''
+      )
     ))
   ];
   # The base role sets nixpkgs' own settings.
@@ -962,11 +979,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           "${lib.getExe pkgs.socat} UNIX-LISTEN:%t/tuple-0,fork,unlink-early /dev/null";
         # The screen-text daemon, where Capture's Recent is searched by
         # what its screenshots say, a stand-in that reads no picture; in
-        # looks too, where it's shot beside what meaning saw.
-        systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (builtins.elem area [
-          "launcher-goes-places"
-          "looks"
-        ]) (lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json");
+        # the looks areas too, where it's shot beside what meaning saw.
+        systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (
+          isLooks || area == "launcher-goes-places"
+        ) (lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json");
         # The meaning daemon would embed every thing on the processor, with
         # no NPU here, beside every test; a stand-in that loads no model
         # answers what the test writes, and the real one is proven in the
@@ -1307,11 +1323,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             floating_room = 2 * (space.rung.screen + shape.border);
             shots = gallery;
           }
-          # BlueZ's emulator, for the looks area to hear a device in Nearby
+          # BlueZ's emulator, for the looks areas to hear a device in Nearby
           # by: two controllers of the machine's own, each seen as Buds, so
           # whichever the launcher looks from hears the other. Only there, so
           # no other area's test moves with it.
-          // pkgs.lib.optionalAttrs (area == "looks") {
+          // pkgs.lib.optionalAttrs isLooks {
             btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
           }
           # WARP's contract, for the stand-in warp-cli to answer with, only

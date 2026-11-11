@@ -34,6 +34,16 @@ ignore = [
 # The desktop its areas drive asserts what a test needs, as pytest reports what each side
 # held, and hands the driver's retry a test taking a positional bool, as the driver calls it.
 "tests/desktop/desktop_session.py" = ["FBT001", "S101"]
+# What the looks areas share asserts what a test needs, as the desktop does.
+"tests/desktop/looks_session.py" = ["S101"]
+# Each looks area imports its desktop and scales from looks_session.py, and
+# pytest hands a test a fixture by its argument's name, so the argument names
+# the very import it's given.
+"tests/desktop/desktop-looks-vm-test.py" = ["F811"]
+"tests/desktop/desktop-looks-rows-vm-test.py" = ["F811"]
+"tests/desktop/desktop-looks-vi-vm-test.py" = ["F811"]
+"tests/desktop/desktop-looks-plates-vm-test.py" = ["F811"]
+"tests/desktop/desktop-looks-file-picker-vm-test.py" = ["F811"]
 # The shell on a nested niri asserts what a test needs, as the desktop does.
 "tests/launcher_on_niri.py" = ["S101"]
 # The screens test's machine and steps assert what each step needs, as the desktop does.

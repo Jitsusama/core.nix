@@ -139,7 +139,7 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
 
 
 # The drawer's line pitch, which its view's tops past its rest lie on, so what it shows stays on
-# the card's lines (vm-desktop-looks measures them) and a line scrolled to the top takes the
+# the card's lines (vm-desktop-looks-plates measures them) and a line scrolled to the top takes the
 # eyebrow's baseline, its capitals the inset under the frame as the head's are (VKCF3Z,
 # 2026-11-05). Ctrl+E and Ctrl+Y scroll it a whole line, as Vim's do, so past a title a pitch and
 # a half tall they scroll two pitches.

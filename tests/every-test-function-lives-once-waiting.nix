@@ -67,7 +67,7 @@
   "tests/desktop/desktop-locks-and-asks-vm-test.py" = 2;
   "tests/desktop/desktop-looks-machine-vm-test.py" = 2;
   "tests/desktop/desktop-looks-programs-vm-test.py" = 1;
-  "tests/desktop/desktop-looks-vm-test.py" = 3;
+  "tests/desktop/desktop-looks-vm-test.py" = 1;
   "tests/desktop/desktop-minds-the-margin-vm-test.py" = 1;
   "tests/desktop/desktop-opens-and-sets-vm-test.py" = 2;
   "tests/desktop/desktop-opens-files-vm-test.py" = 2;
@@ -77,6 +77,7 @@
   "tests/desktop/desktop-starts-clean-vm-test.py" = 1;
   "tests/desktop/desktop-takes-calls-vm-test.py" = 1;
   "tests/desktop/front-desk.py" = 1;
+  "tests/desktop/looks_session.py" = 2;
   "tests/desktop/stand-in-meaning.py" = 3;
   "tests/desktop/stand-in-screen-text.py" = 3;
   "tests/ex.qml" = 1;

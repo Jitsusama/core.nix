@@ -374,7 +374,9 @@ let
       };
     };
     # How the launcher is laid out at Joel's scales, which needs a screen
-    # as large as the laptop's.
+    # as large as the laptop's. Its rows, vi modes, plates and file picker
+    # are areas of their own, so the five run side by side rather than one
+    # taking half an hour.
     vm-desktop-looks = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "looks";
@@ -383,9 +385,41 @@ let
         height = 1800;
       };
     };
+    vm-desktop-looks-rows = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "looks-rows";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
+    vm-desktop-looks-vi = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "looks-vi";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
+    vm-desktop-looks-plates = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "looks-plates";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
+    vm-desktop-looks-file-picker = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "looks-file-picker";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
     # How Machine's things look at Joel's scales, from the machine daemon,
     # and Machines, from the realm's node, on the same screen: an area of
-    # its own, so looks keeps to twenty.
+    # its own, so the looks areas run side by side.
     vm-desktop-looks-machine = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "looks-machine";
@@ -395,8 +429,7 @@ let
       };
     };
     # How Joel's programs' own pages look at his scales, each a subtest of
-    # its own: an area of its own, so looks keeps to twenty and both run
-    # side by side.
+    # its own: an area of its own, so it runs beside the looks areas.
     vm-desktop-looks-programs = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "looks-programs";

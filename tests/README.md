@@ -28,7 +28,10 @@ waiting list only as `tests/<rule>-waiting.nix`, and each list only shrinks.
 - `battery-stand-ins/`, `lib/`, `repository/` and `vm/` say what they hold in
   their own READMEs.
 - `desktop/`: the desktop VM test's areas, one `-vm-test.py` each, with the
-  programs its machine runs to drive the desktop.
+  programs its machine runs to drive the desktop. Five measure the launcher at
+  Joel's scales, side by side, and share `looks_session.py`: looks itself
+  (sessions, meters, budgets, meaning, the ErgoDox, what's around), and
+  looks-rows, looks-vi, looks-plates and looks-file-picker.
 - `screens/`: the screens test's areas, as screens come and go, keep their
   places and keep the launcher, and the session they share.
 - `stand-in-backlight/`, `stand-in-lid/`, `stand-in-light/` and
