@@ -11,7 +11,8 @@
 # disk fills. A device that stops working, or a disk that reports a fault, is
 # named to whoever is signed in. The ErgoDox's devices are open to Joel, so it
 # can be flashed, and its keys and the laptop's are counted, never what's
-# typed, to weigh the layout against what he presses. Each account keeps a watch on what its AI use costs, and its
+# typed, to weigh the layout against what he presses. Each account keeps a watch on what its AI use costs, runs its
+# heavy upkeep at night only while memory is to spare (night-shift), and its
 # administrators, agents included, switch it without a password.
 { nixosModules, homeModules }:
 {
@@ -42,6 +43,7 @@
     homeModules.collector
     homeModules.disk-guard
     homeModules.libvirt
+    homeModules.night-shift
     homeModules.pnpm
     homeModules.podman
     homeModules.sccache

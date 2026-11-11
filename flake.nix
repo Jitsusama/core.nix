@@ -203,6 +203,7 @@
         mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         network-revive = ./modules/network-revive/home.nix;
+        night-shift = ./modules/night-shift/home.nix;
         niri = ./modules/niri/home.nix;
         nix-offload = ./modules/nix-offload/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;

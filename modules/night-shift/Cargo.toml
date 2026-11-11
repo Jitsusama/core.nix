@@ -1,0 +1,10 @@
+# night-shift runs a heavy job at night, once, only while the machine has
+# memory to spare (src/main.rs says how).
+[package]
+name = "night-shift"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
