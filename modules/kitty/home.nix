@@ -145,13 +145,11 @@ in
 
   config.jitsusama.quickshell.launcher.recents = [
     # What every kitty has open, which its page reads through the
-    # programs daemon, read again only once kitty's watcher says it
-    # changed (tells.py).
+    # programs daemon as the launcher opens.
     {
       app = "kitty";
       name = "open";
       asked = true;
-      told = true;
       list = [
         (lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now")
         "kitty"
@@ -211,7 +209,6 @@ in
   config.xdg.configFile."quickshell/launcher/KittyOpens.js".source = ./KittyOpens.js;
 
   config.xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
-  config.xdg.configFile."kitty/tells.py".source = ./tells.py;
 
   config.xdg.configFile."kitty/ssh.conf".text = ssh;
 

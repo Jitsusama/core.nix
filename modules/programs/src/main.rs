@@ -12,8 +12,7 @@
 //! folder of entries or of file kinds changed while it's watched, or a
 //! profile's link a data folder is reached through was replaced. A
 //! source's list is read as a watch of its key begins if its file
-//! changed since, or every time for a source that's `asked`, or for one
-//! that's `told` too, once a program said it changed, and on each
+//! changed since, or every time for a source that's `asked`, and on each
 //! change of its file while it's watched; what a program has open, as a
 //! watch of its key begins and on each get. A page's list of folders is
 //! read by this daemon itself, with no command, as its watch begins if
@@ -27,13 +26,11 @@
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
-mod heard;
-
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
@@ -47,8 +44,6 @@ use programs::preview::{self, Previewer};
 use programs::source::{self, Source};
 use programs::{command, entry, machines, now_ms, repositories, visited, xdg};
 use serde_json::{Value, json};
-
-use heard::{heard, notice};
 
 /// How many of the last answers' times health says.
 const TIMES: usize = 32;
@@ -448,14 +443,11 @@ fn changed_at(source: &Source) -> Option<SystemTime> {
     }
 }
 
-/// Whether a source's list is to be read again: it's asked and not told,
-/// or its file changed since it was last read, as inotify said or its
-/// time says, or it was told it changed.
+/// Whether a source's list is to be read again: it's asked, or its file
+/// changed since it was last read, as inotify said or its time says.
 fn due(shared: &Shared, daemon: &Daemon, at: usize) -> bool {
     let source = &shared.sources[at];
-    (source.asked && !source.told)
-        || daemon.stale[at]
-        || changed_at(source) != daemon.read_as_of[at]
+    source.asked || daemon.stale[at] || changed_at(source) != daemon.read_as_of[at]
 }
 
 /// Runs a source's command on a thread of its own, or, while it runs
@@ -515,31 +507,6 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
     }
 }
 
-/// Each told list these keys name is read again: at once, on a thread of
-/// its own, where a watch names its key, as a page open on it does, and
-/// otherwise as it's next asked. A list that isn't told reads as it always
-/// does, so a program saying so changes nothing of it.
-fn told_changed(shared: &Arc<Shared>, keys: &[String]) {
-    for at in sources_of(shared, Run::List, &[], Some(keys)) {
-        let source = &shared.sources[at];
-        if !source.told {
-            continue;
-        }
-        let key = source.list_key();
-        let named = {
-            let mut daemon = lock(&shared.daemon);
-            daemon.stale[at] = true;
-            daemon
-                .watches
-                .iter()
-                .any(|watch| watch.keys.as_ref().is_some_and(|keys| keys.contains(&key)))
-        };
-        if named {
-            start(shared, at, Run::List);
-        }
-    }
-}
-
 /// What a get or a list reads first, on this thread: the entries not yet
 /// held, each list not read since it changed or that's asked, and what
 /// each program has open now.
@@ -560,6 +527,127 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
         read_source(shared, at, Run::Opened);
     }
     read_named(shared, keys.unwrap_or_default());
+}
+
+/// What a watched folder is to this daemon; one can be more than one.
+#[derive(Default)]
+struct Heard {
+    /// Whether it's a folder of entries or of file kinds, whose every
+    /// change counts.
+    entries: bool,
+    /// The links in it that a data folder resolves through, by name, as
+    /// `current-system` in `/run`: replaced, the entries changed.
+    links: Vec<String>,
+    /// The sources' files in it, by name.
+    files: Vec<(String, usize)>,
+    /// The sources it's one of the folders of, whose every change counts.
+    lists: Vec<usize>,
+}
+
+/// Watches every folder of entries and of file kinds, and the folder of
+/// each source's file, answering what each watch is.
+fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
+    let mut folders: HashMap<i32, Heard> = HashMap::new();
+    let (_, looked) = xdg::entries(&shared.folders);
+    let kinds = shared.folders.iter().map(|folder| folder.join("mime"));
+    for folder in looked.into_iter().chain(kinds) {
+        if let Some(watch) = notify.watch(&folder) {
+            folders.entry(watch).or_default().entries = true;
+        }
+    }
+    // On NixOS each data folder is a store path reached through a
+    // profile's links, so an upgrade says nothing in the folder itself:
+    // the link it replaces is heard instead, and every watched entry is
+    // read again, its version and store path with it.
+    for (folder, name) in shared
+        .folders
+        .iter()
+        .flat_map(|folder| xdg::links_toward(folder))
+    {
+        if let Some(watch) = notify.watch(&folder) {
+            let links = &mut folders.entry(watch).or_default().links;
+            if !links.contains(&name) {
+                links.push(name);
+            }
+        }
+    }
+    for (at, source) in shared.sources.iter().enumerate() {
+        let Some(file) = source
+            .watch
+            .as_deref()
+            .filter(|_| !source.asked)
+            .map(Path::new)
+        else {
+            continue;
+        };
+        let (Some(folder), Some(name)) = (file.parent(), file.file_name()) else {
+            continue;
+        };
+        let Some(watch) = notify.watch(folder) else {
+            continue;
+        };
+        let name = name.to_string_lossy().into_owned();
+        folders.entry(watch).or_default().files.push((name, at));
+    }
+    for (at, source) in shared.sources.iter().enumerate() {
+        for folder in source.folders.iter().filter(|_| !source.asked) {
+            if let Some(watch) = notify.watch(Path::new(folder)) {
+                folders.entry(watch).or_default().lists.push(at);
+            }
+        }
+    }
+    folders
+}
+
+/// Hears every change inotify says, for as long as the daemon runs.
+fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
+    let Some(notify) = &shared.notify else {
+        return;
+    };
+    loop {
+        let Ok(changes) = notify.changes() else {
+            return;
+        };
+        let looked: Vec<String> = {
+            let daemon = lock(&shared.daemon);
+            let keys: HashSet<&String> = changes
+                .iter()
+                .flat_map(|(watch, _)| daemon.looked.keys_of(*watch))
+                .filter(|key| watched(&daemon, key))
+                .collect();
+            keys.into_iter().cloned().collect()
+        };
+        read_named(shared, &looked);
+        let mut entries = false;
+        let mut lists = HashSet::new();
+        for (watch, name) in changes {
+            let Some(heard) = folders.get(&watch) else {
+                continue;
+            };
+            entries |= heard.entries || heard.links.contains(&name);
+            lists.extend(
+                heard
+                    .files
+                    .iter()
+                    .filter(|(file, _)| *file == name)
+                    .map(|(_, at)| *at),
+            );
+            lists.extend(heard.lists.iter().copied());
+        }
+        if entries {
+            entries_changed(shared);
+        }
+        for at in lists {
+            let watching = {
+                let mut daemon = lock(&shared.daemon);
+                daemon.stale[at] = true;
+                watched(&daemon, &shared.sources[at].list_key())
+            };
+            if watching {
+                start(shared, at, Run::List);
+            }
+        }
+    }
 }
 
 fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
@@ -690,10 +778,6 @@ fn answer(
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
             json!({"id": id, "unwatched": true})
-        }
-        Ask::Changed { id, keys } => {
-            told_changed(shared, &keys);
-            json!({"id": id, "heard": keys})
         }
         Ask::Health { id } => {
             let daemon = lock(&shared.daemon);
