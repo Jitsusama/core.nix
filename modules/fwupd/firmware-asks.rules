@@ -1,0 +1,20 @@
+// Writing firmware, and restarting into the firmware's own setup where it
+// can be changed by hand, ask an administrator's answer in the session at
+// the seat, kept for polkit's few minutes: modules/fwupd/nixos.nix says
+// why. polkit's own engine reads this, in the JavaScript it knows.
+var writesFirmware = /^org\.freedesktop\.fwupd\.(update|downgrade)-/;
+
+polkit.addRule(function (action, subject) {
+  // Elsewhere polkit's own answers, which ask more or refuse, still hold.
+  if (!subject.active || !subject.local) {
+    return polkit.Result.NOT_HANDLED;
+  }
+  if (
+    writesFirmware.test(action.id) ||
+    action.id === "org.freedesktop.fwupd.modify-device" ||
+    action.id === "org.freedesktop.login1.set-reboot-to-firmware-setup"
+  ) {
+    return polkit.Result.AUTH_ADMIN_KEEP;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

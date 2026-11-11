@@ -33,6 +33,9 @@ onLinux {
   # Whether polkit lets an administrator tune the kernel's memory, and
   # only to the values listed, shows only with polkit, systemd and a kernel.
   vm-admins-tune-memory = import ./memory-tune.nix { inherit self pkgs; };
+  # Whether polkit asks an administrator before firmware is written, even
+  # of the seat's session, shows only with polkit, logind and fwupd's rules.
+  vm-firmware-asks-an-administrator = import ./firmware-asks.nix { inherit self pkgs; };
   # Whether a niri's kernel stacks are traced for its account and nobody
   # else shows only with polkit, bpftrace and a kernel to trace.
   vm-niri-is-traced-by-its-own = import ./niri-off-cpu.nix { inherit self pkgs; };
