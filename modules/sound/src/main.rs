@@ -51,7 +51,7 @@ use serde_json::{Value, json};
 use sound::acts::{Move, act, planned};
 use sound::devices::{Change, Devices, direction};
 use sound::interface::{Ask, VERSION, ask, error, kind_of};
-use sound::levels::{levels, offered, route};
+use sound::levels::{levels, offered, profile, route};
 use sound::rows::{Words, rows};
 
 /// How many lines a connection may have waiting to be written before
@@ -411,8 +411,8 @@ fn node(
     })
 }
 
-/// Binds a card, hearing what it says it is, which route plays each of
-/// its profile's devices, and whether anything is plugged into each.
+/// Binds a card, hearing what it says it is, its profile, which route
+/// plays each of its profile's devices, and every port it has.
 fn card(
     shared: &Arc<Mutex<Daemon>>,
     registry: &RegistryRc,
@@ -457,12 +457,10 @@ fn card(
                         })
                     }
                     ParamType::EnumRoute => {
-                        offered(pod.as_bytes()).map(|(index, devices, unplugged)| Change::Offer {
-                            card: id,
-                            index,
-                            devices,
-                            unplugged,
-                        })
+                        offered(pod.as_bytes()).map(|port| Change::Offer { card: id, port })
+                    }
+                    ParamType::Profile => {
+                        profile(pod.as_bytes()).map(|index| Change::Profile { card: id, index })
                     }
                     _ => None,
                 };
@@ -473,8 +471,9 @@ fn card(
         })
         .register();
     // Every route it has, said again as a jack or a display comes or
-    // goes, says whether anything is plugged in where each device plays.
-    card.subscribe_params(&[ParamType::Route, ParamType::EnumRoute]);
+    // goes, says whether anything is plugged in where each device plays,
+    // and its profile which of them its devices are offered.
+    card.subscribe_params(&[ParamType::Route, ParamType::EnumRoute, ParamType::Profile]);
     Some(Bound::Card {
         proxy: card,
         _listener: listener,

@@ -1,5 +1,6 @@
 //! What an act asks of the sound server, and how it's done: a device's
-//! volume or mute set, or the device chosen. A card's own device is set
+//! volume or mute set, the device chosen, or the port its card plays it
+//! through, as `wpctl set-route` sets one. A card's own device is set
 //! through the route that plays it, as the session manager saves a route's
 //! levels and as Quickshell sets them; any other device through its node's
 //! own Props. The choice goes into the default metadata's configured key,
@@ -8,7 +9,7 @@
 use serde_json::{Value, json};
 
 use crate::devices::Device;
-use crate::levels::{props, routed};
+use crate::levels::{ported, props, routed};
 
 /// One act, as asked.
 #[derive(Clone, Debug, PartialEq)]
@@ -26,6 +27,11 @@ pub enum Act {
     /// The device to play through or listen with.
     Use {
         key: String,
+    },
+    /// The port its card plays it through, by the port's index.
+    Port {
+        key: String,
+        index: i32,
     },
 }
 
@@ -87,6 +93,13 @@ pub fn act(name: &str, said: &Value) -> Result<Act, Refused> {
             Ok(Act::Mute { key, muted })
         }
         "use" => Ok(Act::Use { key }),
+        "port" => {
+            let index = said["index"]
+                .as_i64()
+                .and_then(|index| i32::try_from(index).ok())
+                .ok_or_else(|| refused("bad-act", "a port act says the port's index"))?;
+            Ok(Act::Port { key, index })
+        }
         _ => Err(refused("unknown-act", format!("no act {name:?} here"))),
     }
 }
@@ -95,7 +108,10 @@ impl Act {
     /// The device it acts on, by its record's key.
     pub fn key(&self) -> &str {
         match self {
-            Act::Volume { key, .. } | Act::Mute { key, .. } | Act::Use { key } => key,
+            Act::Volume { key, .. }
+            | Act::Mute { key, .. }
+            | Act::Use { key }
+            | Act::Port { key, .. } => key,
         }
     }
 }
@@ -137,6 +153,19 @@ pub fn planned(act: &Act, device: &Device) -> Result<Move, Refused> {
             (Some(leveled(device.volumes, *volume)), *muted)
         }
         Act::Mute { muted, .. } => (None, Some(*muted)),
+        Act::Port { index, .. } => {
+            // Only a port its card offers it, so no act moves another
+            // device's.
+            let (Some((card, _, played)), true) = (device.route, device.ports.contains(index))
+            else {
+                let message = format!("{} has no port {index}", device.name);
+                return Err(refused("no-port", message));
+            };
+            return Ok(Move::Card {
+                id: card,
+                pod: ported(*index, played),
+            });
+        }
     };
     Ok(match device.route {
         Some((card, index, profile)) => Move::Card {
@@ -167,6 +196,7 @@ mod tests {
             sink: true,
             volumes: &[0.125, 0.015_625],
             route,
+            ports: vec![0, 1],
         }
     }
 
@@ -257,6 +287,27 @@ mod tests {
                 value: r#"{"name":"speakers"}"#.into()
             })
         );
+    }
+
+    // The port is chosen on the card, for the profile's device it plays,
+    // and only among the ports it offers that device.
+    #[test]
+    fn a_port_is_chosen_on_its_card() {
+        let asked = |index: i32| Act::Port {
+            key: "device:speakers".into(),
+            index,
+        };
+        let Ok(Move::Card { id, pod }) = planned(&asked(1), &speakers(Some((7, 0, 3)))) else {
+            panic!("a port is chosen on its card");
+        };
+        assert_eq!((id, route(&pod)), (7, Some((1, 3))));
+        let refusal = |device: &Device| planned(&asked(5), device).map_err(|it| it.code);
+        assert_eq!(refusal(&speakers(Some((7, 0, 3)))), Err("no-port"));
+        assert_eq!(refusal(&speakers(None)), Err("no-port"));
+        let said = json!({"key": "device:speakers", "index": 1});
+        assert_eq!(act("port", &said), Ok(asked(1)));
+        let code = act("port", &json!({"key": "device:speakers"})).map_err(|it| it.code);
+        assert_eq!(code, Err("bad-act"));
     }
 
     #[test]

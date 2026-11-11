@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
+use crate::levels::Port;
+
 /// A change the sound server said, as the daemon takes it in.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Change {
@@ -33,15 +35,11 @@ pub enum Change {
     /// A card saying which of its routes plays one of its profile's
     /// devices, as its Route param does.
     Route { card: u32, index: i32, device: i32 },
-    /// A card saying one route it has, as its `EnumRoute` param does: the
-    /// profile's devices it can play, and whether nothing is plugged
-    /// into it.
-    Offer {
-        card: u32,
-        index: i32,
-        devices: Vec<i32>,
-        unplugged: bool,
-    },
+    /// A card saying one route it has, a port, as its `EnumRoute` param
+    /// does.
+    Offer { card: u32, port: Port },
+    /// A card saying the profile it's in, as its Profile param does.
+    Profile { card: u32, index: i32 },
     /// The default metadata saying a key, or no key for every key at
     /// once, its value none where it's let go of.
     Chose {
@@ -75,7 +73,9 @@ pub struct Devices {
     /// Each route each card has, by the card's id and the route's index:
     /// the profile's devices it can play, and whether nothing is plugged
     /// into it.
-    offers: BTreeMap<(u32, i32), (Vec<i32>, bool)>,
+    offers: BTreeMap<(u32, i32), Port>,
+    /// The profile each card is in, by its id.
+    profiles: BTreeMap<u32, i32>,
 }
 
 /// One device as an act finds it.
@@ -89,6 +89,8 @@ pub struct Device<'a> {
     /// The card playing it, the route it plays it through and the
     /// profile's device it is, where a card plays it.
     pub route: Option<(u32, i32, i32)>,
+    /// The ports it can be played through or listened with, by index.
+    pub ports: Vec<i32>,
 }
 
 /// Which way a node goes by its media class: an output (true), an input
@@ -165,27 +167,20 @@ impl Devices {
             Change::Gone { id } => {
                 self.routes.retain(|(card, _), _| *card != id);
                 self.offers.retain(|(card, _), _| *card != id);
+                self.profiles.remove(&id);
                 self.forms.remove(&id);
                 self.nodes.remove(&id).is_some()
             }
-            // A route changes no record: only how an act is done.
+            // A route moves the port its device says is chosen.
             Change::Route {
                 card,
                 index,
                 device,
-            } => {
-                self.routes.insert((card, device), index);
-                false
+            } => self.routes.insert((card, device), index) != Some(index),
+            Change::Offer { card, port } => {
+                self.offers.insert((card, port.index), port.clone()) != Some(port)
             }
-            Change::Offer {
-                card,
-                index,
-                devices,
-                unplugged,
-            } => {
-                let offer = (devices, unplugged);
-                self.offers.insert((card, index), offer.clone()) != Some(offer)
-            }
+            Change::Profile { card, index } => self.profiles.insert(card, index) != Some(index),
             Change::Chose { key, value } => {
                 match key.as_deref() {
                     Some("default.audio.sink") => self.output = named(value.as_deref()),
@@ -226,7 +221,43 @@ impl Devices {
             sink: direction(said("media.class")?)?,
             volumes: &node.volumes,
             route,
+            ports: self.ports(node).iter().map(|port| port.index).collect(),
         })
+    }
+
+    /// The card a node is one of the devices of, and which of its
+    /// profile's devices it is.
+    fn card_device(node: &Node) -> Option<(u32, i32)> {
+        let said = |key: &str| node.properties.get(key).map_or("", String::as_str);
+        let card: u32 = said("device.id").parse().ok()?;
+        let device: i32 = said("card.profile.device").parse().ok()?;
+        Some((card, device))
+    }
+
+    /// The ports a node's card offers it, as `wpctl` and Sound.qml read
+    /// them: those going its way that can play its profile's device, in
+    /// the profile the card is in. A device no card plays has none.
+    fn ports(&self, node: &Node) -> Vec<&Port> {
+        let Some((card, device)) = Devices::card_device(node) else {
+            return Vec::new();
+        };
+        let sink = node
+            .properties
+            .get("media.class")
+            .map(String::as_str)
+            .and_then(direction);
+        let profile = self.profiles.get(&card);
+        self.offers
+            .range((card, i32::MIN)..=(card, i32::MAX))
+            .map(|(_, port)| port)
+            .filter(|port| port.devices.contains(&device))
+            .filter(|port| port.sink.is_none_or(|way| Some(way) == sink))
+            .filter(|port| {
+                profile.is_none_or(|profile| {
+                    port.profiles.is_empty() || port.profiles.contains(profile)
+                })
+            })
+            .collect()
     }
 
     /// What a node's card says it is, or "" where it says nothing.
@@ -244,19 +275,24 @@ impl Devices {
     /// at least does. A device no card plays, as a USB or Bluetooth one
     /// with no routes, is never unplugged.
     fn unplugged(&self, node: &Node) -> bool {
-        let said = |key: &str| node.properties.get(key).map_or("", String::as_str);
-        let card: Option<u32> = said("device.id").parse().ok();
-        let device: Option<i32> = said("card.profile.device").parse().ok();
-        let (Some(card), Some(device)) = (card, device) else {
-            return false;
-        };
-        let mut offers = self
-            .offers
-            .range((card, i32::MIN)..=(card, i32::MAX))
-            .map(|(_, offer)| offer)
-            .filter(|(devices, _)| devices.contains(&device))
-            .peekable();
-        offers.peek().is_some() && offers.all(|(_, unplugged)| *unplugged)
+        let ports = self.ports(node);
+        !ports.is_empty() && ports.iter().all(|port| port.unplugged())
+    }
+
+    /// Each port a node's card offers it, saying the one chosen.
+    fn ported(&self, node: &Node) -> Vec<Value> {
+        let chosen = Devices::card_device(node).and_then(|at| self.routes.get(&at));
+        self.ports(node)
+            .iter()
+            .map(|port| {
+                json!({
+                    "index": port.index,
+                    "name": port.name,
+                    "available": port.available,
+                    "chosen": chosen == Some(&port.index),
+                })
+            })
+            .collect()
     }
 
     /// Each device as a record, keyed by its node's name, which a device
@@ -285,6 +321,7 @@ impl Devices {
                     "properties": node.properties,
                     "form": self.form(node),
                     "unplugged": self.unplugged(node),
+                    "ports": self.ported(node),
                 }))
             })
             .collect()
@@ -421,7 +458,11 @@ mod tests {
             index: 2,
             device: 1,
         };
-        assert!(!devices.hear(route), "a route changes no record");
+        assert!(
+            devices.hear(route.clone()),
+            "a route moves its device's port"
+        );
+        assert!(!devices.hear(route), "said again, it moves nothing");
         assert_eq!(routed(&devices), Some((7, 2, 1)));
         devices.hear(Change::Gone { id: 7 });
         assert_eq!(routed(&devices), None);
@@ -481,9 +522,12 @@ mod tests {
         devices.hear(node(42, "usb-desk", "Audio/Sink"));
         let offer = |index: i32, unplugged: bool| Change::Offer {
             card: 7,
-            index,
-            devices: vec![index],
-            unplugged,
+            port: Port {
+                index,
+                devices: vec![index],
+                available: if unplugged { "no" } else { "unknown" },
+                ..Port::default()
+            },
         };
         let unplugged = |devices: &Devices| -> Vec<bool> {
             let records = devices.records();
@@ -511,6 +555,53 @@ mod tests {
         devices.hear(offer(1, true));
         devices.hear(Change::Gone { id: 7 });
         assert_eq!(unplugged(&devices), [false, false, false]);
+    }
+
+    // The laptop's analog output plays its speakers or its headphones,
+    // one port each way, and offers a microphone port too, which isn't
+    // the output's; a port of another profile isn't either.
+    #[test]
+    fn a_device_says_the_ports_its_card_offers_it() {
+        let mut devices = Devices::default();
+        let Change::Node { mut properties, .. } = node(40, "analog", "Audio/Sink") else {
+            unreachable!("node says a node");
+        };
+        properties.insert("device.id".into(), "7".into());
+        properties.insert("card.profile.device".into(), "0".into());
+        devices.hear(Change::Node { id: 40, properties });
+        let port = |index: i32, sink: bool, name: &str, available: &'static str| Change::Offer {
+            card: 7,
+            port: Port {
+                index,
+                sink: Some(sink),
+                name: name.into(),
+                devices: vec![0],
+                profiles: vec![if index == 3 { 2 } else { 1 }],
+                available,
+            },
+        };
+        devices.hear(port(0, true, "Speakers", "unknown"));
+        devices.hear(port(1, true, "Headphones", "no"));
+        devices.hear(port(2, false, "Microphone", "unknown"));
+        devices.hear(port(3, true, "Line Out", "yes"));
+        devices.hear(Change::Profile { card: 7, index: 1 });
+        assert!(
+            devices.hear(Change::Route {
+                card: 7,
+                index: 0,
+                device: 0
+            }),
+            "a port chosen moves its device"
+        );
+        assert_eq!(
+            devices.records()[0]["ports"],
+            json!([
+                {"index": 0, "name": "Speakers", "available": "unknown", "chosen": true},
+                {"index": 1, "name": "Headphones", "available": "no", "chosen": false},
+            ])
+        );
+        let found = devices.device("device:analog").map(|device| device.ports);
+        assert_eq!(found, Some(vec![0, 1]));
     }
 
     #[test]
