@@ -14,6 +14,10 @@ printf '%s\n' "$@" >>"$XDG_RUNTIME_DIR/pi-opened"
 # nothing and, on ~/hosted-ID, names the host's viewer, or on
 # ~/refused-ID, plain pi on the session's log; and either draws the same
 # frame again, as a viewer catching up does, and takes the keys from there.
+# The viewer runs under a shell that, only on its exit 3, as a host's
+# release ends mycelium's attach, starts the join again with --released,
+# which names plain pi on the log (harness #1317's viewingWords); the
+# viewer exits 3 on ~/released-ID.
 if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
   frame() {
     # The same frame each time, every line placed, so one drawn again over
@@ -23,8 +27,9 @@ if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
   }
   keys() {
     # Each key as it comes, to the file the test reads, a byte a read, so
-    # none is taken from the terminal but those written down.
-    while [ ! -e "$HOME/move-$1" ]; do
+    # none is taken from the terminal but those written down, until
+    # ~/$2-ID says to stop.
+    while [ ! -e "$HOME/$2-$1" ]; do
       if IFS= read -r -s -n 1 -t 0.2 key; then printf '%s' "$key" >>"$HOME/typed-$1"; fi
     done
   }
@@ -44,7 +49,7 @@ if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
     stty raw -echo
     frame "$session"
     echo "$$ ${MYCELIUM_WAKE:-}" >"$XDG_RUNTIME_DIR/moves-$session"
-    keys "$session"
+    keys "$session" move
     printf '["pi","join","--session","%s"]' "$session" >"$MYCELIUM_AGAIN"
     : >"$MYCELIUM_WAKE"
     exit 75
@@ -56,8 +61,14 @@ if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
       sleep 0.1
     done
     if [ -e "$HOME/hosted-$session" ]; then
-      printf '["pi","attach","--host","harbour-attended","--session","%s"]' \
-        "$session" >"$MYCELIUM_AGAIN"
+      # The words have no spaces, so the shell needs no quotes to keep them.
+      # shellcheck disable=SC2016 # The shell's $1 and $? are for it to expand.
+      viewing='$1 $2 $3 $4 $5 $6; s=$?; [ $s -eq 3 ] || exit $s; shift 6; exec $*'
+      {
+        printf '["sh","-c","%s","sh",' "$viewing"
+        printf '"pi","attach","--host","harbour-attended","--session","%s",' "$session"
+        printf '"pi","join","--released","--session","%s"]' "$session"
+      } >"$MYCELIUM_AGAIN"
     else
       printf '["pi","--session","%s/%s.jsonl"]' "$HOME" "$session" >"$MYCELIUM_AGAIN"
     fi
@@ -69,8 +80,17 @@ if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
     stty raw -echo
     frame "$session"
     echo "$$ attach" >"$XDG_RUNTIME_DIR/moves-$session"
-    cat >>"$HOME/typed-$session"
-    exit 0
+    keys "$session" released
+    exit 3
+    ;;
+  "join --released")
+    # Released: plain pi on the log, once no host holds it, which the
+    # harness's own tests prove it waits for.
+    session=$4
+    echo "$$ released" >"$XDG_RUNTIME_DIR/moves-$session"
+    printf '["pi","--session","%s/%s.jsonl"]' "$HOME" "$session" >"$MYCELIUM_AGAIN"
+    : >"$MYCELIUM_WAKE"
+    exit 75
     ;;
   *) ;;
   esac
