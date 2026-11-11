@@ -199,13 +199,55 @@ QtObject {
             { key: "verb:more", step: "rows" },
             { key: "verb:spawn", run: ["sh"] },
             { ask: { ask: "act" } },
-            { key: "verb:open", open: "" }
+            { key: "verb:open", open: "" },
+            { key: "verb:notice:goTo", go: "Slack" },
+            { key: "verb:notice:goTo", go: "" }
         ];
         Expect.same("each act is known by its form", acts.map(Ready.actForm),
-            ["ask", "copy", "open", "step", "step", "", "", ""]);
+            ["ask", "copy", "open", "step", "step", "", "", "", "go", ""]);
         Expect.same("only the acts the shell can do are offered, in their order",
             Ready.actsOf({ acts: acts }).map(act => act.key), ["verb:wifi-leave",
-                "verb:copy:copy", "verb:open", "verb:details", "verb:more"]);
+                "verb:copy:copy", "verb:open", "verb:details", "verb:more",
+                "verb:notice:goTo"]);
+        const going = acts[8];
+        const slack = { id: "Slack" };
+        Expect.same("going to a program with a window open goes to its window",
+            Ready.going(going, { slack: { id: 9 } }, slack), { window: 9 });
+        Expect.same("with only its entry, it opens the program",
+            Ready.going(going, { foot: { id: 7 } }, slack), { entry: slack });
+        Expect.same("with neither, Return does nothing", Ready.going(going, {}, null), null);
+        const roles = { agent: "A", bell: "B" };
+        Expect.same("a mark is its role's glyph, or its own code point served in hex",
+            ["agent", { code: "f198" }, "absent", { code: "" }, { code: "zz" }, null]
+                .map(glyph => Ready.glyphOf(glyph, roles)),
+            ["A", "\uf198", "", "", "", ""]);
+        const worded = { name: "Open the Link", glyph: "L" };
+        Expect.same("an act is said in its key's words where it's served none",
+            Ready.actWorded(acts[0], worded, roles),
+            { name: "Open the Link", glyph: "L", side: "" });
+        Expect.same("and in its sender's where it is", Ready.actWorded({
+            key: "verb:notice:reply", name: "Reply", glyph: "agent" }, worded, roles),
+            { name: "Reply", glyph: "A", side: "" });
+        const reads = { ask: "mark", notices: [7], read: true };
+        Expect.same("an act the shell does sends its also once done", [
+            { key: "verb:notice:goTo", go: "slack", also: reads },
+            { key: "verb:open", open: "https://example.org", also: reads },
+            { key: "verb:copy", copy: "hi", also: reads }].map(Ready.alsoOf),
+            [reads, reads, reads]);
+        Expect.same("an ask, a step or an act with none sends nothing besides", [
+            { key: "verb:a", ask: { ask: "act" }, also: reads },
+            { key: "verb:more", step: "rows", also: reads },
+            { key: "verb:copy", copy: "hi" }].map(Ready.alsoOf), [null, null, null]);
+        Expect.same("a link says its host at its side", Ready.actWorded({
+            key: "verb:notice:link", side: "github.com" }, worded, roles),
+            { name: "Open the Link", glyph: "L", side: "github.com" });
+        const asking = { key: "verb:notice:open", ask: { ask: "invoke", id: 4 }, token: true };
+        Expect.same("an ask that takes a token is sent with it",
+            Ready.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });
+        Expect.same("and never without one", [Ready.tokened(asking, ""),
+            Ready.tokened(asking, undefined)], [null, null]);
+        Expect.same("an ask that takes none is sent as served", Ready.tokened(acts[0], "abc"),
+            acts[0].ask);
         Expect.same("a row serving no acts offers none", Ready.actsOf({}), []);
         Expect.same("an act's verb is its words' where they say one",
             Ready.verbOf(acts[0], "disconnect"), "disconnect");

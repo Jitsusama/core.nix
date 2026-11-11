@@ -243,12 +243,77 @@ function actForm(act) {
     if (typeof act.open === "string" && act.open !== "") {
         return "open";
     }
+    if (typeof act.go === "string" && act.go !== "") {
+        return "go";
+    }
     return act.step === "drawer" || act.step === "rows" ? "step" : "";
 }
 
 // A row's acts the shell can do, in the order served, Return's first.
 function actsOf(row) {
     return (row?.acts ?? []).filter(act => actForm(act) !== "");
+}
+
+// A row's mark as drawn: words.json's glyph role it names (`roles`, the
+// theme's glyphs), or a program's own mark no role names, served as
+// `{ code }` in hex and made its character once, as the row is made
+// (Y2YBTS, 2026-11-11, 3093d93d); "" for any other.
+const HEX = 16;
+function glyphOf(glyph, roles) {
+    if (typeof glyph === "string") {
+        return roles[glyph] ?? "";
+    }
+    const code = Number.parseInt(String(glyph?.code ?? ""), HEX);
+    return Number.isInteger(code) && code > 0 ? String.fromCodePoint(code) : "";
+}
+
+// Where an act going to a program takes Joel (ready-rows.md's `go`, the
+// program's desktop entry id, served only where the daemon found its
+// entry): its newest window, from `byApp`, Niri.qml's windows by app id
+// in lower case, else `entry`, the program's desktop entry as the shell
+// knows it, looked up only at Return, to open; null where there's
+// neither, so Return does nothing.
+function going(act, byApp, entry) {
+    const window = byApp[String(act?.go ?? "").toLowerCase()] ?? null;
+    if (window !== null) {
+        return { window: window.id };
+    }
+    return entry ? { entry } : null;
+}
+
+// The ask an act the shell does itself sends once it's done, its `also`,
+// as a notice's going to its program reads it; null for any other act,
+// an ask's own being its ask (Y2YBTS, 2026-11-11, a9bce629).
+const DONE_HERE = new Set(["go", "open", "copy"]);
+function alsoOf(act) {
+    return DONE_HERE.has(actForm(act)) && act.also !== null && typeof act.also === "object"
+        ? act.also : null;
+}
+
+// An ask as it's sent: with the activation token the act was given where
+// it carries `token: true`, so its sender can bring its window forward;
+// null where it needs one and none came, so it isn't sent without.
+function tokened(act, token) {
+    if (act.token !== true) {
+        return act.ask;
+    }
+    return typeof token === "string" && token !== ""
+        ? Object.assign({}, act.ask, { token }) : null;
+}
+
+// An act's row as it's said: `worded`, its key's words.json name and
+// glyph, with nothing at its side, but for words from outside the
+// vocabulary, which the daemon serves with it: a `name`, as a notice's
+// offer in its sender's words, and a `side`, as a link's host; and a
+// `glyph`, a role or `{ code }`, as rows' are. A verb whose words are the
+// launcher's has a key of its own instead (Y2YBTS, 2026-11-11, a9bce629).
+// `roles` are the theme's glyphs.
+function actWorded(act, worded, roles) {
+    return {
+        name: typeof act.name === "string" && act.name !== "" ? act.name : worded.name,
+        glyph: act.glyph === undefined ? worded.glyph : glyphOf(act.glyph, roles),
+        side: typeof act.side === "string" ? act.side : ""
+    };
 }
 
 // The verb the foot says for an act: words.json's for its key, `worded`,

@@ -222,20 +222,16 @@ Scope {
         const first = acts[0] ?? null;
         const steps = acts.some(one => one.step === "rows");
         const verbs = () => steps ? inside(key) : acts.map(one => actRow(key, one));
-        // A Return that steps into rows or asks leaves the launcher open, so
-        // Joel sees what it became, as a setting's choice always has; one
-        // that copies or opens closes it, as a value's row always has.
-        // A row whose Return asks is that act's for the key language, so its
+        // How a Return leaves the launcher is leaving's. A row whose Return asks is that act's for the key language, so its
         // command is read from the act's words (CommandBinding.wordsFor), as
         // Firmware's Install Now ends something and writes `install!` on
         // the line rather than running at the first Return (RCTRF8,
         // 2026-11-11).
         const asking = Ready.actForm(first) === "ask" ? { wordsId: first.key } : {};
-        const acting = acts.length === 0 ? {} : {
+        const acting = acts.length === 0 ? {} : Object.assign({
             verb: verbOf(first),
-            stays: first.step === "rows" || Ready.actForm(first) === "ask",
             run: () => act(key, first)
-        };
+        }, leaving(first));
         // A row asking Joel to be sure holds its one act alone, as the
         // shell's own sure rows did, so the key language reads that act's
         // command (Catalogue.endsSomething) rather than a row of verbs.
@@ -254,7 +250,7 @@ Scope {
             key: row.thing ?? key,
             thing: !!row.drawer,
             name: row.name ?? "",
-            glyph: Theme.glyph[row.glyph ?? ""] ?? "",
+            glyph: Ready.glyphOf(row.glyph ?? "", Theme.glyph),
             hue: row.hue ?? "",
             side: Ready.sideJoined(items),
             // Each item, so the row keeps an item's width and draws its hue.
@@ -274,9 +270,26 @@ Scope {
         }, acting, asking, copying, fields ?? {}));
     }
 
+    // How the launcher leaves once an act is done. A step into rows or an
+    // ask keeps it open, so Joel sees what it became, as a setting's choice
+    // always has; a copy or an open closes it, as a value's row always has.
+    // An ask that brings its sender forward with a token is done while the
+    // launcher holds the keys, since niri gives one only then, and closes
+    // it, as does going to a program, done once the launcher's gone, since
+    // niri focuses a window only then.
+    function leaving(one) {
+        const form = Ready.actForm(one);
+        return {
+            stays: one.step === "rows" || form === "ask" && one.token !== true,
+            now: form === "ask" && one.token === true,
+            later: form === "go"
+        };
+    }
+
     // The acts of a row the launcher can do here: a step into the drawer
     // only where the launcher steps into one, so nothing offered does
-    // nothing.
+    // nothing. Going to a program is always offered, since the daemon
+    // serves it only where it found the program's entry.
     function actsOf(row) {
         const launcher = maker?.launcher;
         return Ready.actsOf(row).filter(one => one.step !== "drawer"
@@ -290,14 +303,19 @@ Scope {
 
     // An act as a row of its own, among a row's verbs.
     function actRow(key, one) {
+        const said = Ready.actWorded(one,
+            { name: Words.name(one.key), glyph: Words.glyph(one.key) }, Theme.glyph);
         return maker.thing({
             key: one.key,
             what: "",
             verb: verbOf(one),
-            name: Words.name(one.key),
-            glyph: Words.glyph(one.key),
+            name: said.name,
+            glyph: said.glyph,
+            side: said.side,
             hue: "action",
             stays: one.step === "rows",
+            now: leaving(one).now,
+            later: leaving(one).later,
             copies: typeof one.copy === "string" ? () => one.copy : undefined,
             run: () => act(key, one)
         });
@@ -311,10 +329,24 @@ Scope {
         case "copy":
             if (one.copy !== "")
                 Quickshell.clipboardText = one.copy;
+            alsoAsked(one);
             return;
         case "open":
             Niri.spawn(["xdg-open", one.open]);
+            alsoAsked(one);
             return;
+        case "go": {
+            // The entry's looked up here, at Return, never as rows are
+            // made, and only where no window of it is open.
+            const where = Ready.going(one, Niri.byApp, Niri.byApp[one.go.toLowerCase()]
+                ? null : DesktopEntries.byId(one.go));
+            if (where?.window !== undefined)
+                Niri.act({ FocusWindow: { id: where.window } });
+            else if (where?.entry && maker)
+                Niri.spawn(maker.command(where.entry));
+            alsoAsked(one);
+            return;
+        }
         case "step":
             if (one.step === "rows")
                 launcher?.enter(rowAt(key));
@@ -324,6 +356,21 @@ Scope {
         case "ask":
             asked(key, one);
         }
+    }
+
+    // Sends what an act the shell did asks besides, once it's done, as a
+    // notice gone to is read (ReadyRows.js's alsoOf). Nothing waits on it:
+    // its row moves as the daemon tells the change, so a refusal goes to
+    // the journal alone, the row as it was saying it on screen.
+    function alsoAsked(one) {
+        const also = Ready.alsoOf(one);
+        if (also === null)
+            return;
+        link.ask(also, answer => {
+            const why = Ready.refusal(answer, Words.field.becoming ?? {});
+            if (why !== "")
+                console.info(`launcher: ${one.key}'s also refused: ${why}`);
+        });
     }
 
     // Asks an act of the daemon on the rows' own connection, its row drawn
@@ -345,12 +392,27 @@ Scope {
         const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
         const how = one.becomes ? undefined : { done: () => answered };
         maker?.becomes(shown, becomes, row.name ?? "", one.ask.act ?? verbOf(one), how);
-        link.ask(one.ask, answer => {
-            const why = Ready.refusal(answer, Words.field.becoming ?? {});
+        const words = Words.field.becoming ?? {};
+        const send = ask => link.ask(ask, answer => {
+            const why = Ready.refusal(answer, words);
             if (why === "")
                 answered = true;
             else
                 maker?.refused(shown, why);
+        });
+        if (one.token !== true) {
+            send(one.ask);
+            return;
+        }
+        // Asked as the act is done, never ahead, since niri gives a token
+        // only for the input just made; without one it isn't sent, as its
+        // sender couldn't come forward, and says so.
+        Quickshell.activationToken(token => {
+            const ask = Ready.tokened(one, token);
+            if (ask === null)
+                maker?.refused(shown, words.couldNot ?? "");
+            else
+                send(ask);
         });
     }
 

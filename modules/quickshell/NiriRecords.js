@@ -100,6 +100,21 @@ function isSessionApp(app) {
     return NUMBERED_SESSION.test(app) || HOSTED_VIEWER.test(app);
 }
 
+// The newest window of each program, by its app id in lower case, the
+// highest id being the last opened, so a row going to a program finds its
+// window by one lookup rather than a walk of every window (ready-rows.md's
+// `go`, Y2YBTS, 2026-11-11).
+function byApp(windows) {
+    const newest = {};
+    for (const window of Object.values(windows)) {
+        const app = String(window.app_id ?? "").toLowerCase();
+        if (app !== "" && !(newest[app]?.id > window.id)) {
+            newest[app] = window;
+        }
+    }
+    return newest;
+}
+
 function kindOf(key) {
     const at = String(key).indexOf(":");
     return at < 0 ? [String(key), ""] : [key.slice(0, at), key.slice(at + 1)];
