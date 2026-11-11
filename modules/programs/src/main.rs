@@ -1,4 +1,4 @@
-//! programs SOCKET SOURCES
+//! programs SOCKET SOURCES [WORDS]
 //!
 //! What's installed and what each program had open, held ready for the
 //! shell and anything else that asks, over SOCKET in the shell's daemon
@@ -26,12 +26,16 @@
 //! of zoxide and ssh, as each ask names it (visited.rs, machines.rs). The
 //! Programs collection's rows are made as a watch of them begins and again
 //! as the windows daemon says a window opened, closed or was looked at, or
-//! an entry changed (rows.rs).
+//! an entry changed (rows.rs). Capture's Recent's rows are made as a watch
+//! of them begins and as what was taken changes, worded from the
+//! launcher's vocabulary WORDS, and with no WORDS none is (taken.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
 mod heard;
 mod rows;
+mod taken;
+mod watch;
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -49,11 +53,13 @@ use programs::mime::Mime;
 use programs::notify::Notify;
 use programs::preview::{self, Previewer};
 use programs::source::{self, Source};
+use programs::taken_rows;
 use programs::{command, entry, machines, now_ms, repositories, visited, xdg};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 
 use heard::{heard, notice};
+use watch::Watch;
 
 /// How many of the last answers' times health says.
 const TIMES: usize = 32;
@@ -62,27 +68,6 @@ const TIMES: usize = 32;
 const QUEUED: usize = 256;
 /// How long to wait after a connection couldn't be taken.
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
-
-/// One watch a client holds.
-struct Watch {
-    connection: u64,
-    id: Value,
-    kinds: Vec<String>,
-    keys: Option<Vec<String>>,
-    told: SyncSender<String>,
-    stream: Arc<UnixStream>,
-    /// The hidden programs it lists all the same (`program_rows.rs`).
-    shown: Vec<String>,
-}
-
-impl Watch {
-    fn wants(&self, key: &str) -> bool {
-        match &self.keys {
-            Some(keys) => keys.iter().any(|k| k == key),
-            None => kind_of(key).is_some_and(|kind| self.kinds.iter().any(|k| k == kind)),
-        }
-    }
-}
 
 /// What a command a source runs is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -122,8 +107,9 @@ struct Daemon {
     /// Every entry's `program` record, as Programs' rows were last made
     /// from, until a folder of them changes.
     catalogue: Option<Vec<Value>>,
-    /// Programs' rows as last told.
+    /// Programs' rows as last told, and Capture's.
     rows: Kept,
+    taken: Kept,
 }
 
 struct Shared {
@@ -134,12 +120,15 @@ struct Shared {
     sources: Vec<Source>,
     folders: Vec<PathBuf>,
     search: String,
+    home: String,
+    /// The words Capture's rows are said in, where they were handed.
+    taken_words: Option<taken_rows::Words>,
 }
 
 fn main() {
     let mut args = std::env::args().skip(1);
     let (Some(socket), Some(listed)) = (args.next(), args.next()) else {
-        eprintln!("usage: programs SOCKET SOURCES");
+        eprintln!("usage: programs SOCKET SOURCES [WORDS]");
         std::process::exit(64);
     };
     let sources: Vec<Source> = match std::fs::read_to_string(&listed)
@@ -183,12 +172,15 @@ fn main() {
             windows: BTreeMap::new(),
             catalogue: None,
             rows: Kept::default(),
+            taken: Kept::default(),
         }),
         notify,
         previewer: Mutex::new(Previewer::new(std::env::var("PROGRAMS_PREVIEW").ok())),
         sources,
         folders,
         search: std::env::var("PATH").unwrap_or_default(),
+        home: std::env::var("HOME").unwrap_or_default(),
+        taken_words: taken::words(args.next()),
     });
     if let Some(notify) = &shared.notify {
         // Its folders are watched before the socket answers, so no
@@ -218,9 +210,11 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Whether some watch wants this key.
+/// Whether some watch wants this key, as what was taken is while
+/// Capture's rows are watched.
 fn watched(daemon: &Daemon, key: &str) -> bool {
     daemon.watches.iter().any(|watch| watch.wants(key))
+        || (key == taken::LIST && taken::watched(daemon))
 }
 
 /// Keeps these records and says these keys gone, telling each watch what
@@ -439,6 +433,7 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
     }
     match printed {
         Ok(printed) => {
+            let taking = key == taken::LIST;
             daemon.commands.insert(key, json!({"state": "answering"}));
             if what == Run::List && source.told {
                 daemon.listers[at] = source::listers(&printed);
@@ -448,6 +443,9 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
                 Run::Opened => source::opened(source, &printed),
             };
             keep(&mut daemon, record.into_iter().collect(), &[]);
+            if taking && taken::watched(&daemon) {
+                taken::make(shared, &mut daemon, &[]);
+            }
         }
         Err(why) => {
             // A list never read says it's empty and why, so a watch
@@ -537,7 +535,8 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 /// kind, as the launcher holds while it's open, runs neither, so Chrome's
 /// history is read only as Chrome is stepped into.
 fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
-    for at in sources_of(shared, Run::List, kinds, keys) {
+    let lists = sources_of(shared, Run::List, kinds, keys);
+    for at in lists.into_iter().chain(taken::lists(shared)) {
         if keys.is_none() && shared.sources[at].asked {
             continue;
         }
@@ -554,6 +553,7 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
             start(shared, at, Run::Opened);
         }
         read_named(shared, keys);
+        taken::ahead(shared, keys);
     }
 }
 
@@ -603,7 +603,9 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     }
     read_named(shared, keys.unwrap_or_default());
     if names_rows(kinds, keys) {
-        rows::make(shared, &mut lock(&shared.daemon), &[]);
+        let mut daemon = lock(&shared.daemon);
+        rows::make(shared, &mut daemon, &[]);
+        taken::make(shared, &mut daemon, &[]);
     }
 }
 
@@ -704,6 +706,8 @@ fn answer(
             kinds,
             keys,
             shown,
+            place,
+            folders,
         } => {
             // An entry is read at once, a file or two, so the answer holds
             // it; a list's command may be slow, so it's told after.
@@ -719,7 +723,10 @@ fn answer(
                 // Programs' rows, made with what it shows, before it's held,
                 // so it's told them in its answer and not again as a change.
                 if names_rows(&kinds, keys.as_deref()) {
-                    rows::make(shared, &mut daemon, &shown);
+                    match place.as_deref() {
+                        Some("taken") => taken::make(shared, &mut daemon, &folders),
+                        _ => rows::make(shared, &mut daemon, &shown),
+                    }
                 }
                 // What it's told first is queued under the lock that holds
                 // the watch, so a change read since, as inotify's are, is
@@ -727,20 +734,29 @@ fn answer(
                 // could be said first, and the whole answer after it would
                 // put back what the change moved on from. One that can't
                 // be queued is hung up on, as a change would hang up on it.
-                let first = json!({"id": id, "records": held(&daemon, &kinds, keys.as_deref())});
-                if told.try_send(first.to_string()).is_err() {
-                    let _ = hangup.shutdown(Shutdown::Both);
-                    return None;
-                }
-                daemon.watches.push(Watch {
+                // It's told first only what it would be told of as a
+                // change, so a watch of one place hears none of another's.
+                let watch = Watch {
                     connection,
                     id: id.clone(),
                     kinds: kinds.clone(),
                     keys: keys.clone(),
                     shown,
+                    place,
+                    folders,
                     told: told.clone(),
                     stream: Arc::clone(hangup),
-                });
+                };
+                let records: Vec<Value> = held(&daemon, &kinds, keys.as_deref())
+                    .into_iter()
+                    .filter(|record| record["key"].as_str().is_some_and(|key| watch.wants(key)))
+                    .collect();
+                let first = json!({"id": id, "records": records});
+                if told.try_send(first.to_string()).is_err() {
+                    let _ = hangup.shutdown(Shutdown::Both);
+                    return None;
+                }
+                daemon.watches.push(watch);
             }
             // What it reads now it's told as a change, after this answer,
             // so the answer says what's held and the rest follows.

@@ -16,6 +16,8 @@ let
   sources = pkgs.writeText "programs-sources.json" (
     builtins.toJSON config.jitsusama.quickshell.launcher.recents
   );
+  # The launcher's vocabulary, which the rows it serves are said in.
+  words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
 in
 {
   imports = [ ../quickshell/recents.nix ];
@@ -39,7 +41,7 @@ in
       Requires = [ "programs.socket" ];
     };
     Service = {
-      ExecStart = "${lib.getExe programs} %t/daemons/programs.sock ${sources}";
+      ExecStart = "${lib.getExe programs} %t/daemons/programs.sock ${sources} ${words}";
       # The git it lists a repository's files with, as Neovim's Open a
       # File by Name steps into one (src/repositories.rs), and the
       # file-preview it keeps for drawers that preview a file

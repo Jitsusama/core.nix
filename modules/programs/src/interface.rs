@@ -47,12 +47,16 @@ pub enum Ask {
     },
     /// Records of these kinds as they change, all of them or these keys.
     /// `shown` names the hidden programs the watcher lists all the same,
-    /// as Programs' rows do those another provider gives acts.
+    /// as Programs' rows do those another provider gives acts; `place`
+    /// the one place whose rows it hears (ready-rows.md), and `folders`
+    /// those Capture's rows are taken from.
     Watch {
         id: Value,
         kinds: Vec<String>,
         keys: Option<Vec<String>>,
         shown: Vec<String>,
+        place: Option<String>,
+        folders: Vec<String>,
     },
     Unwatch {
         id: Value,
@@ -99,6 +103,20 @@ fn kinds(said: &Value) -> Result<Vec<String>, String> {
     }
 }
 
+/// The strings a field of an ask lists, or none.
+fn strings(said: &Value, field: &str) -> Vec<String> {
+    said.get(field)
+        .and_then(Value::as_array)
+        .map(|listed| {
+            listed
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// What a line from a client asks.
 pub fn ask(line: &str) -> Ask {
     let Ok(said) = serde_json::from_str::<Value>(line) else {
@@ -136,17 +154,9 @@ pub fn ask(line: &str) -> Ask {
                 id,
                 kinds,
                 keys,
-                shown: said
-                    .get("shown")
-                    .and_then(Value::as_array)
-                    .map(|shown| {
-                        shown
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_owned)
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                shown: strings(&said, "shown"),
+                place: said.get("place").and_then(Value::as_str).map(str::to_owned),
+                folders: strings(&said, "folders"),
             },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
@@ -179,6 +189,23 @@ mod tests {
                 kinds: KINDS.iter().map(|k| (*k).to_owned()).collect(),
                 keys: Some(vec!["program:kitty".into(), "recent:shared".into()]),
                 shown: Vec::new(),
+                place: None,
+                folders: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_watch_of_rows_names_its_place_and_what_it_takes_them_from() {
+        assert_eq!(
+            ask(r#"{"id":5,"ask":"watch","kind":"row","place":"taken","folders":["/a",1]}"#),
+            Ask::Watch {
+                id: json!(5),
+                kinds: vec!["row".into()],
+                keys: None,
+                shown: Vec::new(),
+                place: Some("taken".into()),
+                folders: vec!["/a".into()],
             }
         );
     }

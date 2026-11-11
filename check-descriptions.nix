@@ -2748,8 +2748,8 @@
     a place's rows served ready in the crate's wrapped form are placed by their order and a
     summary beside them never is; each time form is said in the launcher's words as of now, a
     time put into its words where they hold one; a side joins its items by a dot, a drawer's
-    facts are drawn as the drawer reads them, and a row says whether its words turn by minute,
-    by day or never
+    facts are drawn as the drawer reads them, its picture and its eyebrow's parts passed through
+    only where served, and a row says whether its words turn by minute, by day or never
   '';
   the-launchers-graphs-draw-in-braille = ''
     a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the

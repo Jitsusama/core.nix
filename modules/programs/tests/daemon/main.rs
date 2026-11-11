@@ -12,9 +12,11 @@
 //! file-preview kept; what kitty's page reads of zoxide's database, ssh's
 //! files and zsh's history is read as each is asked; and an ask or kind it
 //! doesn't know is refused. Each module beside this one tests one more of
-//! what it serves, over the same daemon: Programs' rows (rows.rs).
+//! what it serves, over the same daemon: Programs' rows (rows.rs) and
+//! Capture's (taken.rs).
 
 mod rows;
+mod taken;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -131,8 +133,20 @@ fn fixture(folder: &Path) -> PathBuf {
     let file = folder.join("sources.json");
     std::fs::write(&file, sources.to_string()).unwrap();
     previewer(&folder.join("file-preview"));
+    std::fs::write(folder.join("words.json"), WORDS).unwrap();
     file
 }
+
+/// The launcher's words Capture's rows are said in, as words.json holds them.
+const WORDS: &str = r#"{"things": [
+  {"id": "capture:recent", "said": {"in": "in {folder}", "picture": "picture",
+    "video": "video", "silent": "not answering"}},
+  {"id": "capture:taken", "name": "Taken"},
+  {"id": "capture:dimensions", "name": "Dimensions"},
+  {"id": "capture:length", "name": "Length"},
+  {"id": "file-chooser:size", "name": "Size"},
+  {"id": "path:file", "glyph": "file"}
+]}"#;
 
 /// A stand-in for file-preview, kept (serve), answering each file asked
 /// with its path and the process that answered, so a case sees whether
@@ -150,7 +164,7 @@ fn previewer(path: &Path) {
     let script = r#"#!SHELL
 while IFS= read -r line; do
   case $line in *stuck*) sleep infinity & echo $! > "$0.waiting"; wait ;; esac
-  printf '{"picture": "%s", "by": %s}\n' "${line#show }" $$
+  printf '{"picture": "%s", "by": %s, "across": 4, "down": 3}\n' "${line#show }" $$
 done
 "#
     .replace("SHELL", &shell.display().to_string());
@@ -190,6 +204,8 @@ impl Running {
         command
             .arg(&socket)
             .arg(&sources)
+            .arg(folder.join("words.json"))
+            .env("HOME", &folder)
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
             .env("PROGRAMS_PREVIEW", folder.join("file-preview"))
