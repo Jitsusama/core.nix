@@ -23,8 +23,12 @@ function placed(key, session) {
         return { into: null, entry: null };
     }
     const changed = Date.parse(session.at ?? "") || 0;
+    // One parked keeps the window its holder keeps, where the node knows
+    // it, so the cutover can keep its place before it wakes it.
     if (session.standing === "parked") {
-        return { into: "resting", entry: { file: id, presence, window: null, held: null } };
+        return { into: "resting", entry: {
+            file: id, presence, window: session.window ?? null, held: session.held ?? null
+        } };
     }
     if (session.standing === "closed") {
         return { into: "ending", entry: { file: id, presence, window: null, held: null, changed } };
