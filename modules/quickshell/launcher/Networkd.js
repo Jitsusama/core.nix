@@ -153,8 +153,11 @@ const NEIGHBOUR_PARTS = [
 function neighbourParts(one) {
     const out = [];
     for (const [field, id, note] of NEIGHBOUR_PARTS) {
-        const side = [one[field] ?? []].flat().join(", ");
-        if (side !== "") out.push({ id, side, note });
+        const said = one[field] ?? [];
+        const side = Array.isArray(said) ? said.join(", ") : String(said);
+        if (side !== "") {
+            out.push({ id, side, note });
+        }
     }
     return out;
 }
