@@ -136,6 +136,11 @@ fault "stretched and grotesque" names.
 - **Less motion asked for**: with `prefers-reduced-motion: reduce`, nothing
   moves and the page is complete.
 - **Without script**: a page to read is whole with JavaScript off.
+- **A replay walk**, for each terminal replay: it loads paused at 1× with
+  its speed shown; each speed step and < and > change it without a jump;
+  the bar seeks by pointer and by keys, and [ and ] land on each named
+  chapter; scrolled up mid-play, the reader stays put while output arrives,
+  and every line printed so far can be scrolled back to.
 
 ## Keys and Access
 
@@ -207,6 +212,11 @@ the aesthetic skill's questions:
 - Is there whimsy at the thresholds, and none in the way?
 - Could a reader who wasn't there get the whole idea from the first screen?
 - Is anything there that nobody asked for?
+- Is it one design? List each kind of thing the site shows (step, figure,
+  fold, callout, table, player) and the forms each takes across its pages
+  and sections: a kind in two forms, or a control that behaves two ways, is
+  fixed in the shared component. Then walk it as a reader who wasn't there,
+  first screen to last: does each part come where they'd need it?
 - Would it hang in a museum, and could he work in it all day?
 
 When a judge's or his complaint names a fault, measure it before calling it

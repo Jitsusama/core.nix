@@ -466,6 +466,36 @@ at a time.
   naming its acts and the arrows sit in one band off the slides, at
   `--step-small` and 4.5:1, covering nothing.
 
+## A Terminal Replay
+
+A recorded terminal session is a player the reader drives (SKILL.md,
+Replays).
+
+- **asciinema-player does half of it.** It takes `speed`, `idleTimeLimit`
+  (cap idle gaps at about 2 s) and `markers`, the chapters, which it draws
+  on its progress bar and jumps between with [ and ]. Give it
+  `autoplay: false` and `speed: 1`. It draws no control for speed and
+  keeps no scrollback, showing only its terminal's rows, so the site draws
+  both.
+- **Speed is a control of the site's own**, a button in the player's band
+  showing "1×", stepping through 0.5×, 1×, 2× and 4× and back, and < and >
+  step it too. Changing it remakes the player at the same time with
+  `startAt` and the new `speed`, so nothing jumps.
+- **Scrollback is a terminal that keeps it, or a log beside one.** Either
+  play the cast into xterm.js, which keeps scrollback: write each event's
+  output as the clock passes it, and seek by resetting and writing every
+  event up to the new time. Or keep the player and set a log under it, in
+  the kit's mono, appended with each line the cast prints, scrollable and
+  holding its place while the reader is scrolled up. Either way k and j
+  scroll it and G returns to the latest.
+- **Chapters are named in the cast**, as its `m` events, so the bar's
+  markers, the Keys list and the twin's headings come from one list.
+- **Its band is text too**: play state, the speed, the time played and the
+  whole and the chapter it's in, at `--step-small` and 4.5:1, off the
+  terminal, covering none of it.
+- **Under reduced motion it never plays by itself**, and its twin is the
+  whole transcript, chapter by chapter.
+
 ## Live Data, Still
 
 - **Hide hints with `visibility`, never `display`**, so showing them moves

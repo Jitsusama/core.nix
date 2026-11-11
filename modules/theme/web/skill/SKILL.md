@@ -329,6 +329,28 @@ Each rule says why, in his words where he said it.
   width. "wrapping in shitty spots" (2026-09-10); "text overflowing into other
   text" (2026-11-07).
 
+### One Site, Thought Whole
+
+"the website has not been holistically re-thunk. it feels like a mash of
+things and good UX has not been considered consistently in so many ways. it
+feels like frankenstein right now" (2026-11-11).
+
+- **A site that grows is rethought as a whole, never appended to.** A new
+  section is the moment to read the whole site cold and reshape it, not a
+  block added at the end or wedged between two others. Its structure
+  follows the reader's journey: what they need first, what next, and where
+  they'll want to come back to, walked as a reader who wasn't there. A part
+  that no longer fits that walk moves, merges or goes, however recent.
+- **One set of components, used the same way everywhere.** Each kind of
+  thing (a step, a figure, a fold, a callout, a table, a player) is drawn
+  by one component, with one look and one behaviour on every page and in
+  every section, and its keys, controls and words mean the same in each.
+  A section that needs more changes the shared component for all of them;
+  a new component is only for a new kind of thing.
+- **Consistency is checked, not hoped for.** Before publishing a change to a
+  site of several sections, list each kind of thing it shows and the forms
+  each takes; a kind in two forms is a fault to fix (`checks.md`).
+
 ### Layout That Holds
 
 "we can't have cards beside each other with different heights looking like
@@ -432,6 +454,28 @@ causing the page to reformat" (2026-11-10). `layout.js` measures all three.
   which show false values on the way.
 - **Less motion asked for means still and whole**, and a page whose script
   doesn't run is still complete.
+
+### Replays
+
+"playback needs to have speed, progress, and i should be able to scroll up
+to see previous things that were outputted. sometimes it is too fast and
+sometimes it is too slow" (2026-11-11).
+
+- **A terminal replay is a player the reader drives.** It opens paused, at
+  1×, and plays only when asked. Its speed always shows beside it and
+  changes in steps (0.5×, 1×, 2×, 4×), so a reader slows what rushes and
+  hurries what drags; a long idle gap in the recording is capped, never
+  sat through.
+- **Its progress is a bar the reader can seek**, with a marker at each
+  chapter, and beside it the chapter it's in, by name, the time played and
+  the whole.
+- **Scrollback through everything printed so far.** The reader scrolls up
+  in it to read what went by, whether it plays or is paused, and new output
+  never pulls them back down; a quiet "latest" returns them.
+- **Its keys, while it has focus, are the player's and Vim's**: Space
+  plays and pauses, h and l step back and on, [ and ] jump chapter to
+  chapter, < and > change speed, and k and j scroll its output, all listed
+  in Keys. How it's built is in `craft.md`.
 
 ### Keys
 
@@ -602,6 +646,11 @@ Each is a verdict on a real site; the rule it gave is above.
 - A page of words alone, with no figure, no favicon and no mark: "all imagery
   is gone, no icon, a lot missing" (2026-11-09).
 - A section in a different style, and text running over text.
+- A site grown section by section until "it feels like frankenstein right
+  now" (2026-11-11): parts that each work, in no one design, with good UX
+  "not been considered consistently in so many ways".
+- A terminal replay with no speed, no progress and no way back: "sometimes it
+  is too fast and sometimes it is too slow" (2026-11-11).
 - Branches that don't look openable; "open" and "close" words on them.
 - Scroll animations that finish off screen, rush past, or snap past the text.
 - Counting numbers, and a freshness time that measures publishing, not facts.
