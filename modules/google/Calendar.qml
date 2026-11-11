@@ -326,8 +326,9 @@ Singleton {
 
     // Guests steps in to who holds it, unless that's Joel, and then each
     // guest, as People's rows, so each steps through to the person (VKCF3Z's
-    // design: the guests, before Attachments), counting those People
-    // knows; none when it knows nobody on it, or there's no People.
+    // design: the guests, before Attachments), counting those on it, so it's
+    // there as the meeting's other rows are, each guest's name filling in
+    // as People knows them; none with nobody on it, or no People.
     function guesting(meeting, provider) {
         const emails = Said.guestEmails(meeting);
         const people = () => {
@@ -339,8 +340,8 @@ Singleton {
             }
             return found;
         };
-        // Counted by who People knows, making no one's row (Calendar.js).
-        const count = Said.knownGuests(meeting, Google.peopleOf(provider.launcher));
+        // Counted making no one's row (Calendar.js).
+        const count = Said.guestsCounted(meeting, Google.peopleOf(provider.launcher));
         if (count === 0)
             return null;
         const key = "verb:calendar:guests";
