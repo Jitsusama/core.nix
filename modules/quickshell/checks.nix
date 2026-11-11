@@ -252,10 +252,12 @@ let
       inherit name shell;
       # Away only after an hour, since nobody types here but the check.
       away = 3600;
-      # foot gives the launcher windows to find, drawn without a GPU, and
-      # notify-send the notices something to hold.
+      # foot gives the launcher windows to find, drawn without a GPU,
+      # notify-send the notices something to hold, and grim niri's screen
+      # to check an opening's presented time against.
       inputs = [
         pkgs.foot
+        pkgs.grim
         pkgs.libnotify
         pkgs.wl-clipboard
         pkgs.wtype

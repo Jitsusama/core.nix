@@ -29,7 +29,11 @@
 # node said neither what pipewire says it's doing nor the format it moves
 # audio in, which a device's drawer shows, so
 # pipewire-node-state-and-format.patch reads both from the node's info and
-# its Format param, which opens no stream. All nine are laid over the
+# its Format param, which opens no stream. A frame Qt drew isn't one niri
+# showed, and Qt binds no presentation-time to say when niri did, so
+# frame-presentation.patch adds FramePresentation, which asks niri for each
+# frame's presentation feedback and says when it was shown: the launcher
+# times Joel's every opening to it (Launcher.qml). All ten are laid over the
 # machine's packages, so the shell, the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
@@ -105,6 +109,7 @@ in
           ./fileview-quiet.patch
           ./fileview-watch-nearest.patch
           ./fileview-reads-again.patch
+          ./frame-presentation.patch
           ./ipc-replies-whole.patch
           ./pipewire-node-state-and-format.patch
         ];

@@ -43,6 +43,21 @@ SEEING_ENDS = timedelta(seconds=4)
 CHORD_AGO = timedelta(seconds=2)
 # How long the shell is held stopped just after a chord, well past any opening's own time here.
 HELD = timedelta(seconds=2)
+# How much of niri's screen an opening's card changes at least, where nothing else moves.
+CARD_SHARE = 0.02
+# How many bytes of niri's screen are compared at once, a few rows of pixels.
+STRETCH = 4096
+# How soon after the time an opening says it was presented niri's screen shows the card: a
+# screencopy, drawn in software, takes a few hundred ms here.
+SEEN_WITHIN = timedelta(seconds=1)
+# How long before the time said niri's screen may already show a change: niri's screencopy copies
+# what the shell committed as it's asked, while niri presents it only with its next frame of the
+# output, which waits on the headless sway it's nested in for its turn to draw. On a quiet builder
+# a copy led the time said by 23 ms, and on a loaded one by 78 and 133 ms (2026-11-10), so the
+# lead says how far a nested niri may trail, not how late the measure may be. A time tied to a
+# drawing well after the card's first, such as the closing's, still fails; a one-frame miscount
+# shows on Joel's own screen, where niri presents at the display's flip.
+COPIED_BEFORE_PRESENTED = timedelta(milliseconds=250)
 
 
 @pytest.fixture(scope="module")
@@ -2005,6 +2020,114 @@ def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell:
         time.sleep(launcher_on_niri.POLL)
     held = HELD.total_seconds() * 1000
     assert usable >= held, f"the opening was usable {usable} ms after a shell held {held:.0f} ms"
+
+
+def screen() -> bytes:
+    """Give niri's screen as it stands, through its screencopy, as raw pixels."""
+    return subprocess.run(
+        ["grim", "-t", "ppm", "-"],  # noqa: S607, the check gives grim
+        check=True,
+        capture_output=True,
+    ).stdout
+
+
+def changed(before: bytes, after: bytes) -> float:
+    """Give how much of the screen differs between two of its pictures, from 0 to 1.
+
+    Compared a stretch of pixels at a time, since a byte at a time took a second a picture,
+    which put niri's screen a second behind the time it's held to.
+    """
+    if len(before) != len(after):
+        return 1.0
+    stretches = range(0, len(before), STRETCH)
+    differ = sum(before[at : at + STRETCH] != after[at : at + STRETCH] for at in stretches)
+    return differ / len(stretches)
+
+
+def first_changed(before: bytes, deadline: float) -> float:
+    """Give when niri's screen first differed from `before`, on the monotonic clock in ms.
+
+    The time is read as each picture is taken, before it's compared, so it's when the screen
+    already showed the change, never later by the comparing; -1 when it never did.
+    """
+    while time.monotonic() < deadline:
+        now = screen()
+        taken = time.monotonic() * 1000
+        if changed(before, now) > CARD_SHARE:
+            return taken
+    return -1.0
+
+
+def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) -> None:
+    """An opening is timed from its chord to the frame niri showed, which niri's screen agrees on.
+
+    A frame the shell drew isn't one niri showed (Joel, 2026-11-10: "we need 50ms launch ... that
+    is time from trigger to visible on the screen"), so the launcher times each opening to niri's
+    presentation feedback. With the shell held stopped just after a chord, niri can show nothing
+    new, so the time is at least that long; and niri's own screen first shows the card no sooner
+    than the frame before the time said (COPIED_BEFORE_PRESENTED), and soon after it.
+    """
+    before = screen()
+    chord = time.time()
+    chord_at = time.monotonic() * 1000
+    with socket.socket(socket.AF_UNIX) as said:
+        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+        said.sendall(f"toggle @{chord:.6f}\n".encode())
+    with shell.frozen():
+        # How long the shell is held, as its thread was held after Joel's chords.
+        time.sleep(HELD.total_seconds())
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    shown = first_changed(before, deadline)
+    assert shown >= 0, "niri's screen never showed the card"
+    seen = shown - chord_at
+    shell.launcher_ready()
+    presented = -1
+    while presented < 0 and time.monotonic() < deadline:
+        openings = json.loads(shell.as_account(shell.ipc("openings")))
+        presented = openings[-1].get("presented", -1) if openings else -1
+        time.sleep(launcher_on_niri.POLL)
+    held = HELD.total_seconds() * 1000
+    assert presented >= held, f"the opening was presented {presented} ms after a {held:.0f} ms hold"
+    lead = COPIED_BEFORE_PRESENTED.total_seconds() * 1000
+    assert presented <= seen + lead, (
+        f"said presented at {presented} ms; niri's screen showed it at {seen:.0f}"
+    )
+    within = SEEN_WITHIN.total_seconds() * 1000
+    assert seen - presented <= within, (
+        f"niri's screen showed the card {seen - presented:.0f} ms after the time said,"
+        f" past {within}"
+    )
+
+
+def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> None:
+    """A key is timed from its press to the frame niri showed with it, as niri's screen agrees.
+
+    Joel's bar is every key's change visible within 50 ms (2026-11-10), so each key is timed to
+    niri's presentation feedback for the frame that drew it: niri's screen first shows what the
+    key found no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and soon
+    after it.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = screen()
+    shell.as_account("wtype w")
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    seen = first_changed(before, deadline)
+    assert seen >= 0, "niri's screen never showed what the key found"
+    presented: list[Json] = []
+    while not presented and time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        time.sleep(launcher_on_niri.POLL)
+    assert presented, "the key was never said presented"
+    key = presented[-1]
+    lead = COPIED_BEFORE_PRESENTED.total_seconds() * 1000
+    assert key["from"] <= key["at"] <= seen + lead, (
+        f"said {key}; niri's screen showed it at {seen:.0f}"
+    )
+    within = SEEN_WITHIN.total_seconds() * 1000
+    assert seen - key["at"] <= within, (
+        f"niri's screen showed the key {seen - key['at']:.0f} ms after the time said, past {within}"
+    )
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
