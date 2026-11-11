@@ -140,6 +140,7 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
                 if let Some(at) = follow::profile_changed(&config.profile, Instant::now()) {
                     follower.saw_switch(at);
                 }
+                follower.saw(follow::someone_here(), Instant::now());
                 if follower.should_ask(&heads, &ended, Instant::now(), every) {
                     let at: Vec<String> = heads
                         .iter()
