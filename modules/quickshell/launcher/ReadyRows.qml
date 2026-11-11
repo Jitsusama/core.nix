@@ -253,8 +253,10 @@ Scope {
         // command is read from the act's words (CommandBinding.wordsFor), as
         // Firmware's Install Now ends something and writes `install!` on
         // the line rather than running at the first Return (RCTRF8,
-        // 2026-11-11).
-        const asking = Ready.actForm(first) === "ask" ? { wordsId: first.key } : {};
+        // 2026-11-11), unless it shuts the launcher (ReadyRows.js's
+        // wordsOf).
+        const words = Ready.wordsOf(first);
+        const asking = words === "" ? {} : { wordsId: words };
         const acting = acts.length === 0 ? {} : Object.assign({
             verb: verbOf(first),
             run: () => act(key, first)

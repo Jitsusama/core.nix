@@ -353,6 +353,12 @@ QtObject {
         Expect.same("going to a program is done once the launcher's gone",
             Ready.leaving({ key: "verb:go", go: "kitty" }),
             { stays: false, now: false, later: true });
+        Expect.same("an ask is read by its act's words in the key language",
+            Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
+            "verb:firmware:install");
+        Expect.same("but one that shuts the launcher isn't, so Return does it from the find",
+            Ready.wordsOf(paste), "");
+        Expect.same("nor any other act", Ready.wordsOf({ key: "verb:copy:copy", copy: "a" }), "");
         Expect.same("shutting it and saying what it becomes is refused", Ready.misformed(both),
             "closes and becomes");
         Expect.same("so it's no act at all", Ready.actForm(both), "");

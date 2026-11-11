@@ -327,9 +327,19 @@ function leaving(act) {
     const now = closes(act) || (actForm(act) === "ask" && act.token === true);
     return {
         stays: act?.step === "rows" || (actForm(act) === "ask" && !now),
-        now: now,
+        now,
         later: actForm(act) === "go" || actForm(act) === "open"
     };
+}
+
+// The words a row whose Return asks is read by in the key language, its
+// act's (CommandBinding.wordsFor), so Firmware's Install Now writes
+// `install!` on the line rather than running at the first Return; "" for
+// any other, and for an ask that shuts the launcher, which is done in
+// Return's own turn, as Super+V's paste is, though `put` changes
+// something: read by its words, Return from the find would land on it.
+function wordsOf(act) {
+    return actForm(act) === "ask" && !closes(act) ? act.key : "";
 }
 
 // A row's mark as drawn: words.json's glyph role it names (`roles`, the
