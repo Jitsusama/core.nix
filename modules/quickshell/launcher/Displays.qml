@@ -564,8 +564,10 @@ Provider {
     function madeFrom(row, key) {
         if (key === "row:displays:sleep")
             return sleepRow(row);
+        // A setting with choices offers them, so what's typed from the
+        // screen finds them, as Sound's served settings do.
         if (row.kind === "setting")
-            return ready.thing(row, key, {});
+            return ready.thing(row, key, { offers: (row.acts ?? []).length > 0 });
         // A choice keeps its setting's name as a hidden word, so "scale
         // 1.5" finds 1.5\u00d7 from outside, and fills :setl's command as its
         // Return would type it; it's a choice, so it has no verbs of its own.
