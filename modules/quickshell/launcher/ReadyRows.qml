@@ -250,7 +250,7 @@ Scope {
             key: row.thing ?? key,
             thing: !!row.drawer,
             name: row.name ?? "",
-            glyph: Theme.glyph[row.glyph ?? ""] ?? "",
+            glyph: Ready.glyphOf(row.glyph ?? "", Theme.glyph),
             hue: row.hue ?? "",
             side: Ready.sideJoined(items),
             // Each item, so the row keeps an item's width and draws its hue.
@@ -286,21 +286,14 @@ Scope {
         };
     }
 
-    // Where an act going to a program takes Joel as things are now, its
-    // window or its program, or null (ReadyRows.js's going).
-    function goingTo(one) {
-        return Ready.going(one, Niri.byApp, DesktopEntries.byId(one.go));
-    }
-
     // The acts of a row the launcher can do here: a step into the drawer
-    // only where the launcher steps into one, and going to a program only
-    // where it has a window or can be opened, so nothing offered does
-    // nothing.
+    // only where the launcher steps into one, so nothing offered does
+    // nothing. Going to a program is always offered, since the daemon
+    // serves it only where it found the program's entry.
     function actsOf(row) {
         const launcher = maker?.launcher;
-        return Ready.actsOf(row).filter(one => (one.step !== "drawer"
-            || typeof launcher?.intoDrawer === "function")
-            && (Ready.actForm(one) !== "go" || goingTo(one) !== null));
+        return Ready.actsOf(row).filter(one => one.step !== "drawer"
+            || typeof launcher?.intoDrawer === "function");
     }
 
     // The verb an act says, words.json's for its key.
@@ -338,7 +331,10 @@ Scope {
             Niri.spawn(["xdg-open", one.open]);
             return;
         case "go": {
-            const where = goingTo(one);
+            // The entry's looked up here, at Return, never as rows are
+            // made, and only where no window of it is open.
+            const where = Ready.going(one, Niri.byApp, Niri.byApp[one.go.toLowerCase()]
+                ? null : DesktopEntries.byId(one.go));
             if (where?.window !== undefined)
                 Niri.act({ FocusWindow: { id: where.window } });
             else if (where?.entry && maker)

@@ -215,7 +215,12 @@ QtObject {
             Ready.going(going, { slack: { id: 9 } }, slack), { window: 9 });
         Expect.same("with only its entry, it opens the program",
             Ready.going(going, { foot: { id: 7 } }, slack), { entry: slack });
-        Expect.same("with neither, it's left out", Ready.going(going, {}, null), null);
+        Expect.same("with neither, Return does nothing", Ready.going(going, {}, null), null);
+        const roles = { agent: "A", bell: "B" };
+        Expect.same("a mark is its role's glyph, or its own code point served in hex",
+            ["agent", { code: "f198" }, "absent", { code: "" }, { code: "zz" }, null]
+                .map(glyph => Ready.glyphOf(glyph, roles)),
+            ["A", "\uf198", "", "", "", ""]);
         const asking = { key: "verb:notice:open", ask: { ask: "invoke", id: 4 }, token: true };
         Expect.same("an ask that takes a token is sent with it",
             Ready.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });

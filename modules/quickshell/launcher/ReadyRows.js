@@ -254,10 +254,25 @@ function actsOf(row) {
     return (row?.acts ?? []).filter(act => actForm(act) !== "");
 }
 
+// A row's mark as drawn: words.json's glyph role it names (`roles`, the
+// theme's glyphs), or a program's own mark no role names, served as
+// `{ code }` in hex and made its character once, as the row is made
+// (Y2YBTS, 2026-11-11, 3093d93d); "" for any other.
+const HEX = 16;
+function glyphOf(glyph, roles) {
+    if (typeof glyph === "string") {
+        return roles[glyph] ?? "";
+    }
+    const code = Number.parseInt(String(glyph?.code ?? ""), HEX);
+    return Number.isInteger(code) && code > 0 ? String.fromCodePoint(code) : "";
+}
+
 // Where an act going to a program takes Joel (ready-rows.md's `go`, the
-// program's desktop entry id): its newest window, from `byApp`, Niri.qml's
-// windows by app id in lower case, else `entry`, the program's desktop
-// entry, to open; null where there's neither, so the act isn't offered.
+// program's desktop entry id, served only where the daemon found its
+// entry): its newest window, from `byApp`, Niri.qml's windows by app id
+// in lower case, else `entry`, the program's desktop entry as the shell
+// knows it, looked up only at Return, to open; null where there's
+// neither, so Return does nothing.
 function going(act, byApp, entry) {
     const window = byApp[String(act?.go ?? "").toLowerCase()] ?? null;
     if (window !== null) {
