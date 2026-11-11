@@ -636,6 +636,31 @@ fn what_is_kept_is_never_cleared_even_on_a_critically_full_disk() {
 }
 
 #[test]
+fn what_the_configuration_keeps_is_never_cleared_though_no_daemon_wrote_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("files")).unwrap();
+    fs::create_dir_all(root.join("info")).unwrap();
+    for name in ["image.ipsw", "spare.txt"] {
+        fs::write(root.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2026-01-01T08:00:00\n");
+        fs::write(root.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+    }
+    let kept = fs::canonicalize(root.join("files/image.ipsw")).unwrap();
+    let declared = format!(
+        r#""keep": {{ "{}": "the restore image, until the old machine is moved" }},"#,
+        kept.display()
+    );
+    let mut guard = guard_from(root, "100%", &declared);
+    stepped(&mut guard, 3, &mut Fake::default());
+    assert!(
+        !root.join("files/spare.txt").exists(),
+        "what isn't kept goes"
+    );
+    assert!(kept.exists(), "what the configuration keeps stays");
+}
+
+#[test]
 fn a_footprint_is_only_of_what_the_asker_reaches() {
     use std::os::unix::fs::MetadataExt;
     let dir = tempfile::tempdir().unwrap();

@@ -610,6 +610,9 @@ pub struct Config {
     /// to take what an owner still holds.
     pub budget: Option<Size>,
     pub holders: Holders,
+    /// What the machine keeps, by path, each with its reason: never
+    /// offered to clear, and never asked about.
+    pub keep: BTreeMap<PathBuf, String>,
 }
 
 /// Where the guard looks for what holds a disk, beside its sources.
@@ -647,6 +650,8 @@ struct Rendered {
     budget: Option<Size>,
     #[serde(default)]
     holders: Holders,
+    #[serde(default)]
+    keep: BTreeMap<PathBuf, String>,
 }
 
 fn yes() -> bool {
@@ -719,6 +724,14 @@ impl Config {
                 return Err(format!("{} is not a plain absolute path", path.display()));
             }
         }
+        for (path, reason) in &rendered.keep {
+            if !plain_absolute(path) {
+                return Err(format!("{} is not a plain absolute path", path.display()));
+            }
+            if reason.trim().is_empty() {
+                return Err(format!("{} is kept without a reason", path.display()));
+            }
+        }
         Ok(Config {
             scope: rendered.scope,
             bands: rendered.bands,
@@ -731,6 +744,7 @@ impl Config {
             system,
             budget: rendered.budget,
             holders: rendered.holders,
+            keep: rendered.keep,
         })
     }
 }

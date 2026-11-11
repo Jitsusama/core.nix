@@ -32,6 +32,7 @@ mod holders;
 #[cfg(target_os = "linux")]
 mod host;
 mod journal;
+mod keeps;
 mod ledger;
 #[cfg(target_os = "linux")]
 mod linux;

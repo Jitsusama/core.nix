@@ -474,6 +474,12 @@ fn daemon(
         .values()
         .any(|source| matches!(source, crate::config::Source::Cargo { .. }));
     let freezes = config.freeze;
+    // Written before the first survey, so nothing the configuration keeps
+    // is ever offered, and under the daemon's hold on its state.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    crate::keeps::declare(&places.state, &config.keep, now).map_err(failed)?;
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     guard.beat_always().map_err(failed)?;
     // A stop waits, blocked, until a step ends, and a survey's walks once

@@ -2055,7 +2055,10 @@ impl Guard {
         }
         // Read afresh each survey, so a keep holds from the next step. One
         // that won't read stops the survey rather than risk what it keeps.
-        let keeps = crate::keeps::load(self.state())?;
+        // The configuration's own keeps count even before a daemon has
+        // written them, so a plan made from it honours them too.
+        let keeps =
+            crate::keeps::with_declared(crate::keeps::load(self.state())?, &self.config.keep, 0.0);
         // A keep names its folder with every link resolved, and a source's
         // root may be named through one, so each offer is resolved too.
         offers.retain(|offer| {
