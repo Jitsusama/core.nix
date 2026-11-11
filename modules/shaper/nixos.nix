@@ -50,11 +50,13 @@
 let
   shaper = pkgs.callPackage ./package.nix { };
   # `shaper proof` loads the link with curl only while swayidle says Joel
-  # is away and a-call-is-on says no call is on, and reads the default
-  # route with ip; systemd-run and systemctl are the system's own.
+  # is away, a-call-is-on says no call is on and pw-dump shows nothing
+  # playing, and reads the default route with ip; systemd-run and
+  # systemctl are the system's own.
   proofTools = [
     pkgs.curl
     pkgs.iproute2
+    pkgs.pipewire
     pkgs.swayidle
     (pkgs.callPackage ../calls/package.nix { })
   ];

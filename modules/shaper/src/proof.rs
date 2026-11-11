@@ -17,9 +17,9 @@
 //! of blocks has the shaper on for one and off for the other, in turn
 //! first, so a link that drifts through the run favours neither.
 //!
-//! The load goes on the link only while no call is on and Joel has been
-//! idle two minutes, as Wayland's idle notice tells swayidle; the moment
-//! either changes, every load stops, the shaper goes back as it was, the
+//! The load goes on the link only while no call is on, no audio plays
+//! and Joel has been idle two minutes, as Wayland's idle notice tells
+//! swayidle; the moment any of them changes, every load stops, the shaper goes back as it was, the
 //! pair under way is dropped, and it waits for his next idle stretch. It
 //! waits `--wait` seconds from its start in all, and exits 75 if they run
 //! out before every pair is measured, writing what it measured to
@@ -146,7 +146,7 @@ impl Gate {
     }
 
     /// Whether the link may carry the load now. A call detector that
-    /// can't tell is taken for a call.
+    /// can't tell is taken for a call, and so is audio playing.
     fn open(&self) -> bool {
         self.mark.exists()
             && Command::new("a-call-is-on")
@@ -154,7 +154,33 @@ impl Gate {
                 .stderr(Stdio::null())
                 .status()
                 .is_ok_and(|s| s.code() == Some(1))
+            && !audio_plays()
     }
+}
+
+/// Whether audio plays, as `pw-dump` shows PipeWire's graph. Joel may
+/// watch a stream without touching the keys, so idle alone doesn't say
+/// he's away. A graph that can't be read is taken for audio playing.
+fn audio_plays() -> bool {
+    Command::new("pw-dump")
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| serde_json::from_slice(&out.stdout).ok())
+        .is_none_or(|graph| plays(&graph))
+}
+
+/// Whether any sink runs in `graph`: a sink runs while a stream plays to
+/// it, and is idle or suspended otherwise.
+fn plays(graph: &serde_json::Value) -> bool {
+    graph.as_array().is_some_and(|objects| {
+        objects.iter().any(|object| {
+            object["type"] == "PipeWire:Interface:Node"
+                && object["info"]["props"]["media.class"] == "Audio/Sink"
+                && object["info"]["state"] == "running"
+        })
+    })
 }
 
 impl Drop for Gate {
@@ -556,6 +582,33 @@ fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Bl
 mod tests {
     use super::verdict::tests::pairs;
     use super::*;
+    use serde_json::json;
+
+    fn node(class: &str, state: &str) -> serde_json::Value {
+        json!({
+            "type": "PipeWire:Interface:Node",
+            "info": { "state": state, "props": { "media.class": class } },
+        })
+    }
+
+    #[test]
+    fn a_running_sink_is_audio_playing() {
+        let quiet = json!([
+            node("Audio/Sink", "suspended"),
+            node("Audio/Sink", "idle"),
+            node("Audio/Source", "running"),
+            { "type": "PipeWire:Interface:Client", "info": { "state": "running" } },
+        ]);
+        assert!(
+            !plays(&quiet),
+            "took a graph with no sink running for audio"
+        );
+        let playing = json!([
+            node("Audio/Sink", "suspended"),
+            node("Audio/Sink", "running")
+        ]);
+        assert!(plays(&playing), "missed a sink running");
+    }
 
     #[test]
     fn pairs_measured_in_three_windows_are_kept_as_one_run() {
