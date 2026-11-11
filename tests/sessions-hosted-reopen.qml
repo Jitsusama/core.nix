@@ -92,6 +92,12 @@ ShellRoot {
                 waiting();
             else if (stage === "left")
                 left();
+            else if (stage === "present")
+                present();
+            else if (stage === "held")
+                held();
+            else if (stage === "back")
+                back();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -198,6 +204,47 @@ ShellRoot {
             JSON.stringify(Niri.acts));
         Expect.expect("and is kept no more", Sessions.keptPlaces["s-second"] === undefined,
             JSON.stringify(Sessions.keptPlaces));
+        // Joel comes back to the machine, and the host serves two more, one
+        // of them parked in it.
+        Away.now = false;
+        stage = "present";
+        const parked = hosted("s-parked", "PARKED");
+        parked.presence.parked = { since: new Date().toISOString() };
+        Watch.tell(root.watch, { changed: [Object.assign(hosted("s-third", "THIRD"),
+            { told: "0000000000000002" }), Object.assign(parked, { told: "0000000000000003" })] });
+    }
+
+    function present() {
+        if (!find("THIRD") || !find("PARKED"))
+            return;
+        stage = "held";
+        Sessions.reopenAll([{ id: "s-third", cwd: "/tmp", hosted: true },
+            { id: "s-parked", cwd: "/tmp", hosted: true }], root.never,
+            kept({ "s-third": keptOn(2), "s-parked": keptOn(2) }), "");
+    }
+
+    // While Joel is at the machine nothing opens by itself, and one parked
+    // in its host isn't viewed, since viewing it would wake it: each is
+    // kept (OSPHT4 [0762284c], 13:41:38 on 11 November).
+    function held() {
+        if (!Sessions.keptPlaces["s-third"] || !Sessions.keptPlaces["s-parked"]
+            || (Sessions.reopening?.queue.length ?? 0) > 0)
+            return;
+        Expect.expect("with Joel there, neither opens", viewerSpawns("s-third").length === 0
+            && viewerSpawns("s-parked").length === 0, Niri.spawns.join("\n"));
+        stage = "back";
+        Away.now = true;
+    }
+
+    // Once he's away, the one awake opens where it was kept; the parked one
+    // still waits.
+    function back() {
+        if (viewerSpawns("s-third").length === 0)
+            return;
+        Expect.expect("the parked one is still not viewed, and still kept",
+            viewerSpawns("s-parked").length === 0
+            && Sessions.keptPlaces["s-parked"] !== undefined,
+            `${Niri.spawns.join("\n")} ${JSON.stringify(Sessions.keptPlaces)}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }

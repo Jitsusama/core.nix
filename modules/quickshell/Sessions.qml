@@ -743,6 +743,13 @@ Singleton {
         if (root.placeable() && (root.reopening?.behind.length ?? 0) > 0)
             root.placeBehind();
     }
+    // Joel going away lets a moved session's kept viewer open (viewKept).
+    Connections {
+        target: Away
+        function onNowChanged() {
+            root.viewKept();
+        }
+    }
     Connections {
         target: Niri
         function onLayoutsChanged() {
@@ -1461,10 +1468,12 @@ Singleton {
     // goes in the one walk, waited for and placed as theirs are, so the
     // columns after it land beside it (Y2YBTS and KP0L6A, [342c50d4]). One
     // whose viewer is open, or that the boot kept no place of, opens none.
-    // One whose host isn't serving it yet, or whose place is on the
-    // workspace Joel is on, where a window coming would catch his eye, has
-    // its place kept for viewKept, which opens it there once the host
-    // serves it and Joel is elsewhere, and the walk goes on.
+    // One whose host isn't serving it yet, one parked in its host, which
+    // viewing would wake, or one coming while Joel is at the machine or
+    // bound for the workspace he is on, where a window would catch his
+    // eye, has its place kept for viewKept, which opens it there once the
+    // host serves it awake and Joel is away, and the walk goes on (OSPHT4
+    // [0762284c]: a parked QCXZEB woken, 11 November).
     function reopenViewer(next) {
         const id = next.one.id;
         const session = root.hostedHere(id);
@@ -1481,11 +1490,12 @@ Singleton {
         const named = viewerOf(session?.presence);
         const served = session !== null && Array.isArray(session.attach)
             && session.attach.length > 0 && named !== "";
-        if (!served || Niri.workspaces[into.workspace]?.is_focused) {
+        const parked = Viewers.parkedHere(session);
+        if (!served || parked || !Away.now || Niri.workspaces[into.workspace]?.is_focused) {
             keepPlaces(Object.assign({}, keptPlaces, { [id]: { workspace: into.workspace,
                 column: into.column, at: Date.now() } }));
             console.info(`sessions: ${id}'s viewer waits for `
-                + `${served ? "Joel to leave" : "its host"}, kept at `
+                + `${!served ? "its host" : parked ? "it to wake" : "Joel to leave"}, kept at `
                 + `${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`);
             reopenNext();
             return;
@@ -1886,11 +1896,15 @@ Singleton {
     // was, never on the workspace Joel is on and never with his focus
     // (Viewers.viewerPlace), and lets go of what's done or a day old
     // (Viewers.viewersDue). Asked again as niri's focus moves, so one waiting
-    // for Joel to leave its workspace opens once he has.
+    // for Joel to leave its workspace opens once he has, and as he goes
+    // away. Only places kept since this shell started open, and only while
+    // he is away (Away.qml), so a shell restarted by a switch opens none.
+    readonly property real startedAt: Date.now()
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
             return;
-        const due = Viewers.viewersDue(keptPlaces, running, Date.now(), Niri.workspaces);
+        const due = Viewers.viewersDue(keptPlaces, running, Date.now(),
+            { workspaces: Niri.workspaces, since: startedAt, away: Away.now });
         for (const one of due.open)
             view(one.session, one.into);
         if (Object.keys(due.kept).length !== Object.keys(keptPlaces).length)
