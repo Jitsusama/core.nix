@@ -408,7 +408,7 @@ impl Say<'_> {
         if ports.is_empty() {
             return charger;
         }
-        charger.glyph = "charging".to_owned();
+        "charging".clone_into(&mut charger.glyph);
         charger.note = if ports.len() == 1 {
             self.says("charger", "port", &[])
         } else {
@@ -445,17 +445,18 @@ impl Say<'_> {
         };
         let n = n.to_string();
         let name = self.name("port", &[("n", &n)]);
-        let mut row = figure(format!("port:{n}"), name.clone(), side, None, String::new());
+        let drawer = self.port_drawer(record, &name);
+        let mut row = figure(format!("port:{n}"), name, side, None, String::new());
         row.kind = "port";
-        row.glyph = "charging".to_owned();
-        row.drawer = Some(self.port_drawer(record, name));
+        "charging".clone_into(&mut row.glyph);
+        row.drawer = Some(drawer);
         row
     }
 
     /// A USB-C port's drawer: which way its power and data go, how it
     /// negotiates, what's plugged in and what that offers, the power
     /// delivery revisions, and its supply's name last.
-    fn port_drawer(&self, record: &Value, title: String) -> Value {
+    fn port_drawer(&self, record: &Value, title: &str) -> Value {
         let typec = &record["typec"];
         let partner = &typec["partner"];
         let drawer = |phrase: &str, fill: &[(&str, &str)]| {
@@ -787,7 +788,7 @@ impl Say<'_> {
         }
         row.kind = "holder";
         row.copies = String::new();
-        row.glyph = "charge".to_owned();
+        "charge".clone_into(&mut row.glyph);
         let supply = text(&battery["name"]);
         row.inside = STOPS
             .iter()
@@ -944,14 +945,14 @@ mod tests {
         let charger = row(&ready, "row:power:charger");
         assert_eq!(charger["side"][0]["said"], "45.0 W on port 1");
         assert_eq!(charger["note"], "one USB-C port");
-        let port = row(&ready, "row:power:port:1");
-        assert_eq!(port["row"], "power:port:1");
-        assert_eq!(port["parent"], "row:power:charger");
+        let first = row(&ready, "row:power:port:1");
+        assert_eq!(first["row"], "power:port:1");
+        assert_eq!(first["parent"], "row:power:charger");
         assert_eq!(
-            port["side"][0]["said"],
+            first["side"][0]["said"],
             "45.0 W \u{b7} 15.0 V \u{b7} 3.00 A \u{b7} USB PD"
         );
-        let facts = port["drawer"]["facts"].as_array().unwrap();
+        let facts = first["drawer"]["facts"].as_array().unwrap();
         let offers = facts.iter().find(|fact| fact["name"] == "Offers");
         assert_eq!(
             offers,

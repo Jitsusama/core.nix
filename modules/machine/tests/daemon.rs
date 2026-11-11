@@ -742,6 +742,51 @@ fn a_unit_the_shell_may_not_restart_is_refused() {
 }
 
 #[test]
+fn powers_rows_are_made_for_its_watch_and_move_with_its_limit() {
+    let words = json!({ "things": [
+        { "id": "power", "name": "Battery", "said": { "battery": "on battery" } },
+        { "id": "power:charge", "name": "Charge" },
+        { "id": "power:limit", "name": "Charge Limit", "said": {
+            "both": "stops at {stop}%, starts below {start}%" } },
+        { "id": "power:limit:stop", "name": "Stop at {n}%", "said": { "chosen": "chosen" } }
+    ] });
+    let running = Running::worded("power-rows", &words);
+    power(&running.root());
+    let mut client = running.client();
+    let said = client
+        .ask(&json!({"id": "power", "ask": "watch", "kind": ["row", "head"], "place": "power"}));
+    let records = &said["records"];
+    let head = &record(records, "head:power")["head"];
+    assert_eq!(head["said"], "80% \u{b7} on battery");
+    assert_eq!(
+        record(records, "row:power:charge")["row"]["side"][0]["said"],
+        "80%"
+    );
+    let limit = &record(records, "row:power:limit")["row"];
+    assert_eq!(limit["side"][0]["said"], "stops at 80%, starts below 75%");
+    assert!(
+        records
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["key"]
+                .as_str()
+                .is_some_and(|key| key.contains(":power"))),
+        "only Power's rows and headline: {records}"
+    );
+    // A limit set is told on its row before the act is answered.
+    client.send(
+        &json!({"id": 2, "ask": "act", "act": "charge-limit", "supply": "BAT0",
+        "stop_pct": 60}),
+    );
+    let moved = client.changed("row:power:limit");
+    assert_eq!(
+        moved["row"]["side"][0]["said"],
+        "stops at 60%, starts below 55%"
+    );
+}
+
+#[test]
 fn the_screens_light_and_the_rooms_are_said_as_they_move() {
     let running = Running::new("light");
     let root = running.root();

@@ -38,14 +38,15 @@
 //! since the shell watches them while the launcher's shut: neither is
 //! read on a clock, so watching them wakes nothing until they change.
 //!
-//! Heat's rows and headline are made here too, ready for the launcher
-//! (heat_rows.rs), in the launcher's words (`--words`, its words.json)
-//! and number settings (`--numbers`, `{ group, point }`): a watch of
-//! kind `row` or `head` with `place` `heat` has the sensors, zones,
-//! cooling and processor read as their own watch would, and each read
-//! makes the rows again and tells only those that changed. The
-//! processor's own telemetry is asked only while they're watched. Handed
-//! no words, it makes no rows.
+//! Heat's and Power's rows and headlines are made here too, ready for
+//! the launcher (heat_rows.rs, power_rows.rs), in the launcher's words
+//! (`--words`, its words.json) and number settings (`--numbers`,
+//! `{ group, point }`): a watch of kind `row` or `head` with `place`
+//! `heat` has the sensors, zones, cooling and processor read as their
+//! own watch would, and one with `place` `power` the supplies, and each
+//! read makes that place's rows again and tells only those that changed.
+//! The processor's own telemetry is asked only while Heat's are watched.
+//! Handed no words, it makes no rows.
 //!
 //! It acts as well as answers, so the shell spawns and writes nothing of
 //! its own: `charge-limit` moves a battery's charge limit, and the supply
@@ -68,7 +69,8 @@ use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_o
 use machine::words::Words;
 use machine::{
     Root, boot, camera, clock_ms, disk, firmware, heat, heat_rows, kept, light, memory, now_ms,
-    processor, rounded, sleep, steered, supply, telemetry, tree, units, using, written::Written,
+    power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree, units, using,
+    written::Written,
 };
 use serde_json::{Value, json};
 
@@ -107,11 +109,34 @@ const KEPT: [&str; 2] = ["kept", "profile"];
 /// folder that isn't there, as `/run/power-profile` isn't while its
 /// service starts again.
 const KEPT_LOOKS_AGAIN: Duration = Duration::from_secs(10);
-/// The place Heat's rows are made for, its headline's key, and the kinds
-/// they're made of, read together while they're watched.
-const HEAT: &str = "heat";
-const HEAT_HEAD: &str = "head:heat";
-const HEAT_SOURCES: [&str; 4] = ["sensor", "zone", "cooling", "processor"];
+/// A place whose rows and headline are made here, and the kinds they're
+/// made of, read together while they're watched.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Place {
+    name: &'static str,
+    sources: &'static [&'static str],
+}
+
+impl Place {
+    /// Its headline's key.
+    fn head(self) -> String {
+        format!("head:{}", self.name)
+    }
+
+    fn holds(self, key: &str) -> bool {
+        place_of(key) == Some(self.name)
+    }
+}
+
+const HEAT: Place = Place {
+    name: "heat",
+    sources: &["sensor", "zone", "cooling", "processor"],
+};
+const POWER: Place = Place {
+    name: "power",
+    sources: &["supply"],
+};
+const PLACES: [Place; 2] = [HEAT, POWER];
 /// How long to wait before asking the processor's telemetry again once
 /// it couldn't be reached, as on a machine with none.
 const TELEMETRY_AGAIN: Duration = Duration::from_secs(30);
@@ -148,11 +173,11 @@ impl Watch {
         named && placed(key, self.places.as_deref())
     }
 
-    /// Whether it watches any of Heat's rows or its headline.
-    fn wants_heat(&self) -> bool {
+    /// Whether it watches any of a place's rows or its headline.
+    fn wants_place(&self, place: Place) -> bool {
         match &self.keys {
-            Some(keys) => keys.iter().any(|key| place_of(key) == Some(HEAT)),
-            None => self.wants("row:heat:") || self.wants(HEAT_HEAD),
+            Some(keys) => keys.iter().any(|key| place.holds(key)),
+            None => self.wants(&format!("row:{}:", place.name)) || self.wants(&place.head()),
         }
     }
 }
@@ -347,6 +372,8 @@ struct Daemon {
     words: Option<Words>,
     /// The reads Heat's sparks keep while its rows are watched.
     heat: heat_rows::Heat,
+    /// The reads Power's sparks keep while its rows are watched.
+    power: power_rows::Power,
     /// The processor's telemetry's temperatures, as last told.
     telemetry: Vec<Value>,
     /// The kinds whose source said they changed, to be asked again now.
@@ -495,6 +522,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             profile: Value::Null,
             words,
             heat: heat_rows::Heat::default(),
+            power: power_rows::Power::default(),
             telemetry: Vec::new(),
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
@@ -581,34 +609,48 @@ fn watched_trees(daemon: &Daemon) -> BTreeSet<u32> {
         .collect()
 }
 
-/// Whether some watch holds Heat's rows or its headline.
-fn makes_heat(daemon: &Daemon) -> bool {
-    daemon.words.is_some() && daemon.watches.iter().any(Watch::wants_heat)
+/// Whether some watch holds a place's rows or its headline.
+fn makes(daemon: &Daemon, place: Place) -> bool {
+    daemon.words.is_some() && daemon.watches.iter().any(|watch| watch.wants_place(place))
+}
+
+/// The places whose rows some watch holds.
+fn making(daemon: &Daemon) -> Vec<Place> {
+    PLACES
+        .into_iter()
+        .filter(|place| makes(daemon, *place))
+        .collect()
 }
 
 /// The kinds read for these: each as it is, but a made kind, which is
-/// made of the kinds its rows are said from.
-fn sources_of(kinds: &HashSet<String>) -> HashSet<String> {
+/// read as what these places' rows are made of.
+fn sources_of(kinds: &HashSet<String>, places: &[Place]) -> HashSet<String> {
     let mut read: HashSet<String> = kinds
         .iter()
         .filter(|kind| !MADE.contains(&kind.as_str()))
         .cloned()
         .collect();
-    if kinds.iter().any(|kind| MADE.contains(&kind.as_str())) {
-        read.extend(HEAT_SOURCES.map(str::to_owned));
+    for place in places {
+        read.extend(place.sources.iter().map(|kind| (*kind).to_owned()));
     }
     read
 }
 
-/// Lets Heat's reads go once nothing watches its rows, so a shut launcher
-/// keeps none, and the next watch starts afresh.
+/// Lets a place's reads go once nothing watches its rows, so a shut
+/// launcher keeps none, and the next watch starts afresh.
 fn let_go(daemon: &mut Daemon) {
-    if makes_heat(daemon) {
-        return;
+    for place in PLACES {
+        if makes(daemon, place) {
+            continue;
+        }
+        if place == HEAT {
+            daemon.heat.forget();
+            daemon.telemetry.clear();
+        } else {
+            daemon.power.forget();
+        }
+        daemon.held.retain(|key, _| !place.holds(key));
     }
-    daemon.heat.forget();
-    daemon.telemetry.clear();
-    daemon.held.retain(|key, _| place_of(key) != Some(HEAT));
 }
 
 /// The records of one kind held.
@@ -619,19 +661,22 @@ fn held_of(held: &BTreeMap<String, Value>, kind: &str) -> Vec<Value> {
         .collect()
 }
 
-/// Makes Heat's rows and headline again from what's held, keeps them,
-/// and says those that changed and the keys of those gone.
-fn made_heat(daemon: &mut Daemon) -> (Vec<Value>, Vec<String>) {
+/// A place's rows and headline as they read now, from what's held.
+fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
     let Daemon {
         held,
         heat,
+        power,
         words,
         telemetry,
         ..
     } = daemon;
     let Some(words) = words.as_ref() else {
-        return (Vec::new(), Vec::new());
+        return rows::Ready::default();
     };
+    if place == POWER {
+        return power.read(&held_of(held, "supply"), clock_ms(), words);
+    }
     let (sensors, zones, cooling) = (
         held_of(held, "sensor"),
         held_of(held, "zone"),
@@ -645,14 +690,21 @@ fn made_heat(daemon: &mut Daemon) -> (Vec<Value>, Vec<String>) {
         processor: processor.as_ref(),
         telemetry,
     };
-    let ready = heat.read(said, clock_ms(), words);
+    heat.read(said, clock_ms(), words)
+}
+
+/// Makes a place's rows and headline again from what's held, keeps them,
+/// and says those that changed and the keys of those gone.
+fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
+    let ready = ready(daemon, place);
+    let held = &mut daemon.held;
     let rows = ready
         .rows
         .into_iter()
         .map(|row| json!({"key": row["key"].clone(), "kind": "row", "row": row}));
     let head = ready
         .head
-        .map(|head| json!({"key": HEAT_HEAD, "kind": "head", "head": head}));
+        .map(|head| json!({"key": place.head(), "kind": "head", "head": head}));
     let made: Vec<Value> = rows.chain(head).collect();
     let keys: HashSet<&str> = made
         .iter()
@@ -660,7 +712,7 @@ fn made_heat(daemon: &mut Daemon) -> (Vec<Value>, Vec<String>) {
         .collect();
     let gone: Vec<String> = held
         .keys()
-        .filter(|key| place_of(key) == Some(HEAT) && !keys.contains(key.as_str()))
+        .filter(|key| place.holds(key) && !keys.contains(key.as_str()))
         .cloned()
         .collect();
     for key in &gone {
@@ -685,7 +737,7 @@ fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
     loop {
         {
             let mut daemon = lock(&shared.daemon);
-            while !makes_heat(&daemon) {
+            while !makes(&daemon, HEAT) {
                 daemon = shared
                     .woken
                     .wait(daemon)
@@ -696,7 +748,7 @@ fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
         let reached = telemetry::watch(path, &stop, |said| {
             let mut daemon = lock(&shared.daemon);
             daemon.telemetry = said.unwrap_or_default();
-            if !makes_heat(&daemon) {
+            if !makes(&daemon, HEAT) {
                 stop.store(true, Ordering::Relaxed);
             }
         });
@@ -705,12 +757,17 @@ fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
 }
 
 /// Reads these kinds now, the trees watched and those `asked` names among
-/// them, keeps what changed, and tells each watch of it. A made kind
-/// among them has what it's made of read and made again, as it is while
-/// some watch holds it.
+/// them, keeps what changed, and tells each watch of it. A place some
+/// watch holds the rows of has them made again where what they're made
+/// of was read.
 fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
-    let makes = kinds.iter().any(|kind| MADE.contains(&kind.as_str()));
-    let kinds = &sources_of(kinds);
+    read_making(shared, kinds, asked, &[]);
+}
+
+/// Reads as `read` does, and makes these places' rows too, though no
+/// watch holds them yet, as a watch of them is answered before it's held.
+fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], places: &[Place]) {
+    let kinds = &sources_of(kinds, places);
     let (buses, trees) = {
         let daemon = lock(&shared.daemon);
         let mut trees = watched_trees(&daemon);
@@ -763,11 +820,14 @@ fn read(shared: &Shared, kinds: &HashSet<String>, asked: &[String]) {
             changed.push(record);
         }
     }
-    let heats = HEAT_SOURCES.iter().any(|kind| kinds.contains(*kind));
-    if heats && daemon.words.is_some() && (makes || makes_heat(&daemon)) {
-        let (made, unmade) = made_heat(&mut daemon);
-        changed.extend(made);
-        gone.extend(unmade);
+    for place in PLACES {
+        let read = place.sources.iter().any(|kind| kinds.contains(*kind));
+        let wanted = places.contains(&place) || makes(&daemon, place);
+        if read && wanted && daemon.words.is_some() {
+            let (remade, unmade) = made(&mut daemon, place);
+            changed.extend(remade);
+            gone.extend(unmade);
+        }
     }
     if changed.is_empty() && gone.is_empty() {
         return;
@@ -824,12 +884,10 @@ fn watch_loop(shared: &Shared) {
         }
         let mut kinds = watched(&daemon);
         kinds.retain(|kind| !HEARD.contains(&kind.as_str()) && !KEPT.contains(&kind.as_str()));
-        // Heat's rows are read for only where some watch holds them, as
-        // rows of another place are made by another daemon.
-        if !makes_heat(&daemon) {
-            kinds.retain(|kind| !MADE.contains(&kind.as_str()));
-        }
-        let kinds = sources_of(&kinds);
+        // A place's rows are read for only where some watch holds them,
+        // as rows of another place are made by another daemon.
+        let places = making(&daemon);
+        let kinds = sources_of(&kinds, &places);
         // Only kinds heard as they're written are watched, as the bar's
         // camera and Keep Awake always are, so nothing is due on the
         // second until a watch of another kind wakes this.
@@ -871,15 +929,12 @@ fn watch_loop(shared: &Shared) {
             );
             continue;
         }
-        // What Heat's rows are made of is read together, so each read
+        // What a place's rows are made of is read together, so each read
         // makes them once.
-        if HEAT_SOURCES.iter().any(|kind| due.contains(*kind)) {
-            due.extend(
-                HEAT_SOURCES
-                    .iter()
-                    .filter(|kind| kinds.contains(**kind))
-                    .map(|kind| (*kind).to_owned()),
-            );
+        for place in &places {
+            if place.sources.iter().any(|kind| due.contains(*kind)) {
+                due.extend(place.sources.iter().map(|kind| (*kind).to_owned()));
+            }
         }
         drop(daemon);
         read(shared, &due, &[]);
@@ -1685,7 +1740,7 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
 /// The records held of these kinds or keys, read first where they aren't
 /// fresh or a key isn't held, in the daemon's order: by kind, then by key.
 fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
-    refresh(shared, kinds, keys);
+    refresh(shared, kinds, keys, None);
     held(&lock(&shared.daemon), kinds, keys, None)
 }
 
@@ -1701,16 +1756,46 @@ fn wanted_kinds(kinds: &[String], keys: Option<&[String]>) -> HashSet<String> {
     }
 }
 
+/// The places whose rows these kinds or keys ask for, of these places or
+/// every place's.
+fn asked_places(
+    kinds: &[String],
+    keys: Option<&[String]>,
+    places: Option<&[String]>,
+) -> Vec<Place> {
+    if !wanted_kinds(kinds, keys)
+        .iter()
+        .any(|kind| MADE.contains(&kind.as_str()))
+    {
+        return Vec::new();
+    }
+    PLACES
+        .into_iter()
+        .filter(|place| match keys {
+            Some(keys) => keys.iter().any(|key| place.holds(key)),
+            None => places.is_none_or(|places| places.iter().any(|p| p == place.name)),
+        })
+        .collect()
+}
+
 /// Reads the kinds of these kinds or keys that weren't read lately, and
-/// what Heat's rows are made of where they're asked for and not yet made.
-fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
+/// what a place's rows are made of where they're asked for and not yet
+/// made.
+fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>, places: Option<&[String]>) {
     let asked = wanted_kinds(kinds, keys);
-    let wanted = sources_of(&asked);
-    let mut stale: HashSet<String> = {
+    let mut made = asked_places(kinds, keys, places);
+    let stale: HashSet<String> = {
         let daemon = lock(&shared.daemon);
-        let makes =
-            daemon.words.is_some() && asked.iter().any(|kind| MADE.contains(&kind.as_str()));
-        let unmade = makes && !daemon.held.contains_key(HEAT_HEAD);
+        if daemon.words.is_none() {
+            made.clear();
+        }
+        let wanted = sources_of(&asked, &made);
+        // A place whose headline isn't held has never been made.
+        let unmade: Vec<&str> = made
+            .iter()
+            .filter(|place| !daemon.held.contains_key(&place.head()))
+            .flat_map(|place| place.sources.iter().copied())
+            .collect();
         wanted
             .iter()
             .filter(|kind| {
@@ -1721,7 +1806,7 @@ fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
                     })
                 });
                 unheld
-                    || (unmade && HEAT_SOURCES.contains(&kind.as_str()))
+                    || unmade.contains(&kind.as_str())
                     || daemon
                         .read_at
                         .get(*kind)
@@ -1732,11 +1817,8 @@ fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     };
     // Read for rows not yet watched, they're made though no watch holds
     // them yet.
-    if !stale.is_empty() && asked.iter().any(|kind| MADE.contains(&kind.as_str())) {
-        stale.insert("row".to_owned());
-    }
     if !stale.is_empty() {
-        read(shared, &stale, keys.unwrap_or_default());
+        read_making(shared, &stale, keys.unwrap_or_default(), &made);
     }
 }
 
@@ -1804,7 +1886,7 @@ fn answer(
             keys,
             places,
         } => {
-            refresh(shared, &kinds, keys.as_deref());
+            refresh(shared, &kinds, keys.as_deref(), places.as_deref());
             // What it's told first is taken, and queued, under the lock
             // that holds the watch, so a read between them is either in it
             // or told after it. Queued once the lock was let go, a change
