@@ -42,6 +42,7 @@ let
     ./checks/spend.nix
     ./checks/terminal.nix
     ./checks/timers.nix
+    ./checks/turned-on.nix
     ./checks/windows.nix
     ./checks/words.nix
   ];
