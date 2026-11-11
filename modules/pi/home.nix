@@ -333,7 +333,11 @@ in
 
     # landrun fences a session's commands with Landlock when it starts with
     # PI_SANDBOX=strict, as one reading a stranger's text should; without it
-    # such a session runs no command at all. Nothing runs under it otherwise.
+    # such a session runs no command at all. bubblewrap goes around it for
+    # the agent fence: a pid namespace of its own, so no other process's
+    # /proc, and a runtime folder holding only the sockets pi lets through,
+    # so no display, bus or password socket. Nothing runs under either
+    # until a session asks for a fence.
     home.packages =
       lib.optional (!onClaude) piClaude
       ++ [
@@ -343,7 +347,10 @@ in
         })
       ]
       ++ [ piCarry ]
-      ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.landrun;
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+        pkgs.landrun
+        pkgs.bubblewrap
+      ];
 
     # On the Claude plan every pi starts on it: the provider is one of the
     # extensions pi finds by itself, so the package list pi keeps is left
