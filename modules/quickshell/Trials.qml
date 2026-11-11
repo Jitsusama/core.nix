@@ -82,13 +82,20 @@ Scope {
 
     // The answers' time, as the answers asked, the rows placed and the list
     // shown, when the key said them, its showing with how many rows were new
-    // to the list and how long laying them out took.
+    // to the list and how long laying them out took, with how many rows that
+    // drew, built and taken back from those let go.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
             + (parts.kept && parts.kept.fresh + parts.kept.laying > 0
                 ? ` (${parts.kept.fresh} rows new, ${parts.kept.laying}`
-                + " laying them out)" : "")
+                + ` laying them out${laid(parts.kept)})` : "")
             : "";
+    }
+
+    // The rows a laying drew, where it drew any.
+    function laid(kept) {
+        return (kept.built ?? 0) + (kept.reused ?? 0) > 0
+            ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
     }
 
     // What a step spent, its own parts beside those of the search that drew

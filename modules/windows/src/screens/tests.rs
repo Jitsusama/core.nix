@@ -86,7 +86,14 @@ fn a_screen_says_how_it_stands_and_the_focused_one_only_beside_another_lit() {
     assert_eq!(rows[1]["note"], "off", "an unlaid screen runs nothing");
     assert_eq!(rows[2]["side"], json!([]));
     let alone = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
-    let rows = super::rows(&alone, &BTreeMap::new(), Some("eDP-1"), None, &words());
+    let rows = super::rows(
+        &alone,
+        &BTreeMap::new(),
+        Some("eDP-1"),
+        true,
+        None,
+        &words(),
+    );
     assert_eq!(
         rows[0]["side"],
         json!([]),
@@ -170,7 +177,7 @@ fn a_rate_keeps_every_digit_and_a_scale_two_places() {
 /// The rows where desk-facts says nothing of any screen, and none is
 /// looked at, so no light is said.
 fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Words) -> Vec<Value> {
-    super::rows(outputs, &BTreeMap::new(), focused, None, words)
+    super::rows(outputs, &BTreeMap::new(), focused, true, None, words)
 }
 
 /// A screen's drawer where desk-facts says nothing of it, and no light.
@@ -197,7 +204,7 @@ fn only_the_screen_holding_the_brightness_says_the_light_and_only_while_looked_a
         now: 0,
     };
     let looked = |outputs: &BTreeMap<String, Value>, desk: &BTreeMap<String, Value>| {
-        super::rows(outputs, desk, None, Some(&seen), &words())
+        super::rows(outputs, desk, None, true, Some(&seen), &words())
     };
     let none = BTreeMap::new();
     assert_eq!(
@@ -476,7 +483,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        52,
+        56,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);

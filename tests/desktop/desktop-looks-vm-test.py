@@ -156,8 +156,8 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
     first, laid one way, every name whole (VKCF3Z, 2026-11-07). A sound device's State, as
     pipewire says it, leads its level (VKCF3Z, 2026-11-08); the stand-in backlight lights the
     one screen, so its Brightness leads. The speakers are played silence, so their node runs
-    and pw-top says how it keeps time: Dropouts, Load and Cycle, in that order (VKCF3Z,
-    2026-11-09).
+    and the sound daemon says how it keeps time, from PipeWire's profiler: Dropouts, Load and
+    Cycle, in that order (VKCF3Z, 2026-11-09).
     """
     for collection, typed, kind, leading, keeping in [
         ("sound", "speakers", "output", ["State", "Volume"], ["Dropouts", "Load", "Cycle"]),
@@ -189,7 +189,8 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
             and a fact that arrives late, as Curve does when the backlight daemon writes its
             curve, lays them out again; so the plate is waited for laid, on the pitch, every
             name whole and one way, rather than held to it in a later snapshot. A playing
-            device's timing comes a moment after it runs, with pw-top's first cycle.
+            device's timing comes a second after its drawer is out, once the profiler's first second
+            of cycles stands.
             """
             drawer = shown["drawer"]
             return (

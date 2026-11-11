@@ -67,6 +67,7 @@ mod temp;
 mod trash;
 mod trees;
 mod units;
+mod unregistered;
 mod variants;
 mod vouch;
 mod words;

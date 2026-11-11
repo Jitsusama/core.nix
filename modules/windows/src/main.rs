@@ -101,6 +101,8 @@ struct Daemon {
     names: Names,
     /// niri's outputs as it last said them, by connector.
     outputs: BTreeMap<String, Value>,
+    /// Whether niri darkens one screen by name, which its patch says.
+    each: bool,
     /// The words the launcher's rows are said in, or none, so no rows.
     words: Option<screens::Words>,
     /// What desk-facts says of each screen's EDID, by connector.
@@ -174,6 +176,7 @@ fn main() {
             entries,
             names: Names::default(),
             outputs: BTreeMap::new(),
+            each: std::env::var_os("NIRI_POWERS_OFF_EACH_OUTPUT").is_some_and(|set| set == "1"),
             words,
             desk: said,
             light: Held::default(),
@@ -328,6 +331,7 @@ fn refresh(daemon: &mut Daemon) {
         entries,
         names,
         outputs,
+        each,
         words,
         desk,
         light,
@@ -343,7 +347,7 @@ fn refresh(daemon: &mut Daemon) {
             now: now_ms(),
         });
         rows.take(
-            screens::rows(outputs, desk, desktop.output(), seen.as_ref(), words),
+            screens::rows(outputs, desk, desktop.output(), *each, seen.as_ref(), words),
             Vec::new(),
         );
         records.extend(rows.all().cloned());
@@ -747,38 +751,42 @@ fn answer(
             })
         }
         Ask::Look { id } => json!({"id": id, "looked": looked(shared)}),
-        Ask::Screen { id, said } => {
-            let Some(act) = Act::asked(&said) else {
-                return Some(error(
-                    &id,
-                    "unknown-act",
-                    &format!("no act on a screen in {said}"),
-                ));
-            };
-            // Every screen goes dark once the key that asked is up, on a
-            // thread of its own so no other ask waits, with nothing to
-            // show a refusal by then.
-            if act == Act::Sleep {
-                let shared = Arc::clone(shared);
-                std::thread::spawn(move || {
-                    std::thread::sleep(acts::KEY_UP);
-                    acts::done(&shared.niri, &act);
-                    looked(&shared);
-                });
-                return Some(json!({"id": id, "done": true}));
-            }
-            let answer = acts::done(&shared.niri, &act);
-            looked(shared);
-            let daemon = lock(&shared.daemon);
-            let Some(words) = daemon.words.as_ref() else {
-                return Some(error(&id, "no-rows", "no rows are made, so no acts"));
-            };
-            let named = screens::named_of(&daemon.outputs, act.output().unwrap_or(""), words);
-            acts::answered(&id, &act, answer.as_ref(), &named, words)
-        }
+        Ask::Screen { id, said } => screen_done(shared, &id, &said),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
     })
+}
+
+/// Does the act a screen's row asked, and answers it.
+fn screen_done(shared: &Arc<Shared>, id: &Value, said: &Value) -> Value {
+    let Some(act) = Act::asked(said) else {
+        return error(id, "unknown-act", &format!("no act on a screen in {said}"));
+    };
+    // Every screen goes dark, as does the last lit one, once the key that
+    // asked is up, on a thread of its own so no other ask waits, with
+    // nothing to show a refusal by then.
+    let waits = match &act {
+        Act::Sleep => true,
+        Act::Dark(name) => screens::last_lit(&lock(&shared.daemon).outputs, name),
+        _ => false,
+    };
+    if waits {
+        let shared = Arc::clone(shared);
+        std::thread::spawn(move || {
+            std::thread::sleep(acts::KEY_UP);
+            acts::done(&shared.niri, &act);
+            looked(&shared);
+        });
+        return json!({"id": id, "done": true});
+    }
+    let answer = acts::done(&shared.niri, &act);
+    looked(shared);
+    let daemon = lock(&shared.daemon);
+    let Some(words) = daemon.words.as_ref() else {
+        return error(id, "no-rows", "no rows are made, so no acts");
+    };
+    let named = screens::named_of(&daemon.outputs, act.output().unwrap_or(""), words);
+    acts::answered(id, &act, answer.as_ref(), &named, words)
 }

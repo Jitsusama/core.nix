@@ -94,53 +94,13 @@ function run(failures) {
         Sounds.graphFormat({})], [
         "48 kHz \u00b7 32 bit float", "44.1 kHz \u00b7 16 bit",
         "176 kHz \u00b7 24 bit", "48 kHz \u00b7 ALAW", ""]);
-    // How a node keeps time, from a line of pw-top's batch mode: only a
-    // running one has a cycle, its busy time a share of it, a time
-    // pw-top can't say is none, a follower runs in its driver's cycle,
-    // and a header opens the next frame.
-    const running = Sounds.timing(
-        "R   79   1024  48000  20.1us 665.6us  0.00  0.03    2    S32LE 2 48000 "
-        + "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Speaker__sink", null);
-    const four = share => share === null ? null : Number(share.toFixed(4));
-    // Its cycle and load are measures, said by the one rule.
+    // How a node keeps time, as the sound daemon serves it (timing.rs):
+    // its cycle and load are measures, said by the one rule.
+    const running = { id: 79, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.0312,
+        unfinished: false, errors: 2, drives: true };
     const threeDigits = value => Numbers.significant(value);
-    machine("a running node's timing", [running?.id, running?.quantum, running?.rate,
-        running ? threeDigits(Sounds.cycleMs(running)) : null, four(running?.busy ?? null),
-        running?.errors, running ? threeDigits(Sounds.load(running.busy)) : null,
-        running?.drives],
-    [79, 1024, 48000, "21.3", 0.0312, 2, "3.12", true]);
-    const busyIn = (state, busy) => Sounds.timing(
-        `${state} 80 1024 48000 20.1us ${busy} 0.00 0.07 0 F32LE 2 48000 a`, null);
-    machine("busy in each unit pw-top says, unfinished past its cycle, a transport running", [
-        four(busyIn("R", "1.5ms")?.busy ?? null),
-        four(busyIn("R", "0.1s")?.busy ?? null),
-        busyIn("R", "+++")?.busy, busyIn("R", "+++")?.unfinished,
-        busyIn("R", "---")?.unfinished, busyIn("R", "1.5ms")?.unfinished,
-        four(busyIn("T", "1.5ms")?.busy ?? null),
-        four(busyIn("t", "1.5ms")?.busy ?? null)],
-    [0.0703, 4.6875, null, true, false, false, 0.0703, 0.0703]);
-    const follower = "R   81   0   0   1.0us   2.1ms  0.00  0.10   0  F32LE 2 48000 + pw-cat";
-    const followed = Sounds.timing(follower, running);
-    machine("a follower in its driver's cycle, and none without one", [followed?.quantum,
-        followed ? threeDigits(Sounds.cycleMs(followed)) : null,
-        followed ? threeDigits(Sounds.load(followed.busy)) : null,
-        followed?.drives, Sounds.timing(follower, null)],
-    [1024, "21.3", "9.84", false, null]);
-    // An async follower is marked "=" rather than "+" (pw-top.c).
-    const async = "R   82  256  48000   1.0us   2.1ms  0.00  0.10   0  F32LE 2 48000 = a";
-    machine("an async follower in its driver's cycle, and what's a follower", [
-        Sounds.timing(async, running)?.quantum, Sounds.timing(async, running)?.drives,
-        Sounds.follower(async), Sounds.follower(follower),
-        Sounds.follower("S   47      0      0    ---     ---   ---   ---     0   speaker")],
-    [1024, false, true, true, false]);
-    machine("one not running, one pw-top can't measure, and the header", [
-        Sounds.timing("S   47      0      0    ---     ---   ---   ---     0   speaker", null),
-        Sounds.timing("I   48     0      0   0.0us   0.0us  ???   ???   0  F32P 2 0 out", null),
-        Sounds.timing("R   50   256  44100   1.0us   ---  ???   ???   0  S16LE 2 44100 a", null)
-            ?.busy,
-        Sounds.heading("S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT  NAME "),
-        Sounds.heading("S   47      0      0    ---     ---   ---   ---     0       speaker")],
-    [null, null, null, true, false]);
+    machine("a running node's cycle and load", [threeDigits(Sounds.cycleMs(running)),
+        threeDigits(Sounds.load(running.busy))], ["21.3", "3.12"]);
     machine("the card says it already, or not", [
         Sounds.sameFormat("48 kHz \u00b7 32 bit",
             "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)"),
