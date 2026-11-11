@@ -674,6 +674,47 @@ fn sending_of(asked: &Asked, scratch: &Path) -> Result<Sending, Untaken> {
     }
 }
 
+/// The systemd-run this program was built with, where the system has one.
+const SYSTEMD_RUN: Option<&str> = option_env!("NIX_OFFLOAD_SYSTEMD_RUN");
+
+/// How much of what an upload reads stays in memory once it's read.
+const UPLOAD_MEMORY: &str = "MemoryHigh=1G";
+
+/// A command running `nix` to copy store paths away from this machine. The
+/// account's copy reads the store's files itself, so their cache counts
+/// against its caller's own memory: on 10 November a cargo proof's scope
+/// held 5.6 to 12 GB of it, which its windows' memory then paid for. Each
+/// upload runs in a scope of its own beside its caller, where
+/// [`UPLOAD_MEMORY`] reclaims that cache as it goes. With no systemd or no
+/// user manager to ask, it runs as it is.
+fn upload(nix: &str) -> Command {
+    let bus = std::env::var_os("XDG_RUNTIME_DIR")
+        .is_some_and(|runtime| Path::new(&runtime).join("bus").exists());
+    uploading(nix, SYSTEMD_RUN.filter(|_| bus))
+}
+
+/// [`upload`], through `systemd_run` where one may be asked.
+fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
+    // A scope runs its command in systemd-run's own process, so ending it
+    // ends the copy, as when the copy runs alone.
+    systemd_run.map_or_else(
+        || Command::new(nix),
+        |systemd_run| {
+            let mut command = Command::new(systemd_run);
+            command
+                .args([
+                    "--user",
+                    "--scope",
+                    "--quiet",
+                    "--collect",
+                    "--slice-inherit",
+                ])
+                .args(["-p", UPLOAD_MEMORY, "--", nix]);
+            command
+        },
+    )
+}
+
 /// Sends the store paths `sent` and what they reference to the lent
 /// builder ahead of what reads them there, fetched here first where this
 /// store lacks them, within `within`. They go as held outputs do, signed
@@ -690,7 +731,7 @@ pub fn paths_up(
         return Ok(());
     }
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
-    let mut copying = Command::new(nix)
+    let mut copying = upload(nix)
         .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
         .args(sent)
         .env("TMPDIR", "/tmp")
@@ -862,7 +903,7 @@ fn derivations_up(
     rank: Rank,
     [ssh, nix]: [&str; 2],
 ) -> Result<(), String> {
-    let mut copying = Command::new(nix);
+    let mut copying = upload(nix);
     match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
         Some(lacking) if lacking.is_empty() => return Ok(()),
         Some(lacking) => {
@@ -1187,7 +1228,7 @@ fn sent_held(
     );
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
-    let sent = Command::new(nix)
+    let sent = upload(nix)
         .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
         .args(&sending)
         .env("TMPDIR", "/tmp")
@@ -3508,7 +3549,7 @@ fn copy_pinned(folder: &Path, host: &str, nix: &str) {
     // socket's path may be. What this machine built before it signed, or
     // on a machine that doesn't sign, carries no signature the machine
     // nearby trusts, so it takes the copy on its account's trust.
-    let copied = Command::new(nix)
+    let copied = upload(nix)
         .args([
             "copy",
             "--no-check-sigs",
@@ -3665,6 +3706,40 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn an_upload_runs_in_a_scope_of_its_own_where_systemd_can_make_one() {
+        let args = |command: &Command| -> Vec<String> {
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect()
+        };
+        let scoped = uploading("/bin/nix", Some("/bin/systemd-run"));
+        assert_eq!(scoped.get_program(), "/bin/systemd-run");
+        assert_eq!(
+            args(&scoped),
+            [
+                "--user",
+                "--scope",
+                "--quiet",
+                "--collect",
+                "--slice-inherit",
+                "-p",
+                "MemoryHigh=1G",
+                "--",
+                "/bin/nix"
+            ],
+            "beside its caller, its cache bounded"
+        );
+        let alone = uploading("/bin/nix", None);
+        assert_eq!(alone.get_program(), "/bin/nix");
+        assert_eq!(
+            args(&alone),
+            Vec::<String>::new(),
+            "as it is, with no systemd"
+        );
+    }
 
     #[test]
     fn a_send_is_given_two_minutes_and_its_size_at_a_megabyte_a_second_or_fifteen() {
