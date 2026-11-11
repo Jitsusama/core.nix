@@ -2244,9 +2244,8 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     # shell hears of them, so they fall between its frame's start and niri showing it.
     stamps = [key.get("begun"), key.get("synchronized"), key.get("swapped"), key.get("at")]
     times = [float(stamp) for stamp in stamps if stamp is not None]
-    assert len(times) == len(stamps) and times == sorted(times), (
-        f"its frame began, synced, swapped and was shown at {stamps}"
-    )
+    assert len(times) == len(stamps), f"its frame began, synced, swapped and was shown at {stamps}"
+    assert times == sorted(times), f"its frame began, synced, swapped and was shown at {stamps}"
     # And its line says its drawing so, the three adding up to it but for rounding.
     said = shell.log.read_bytes()[since:].decode(errors="replace")
     drew = DRAWING_SPLIT.search(said)
