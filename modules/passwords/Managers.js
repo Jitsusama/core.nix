@@ -86,6 +86,25 @@ function noted(reason, called) {
     return name !== "" && why.startsWith(`${name} `) ? why.slice(name.length + 1) : why;
 }
 
+// What the place's one row opens while it's off, and the word its note
+// is said by: the browser the first manager filling one fills sign-ins
+// in (`offNote`), or where none fills one, the first manager's own app
+// (`offNoBrowser`); where the machine has neither, nothing, so Return is
+// no act rather than one that does nothing, as with no manager at all
+// (`offNoManager`; Y2YBTS's review of #3001). `browserOf` and `appOf`
+// give a manager's desktop entry, or null.
+function offOpens(managers, browserOf, appOf) {
+    const filling = managers.find(one => browserOf(one) !== null);
+    if (filling !== undefined) {
+        return { manager: filling, opened: browserOf(filling), note: "offNote" };
+    }
+    if (managers.length === 0) {
+        return { manager: null, opened: null, note: "offNoManager" };
+    }
+    const own = managers.find(one => appOf(one) !== null) ?? managers[0];
+    return { manager: own, opened: appOf(own), note: "offNoBrowser" };
+}
+
 // The row leading the place for each manager that can't read, by how its
 // daemon says it stands: Unlock while it's signed out, waiting on Joel or
 // its app, and its program while it's refused, where only a setting there

@@ -540,7 +540,7 @@ Scope {
         active: daemon.connects && daemon.runsItself
 
         Process {
-            id: running
+            id: run
 
             command: daemon.command
             environment: daemon.environment // qmllint disable incompatible-type
@@ -555,7 +555,7 @@ Scope {
             // Its refusals are forgotten only once it answers hello, so
             // one that ends at once waits longer each time it's started.
             onStarted: {
-                daemon.wire = running;
+                daemon.wire = run;
                 daemon.greet();
             }
             onExited: code => {
