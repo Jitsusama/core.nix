@@ -1054,7 +1054,10 @@ mod tests {
             ["High", "Critical", "Throttles At", "Linux Name", "Zone"]
         );
         assert_eq!(part["drawer"]["eyebrow"], "on this machine \u{b7} sensor");
-        assert_eq!(part["drawer"]["eyebrowNames"], true, "its eyebrow is drawn as a name");
+        assert_eq!(
+            part["drawer"]["eyebrowNames"], true,
+            "its eyebrow is drawn as a name"
+        );
         assert_eq!(
             row(&ready, "disk:0")["note"],
             "sensor 2 hotter at 68.9 \u{b0}C"

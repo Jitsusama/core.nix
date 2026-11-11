@@ -324,7 +324,7 @@
   "modules/zathura/next-document/src/main.rs" = 4;
   "tests/vm/sound/call-transcripts-vm-test.py" = 9;
   "tests/vm/devices/desk-facts-vm-test.py" = 4;
-  "tests/desktop/desktop-launcher-answers-vm-test.py" = 5;
+  "tests/desktop/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/desktop-launcher-finds-by-name-vm-test.py" = 1;
   "tests/desktop/desktop-launcher-goes-places-vm-test.py" = 8;
   "tests/desktop/desktop-launcher-holds-meetings-vm-test.py" = 2;
