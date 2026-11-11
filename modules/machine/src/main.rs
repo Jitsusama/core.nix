@@ -1304,8 +1304,9 @@ fn heard_until(
 /// Hears the kernel say a link or an address came, changed or went while
 /// `link` is watched, and tells what changed at once: the links are
 /// dumped as the watch begins and again only as the kernel speaks, a
-/// burst of its messages read once, so nothing polls. With the last watch
-/// the socket is let go, so an idle machine hears none of it.
+/// burst of its messages read once, so nothing polls. Within a minute of
+/// the last watch ending the socket is let go, so an idle machine hears
+/// none of it.
 fn links_loop(shared: &Shared) {
     let kinds = HashSet::from(["link".to_owned()]);
     let watching = |daemon: &Daemon| watched(daemon).contains("link");

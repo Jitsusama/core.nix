@@ -59,7 +59,9 @@ const RTMGRP_IPV6_IFADDR: u32 = 0x100;
 const PATIENCE: Duration = Duration::from_secs(2);
 
 /// The flags ip says by name, in its order; it says `NO-CARRIER` first
-/// for a link up with nothing at the other end.
+/// for a link up but not running, as iproute2's `print_link_flags` does:
+/// the kernel sets running from the link's operating state, so a Wi-Fi
+/// card still authenticating, its carrier up but dormant, has none.
 const FLAGS: [(u32, &str); 8] = [
     (0x8, "LOOPBACK"),
     (0x2, "BROADCAST"),
@@ -71,7 +73,7 @@ const FLAGS: [(u32, &str); 8] = [
     (0x10000, "LOWER_UP"),
 ];
 const IFF_UP: u32 = 0x1;
-const IFF_LOWER_UP: u32 = 0x10000;
+const IFF_RUNNING: u32 = 0x40;
 
 /// Every link's record, in the kernel's order of their indexes, or none
 /// where the kernel gives no route socket.
@@ -227,7 +229,7 @@ fn link_type(arp: u16) -> String {
 
 fn flag_names(flags: u32) -> Vec<&'static str> {
     let mut names = Vec::new();
-    if flags & IFF_UP != 0 && flags & IFF_LOWER_UP == 0 {
+    if flags & IFF_UP != 0 && flags & IFF_RUNNING == 0 {
         names.push("NO-CARRIER");
     }
     names.extend(
@@ -339,14 +341,18 @@ fn dump(kind: u16, fixed: &[u8]) -> Option<Vec<u8>> {
     };
     let size = u32::try_from(std::mem::size_of::<libc::timeval>()).ok()?;
     // SAFETY: setsockopt reads only the timeval it's given, of its size.
-    unsafe {
+    let waits = unsafe {
         libc::setsockopt(
             fd.as_raw_fd(),
             libc::SOL_SOCKET,
             libc::SO_RCVTIMEO,
             (&raw const wait).cast(),
             size,
-        );
+        )
+    };
+    // A socket that won't time its reads out could hold the read for good.
+    if waits != 0 {
+        return None;
     }
     let length = u32::try_from(HEADER + fixed.len()).ok()?;
     let mut ask = Vec::with_capacity(HEADER + fixed.len());
@@ -489,7 +495,7 @@ mod tests {
         let mut links = link_message(
             2,
             1,
-            0x1 | 0x2 | 0x1000 | 0x10000,
+            0x1 | 0x2 | 0x40 | 0x1000 | 0x10000,
             &[
                 named("enp1s0"),
                 attribute(IFLA_MTU, &1500u32.to_ne_bytes()),
@@ -507,7 +513,7 @@ mod tests {
         links.extend(link_message(
             4,
             65534,
-            0x1 | 0x10000,
+            0x1 | 0x40 | 0x10000,
             &[
                 named("wg0"),
                 attribute(IFLA_LINKINFO, &attribute(IFLA_INFO_KIND, b"wireguard\0")),
@@ -568,6 +574,17 @@ mod tests {
             said[1].get("permaddr").is_none(),
             "no address it was made with: {}",
             said[1]
+        );
+    }
+
+    #[test]
+    fn a_link_with_a_carrier_but_dormant_says_no_carrier_as_ip_does() {
+        let mut links = link_message(5, 1, 0x1 | 0x1000 | 0x10000, &[named("wlan1")]);
+        links.extend(message(NLMSG_DONE, &[0; 4]));
+        let said = records(&links, &message(NLMSG_DONE, &[0; 4]), sys);
+        assert_eq!(
+            said[0]["flags"],
+            json!(["NO-CARRIER", "MULTICAST", "UP", "LOWER_UP"])
         );
     }
 

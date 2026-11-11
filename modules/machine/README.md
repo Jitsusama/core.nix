@@ -276,7 +276,8 @@ uses so Network reads them as it read ip, with each link's `uevent` and
 `addr_assign_type` from /sys/class/net. They're dumped as a watch begins
 and again only as the kernel says a link or an address changed, over a
 socket joined to its link and address groups while `link` is watched and
-let go once it isn't, so nothing polls and nothing is spawned.
+let go within a minute of its last watch ending, so nothing polls and
+nothing is spawned.
 
 ## Left Out, and Why
 
