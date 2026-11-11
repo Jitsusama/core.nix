@@ -57,8 +57,7 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use machine::{
     Root, boot, camera, clock_ms, disk, firmware, heat, kept, light, memory, now_ms, processor,
-    rounded,
-    sleep, steered, supply, tree, using, written::Written,
+    rounded, sleep, steered, supply, tree, using, written::Written,
 };
 use serde_json::{Value, json};
 
@@ -831,7 +830,9 @@ fn kept_loop(shared: &Shared, root: &Root) {
     };
     loop {
         let names = written.wait(KEPT_LOOKS_AGAIN);
-        let locks = names.iter().any(|name| name.is_empty() || kept::names_a_lock(name));
+        let locks = names
+            .iter()
+            .any(|name| name.is_empty() || kept::names_a_lock(name));
         let choice = names
             .iter()
             .any(|name| name.is_empty() || kept::names_the_choice(name));

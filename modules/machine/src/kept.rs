@@ -74,10 +74,17 @@ mod tests {
         let said = locks(&Root::new(&root), Some("/run/user/1000"));
         let unknown = locks(&Root::new(&root), None);
         std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(said[0], json!({"key": "kept:idle", "kind": "kept", "lock": "idle", "held": true}));
+        assert_eq!(
+            said[0],
+            json!({"key": "kept:idle", "kind": "kept", "lock": "idle", "held": true})
+        );
         assert_eq!(said[1]["key"], "kept:lid");
         assert_eq!(said[1]["held"], json!(false));
-        assert_eq!(unknown[0]["held"], Value::Null, "no runtime folder, nothing said");
+        assert_eq!(
+            unknown[0]["held"],
+            Value::Null,
+            "no runtime folder, nothing said"
+        );
         assert!(
             names_a_lock("kept-awake-lid") && !names_a_lock("backlight-now"),
             "only a lock's own file names a lock"

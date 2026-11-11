@@ -204,7 +204,9 @@ mod tests {
         // A folder taken away is said, and watched again once it's back.
         fs::remove_dir_all(&later).unwrap();
         assert!(
-            written.wait(Duration::from_secs(5)).contains(&String::new()),
+            written
+                .wait(Duration::from_secs(5))
+                .contains(&String::new()),
             "a folder taken away is said"
         );
         fs::create_dir_all(&later).unwrap();
