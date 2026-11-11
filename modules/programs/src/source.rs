@@ -32,6 +32,12 @@ pub struct Source {
     /// Read only as a watch of its program begins.
     #[serde(default)]
     pub asked: bool,
+    /// With `asked`, read again only once something tells this daemon its
+    /// list changed (the `changed` ask), as kitty's watcher and Neovim do
+    /// of what they hold, rather than each time its key is asked: what's
+    /// held answers at once until then.
+    #[serde(default)]
+    pub told: bool,
     /// The command printing its paths, newest first.
     #[serde(default)]
     pub list: Vec<String>,
