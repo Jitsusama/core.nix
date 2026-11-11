@@ -77,6 +77,7 @@ pub mod temp;
 pub mod trash;
 pub mod trees;
 pub mod units;
+pub mod unregistered;
 pub mod vouch;
 pub mod words;
 pub mod workspaces;
