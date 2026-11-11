@@ -165,13 +165,17 @@ function named(summary, body, typed, holds) {
 // search does. Anything that reads every found row's note, a sort by it
 // or a copy of them all, gives that back, so read only the rows shown.
 // Each is a copy, so a search or a program's row never
-// changes the note of a row shown elsewhere, copied by Object.assign,
-// which reads each of the row's getters: copying their descriptors
-// instead, to leave them unread, took three to four times as long in
-// Qt's engine.
+// changes the note of a row shown elsewhere, its fields read from the
+// row's getters: copying their descriptors instead, to leave them
+// unread, took three to four times as long in Qt's engine. Its note is
+// made a getter before any field is copied, never after: Qt 6.12 keeps
+// the slot of a field's setter once for every shape grown from the one
+// it was first turned in, so turning the row's own `count` into a
+// getter wrote that setter over another field, or past the copy's end,
+// which crashed the shell at 11:09 on 2026-11-11.
 function lined(rows, typed, holds) {
     return rows.map((row) => {
-        const copy = Object.assign({}, row);
+        const copy = {};
         let note = null;
         Object.defineProperty(copy, "count", {
             enumerable: true,
@@ -186,6 +190,11 @@ function lined(rows, typed, holds) {
                 note = said;
             },
         });
+        for (const field of Object.keys(row)) {
+            if (field !== "count") {
+                copy[field] = row[field];
+            }
+        }
         return copy;
     });
 }
