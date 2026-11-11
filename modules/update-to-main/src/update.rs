@@ -87,7 +87,7 @@ fn run(
     tell: &mut dyn FnMut(&Line),
 ) -> Line {
     let last = last(config);
-    if let Some(why) = held::paused(config)
+    if let Some(why) = paused(config, following)
         .or_else(|| too_low(config))
         .or_else(|| busy(config))
     {
@@ -171,7 +171,7 @@ fn run(
     // seen here, before anything switches.
     if let Some(why) = quiet(config, following)
         .or_else(|| busy(config))
-        .or_else(|| held::paused(config))
+        .or_else(|| paused(config, following))
         .or_else(|| held::stops(config, &head, &followed))
     {
         return Line::Refused { commit: last, why };
@@ -186,6 +186,14 @@ fn run(
         return failed(last, Failure::new("the update was stopped"));
     }
     switch(config, &built, last, head, followed)
+}
+
+/// Why an update the follower alone asked for mustn't run, if updates
+/// are paused. A person's ask runs through a pause, so a switch granted by
+/// hand needn't resume and pause again around its ask, which would let the
+/// follower in if the asker died between them.
+fn paused(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
+    held::paused(config).filter(|_| following())
 }
 
 /// A built system whose switch waits for a hold to be given.

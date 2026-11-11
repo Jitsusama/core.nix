@@ -1,6 +1,7 @@
 //! What keeps updates from running until an asker lets them: a pause,
-//! which refuses every ask, and holds on commits, which refuse any head
-//! of main or of a followed input that holds one. Both are kept in root's
+//! which refuses the follower's asks while a person's still update, and
+//! holds on commits, which refuse any head of main or of a followed input
+//! that holds one, whoever asks. Both are kept in root's
 //! state, so neither a switch, which starts an account's stopped units
 //! again, nor a reboot undoes them; only `resume` or `lift` does.
 //!
@@ -166,7 +167,8 @@ pub fn says(why: &str) -> bool {
 pub fn said_of(held: &Held) -> String {
     let paused = match &held.paused {
         Some(by) => format!(
-            "{PAUSED}, since uid {} asked at {}; `update-to-main {RESUME}` lets them run",
+            "{PAUSED} for the follower, since uid {} asked at {}; a person's ask still \
+             updates, and `update-to-main {RESUME}` lets the follower's run",
             by.uid, by.at
         ),
         None => RUN.to_owned(),
@@ -185,7 +187,8 @@ pub fn said_of(held: &Held) -> String {
     )
 }
 
-/// Why no update may start now, if updates are paused.
+/// Why no update the follower alone asked for may run now, if updates
+/// are paused.
 #[must_use]
 pub fn paused(config: &Config) -> Option<String> {
     let held = read(config);
