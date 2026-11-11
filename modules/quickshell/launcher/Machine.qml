@@ -38,12 +38,13 @@
 // it alone. The words that ask each, and every part's name, are the
 // vocabulary's (launcher/words.json, Words.qml).
 //
-// Every figure is the machine daemon's (modules/machine), held over one
-// connection to its socket (Daemon.qml), so nothing is read or spawned
-// here: the daemon reads the kernel and asks UDisks, and says each
+// Every figure is the machine daemon's (modules/machine), held over
+// connections to its socket kept open (Daemon.qml), so nothing is read or
+// spawned here: the daemon reads the kernel and asks UDisks, and says each
 // record as it changes. The processor, the memory, the uptime and the
 // disk come from it as rows ready to draw, worded and in their words'
-// order, so nothing here makes them; only what a disk guard says, the
+// order, held and made as every place's are (ReadyRows.qml), so nothing
+// here words, places or sorts them; only what a disk guard says, the
 // Space it watches and What's Filling It, is still made here, until the
 // guards' status is served as rows too. It reads only while watched, so
 // those are watched while one of Machine's answers is shown, the disk's
@@ -60,9 +61,6 @@ import qs
 import Quickshell
 import QtQuick
 import "Interfaces.js" as Interfaces
-import "Machine.js" as Machine
-import "Placed.js" as Placed
-import "../When.js" as When
 // Bytes as decimal to three digits, "12.3 GB", as what's told to a session
 // says them; it's the launcher's one such reading, kept there for networks.
 import "HomeNetwork.js" as HomeNetwork
@@ -152,6 +150,9 @@ Provider {
         if (!part)
             return resting && whole ? awaited(whole, name) : whole && (whole.asking || whole.gone)
                 ? Object.assign({}, whole, { title: name }) : null;
+        // A part's own parts are the rows served inside it, where it was
+        // served; one the shell makes holds its verbs.
+        const within = part.within ?? part.verbs;
         return {
             // Kept From Resting stands in a place whether or not anything
             // keeps it from resting, so it's kept there with no parts too;
@@ -159,12 +160,12 @@ Provider {
             whole: resting,
             about: resting ? kinds.cpu : kind === "disks" ? kinds.disks : undefined,
             headline: part.side,
-            copy: part.copied ?? part.side ?? "",
+            copy: part.copies ? part.copies() : part.side ?? "",
             graph: part.graph,
             glyph: whole.glyph,
             hue: "machine",
             title: part.name,
-            rows: part.verbs ? part.verbs() : [],
+            rows: within ? within() : [],
             note: part.note !== "" ? part.note : whole.note,
             live: provider
         };
@@ -283,71 +284,47 @@ Provider {
         return servedAnswer("memory", kinds.memory);
     }
 
-    // Machine's own rows, as the daemon serves them ready (place machine,
-    // the crate's wrapped form): the keys under each row's, placed as
-    // they come (Placed.js), so nothing here words, weighs or sorts them.
-    // Drawing them is this file's only until the launcher reads served
-    // rows itself (ReadyRows.qml). The Disk's are a place of their own
-    // (`disk`), watched only while a Disk answer or row is, since each
-    // read asks an NVMe disk its temperature.
-    property var nested: ({})
-    property var diskNested: ({})
-
-    function take(changed, gone) {
-        nested = Placed.nested(nested, served.held, changed, gone);
-        if (shown)
-            answered();
+    // A row the daemon serves, made as every place's are (ReadyRows.qml's
+    // thing), its Copy and its step inside its verbs: in the machine's hue
+    // where it names none, and closing on Return where it does nothing,
+    // as a figure copying nothing does. `within` is the rows served
+    // inside it, a part's own parts where it's asked alone.
+    function made(rows, row, key) {
+        const idle = (row.acts ?? []).length > 0 ? {} : {
+            verb: "close",
+            figure: true,
+            plain: true,
+            now: true,
+            copies: () => "",
+            run: () => {}
+        };
+        return rows.thing(row, key, Object.assign({
+            hue: row.hue ?? "machine",
+            within: () => rows.inside(key)
+        }, idle));
     }
-
-    function takeDisk(changed, gone) {
-        diskNested = Placed.nested(diskNested, diskRows.held, changed, gone);
-        if (shown)
-            answered();
-    }
-
-    // How a served row's times are said, as the launcher says them
-    // everywhere: a span as Interfaces does, "3 d 2 h", and a moment as
-    // When does, "06:06", "yesterday 14:10".
-    readonly property var timed: ({
-        lasted: seconds => Interfaces.lasted(seconds),
-        moment: (at, now) => When.moment(at, now, {
-            yesterday: says("uptime", "yesterday"),
-            date: (date, format) => Qt.formatDate(date, format)
-        })
-    })
 
     // A top row the daemon serves, as the answer the launcher asks for by
     // its words: its side the headline, its parts a step in; held in its
     // place while it hasn't been served.
     function servedAnswer(id, kind) {
-        const top = served.revision >= 0 ? served.held[`row:machine:${id}`] ?? null : null;
+        return servedFresh(served, `row:machine:${id}`, kind, id);
+    }
+
+    // The top row of `key` that `rows` holds, as an answer, the rows
+    // inside it a step in, or its place held as `unheld` holds `id`'s.
+    function servedFresh(rows, key, kind, id) {
+        const top = rows.served(key);
         if (!top)
             return unheld(id);
-        return servedFresh(top, kind, () => servedRows(served, nested, top.key));
-    }
-
-    // A served top row as an answer, `parts` its rows a step in.
-    function servedFresh(top, kind, parts) {
-        const said = Machine.served(top, Date.now(), timed);
         return fresh({
-            headline: said.side,
-            graph: said.graph,
-            glyph: Theme.glyph[said.glyph] ?? Words.glyph(kind),
-            title: said.name,
+            headline: rows.sideOf(top),
+            graph: top.graph,
+            glyph: Theme.glyph[top.glyph ?? ""] ?? Words.glyph(kind),
+            title: top.name ?? "",
             about: kind,
-            note: said.note
-        }, parts);
-    }
-
-    // The rows a watch serves inside one, each a figure or, holding more,
-    // a step in that wears its thing's glyph.
-    function servedRows(watch, nesting, parent) {
-        return (nesting[parent] ?? []).filter(key => watch.held[key]).map(key => {
-            const said = Machine.served(watch.held[key], Date.now(), timed);
-            const fields = Object.assign({}, said, { glyph: Theme.glyph[said.glyph] ?? "" });
-            return (nesting[key] ?? []).length > 0
-                ? holderRow(fields, () => servedRows(watch, nesting, key)) : figure(fields);
-        });
+            note: rows.noteOf(top)
+        }, () => rows.inside(key));
     }
 
     // The disk.
@@ -397,11 +374,10 @@ Provider {
     // Space and What's Filling It among the served parts, in their words'
     // order, in place of the served Space.
     function disks() {
-        const top = diskRows.revision >= 0 ? diskRows.held["row:disk:disk"] ?? null : null;
-        const served = () => top ? servedRows(diskRows, diskNested, top.key) : [];
+        const parts = () => diskRows.inside("row:disk:disk");
         const guard = provider.guard;
         if (guard === null)
-            return top ? servedFresh(top, kinds.disks, served) : unheld("disks");
+            return servedFresh(diskRows, "row:disk:disk", kinds.disks, "disks");
         const worst = guard.worst;
         const watched = guard.disks.length > 0;
         return fresh({
@@ -413,7 +389,7 @@ Provider {
             about: kinds.disks,
             // The guard's own words are each disk's, in its drawer (disked).
             note: guardSays(guard, worst)
-        }, () => ordered(kinds.disks, guardParts(guard).concat(served()
+        }, () => ordered(kinds.disks, guardParts(guard).concat(parts()
             .filter(row => !watched || row.key !== "machine:disk:space"))));
     }
 
@@ -681,7 +657,7 @@ Provider {
     // Whether a daemon it watches hasn't yet answered this watch whole, so
     // what it shows is the placeholder, or what an earlier watch left,
     // still being read (Provider.stillReading).
-    stillReading: [served, diskRows, users].some(watch => watch.live
+    stillReading: [served.link, diskRows.link, users].some(watch => watch?.live
         && !watch.answeredThisWatch && watch.state !== "not answering")
 
     // What the open launcher holds, answers and lists is left as it was
@@ -741,17 +717,24 @@ Provider {
     // the few milliseconds the daemon's first read takes. The place is
     // remade as the programs are read, so Using It names them only while a
     // Using row can be seen.
-    Daemon {
+    ReadyRows {
         id: served
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: "row"
-        watching: ({ place: "machine" })
+        place: "machine"
+        maker: provider
+        make: (row, key) => provider.made(served, row, key)
+        drawn: provider.launcherOpen
         live: provider.shown
         paced: provider.launcher
         keptThroughGap: false
-        answersWhole: true
-        onHeard: (changed, gone) => provider.take(changed, gone)
+        onHeard: (changed, gone) => provider.heard()
+    }
+
+    // What's shown is asked again as its rows change.
+    function heard() {
+        if (shown)
+            answered();
     }
 
     // The processor's telemetry, asked of the daemon only while it's
@@ -772,17 +755,18 @@ Provider {
     // The Disk's rows, a place of their own, served ready while a Disk
     // answer or row is seen, since each read asks an NVMe disk its
     // temperature; their things are still Machine's.
-    Daemon {
+    ReadyRows {
         id: diskRows
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: "row"
-        watching: ({ place: "disk" })
+        place: "disk"
+        maker: provider
+        make: (row, key) => provider.made(diskRows, row, key)
+        drawn: provider.launcherOpen
         live: provider.disksWanted
         paced: provider.launcher
         keptThroughGap: false
-        answersWhole: true
-        onHeard: (changed, gone) => provider.takeDisk(changed, gone)
+        onHeard: (changed, gone) => provider.heard()
     }
 
     Daemon {

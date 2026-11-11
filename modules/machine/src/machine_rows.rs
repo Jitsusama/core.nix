@@ -650,7 +650,7 @@ impl Say<'_> {
                 None => made,
             });
         }
-        // The words around the time, "up {when}", go with it, so the
+        // The words around the time, "up {time}", go with it, so the
         // shell says them as the time fills them.
         let mut lasted = time::at(booted_ms, Form::Lasted);
         lasted["said"] = Value::String(self.says("uptime", "head", &[]));
@@ -807,7 +807,7 @@ mod tests {
                 "module": "{count} module of {size}",
                 "modules": "{count} modules of {size}" } },
             { "id": "machine:cpu", "name": "Processor", "glyph": "processor" },
-            { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {when}" },
+            { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {time}" },
                 "parts": ["machine:uptime:idle", "machine:uptime:asleep",
                     "machine:uptime:started", "machine:uptime:kernel"] },
             { "id": "machine:uptime:idle", "name": "Idle" },
@@ -975,7 +975,7 @@ mod tests {
         let top = row(&rows, "uptime");
         assert_eq!(
             top["side"],
-            json!([{ "at": 1_700_000_000_000_i64, "as": "lasted", "said": "up {when}" }])
+            json!([{ "at": 1_700_000_000_000_i64, "as": "lasted", "said": "up {time}" }])
         );
         assert_eq!(top["glyph"], "processor");
         let started = row(&rows, "uptime:started");

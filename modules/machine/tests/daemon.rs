@@ -586,7 +586,7 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
         { "id": "machine:memory", "name": "Memory", "glyph": "memory",
             "said": { "head": "{used} used, {share}" } },
         { "id": "machine:memory:using", "name": "Using It" },
-        { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {when}" } },
+        { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {time}" } },
         { "id": "machine:cpu", "name": "Processor", "glyph": "processor",
             "said": { "head": "{busy} busy", "since-boot": "since the machine started" } },
         { "id": "machine:cpu:load", "name": "Load" }
@@ -600,7 +600,7 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
     assert_eq!(memory["side"][0]["said"], "8.19 GB used, 50%");
     assert_eq!(
         record(records, "row:machine:uptime")["row"]["side"][0],
-        json!({ "at": 1_700_000_000_000_i64, "as": "lasted", "said": "up {when}" }),
+        json!({ "at": 1_700_000_000_000_i64, "as": "lasted", "said": "up {time}" }),
         "how long it's been up is a time the shell words"
     );
     let processor = &record(records, "row:machine:cpu")["row"];

@@ -150,9 +150,10 @@
         cp ${../launcher/Asking.js} launcher/Asking.js
         cp ${../launcher/Numbers.js} launcher/Numbers.js
         cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-        cp ${../launcher/Machine.js} launcher/Machine.js
         cp ${../launcher/Machine.qml} launcher/Machine.qml
-        cp ${../launcher/Placed.js} launcher/Placed.js
+        cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
+        cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
+        cp ${../launcher/Ago.js} launcher/Ago.js
         cp ${../When.js} When.js
         cp ${../launcher/Order.js} launcher/Order.js
         cp ${../launcher/HomeNetwork.js} launcher/HomeNetwork.js

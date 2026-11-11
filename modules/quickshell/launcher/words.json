@@ -1511,7 +1511,7 @@
         "uptime"
       ],
       "said": {
-        "head": "up {when}",
+        "head": "up {time}",
         "yesterday": "yesterday"
       },
       "parts": [
@@ -1832,7 +1832,7 @@
       ],
       "said": {
         "side": "{n}% worn",
-        "asked": "as its controller said at {when}",
+        "asked": "as its controller said at {time}",
         "told": "as its controller says",
         "failing": "its controller says it's failing"
       }
