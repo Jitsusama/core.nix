@@ -115,12 +115,34 @@ pub struct Session {
     typed: PathBuf,
 }
 
-/// Every pi running in a unit of an account's app.slice or agents.slice,
-/// where the agents' windows run, read from `proc`,
-/// with its typed folder under `run`, the accounts' runtime folders. About
-/// 30 sessions, each sending its whole conversation at every turn, filled
-/// the upload ahead of the turn Joel had typed and waited on. A pi
-/// elsewhere is sorted by its slice already.
+/// The units pi hosts run as (modules/pi/host.nix), `pi-host-<realm>-<kind>`,
+/// each one node process holding many pi conversations.
+const HOSTS: &str = "pi-host-";
+
+/// Whether a process named `comm` in the unit `unit` sends a pi session's
+/// requests: a pi's own, or a pi host's. A host is node, not pi, and on 11
+/// November K7's hosted liveness audit (gap 16) found its conversations'
+/// uploads going best effort even while none of them was typed. The
+/// harness keeps a host's typed file while a turn a person typed holds any
+/// conversation in it, so it reads as a pi's.
+fn is_session(comm: &str, unit: &str) -> bool {
+    let host = || {
+        unit.rsplit('/')
+            .next()
+            .is_some_and(|name| {
+                name.starts_with(HOSTS)
+                    && Path::new(name).extension().is_some_and(|ext| ext == "service")
+            })
+    };
+    comm == "pi" || (comm == "node" && host())
+}
+
+/// Every pi, and every pi host, running in a unit of an account's
+/// app.slice or agents.slice, where the agents' windows and the hosts run,
+/// read from `proc`, with its typed folder under `run`, the accounts'
+/// runtime folders. About 30 sessions, each sending its whole conversation
+/// at every turn, filled the upload ahead of the turn Joel had typed and
+/// waited on. A pi elsewhere is sorted by its slice already.
 pub fn sessions(proc: &Path, run: &Path) -> Vec<Session> {
     let mut found = Vec::new();
     let Ok(entries) = fs::read_dir(proc) else {
@@ -131,11 +153,16 @@ pub fn sessions(proc: &Path, run: &Path) -> Vec<Session> {
             continue;
         };
         let dir = entry.path();
-        if fs::read_to_string(dir.join("comm")).is_ok_and(|comm| comm.trim() == "pi")
+        let Ok(comm) = fs::read_to_string(dir.join("comm")) else {
+            continue;
+        };
+        let comm = comm.trim();
+        if (comm == "pi" || comm == "node")
             && let Some((unit, uid)) = fs::read_to_string(dir.join("cgroup"))
                 .ok()
                 .as_deref()
                 .and_then(session_unit)
+            && is_session(comm, &unit)
         {
             found.push(Session {
                 pid,
@@ -441,6 +468,38 @@ mod tests {
             untyped(&root, &found),
             [format!("{agents}/kitty-1-1.scope")],
             "only the agent's window nobody typed in should be bulk: {found:?}"
+        );
+    }
+
+    /// A pi host is node holding many conversations, typed while a turn a
+    /// person typed holds any of them, so it's sorted as a pi's window is.
+    #[test]
+    fn a_pi_host_is_sorted_as_a_pi_is() {
+        let agents = format!("{ACCOUNT}/agents.slice");
+        let background = format!("{agents}/pi-host-home-background.service");
+        let attended = format!("{agents}/pi-host-home-attended.service");
+        let editor = format!("{agents}/kitty-3-3.scope");
+        let root = tree(&[&background, &attended, &editor]);
+        let proc = root.join("proc");
+        let run = root.join("run");
+        process(&proc, 10, "node", &background);
+        process(&proc, 20, "node", &attended);
+        // A language server is node too, and sends no session's requests.
+        process(&proc, 30, "node", &editor);
+        fs::create_dir_all(run.join("1000/pi/typed")).unwrap();
+        fs::write(run.join("1000/pi/typed/20"), "").unwrap();
+        let found = sessions(&proc, &run);
+        assert_eq!(found.len(), 2, "only the hosts are sessions: {found:?}");
+        assert_eq!(
+            untyped(&root, &found),
+            [background.clone()],
+            "the host nobody typed in is bulk, the one typed in isn't: {found:?}"
+        );
+        fs::remove_file(run.join("1000/pi/typed/20")).unwrap();
+        assert_eq!(
+            untyped(&root, &found),
+            [attended, background],
+            "once its typed turn ends, the attended host is bulk too"
         );
     }
 
