@@ -41,10 +41,18 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
         place: "copies"
         beside: ["summary"]
-        make: row => provider.made(row)
+        make: (row, key) => provider.made(row, key)
         drawn: provider.launcher?.open ?? false
-        onHeard: changed => provider.heard(changed)
+        onHeard: (changed, gone) => provider.heard(changed, gone)
     }
+
+    // What was made of each copy, by its key, with the row it was made
+    // from. Every copy says when it came, so every opening lets go of them
+    // all to say it anew (ReadyRows' turned), and remaking 200 was most of
+    // Super+V's opening; a row the history hasn't changed keeps what was
+    // made of it, its side said again in place, as Copies' ages always
+    // were. A plain object, so keeping them notifies nothing.
+    readonly property var makings: ({})
     readonly property string summaryKey: "summary:copies"
 
     // Newest first, as the history serves them.
@@ -91,7 +99,12 @@ Provider {
     // A copy's row, from the one the history serves: worded there, and
     // given its acts here, through Pasting.qml, until ReadyRows does a
     // row's acts itself.
-    function made(served) {
+    function made(served, key) {
+        const was = makings[key];
+        if (was !== undefined && was.served === served) {
+            was.row.side = ready.sideOf(served);
+            return was.row;
+        }
         const held = served.held ?? {};
         const picture = served.kind === "picture";
         const fields = {
@@ -124,6 +137,7 @@ Provider {
         const unhelped = picture ? () => {} : () => {
             Quickshell.clipboardText = held.text;
         };
+        makings[key] = { served, row };
         return pastes(row, `${held.id}`, unhelped);
     }
 
@@ -169,8 +183,14 @@ Provider {
 
     // Each copy heard, said for the checks that wait on it: a picture by
     // its name, and text by its first line.
-    function heard(changed) {
-        for (const key of changed) {
+    function heard(changed, gone) {
+        // Its lists come through the signal converted, so they're read by
+        // index, as ReadyRows reads Daemon's. A changed row is made anew
+        // by its record being new (made), so only what went is let go.
+        for (let at = 0; at < gone.length; at += 1)
+            delete makings[gone[at]];
+        for (let at = 0; at < changed.length; at += 1) {
+            const key = changed[at];
             const row = ready.served(key);
             if (!row)
                 continue;
