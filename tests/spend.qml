@@ -7,7 +7,9 @@
 // where it went; a cap near its end wants Joel, in the alert colour, with
 // the finding's action first; while the screen is shared the amounts go; a
 // watch that stopped writing is a warning with a way to start it; a file of another version is no piece, and nor is one taken away
-// again. The collection answers "spend", "cap" and a report by its words,
+// again. The collection, with nothing written, starts the watch by asking
+// the machine daemon, spawning nothing; it answers "spend", "cap" and a
+// report by its words,
 // leaves alone what isn't one, steps from a period into its cuts and from a
 // cut into its rows, each with its footer, shows no amount while the screen
 // is shared, draws nothing from a file of another version, opens a drawer
@@ -330,6 +332,27 @@ ShellRoot {
     // The collection, over nothing and then over what the watch wrote.
     property int collecting: 0
 
+    // What the machine daemon, stood in for, was asked to do.
+    property var restarts: []
+
+    SocketServer {
+        active: true
+        path: `${root.runtime}/daemons/machine.sock`
+        handler: Socket {
+            id: machineAsked
+
+            parser: SplitParser {
+                onRead: line => {
+                    const ask = JSON.parse(line);
+                    if (ask.ask === "act")
+                        root.restarts.push(`${ask.act} ${ask.unit}`);
+                    machineAsked.write(`${JSON.stringify({ id: ask.id, done: true })}\n`);
+                    machineAsked.flush();
+                }
+            }
+        }
+    }
+
     function collect() {
         // With no socket and nothing written, it says the watch isn't
         // answering, with a way to start it, rather than going silently.
@@ -344,6 +367,7 @@ ShellRoot {
             Qt.exit(1);
             return;
         }
+        down[0].run();
         collectionFile.setText(root.collected);
         budgetsFile.setText(root.budgeted);
         collecting = 100;
@@ -527,6 +551,9 @@ ShellRoot {
     function answers() {
         try {
             expect("a collection", spend.collection?.noun === "spend", "none");
+            expect("starting the watch asks the machine daemon",
+                root.restarts.join(", ") === "restart-unit spend-watch.service"
+                && Niri.spawned[0] !== "systemctl", root.restarts.join(", "));
             // The session that spent it, by its whole id, for Agents.
             expect("each session's day", /^\$\d/.test(SpendWatch.sessions.s1 ?? ""),
                 JSON.stringify(SpendWatch.sessions));

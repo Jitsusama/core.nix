@@ -8,7 +8,8 @@
 // read, said as its last run's, until it says it's answering; the file
 // isn't watched while the socket answers; a change to a session's
 // figure makes none of the rows and a change to one row makes that row
-// alone; and a watch that never answers is drawn from what's held while
+// alone; going to a finding's session and marking it expected are asked
+// of the socket, spawning nothing; and a watch that never answers is drawn from what's held while
 // it's still reading, with no row made twice. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
@@ -69,6 +70,8 @@ ShellRoot {
     // slow to answer leaves it.
     property var served: ({})
     property var silent: []
+    // The acts asked, each as its act and its row's key.
+    property var acts: []
     readonly property var watchers: ({})
     // What hello says, as the daemon says "starting" until its first pass.
     property string saying: "answering"
@@ -134,6 +137,9 @@ ShellRoot {
                         if (kinds.some(kind => root.silent.includes(kind)))
                             return;
                         answer = { id: ask.id, records: root.recordsOf(kinds) };
+                    } else if (ask.ask === "act") {
+                        root.acts.push(`${ask.act} ${ask.line}`);
+                        answer = { id: ask.id, done: true };
                     }
                     asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();
@@ -252,7 +258,34 @@ ShellRoot {
         Expect.expect("a row changed makes that row alone",
             rows.some(one => one.side === "$1 \u00b7 told")
             && spend.tally.rows === streamed + 1, spend.tally.rows - streamed);
-        unanswered();
+        acted();
+    }
+
+    // A finding told by the socket is acted on through it, as the shell
+    // spawns nothing for an act (2026-11-10).
+    function acted() {
+        const burn = "A burn in Aquifer";
+        tell({
+            key: "row:findings:finding:burn:s1", kind: "row", list: "findings", order: 0,
+            line: {
+                key: "finding:burn:s1", name: burn, side: "alert", copy: `${burn}.`,
+                role: "alert", run: ["spend-watch", "go", "s1"], verb: "go to",
+                expect: ["spend-watch", "findings", "expect", "burn:s1"]
+            }
+        });
+        until("a finding told", () => spend.everything().some(row => row.name === burn), () => {
+            const found = spend.everything().find(row => row.name === burn);
+            found.run();
+            found.verbs().find(row => row.name === "It's Expected").run();
+            until("its acts asked", () => root.acts.length === 2, () => {
+                Expect.expect("going to its session and marking it expected ask the watch",
+                    root.acts.join(", ") === "run finding:burn:s1, expect finding:burn:s1",
+                    root.acts.join(", "));
+                Expect.expect("acting spawns nothing", Niri.spawned.length === 0,
+                    Niri.spawned.join(" "));
+                unanswered();
+            });
+        });
     }
 
     // A watch the daemon never answers is still reading, drawn from what's
