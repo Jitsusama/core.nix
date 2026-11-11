@@ -16,8 +16,10 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      # The stand-in alone: the QML cases beside it aren't the crate's.
+      # The stand-in and the launcher's words the cases read: the QML cases
+      # beside them aren't the crate's.
       ./tests/stand_in.rs
+      ./tests/words.json
       ../ready-rows/Cargo.toml
       ../ready-rows/src
     ];
