@@ -262,12 +262,19 @@ enum Bound {
 }
 
 /// Hears one connection to PipeWire until it ends.
-fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
-    let main_loop = MainLoopRc::new(None).map_err(|why| format!("its loop: {why}"))?;
-    let context = ContextRc::new(&main_loop, None).map_err(|why| format!("its context: {why}"))?;
+/// The loop's context, taught the profiler's protocol before anything
+/// binds; one without the profiler's module still hears everything else.
+fn taught_context(main_loop: &MainLoopRc) -> Result<ContextRc, String> {
+    let context = ContextRc::new(main_loop, None).map_err(|why| format!("its context: {why}"))?;
     if !profiler::taught(&context) {
         eprintln!("<4>PipeWire's profiler module isn't there, so nothing is timed");
     }
+    Ok(context)
+}
+
+fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
+    let main_loop = MainLoopRc::new(None).map_err(|why| format!("its loop: {why}"))?;
+    let context = taught_context(&main_loop)?;
     let core = context
         .connect_rc(None)
         .map_err(|why| format!("reaching it: {why}"))?;
