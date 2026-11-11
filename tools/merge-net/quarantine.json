@@ -54,5 +54,12 @@
     "owner_pr": 3064,
     "reason": "has been broken since #3064, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "vm-desktop-looks"
+  },
+  {
+    "at": 1794400300,
+    "commit": "27a4d645336b645896dcaf60195eecf1f8c1ece4",
+    "owner_pr": 3108,
+    "reason": "has been broken since #3108, and fails 5 of 5 at 27a4d645336b; its owner fixes it forward by 09:00 on 11 November, or reverts #3108 then, and takes it off this list",
+    "test": "vm-desktop-looks-file-picker"
   }
 ]
