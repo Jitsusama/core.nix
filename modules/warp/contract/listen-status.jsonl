@@ -1,0 +1,4 @@
+{"status":"Connected","reason":"NetworkHealthy"}
+{"status":"Connected","reason":{"NetworkDegraded":{"loss_percent":5.406556,"rtt_ms":92}}}
+{"status":"Connected","reason":{"NetworkDegraded":{"loss_percent":3.1,"rtt_ms":88}}}
+{"status":"Disconnected","reason":"ManualDisconnection"}

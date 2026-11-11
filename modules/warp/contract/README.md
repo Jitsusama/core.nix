@@ -16,6 +16,7 @@ tests read them as warp-cli's answers (`src/contract.rs`) and hold what
 | `override-show.json`   | `override show`       | no administrator's override in force           |
 | `daemon-down.json`     | any, service stopped  | warp-cli unable to reach WARP's service        |
 | `refused.json`         | `registration devices` | an error, as warp-cli says any, exiting 1     |
+| `listen-status.jsonl`  | `--listen status`     | a line each change of state, held open         |
 
 `daemon-down.json` was seen with the service's socket hidden from
 warp-cli in a namespace of its own; the link was never taken down to see
@@ -23,6 +24,12 @@ it. A status reason is a word (`NetworkHealthy`) or, as `NetworkDegraded`
 is, a word holding figures under keys naming their units. What `tunnel
 stats` says with no tunnel hasn't been seen, so a refusal there leaves the
 tunnel unknown rather than guessing its shape.
+
+`--listen status` was seen saying its first line, the link as it stands,
+at once, one line of JSON with no spaces, the degraded line's shape
+being that one; the healthy and disconnected lines are `status.json`'s
+shapes written the same way, and the third the degraded link's figures
+moved.
 
 What `warp-cli connect` and `disconnect` print hasn't been seen with
 `--json`, since neither is run on a machine in use to find out: without

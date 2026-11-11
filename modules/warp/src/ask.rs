@@ -2,9 +2,11 @@
 //! socket. Each question is one run of `warp-cli --json`, given a few
 //! seconds, since a service that's stuck would otherwise hold the answer
 //! up for good; what it said, and whether it said it as an error, comes
-//! back as it was, for `read` to make sense of.
+//! back as it was, for `read` to make sense of. Listening is one run held
+//! open, `warp-cli --json --listen status`, which writes a line each time
+//! WARP's status changes, for as long as it runs.
 
-use std::io::{ErrorKind, Read};
+use std::io::{BufRead, BufReader, ErrorKind, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -26,8 +28,21 @@ pub enum Unasked {
     Stuck(String),
 }
 
+/// WARP's status as warp-cli tells each change of it, a line of JSON
+/// each, for as long as it's held; `stop` ends it, and its lines with it.
+pub struct Listening {
+    pub lines: Box<dyn BufRead + Send>,
+    pub stop: Box<dyn FnOnce() + Send>,
+}
+
 pub trait Ask: Sync {
     fn ask(&self, question: &[&str]) -> Result<Said, Unasked>;
+
+    /// WARP's status as it changes, or nothing where it can't be
+    /// listened to.
+    fn listen(&self) -> Option<Listening> {
+        None
+    }
 }
 
 /// The real warp-cli: `WARP_CLI` when it's set, as the shell sets it to
@@ -96,6 +111,25 @@ impl Ask for WarpCli {
         Ok(Said {
             ok: status.success(),
             text,
+        })
+    }
+
+    fn listen(&self) -> Option<Listening> {
+        let mut child = Command::new(&self.program)
+            .args(["--json", "--listen", "status"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let out = child.stdout.take().expect("stdout is piped");
+        Some(Listening {
+            lines: Box::new(BufReader::new(out)),
+            stop: Box::new(move || {
+                // Already ended or not, it's let go of either way.
+                let _ = child.kill();
+                let _ = child.wait();
+            }),
         })
     }
 }

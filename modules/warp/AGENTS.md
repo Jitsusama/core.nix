@@ -38,9 +38,15 @@ in the shell's daemon interface ([`src/serve.rs`][serve]). It reads only
 while the link is watched, every two seconds, and at once after a switch
 asked as an `act`, so nothing asks warp-cli while WARP isn't shown. A
 watch is answered with what's held only while it's that fresh, so an old
-link is never shown as now. `warp-cli --listen status` writes a line of
-JSON on every change of state, which the daemon can listen to once its
-shape is in the contract, rather than waiting for the next read.
+link is never shown as now. While it's watched, the daemon also holds
+`warp-cli --json --listen status` open, which writes a line of JSON on
+every change of state (`contract/listen-status.jsonl`). A line telling a
+status or reason other than the last has the link read at once, so a
+link that drops or degrades is said as it does; a reason's figures
+moving are left to the two-second reads, and a DNS log line sets nothing
+off. A stream that ends by itself, as the shell's stand-in warp-cli's
+refusal does, is asked for again only 30 seconds on, and the two-second
+reads carry on meanwhile.
 
 ## The Switch
 
