@@ -131,7 +131,7 @@ fn on(
 }
 
 /// One of Location's own rows, the `at`th in its order.
-fn row(id: &str, at: u64, name: &str, side: Value) -> Value {
+fn row(id: &str, at: u64, name: &str, side: &Value) -> Value {
     json!({
         "key": format!("row:location:{id}"),
         "row": format!("location:{id}"),
@@ -146,7 +146,7 @@ fn row(id: &str, at: u64, name: &str, side: Value) -> Value {
 }
 
 /// One of Location's acts, as a row of its own, asking this daemon `act`.
-fn act(id: &str, at: u64, words: &Words, side: Value, ask: Option<Value>) -> Value {
+fn act(id: &str, at: u64, words: &Words, side: &Value, ask: Option<Value>) -> Value {
     let named = words.act(id);
     let mut done = json!({
         "key": format!("verb:location:{id}"),
@@ -176,22 +176,22 @@ fn inside(here: Option<&Fix>, words: &Words, now: u64, side: &str, how_near: &st
                 .unwrap_or_else(|| words.said("unnamed", &[]))
         },
     );
-    let mut rows = vec![row("town", 1, words.name("town"), said(&town))];
+    let mut rows = vec![row("town", 1, words.name("town"), &said(&town))];
     if let Some(country) = here.and_then(|fix| fix.country.as_deref()) {
-        rows.push(row("country", 2, words.name("country"), said(country)));
+        rows.push(row("country", 2, words.name("country"), &said(country)));
     }
     let knows = match here {
         None => words.said("notFound", &[]),
         Some(fix) if fix.hand => words.said("hand", &[]),
         Some(_) => words.said("knows", &[("within", how_near)]),
     };
-    rows.push(row("knows", 3, words.name("knows"), said(&knows)));
+    rows.push(row("knows", 3, words.name("knows"), &said(&knows)));
     if let Some(fix) = here {
         rows.push(row(
             "located",
             4,
             words.name("located"),
-            json!([located(fix, now)]),
+            &json!([located(fix, now)]),
         ));
     }
     // Where GeoClue can't find the laptop, or finds it wrong, Joel names
@@ -200,7 +200,7 @@ fn inside(here: Option<&Fix>, words: &Words, now: u64, side: &str, how_near: &st
         "set",
         5,
         words,
-        json!([]),
+        &json!([]),
         Some(json!({"ask": "act", "act": "set"})),
     );
     set["acts"][0]["asks"] = json!(words.act("set").asks);
@@ -211,7 +211,7 @@ fn inside(here: Option<&Fix>, words: &Words, now: u64, side: &str, how_near: &st
             "again",
             6,
             words,
-            json!([]),
+            &json!([]),
             Some(json!({"ask": "act", "act": "again"})),
         );
         rows.push(again);
@@ -220,7 +220,7 @@ fn inside(here: Option<&Fix>, words: &Words, now: u64, side: &str, how_near: &st
     // can't say: where on a map it is.
     if let Some(fix) = here {
         let where_on_a_map = position(fix);
-        let mut copy = act("copy", 7, words, said(&where_on_a_map), None);
+        let mut copy = act("copy", 7, words, &said(&where_on_a_map), None);
         copy["acts"][0]["copy"] = json!(where_on_a_map);
         rows.push(copy);
     }
