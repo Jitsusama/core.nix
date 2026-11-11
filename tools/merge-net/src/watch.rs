@@ -249,7 +249,18 @@ pub enum Round {
 /// Run `check` at `commit` until it has passed or failed twice there,
 /// counting the runs it had before. A run stopped before it ended counts
 /// towards neither, and two of them at a commit leave the test there.
+/// Runs of it there already going, for a round or a search, are waited
+/// for and counted rather than run again beside them.
 pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
+    let turn = state.turn(commit, check);
+    let _turn = turn
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    attempt_in_turn(world, state, commit, check)
+}
+
+/// `attempt`, by one holding the turn of `check` at `commit`.
+fn attempt_in_turn(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
     let before = state.runs(commit, check);
     let mut failures = before.iter().filter(|ran| **ran == Ran::Failed).count();
     let mut stalls = before.iter().filter(|ran| **ran == Ran::Stalled).count();
@@ -337,6 +348,10 @@ fn run_once(
 /// beside the first where the first passes. A stall leaves the rest to
 /// `attempt`, one at a time.
 fn attempt_together(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
+    let turn = state.turn(commit, check);
+    let _turn = turn
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let before = state.runs(commit, check);
     let failures = before.iter().filter(|ran| **ran == Ran::Failed).count();
     if !before.contains(&Ran::Passed) && failures + 1 < FAILURES {
@@ -361,7 +376,7 @@ fn attempt_together(world: &dyn World, state: &State, commit: &str, check: &str)
             short(commit)
         ));
     }
-    attempt(world, state, commit, check)
+    attempt_in_turn(world, state, commit, check)
 }
 
 /// Run each check at `commit`, `AT_ONCE` at a time, and give each outcome
@@ -1674,6 +1689,8 @@ mod tests {
         /// Commits whose each run waits for a second run there to start,
         /// or after a while without, when it's put in `waited_out`.
         pairs: Vec<String>,
+        /// How long each run takes, as a VM test takes minutes.
+        runs_for: Duration,
         /// Checks whose each run at main's newest head waits for every one
         /// of them to start there, or after a while without, when it's put
         /// in `waited_out`.
@@ -1797,6 +1814,8 @@ mod tests {
                 .unwrap()
                 .push((commit.to_owned(), check.to_owned()));
             self.build_seen.notify_all();
+            // Long enough for a second asker to come while a run goes.
+            std::thread::sleep(self.runs_for);
             if self.newest_waits_for_search && commit == self.head {
                 let searched = |built: &mut Vec<(String, String)>| {
                     !built
@@ -1941,7 +1960,7 @@ mod tests {
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&root);
-        let state = State { root };
+        let state = State::at(root);
         state.make().unwrap();
         state
     }
@@ -2945,6 +2964,29 @@ mod tests {
         assert!(
             world.waited_out.lock().unwrap().is_empty(),
             "m2's second run starts beside its first, not after it fails"
+        );
+    }
+
+    #[test]
+    fn runs_going_at_a_commit_are_waited_for_not_run_again() {
+        let state = state("shared");
+        let world = Stand {
+            head: "h".into(),
+            runs_for: Duration::from_millis(300),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1]);
+        let (searched, rounded) = std::thread::scope(|scope| {
+            let search = scope.spawn(|| attempt_together(&world, &state, "h", "vm-a"));
+            world.wait_while(|built| built.is_empty(), "the search's runs");
+            let round = scope.spawn(|| attempt(&world, &state, "h", "vm-a"));
+            (search.join().unwrap(), round.join().unwrap())
+        });
+        assert_eq!((searched, rounded), (Outcome::Failed, Outcome::Failed));
+        assert_eq!(
+            world.built().len(),
+            2,
+            "the round counts the search's two runs rather than running its own beside them"
         );
     }
 

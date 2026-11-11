@@ -20,9 +20,11 @@
 //!   `<commit>-<check>`, so a search evaluates each once.
 //! - `pause`: while it's there, the net starts nothing.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -30,7 +32,16 @@ use serde_json::{Value, json};
 /// The net's state folder and what it holds.
 pub struct State {
     pub root: PathBuf,
+    /// A lock for each check at a commit, which whatever runs it holds, so
+    /// a round and a search asking for the same runs share them. On
+    /// 10 November the round at 7ee4bf22 ran vm-desktop-looks twice more
+    /// while a search's two runs of it there still went, about 35 minutes
+    /// each, and the round ended only with the last.
+    turns: Mutex<HashMap<(String, String), Turn>>,
 }
+
+/// What whoever runs a check at a commit holds while it does.
+pub type Turn = Arc<Mutex<()>>;
 
 /// How a run of a check at a commit ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,7 +65,25 @@ impl State {
                 },
                 PathBuf::from,
             );
-        Self { root }
+        Self::at(root)
+    }
+
+    /// The state kept in `root`.
+    pub fn at(root: PathBuf) -> Self {
+        Self {
+            root,
+            turns: Mutex::default(),
+        }
+    }
+
+    /// The lock whoever runs `check` at `commit` holds while it does.
+    pub fn turn(&self, commit: &str, check: &str) -> Turn {
+        self.turns
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry((commit.to_owned(), check.to_owned()))
+            .or_default()
+            .clone()
     }
 
     /// Make the folders it writes into.
@@ -368,7 +397,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("merge-net-{name}-{}-{made}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        let state = State { root };
+        let state = State::at(root);
         state.make().expect("made");
         state
     }
@@ -442,10 +471,7 @@ mod tests {
         assert_eq!(state.heads(), (None, None));
         state.set_heads("aaaa", "bbbb").unwrap();
         assert_eq!(
-            State {
-                root: state.root.clone()
-            }
-            .heads(),
+            State::at(state.root.clone()).heads(),
             (Some("aaaa".to_owned()), Some("bbbb".to_owned()))
         );
         state.set_hold(&json!({ "bad": "cccc" })).unwrap();
