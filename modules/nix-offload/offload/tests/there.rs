@@ -2386,7 +2386,8 @@ fn it_says_what_it_takes_a_word_a_line() {
         String::from_utf8_lossy(&said.stdout),
         concat!(
             "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
-            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\nfirst\nrun\n"
+            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\nfirst\nrun\n",
+            "lent-only\n"
         )
     );
 }
@@ -4490,5 +4491,289 @@ fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains("so nothing ran"),
         "{ran:?}"
+    );
+}
+
+/// A tree for `there --run`: one commit origin has and one on top it
+/// lacks, so it goes as a bundle, with a builder lent whose stand-in
+/// exits 0.
+struct RunTree {
+    folder: tempfile::TempDir,
+    bin: PathBuf,
+    config: PathBuf,
+    tree: PathBuf,
+    offload: PathBuf,
+    head: String,
+}
+
+impl RunTree {
+    fn new() -> Self {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        stand_ins(&bin, 0);
+        let config = folder.path().join("gitconfig");
+        fs::write(
+            &config,
+            "[user]\nname = Tester\nemail = tester@example.com\n",
+        )
+        .unwrap();
+        let tree = folder.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        let offload = folder.path().join("offload");
+        fs::create_dir(&offload).unwrap();
+        fs::write(offload.join("store"), STORE).unwrap();
+        let mut made = Self {
+            folder,
+            bin,
+            config,
+            tree,
+            offload,
+            head: String::new(),
+        };
+        made.git(&["init", "-q", "-b", "main"]);
+        made.git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+        fs::write(made.tree.join("package.json"), "{ }").unwrap();
+        made.git(&["add", "package.json"]);
+        made.git(&["commit", "-q", "-m", "pushed"]);
+        let pushed = made.git(&["rev-parse", "HEAD"]);
+        made.git(&["update-ref", "refs/remotes/origin/main", &pushed]);
+        fs::write(made.tree.join("package.json"), "{ \"name\": \"r\" }").unwrap();
+        made.git(&["commit", "-q", "-am", "not pushed"]);
+        made.head = made.git(&["rev-parse", "HEAD"]);
+        made
+    }
+
+    fn git(&self, arguments: &[&str]) -> String {
+        git(&self.tree, &self.config, arguments)
+    }
+
+    /// A repository beside the tree with a commit of its own, which the
+    /// tree's session isn't meant to send, and that commit.
+    fn hidden(&self) -> (PathBuf, String) {
+        let hidden = self.folder.path().join("hidden");
+        fs::create_dir(&hidden).unwrap();
+        git(&hidden, &self.config, &["init", "-q", "-b", "main"]);
+        fs::write(hidden.join("secret"), "not for the builder").unwrap();
+        git(&hidden, &self.config, &["add", "secret"]);
+        git(&hidden, &self.config, &["commit", "-q", "-m", "hidden"]);
+        let commit = git(&hidden, &self.config, &["rev-parse", "HEAD"]);
+        (hidden, commit)
+    }
+
+    /// `there --run -- pnpm test` from the tree, with `vars` set too.
+    fn run(&self, vars: &[(&str, &Path)]) -> Output {
+        self.there(&["--never-ask", "--run", "--", "pnpm", "test"], vars)
+    }
+
+    /// `there` asked `words` from the tree, with `vars` set too.
+    fn there(&self, words: &[&str], vars: &[(&str, &Path)]) -> Output {
+        let _ = fs::remove_file(self.bin.join("ssh-was-given"));
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .arg("there")
+            .args(words)
+            .current_dir(&self.tree)
+            .env(
+                "PATH",
+                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &self.offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .envs(no_vm_builders(self.folder.path()))
+            .env("XDG_RUNTIME_DIR", self.folder.path())
+            .env("XDG_STATE_HOME", self.folder.path())
+            .env("XDG_CONFIG_HOME", self.folder.path())
+            .env("GIT_CONFIG_GLOBAL", &self.config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .envs(vars.iter().copied())
+            .output()
+            .unwrap()
+    }
+
+    /// The commit a run that went checked out there.
+    fn sent(&self) -> Option<String> {
+        let given = fs::read_to_string(self.bin.join("ssh-was-given")).ok()?;
+        let command = given.lines().nth(1)?.to_owned();
+        command
+            .split("checkout -q -B nix-offload-changed ")
+            .nth(1)
+            .and_then(|rest| rest.get(..40))
+            .map(str::to_owned)
+    }
+
+    /// Asserts `ran` was refused before anything went, saying `why`.
+    fn refused(&self, ran: &Output, why: &str) {
+        assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+        assert!(!self.bin.join("ssh-was-given").exists(), "it went: {ran:?}");
+        assert!(
+            String::from_utf8_lossy(&ran.stderr).contains(why),
+            "{why}: {ran:?}"
+        );
+    }
+}
+
+// A run goes out of the fence a session works in, as the person, and on
+// 11 November one was shown to read through a gitlink the session planted
+// into a repository the fence hides, and to run filters the tree's
+// attributes picked. So it sends HEAD's objects alone.
+#[test]
+fn a_run_sends_only_whats_committed_and_refuses_a_tree_with_changes() {
+    let run = RunTree::new();
+    let (hidden, hidden_head) = run.hidden();
+    let marker = run.folder.path().join("a-filter-ran");
+    fs::write(
+        &run.config,
+        format!(
+            "[user]\nname = Tester\nemail = tester@example.com\n\
+             [filter \"planted\"]\nclean = touch {} && cat\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    fs::write(run.tree.join(".gitattributes"), "* filter=planted\n").unwrap();
+    run.git(&["add", ".gitattributes"]);
+    run.git(&["commit", "-q", "-m", "attributes"]);
+    let _ = fs::remove_file(&marker);
+    let head = run.git(&["rev-parse", "HEAD"]);
+    // A gitlink staged, its folder naming the hidden repository, and a
+    // committed file touched, so a diff has to read it again.
+    fs::create_dir(run.tree.join("vendored")).unwrap();
+    fs::write(
+        run.tree.join("vendored/.git"),
+        format!("gitdir: {}\n", hidden.join(".git").display()),
+    )
+    .unwrap();
+    run.git(&[
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        &format!("160000,{hidden_head},vendored"),
+    ]);
+    let file = run.tree.join("package.json");
+    let text = fs::read_to_string(&file).unwrap();
+    fs::write(&file, &text).unwrap();
+    let _ = fs::remove_file(&marker);
+
+    let ran = run.run(&[]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        run.sent().as_deref(),
+        Some(head.as_str()),
+        "HEAD went alone"
+    );
+    assert!(!marker.exists(), "no filter the tree picked ran");
+
+    fs::write(&file, "{ \"name\": \"changed\" }").unwrap();
+    run.refused(&run.run(&[]), "commit them first");
+    run.git(&["checkout", "-q", "--", "package.json"]);
+    fs::write(run.tree.join("new.js"), "").unwrap();
+    run.git(&["add", "new.js"]);
+    let _ = fs::remove_file(&marker);
+    run.refused(&run.run(&[]), "commit them first");
+    assert!(!marker.exists(), "no filter the tree picked ran");
+}
+
+#[test]
+fn a_run_refuses_a_tree_that_borrows_objects_and_reads_only_its_own() {
+    let run = RunTree::new();
+    let (hidden, hidden_head) = run.hidden();
+    let objects = hidden.join(".git/objects");
+    let alternates = run.tree.join(".git/objects/info/alternates");
+    fs::create_dir_all(alternates.parent().unwrap()).unwrap();
+    fs::write(&alternates, format!("{}\n", objects.display())).unwrap();
+    run.refused(&run.run(&[]), "borrows objects from another repository");
+    fs::remove_file(&alternates).unwrap();
+    let http = run.tree.join(".git/objects/info/http-alternates");
+    fs::write(&http, "https://example.com/objects\n").unwrap();
+    run.refused(&run.run(&[]), "borrows objects from another repository");
+    fs::remove_file(&http).unwrap();
+
+    // Neither the caller's variables nor a replacement reach past the
+    // tree's own repository.
+    // A replacement with no parent would share no commit with origin.
+    let tree = run.git(&["rev-parse", "HEAD^{tree}"]);
+    let orphan = run.git(&["commit-tree", &tree, "-m", "replacement"]);
+    run.git(&["replace", &run.head, &orphan]);
+    let ran = run.run(&[
+        ("GIT_DIR", &hidden.join(".git")),
+        ("GIT_ALTERNATE_OBJECT_DIRECTORIES", &objects),
+    ]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        run.sent().as_deref(),
+        Some(run.head.as_str()),
+        "its own HEAD"
+    );
+    run.git(&["replace", "-d", &run.head]);
+    // Its branch naming the hidden commit finds no such object, though
+    // the caller's alternates hold it.
+    fs::write(
+        run.tree.join(".git/refs/heads/main"),
+        format!("{hidden_head}\n"),
+    )
+    .unwrap();
+    run.refused(
+        &run.run(&[("GIT_ALTERNATE_OBJECT_DIRECTORIES", &objects)]),
+        "has no commit",
+    );
+}
+
+// A fenced session's changed-checks goes out as the person, and an
+// evaluator, a machine nearby or this one would evaluate as them, so with
+// `--lent-only` it goes to a lent builder, from HEAD alone, or nowhere.
+#[test]
+fn changed_checks_kept_to_the_lent_builders_goes_nowhere_else() {
+    let run = RunTree::new();
+    let changed = [
+        "--lent-only",
+        "--changed",
+        "--build",
+        "--no-vm",
+        "--system",
+        "x86_64-linux",
+    ];
+    fs::write(run.tree.join("package.json"), "{ \"name\": \"changed\" }").unwrap();
+    let ran = run.there(&changed, &[]);
+    assert_eq!(ran.status.code(), Some(69), "never run here: {ran:?}");
+    assert!(!run.bin.join("ssh-was-given").exists(), "it went: {ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("commit them first"),
+        "{ran:?}"
+    );
+    run.git(&["checkout", "-q", "--", "package.json"]);
+
+    let ran = run.there(&changed, &[]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(run.sent().as_deref(), Some(run.head.as_str()), "from HEAD");
+    fs::remove_dir_all(run.folder.path().join("nix-offload/passed")).unwrap();
+
+    // With none lent, an evaluator that answers is never asked.
+    fs::remove_file(run.offload.join("store")).unwrap();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = answering.local_addr().unwrap();
+    fs::write(
+        run.folder.path().join("nix-offload/evaluators"),
+        format!("{address} far o\n"),
+    )
+    .unwrap();
+    let ran = run.there(&changed, &[]);
+    assert_eq!(ran.status.code(), Some(69), "never run here: {ran:?}");
+    assert!(!run.bin.join("ssh-was-given").exists(), "it went: {ran:?}");
+    drop(answering);
+
+    // Nor is it built here, or sent as a folder's files.
+    fs::write(run.offload.join("store"), STORE).unwrap();
+    let here = run.there(&["--lent-only", "--here", ".", "checks.x.a"], &[]);
+    assert_eq!(here.status.code(), Some(64), "{here:?}");
+    let folder = format!("path:{}", run.tree.display());
+    let files = run.there(&["--lent-only", &folder, "checks.x.a"], &[]);
+    assert_ne!(files.status.code(), Some(0), "{files:?}");
+    assert!(
+        !run.bin.join("ssh-was-given").exists(),
+        "it went: {files:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&files.stderr).contains("never a folder's files"),
+        "{files:?}"
     );
 }

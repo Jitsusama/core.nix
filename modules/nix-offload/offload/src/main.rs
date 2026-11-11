@@ -8,7 +8,7 @@
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
 //! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
-//! (FLAKE ATTR... | FLAKE#ATTR... | DRV...)` to build a flake, or derivations, on the
+//! [--lent-only] (FLAKE ATTR... | FLAKE#ATTR... | DRV...)` to build a flake, or derivations, on the
 //! builder, or on a machine nearby for systems this one can't build, as
 //! src/there.rs says. A build waiting for a builder
 //! says so in /run/nix-offload/wanted, which counts as queued work.
@@ -228,6 +228,14 @@ const MORE_DIR: &str = "/run/nix-offload-more";
 fn more_dir() -> PathBuf {
     env::var_os("NIX_OFFLOAD_MORE_DIR").map_or_else(|| PathBuf::from(MORE_DIR), PathBuf::from)
 }
+
+/// Where a `there` keeps what it sends while it runs: the runtime
+/// folder, or the temporary one where there's none.
+fn scratch() -> PathBuf {
+    env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(env::temp_dir, PathBuf::from)
+        .join("nix-offload-there")
+}
 /// The folder of the lender whose builder takes the VM tests past the
 /// first VM builder's room, when one runs, as `serve --dir` it with
 /// `--only-there`.
@@ -256,9 +264,9 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload progress HOST \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
                     [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
-                    [--bulk] [--first] \
+                    [--bulk] [--first] [--lent-only] \
                     (FLAKE ATTR... | FLAKE#ATTR... | DRV...) \
-                    | nix-offload there [--never-ask] [--first] --changed \
+                    | nix-offload there [--never-ask] [--first] [--lent-only] --changed \
                     [CHANGED-CHECKS ARGUMENT...] \
                     | nix-offload there [--never-ask] --run [--copy PATH]... \
                     [--longest SECONDS] -- COMMAND...";
@@ -573,19 +581,34 @@ fn proving_standing(config: Option<String>) -> ExitCode {
 /// memory runs out; they read the mark from where each started, so this
 /// starts again with it rather than only handing it on. `--first` is
 /// carried the same way, so everything the run starts and sends is marked
-/// sent first, and taken off what it's asked.
+/// sent first, and taken off what it's asked. `--lent-only` is carried the
+/// same way, so a `there` the run starts goes nowhere else either. Each is
+/// looked for before a `--`, past which the words are a command's.
 fn marked(arguments: &[String]) -> Option<ExitCode> {
-    let asked_first = arguments.iter().any(|word| word == "--first");
-    if !asked_first && env::var_os(ELSEWHERE.0).is_some_and(|value| value == ELSEWHERE.1) {
+    let ours = arguments
+        .iter()
+        .position(|word| word == "--")
+        .unwrap_or(arguments.len());
+    let asked = |flag: &str| arguments[..ours].iter().any(|word| word == flag);
+    let (asked_first, asked_lent) = (asked("--first"), asked("--lent-only"));
+    if !asked_first
+        && !asked_lent
+        && env::var_os(ELSEWHERE.0).is_some_and(|value| value == ELSEWHERE.1)
+    {
         return None;
     }
     let mut again = Command::new("/proc/self/exe");
     again
         .arg("there")
-        .args(arguments.iter().filter(|word| *word != "--first"))
+        .args(arguments.iter().enumerate().filter_map(|(at, word)| {
+            (at >= ours || (word != "--first" && word != "--lent-only")).then_some(word)
+        }))
         .env(ELSEWHERE.0, ELSEWHERE.1);
     if asked_first {
         again.env(there::FIRST.0, there::FIRST.1);
+    }
+    if asked_lent {
+        again.env(there::LENT_ONLY.0, there::LENT_ONLY.1);
     }
     let again = again.exec();
     eprintln!("nix-offload: couldn't start there again marked: {again}");
@@ -605,6 +628,25 @@ fn foreign(asked: &there::Asked, dir: &Path) -> Option<ExitCode> {
         systems.join(", ")
     );
     Some(ExitCode::from(64))
+}
+
+/// Refuses `--here` and `--here-when-idle` under `--lent-only`, which
+/// builds on a lent builder alone.
+fn here_refused(asked: &there::Asked) -> Option<ExitCode> {
+    (there::lent_only() && asked.builds_here()).then(|| {
+        eprintln!("nix-offload: --lent-only builds on a lent builder alone, so it takes no --here");
+        ExitCode::from(64)
+    })
+}
+
+/// The person's machines nearby, none under `--lent-only`: a machine
+/// nearby is one of the person's, which builds as them.
+fn nearby() -> Vec<there::Nearby> {
+    fs::read_to_string(config().join("nix-offload/nearby"))
+        .ok()
+        .filter(|_| !there::lent_only())
+        .map(|text| there::nearby(&text))
+        .unwrap_or_default()
 }
 
 fn there(arguments: &[String]) -> ExitCode {
@@ -632,9 +674,10 @@ fn there(arguments: &[String]) -> ExitCode {
         eprintln!("nix-offload: there takes a flake and its attributes, or derivations\n{USED}");
         return ExitCode::from(64);
     };
-    let scratch = env::var_os("XDG_RUNTIME_DIR")
-        .map_or_else(env::temp_dir, PathBuf::from)
-        .join("nix-offload-there");
+    let scratch = scratch();
+    if let Some(refused) = here_refused(&asked) {
+        return refused;
+    }
     // Pinned before anything waits, so what's built and kept as passed is
     // the commit it was asked at, however far its branch moves meanwhile.
     let asked = asked.pinned(&scratch);
@@ -653,9 +696,7 @@ fn there(arguments: &[String]) -> ExitCode {
     }
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
-    let nearby = fs::read_to_string(config().join("nix-offload/nearby"))
-        .map(|text| there::nearby(&text))
-        .unwrap_or_default();
+    let nearby = nearby();
     let (near, mut left) = there::shared(&asked, &nearby, machines::answers);
     let mut status = 0;
     for (machine, part) in &near {
@@ -1243,13 +1284,11 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         eprintln!("nix-offload: {why}, so nothing ran");
         ExitCode::from(changed::NOT_TAKEN)
     };
-    let scratch = env::var_os("XDG_RUNTIME_DIR")
-        .map_or_else(env::temp_dir, PathBuf::from)
-        .join("nix-offload-there");
+    let scratch = scratch();
     let Ok(folder) = env::current_dir() else {
         return not_run("this folder can't be read");
     };
-    let source = match there::source(&folder, &scratch, None) {
+    let source = match there::source(&folder, &scratch, None, there::Sends::Committed) {
         Ok(source) => source,
         Err(why) => return not_run(&why),
     };
@@ -1297,17 +1336,20 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
 /// run's status, or `NOT_TAKEN` when nowhere else took it.
 fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
-    let scratch = env::var_os("XDG_RUNTIME_DIR")
-        .map_or_else(env::temp_dir, PathBuf::from)
-        .join("nix-offload-there");
+    let scratch = scratch();
     let not_taken = |why: &str| {
+        // A run kept to the lent builders leaves nothing to run here.
+        if there::lent_only() {
+            eprintln!("nix-offload: {why}, and --lent-only runs nothing here");
+            return ExitCode::from(changed::UNBUILT);
+        }
         eprintln!("nix-offload: {why}, so changed-checks runs here");
         ExitCode::from(changed::NOT_TAKEN)
     };
     let Ok(folder) = env::current_dir() else {
         return not_taken("this folder can't be read");
     };
-    let source = match there::source(&folder, &scratch, None) {
+    let source = match there::source(&folder, &scratch, None, there::Sends::Changes) {
         Ok(source) => source,
         Err(why) => return not_taken(&why),
     };
@@ -1583,7 +1625,10 @@ impl Sent<'_> {
         // A changed-checks from before --name-only refuses it, as usage,
         // and without --build it only names anyway.
         let older = &evaluating[..evaluating.len() - 1];
+        // An evaluator is one of the person's machines, evaluating as them.
         let evaluators = fs::read_to_string(config().join("nix-offload/evaluators"))
+            .ok()
+            .filter(|_| !there::lent_only())
             .map(|text| changed::evaluators(&text))
             .unwrap_or_default();
         let github = match source {
