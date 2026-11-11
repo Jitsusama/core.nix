@@ -14,16 +14,30 @@ printf '%s\n' "$@" >>"$XDG_RUNTIME_DIR/pi-opened"
 # nothing and, on ~/hosted-ID, names the host's viewer, or on
 # ~/refused-ID, plain pi on the session's log; and either draws the same
 # frame again, as a viewer catching up does, and takes the keys from there.
-# The viewer runs under a shell that, only on its exit 3, as a host's
-# release ends mycelium's attach, starts the join again with --released,
-# which names plain pi on the log (harness #1317's viewingWords); the
-# viewer exits 3 on ~/released-ID.
+# The viewer runs under a shell that, on any exit but 0, starts the join
+# again with --released, and with PI_HOST_ATTACH_FAILED set to the exit
+# code unless it was 3, as a host's release ends mycelium's attach
+# (harness viewingWords). Released, the join names plain pi on the log;
+# after a failed attach, it says so and names the viewer again, as the
+# harness's joinAfterFailedAttach does. The viewer exits 3 on
+# ~/released-ID, and fails once, drawing nothing, as a host refusing it
+# does, while ~/refuse-attach-ID is there.
 if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
   frame() {
     # The same frame each time, every line placed, so one drawn again over
     # it changes no pixel; in one synchronized update, as pi's are.
     printf '\033[?2026h\033[H\033[1;1Hpi, held in its window: %s\033[2;1H%s\033[?2026l' \
       "$1" 'Every key typed here is kept, whatever starts next.'
+  }
+  viewer_again() {
+    # The words have no spaces, so the shell needs no quotes to keep them.
+    # shellcheck disable=SC2016 # The shell's $1, $? and $# are for it to expand.
+    viewing='$1 $2 $3 $4 $5 $6; s=$?; [ $s -eq 0 ] && exit 0; shift 6; [ $# -gt 0 ] || exit $s; if [ $s -eq 3 ]; then unset PI_HOST_ATTACH_FAILED; else export PI_HOST_ATTACH_FAILED=$s; fi; exec $*'
+    {
+      printf '["sh","-c","%s","sh",' "$viewing"
+      printf '"pi","attach","--host","harbour-attended","--session","%s",' "$1"
+      printf '"pi","join","--released","--session","%s"]' "$1"
+    } >"$MYCELIUM_AGAIN"
   }
   keys() {
     # Each key as it comes, to the file the test reads, a byte a read, so
@@ -61,14 +75,7 @@ if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
       sleep 0.1
     done
     if [ -e "$HOME/hosted-$session" ]; then
-      # The words have no spaces, so the shell needs no quotes to keep them.
-      # shellcheck disable=SC2016 # The shell's $1 and $? are for it to expand.
-      viewing='$1 $2 $3 $4 $5 $6; s=$?; [ $s -eq 3 ] || exit $s; shift 6; exec $*'
-      {
-        printf '["sh","-c","%s","sh",' "$viewing"
-        printf '"pi","attach","--host","harbour-attended","--session","%s",' "$session"
-        printf '"pi","join","--released","--session","%s"]' "$session"
-      } >"$MYCELIUM_AGAIN"
+      viewer_again "$session"
     else
       printf '["pi","--session","%s/%s.jsonl"]' "$HOME" "$session" >"$MYCELIUM_AGAIN"
     fi
@@ -77,6 +84,12 @@ if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
     ;;
   "attach --host")
     session=$5
+    if [ -e "$HOME/refuse-attach-$session" ]; then
+      rm "$HOME/refuse-attach-$session"
+      echo refused >>"$HOME/refusals-$session"
+      echo "$$ attach-refused" >"$XDG_RUNTIME_DIR/moves-$session"
+      exit 1
+    fi
     stty raw -echo
     frame "$session"
     echo "$$ attach" >"$XDG_RUNTIME_DIR/moves-$session"
@@ -87,6 +100,14 @@ if [ -e "$XDG_RUNTIME_DIR/pi-moves-in-place" ]; then
     # Released: plain pi on the log, once no host holds it, which the
     # harness's own tests prove it waits for.
     session=$4
+    if [ -n "${PI_HOST_ATTACH_FAILED:-}" ]; then
+      printf '\r\nThe host couldn'"'"'t show this conversation (attach ended %s); looking again.\r\n' \
+        "$PI_HOST_ATTACH_FAILED"
+      echo "$$ looked-again" >"$XDG_RUNTIME_DIR/moves-$session"
+      viewer_again "$session"
+      : >"$MYCELIUM_WAKE"
+      exit 75
+    fi
     echo "$$ released" >"$XDG_RUNTIME_DIR/moves-$session"
     printf '["pi","--session","%s/%s.jsonl"]' "$HOME" "$session" >"$MYCELIUM_AGAIN"
     : >"$MYCELIUM_WAKE"
