@@ -101,6 +101,16 @@ QtObject {
         Expect.same("and narrowing moves none, however many go",
             RowsKept.steps(emoji, narrowed, 8).filter(step =>
                 step.move !== undefined || step.insert !== undefined), []);
+        // Rows all put in again stand from the list's start, so the launcher
+        // puts the selection back in view; moved or narrowed, they stay put.
+        Expect.same("rows listed afresh are said to be",
+            RowsKept.whole(emoji, RowsKept.steps(emoji, ranked, 8)), true);
+        Expect.same("and rows moved are not",
+            RowsKept.whole("a b c d e".split(" "),
+                RowsKept.steps("a b c d e".split(" "), "e a b c d".split(" "), 1)), false);
+        Expect.same("nor rows narrowed",
+            RowsKept.whole(emoji, RowsKept.steps(emoji, narrowed, 8)), false);
+        Expect.same("nor a first list", RowsKept.whole([], RowsKept.steps([], emoji)), false);
 
         // Lists drawn from a seeded sequence (Park and Miller's), the same
         // every run, each ending where it's listed and drawing only the

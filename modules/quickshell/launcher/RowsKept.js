@@ -66,6 +66,15 @@ function afresh(was, now) {
         .concat(now.length > 0 ? [{ insert: 0, keys: now.slice() }] : []);
 }
 
+// Whether `steps` put every row of `was` in again, as afresh does, so the
+// rows stand from the list's start, whatever it was scrolled to, where
+// moved rows keep those in view where they were: Launcher.qml puts the
+// row selected back in view after them (reshow).
+function whole(was, steps) {
+    return was.length > 0 && steps.length > 0 && steps[0].remove === 0
+        && steps[0].count === was.length;
+}
+
 // The steps that make `was` into `now`, done in order to a ListModel: the
 // rows gone, last first, as { remove, count }, so each place counts from
 // the rows still there; then each row in its place, as { move, to }, or
