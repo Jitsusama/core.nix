@@ -5,7 +5,7 @@
 //! each output and input as a `device` record, saying how loud it's set,
 //! whether it's muted and whether it's the one chosen (devices.rs), and
 //! as the launcher's Sound row for it, worded from WORDS, the launcher's
-//! words.json (rows.rs).
+//! words.json (rows.rs), with its parts inside it (parts.rs).
 //!
 //! It hears PipeWire through its own API for as long as it runs, rather
 //! than a program's output read line by line: the registry says each
@@ -52,7 +52,8 @@ use sound::acts::{Move, act, planned};
 use sound::devices::{Change, Devices, direction};
 use sound::interface::{Ask, VERSION, ask, error, kind_of};
 use sound::levels::{levels, offered, profile, route};
-use sound::rows::{Words, rows};
+use sound::parts::served;
+use sound::rows::Words;
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -528,7 +529,7 @@ fn told(shared: &Mutex<Daemon>, change: Change) {
 /// those gone, telling each watch what changed of what it wants.
 fn refresh(daemon: &mut Daemon) {
     let mut records = daemon.devices.records();
-    let ready = rows(&records, &daemon.words);
+    let ready = served(&records, &daemon.words);
     daemon.served.take(ready, Vec::new());
     records.extend(daemon.served.all().cloned());
     let said: HashSet<String> = records

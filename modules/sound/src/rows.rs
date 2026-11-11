@@ -11,9 +11,7 @@
 //! listed unless it's the one chosen, which says so: its card says so of
 //! the route that plays it, live, as desk-facts' file said for Sound.qml.
 //!
-//! Inside a device's row go the parts the daemon serves of it: its Port,
-//! where its card offers more than one, and each it can be moved to. The
-//! rest of its parts are still made by Sound.qml, from the sound server.
+//! Inside a device's row go the parts the daemon serves of it (parts.rs).
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -24,7 +22,7 @@ use serde_json::{Value, json};
 pub const PLACE: &str = "sound";
 
 /// A middle dot between the parts of a note, as the launcher's are.
-const APART: &str = " \u{b7} ";
+pub(crate) const APART: &str = " \u{b7} ";
 
 /// The machine's own speakers, microphones and jack, by the end of the
 /// node name the sound server gives them for their port, and the
@@ -42,6 +40,7 @@ const BUILT_IN: [(&str, &str); 3] = [
 #[derive(Debug, Default)]
 pub struct Words {
     names: BTreeMap<String, String>,
+    verbs: BTreeMap<String, String>,
     said: BTreeMap<String, String>,
 }
 
@@ -58,6 +57,19 @@ impl Words {
                 continue;
             };
             words.names.insert(id.to_owned(), name.to_owned());
+            if let Some(verb) = thing["verb"].as_str() {
+                words.verbs.insert(id.to_owned(), verb.to_owned());
+            }
+            // A state's own name and verb, as `verb:sound-to`'s name for an
+            // input and `sound:mute`'s verb while muted.
+            for (state, worded) in thing["states"].as_object().into_iter().flatten() {
+                if let Some(name) = worded["name"].as_str() {
+                    words.names.insert(format!("{id}#{state}"), name.to_owned());
+                }
+                if let Some(verb) = worded["verb"].as_str() {
+                    words.verbs.insert(format!("{id}#{state}"), verb.to_owned());
+                }
+            }
             if id == PLACE
                 && let Some(said) = thing["said"].as_object()
             {
@@ -74,17 +86,36 @@ impl Words {
     /// What Sound says by an id, with what's in braces filled in, or the
     /// id itself where the vocabulary has no words for it, as Sound.qml's
     /// `said` does.
-    fn said(&self, id: &str, fill: &[(&str, &str)]) -> String {
+    pub(crate) fn said(&self, id: &str, fill: &[(&str, &str)]) -> String {
         let words = self.said.get(id).map_or(id, String::as_str);
         filled(words, fill)
     }
 
     /// A thing's name by its id, with what's in braces filled in, or ""
     /// where the vocabulary names no such thing.
-    fn name(&self, id: &str, fill: &[(&str, &str)]) -> String {
+    pub(crate) fn name(&self, id: &str, fill: &[(&str, &str)]) -> String {
         self.names
             .get(id)
             .map_or_else(String::new, |words| filled(words, fill))
+    }
+
+    /// A thing's verb in a state, as Words.qml's `verb` gives it, or its
+    /// own where the state has none: `sound:mute`'s is unmute while muted.
+    pub(crate) fn verb_in(&self, id: &str, state: &str) -> String {
+        self.verbs
+            .get(&format!("{id}#{state}"))
+            .or_else(|| self.verbs.get(id))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// A thing's name in a state of its own, as Words.qml's `name` gives
+    /// it, or its name where the state has none.
+    pub(crate) fn name_in(&self, id: &str, state: &str, fill: &[(&str, &str)]) -> String {
+        match self.names.get(&format!("{id}#{state}")) {
+            Some(words) => filled(words, fill),
+            None => self.name(id, fill),
+        }
     }
 }
 
@@ -97,14 +128,14 @@ fn filled(words: &str, fill: &[(&str, &str)]) -> String {
 }
 
 /// One device as its record says it, read once for each of its rules.
-struct Device<'a> {
-    record: &'a Value,
-    name: &'a str,
-    sink: bool,
+pub(crate) struct Device<'a> {
+    pub(crate) record: &'a Value,
+    pub(crate) name: &'a str,
+    pub(crate) sink: bool,
 }
 
 impl<'a> Device<'a> {
-    fn of(record: &'a Value) -> Option<Device<'a>> {
+    pub(crate) fn of(record: &'a Value) -> Option<Device<'a>> {
         Some(Device {
             record,
             name: record["name"].as_str()?,
@@ -134,11 +165,16 @@ impl<'a> Device<'a> {
         self.property("api.bluez5.profile")
     }
 
-    fn muted(&self) -> bool {
+    pub(crate) fn muted(&self) -> bool {
         self.record["muted"].as_bool().unwrap_or(false)
     }
 
-    fn chosen(&self) -> bool {
+    /// Its volume as the shell shows it, muted or not.
+    pub(crate) fn volume(&self) -> f64 {
+        self.record["volume"].as_f64().unwrap_or(0.0)
+    }
+
+    pub(crate) fn chosen(&self) -> bool {
         self.record["chosen"].as_bool().unwrap_or(false)
     }
 
@@ -148,11 +184,11 @@ impl<'a> Device<'a> {
     }
 
     /// How loud it's heard, as a share: none while it's muted.
-    fn audible(&self) -> f64 {
+    pub(crate) fn audible(&self) -> f64 {
         if self.muted() {
             return 0.0;
         }
-        self.record["volume"].as_f64().unwrap_or(0.0)
+        self.volume()
     }
 
     /// A display's output, by what the sound server calls it.
@@ -222,7 +258,7 @@ fn built_in_microphones(name: &str) -> bool {
 /// card, which says what `BlueZ` says a Bluetooth one is: worn, through a
 /// display, or the machine's own. Headphones are headphones and a speaker
 /// a speaker to Joel, however they're joined.
-fn kind(device: &Device) -> &'static str {
+pub(crate) fn kind(device: &Device) -> &'static str {
     let known = [
         device.name,
         device.nicknamed(),
@@ -283,7 +319,7 @@ fn by_name(one: &str, other: &str) -> Ordering {
 
 /// A share as a bar, in twentieths, a share above nothing one at least,
 /// so a level that leaves the drawing as it was changes no row.
-fn bar(share: f64) -> Value {
+pub(crate) fn bar(share: f64) -> Value {
     let mut steps = (share.clamp(0.0, 1.0) * 20.0).round();
     if share > 0.0 && steps < 1.0 {
         steps = 1.0;
@@ -292,12 +328,11 @@ fn bar(share: f64) -> Value {
 }
 
 /// A share as the launcher says it, "40%".
-fn percent(share: f64) -> String {
+pub(crate) fn percent(share: f64) -> String {
     format!("{}%", (share * 100.0).round())
 }
 
-/// Every row Sound lists, outputs first and each way by name, each
-/// device's parts served inside it after it.
+/// Every row Sound lists, outputs first and each way by name.
 pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
     let devices: Vec<Device> = records
         .iter()
@@ -318,92 +353,8 @@ pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
     });
     order
         .into_iter()
-        .flat_map(|at| {
-            let device = &devices[at];
-            std::iter::once(row(device, &named[at], &devices, words))
-                .chain(port_rows(device, words))
-        })
+        .map(|at| row(&devices[at], &named[at], &devices, words))
         .collect()
-}
-
-/// A device's Port, where its card offers it two or more to choose from:
-/// a setting saying the one it plays through, and inside it each it can
-/// be moved to, done by the port act. A port nothing's plugged into is no
-/// choice, unless it's the one in use, which says so. None in use, as a
-/// card not yet saying its routes, is no Port yet.
-fn port_rows(device: &Device, words: &Words) -> Vec<Value> {
-    let offered = device.record["ports"]
-        .as_array()
-        .map_or(&[][..], Vec::as_slice);
-    let in_use = |port: &Value| port["chosen"] == true;
-    let choosable: Vec<&Value> = offered
-        .iter()
-        .filter(|port| in_use(port) || port["available"] != "no")
-        .collect();
-    let Some(now) = choosable.iter().find(|port| in_use(port)) else {
-        return Vec::new();
-    };
-    if choosable.len() < 2 {
-        return Vec::new();
-    }
-    let unplugged = words.said("unplugged", &[]);
-    let name_of = |port: &Value| port["name"].as_str().unwrap_or("").to_owned();
-    let side = if now["available"] == "no" {
-        format!("{}{APART}{unplugged}", name_of(now))
-    } else {
-        name_of(now)
-    };
-    let glyph = kind(device);
-    let parent = format!("row:{PLACE}:{}", device.name);
-    let part = format!("{parent}:port");
-    let mut rows = vec![json!({
-        "key": part,
-        "thing": format!("sound:{}:port", device.name),
-        "place": PLACE,
-        "kind": "setting",
-        "parent": parent,
-        "name": words.name("sound:port", &[]),
-        "glyph": glyph,
-        "hue": "machine",
-        "depth": 1,
-        "side": [{"said": side}],
-        "acts": [{"key": "verb:more", "step": "rows"}],
-        "held": {"node": device.name},
-    })];
-    for port in choosable {
-        let index = &port["index"];
-        let side: Vec<Value> = if in_use(port) {
-            vec![json!({"said": words.said("chosen", &[])})]
-        } else {
-            Vec::new()
-        };
-        let note = if port["available"] == "no" {
-            unplugged.clone()
-        } else {
-            String::new()
-        };
-        rows.push(json!({
-            "key": format!("{part}:{index}"),
-            // As the launcher's own verb row was keyed, so a step held on
-            // one stays where it was.
-            "thing": format!("verb:sound-port-{index}"),
-            "place": PLACE,
-            "kind": "port",
-            "parent": part,
-            "name": words.name("verb:sound-port", &[("port", &name_of(port))]),
-            "glyph": glyph,
-            "hue": "action",
-            "depth": 2,
-            "side": side,
-            "note": note,
-            "acts": [{"key": "verb:sound-port", "ask": {
-                "ask": "act", "act": "port",
-                "key": format!("device:{}", device.name), "index": index}}],
-            "held": {"node": device.name, "port": name_of(port), "index": index,
-                "chosen": in_use(port)},
-        }));
-    }
-    rows
 }
 
 /// What a device is called, saying the thing itself (Sound.qml's `named`).
@@ -443,7 +394,7 @@ fn called_as(name: &str, own: &str, shared: bool, words: &Words) -> String {
 /// Whether listening through it would switch a headset from music to
 /// calls, as anything reading its microphone's stand-in does: an input
 /// that's `WirePlumber`'s stand-in, its headset's profile carrying music.
-fn switches(device: &Device, devices: &[Device]) -> bool {
+pub(crate) fn switches(device: &Device, devices: &[Device]) -> bool {
     if device.sink || device.property("bluez5.loopback") != "true" {
         return false;
     }
@@ -461,13 +412,18 @@ fn switches(device: &Device, devices: &[Device]) -> bool {
     headset.is_some_and(|headset| headset.profile().starts_with("a2dp"))
 }
 
-fn row(device: &Device, name: &str, devices: &[Device], words: &Words) -> Value {
-    let glyph = match (device.muted(), device.sink) {
+/// The glyph it wears, struck through while it's muted.
+pub(crate) fn worn(device: &Device) -> &'static str {
+    match (device.muted(), device.sink) {
         (true, true) => "silent",
         (true, false) => "muted",
         (false, _) => kind(device),
-    };
-    let volume = percent(device.record["volume"].as_f64().unwrap_or(0.0));
+    }
+}
+
+fn row(device: &Device, name: &str, devices: &[Device], words: &Words) -> Value {
+    let glyph = worn(device);
+    let volume = percent(device.volume());
     let mut note = vec![words.said("volume", &[("level", &volume)])];
     if device.muted() {
         note.push(words.said("muted", &[]));
@@ -502,14 +458,15 @@ fn row(device: &Device, name: &str, devices: &[Device], words: &Words) -> Value 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn words() -> Words {
+    pub(crate) fn words() -> Words {
         Words::from_vocabulary(
             &json!({"things": [
                 {"id": "sound", "name": "Sound", "said": {
                     "volume": "volume {level}", "muted": "muted", "chosen": "chosen",
+                    "yes": "yes", "no": "no",
                     "to-calls": "using it switches the headset to calls",
                     "unplugged": "nothing plugged in",
                 }},
@@ -519,13 +476,23 @@ mod tests {
                 {"id": "sound:called:noise-cancelled", "name": "{device}, Noise Cancelled"},
                 {"id": "sound:port", "name": "Port"},
                 {"id": "verb:sound-port", "name": "Use {port}"},
+                {"id": "verb:sound-use", "name": "Play Sound Through It",
+                    "states": {"input": {"name": "Listen Through It"}}},
+                {"id": "sound:mute", "name": "Muted", "verb": "mute",
+                    "states": {"muted": {"verb": "unmute"}}},
+                {"id": "sound:volume", "name": "Volume"},
+                {"id": "sound:gain", "name": "Gain"},
+                {"id": "verb:sound-louder", "name": "Louder"},
+                {"id": "verb:sound-quieter", "name": "Quieter"},
+                {"id": "verb:sound-to", "name": "Volume to {level}",
+                    "states": {"input": {"name": "Gain to {level}"}}},
             ]})
             .to_string(),
         )
         .expect("the words read")
     }
 
-    fn device(name: &str, sink: bool, nick: &str, properties: &Value) -> Value {
+    pub(crate) fn device(name: &str, sink: bool, nick: &str, properties: &Value) -> Value {
         json!({
             "key": format!("device:{name}"), "kind": "device", "name": name,
             "nick": nick, "description": "", "sink": sink, "volume": 0.4,
@@ -694,82 +661,6 @@ mod tests {
         let listed = rows(&[headphones, speakers], &words());
         assert_eq!(names(&listed), ["Headphones", "Speakers"]);
         assert_eq!(listed[0]["note"], "volume 40% · nothing plugged in");
-    }
-
-    // A device its card offers two ports or more has a Port inside its
-    // row, saying the one in use, and inside that each it can be moved
-    // to, done by the port act: a port nothing's plugged into is no
-    // choice, unless it's in use, which says so.
-    #[test]
-    fn a_device_with_ports_to_choose_says_them_inside() {
-        fn port(index: i64, name: &str, available: &str, chosen: bool) -> Value {
-            json!({"index": index, "name": name, "available": available, "chosen": chosen})
-        }
-        let mut analog = device("analog", true, "Analog", &json!({}));
-        analog["ports"] = json!([
-            port(1, "Speakers", "unknown", false),
-            port(2, "Headphones", "no", true),
-            port(3, "Line Out", "no", false),
-            port(4, "Dock", "yes", false),
-        ]);
-        let made = rows(&[analog.clone()], &words());
-        let keys: Vec<&str> = made
-            .iter()
-            .map(|row| row["key"].as_str().unwrap_or(""))
-            .collect();
-        assert_eq!(
-            keys,
-            [
-                "row:sound:analog",
-                "row:sound:analog:port",
-                "row:sound:analog:port:1",
-                "row:sound:analog:port:2",
-                "row:sound:analog:port:4",
-            ],
-            "a port nothing's plugged into, not in use, is no choice"
-        );
-        let part = &made[1];
-        assert_eq!(part["parent"], "row:sound:analog");
-        assert_eq!(part["depth"], 1);
-        assert_eq!(part["kind"], "setting");
-        assert_eq!(part["thing"], "sound:analog:port");
-        assert_eq!(part["name"], "Port");
-        assert_eq!(part["glyph"], "speaker");
-        assert_eq!(
-            part["side"],
-            json!([{"said": "Headphones \u{b7} nothing plugged in"}])
-        );
-        assert_eq!(part["acts"], json!([{"key": "verb:more", "step": "rows"}]));
-        let (speakers, headphones) = (&made[2], &made[3]);
-        assert_eq!(speakers["parent"], "row:sound:analog:port");
-        assert_eq!(speakers["depth"], 2);
-        assert_eq!(speakers["thing"], "verb:sound-port-1");
-        assert_eq!(speakers["name"], "Use Speakers");
-        assert_eq!(speakers["side"], json!([]));
-        assert_eq!(speakers["note"], "");
-        assert_eq!(
-            speakers["acts"],
-            json!([{"key": "verb:sound-port", "ask": {
-                "ask": "act", "act": "port", "key": "device:analog", "index": 1}}])
-        );
-        assert_eq!(
-            speakers["held"],
-            json!({"node": "analog", "port": "Speakers", "index": 1, "chosen": false})
-        );
-        assert_eq!(headphones["side"], json!([{"said": "chosen"}]));
-        assert_eq!(headphones["note"], "nothing plugged in");
-
-        // One choice, or none in use, is no Port.
-        analog["ports"] = json!([
-            port(1, "Speakers", "yes", true),
-            port(2, "Line Out", "no", false)
-        ]);
-        assert_eq!(rows(&[analog.clone()], &words()).len(), 1);
-        analog["ports"] = json!([
-            port(1, "Speakers", "yes", false),
-            port(2, "Dock", "yes", false)
-        ]);
-        assert_eq!(rows(&[analog], &words()).len(), 1);
     }
 
     // A smart filter in front of a device, as the speakers' tuning is,

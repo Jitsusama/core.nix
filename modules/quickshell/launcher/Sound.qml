@@ -81,10 +81,9 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/sound.sock`
         place: "sound"
         // A device's row is made with its parts; a part the daemon serves
-        // inside one, as its Port, as every place's rows are, a setting
-        // drawn as one.
+        // inside one, as its Volume, as every place's rows are.
         make: (row, key) => row.kind === "device" ? provider.servedRow(row, key)
-            : ready.thing(row, key, row.kind === "setting" ? { offers: true } : {})
+            : ready.thing(row, key, provider.partFields(row))
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -274,10 +273,6 @@ Provider {
             Pipewire.preferredDefaultAudioSink = node;
         else
             Pipewire.preferredDefaultAudioSource = node;
-    }
-
-    function mute(node) {
-        node.audio.muted = !node.audio.muted;
     }
 
     // What a device says as its parts stand, each part as text and its
@@ -612,31 +607,43 @@ Provider {
             filter.audio?.muted, flowing(filter, node)]);
         return JSON.stringify([says(node), switches(node), carried(node), node.properties,
             Array.from(node.audio?.channels ?? []), Array.from(node.audio?.volumes ?? []),
-            node === metered ? heard : [], programs, filters, portsServed(node),
+            node === metered ? heard : [], programs, filters, servedOf(node),
             facts[factKey(node)] ?? []]);
     }
 
+    // Every record the daemon serves inside a device's row, at any depth.
+    function servedOf(node) {
+        const inside = `row:sound:${node.name}:`;
+        return ready.keys.filter(key => key.startsWith(inside)).map(key => ready.served(key));
+    }
+
+    // A part the daemon serves inside a device's row, by the last of its
+    // key, as it's made, or null while it serves none.
+    function servedPart(node, part) {
+        const key = `row:sound:${node.name}:${part}`;
+        return ready.served(key) ? ready.rowAt(key) : null;
+    }
+
+    // What a served part carries for the launcher beyond its row: a
+    // setting offers its choices, and using a device names it on its
+    // line, as :set output= or input= does.
+    function partFields(row) {
+        const fields = row.kind === "setting" ? { offers: true } : {};
+        if (row.held?.fill) {
+            fields.fill = row.held.fill;
+            fields.wordState = row.held.state ?? "";
+        }
+        return fields;
+    }
+
     // Using it, when it isn't the one chosen, then its parts, and what the
-    // kernel says of its card.
+    // kernel says of its card. Using it, Muted, its Volume and its Port
+    // are served; the rest are made here until the daemon serves them too.
     function partsMade(node) {
-        const using = node.isSink ? "" : "input";
-        const rows = chosen(node) ? [] : [thing({
-            key: "verb:sound-use",
-            // Its line names the device, as :set output= or input= does.
-            fill: { name: named(node) },
-            wordState: using,
-            verb: Words.verb("verb:sound-use", using),
-            name: Words.name("verb:sound-use", using),
-            glyph: glyph(kind(node)),
-            hue: "action",
-            note: switches(node) ? said("profile-switches") : "",
-            stays: true,
-            run: () => provider.use(node)
-        })];
-        const parts = [mutePart(node), levelPart(node), volumePart(node), programsPart(node),
-            filterPart(node), portPart(node), channelsPart(node), profilePart(node),
-            hardwarePart(node)];
-        return rows.concat(parts.filter(part => part !== null), factRows(node));
+        const parts = [servedPart(node, "use"), servedPart(node, "mute"), levelPart(node),
+            volumePart(node), programsPart(node), filterPart(node), portPart(node),
+            channelsPart(node), profilePart(node), hardwarePart(node)];
+        return parts.filter(part => part !== null).concat(factRows(node));
     }
 
     // Figures, as the theme draws them.
@@ -737,23 +744,14 @@ Provider {
         });
     }
 
-    // The Volume, or a microphone's Gain: a setting, saying how it's set,
-    // its choices a step in.
-
+    // How far a program's Louder and Quieter move it.
     readonly property real step: 0.05
-    readonly property var levels: [0.25, 0.5, 0.75, 1]
 
+    // The Volume, or a microphone's Gain, as the daemon serves it: a
+    // setting saying how it's set, Louder, Quieter and its levels a step
+    // in, each asking the daemon to set it.
     function volumePart(node) {
-        const id = node.isSink ? "volume" : "gain";
-        return holderRow({
-            key: `sound:${node.name}:${id}`,
-            name: Words.name(`sound:${id}`),
-            side: level(node),
-            graph: loudness(node),
-            glyph: worn(node),
-            note: Sounds.decibels(node.audio.volume),
-            offers: true
-        }, () => provider.volumeChoices(node));
+        return servedPart(node, node.isSink ? "volume" : "gain");
     }
 
     // An act on a device, as the vocabulary says it, in the state it's in.
@@ -769,48 +767,10 @@ Provider {
         }, fields));
     }
 
-    // Louder and Quieter keep the launcher, to be pressed again, and say
-    // where it is now; louder is meant to be heard, so it unmutes, as a
-    // level set is. Each level says its decibels in the footer.
-    function volumeChoices(node) {
-        const stepping = by => ({
-            glyph: Theme.glyph.volume,
-            stays: true,
-            state: () => provider.said("now", { level: provider.level(node) }),
-            run: () => {
-                node.audio.volume = Sounds.stepped(node.audio.volume, by, provider.step);
-                if (by > 0)
-                    node.audio.muted = false;
-            }
-        });
-        const rows = [act("verb:sound-louder", "", stepping(step)),
-            act("verb:sound-quieter", "", stepping(-step))];
-        const state = node.isSink ? "" : "input";
-        return rows.concat(levels.map(each => act("verb:sound-to", state, {
-            key: `verb:sound-to-${percent(each)}`,
-            fill: { level: percent(each) },
-            glyph: Theme.glyph.volume,
-            side: !node.audio.muted && Math.abs(node.audio.volume - each) < 0.005
-                ? said("chosen") : "",
-            note: Sounds.decibels(each),
-            run: () => {
-                node.audio.volume = each;
-                node.audio.muted = false;
-            }
-        })));
-    }
-
-    // Whether it's Muted: one switch, keeping its name as it flips, its
-    // side saying yes or no (docs/design.md, "A switch is one row that
-    // keeps its name as it flips"). Return flips it and the launcher
-    // stays; its words still find it ("mute", "unmute").
-    function mutePart(node) {
-        return mutedSwitch(`sound:${node.name}:mute`, () => node.audio.muted,
-            () => provider.worn(node), () => provider.mute(node));
-    }
-
-    // The one Muted switch, a device's and a program's alike (VKCF3Z,
-    // 2026-10-29: one idea has one word). How it stands is read as it's
+    // The one Muted switch a program has, as a device's is served (VKCF3Z,
+    // 2026-10-29: one idea has one word): it keeps its name as it flips,
+    // its side saying yes or no (docs/design.md, "A switch is one row that
+    // keeps its name as it flips"). How it stands is read as it's
     // drawn and as Return comes, so the row says what Return just did
     // without being made again.
     function mutedSwitch(key, muted, mark, flip) {
@@ -1162,7 +1122,7 @@ Provider {
     }
 
     function portPart(node) {
-        return ready.served(portKey(node)) ? ready.rowAt(portKey(node)) : null;
+        return servedPart(node, "port");
     }
 
     // How a process says it ended of itself (QProcess's NormalExit), rather
