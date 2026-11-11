@@ -354,6 +354,7 @@ Scope {
         // What ends a search at the top comes after it all, never counted as
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
+        list.keptLast = null;
         matches = live((steadying && !ordering ? steadied(rows.concat(below)) : rows.concat(below))
             .concat(ending));
         // An answer only started gives way to a name that starts the same,
@@ -369,7 +370,7 @@ Scope {
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: Date.now() - placedAll };
+            showing: Date.now() - placedAll, kept: list.keptLast };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -5503,7 +5504,7 @@ Scope {
     function keyTimed(typed, began, heard, pressed) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began,
             searched: Date.now() - began, parts: searchParts, begun: null,
-            rendered: null, pressed: pressed > 0 ? pressed : heard }]);
+            rendered: null, pressed: pressed > 0 ? pressed : heard, done: KeyTimes.now() }]);
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
         // Its handler is done once it's searched or moved, all a key's own
@@ -5547,7 +5548,14 @@ Scope {
         const drawn = Date.now();
         const shown = KeyTimes.now();
         const newest = drawnKeys[drawnKeys.length - 1];
-        trials.timed(newest.searched, drawn - newest.began, newest.parts, newest.text);
+        // Its time after its own work said apart, as a drawer's is: waiting
+        // for the frame that drew it, then drawing it, so a key whose frame
+        // came 80 ms after a 30 ms search says which held it (Joel's "ag",
+        // 2026-11-11).
+        trials.timed(newest.searched, drawn - newest.began, newest.parts, newest.text, {
+            waiting: Math.round(newest.begun - newest.done),
+            drawing: Math.round(shown - newest.begun)
+        });
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
         for (const key of drawnKeys) {
@@ -9997,6 +10005,11 @@ Scope {
                             // What each kept row is, in the order they stand,
                             // so keeping them never reads the model back.
                             property var keptKeys: []
+                            // How many rows the last keeping drew afresh, and
+                            // how long laying them out took, which a key's
+                            // showing says beside its own time, or null
+                            // until the rows it composed were kept.
+                            property var keptLast: null
 
                             // Brings the kept rows into line with these, by
                             // what each is (RowsKept.js): a row listed before
@@ -10017,6 +10030,7 @@ Scope {
                                 list.keptKeys = keys;
                                 if (steps.length === 0) {
                                     list.rows = rows;
+                                    list.keptLast = { fresh: 0, laying: 0 };
                                     return true;
                                 }
                                 for (const step of steps.filter(one => one.remove !== undefined))
@@ -10032,7 +10046,13 @@ Scope {
                                 // Laid out now rather than at the next frame,
                                 // so the rows drawn stand where they will and
                                 // the selection is placed from them (rowY).
+                                const laying = Date.now();
                                 list.forceLayout();
+                                list.keptLast = {
+                                    fresh: steps.reduce((all, step) => all
+                                        + (step.keys ?? []).length, 0),
+                                    laying: Date.now() - laying
+                                };
                                 return false;
                             }
 
