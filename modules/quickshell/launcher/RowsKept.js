@@ -7,14 +7,33 @@
 // same, a letter narrowing a search drew every row it kept again: "s" to
 // "so" drew 6 rows of 6 the list already held, 3 ms each in the sandbox,
 // the most of what a letter's showing spent after its search (2026-11-09).
+// Keys are looked up in plain objects made with no prototype, never in a
+// Map or a Set: Qt's engine finds a key in either by walking every key it
+// holds (qv4estable.cpp), so over Emoji's 1,914 rows a Set took 11 to 22
+// ms to make and a Map 7 to 14 ms to look each row up in, where an object
+// took 0 to 1 for either, in Qt's engine offscreen (2026-11-11).
+
+// An object with no prototype, so no key is ever one of Object's own.
+function bare() {
+    return Object.create(null);
+}
+
+// The keys, each standing for itself, to ask whether one is among them.
+function setOf(keys) {
+    const set = bare();
+    for (const key of keys) {
+        set[key] = true;
+    }
+    return set;
+}
 
 // Each key with how many times it came before, so a key listed twice is
 // two rows, each kept in its turn.
 function tagged(keys) {
-    const seen = new Map();
+    const seen = bare();
     return keys.map(key => {
-        const nth = seen.get(key) ?? 0;
-        seen.set(key, nth + 1);
+        const nth = seen[key] ?? 0;
+        seen[key] = nth + 1;
         return `${nth}\u0000${key}`;
     });
 }
@@ -24,7 +43,7 @@ function tagged(keys) {
 // than each row it passes: a row falling to the end is one move, not one
 // for each row below it.
 function staying(held, placeOf) {
-    const places = held.map(key => placeOf.get(key));
+    const places = held.map(key => placeOf[key]);
     // tails[n]: the row ending the least rising run n + 1 long; before[at]:
     // the row before it in its run.
     const tails = [];
@@ -43,16 +62,23 @@ function staying(held, placeOf) {
         before[at] = low > 0 ? tails[low - 1] : -1;
         tails[low] = at;
     });
-    const stay = new Set();
+    const stay = [];
     for (let at = tails.length > 0 ? tails[tails.length - 1] : -1; at >= 0; at = before[at]) {
-        stay.add(held[at]);
+        stay.push(held[at]);
     }
     return stay;
 }
 
-// Each key's place in `keys`.
+// Each key's place in `keys`, or null where a key comes twice.
 function placesOf(keys) {
-    return new Map(keys.map((key, at) => [key, at]));
+    const places = bare();
+    for (let at = 0; at < keys.length; at += 1) {
+        if (places[keys[at]] !== undefined) {
+            return null;
+        }
+        places[keys[at]] = at;
+    }
+    return places;
 }
 
 // Every row held gone and every row now put in, in one step each.
@@ -105,7 +131,7 @@ function steps(was, now, most) {
     let from = was;
     let into = now;
     let placeOf = placesOf(now);
-    if (placeOf.size !== now.length || new Set(was).size !== was.length) {
+    if (placeOf === null || placesOf(was) === null) {
         from = tagged(was);
         into = tagged(now);
         placeOf = placesOf(into);
@@ -114,7 +140,7 @@ function steps(was, now, most) {
     let fallen = 0;
     let last = -1;
     for (const key of from) {
-        const place = placeOf.get(key);
+        const place = placeOf[key];
         if (place === undefined) {
             continue;
         }
@@ -133,7 +159,7 @@ function steps(was, now, most) {
     const done = [];
     let end = from.length;
     for (let at = from.length - 1; at >= -1; at -= 1) {
-        if (at >= 0 && !placeOf.has(from[at])) {
+        if (at >= 0 && placeOf[from[at]] === undefined) {
             continue;
         }
         if (end - at > 1) {
@@ -144,18 +170,19 @@ function steps(was, now, most) {
     if (fallen === 0 && kept === into.length) {
         return done;
     }
-    const held = from.filter(key => placeOf.has(key));
-    const stay = staying(held, placeOf);
-    if (most !== undefined && held.length - stay.size > most) {
+    const held = from.filter(key => placeOf[key] !== undefined);
+    const standing = staying(held, placeOf);
+    if (most !== undefined && held.length - standing.length > most) {
         return afresh(was, now);
     }
-    const settled = new Set(stay);
-    const holds = new Set(held);
+    const stay = setOf(standing);
+    const settled = setOf(standing);
+    const holds = setOf(held);
     for (let at = 0; at < into.length; at += 1) {
         // A run of rows the list didn't hold goes in as one.
-        if (!holds.has(into[at])) {
+        if (holds[into[at]] !== true) {
             let past = at + 1;
-            while (past < into.length && !holds.has(into[past])) {
+            while (past < into.length && holds[into[past]] !== true) {
                 past += 1;
             }
             done.push({ insert: at, keys: now.slice(at, past) });
@@ -165,13 +192,13 @@ function steps(was, now, most) {
         }
         // Rows before a staying row's place that aren't yet in theirs
         // move, so it never does.
-        while (stay.has(into[at]) && held[at] !== into[at]) {
+        while (stay[into[at]] === true && held[at] !== into[at]) {
             const falling = held[at];
-            const next = into.slice(placeOf.get(falling) + 1).find(key => settled.has(key));
+            const next = into.slice(placeOf[falling] + 1).find(key => settled[key] === true);
             const to = next === undefined ? held.length - 1 : held.indexOf(next) - 1;
             done.push({ move: at, to });
             held.splice(to, 0, ...held.splice(at, 1));
-            settled.add(falling);
+            settled[falling] = true;
         }
         if (held[at] === into[at]) {
             continue;
