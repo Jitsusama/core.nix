@@ -6536,7 +6536,7 @@ Scope {
         // Opens the launcher into a collection by its provider's name.
         function collection(name: string): void {
             root.askedToOpen();
-            root.into(name);
+            root.chordInto(name);
             root.askDone();
         }
 
@@ -7566,21 +7566,30 @@ Scope {
         const source = collections.find(s => s.settings.name === name);
         if (open && source && source.pressedOver(held.length > 0 && held[0].row.from === source))
             return;
-        into(name);
+        chordInto(name);
     }
 
     // Opens straight into a collection, all of it shown until something's
     // typed; - steps out to the search. A name no collection
-    // has opens the search. Closed, a place kept from its last opening is
-    // drawn at once and filled in after its frame (intoKept), as home is.
+    // has opens the search.
     function into(name) {
-        if (!open && !opening) {
-            if (intoKept(name))
-                return;
+        if (!open && !opening)
             openChord = name;
-        }
         intoWhole(name);
         keepPlace(name);
+    }
+
+    // Opens into a collection as its chord does: closed, a place kept from
+    // its last opening is drawn at once and filled in after its frame
+    // (intoKept), as home is. Only a chord's opening is, since what else
+    // opens one steps on at once, as the file chooser does into its ask's
+    // folder, and filling a kept place in opens it whole again, at its
+    // top: every ask after the first opened on / (vm-desktop-looks-file-
+    // picker, 2026-11-11).
+    function chordInto(name) {
+        if (!open && !opening && intoKept(name))
+            return;
+        into(name);
     }
 
     // Each place a chord opens, as it last opened: the steps to it, its
