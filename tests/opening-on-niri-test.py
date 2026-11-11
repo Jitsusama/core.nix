@@ -748,6 +748,25 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
     assert heard == {"on": 1}, f"a notice heard in For You made {heard}, not Desktop's row"
 
 
+CHANGES_SAID = " from the line, the slowest "  # a close's line for each place's timed changes
+
+
+def test_a_reopening_with_nothing_changed_times_no_change(shell: Shell) -> None:
+    """A kept opening times no change when nothing changed (watches' answers were, 2026-11-11)."""
+    window = shell.opened("Tern Notes")
+    try:
+        for _ in range(2):
+            opened_from_kept(shell)
+            settled(shell)
+            since = shell.mark()
+            shell.close_launcher()
+    finally:
+        shell.close(window)
+    said = shell.log.read_bytes()[since:].decode(errors="replace").splitlines()
+    timed = [line for line in said if CHANGES_SAID in line]
+    assert timed == [], f"a reopening timed what its watches caught up on: {timed}"
+
+
 # How many times the shell is restarted back to back, as five switches in half an hour did
 # on 9 November, after which the launcher stopped taking keys.
 RESTARTS = 5

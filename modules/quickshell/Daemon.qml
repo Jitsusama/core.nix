@@ -342,6 +342,14 @@ Scope {
             && answer.records === undefined && answer.changed === undefined)
             sources = answer.sources;
         const whole = answer.id === "all" && Array.isArray(answer.records);
+        // A watch's answer is what's held caught up as the watch begins, as
+        // each opening watches again, not a change the daemon told, which
+        // comes as `changed`. Heard under its line, each opening's catching
+        // up was said as a change in every place it woke, 270 to 380 ms from
+        // the line (Joel's journal, 2026-11-11), so it's heard unmarked, and
+        // `said` puts the mark back once it's heard.
+        if (Array.isArray(answer.records) && (whole || answer.id === "ahead"))
+            Hearing.begun(0);
         if (answer.id in apart)
             delete apart[answer.id];
         else if (whole && answersWhole) {
