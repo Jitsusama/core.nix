@@ -7715,6 +7715,8 @@ Scope {
         else
             traces.closed({ depth: held.length, rows: matches.length });
         if (open) {
+            openWoke = wakeEach();
+            lap("waking");
             // Joined whole each time it opens, stale or not: a
             // collection's count reads live state (Agents' sessions, the
             // machine's room) that marks nothing stale as it changes, so
@@ -7910,7 +7912,86 @@ Scope {
         else if (homeHeld)
             beginOpening();
         else
-            open = true;
+            wakeOpen();
+    }
+
+    // An opening not kept opens with every source asleep (Provider.qml),
+    // so each wakes in turn as it opens (wakeEach) rather than all at once,
+    // in whichever part first reads them, where the rows they make would be
+    // said as that part's: Joel's first opening at 13:04 said 165 ms of
+    // forgetting, which was capture's and windows' 159 rows (Y2YBTS,
+    // 2026-11-10). Each sleeps on its own flag, so waking one makes only
+    // its own wanted again.
+    property var openWoke: ({})
+    property bool wakingEach: false
+    function wakeOpen() {
+        for (const source of sources)
+            source.asleep = true;
+        wakingEach = true;
+        open = true;
+    }
+    function wakeEach() {
+        const took = {};
+        if (!wakingEach)
+            return took;
+        wakingEach = false;
+        for (const source of sources) {
+            const began = KeyTimes.now();
+            source.asleep = false;
+            took[source.settings?.name ?? ""] = KeyTimes.now() - began;
+        }
+        return took;
+    }
+    function wokenSaid(took) {
+        const most = Pacing.openingParts(took).split(", ").slice(0, 4).join(", ");
+        return Object.values(took).some(ms => ms >= 1) ? ` (${most})` : "";
+    }
+
+    // Home made and kept a few seconds after the shell starts, one source
+    // a turn so nothing the shell draws waits long on it, so the first
+    // opening after a start draws from what's kept as every later one
+    // does. Made on its chord instead, Joel's first opening after a switch
+    // made 328 rows and took 1,196 ms to its frame (2026-11-10, 13:04). One
+    // opened before it's done is made whole, as it was.
+    property int warmed: -1
+    property real warmedTook: 0
+    Timer {
+        interval: 6000
+        running: true
+        onTriggered: root.warmNext()
+    }
+    Timer {
+        id: warmingOn
+
+        // A frame's room between sources, so the shell's own drawing and a
+        // chord pressed meanwhile come between them.
+        interval: 16
+        repeat: true
+        onTriggered: root.warmNext()
+    }
+    function warmNext() {
+        if (open || opening || homeHeld) {
+            warmingOn.stop();
+            return;
+        }
+        const began = KeyTimes.now();
+        warmed += 1;
+        if (warmed < sources.length) {
+            sources[warmed].warming = true;
+            sources[warmed].warming = false;
+            warmedTook += KeyTimes.now() - began;
+            warmingOn.start();
+            return;
+        }
+        warmingOn.stop();
+        choicesStale = true;
+        freshen();
+        restart("");
+        keepHome();
+        warmedTook += KeyTimes.now() - began;
+        const rows = Object.values(tallies()).reduce((sum, each) => sum + each, 0);
+        console.info(`launcher: home kept as the shell started, ${rows} rows made in`
+            + ` ${Math.round(warmedTook)} ms over ${sources.length} turns`);
     }
 
     // Whether the opening began from what was kept, and what filled it in:
@@ -8217,10 +8298,29 @@ Scope {
             return;
         const worked = Math.round(fillWorked);
         const filled = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
-            verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy };
+            verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy, woke: openWoke,
+            madeBy: madeBy() };
         openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);
+        const made = Object.values(filled.madeBy).reduce((sum, rows) => sum + rows, 0);
         console.info(`launcher: filled the opening in ${filled.filling} ms, ${worked} ms`
-            + ` working (${Pacing.openingParts(fillParts)}) and the rest waking`);
+            + ` working (${partsSaid(fillParts)}) and the rest waking; ${made} rows made`
+            + ` (${Pacing.openingParts(filled.madeBy)})`);
+    }
+    // An opening's parts, with waking's split by the source each woke.
+    function partsSaid(parts) {
+        return Pacing.openingParts(parts).replace(/\bwaking \d+/,
+            part => part + wokenSaid(openWoke));
+    }
+    // The rows each source has made since the launcher last opened or closed.
+    function madeBy() {
+        const now = tallies();
+        const by = {};
+        for (const name of Object.keys(now)) {
+            const rows = now[name] - (madeFrom.rows[name] ?? 0);
+            if (rows > 0)
+                by[name] = rows;
+        }
+        return by;
     }
 
     function openDrawn(beganAt, frame) {
@@ -8237,7 +8337,7 @@ Scope {
         feltBegin(felt < 0 ? asked : sized - felt, felt >= 0);
         const heard = Math.round(chordHeardAfter);
         chordAt = -1;
-        const parts = Pacing.openingParts(openParts);
+        const parts = partsSaid(openParts);
         const settled = openSettled < 0 ? asked + openWorked : openSettled;
         const begun = openBegun < 0 ? drawn : openBegun;
         const after = { settling: Math.round(settled - asked - openWorked),
@@ -8260,7 +8360,7 @@ Scope {
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows,
             made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
-            frames: kept ? openFramesWaited : 1 };
+            frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke };
         if (kept)
             timed.shown = rowsSaid();
         openingsTimed = openingsTimed.concat([timed]).slice(-20);
