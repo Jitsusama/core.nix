@@ -29,11 +29,16 @@ onLinux {
       }
       ''
         export HOME=$PWD XDG_CACHE_HOME=$PWD/cache XDG_RUNTIME_DIR=$PWD
-        mkdir -p wezterm
-        cp ${files."wezterm/wezterm.lua".source} wezterm/wezterm.lua
-        cp ${files."wezterm/theme.lua".source} wezterm/theme.lua
-        wezterm --config-file wezterm/wezterm.lua ls-fonts --text a > drawn 2>&1 || true
+        # Where WezTerm looks, so its configuration finds theme.lua beside it.
+        mkdir -p .config/wezterm
+        cp ${files."wezterm/wezterm.lua".source} .config/wezterm/wezterm.lua
+        cp ${files."wezterm/theme.lua".source} .config/wezterm/theme.lua
+        wezterm ls-fonts --text a > drawn 2>&1 || true
         cat drawn
+        if grep -q 'runtime error' drawn; then
+          echo "WezTerm couldn't read its configuration."
+          exit 1
+        fi
         if ! grep -q -F 'wezterm.font("${alone.jitsusama.theme.font.mono.family}"' drawn; then
           echo "WezTerm drew in another face than the theme's, so it can't find its own."
           exit 1
