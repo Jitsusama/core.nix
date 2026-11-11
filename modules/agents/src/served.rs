@@ -60,6 +60,9 @@ pub struct Made {
     reopens: Vec<Value>,
     /// Each session Recent lists, a whole record (recent.rs).
     recent: Vec<Value>,
+    /// Each landing Landed lists, and how many landed each day, whole
+    /// records (landed.rs).
+    landed: Vec<Value>,
 }
 
 impl Made {
@@ -79,6 +82,12 @@ impl Made {
     #[must_use]
     pub fn with_recent(self, recent: Vec<Value>) -> Self {
         Self { recent, ..self }
+    }
+
+    /// The same, with every landing Landed lists beside its rows.
+    #[must_use]
+    pub fn with_landed(self, landed: Vec<Value>) -> Self {
+        Self { landed, ..self }
     }
 }
 
@@ -162,6 +171,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         drawers: Vec::new(),
         reopens: Vec::new(),
         recent: Vec::new(),
+        landed: Vec::new(),
     }
 }
 
@@ -268,7 +278,8 @@ impl Served {
             .drawers
             .into_iter()
             .chain(made.reopens)
-            .chain(made.recent);
+            .chain(made.recent)
+            .chain(made.landed);
         for whole in wholes {
             if let Some(key) = whole["key"].as_str() {
                 records.insert(key.to_owned(), whole);

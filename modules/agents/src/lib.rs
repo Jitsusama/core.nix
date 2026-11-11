@@ -9,7 +9,7 @@
 //! - `figures`: what a row says at its right, and its drawer's figures.
 //! - `summary`: how the sessions stand together.
 //! - `drawer`: what a session's drawer says, first what matters most.
-//! - `clock`: times as a drawer sends them, and today's date.
+//! - `clock`: times as a drawer sends them, and a moment's date.
 //! - `said`: the launcher's own words for all of it.
 //! - `row`: a session's row, and every row laid out, folds and all.
 //! - `served`: every record served by key, and only what moved sent.
@@ -20,6 +20,7 @@
 //! - `acts`: a session's acts, done by asking the node as the shell asks.
 //! - `reopen`: the sessions there are to reopen, and what Joel said of them.
 //! - `recent`: the sessions closed this boot that Recent lists.
+//! - `landed`: what the sessions landed, and what of it Joel has read.
 
 pub mod acts;
 pub mod clock;
@@ -27,6 +28,7 @@ pub mod drawer;
 pub mod figures;
 pub mod file;
 pub mod inputs;
+pub mod landed;
 pub mod recent;
 pub mod reopen;
 pub mod row;

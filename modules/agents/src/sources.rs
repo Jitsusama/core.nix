@@ -23,6 +23,8 @@ pub enum Heard {
     Sessions(Value),
     /// An answer to the node's watch of the machine's queue's jobs.
     Jobs(Value),
+    /// An answer to the node's watch of what the realm's sessions landed.
+    Landings(Value),
     /// An answer to the to-do daemon's watch of its to-dos.
     ToDos(Value),
     /// An answer to the windows daemon's watch of its windows.
@@ -38,6 +40,9 @@ pub enum Heard {
     /// The sessions the boot being restored kept a place of, by pi's id,
     /// as the shell says.
     Arranged(HashSet<String>),
+    /// Joel reads these landings, by their keys, at this moment in
+    /// milliseconds, as the shell says.
+    Read(Vec<String>, i64),
 }
 
 /// Where the files the rows are made from are kept.
@@ -54,6 +59,11 @@ pub struct Paths {
     /// What Joel said of those, which the daemon alone writes, so it's
     /// read at the start rather than followed.
     pub kept: PathBuf,
+    /// What of the landings Joel has read, the daemon's alone too.
+    pub landed: PathBuf,
+    /// The shell's own folders, where the launcher kept what Joel read
+    /// before the daemon did, read once while `landed` isn't there.
+    pub shells: PathBuf,
 }
 
 impl Paths {
@@ -93,6 +103,9 @@ impl Inputs {
             Heard::Jobs(answer) => {
                 self.jobs.took(&answer);
             }
+            Heard::Landings(answer) => {
+                self.landings.took(&answer);
+            }
             Heard::ToDos(answer) => {
                 self.to_dos.took(&answer);
             }
@@ -116,6 +129,13 @@ impl Inputs {
                 self.keep(paths);
             }
             Heard::Arranged(ids) => self.arranged = ids,
+            Heard::Read(keys, now) => {
+                let (_, held) = self.landed();
+                self.read.mark(&keys, now, &held);
+                if let Err(why) = self.read.write(&paths.landed) {
+                    eprintln!("agents: can't keep {}: {why}", paths.landed.display());
+                }
+            }
         }
     }
 
@@ -157,6 +177,8 @@ mod tests {
             orchestrators: folder.join("orchestrators.json"),
             restore: folder.join("restore.json"),
             kept: folder.join("agents").join("reopen.json"),
+            landed: folder.join("agents").join("landed.json"),
+            shells: folder.join("by-shell"),
         }
     }
 
@@ -211,6 +233,32 @@ mod tests {
             "the boot offered put off, and the one forgotten"
         );
         assert_eq!(Kept::read(&paths.kept), kept, "written for the next start");
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn what_joel_reads_of_the_landings_is_kept() {
+        let folder = std::env::temp_dir().join(format!("agents-landed-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let paths = paths_in(&folder);
+        let mut inputs = Inputs::default();
+        inputs.hear(
+            Heard::Landings(json!({"records": [{"key": "landing:s:o#1", "session": "s",
+                "ref": "o#1", "at": "2026-11-11T01:00:00Z", "what": "One"}]})),
+            &paths,
+        );
+        inputs.hear(
+            Heard::Read(vec!["s o#1 2026-11-11T01:00:00Z".into(), "gone".into()], 7),
+            &paths,
+        );
+        let (records, _) = inputs.landed();
+        assert_eq!(records[0]["landed"]["read"], 7, "read when Joel read it");
+        assert_eq!(
+            crate::landed::Reading::read(&paths.landed),
+            Some(inputs.read.clone()),
+            "written for the next start"
+        );
         let _ = fs::remove_dir_all(&folder);
     }
 

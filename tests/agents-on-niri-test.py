@@ -242,7 +242,9 @@ def shell() -> Iterator[Shell]:
              "--windows", str(ROWS.parent / "windows.sock"), "--spend", str(SPEND),
              "--orchestrators", str(WORKFLOW / "orchestrators.json"),
              "--restore", str(RESTORE),
-             "--kept", str(STATE / "agents/reopen.json"), "--socket", str(ROWS)],
+             "--kept", str(STATE / "agents/reopen.json"),
+             "--landed", str(STATE / "agents/landed.json"),
+             "--shells", str(STATE / "quickshell/by-shell"), "--socket", str(ROWS)],
             stdout=log, stderr=log,
         )  # fmt: skip
     while not ROWS.exists():
