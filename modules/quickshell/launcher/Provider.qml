@@ -230,6 +230,11 @@ Scope {
     // making its rows, by a memberNames of its own given nothing.
     property bool saysAtHome: false
 
+    // Whether it waits its turn to wake as a kept opening fills in, a few
+    // sources a frame (Launcher.qml's wakeNext). Its own, so waking it
+    // makes no other source's wanted again.
+    property bool asleep: false
+
     // Whether its rows are wanted now: walked from outside, searched, held,
     // named at home, or an act of theirs waiting to be agreed (Launcher.qml's
     // wants). A source whose rows cost much builds them only then, so a

@@ -111,6 +111,33 @@ QtObject {
         check(failures, "an act of its own waiting to be agreed keeps them wanted elsewhere",
             wanted({ held: [{ row: { from: people } }], becoming: [{ from: agents }] }, agents),
             true);
+        const asleep = { saysAtHome: false, asleep: true };
+        check(failures, "as a kept opening fills in, one not yet woken isn't",
+            wanted({}, asleep), false);
+        check(failures, "what's typed searches every place, woken or not",
+            wanted({ typed: "ma" }, asleep), true);
+        check(failures, "and one held is wanted though not woken",
+            wanted({ held: [{ row: { from: asleep } }] }, asleep), true);
+    }
+
+    // A kept opening's sources wake in the order home's rows read them,
+    // a place's own first and then those it holds, then the rest.
+    function waking(failures) {
+        const power = { name: "power" };
+        const disk = { name: "disk" };
+        const on = { name: "on" };
+        const people = { name: "people" };
+        const quests = { name: "quests" };
+        const sources = { power, disk, on, people, quests };
+        const places = {
+            machine: { stands: "power", holds: ["disk", "battery"] },
+            battery: { stands: "power", holds: [] }
+        };
+        const order = Wanted.wakingOrder(["on", "machine", "people", "gone"],
+            id => places[id] ?? null, id => sources[id] ?? null,
+            [quests, people, on, power, disk]);
+        check(failures, "home's own come first, each once, then the rest",
+            order.map(one => one.name).join(" "), "on power disk people quests");
     }
 
     // A key's acts are each said shown by the first frame begun after its
@@ -214,6 +241,7 @@ QtObject {
 
         framing(failures);
         wanting(failures);
+        waking(failures);
         opening(failures);
         felt(failures);
 
