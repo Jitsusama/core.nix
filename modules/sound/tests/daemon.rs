@@ -85,6 +85,17 @@ fn with_no_server_there_are_no_devices_and_no_waiting() {
     // Sound's rows, as the launcher watches its place's.
     let rows = json!({"id": 4, "ask": "watch", "kind": "row", "place": "sound"});
     assert_eq!(client.ask(&rows)["records"], json!([]));
+    // How nodes keep time, as Sound watches it while a drawer is out and
+    // lets it go once it's shut.
+    let timing = json!({"id": 5, "ask": "watch", "kind": "timing"});
+    let timed = client.ask(&timing);
+    assert_eq!(
+        timed["records"],
+        json!([]),
+        "nothing measured with no server: {timed}"
+    );
+    let unwatched = client.ask(&json!({"id": 5, "ask": "unwatch"}));
+    assert_eq!(unwatched["unwatched"], true, "let go of: {unwatched}");
     let health = client.ask(&json!({"id": 3, "ask": "health"}));
     assert_eq!(health["watches"], 2);
 }

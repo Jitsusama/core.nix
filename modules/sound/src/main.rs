@@ -8,7 +8,9 @@
 //! words.json (rows.rs), with its parts inside it (parts.rs), the
 //! programs playing through it among them, each wearing its mark from
 //! MARKS (programs.rs); each program's stream as a `stream` record
-//! (streams.rs); and where each stream is sent, as one `targets` record.
+//! (streams.rs); where each stream is sent, as one `targets` record; and,
+//! while a watch wants them, how each running node keeps time, as a
+//! `timing` record each, from PipeWire's profiler (timing.rs).
 //!
 //! It hears PipeWire through its own API for as long as it runs, rather
 //! than a program's output read line by line: the registry says each
@@ -25,22 +27,27 @@
 //! PipeWire's own loop, where the proxies live, through a channel the
 //! loop hears; what it moved comes back to every watch as the server
 //! says it. A card is heard for the route that plays each of its devices,
-//! since a card's device takes its levels on that route.
+//! since a card's device takes its levels on that route. Each client of
+//! the socket is answered in clients.rs.
 
-use std::cell::RefCell;
+mod clients;
+mod profiler;
+
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::mpsc::{self, SyncSender};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use clients::{Watch, serve};
 use pipewire as pw;
+use profiler::Profiler;
 use pw::context::ContextRc;
 use pw::device::{Device, DeviceChangeMask, DeviceInfoRef, DeviceListener};
 use pw::main_loop::MainLoopRc;
@@ -53,53 +60,32 @@ use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
-use sound::acts::{Act, Move, act, on_streams, planned};
+use sound::acts::Move;
 use sound::devices::{Change, Devices, direction};
-use sound::interface::{Ask, VERSION, ask, error, kind_of};
 use sound::levels::{levels, offered, profile, route};
 use sound::naming::{Naming, followed, read_or_none};
 use sound::parts::served;
 use sound::rows::Words;
 use sound::streams::playing;
+use sound::timing::Timings;
 use windows::entries::Entries;
 use windows::marks::Marks;
 
-/// How many lines a connection may have waiting to be written before
-/// it's taken as no longer reading and hung up on.
-const QUEUED: usize = 256;
 /// How long to wait after a connection couldn't be taken.
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 /// How long to wait before asking PipeWire again once it's gone.
 const SERVER_AGAIN: Duration = Duration::from_secs(2);
-/// How long an act waits for PipeWire's loop to take it.
-const ACT_PATIENCE: Duration = Duration::from_secs(2);
 /// The default metadata's key the session manager sends a stream by.
 const TARGET: &str = "target.object";
 
-/// One act's move, for PipeWire's loop to do, and where to say how it
-/// went.
-struct Doing {
-    done: Move,
-    answer: mpsc::Sender<Result<(), String>>,
-}
-
-/// One watch a client holds.
-struct Watch {
-    connection: u64,
-    id: Value,
-    kinds: Vec<String>,
-    keys: Option<Vec<String>>,
-    told: SyncSender<String>,
-    stream: Arc<UnixStream>,
-}
-
-impl Watch {
-    fn wants(&self, key: &str) -> bool {
-        match &self.keys {
-            Some(keys) => keys.iter().any(|k| k == key),
-            None => kind_of(key).is_some_and(|kind| self.kinds.iter().any(|k| k == kind)),
-        }
-    }
+/// What PipeWire's loop is handed to do: one act's move, and where to
+/// say how it went; or whether any watch wants how nodes keep time.
+enum Doing {
+    Act {
+        done: Move,
+        answer: mpsc::Sender<Result<(), String>>,
+    },
+    Timing(bool),
 }
 
 /// Everything the threads share.
@@ -120,6 +106,10 @@ struct Daemon {
     since: u64,
     /// Where an act goes to be done, while PipeWire answers.
     acting: Option<pw::channel::Sender<Doing>>,
+    /// Whether any watch wants how nodes keep time, and what the
+    /// profiler has said of it since.
+    timed: bool,
+    timings: Timings,
 }
 
 const USAGE: &str = "usage: sound SOCKET [--vocabulary WORDS] [--marks MARKS]";
@@ -165,6 +155,8 @@ fn main() {
         changes: 0,
         since: now_ms(),
         acting: None,
+        timed: false,
+        timings: Timings::default(),
     }));
     // A program is named anew each time the desktop entries change.
     let renaming = Arc::clone(&shared);
@@ -242,6 +234,7 @@ fn follow(shared: &Arc<Mutex<Daemon>>) {
         daemon.server = "not answering";
         daemon.acting = None;
         daemon.devices.forget();
+        daemon.timings.forget();
         refresh(&mut daemon);
         drop(daemon);
         std::thread::sleep(SERVER_AGAIN);
@@ -264,6 +257,8 @@ enum Bound {
         proxy: Metadata,
         _listener: MetadataListener,
     },
+    /// Held only to be let go, which unbinds it.
+    Profiler { _bound: Profiler },
 }
 
 /// Hears one connection to PipeWire until it ends.
@@ -277,11 +272,28 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
         .get_registry_rc()
         .map_err(|why| format!("its registry: {why}"))?;
     let bound: Rc<RefCell<HashMap<u32, Bound>>> = Rc::default();
+    // The profiler's global, once the registry says it, bound only while
+    // a watch wants it.
+    let profiler: Rc<Cell<Option<u32>>> = Rc::default();
     let (acting, acts) = pw::channel::channel::<Doing>();
     let _acts = acts.attach(main_loop.loop_(), {
-        let bound = Rc::clone(&bound);
-        move |doing: Doing| {
-            let _ = doing.answer.send(done(&bound.borrow(), &doing.done));
+        let (shared, bound, profiler, registry) = (
+            Arc::clone(shared),
+            Rc::clone(&bound),
+            Rc::clone(&profiler),
+            registry.clone(),
+        );
+        move |doing: Doing| match doing {
+            Doing::Act {
+                done: moved,
+                answer,
+            } => {
+                let _ = answer.send(done(&bound.borrow(), &moved));
+            }
+            Doing::Timing(wanted) => {
+                let bound = &mut bound.borrow_mut();
+                profiling(&shared, &registry, bound, profiler.get(), wanted);
+            }
         }
     });
     let quit = main_loop.downgrade();
@@ -299,14 +311,25 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
     let _registry_listener = registry
         .add_listener_local()
         .global({
-            let (shared, bound, registry) =
-                (Arc::clone(shared), Rc::clone(&bound), registry.clone());
+            let (shared, bound, profiler, registry) = (
+                Arc::clone(shared),
+                Rc::clone(&bound),
+                Rc::clone(&profiler),
+                registry.clone(),
+            );
             move |global| {
                 let found = match global.type_ {
                     ObjectType::Node => node(&shared, &registry, global),
                     ObjectType::Device => card(&shared, &registry, global),
                     ObjectType::Metadata => defaults(&shared, &registry, global),
                     ObjectType::Link => linked(&shared, global),
+                    ObjectType::Profiler => {
+                        profiler.set(Some(global.id));
+                        let wanted = lock(&shared).timed;
+                        let bound = &mut bound.borrow_mut();
+                        profiling(&shared, &registry, bound, Some(global.id), wanted);
+                        None
+                    }
                     _ => None,
                 };
                 if let Some(found) = found {
@@ -317,8 +340,11 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
         .global_remove({
             let shared = Arc::clone(shared);
             // A node, a card, or a link, never bound, goes with whatever it
-            // was sent to.
+            // was sent to; the profiler with nothing.
             move |id| match bound.borrow_mut().remove(&id) {
+                Some(Bound::Profiler { .. }) | None if profiler.get() == Some(id) => {
+                    profiler.set(None);
+                }
                 Some(Bound::Defaults { .. }) => {
                     told(
                         &shared,
@@ -589,6 +615,7 @@ fn refresh(daemon: &mut Daemon) {
     daemon.served.take(ready, Vec::new());
     records.extend(daemon.served.all().cloned());
     records.push(daemon.devices.targets());
+    records.extend(daemon.timings.records());
     let said: HashSet<String> = records
         .iter()
         .filter_map(|record| record["key"].as_str().map(str::to_owned))
@@ -638,161 +665,57 @@ fn refresh(daemon: &mut Daemon) {
         daemon
             .watches
             .retain(|watch| !stuck.contains(&watch.connection));
+        timed(daemon);
     }
 }
 
-fn serve(shared: &Mutex<Daemon>, stream: UnixStream, connection: u64) {
-    let Ok(reading) = stream.try_clone() else {
+/// Has the profiler bound while some watch wants how nodes keep time, and
+/// let go once none does, since the server measures every cycle for it
+/// while it's bound; what it said goes with it.
+fn timed(daemon: &mut Daemon) {
+    let wanted = daemon
+        .watches
+        .iter()
+        .any(|watch| watch.wants_kind("timing"));
+    if wanted == daemon.timed {
         return;
-    };
-    let Ok(hangup) = stream.try_clone().map(Arc::new) else {
+    }
+    daemon.timed = wanted;
+    if let Some(acting) = &daemon.acting {
+        let _ = acting.send(Doing::Timing(wanted));
+    }
+    if !wanted {
+        daemon.timings.forget();
+        refresh(daemon);
+    }
+}
+
+/// Binds the profiler by its global's id, once it's known, while a watch
+/// wants it, and lets it go once none does. Each profile it says is taken
+/// in, and the records told again once a second of them stands.
+fn profiling(
+    shared: &Arc<Mutex<Daemon>>,
+    registry: &RegistryRc,
+    bound: &mut HashMap<u32, Bound>,
+    id: Option<u32>,
+    wanted: bool,
+) {
+    let Some(id) = id else { return };
+    if !wanted {
+        bound.remove(&id);
         return;
-    };
-    let (told, lines) = mpsc::sync_channel::<String>(QUEUED);
-    let mut writing = stream;
-    std::thread::spawn(move || {
-        for line in lines {
-            if writeln!(writing, "{line}").is_err() {
-                break;
-            }
+    }
+    if bound.contains_key(&id) {
+        return;
+    }
+    let shared = Arc::clone(shared);
+    let profiler = Profiler::bind(registry, id, move |profile| {
+        let mut daemon = lock(&shared);
+        if daemon.timed && daemon.timings.hear(profile, now_ms()) {
+            refresh(&mut daemon);
         }
     });
-    for line in BufReader::new(reading).lines() {
-        let Ok(line) = line else { break };
-        let Some(answer) = answer(shared, ask(&line), connection, &told, &hangup) else {
-            continue;
-        };
-        if told.send(answer.to_string()).is_err() {
-            break;
-        }
+    if let Some(profiler) = profiler {
+        bound.insert(id, Bound::Profiler { _bound: profiler });
     }
-    lock(shared)
-        .watches
-        .retain(|watch| watch.connection != connection);
-}
-
-/// The records held of these kinds or keys: by key, as the server's own
-/// names order them.
-fn held(daemon: &Daemon, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
-    match keys {
-        Some(keys) => keys
-            .iter()
-            .filter_map(|key| daemon.held.get(key))
-            .cloned()
-            .collect(),
-        None => daemon
-            .held
-            .iter()
-            .filter(|(key, _)| kind_of(key).is_some_and(|kind| kinds.iter().any(|k| k == kind)))
-            .map(|(_, record)| record.clone())
-            .collect(),
-    }
-}
-
-/// Works out what an act asks and has PipeWire's loop do it, saying it's
-/// done or why not. What it moved comes to every watch as the server says
-/// it back, so a watch's records are always the server's own.
-fn acted(shared: &Mutex<Daemon>, id: &Value, name: &str, said: &Value) -> Value {
-    let asked = match act(name, said) {
-        Ok(asked) => asked,
-        Err(refused) => return error(id, refused.code, &refused.message),
-    };
-    let (done, acting) = {
-        let daemon = lock(shared);
-        if let Some(done) = asked.alone() {
-            (done, daemon.acting.clone())
-        } else if let Act::Program { .. } = asked {
-            match on_streams(&asked, &daemon.devices.streams) {
-                Ok(done) => (done, daemon.acting.clone()),
-                Err(refused) => return error(id, refused.code, &refused.message),
-            }
-        } else {
-            let Some(device) = daemon.devices.device(asked.key()) else {
-                return error(id, "no-device", &format!("no device {} here", asked.key()));
-            };
-            match planned(&asked, &device) {
-                Ok(done) => (done, daemon.acting.clone()),
-                Err(refused) => return error(id, refused.code, &refused.message),
-            }
-        }
-    };
-    let not_answering = || error(id, "not-answering", "the sound server isn't answering");
-    let Some(acting) = acting else {
-        return not_answering();
-    };
-    let (answer, answered) = mpsc::channel();
-    if acting.send(Doing { done, answer }).is_err() {
-        return not_answering();
-    }
-    match answered.recv_timeout(ACT_PATIENCE) {
-        Ok(Ok(())) => json!({"id": id, "done": true}),
-        Ok(Err(why)) => error(id, "not-done", &why),
-        Err(_) => not_answering(),
-    }
-}
-
-/// How the daemon stands, as hello and health say it.
-fn standing(daemon: &Daemon, id: &Value) -> Value {
-    json!({
-        "id": id, "version": VERSION, "domain": "sound", "state": "answering",
-        "since": daemon.since,
-        "sources": {"pipewire": {"state": daemon.server, "changes": daemon.changes}},
-    })
-}
-
-/// What one ask is answered with, or none where it's been told already.
-fn answer(
-    shared: &Mutex<Daemon>,
-    asked: Ask,
-    connection: u64,
-    told: &SyncSender<String>,
-    hangup: &Arc<UnixStream>,
-) -> Option<Value> {
-    Some(match asked {
-        Ask::Hello { id } => standing(&lock(shared), &id),
-        Ask::Get { id, keys } => {
-            json!({"id": id, "records": held(&lock(shared), &[], Some(&keys))})
-        }
-        Ask::List { id, kinds } => json!({"id": id, "records": held(&lock(shared), &kinds, None)}),
-        Ask::Watch { id, kinds, keys } => {
-            let mut daemon = lock(shared);
-            // A watch asked again by its id replaces the one before.
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            daemon.watches.push(Watch {
-                connection,
-                id: id.clone(),
-                kinds: kinds.clone(),
-                keys: keys.clone(),
-                told: told.clone(),
-                stream: Arc::clone(hangup),
-            });
-            // Told under the same lock a change is told under, so no
-            // change comes before the answer it changes.
-            let whole = json!({"id": id, "records": held(&daemon, &kinds, keys.as_deref())});
-            if told.try_send(whole.to_string()).is_err() {
-                let _ = hangup.shutdown(Shutdown::Both);
-            }
-            return None;
-        }
-        Ask::Unwatch { id } => {
-            let mut daemon = lock(shared);
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            json!({"id": id, "unwatched": true})
-        }
-        Ask::Health { id } => {
-            let daemon = lock(shared);
-            let mut health = standing(&daemon, &id);
-            health["watches"] = json!(daemon.watches.len());
-            health
-        }
-        Ask::Act { id, act, said } => acted(shared, &id, &act, &said),
-        Ask::UnknownKind { id, kind } => {
-            error(&id, "unknown-kind", &format!("no kind {kind} here"))
-        }
-        Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
-    })
 }
