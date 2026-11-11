@@ -75,13 +75,22 @@ function timed(trial, searched, drawn, parts) {
 // and ended. Its lists are the step's own and those the place found its
 // rows in; its rows whatever else it did after opening; its answers and
 // their composing the place's own, so a slow step says where its rows
-// went (RTOIMQ, 2026-11-10).
+// went (RTOIMQ, 2026-11-10). The search's time before it began is said as
+// a key's is, and its rows apart from what came after them: Joel's step
+// into Machine spent 16 ms there after opening, where it had spent 10,
+// with nothing saying which (2026-11-11).
 function stepped(inner, at) {
     const finding = inner ? inner.lists : 0;
     const answers = inner ? inner.answers : 0;
+    const before = inner ? inner.before : 0;
+    const rows = Math.max(0, at.ended - at.opened - finding - answers - before);
+    const own = inner ? Math.min(inner.rows, rows) : 0;
     return {
         lists: at.made - at.began + finding,
-        rows: Math.max(0, at.ended - at.opened - finding - answers),
+        rows,
+        placed: inner ? { rows: own, after: rows - own } : null,
+        before,
+        beforeParts: inner?.beforeParts ?? null,
         answers,
         each: Object.assign({}, inner?.each, { making: at.made - at.began, finding,
             holding: at.pushed - at.made, opening: at.opened - at.pushed }),
