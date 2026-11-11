@@ -201,8 +201,8 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
     );
 }
 
-#[test]
-fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
+/// A call Ada holds, with Grace asked, a file on it and Joel going.
+fn planned() -> Meeting {
     let mut meeting = one("e1", MONDAY + HOUR);
     meeting.title = "Plan & Review".into();
     meeting.link = Some("https://meet.google.com/abc-defg-hij".into());
@@ -224,7 +224,12 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
         id: Some("agenda".into()),
         kind: None,
     }];
-    let rows = meetings(&[meeting], &[], MONDAY, &zone(), &words());
+    meeting
+}
+
+#[test]
+fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
+    let rows = meetings(&[planned()], &[], MONDAY, &zone(), &words());
     let inside = within(&rows, "row:calendar:e1");
     let named: Vec<(&str, &str)> = inside
         .iter()
