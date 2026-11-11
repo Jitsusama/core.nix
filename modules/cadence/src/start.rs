@@ -8,7 +8,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use jiff::tz::TimeZone;
 use serde::Deserialize;
@@ -153,20 +153,10 @@ fn tell(reviving: &Reviving, s: &Seen, line: &str) -> Vec<(String, String)> {
 /// on the workspace it was last seen on.
 fn start(reviving: &Reviving, mesh: &Mesh, s: &Seen, cwd: &str, home: Option<u32>) -> String {
     let words = format!("exec {} --session {}", reviving.restart, s.session);
-    // Its own unit under the agents' slice, and a terminal class niri
-    // opens unfocused, so nothing typed lands in it.
-    let started = Command::new("systemd-run")
-        .args([
-            "--user",
-            "--slice=agents.slice",
-            "--collect",
-            "--quiet",
-            "--",
-        ])
-        .args(["kitty", "-1", "--instance-group", "pi-sessions"])
-        .args(["--class", "pi-spawned", "--directory", cwd])
-        .args(["zsh", "-lic", &words])
-        .status();
+    let opened = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis());
+    let started = terminal(cwd, &words, &format!("pi-spawned.{opened}")).status();
     if !started.is_ok_and(|s| s.success()) {
         return format!("{} died, and starting it again failed.", s.address);
     }
@@ -203,6 +193,34 @@ fn start(reviving: &Reviving, mesh: &Mesh, s: &Seen, cwd: &str, home: Option<u32
         sleep(Duration::from_secs(1));
     }
     format!("{} died; started again on its own log, {place}.", s.address)
+}
+
+/// The command that opens a revived session's terminal, running `words`
+/// in `cwd`, as a window of the sessions' own kitty with the app id
+/// `class`. Its own unit under the agents' slice, and a class niri opens
+/// unfocused, so nothing typed lands in it. Its process is told the same
+/// class in `MYCELIUM_APP_ID`, as Sessions.qml's inSessions tells its
+/// own: one kitty draws every session's window, so the jobs-sorter and
+/// the swap-in can find a window's scope only by the class its pi says.
+/// On 11 November 48 of 58 pi windows had been opened as the bare
+/// pi-spawned with no such word, so neither helped them. `class` takes a
+/// number, the time it opened in milliseconds, so no two windows share
+/// one; Sessions.qml counts on from the time its shell started.
+fn terminal(cwd: &str, words: &str, class: &str) -> Command {
+    let mut command = Command::new("systemd-run");
+    command
+        .args([
+            "--user",
+            "--slice=agents.slice",
+            "--collect",
+            "--quiet",
+            "--",
+        ])
+        .args(["env", &format!("MYCELIUM_APP_ID={class}")])
+        .args(["kitty", "-1", "--instance-group", "pi-sessions"])
+        .args(["--class", class, "--directory", cwd])
+        .args(["zsh", "-lic", words]);
+    command
 }
 
 /// Every session's presence, with whether its process runs.
@@ -443,4 +461,32 @@ fn windows() -> Vec<Window> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_revived_window_and_its_pi_say_the_same_numbered_class() {
+        let command = terminal("/home/j", "exec pi --session s", "pi-spawned.42");
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        let class = args.iter().position(|arg| arg == "--class");
+        assert_eq!(
+            class.and_then(|at| args.get(at + 1)).map(String::as_str),
+            Some("pi-spawned.42"),
+            "the window isn't opened with its own class: {args:?}"
+        );
+        let env = args.iter().position(|arg| arg == "env");
+        let kitty = args.iter().position(|arg| arg == "kitty");
+        assert!(
+            env.is_some_and(|at| args.get(at + 1).map(String::as_str)
+                == Some("MYCELIUM_APP_ID=pi-spawned.42")
+                && kitty == Some(at + 2)),
+            "its kitty isn't told the class in MYCELIUM_APP_ID: {args:?}"
+        );
+    }
 }
