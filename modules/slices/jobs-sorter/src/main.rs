@@ -803,6 +803,10 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
             .map(|proc| (proc.pid, proc.ppid))
             .collect();
         let Some(pid) = hosts::host_of(&procs) else {
+            // An empty unit is a host stopping; one with two roots is something else, said once.
+            if !procs.is_empty() && ranks.hosts.unclear.insert(unit.to_owned()) {
+                eprintln!("Not ranking {unit}: it holds no one process that started it.");
+            }
             continue;
         };
         seen.push(unit.to_owned());
@@ -821,6 +825,9 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
             viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
             orchestrators: ranks.orchestrating.get(&pid).copied().unwrap_or(0),
             marked: windows.dir.join(pid.to_string()).exists(),
+            current: fs::read_to_string(path.join("memory.current"))
+                .ok()
+                .and_then(|text| text.trim().parse().ok()),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
         if !ranks.hosts.changed(unit, &rank) {

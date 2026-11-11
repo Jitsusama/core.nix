@@ -85,6 +85,9 @@ pub struct Signs {
     pub orchestrators: usize,
     /// Whether the harness marks the host as one nobody is at.
     pub marked: bool,
+    /// The memory its unit holds now, as its memory.current says; none
+    /// when that can't be read.
+    pub current: Option<u64>,
 }
 
 /// The rank a host wants from its unit's `own` settings and its `signs`,
@@ -109,10 +112,15 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     } else {
         low::AT
     };
+    // One process holds every conversation a host runs, so a window Joel is at keeps them all
+    // out of the disk's swap only while they fit under the floor given: past it, writeback off
+    // would hold every conversation in memory, which #3070 kept windows from by holding at
+    // most three. Unread, it might not fit, so writeback stays.
+    let fits = signs.current.is_some_and(|current| current <= floor);
     Rank {
         weight,
         floor,
-        writeback: own.writeback && signs.viewed == 0,
+        writeback: own.writeback && (signs.viewed == 0 || !fits),
         preference,
     }
 }
@@ -305,6 +313,8 @@ pub struct Hosts {
     set: HashMap<String, Rank>,
     /// Whether a failure to rank a host has been said.
     pub failed: bool,
+    /// The units said to hold no one host, so each is said once.
+    pub unclear: HashSet<String>,
 }
 
 impl Hosts {
@@ -412,6 +422,7 @@ mod tests {
             &own,
             Signs {
                 viewed: 2,
+                current: Some(GIB),
                 ..Signs::default()
             },
             10,
@@ -423,7 +434,7 @@ mod tests {
         );
         assert!(
             !rank.writeback,
-            "a held host's pages stay out of the disk's swap"
+            "a held host's pages stay out of the disk's swap while it fits its floor"
         );
         assert_eq!(
             rank.preference, "avoid",
@@ -462,6 +473,28 @@ mod tests {
             .preference,
             "avoid",
             "a host holding an orchestrator is the last systemd-oomd ends"
+        );
+    }
+
+    #[test]
+    fn a_viewed_host_past_its_floor_keeps_writeback() {
+        let viewed = |current| Signs {
+            viewed: 1,
+            current,
+            ..Signs::default()
+        };
+        let floor = (512 << 20) + focus::FLOOR;
+        assert!(
+            !wanted(&attended(), viewed(Some(floor)), 10).writeback,
+            "a viewed host at its floor keeps its pages out of the disk's swap"
+        );
+        assert!(
+            wanted(&attended(), viewed(Some(floor + 1)), 10).writeback,
+            "one past its floor may write back, so none of its conversations must stay in memory"
+        );
+        assert!(
+            wanted(&attended(), viewed(None), 10).writeback,
+            "one whose memory can't be read may not fit, so writeback stays"
         );
     }
 
