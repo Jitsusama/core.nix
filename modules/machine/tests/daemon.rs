@@ -587,9 +587,8 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
     ] });
     let running = Running::worded("machine-rows", &words);
     let mut client = running.client();
-    let said = client.ask(
-        &json!({"id": "machine", "ask": "watch", "kind": "row", "place": "machine"}),
-    );
+    let said =
+        client.ask(&json!({"id": "machine", "ask": "watch", "kind": "row", "place": "machine"}));
     let records = &said["records"];
     let memory = &record(records, "row:machine:memory")["row"];
     assert_eq!(memory["side"][0]["said"], "8.19 GB used, 50%");
@@ -606,7 +605,10 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
     programs.ask(&json!({"id": "using", "ask": "watch", "kind": "using"}));
     let named = client.changed("row:machine:memory:using");
     let side = named["row"]["side"][0]["said"].as_str().unwrap_or_default();
-    assert!(side.starts_with("kitty "), "the program using most: {named}");
+    assert!(
+        side.starts_with("kitty "),
+        "the program using most: {named}"
+    );
 }
 
 /// A battery, a charger and a USB-C port with a charger in it, and the
