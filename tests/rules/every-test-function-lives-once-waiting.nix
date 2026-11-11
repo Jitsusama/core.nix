@@ -151,7 +151,6 @@
   "tests/vm/keys/signing-vm-test.py" = 1;
   "tests/sound.qml" = 2;
   "tests/vm/sound/speakers-vm-test.py" = 1;
-  "tests/spend.qml" = 1;
   "tests/spotify-program.qml" = 2;
   "tests/stack.qml" = 1;
   "tests/status-line.qml" = 1;

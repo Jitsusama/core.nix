@@ -19,6 +19,7 @@ import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 import "launcher/SpendDrawer.js" as SpendDrawer
+import "Expect.js" as Expect
 
 ShellRoot {
     id: root
@@ -95,12 +96,16 @@ ShellRoot {
         id: serving
         command: [Quickshell.env("SPEND_WATCH"), "--config", Quickshell.env("SERVE_CONFIG"),
             "serve"]
+        // What serve says of itself goes on the check's log, so a serve that
+        // stops, or can't hear its files, says why rather than a wait
+        // running out.
+        stderr: SplitParser {
+            onRead: line => console.warn(`spend-watch serve: ${line}`)
+        }
     }
 
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
-    }
+    // Each case, as the test library says it.
+    readonly property var expect: Expect.expect
 
     // Waits for `holds`, ten seconds at most, then goes on to `then`, or
     // fails saying `what`; `then` failing fails too.
@@ -133,7 +138,8 @@ ShellRoot {
                 }
             } catch (error) {
                 stop();
-                console.warn(`FAIL ${error.message}`);
+                // Where it threw, since a case's message alone rarely says.
+                console.warn(`FAIL ${error.message}\n${error.stack ?? ""}`);
                 Qt.callLater(() => Qt.exit(1));
             }
         }
@@ -185,8 +191,12 @@ ShellRoot {
         collectionFile.setText(root.collected);
         budgetsFile.setText(root.budgeted);
         serving.running = true;
+        // Serve may first serve what the folder held before these were
+        // written, so the wait is for the rows they list, in their order.
+        const listed = JSON.parse(root.collected).shown.map(key => `spend:${key}`).join(", ");
         until("the collection served", () => spend.known
-            && Object.keys(SpendWatch.budgets).length > 0, answers);
+            && Object.keys(SpendWatch.budgets).length > 0
+            && spend.everything().map(row => row.key).join(", ") === listed, answers);
     }
 
     // How every budget stands, as budgets.json says it: a plan of two
@@ -315,7 +325,7 @@ ShellRoot {
         try {
             then();
         } catch (error) {
-            console.warn(`FAIL ${error.message}`);
+            console.warn(`FAIL ${error.message}\n${error.stack ?? ""}`);
             Qt.callLater(() => Qt.exit(1));
         }
     }
