@@ -1548,8 +1548,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.follow()
     office = len(desktop.showing()["held"])
     # The Signal says its dBm, always read, and how far over the noise
-    # below; Return opens it, where iw, read while the network shows,
-    # says what the card sends at.
+    # below; Return opens it, where the kernel, read by wifid while the
+    # network shows, says what the card sends at.
     desktop.type_in("signal", selecting="Signal")
     desktop.launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])

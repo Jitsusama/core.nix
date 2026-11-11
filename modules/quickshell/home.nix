@@ -860,17 +860,6 @@ let
   # them in it.
   launcherWords = pkgs.writeText "words.json" (builtins.toJSON launcher.words);
 
-  # A Wi-Fi card's link as iw reads it, for a network's detail in the
-  # launcher: the link, the access point as the card hears it, and what
-  # the card sends at, each headed so the launcher reads them apart, in one
-  # spawn every few seconds while the network is shown.
-  wifiLink = pkgs.writeShellScript "wifi-link" ''
-    iw=${lib.getExe pkgs.iw}
-    echo "@@ link"; "$iw" dev "$1" link
-    echo "@@ station"; "$iw" dev "$1" station dump
-    echo "@@ info"; "$iw" dev "$1" info
-  '';
-
   # The IEEE's hardware address vendors, from hwdata, in a file for each
   # first byte: a line for each vendor, its first three bytes and its name,
   # each after a line break, so one is found by what it starts with.
@@ -1967,14 +1956,12 @@ in
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";
                     }
-                    # What each connection is, from ip, a Wi-Fi link in
-                    # detail, from iw, and the words wifid says Wi-Fi's
-                    # rows in.
+                    # What each connection is, from ip, and the words
+                    # wifid says Wi-Fi's rows in.
                     // lib.optionalAttrs (provider.source == "networks") {
                       ip = lib.getExe' pkgs.iproute2 "ip";
                     }
                     // lib.optionalAttrs (provider.source == "wifi") {
-                      iw = "${wifiLink}";
                       words = "${launcherWords}";
                     }
                     # A colour is told against the theme's own pigments.
