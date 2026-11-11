@@ -925,6 +925,11 @@
     kitty draws !=, >= and -> as the mono face's ligatures with the account's fontconfig features,
     and |> and 1..=2 plain
   '';
+  kitty-tells-what-it-has-open = ''
+    kitty's watcher, run in kitty's own Python, tells the programs daemon each change to its tabs,
+    its windows and the variables a program in one says, as one ask naming kitty's list, passes
+    over a resize, and with no daemon there says so once and holds kitty up for nothing
+  '';
   kitty-lists-its-tabs = ''
     Programs › kitty matches each kitty OS window to niri's window by order or a title only one
     has, lists every tab niri shows, the window used last first and its tabs and panes as kitty

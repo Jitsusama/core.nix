@@ -53,6 +53,12 @@ pub enum Ask {
     Unwatch {
         id: Value,
     },
+    /// What a program says of these keys' lists: they changed, so each
+    /// is read again, at once where a watch names it.
+    Changed {
+        id: Value,
+        keys: Vec<String>,
+    },
     Health {
         id: Value,
     },
@@ -124,6 +130,10 @@ pub fn ask(line: &str) -> Ask {
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "unwatch" => Ask::Unwatch { id },
+        "changed" => Ask::Changed {
+            id,
+            keys: keys.unwrap_or_default(),
+        },
         "health" => Ask::Health { id },
         _ => Ask::Unknown { id, ask: asked },
     }
@@ -157,6 +167,17 @@ mod tests {
             Ask::UnknownKind {
                 id: json!(2),
                 kind: "disk".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_program_says_which_of_its_lists_changed() {
+        assert_eq!(
+            ask(r#"{"id":4,"ask":"changed","keys":["listed:kitty:open","disk:nvme0n1"]}"#),
+            Ask::Changed {
+                id: json!(4),
+                keys: vec!["listed:kitty:open".into()]
             }
         );
     }
