@@ -25,6 +25,8 @@ pub enum Heard {
     Jobs(Value),
     /// An answer to the node's watch of what the realm's sessions landed.
     Landings(Value),
+    /// An answer to the node's watch of the realm's quests.
+    Quests(Value),
     /// An answer to the to-do daemon's watch of its to-dos.
     ToDos(Value),
     /// An answer to the windows daemon's watch of its windows.
@@ -105,6 +107,9 @@ impl Inputs {
             }
             Heard::Landings(answer) => {
                 self.landings.took(&answer);
+            }
+            Heard::Quests(answer) => {
+                self.quests.took(&answer);
             }
             Heard::ToDos(answer) => {
                 self.to_dos.took(&answer);

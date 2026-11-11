@@ -21,9 +21,11 @@
 //! - `reopen`: the sessions there are to reopen, and what Joel said of them.
 //! - `recent`: the sessions closed this boot that Recent lists.
 //! - `landed`: what the sessions landed, and what of it Joel has read.
+//! - `closed`: the closed orchestrators, and what reopening each needs.
 
 pub mod acts;
 pub mod clock;
+pub mod closed;
 pub mod drawer;
 pub mod figures;
 pub mod file;

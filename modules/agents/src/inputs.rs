@@ -1,12 +1,11 @@
 //! Everything Agents' rows are made from, as each source last told it:
-//! the node's sessions, what they landed and the machine's queue, what
-//! Joel read of those landings, the to-do daemon's
-//! to-dos, the windows daemon's windows, spend-watch's collection and
-//! budgets, the harness's list of orchestrators and of sessions to
-//! reopen, what Joel said of those, and whether the shell says the
-//! screen is shared. Each
-//! source changes its own part, and `made` makes every record from all of
-//! them.
+//! the node's sessions, its quests, what they landed and the machine's
+//! queue, what Joel read of those landings, the to-do daemon's to-dos,
+//! the windows daemon's windows, spend-watch's collection and budgets,
+//! the harness's list of orchestrators and of sessions to reopen, what
+//! Joel said of those, and whether the shell says the screen is shared.
+//! Each source changes its own part, and `made` makes every record from
+//! all of them.
 
 use std::collections::{HashMap, HashSet};
 
@@ -14,6 +13,7 @@ use daemon_serve::watch::Held;
 use serde_json::Value;
 
 use crate::clock;
+use crate::closed;
 use crate::drawer;
 use crate::landed::{self, Reading};
 use crate::recent;
@@ -33,6 +33,9 @@ pub struct Inputs {
     pub jobs: Held,
     /// The node's `landing` records, what the realm's sessions landed.
     pub landings: Held,
+    /// The node's `quest` records, which say how a closed orchestrator
+    /// reopens.
+    pub quests: Held,
     /// What of those Joel has read.
     pub read: Reading,
     /// The to-do daemon's `to-do` records.
@@ -238,6 +241,35 @@ impl Inputs {
         )
     }
 
+    /// Every closed orchestrator's record, the one last live first
+    /// (closed.rs), each folder it names looked for as it's made.
+    fn closed(&self) -> Vec<Value> {
+        let listed = self
+            .orchestrators
+            .as_ref()
+            .and_then(|said| said["orchestrators"].as_array())
+            .map_or(&[][..], Vec::as_slice);
+        let quests: HashMap<&str, &Value> = self
+            .quests
+            .records()
+            .filter_map(|(_, one)| Some((one["id"].as_str()?, one)))
+            .collect();
+        let live = closed::live(self.sessions.records().map(|(_, one)| Session(one)));
+        let family = |quest: &str| {
+            if self.sharing {
+                None
+            } else {
+                self.family(quest)
+            }
+        };
+        let there = |folder: &str| std::path::Path::new(folder).is_dir();
+        let known = closed::Known {
+            family: &family,
+            there: &there,
+        };
+        closed::closed(listed, &quests, &live, &known)
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -305,6 +337,7 @@ impl Inputs {
         .with_recent(recent)
         .with_reopens(reopens)
         .with_landed(self.landed().0)
+        .with_closed(self.closed())
     }
 }
 

@@ -63,6 +63,8 @@ pub struct Made {
     /// Each landing Landed lists, and how many landed each day, whole
     /// records (landed.rs).
     landed: Vec<Value>,
+    /// Each closed orchestrator, a whole record (closed.rs).
+    closed: Vec<Value>,
 }
 
 impl Made {
@@ -88,6 +90,12 @@ impl Made {
     #[must_use]
     pub fn with_landed(self, landed: Vec<Value>) -> Self {
         Self { landed, ..self }
+    }
+
+    /// The same, with every closed orchestrator beside its rows.
+    #[must_use]
+    pub fn with_closed(self, closed: Vec<Value>) -> Self {
+        Self { closed, ..self }
     }
 }
 
@@ -172,6 +180,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         reopens: Vec::new(),
         recent: Vec::new(),
         landed: Vec::new(),
+        closed: Vec::new(),
     }
 }
 
@@ -279,7 +288,8 @@ impl Served {
             .into_iter()
             .chain(made.reopens)
             .chain(made.recent)
-            .chain(made.landed);
+            .chain(made.landed)
+            .chain(made.closed);
         for whole in wholes {
             if let Some(key) = whole["key"].as_str() {
                 records.insert(key.to_owned(), whole);
