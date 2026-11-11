@@ -2398,9 +2398,7 @@ class StandIn:
         """
         with self.lock:
             if watching is not None:
-                records = [
-                    record for record in self.held.values() if self.theirs(watching, record)
-                ]
+                records = [record for record in self.held.values() if self.theirs(watching, record)]
                 said = {**said, "records": records}
                 self.clients[client] = watching
             client.sendall((json.dumps(said) + "\n").encode())
@@ -2558,9 +2556,7 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
     presented_after_unchanged(change["at"], unchanged, "the change")
 
 
-def test_a_daemons_change_niri_holds_back_is_presented_late(
-    shell: Shell, quests: StandIn
-) -> None:
+def test_a_daemons_change_niri_holds_back_is_presented_late(shell: Shell, quests: StandIn) -> None:
     """A change drawn while niri is held is said presented only once niri shows it, too late.
 
     The shell hears the line and draws the change at once, but niri, held, presents nothing, so
