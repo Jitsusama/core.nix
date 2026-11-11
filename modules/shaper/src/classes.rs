@@ -127,12 +127,12 @@ const HOSTS: &str = "pi-host-";
 /// conversation in it, so it reads as a pi's.
 fn is_session(comm: &str, unit: &str) -> bool {
     let host = || {
-        unit.rsplit('/')
-            .next()
-            .is_some_and(|name| {
-                name.starts_with(HOSTS)
-                    && Path::new(name).extension().is_some_and(|ext| ext == "service")
-            })
+        unit.rsplit('/').next().is_some_and(|name| {
+            name.starts_with(HOSTS)
+                && Path::new(name)
+                    .extension()
+                    .is_some_and(|ext| ext == "service")
+        })
     };
     comm == "pi" || (comm == "node" && host())
 }
@@ -492,7 +492,7 @@ mod tests {
         assert_eq!(found.len(), 2, "only the hosts are sessions: {found:?}");
         assert_eq!(
             untyped(&root, &found),
-            [background.clone()],
+            std::slice::from_ref(&background),
             "the host nobody typed in is bulk, the one typed in isn't: {found:?}"
         );
         fs::remove_file(run.join("1000/pi/typed/20")).unwrap();
