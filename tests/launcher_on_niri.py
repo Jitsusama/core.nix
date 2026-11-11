@@ -93,6 +93,11 @@ class Shell:
         # WARP's link comes from warp, asking the check's stand-in warp-cli.
         if "WARP" in os.environ:
             self.daemon("warp", os.environ["WARP"])
+        # The home network comes from the eero daemon's stand-in, on the socket the daemon keeps,
+        # holding the contract's three-node network (tests/desktop/stand-in-eero.py).
+        if "EERO" in os.environ:
+            socket = Path(os.environ["XDG_RUNTIME_DIR"]) / "eero" / "socket"
+            self.daemon("eero", os.environ["EERO"], os.environ["EERO_NETWORK"], socket=socket)
         # Meanings come from the meaning daemon's stand-in, given what a test writes that each
         # text means in meaning-means.json, since no model loads here
         # (tests/desktop/stand-in-meaning.py).
@@ -156,14 +161,18 @@ class Shell:
         failed = f"the shell never answered:\n{self.tail()}"
         raise AssertionError(failed)
 
-    def daemon(self, name: str, program: str, *given: str) -> None:
-        """Start a daemon on the socket the account's systemd would hold for it, its log beside."""
+    def daemon(self, name: str, program: str, *given: str, socket: Path | None = None) -> None:
+        """Start a daemon on the socket the account's systemd would hold for it, its log beside.
+
+        One that keeps a socket of its own, as eero's does, is given it.
+        """
         daemons = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons"
         daemons.mkdir(mode=0o700, exist_ok=True)
+        socket = socket or daemons / f"{name}.sock"
         # Appended to, so one started again after a case stood in keeps what it said before.
         with (self.log.parent / f"{name}.log").open("ab") as log:
             self.daemons[name] = subprocess.Popen(  # noqa: S603
-                [program, str(daemons / f"{name}.sock"), *given],
+                [program, str(socket), *given],
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
