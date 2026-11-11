@@ -84,7 +84,7 @@ Provider {
             return ((Words.field.command ?? {}).asksPassword ?? "").replace("{network}", to);
         if (!on)
             provider.turn(true);
-        Wifi.join(to, null, null);
+        provider.join({ name: to }, null, null);
         return "";
     }
 
@@ -192,13 +192,6 @@ Provider {
         return (row?.acts ?? []).find(act => act.key === key) ?? null;
     }
 
-    // What wifid is asked to do to a network: as its row's act says, or,
-    // where the row has none, the same ask, so wifid says why it won't.
-    function askOf(network, key, act) {
-        return actOf(network.served, key)?.ask
-            ?? { ask: "act", act: act, network: network.name };
-    }
-
     // Asks an act of wifid, on its rows' own connection, and puts each row
     // it held as it will be back if wifid won't, or isn't there.
     function actOn(ask, keys) {
@@ -219,38 +212,42 @@ Provider {
         actOn({ ask: "act", act: "radio", on: lit }, ["wifi:radio"]);
     }
 
+    // A network's acts are only those its row lists: wifid offers each
+    // only where it can be done, so one it doesn't list is never asked.
     function leave(network) {
+        const act = actOf(network.served, "verb:wifi-leave");
+        if (act === null)
+            return;
         const key = `wifi:${network.name}`;
-        const left = actOf(network.served, "verb:wifi-leave")?.becomes;
-        if (left)
-            becomes(key, made(networkOf(left)), network.name, "disconnect");
+        becomes(key, made(networkOf(act.becomes)), network.name, "disconnect");
         // Inside the network, Disconnect It goes, as it will once it's left.
         becomes("verb:wifi-leave", null, network.name, "disconnect");
-        actOn(askOf(network, "verb:wifi-leave", "leave"), [key, "verb:wifi-leave"]);
+        actOn(act.ask, [key, "verb:wifi-leave"]);
     }
 
     // Trusted as said, as :setl sets it; wifid's row says how it reads
     // turned, and one already so reads as it is.
     function trust(network, trusted) {
         const act = actOf(network.served, "verb:wifi-trust");
-        const turned = act?.ask.trusted === trusted ? networkOf(act.becomes) : network;
+        if (act === null)
+            return;
+        const turned = act.ask.trusted === trusted ? networkOf(act.becomes) : network;
         becomes("verb:wifi-trust", trustRow(turned), network.name,
             trusted ? "trust" : "distrust");
-        actOn(Object.assign({}, askOf(network, "verb:wifi-trust", "trust"), { trusted: trusted }),
-            ["verb:wifi-trust"]);
+        actOn(Object.assign({}, act.ask, { trusted: trusted }), ["verb:wifi-trust"]);
     }
 
     // Forgotten, the network is one never met, and what only a network saved
     // can have done to it goes.
     function forget(network) {
+        const act = actOf(network.served, "verb:wifi-forget");
+        if (act === null)
+            return;
         const key = `wifi:${network.name}`;
-        const forgotten = actOf(network.served, "verb:wifi-forget")?.becomes;
-        if (forgotten)
-            becomes(key, made(networkOf(forgotten)), network.name, "forget");
+        becomes(key, made(networkOf(act.becomes)), network.name, "forget");
         becomes("verb:wifi-trust", null, network.name, "forget");
         becomes("verb:wifi-forget", null, network.name, "forget");
-        actOn(askOf(network, "verb:wifi-forget", "forget"),
-            [key, "verb:wifi-trust", "verb:wifi-forget"]);
+        actOn(act.ask, [key, "verb:wifi-trust", "verb:wifi-forget"]);
     }
 
     // Why wifid wouldn't, in the foot's words, or "" where it did.
@@ -329,10 +326,42 @@ Provider {
     property string troubled: ""
     property string trouble: ""
 
+    // The join under way, as { name, stage }, and how many have been
+    // asked, so the steps of one given way to a newer are let go.
+    property var joining: null
+    property int joins: 0
+
+    // Joins a network on wifid's rows socket, with its password when it
+    // asks one and the account ({ method, identity, serverDomain }) where
+    // it asks for one. wifid answers each step until the card is done,
+    // and a join already under way gives way to a new one, as wifid gives
+    // it way.
     function join(network, password, account) {
         troubled = "";
         trouble = "";
-        Wifi.join(network.name, password, account);
+        const name = network.name;
+        const said = { ask: "act", act: "join", network: name };
+        if (password !== undefined && password !== null)
+            said.password = password;
+        if (account !== undefined && account !== null)
+            said.account = account;
+        joins += 1;
+        const mine = joins;
+        joining = { name: name, stage: "joining" };
+        served.ask(said, answer => {
+            if (mine !== joins)
+                return;
+            if (answer !== null && !answer.error && answer.done === false) {
+                joining = { name: name, stage: answer.stage };
+                return;
+            }
+            joining = null;
+            // Not there to ask, or wifid gone mid-join, it couldn't.
+            if (answer === null || answer.error)
+                joinEnded(name, "", answer?.error?.refused ?? "Failed");
+            else
+                joinEnded(name, answer.stage, "");
+        });
     }
 
     // A network asking for an account, met for the first time, asks the
@@ -392,8 +421,8 @@ Provider {
 
     // What the footer says while a network is joined, or wouldn't be.
     function said(network, otherwise) {
-        if (Wifi.joining && Wifi.joining.name === network.name)
-            return `${stages[Wifi.joining.stage] ?? stages.joining} ${network.name}\u2026`;
+        if (joining && joining.name === network.name)
+            return `${stages[joining.stage] ?? stages.joining} ${network.name}\u2026`;
         if (troubled === network.name && trouble !== "")
             return trouble;
         return otherwise;
@@ -447,7 +476,7 @@ Provider {
             // Its own option, which :setl sets as Vim's :setlocal sets a
             // buffer's: whether it's trusted, as its Trust It row turns it,
             // on a network saved here and not declared.
-            options: network.known && !network.declared ? {
+            options: actOf(network.served, "verb:wifi-trust") ? {
                 trust: {
                     kind: "switch",
                     now: () => network.trusted,
@@ -1185,14 +1214,14 @@ Provider {
             })));
         // A network left was one joined, so its password is known and
         // joining it again is how u puts it back.
-        if (network.connected)
+        if (actOf(network.served, "verb:wifi-leave"))
             rows.push(thing(act("wifi-leave", "", {
                 glyph: Theme.glyph.offline,
                 stays: true,
                 run: () => provider.leave(network),
                 undo: () => provider.join(network)
             })));
-        else if (network.known || !locked.locked || locked.password)
+        else if (!network.connected && (network.known || !locked.locked || locked.password))
             rows.push(thing(act("wifi-join", "", {
                 verb: "connect",
                 glyph: Theme.glyph.wireless,
@@ -1216,14 +1245,14 @@ Provider {
                         glyph: Theme.glyph.password,
                         chip: "account"
                     }), { key: `verb:wifi-account-${method}` })));
-        if (network.known && !network.declared) {
+        if (actOf(network.served, "verb:wifi-trust"))
             rows.push(trustRow(network));
+        if (actOf(network.served, "verb:wifi-forget"))
             rows.push(thing(act("wifi-forget", "", {
                 glyph: Theme.glyph.forget,
                 stays: true,
                 run: () => provider.forget(network)
             })));
-        }
         return rows.concat(facts(network));
     }
 
@@ -1232,53 +1261,49 @@ Provider {
     // says it's joined, and stays (Joel, 2026-10-26: an act that changes
     // something "stays open and shows the new state on its row"); a
     // password that didn't work, or none given where one's needed, asks for
-    // it; anything else says what happened.
-    Connections {
-        target: Wifi
-
-        function onJoinEnded(name, stage, refused) {
-            const launcher = provider.launcher;
-            const at = launcher.selected ?? launcher.asking;
-            const showing = launcher.open && at && at.network === name;
-            if (refused === "") {
-                // Joined, every ask it made is put away, its name, its
-                // server's and its password, back to the network itself.
-                if (showing && launcher.asking === at)
-                    while (launcher.asking && launcher.asking.network === name
-                        && launcher.held.length > 0)
-                        launcher.back();
-                return;
-            }
-            Report.say(`refused wifi ${name}`);
-            const network = provider.networks.find(network => network.name === name)
-                ?? provider.described(name, "personal", 0);
-            provider.troubled = name;
-            // One asking for an account is asked again from its account's
-            // name, since a join that failed keeps nothing new.
-            const account = provider.security(network).account === true;
-            if (refused === "NeedsAccount" || (account && refused === "WrongPassword")) {
-                provider.trouble = refused === "NeedsAccount" ? "it asks for an account"
-                    : "that account's password didn't work";
-                if (showing && !launcher.asking)
-                    launcher.ask(provider.accountFor(network, "peap"));
-                return;
-            }
-            if (refused === "WrongPassword" || refused === "NeedsPassword") {
-                provider.trouble = refused === "NeedsPassword" ? "it asks for a password"
-                    : network.known && !(at && at.secret) ? "its password has changed"
-                    : "that password didn't work";
-                if (showing && !launcher.asking)
-                    launcher.ask(provider.asking(network, ""));
-                return;
-            }
-            provider.trouble = {
-                TimedOut: "it didn't answer in time",
-                NotNearby: "it's out of reach",
-                TurnedAway: "it didn't let this machine connect",
-                ServerUnproven: "its server couldn't prove it's that domain's",
-                Declared: "Nix keeps its password"
-            }[refused] ?? "it couldn't be connected";
+    // it; anything else says what happened. It's given the stage the join
+    // reached, or why it couldn't, as wifid names it.
+    function joinEnded(name, stage, refused) {
+        const at = launcher.selected ?? launcher.asking;
+        const showing = launcher.open && at && at.network === name;
+        if (refused === "") {
+            // Joined, every ask it made is put away, its name, its
+            // server's and its password, back to the network itself.
+            if (showing && launcher.asking === at)
+                while (launcher.asking && launcher.asking.network === name
+                    && launcher.held.length > 0)
+                    launcher.back();
+            return;
         }
+        Report.say(`refused wifi ${name}`);
+        const network = networks.find(network => network.name === name)
+            ?? described(name, "personal", 0);
+        troubled = name;
+        // One asking for an account is asked again from its account's
+        // name, since a join that failed keeps nothing new.
+        const account = security(network).account === true;
+        if (refused === "NeedsAccount" || (account && refused === "WrongPassword")) {
+            trouble = refused === "NeedsAccount" ? "it asks for an account"
+                : "that account's password didn't work";
+            if (showing && !launcher.asking)
+                launcher.ask(accountFor(network, "peap"));
+            return;
+        }
+        if (refused === "WrongPassword" || refused === "NeedsPassword") {
+            trouble = refused === "NeedsPassword" ? "it asks for a password"
+                : network.known && !(at && at.secret) ? "its password has changed"
+                : "that password didn't work";
+            if (showing && !launcher.asking)
+                launcher.ask(asking(network, ""));
+            return;
+        }
+        trouble = {
+            TimedOut: "it didn't answer in time",
+            NotNearby: "it's out of reach",
+            TurnedAway: "it didn't let this machine connect",
+            ServerUnproven: "its server couldn't prove it's that domain's",
+            Declared: "Nix keeps its password"
+        }[refused] ?? "it couldn't be connected";
     }
 
     function search(typed) {

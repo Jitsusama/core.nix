@@ -1,10 +1,9 @@
 // Wi-Fi, as wifid tells it over varlink on the socket systemd holds for it:
 // every card, the saved networks and those in the air, sent whole whenever
 // any of it changes, so the shell asks nothing to keep up. The launcher
-// asks wifid's other acts on its rows socket (launcher/Wireless.qml); a
-// check goes over a second connection, answered in order, and a join
-// over one of its own, since it answers step by step until the card is done
-// and would hold up everything asked after it. One network's detail comes
+// asks wifid's acts, joins among them, on its rows socket
+// (launcher/Wireless.qml); a check goes over a second connection,
+// answered in order. One network's detail comes
 // over another, answered again as it changes for as long as it's asked
 // about. wifid starting again closes them all, and each comes back a moment
 // later.
@@ -30,11 +29,6 @@ Singleton {
     // The card on a network, and one whose network wants a sign-in.
     readonly property var joined: cards.find(card => card.network) ?? null
     readonly property var signingIn: cards.find(card => card.reach === "signIn") ?? null
-
-    // The join under way, as { name, stage }, and how the last one ended:
-    // the stage it reached, or why it couldn't, as wifid names it.
-    property var joining: null
-    signal joinEnded(string name, string stage, string refused)
 
     // The network asked about in detail, and wifid's detail of it: its
     // access points, how many in each band, the card's link on it, and the
@@ -79,27 +73,8 @@ Singleton {
         call("Check", {});
     }
 
-    // A join already under way gives way to a new one, as wifid gives it
-    // way.
-    // Joins a network, with its password when it asks one, and the account
-    // ({ method, identity, serverDomain }) where it asks for one.
-    function join(name: string, password: var, account: var): void {
-        const parameters = { name: name };
-        if (password !== undefined && password !== null)
-            parameters.password = password;
-        if (account !== undefined && account !== null)
-            parameters.account = account;
-        joining = { name: name, stage: "joining" };
-        joinCall = message("Join", parameters, true);
-        if (joins.connected)
-            joins.connected = false;
-        else
-            joins.connected = true;
-    }
-
     property var waiting: []
     property var answers: []
-    property string joinCall: ""
 
     function message(method: string, parameters: var, more: bool): string {
         const call = { method: `io.jitsusama.Wifi.${method}` };
@@ -177,47 +152,6 @@ Singleton {
                     console.warn("wifid refused:", reply.error);
                 if (answer)
                     answer(reply.parameters ?? {}, root.refusal(reply.error));
-            }
-        }
-    }
-
-    Socket {
-        id: joins
-        path: root.path
-        onConnectionStateChanged: {
-            if (connected && root.joinCall !== "") {
-                write(root.joinCall);
-                flush();
-                root.joinCall = "";
-            } else if (!connected && root.joinCall !== "") {
-                // A join given way to: this one starts on a new connection,
-                // once the socket has finished closing the last.
-                Qt.callLater(() => joins.connected = true);
-            } else if (!connected && root.joining) {
-                const name = root.joining.name;
-                root.joining = null;
-                root.joinEnded(name, "", "Failed");
-            }
-        }
-        parser: SplitParser {
-            splitMarker: "\u0000"
-            onRead: data => {
-                const reply = JSON.parse(data);
-                const name = root.joining ? root.joining.name : "";
-                if (reply.error) {
-                    root.joining = null;
-                    root.joinEnded(name, "", root.refusal(reply.error));
-                    joins.connected = false;
-                    return;
-                }
-                const stage = reply.parameters.stage;
-                if (reply.continues) {
-                    root.joining = { name: name, stage: stage };
-                    return;
-                }
-                root.joining = null;
-                root.joinEnded(name, stage, "");
-                joins.connected = false;
             }
         }
     }

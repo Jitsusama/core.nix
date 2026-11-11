@@ -7,7 +7,8 @@ tell the client sent its list of kinds in every watch, the one ahead too, and no
 A watch of sessions is answered as mycelium's node answers one: a record whole, then a change
 saying only the fields that differ, one dropped as null. A watch of what waits is answered with
 two records the first time, and the connection then dropped, and with one of them alone after,
-as the node's whole answer is once one went in a gap; one of verdicts with none.
+as the node's whole answer is once one went in a gap; one of verdicts with none. An ask of steps
+is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 """
 
 import json
@@ -51,6 +52,11 @@ def answer(asked: dict[str, object]) -> list[dict[str, object]]:
         waits = ["waiting:a", "waiting:b"] if first else ["waiting:b"]
         waiting = [{"key": key, "kind": "waiting", "heard": 1} for key in waits]
         return [{"id": asked.get("id"), "records": waiting}]
+    if asked.get("ask") == "steps":
+        stages = ["joining", "gettingAddress", "online"]
+        return [
+            {"id": asked.get("id"), "stage": stage, "done": stage == "online"} for stage in stages
+        ]
     if asked.get("kind") == "verdict":
         return [{"id": asked.get("id"), "records": []}]
     kinds = kinds_of(asked)
