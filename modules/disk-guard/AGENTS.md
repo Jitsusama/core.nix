@@ -62,7 +62,11 @@ or launchd, and [`home.nix`][2] the account's.
   whatever made it ended with that boot. A browser profile in the `tmp/`
   of a quest still at work goes once nothing has changed in it for an
   hour: a browser run for one job makes a fresh one and leaves it, and a
-  browser still running it keeps it in use.
+  browser still running it keeps it in use. Anything else in that `tmp/`
+  goes once nothing in it has been written for a week, a day once the disk
+  is nearly full and six hours once it's critically full, unless a process
+  works in it: a quest at work may come back for what it left, but on one
+  laptop those folders held 124 GiB, a quarter of it a week unwritten.
   `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process

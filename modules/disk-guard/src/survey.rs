@@ -384,7 +384,8 @@ fn offer_git(repo: &Path, world: &World, offers: &mut Vec<Offer>) {
 
 /// The quest workspaces in `path`, judged by their quests' READMEs in
 /// `quests`, and in each one still at work the browser profiles its `tmp/`
-/// holds at rest.
+/// holds at rest and what else it left there unwritten, but for what a
+/// process works in.
 fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<Offer>) {
     let Some(device) = device(path) else { return };
     let (over, working): (Vec<_>, Vec<_>) = workspaces::find(path, quests)
@@ -392,14 +393,32 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
         .partition(workspaces::over);
     for workspace in working {
         let tmp = workspace.path.join("tmp");
-        for entry in temp::profiles(&tmp, world.uid, world.now) {
+        let profiles = temp::profiles(&tmp, world.uid, world.now);
+        for entry in &profiles {
             offers.push(Offer {
-                candidate: temp::profile_candidate(&entry, world.awake, world.now),
+                candidate: temp::profile_candidate(entry, world.awake, world.now),
                 action: Action::Entry {
                     root: resolved(&tmp),
                 },
                 device,
             });
+        }
+        let a_profile = |path: &Path| profiles.iter().any(|profile| profile.path == path);
+        for entry in scratch::entries(&tmp) {
+            if a_profile(&entry.path) || worked_in(&entry.path, world) {
+                continue;
+            }
+            let size = || size(&entry.path, world);
+            if let Some(candidate) = scratch::quest_candidate(&entry, size, world.awake, world.now)
+            {
+                offers.push(Offer {
+                    candidate,
+                    action: Action::Entry {
+                        root: resolved(&tmp),
+                    },
+                    device,
+                });
+            }
         }
     }
     for workspace in over {
@@ -417,6 +436,15 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
             });
         }
     }
+}
+
+/// Whether a process works in `path`: sits in it, runs from it, or holds
+/// or maps a file in it.
+fn worked_in(path: &Path, world: &World) -> bool {
+    matches!(
+        activity::judge(world.processes, world.me, path, None),
+        Use::Busy(_)
+    )
 }
 
 /// What's left in a temporary directory, but for any a process names as its
