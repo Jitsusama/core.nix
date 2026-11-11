@@ -116,8 +116,8 @@ Scope {
     // search needs, as a step's words and the ask, each with all that wakes
     // on it.
     function setting(parts) {
-        return parts ? `: counting ${parts.counting}, typed ${parts.typed},`
-            + ` words ${parts.words}, readying ${parts.readying}` : "";
+        return parts ? ` (counting ${parts.counting}, typed ${parts.typed},`
+            + ` words ${parts.words}, readying ${parts.readying})` : "";
     }
 
     // The rows a laying drew, where it drew any.
