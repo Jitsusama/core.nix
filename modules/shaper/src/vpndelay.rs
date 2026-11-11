@@ -2,10 +2,12 @@
 //! (src/oneway.rs). A VPN sends everything inside one flow of its own, and
 //! a router that queues flow by flow, as the eero does, queues that flow
 //! apart from the probes the recorder sends on the link, so a queue for
-//! the VPN delays none of them. A STUN request sent through the VPN rides
-//! inside its flow and waits in that queue, as Joel's call does.
+//! the VPN delays none of them. A DNS question sent through the VPN rides
+//! inside its flow and waits in that queue, as Joel's call does, and the
+//! resolver answers it at once, as src/call.rs says, so what it hears is
+//! the queue and not the server.
 
-use crate::call::{STUN, stun_answer, stun_request};
+use crate::call::{RESOLVER, dns_answer, dns_request};
 use std::collections::VecDeque;
 use std::ffi::CString;
 use std::io;
@@ -47,10 +49,10 @@ impl Default for Probe {
 }
 
 impl Probe {
-    /// Probes through `device` to the STUN server, or nothing: a new
-    /// device stops the probe through the old one.
+    /// Probes through `device` to the resolver, or nothing: a new device
+    /// stops the probe through the old one.
     pub fn follow(&mut self, device: Option<&str>) {
-        self.follow_to(device, STUN);
+        self.follow_to(device, RESOLVER);
     }
 
     fn follow_to(&mut self, device: Option<&str>, server: &str) {
@@ -85,7 +87,7 @@ impl Probe {
     }
 }
 
-/// Sends a STUN request through `device` every `EVERY` until `stop`,
+/// Sends a DNS question through `device` every `EVERY` until `stop`,
 /// sending each round trip answered to `send`.
 fn probe(device: &str, server: &str, stop: &AtomicBool, send: &Sender<(Instant, f64)>) {
     while !stop.load(Ordering::Relaxed) {
@@ -137,17 +139,15 @@ fn asking(
     stop: &AtomicBool,
     send: &Sender<(Instant, f64)>,
 ) -> io::Result<()> {
-    let mut unanswered: Vec<([u8; 12], Instant)> = Vec::new();
+    let mut unanswered: Vec<(u16, Instant)> = Vec::new();
     let mut next = Instant::now();
-    let mut seq = 0_u64;
+    let mut id = 0_u16;
     let mut buffer = [0_u8; 512];
     while !stop.load(Ordering::Relaxed) {
         let now = Instant::now();
         if now >= next {
-            seq += 1;
-            let mut id = [0_u8; 12];
-            id[4..].copy_from_slice(&seq.to_be_bytes());
-            socket.send_to(&stun_request(id), to)?;
+            id = id.wrapping_add(1);
+            socket.send_to(&dns_request(id), to)?;
             unanswered.push((id, now));
             next = now + EVERY;
         }
@@ -157,8 +157,8 @@ fn asking(
             .max(Duration::from_millis(1));
         socket.set_read_timeout(Some(wait))?;
         if let Ok(length) = socket.recv(&mut buffer)
-            && let Some(id) = stun_answer(&buffer[..length])
-            && let Some(at) = unanswered.iter().position(|&(s, _)| s == id)
+            && let Some(answered) = dns_answer(&buffer[..length])
+            && let Some(at) = unanswered.iter().position(|&(s, _)| s == answered)
         {
             let (_, when) = unanswered.remove(at);
             let answered = Instant::now();
@@ -175,8 +175,8 @@ fn asking(
 mod tests {
     use super::*;
 
-    /// A STUN server on this machine answering every request after
-    /// `delay`, at the address it answers.
+    /// A resolver on this machine answering every question after `delay`,
+    /// at the address it answers.
     fn server(delay: Duration) -> SocketAddr {
         let socket = UdpSocket::bind(("127.0.0.1", 0)).expect("a socket");
         let at = socket.local_addr().expect("an address");
@@ -184,10 +184,10 @@ mod tests {
             let mut buffer = [0_u8; 512];
             while let Ok((length, from)) = socket.recv_from(&mut buffer) {
                 let mut answer = buffer;
-                answer[0..2].copy_from_slice(&0x0101_u16.to_be_bytes());
+                answer[2] |= 0x80;
                 // The delay a queue on the way would add.
                 thread::sleep(delay);
-                let _ = socket.send_to(&answer[..length.max(20)], from);
+                let _ = socket.send_to(&answer[..length], from);
             }
         });
         at

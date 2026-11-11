@@ -12,7 +12,7 @@
 //!
 //! It runs `--uploads` uploads from jobs.slice for the whole run, and in
 //! each block, from app.slice as Joel's own programs: an upload and a
-//! download, each repeated, a fresh HTTPS connection each second, and a STUN
+//! download, each repeated, a fresh HTTPS connection each second, and a DNS
 //! round trip five times a second, as a call's packets would go. Each pair
 //! of blocks has the shaper on for one and off for the other, in turn
 //! first, so a link that drifts through the run favours neither.
