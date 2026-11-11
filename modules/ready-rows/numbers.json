@@ -1,0 +1,26 @@
+{
+  "significant": [
+    { "group": "", "point": "", "value": 0.04, "said": "0.0400" },
+    { "group": "", "point": "", "value": 1.234, "said": "1.23" },
+    { "group": "", "point": "", "value": 12.34, "said": "12.3" },
+    { "group": "", "point": "", "value": 123.4, "said": "123" },
+    { "group": "", "point": "", "value": 0.9997, "said": "1.00" },
+    { "group": "", "point": "", "value": 1234, "said": "1,230" },
+    { "group": "", "point": "", "value": -3.2, "said": "\u22123.20" },
+    { "group": "", "point": "", "value": 0, "said": "0" },
+    { "group": "", "point": "", "value": 28.47, "said": "28.5" },
+    { "group": ".", "point": ",", "value": 1234.5, "said": "1.230" },
+    { "group": ".", "point": ",", "value": 5.2, "said": "5,20" }
+  ],
+  "number": [
+    { "group": "", "point": "", "value": 1234567.891, "places": 3, "said": "1,234,567.891" },
+    { "group": "", "point": "", "value": 5385, "places": 0, "said": "5,385" },
+    { "group": "", "point": "", "value": 12.5, "places": 1, "said": "12.5" },
+    { "group": "", "point": "", "value": -12, "places": 0, "said": "-12" },
+    { "group": " ", "point": ",", "value": 1234.25, "places": 2, "said": "1 234,25" }
+  ],
+  "whole": [
+    { "group": "", "point": "", "value": -14.4, "said": "\u221214" },
+    { "group": "", "point": "", "value": 1203.6, "said": "1,204" }
+  ]
+}

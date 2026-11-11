@@ -1,0 +1,16 @@
+# ready-rows: the one form every daemon serves the launcher's rows in,
+# a library each daemon names by path, so one copy of the spaced order,
+# the kept rows, the wording of figures and the time form serves them
+# all (src/lib.rs says how).
+[package]
+name = "ready-rows"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1.0"
