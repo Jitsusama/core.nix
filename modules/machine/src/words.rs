@@ -65,6 +65,16 @@ impl Words {
         filled(named, fill)
     }
 
+    /// A thing's name in one of its states, as Drawing's is Charging while
+    /// the battery charges, else its own name.
+    pub fn name_in(&self, id: &str, state: &str, fill: &[(&str, &str)]) -> String {
+        let stated = self
+            .things
+            .get(id)
+            .and_then(|thing| thing["states"][state]["name"].as_str());
+        stated.map_or_else(|| self.name(id, fill), |named| filled(named, fill))
+    }
+
     /// A phrase a thing says, its braces filled, or "" where it says none.
     pub fn said(&self, id: &str, phrase: &str, fill: &[(&str, &str)]) -> String {
         let said = self
