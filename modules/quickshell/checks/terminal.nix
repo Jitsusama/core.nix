@@ -34,6 +34,11 @@
     pkgs.callPackage ../launcher-say/package.nix { }
   );
 
+  # clippy finds nothing in shell-weighs, its tests included.
+  shell-weighs-passes-clippy = passesClippy "shell-weighs-passes-clippy" (
+    pkgs.callPackage ../shell-weighs/package.nix { }
+  );
+
   # A chord's program asks the loader for no library, so a chord on a
   # loaded machine reads only its one file, which launcher-say-resident
   # holds in memory (launcher-say/src/main.rs).

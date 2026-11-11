@@ -731,6 +731,10 @@ let
   # chord reads nothing from the disk (launcher-say/src/main.rs says why).
   launcherSay = pkgs.callPackage ./launcher-say/package.nix { };
 
+  # What the shell weighs, part by part, read from outside it so its own
+  # thread pays nothing (shell-weighs/src/main.rs says how).
+  shellWeighs = pkgs.callPackage ./shell-weighs/package.nix { };
+
   # How `launcher` (in-a-terminal/) inks a terminal: each role it draws in
   # as a 24-bit escape, and as the terminal colour holding the role's
   # pigment or near it (../theme/nearest.nix), or the terminal's own
@@ -2151,6 +2155,28 @@ in
         RestartSec = 1;
       };
       Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    # The shell's weight in the journal every ten minutes, as `shell weighs
+    # N MB: JS heap ...`, so how it grows between switches and what a cut
+    # saved are read there rather than from one look at a running shell. It
+    # only reads /proc, the shell's cgroup and its GPU's fdinfo, in about
+    # 30 ms, attaching to nothing.
+    systemd.user.services.shell-weighs = {
+      Unit.Description = "Says what the shell weighs, part by part";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.getExe shellWeighs;
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.shell-weighs = {
+      Unit.Description = "Weighs the shell every ten minutes";
+      Timer = {
+        OnCalendar = "*:0/10";
+        AccuracySec = "1min";
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
 
     # Hears the clipboard for the shell, which can't itself, and says what

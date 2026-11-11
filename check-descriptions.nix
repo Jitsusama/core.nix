@@ -435,6 +435,10 @@
   launcher-say-passes-clippy = ''
     clippy finds nothing in launcher-say, which says a chord to the launcher, or its tests
   '';
+  shell-weighs-passes-clippy = ''
+    clippy finds nothing in shell-weighs, which says in the journal what the shell weighs, part
+    by part, or its tests
+  '';
   clock-follows-passes-clippy = ''
     clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
     or its tests
