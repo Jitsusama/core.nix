@@ -11,7 +11,8 @@ the same on both sides. Each place's line also splits its time at the shell's sw
 shell took to its frame, and what niri took after it to present it, since the VM's niri draws on
 the CPU and once held about half its frames some 150 ms past the swap, which read as the
 launcher's when only the whole was said (RTOIMQ, 2026-11-11). It fails only when an opening
-never says it was presented.
+never says it was presented. Beside it, a second test times each step into a place from home,
+as Joel takes them, since a step is navigation and held to the same 50 ms.
 """
 
 from __future__ import annotations
@@ -48,6 +49,10 @@ ROUNDS = 10
 
 # How many windows are open as it runs, so Windows has rows to make.
 WINDOWS = 4
+
+# The places stepped into from home, by the name home lists each by: Capture, whose step
+# showed in 138 ms on Joel's shell (2026-11-11), and the two with most rows beside it.
+STEPS = ("Capture", "Windows", "Emoji")
 
 
 @pytest.fixture(scope="module")
@@ -148,3 +153,65 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
     for place, spans in timed.items():
         with capsys.disabled():
             print(said_of(place, spans, took[place]), flush=True)
+
+
+def said_after(shell: Shell, mark: int, *wanted: str) -> list[str]:
+    """Give the shell's log lines since the mark that hold any of the words wanted."""
+    with shell.log.open("rb") as log:
+        log.seek(mark)
+        written = log.read().decode(errors="replace")
+    return [line for line in written.splitlines() if any(word in line for word in wanted)]
+
+
+def stepped(shell: Shell, name: str) -> tuple[Json, list[str]]:
+    """Open home, find the place by its name, step in, and give the step's key and lines."""
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in(name.lower(), selecting=name)
+    before = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
+    mark = shell.mark()
+    shell.step_in()
+    keys: list[Json] = []
+
+    def presented(_: Json) -> bool:
+        keys[:] = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        return len(keys) > before
+
+    shell.launcher_until(presented)
+    # The step's own line is written as its frame is drawn, before it's presented, and only
+    # for a step Joel could feel (launcher/Trials.js's felt).
+    return keys[-1], said_after(shell, mark, '"→ ')
+
+
+def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+    """Step into each place from home, round after round, and print each step's times."""
+    steps = os.environ.get("LAB_STEPS", " ".join(STEPS)).split()
+    rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
+    windows = [
+        shell.opened(f"Lab {nth}", app="foot")
+        for nth in range(int(os.environ.get("LAB_WINDOWS", str(WINDOWS))))
+    ]
+    opened(shell, "home")
+    shell.close_launcher()
+    timed: dict[str, list[int]] = {name: [] for name in steps}
+    for round_ in range(rounds):
+        for name in steps[round_ % len(steps) :] + steps[: round_ % len(steps)]:
+            key, lines = stepped(shell, name)
+            span = round(cast("float", key["at"]) - cast("float", key["from"]))
+            timed[name].append(span)
+            with capsys.disabled():
+                print(f"lab-step {name} round {round_}: presented {span} ms", flush=True)
+                for line in lines:
+                    print(f"lab-step-line {name}: {line.split('qml: ', 1)[-1]}", flush=True)
+            shell.close_launcher()
+            shell.launcher_until(lambda shown: not shown["open"])
+    for window in windows:
+        shell.close(window)
+    for name, spans in timed.items():
+        with capsys.disabled():
+            print(
+                f"lab-step {name}: {len(spans)} presented a median "
+                f"{round(statistics.median(spans))} ms, p90 {p90(spans)}",
+                flush=True,
+            )

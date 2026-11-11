@@ -5381,6 +5381,7 @@ Scope {
             const foundAt = Date.now();
             const lived = live(found);
             const livedAt = Date.now();
+            list.keptLast = null;
             matches = lived;
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
@@ -5391,12 +5392,14 @@ Scope {
             else
                 list.positionViewAtBeginning();
             // Said as the top level's are: finding the place's rows, then
-            // showing them, so a letter or a step inside says where its
-            // time went.
+            // showing them, with how many were new to the list and how long
+            // laying them out took, so a letter or a step inside says where
+            // its time went. Without the laying, Capture's step said only
+            // "showing 138" (Joel, 2026-11-11).
             searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
                 answers: Date.now() - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
-                    showing: Date.now() - livedAt } };
+                    showing: Date.now() - livedAt, kept: list.keptLast } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
