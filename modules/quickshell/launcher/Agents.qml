@@ -1148,8 +1148,6 @@ Provider {
     readonly property var forYou: {
         const said = Words.of("agents:landed").said ?? {};
         const today = String(Calendars.today ?? "");
-        const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
-            JSON.stringify([one, fields.hue, today]), () => row(one, fields));
         const row = (one, fields) => thing(Object.assign({
             thing: true,
             name: one.what,
@@ -1165,6 +1163,8 @@ Provider {
                 provider.readLanding(one.key);
             }
         }, provider.landingShows(one), fields));
+        const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
+            JSON.stringify([one, fields.hue, today]), () => row(one, fields));
         provider.keepingBegun(forYouKeeping);
         const given = Landed.toTry(landings, Sessions.landingsRead).map(one => ({
             row: kept(one, {
