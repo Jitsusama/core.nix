@@ -184,6 +184,7 @@ fn a_record_says_the_figures_as_heard() {
 
 #[test]
 fn a_frame_stands_each_second_and_a_node_not_in_it_goes() {
+    // Each stand is a second out, as the daemon's timer says one.
     let both = profile(vec![vec![
         clock(1024, 48_000),
         driver(79, [0, 100, 200], None),
@@ -194,14 +195,11 @@ fn a_frame_stands_each_second_and_a_node_not_in_it_goes() {
         driver(79, [0, 100, 200], None),
     ]]);
     let mut timings = Timings::default();
-    assert!(!timings.hear(&both, 5_000), "the first gathers");
-    assert!(
-        !timings.hear(&both, 5_500),
-        "as does the rest of its second"
-    );
+    timings.hear(&both);
+    timings.hear(&both);
     let none: Vec<serde_json::Value> = Vec::new();
     assert_eq!(timings.records(), none, "nothing stands yet");
-    assert!(timings.hear(&alone, 6_000), "a second on, it stands");
+    assert!(timings.stand(), "a second on, it stands");
     let ids = |timings: &Timings| -> Vec<u64> {
         let records = timings.records();
         records
@@ -210,12 +208,23 @@ fn a_frame_stands_each_second_and_a_node_not_in_it_goes() {
             .collect()
     };
     assert_eq!(ids(&timings), vec![79, 93], "both ran in it");
-    assert!(timings.hear(&alone, 7_000), "and the next");
+    timings.hear(&alone);
+    assert!(timings.stand(), "and the next");
     assert_eq!(
         ids(&timings),
         vec![79],
         "the follower ran in none of it, so it goes"
     );
+    timings.hear(&alone);
+    assert!(
+        !timings.stand(),
+        "a second the same as the last tells nothing"
+    );
+    assert!(timings.stand(), "a second the graph idled through stands");
+    assert_eq!(timings.records(), none, "and says no node is running");
+    assert!(!timings.stand(), "nor does the next, which tells nothing");
+    timings.hear(&alone);
+    timings.stand();
     timings.forget();
     assert_eq!(timings.records(), none, "forgotten, none stands");
 }

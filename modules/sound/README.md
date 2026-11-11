@@ -50,8 +50,10 @@ How nodes keep time is read only while a watch on `timing` stands, as
 the launcher's Sound watches it while a device's or a program's drawer
 is out: the daemon binds PipeWire's profiler, as `pw-top` does, which
 has the server measure every cycle, and lets it go once no watch wants
-it. Each second of cycles stands as one frame, the figures `pw-top`
-prints (`src/timing.rs`), so a node that stopped running drops out.
+it. Each second, on a timer kept while it's bound, the cycles heard
+stand as one frame, the figures `pw-top` prints (`src/timing.rs`), so a
+node that stopped running drops out, and every node does once the whole
+graph idles and the profiler says nothing.
 
 ## Acts
 

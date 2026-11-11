@@ -261,7 +261,6 @@ enum Bound {
     Profiler { _bound: Profiler },
 }
 
-/// Hears one connection to PipeWire until it ends.
 /// The loop's context, taught the profiler's protocol before anything
 /// binds; one without the profiler's module still hears everything else.
 fn taught_context(main_loop: &MainLoopRc) -> Result<ContextRc, String> {
@@ -272,6 +271,19 @@ fn taught_context(main_loop: &MainLoopRc) -> Result<ContextRc, String> {
     Ok(context)
 }
 
+/// What binding the profiler takes, on PipeWire's loop: the daemon, what's
+/// bound, the profiler's global once the registry says it, the registry
+/// it's bound from, and the loop its second's timer is on.
+#[derive(Clone)]
+struct Binding {
+    shared: Arc<Mutex<Daemon>>,
+    bound: Rc<RefCell<HashMap<u32, Bound>>>,
+    profiler: Rc<Cell<Option<u32>>>,
+    registry: RegistryRc,
+    main_loop: MainLoopRc,
+}
+
+/// Hears one connection to PipeWire until it ends.
 fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
     let main_loop = MainLoopRc::new(None).map_err(|why| format!("its loop: {why}"))?;
     let context = taught_context(&main_loop)?;
@@ -281,29 +293,24 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
     let registry = core
         .get_registry_rc()
         .map_err(|why| format!("its registry: {why}"))?;
-    let bound: Rc<RefCell<HashMap<u32, Bound>>> = Rc::default();
-    // The profiler's global, once the registry says it, bound only while
-    // a watch wants it.
-    let profiler: Rc<Cell<Option<u32>>> = Rc::default();
+    let binding = Binding {
+        shared: Arc::clone(shared),
+        bound: Rc::default(),
+        profiler: Rc::default(),
+        registry: registry.clone(),
+        main_loop: main_loop.clone(),
+    };
     let (acting, acts) = pw::channel::channel::<Doing>();
     let _acts = acts.attach(main_loop.loop_(), {
-        let (shared, bound, profiler, registry) = (
-            Arc::clone(shared),
-            Rc::clone(&bound),
-            Rc::clone(&profiler),
-            registry.clone(),
-        );
+        let binding = binding.clone();
         move |doing: Doing| match doing {
             Doing::Act {
                 done: moved,
                 answer,
             } => {
-                let _ = answer.send(done(&bound.borrow(), &moved));
+                let _ = answer.send(done(&binding.bound.borrow(), &moved));
             }
-            Doing::Timing(wanted) => {
-                let bound = &mut bound.borrow_mut();
-                profiling(&shared, &registry, bound, profiler.get(), wanted);
-            }
+            Doing::Timing(wanted) => profiling(&binding, binding.profiler.get(), wanted),
         }
     });
     let quit = main_loop.downgrade();
@@ -318,26 +325,42 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
             }
         })
         .register();
-    let _registry_listener = registry
+    let _registry_listener = listening(binding);
+    {
+        let mut daemon = lock(shared);
+        daemon.server = "answering";
+        daemon.acting = Some(acting);
+    }
+    main_loop.run();
+    Ok(())
+}
+
+/// What the registry says, as it says it: each node, card, metadata and
+/// link taken in, and the profiler's global kept, bound while a watch
+/// wants it; and each one gone let go.
+fn listening(binding: Binding) -> pw::registry::Listener {
+    let registry = binding.registry.clone();
+    registry
         .add_listener_local()
         .global({
-            let (shared, bound, profiler, registry) = (
-                Arc::clone(shared),
-                Rc::clone(&bound),
-                Rc::clone(&profiler),
-                registry.clone(),
-            );
+            let binding = binding.clone();
             move |global| {
+                let Binding {
+                    shared,
+                    bound,
+                    profiler,
+                    registry,
+                    ..
+                } = &binding;
                 let found = match global.type_ {
-                    ObjectType::Node => node(&shared, &registry, global),
-                    ObjectType::Device => card(&shared, &registry, global),
-                    ObjectType::Metadata => defaults(&shared, &registry, global),
-                    ObjectType::Link => linked(&shared, global),
+                    ObjectType::Node => node(shared, registry, global),
+                    ObjectType::Device => card(shared, registry, global),
+                    ObjectType::Metadata => defaults(shared, registry, global),
+                    ObjectType::Link => linked(shared, global),
                     ObjectType::Profiler => {
                         profiler.set(Some(global.id));
-                        let wanted = lock(&shared).timed;
-                        let bound = &mut bound.borrow_mut();
-                        profiling(&shared, &registry, bound, Some(global.id), wanted);
+                        let wanted = lock(shared).timed;
+                        profiling(&binding, Some(global.id), wanted);
                         None
                     }
                     _ => None,
@@ -348,7 +371,12 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
             }
         })
         .global_remove({
-            let shared = Arc::clone(shared);
+            let Binding {
+                shared,
+                bound,
+                profiler,
+                ..
+            } = binding;
             // A node, a card, or a link, never bound, goes with whatever it
             // was sent to; the profiler with nothing.
             move |id| match bound.borrow_mut().remove(&id) {
@@ -369,14 +397,7 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
                 _ => told(&shared, Change::Gone { id }),
             }
         })
-        .register();
-    {
-        let mut daemon = lock(shared);
-        daemon.server = "answering";
-        daemon.acting = Some(acting);
-    }
-    main_loop.run();
-    Ok(())
+        .register()
 }
 
 fn pod_of(bytes: &[u8]) -> Result<&Pod, String> {
@@ -702,15 +723,12 @@ fn timed(daemon: &mut Daemon) {
 
 /// Binds the profiler by its global's id, once it's known, while a watch
 /// wants it, and lets it go once none does. Each profile it says is taken
-/// in, and the records told again once a second of them stands.
-fn profiling(
-    shared: &Arc<Mutex<Daemon>>,
-    registry: &RegistryRc,
-    bound: &mut HashMap<u32, Bound>,
-    id: Option<u32>,
-    wanted: bool,
-) {
+/// in, and each second a frame stands, the records told again where it
+/// changed them: so a graph gone idle, which the profiler says nothing
+/// of, is told within a second that nothing runs.
+fn profiling(binding: &Binding, id: Option<u32>, wanted: bool) {
     let Some(id) = id else { return };
+    let bound = &mut binding.bound.borrow_mut();
     if !wanted {
         bound.remove(&id);
         return;
@@ -718,13 +736,24 @@ fn profiling(
     if bound.contains_key(&id) {
         return;
     }
-    let shared = Arc::clone(shared);
-    let profiler = Profiler::bind(registry, id, move |profile| {
-        let mut daemon = lock(&shared);
-        if daemon.timed && daemon.timings.hear(profile, now_ms()) {
-            refresh(&mut daemon);
-        }
-    });
+    let (heard, ticked) = (Arc::clone(&binding.shared), Arc::clone(&binding.shared));
+    let profiler = Profiler::bind(
+        &binding.registry,
+        &binding.main_loop,
+        id,
+        move |profile| {
+            let mut daemon = lock(&heard);
+            if daemon.timed {
+                daemon.timings.hear(profile);
+            }
+        },
+        move || {
+            let mut daemon = lock(&ticked);
+            if daemon.timed && daemon.timings.stand() {
+                refresh(&mut daemon);
+            }
+        },
+    );
     if let Some(profiler) = profiler {
         bound.insert(id, Bound::Profiler { _bound: profiler });
     }

@@ -6,9 +6,11 @@
 //! The profiler says, many times a second, one object for each driver's
 //! cycle: the driver's clock, then a block for the driver and one for each
 //! node following it. What a second of them says is kept, each node's last
-//! cycle in it standing for the node, and it stands whole once the next
-//! second begins, as pw-top prints a frame each second. A node that ran
-//! in none of a second's cycles is no longer running, and goes.
+//! cycle in it standing for the node, and it stands whole as the daemon's
+//! timer says the second is out, as pw-top prints a frame each second. A
+//! node that ran in none of a second's cycles is no longer running, and
+//! goes; so does every node once the whole graph idles, since then the
+//! profiler says nothing at all and the second stands empty.
 
 use std::collections::BTreeMap;
 
@@ -18,8 +20,6 @@ use pipewire::spa::sys;
 use pipewire::spa::utils::Fraction;
 use serde_json::{Value as Json, json};
 
-/// How long a frame gathers before it stands, as pw-top's each second.
-pub const FRAME_MS: u64 = 1000;
 const NANOS: f64 = 1e9;
 const MILLIS: f64 = 1e3;
 
@@ -61,28 +61,29 @@ impl Timed {
     }
 }
 
-/// The frame standing, the one gathering, and when it began.
+/// The frame standing, and the one gathering.
 #[derive(Debug, Default)]
 pub struct Timings {
     stood: BTreeMap<u32, Timed>,
     gathering: BTreeMap<u32, Timed>,
-    began: Option<u64>,
 }
 
 impl Timings {
-    /// Takes one profile, heard at `now_ms`, saying whether a frame has
-    /// stood since, so the records are told again only then.
-    pub fn hear(&mut self, profile: &[u8], now_ms: u64) -> bool {
-        let began = *self.began.get_or_insert(now_ms);
-        let stands = now_ms.saturating_sub(began) >= FRAME_MS;
-        if stands {
-            self.stood = std::mem::take(&mut self.gathering);
-            self.began = Some(now_ms);
-        }
+    /// Takes one profile into the frame gathering.
+    pub fn hear(&mut self, profile: &[u8]) {
         for timed in profiled(profile) {
             self.gathering.insert(timed.id, timed);
         }
-        stands
+    }
+
+    /// Stands what was gathered since the last, as a second is out,
+    /// saying whether the records changed, so they're told again only
+    /// then. A second the profiler said nothing in stands empty.
+    pub fn stand(&mut self) -> bool {
+        let frame = std::mem::take(&mut self.gathering);
+        let changed = frame != self.stood;
+        self.stood = frame;
+        changed
     }
 
     /// Each node's `timing` record, by its id.
