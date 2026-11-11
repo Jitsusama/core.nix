@@ -14,6 +14,18 @@
 //! waking gives it as long again. The heartbeat that says only when is
 //! left out of the record, so a write that changes nothing else tells
 //! nobody anything.
+//!
+//! A disk guard writes every few seconds, and each write moves its
+//! measures a little: the bytes free and used, the fill's rate and when
+//! it would be full, the busiest writer's rate, and the notice that says
+//! that rate. Told each time, they woke the shell twelve times a minute
+//! for figures Joel reads to a tenth of a GiB and a forecast in hours
+//! (RO9YDD, 2026-11-11: the largest steady stream into the shut shell).
+//! So a guard's record that changes only in those is told at most once a
+//! minute; anything else it says, its band, its words, what it cleared,
+//! or its falling silent, is told at once, and carries the new figures
+//! with it. The free bytes Joel reads are in the guard's words too, so a
+//! tenth of a GiB gone is told as it goes.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -26,6 +38,19 @@ use crate::Root;
 pub const FILE: &str = "status.json";
 /// The keys a disk guard rewrites each time that say only when it wrote.
 const BEATS: [&str; 2] = ["heartbeat", "at"];
+/// What a disk guard measures afresh in each write, told at most once
+/// a minute alone: each file system's, then the writer's and the
+/// notice's, each under its object.
+const MEASURES: [(&str, &[&str]); 3] = [
+    (
+        "filesystems",
+        &["free", "used", "forecast", "fill_per_hour", "full_at"],
+    ),
+    ("writer", &["rate"]),
+    ("notice", &["body"]),
+];
+/// How long a guard's measures alone are held before they're told.
+const MEASURED_EVERY: Duration = Duration::from_secs(60);
 
 /// A watcher whose status file is read.
 #[derive(Clone, Debug)]
@@ -38,6 +63,8 @@ pub struct Watcher {
     silence: Duration,
     /// The key its file's heartbeat is under, in seconds since the epoch.
     beat: &'static str,
+    /// Whether what it measures in each write is held, as a guard's is.
+    measures: bool,
 }
 
 /// The watchers of a session with this runtime folder: the account's only
@@ -52,12 +79,15 @@ pub fn watchers(runtime: Option<&str>) -> Vec<Watcher> {
             // is lag-watch gone, not a wait still going.
             silence: Duration::from_secs(30),
             beat: "ended",
+            // Each window is what Lag reads, so each is told.
+            measures: false,
         });
         watchers.push(Watcher {
             name: "disk-guard",
             folder: format!("{runtime}/disk-guard"),
             silence: Duration::from_secs(120),
             beat: "heartbeat",
+            measures: true,
         });
     }
     watchers.push(Watcher {
@@ -65,6 +95,7 @@ pub fn watchers(runtime: Option<&str>) -> Vec<Watcher> {
         folder: "/run/disk-guard".to_owned(),
         silence: Duration::from_secs(120),
         beat: "heartbeat",
+        measures: true,
     });
     watchers
 }
@@ -98,10 +129,21 @@ impl Heard {
     }
 }
 
-/// Each watcher's last heartbeat, kept between reads.
+/// A guard's record as it was last told: what it said without its
+/// measures, and when, so one that changes only in them is held.
+#[derive(Debug)]
+struct Told {
+    steady: Value,
+    record: Value,
+    at: Instant,
+}
+
+/// Each watcher's last heartbeat, and each guard's record last told,
+/// kept between reads.
 #[derive(Debug, Default)]
 pub struct Kept {
     heard: HashMap<&'static str, Heard>,
+    told: HashMap<&'static str, Told>,
 }
 
 impl Kept {
@@ -127,6 +169,7 @@ impl Kept {
                 });
             let Some(mut said) = said else {
                 self.heard.remove(watcher.name);
+                self.told.remove(watcher.name);
                 continue;
             };
             let beat = said
@@ -153,7 +196,31 @@ impl Kept {
             for beat in BEATS {
                 said.remove(beat);
             }
-            records.push(record(watcher.name, &said, heard.silent));
+            let record = record(watcher.name, &said, heard.silent);
+            if !watcher.measures {
+                records.push(record);
+                continue;
+            }
+            // The steady record holds its silence, so falling silent is
+            // told at once.
+            let steady = unmeasured(&record);
+            let told = self
+                .told
+                .get(watcher.name)
+                .filter(|told| told.steady == steady && now < told.at + MEASURED_EVERY);
+            if let Some(told) = told {
+                records.push(told.record.clone());
+                continue;
+            }
+            self.told.insert(
+                watcher.name,
+                Told {
+                    steady,
+                    record: record.clone(),
+                    at: now,
+                },
+            );
+            records.push(record);
         }
         records
     }
@@ -169,6 +236,32 @@ impl Kept {
             })
             .min()
     }
+}
+
+/// A guard's record without what it measures afresh in each write. A
+/// guard writes again within seconds, so measures held past their minute
+/// are told with its next write, and nothing wakes for them alone.
+fn unmeasured(record: &Value) -> Value {
+    let mut steady = record.clone();
+    for (under, keys) in MEASURES {
+        let Some(said) = steady.get_mut("said").and_then(|said| said.get_mut(under)) else {
+            continue;
+        };
+        // Each file system's, or the one object's.
+        let each: Vec<&mut Value> = if let Value::Array(all) = said {
+            all.iter_mut().collect()
+        } else {
+            vec![said]
+        };
+        for one in each {
+            if let Value::Object(fields) = one {
+                for key in keys {
+                    fields.remove(*key);
+                }
+            }
+        }
+    }
+    steady
 }
 
 fn record(name: &str, said: &Map<String, Value>, silent: bool) -> Value {
@@ -297,6 +390,91 @@ mod tests {
         let second = kept.records(&root, &watchers, beaten, Duration::from_secs(1100));
         assert_eq!(first, second, "only the heartbeat changed");
         assert_eq!(kept.due(&watchers), Some(beaten + Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn a_guards_measures_alone_are_told_once_a_minute_and_anything_else_at_once() {
+        let guard = |heartbeat: u32, free: u32, band: &str, rate: u32| {
+            json!({
+                "heartbeat": heartbeat,
+                "says": "filling",
+                "filesystems": [{ "path": "/", "band": band, "free": free,
+                    "used": 1000 - free, "forecast": free, "fill_per_hour": 1,
+                    "full_at": heartbeat + free }],
+                "writer": { "name": "nix-daemon", "rate": rate },
+                "notice": { "summary": "filling", "body": format!("at {rate} a second") }
+            })
+            .to_string()
+        };
+        let (dir, root) = root_with(
+            "measured",
+            &[(
+                "/run/disk-guard/status.json",
+                &guard(1000, 500, "filling", 7),
+            )],
+        );
+        let file = dir.join("run/disk-guard/status.json");
+        let watchers = watchers(None);
+        let mut kept = Kept::default();
+        let start = Instant::now();
+        let at = |seconds: u64| start + Duration::from_secs(seconds);
+        let epoch = |seconds: u64| Duration::from_secs(1000 + seconds);
+        let first = kept.records(&root, &watchers, at(0), epoch(0));
+        std::fs::write(&file, guard(1005, 499, "filling", 8)).expect("a write");
+        let measured = kept.records(&root, &watchers, at(5), epoch(5));
+        assert_eq!(
+            measured, first,
+            "what's measured afresh in a write isn't told within the minute"
+        );
+        std::fs::write(&file, guard(1061, 498, "filling", 9)).expect("a write");
+        let minute = kept.records(&root, &watchers, at(61), epoch(61));
+        assert_eq!(
+            minute[0]["said"]["filesystems"][0]["free"], 498,
+            "a minute on, the measures are told: {minute:?}"
+        );
+        std::fs::write(&file, guard(1066, 497, "short", 9)).expect("a write");
+        let banded = kept.records(&root, &watchers, at(66), epoch(66));
+        assert_eq!(
+            banded[0]["said"]["filesystems"][0],
+            json!({ "path": "/", "band": "short", "free": 497, "used": 503,
+                "forecast": 497, "fill_per_hour": 1, "full_at": 1563 }),
+            "a new band is told at once, with the measures beside it"
+        );
+        let silent = kept.records(&root, &watchers, at(200), epoch(200));
+        assert_eq!(
+            silent[0]["silent"], true,
+            "falling silent is told at once: {silent:?}"
+        );
+    }
+
+    #[test]
+    fn lag_watchs_every_window_is_told() {
+        let (dir, root) = root_with(
+            "windows",
+            &[(
+                "/run/user/1000/lag-watch/status.json",
+                r#"{"ended": 1000, "niri": {"p99_ms": 1}}"#,
+            )],
+        );
+        let watchers = watchers(Some("/run/user/1000"));
+        let mut kept = Kept::default();
+        let start = Instant::now();
+        kept.records(&root, &watchers, start, Duration::from_secs(1000));
+        std::fs::write(
+            dir.join("run/user/1000/lag-watch/status.json"),
+            r#"{"ended": 1010, "niri": {"p99_ms": 2}}"#,
+        )
+        .expect("a window");
+        let records = kept.records(
+            &root,
+            &watchers,
+            start + Duration::from_secs(10),
+            Duration::from_secs(1010),
+        );
+        assert_eq!(
+            records[0]["said"]["niri"]["p99_ms"], 2,
+            "each window is Lag's to read: {records:?}"
+        );
     }
 
     #[test]
