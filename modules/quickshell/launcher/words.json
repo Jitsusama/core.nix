@@ -782,6 +782,11 @@
         "memory",
         "swap"
       ],
+      "said": {
+        "head": "{used} used, {share}",
+        "moving": "{in} in \u00b7 {out} out",
+        "still": "none"
+      },
       "parts": [
         "machine:memory:used",
         "machine:memory:pressure",
@@ -801,7 +806,11 @@
     {
       "id": "machine:memory:used",
       "in": "machine:memory",
-      "name": "Used"
+      "name": "Used",
+      "said": {
+        "side": "{used} of {total}",
+        "note": "{available} available"
+      }
     },
     {
       "id": "machine:memory:pressure",
@@ -838,13 +847,17 @@
       "name": "Swap",
       "term": "Machine/swap",
       "said": {
+        "side": "{used} of {total}",
         "cached": "{cached} of it also still in memory"
       }
     },
     {
       "id": "machine:memory:cached",
       "in": "machine:memory",
-      "name": "Cached"
+      "name": "Cached",
+      "said": {
+        "note": "files kept in memory, given up when it's wanted"
+      }
     },
     {
       "id": "machine:memory:held",
@@ -971,7 +984,11 @@
     {
       "id": "machine:memory:using",
       "in": "machine:memory",
-      "name": "Using It"
+      "name": "Using It",
+      "said": {
+        "note": "each program's processes together",
+        "processes": "{n} processes"
+      }
     },
     {
       "id": "machine:memory:type",
@@ -979,7 +996,13 @@
       "name": "Type",
       "answers": [
         "memory type"
-      ]
+      ],
+      "said": {
+        "speed": "{type} at {speed}",
+        "by": "by {maker}",
+        "module": "{count} module of {size}",
+        "modules": "{count} modules of {size}"
+      }
     },
     {
       "id": "machine:cpu",
@@ -1393,6 +1416,10 @@
       "answers": [
         "uptime"
       ],
+      "said": {
+        "head": "up {when}",
+        "yesterday": "yesterday"
+      },
       "parts": [
         "machine:uptime:idle",
         "machine:uptime:asleep",

@@ -77,9 +77,11 @@ class Shell:
     def start(self) -> None:
         """Start the shell, and wait until its launcher answers, closed."""
         # Machine's answers come from the machine daemon, over the sandbox's own /proc, on the
-        # socket the account's systemd would hold for it.
+        # socket the account's systemd would hold for it, saying its rows in the words the check
+        # gives as MACHINE_WORDS.
         if "MACHINE" in os.environ:
-            self.daemon("machine", os.environ["MACHINE"])
+            words = os.environ.get("MACHINE_WORDS")
+            self.daemon("machine", os.environ["MACHINE"], *(["--words", words] if words else []))
         # The windows come from the windows daemon, hearing this niri as the account's does.
         if "WINDOWS" in os.environ:
             self.daemon("windows", os.environ["WINDOWS"])

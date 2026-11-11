@@ -1043,30 +1043,38 @@ QtObject {
             Machine.spent({ user: 0.5, nice: 0, system: 0.1, idle: 0.4, iowait: 0, irq: 0, softirq: 0 },
                 true).map(each => each.id), ["user", "system", "iowait", "interrupts", "niced"]);
         machine("no time said", Machine.spent(null, false), []);
-        // What keeps the memory, biggest first; files are the page cache
-        // less what's shared, which the kernel counts in it.
-        const gib = 1073741824;
-        machine("what keeps the memory", Machine.keptBy({ AnonPages: 20 * gib, Cached: 12 * gib,
-            Shmem: 2 * gib, Slab: gib / 2, KernelStack: gib / 2, PageTables: gib / 2, Buffers: gib / 4,
-            Dirty: gib / 8, Writeback: 0 }).map(part => [part.id, part.bytes / gib]),
-            [["programs", 20], ["files", 10], ["shared", 2], ["kernel", 1.5], ["buffers", 0.25],
-                ["unwritten", 0.125]]);
-        machine("no memory said", Machine.keptBy(null), []);
-        machine("what zswap holds", Machine.compressed({ Zswap: gib, Zswapped: 4 * gib }),
-            { stored: 4 * gib, pool: gib, ratio: 4 });
-        machine("zswap holding nothing", Machine.compressed({ Zswap: 0, Zswapped: 0 }), null);
-        // Modules alike counted once, where they sit gathered, blanks left
-        // blank.
-        const module = { locator: "Controller0-ChannelA", size: "8 GB", type: "LPDDR5X",
-            speed: "7467 MT/s", manufacturer: "SK Hynix", part: "" };
-        machine("the memory modules alike", Machine.modules([module,
-            Object.assign({}, module, { locator: "Controller0-ChannelB" })]),
-            [{ type: "LPDDR5X", speed: "7467 MT/s", size: "8 GB", manufacturer: "SK Hynix", part: "",
-                locator: "Controller0-ChannelA", count: 2,
-                locators: ["Controller0-ChannelA", "Controller0-ChannelB"] }]);
-        machine("modules of two speeds", Machine.modules([module,
-            Object.assign({}, module, { speed: "6400 MT/s" })]).length, 2);
-        machine("no memory modules", Machine.modules(null), []);
+        // A served row's times are worded here, by their form, into the
+        // item's own words: the uptime counts up from the boot, the start
+        // is a moment.
+        const timed = {
+            lasted: seconds => `${seconds} s`,
+            moment: (at, now) => `at ${at} of ${now}`
+        };
+        machine("a lasted time counts up from it, in its words", Machine.sideSaid(
+            [{ at: 1000, as: "lasted", said: "up {when}" }], 61_000, timed), "up 60 s");
+        machine("a moment says when", Machine.sideSaid([{ at: 5, as: "moment" }], 9, timed),
+            "at 5 of 9");
+        machine("a time from a wrong clock never reads as negative", Machine.sideSaid(
+            [{ at: 9000, as: "lasted" }], 1000, timed), "0 s");
+        machine("words and figures joined, the empty given way", Machine.sideSaid(
+            [{ said: "8.00 GB used" }, { said: "" }, { said: "50%" }], 0, timed),
+            "8.00 GB used \u00b7 50%");
+        // A served row drawn: its thing as its key (either name the record
+        // gives it), what Copy copies from its copy act, the machine's hue
+        // where it names none.
+        machine("a served row's fields", Machine.served({ key: "row:machine:memory:used",
+            kind: "row", row: { thing: "machine:memory:used", name: "Used",
+                side: [{ said: "8.00 GB of 16.0 GB" }], graph: { shape: "bar", values: [0.5] },
+                note: "8.00 GB available", glyph: "memory",
+                acts: [{ key: "verb:copy", copy: "8.00 GB of 16.0 GB" }] } }, 0, timed),
+            { key: "machine:memory:used", name: "Used", side: "8.00 GB of 16.0 GB",
+                graph: { shape: "bar", values: [0.5] }, note: "8.00 GB available",
+                copy: "8.00 GB of 16.0 GB", glyph: "memory", hue: "machine" });
+        machine("a served row before its thing was renamed", Machine.served({
+            row: { row: "machine:uptime", name: "Uptime", side: [], acts: [] } }, 0, timed).key,
+            "machine:uptime");
+        machine("a served row copying nothing", Machine.served({ row: { name: "Using It",
+            side: [{ said: "\u2026" }] } }, 0, timed).copy, "");
         machine("a disk's warnings", Machine.warnings(["spare", "readonly", "novel"]),
             ["spare", "read-only", "novel"]);
         machine("a disk warning of nothing", Machine.warnings([]), []);

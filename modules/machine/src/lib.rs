@@ -10,9 +10,10 @@
 //! as it's written through [`written`]), and the user units the shell may
 //! restart, [`units`], and the parts Heat's rows say, gathered from those
 //! records and the processor's own telemetry ([`parts`], [`telemetry`]),
-//! and Heat's and Power's rows made of them, ready for the launcher
-//! ([`heat_rows`], [`power_rows`], placed and graphed through [`rows`] and
-//! worded through [`words`]). Every file is read through
+//! and Heat's, Power's and Machine's own rows made of them, ready for the
+//! launcher ([`heat_rows`], [`power_rows`], [`machine_rows`], placed and
+//! graphed through [`rows`] and worded through [`words`]). Every file is
+//! read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before. What Firmware asks the
 //! machine to do is done through [`acts`].
@@ -40,6 +41,7 @@ pub mod interface;
 pub mod kept;
 pub mod keyboards;
 pub mod light;
+pub mod machine_rows;
 pub mod memory;
 pub mod parts;
 pub mod power_rows;

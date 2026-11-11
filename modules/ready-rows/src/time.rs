@@ -23,6 +23,9 @@ pub enum Form {
     /// "22 Oct", the year when not this one, "5 Jan 2025", by the
     /// shell's own calendar, as the day an ended quest was last touched.
     Day,
+    /// How long it's lasted since, the largest two of days, hours and
+    /// minutes, "3 d 2 h", as the machine's uptime.
+    Lasted,
 }
 
 impl Form {
@@ -35,6 +38,7 @@ impl Form {
             Form::Dated => "dated",
             Form::Ago => "ago",
             Form::Day => "day",
+            Form::Lasted => "lasted",
         }
     }
 }
@@ -63,9 +67,13 @@ mod tests {
             Form::Dated,
             Form::Ago,
             Form::Day,
+            Form::Lasted,
         ]
         .map(|form| at(1_762_790_400_000, form)["as"].clone());
-        assert_eq!(forms, ["came", "opened", "moment", "dated", "ago", "day"]);
+        assert_eq!(
+            forms,
+            ["came", "opened", "moment", "dated", "ago", "day", "lasted"]
+        );
         assert_eq!(
             at(5, Form::Came),
             json!({ "at": 5, "as": "came" }),

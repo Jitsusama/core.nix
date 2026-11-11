@@ -5,7 +5,9 @@ pragma ComponentBehavior: Bound
 // mycelium's does (its PROTOCOL.md, The Daemon Interface). Each talk is
 // heard by its session's address, in either case, newest first; a line
 // its session writes, told as only what differs, moves it on to its
-// reply; one made since is heard; and one the node lets go goes. It exits
+// reply; one made since is heard; and one the node lets go goes. The
+// quest index written while the launcher is shut is read only as it
+// opens, though the orchestrators' file beside it is read at once. It exits
 // 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -32,6 +34,7 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        property bool cataloguing: false
         function enter(row) {
         }
     }
@@ -42,6 +45,20 @@ ShellRoot {
         launcher: theLauncher
         settings: ({ name: "orchestrators" })
         onTalksChanged: Qt.callLater(root.check)
+        onListedChanged: Qt.callLater(root.check)
+        onStartFoldersChanged: Qt.callLater(root.check)
+    }
+
+    // The harness's files beside the shell, written as the harness does.
+    FileView {
+        id: questsFile
+        path: `${Sessions.state}/quest-workflow/quests.json`
+        printErrors: false
+    }
+    FileView {
+        id: orchestratorsFile
+        path: `${Sessions.state}/quest-workflow/orchestrators.json`
+        printErrors: false
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
@@ -96,6 +113,21 @@ ShellRoot {
                 tell({ gone: ["talk:A003/t-1"] });
             } else if (root.waiting === "the talk let go") {
                 if (heard("A003") !== "check the lights")
+                    return;
+                root.waiting = "the orchestrators read while shut";
+                questsFile.setText(JSON.stringify({ quests: [{ id: "QEST-A", start: "/lamp" }] }));
+                orchestratorsFile.setText(JSON.stringify({ orchestrators: [
+                    { address: "A003", quest: "QEST-A", title: "A lit" }] }));
+            } else if (root.waiting === "the orchestrators read while shut") {
+                if (orchestrators.listed[0]?.title !== "A lit")
+                    return;
+                expect("the quest index written while shut is left unread",
+                    orchestrators.startFolders["QEST-A"] === undefined,
+                    JSON.stringify(orchestrators.startFolders));
+                root.waiting = "the quest index read as it opens";
+                theLauncher.open = true;
+            } else if (root.waiting === "the quest index read as it opens") {
+                if (orchestrators.startFolders["QEST-A"] !== "/lamp")
                     return;
                 console.log("PASS the talks are heard from the node");
                 Qt.callLater(() => Qt.exit(0));
