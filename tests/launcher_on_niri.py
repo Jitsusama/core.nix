@@ -7,7 +7,8 @@ it. wtype's keys reach the surface holding the keyboard, the launcher's or the
 held notices', but never niri's binds, so what a bind runs is run instead, and
 nothing of a machine's is here: no battery, backlight, system services or
 other programs, only the machine daemon over the sandbox's own /proc when
-the check gives it as MACHINE, warp holding WARP's link when it gives that
+the check gives it as MACHINE, the programs daemon over the entries here when
+it gives that as PROGRAMS, warp holding WARP's link when it gives that
 as WARP, and the meaning daemon's stand-in when it gives that as MEANING.
 A case needing any of those stays in the
 desktop's VM tests (tests/desktop/); one that only types and reads the
@@ -87,6 +88,10 @@ class Shell:
         if "WINDOWS" in os.environ:
             words = os.environ.get("WINDOWS_WORDS")
             self.daemon("windows", os.environ["WINDOWS"], *(["--words", words] if words else []))
+        # Programs' rows come from the programs daemon, over the desktop entries this niri's
+        # environment names, given the lists the check gives as PROGRAMS_SOURCES.
+        if "PROGRAMS" in os.environ:
+            self.daemon("programs", os.environ["PROGRAMS"], os.environ["PROGRAMS_SOURCES"])
         # WARP's link comes from warp, asking the check's stand-in warp-cli.
         if "WARP" in os.environ:
             self.daemon("warp", os.environ["WARP"])
