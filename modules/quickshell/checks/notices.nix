@@ -154,11 +154,11 @@
   # What a notice's card offers of its sender's, its sender's own Read,
   # and the line a search names a notice by, as tests/notice.qml holds
   # Notice.js.
-  a-notice-is-named-by-the-line-found =
+  a-notice-found-is-noted-by-what-was-typed =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "a-notice-is-named-by-the-line-found" { } ''
+    pkgs.runCommandLocal "a-notice-found-is-noted-by-what-was-typed" { } ''
       cp ${../../../tests/notice.qml} notice.qml
       cp ${../launcher/Notice.js} Notice.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

@@ -22,6 +22,8 @@
 // banded once for each change, asked again it bands nothing, and the
 // files an opening reads are taken together, one read as it was not at all.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
+// Long because its cases run in turn on one Now, its stand-ins and one
+// stand-in notices daemon, which each file split from it would build again.
 import qs
 import Quickshell
 import QtQuick

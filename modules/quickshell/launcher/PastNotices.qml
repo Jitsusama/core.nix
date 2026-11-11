@@ -108,6 +108,17 @@ Provider {
         });
         if (one === null)
             return null;
+        // With nothing to open or go to, the daemon serves its details
+        // first, which a launcher with no drawer to step into can't show,
+        // so Return steps in among its acts, as the right arrow does,
+        // rather than doing the next act: copying is never first (Joel,
+        // 2026-10-28: "having the separate copy option at the top is very
+        // confusing"), nor is marking it read.
+        if ((row.acts ?? [])[0]?.step === "drawer"
+            && typeof provider.launcher?.intoDrawer !== "function") {
+            Object.assign(one, { verb: "more", now: false, later: false, stays: true,
+                targets: one.verbs, run: () => provider.launcher?.enter(one) });
+        }
         Object.defineProperty(one, "also", {
             enumerable: true,
             get: () => whole ?? (whole = Fuzzy.kept(said.replace(/\s+/g, " ")))

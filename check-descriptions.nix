@@ -81,7 +81,7 @@
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open
   '';
-  a-notice-is-named-by-the-line-found = ''
+  a-notice-found-is-noted-by-what-was-typed = ''
     a notice found by a search is noted by the line of its words holding what was typed, worked
     out only once it's read, and its card offers its sender's acts but the one that opens it
   '';
