@@ -23,7 +23,8 @@ or launchd, and [`home.nix`][2] the account's.
   oversized logs, Nix's leftover build directories, and what a killed git
   left staged in a repository no git works on now), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,
-  caches cheapest to refill first, idle targets and installs, older builds a
+  caches cheapest to refill first (from their own band on, and before it
+  once nothing has written to one for a week), idle targets and installs, older builds a
   newer one of their crate replaced, and last what is occupied. Waste,
   which costs nothing to lose, goes largest first; the rest of a group
   goes longest idle first. While

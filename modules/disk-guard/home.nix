@@ -52,8 +52,9 @@ let
     harness.workspaces
   ];
 
-  # A source that refills on demand, emptied once nearly full, cheapest to
-  # refill first: a download before a rebuild.
+  # A source that refills on demand, cheapest to refill first, a download
+  # before a rebuild: emptied once nearly full, or once filling when nothing
+  # has written to it for a week.
   cache = rank: path: {
     kind = "cache";
     inherit path rank;
@@ -241,6 +242,25 @@ in
         # Xcode's builds, which it makes again as a target is.
         derived-data = lib.mkIf isDarwin (
           lib.mkDefault (cache 50 "${home}/Library/Developer/Xcode/DerivedData")
+        );
+        # Simulators of runtimes no Xcode here has any more, which an upgrade
+        # leaves behind for good and only Xcode's own tool removes; the
+        # simulators of what's installed stay. Without Xcode it fails and
+        # is journaled, removing nothing.
+        simulators = lib.mkIf isDarwin (
+          lib.mkDefault {
+            kind = "producer";
+            command = [
+              "/usr/bin/xcrun"
+              "simctl"
+              "delete"
+              "unavailable"
+            ];
+            path = "${home}/Library/Developer/CoreSimulator";
+            every = "7d";
+            from = "filling";
+            timeout = "10m";
+          }
         );
         # Homebrew's downloads and the versions it upgraded past, which it
         # prunes itself, weekly and once filling.

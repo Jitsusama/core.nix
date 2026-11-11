@@ -321,6 +321,28 @@ fn a_cache_is_taken_from_its_own_band_on() {
 }
 
 #[test]
+fn a_cache_nothing_wrote_to_for_a_week_goes_while_filling() {
+    // On 11 November a laptop's guard sat filling at 18% free and said it
+    // had cleared all it may, with 14 GiB of lima images and Go's build
+    // cache it could fetch or build again, since a cache went only once
+    // the disk was nearly full. One in use is written to, so it stays.
+    let cache = |name, idle| {
+        candidate(
+            name,
+            Class::Cache {
+                rank: 0,
+                from: Band::NearlyFull,
+            },
+            idle,
+        )
+    };
+    let both = [cache("idle", 8.0 * DAY), cache("used", 6.0 * DAY)];
+    assert_eq!(taken(&both, Band::Healthy), Vec::<String>::new());
+    assert_eq!(taken(&both, Band::Filling), ["idle"]);
+    assert_eq!(taken(&both, Band::NearlyFull), ["idle", "used"]);
+}
+
+#[test]
 fn the_plan_goes_cheapest_loss_first() {
     let candidates = vec![
         occupied(candidate("occupied", Class::Target, 0.0)),

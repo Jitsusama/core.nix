@@ -63,6 +63,13 @@
           self.darwinModules.workstation
           self.darwinModules.graphical
         ])).jitsusama.disk-guard.settings.sources;
+      # Xcode's own removal of simulators no installed runtime has.
+      simulatorsGo = [
+        "/usr/bin/xcrun"
+        "simctl"
+        "delete"
+        "unavailable"
+      ];
     in
     holds "the-mac-guards-its-disk"
       "A Mac's guards don't run under launchd, their config names Linux's paths or systemd-run, a cache is looked for where a Mac's programs don't keep it, a Mac's own sources are missing, or the account's guard runs a Nix the machine's doesn't."
@@ -79,6 +86,9 @@
         && system.sources.tmp.path == "/private/tmp"
         && user.sources.trash.path == "/Users/someone/.Trash"
         && user.sources.derived-data.kind == "cache"
+        && user.sources.simulators.command == simulatorsGo
+        && user.sources.simulators.path == "/Users/someone/Library/Developer/CoreSimulator"
+        && !((account workstation).jitsusama.disk-guard.settings.sources ? simulators)
         && user.sources.go-build.path == "/Users/someone/Library/Caches/go-build"
         && user.sources.sccache.path == "/Users/someone/Library/Caches/Mozilla.sccache"
         && user.sources.pnpm.path == "/Users/someone/Library/pnpm/store"

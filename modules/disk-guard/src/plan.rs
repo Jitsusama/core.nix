@@ -144,6 +144,10 @@ pub struct Step {
 const HOUR: f64 = 3600.0;
 const DAY: f64 = 86400.0;
 
+/// How long nothing may have written to a cache before a filling disk takes
+/// it, ahead of its own band.
+pub const CACHE_UNWRITTEN: f64 = 7.0 * DAY;
+
 /// A window per band, healthy first: how long a candidate must have been
 /// idle, in awake seconds, before that band takes it. None never does.
 pub type Windows = [Option<f64>; 4];
@@ -222,8 +226,19 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         Class::Workspace => (Group::Waste, [minutes(10.0); 4]),
         Class::Trash => (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE]),
         Class::Temp => (Group::Waste, [days(1.0), days(1.0), hours(6.0), hours(2.0)]),
+        // A cache goes from its own band on; before it, on a filling disk,
+        // once nothing has written to it for a week, since a cache in use
+        // is written to all the time and one that isn't refills when asked.
         Class::Cache { from, .. } => {
-            let from = |band: Band| if band >= from { AT_ONCE } else { NEVER };
+            let from = |band: Band| {
+                if band >= from {
+                    AT_ONCE
+                } else if band >= Band::Filling {
+                    Some(CACHE_UNWRITTEN)
+                } else {
+                    NEVER
+                }
+            };
             (
                 Group::Caches,
                 [

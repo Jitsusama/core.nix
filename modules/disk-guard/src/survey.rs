@@ -293,7 +293,17 @@ fn offer_cache(
             let Some(parent) = path.parent() else {
                 return;
             };
-            let candidate = caches::whole(path, rank, from, size(path, world));
+            // Idle since anything in it was last written, or not at all
+            // where that can't be told, so only a band that takes it at
+            // once does.
+            let recent = world.now - crate::plan::CACHE_UNWRITTEN;
+            let idle = caches::last_written(path, caches::WALKED, recent).map_or(0.0, |written| {
+                world
+                    .awake
+                    .since(written.min(world.now), world.now)
+                    .max(0.0)
+            });
+            let candidate = caches::whole(path, rank, from, size(path, world), idle);
             offers.push(Offer {
                 candidate,
                 action: Action::Entry {
