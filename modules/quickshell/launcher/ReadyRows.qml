@@ -222,11 +222,12 @@ Scope {
         const first = acts[0] ?? null;
         const steps = acts.some(one => one.step === "rows");
         const verbs = () => steps ? inside(key) : acts.map(one => actRow(key, one));
-        // Only a Return that steps into rows leaves the launcher open; one
-        // that copies closes it, as a value's row always has.
+        // A Return that steps into rows or asks leaves the launcher open, so
+        // Joel sees what it became, as a setting's choice always has; one
+        // that copies or opens closes it, as a value's row always has.
         const acting = acts.length === 0 ? {} : {
             verb: verbOf(first),
-            stays: first.step === "rows",
+            stays: first.step === "rows" || Ready.actForm(first) === "ask",
             run: () => act(key, first),
             verbs: verbs,
             targets: verbs
@@ -323,9 +324,13 @@ Scope {
         const row = served(key);
         if (!row || !link)
             return;
-        const shown = row.thing ?? key;
+        // What it becomes may be another row, as a charge limit's stop
+        // becomes the limit's own row, so that row is the one held.
+        const into = one.becomes ?? null;
+        const becomesKey = into?.key ?? key;
+        const shown = into ? (into.thing ?? becomesKey) : (row.thing ?? key);
         let answered = false;
-        const becomes = one.becomes ? ready.make(one.becomes, key) : rowAt(key);
+        const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
         const how = one.becomes ? undefined : { done: () => answered };
         maker?.becomes(shown, becomes, row.name ?? "", one.ask.act ?? verbOf(one), how);
         link.ask(one.ask, answer => {
