@@ -12,8 +12,9 @@
 // Favourite switch after, and their address last; flipping Favourite
 // tells Tuple and moves their row at once; and a change of presence
 // changes how they stand, as Tuple says it, keeping the favourites
-// changed here until Tuple says them. A guest asked after before the
-// daemon answers is named once it does. It exits 0 once every case
+// changed here until Tuple says them, and a place holding a row People
+// lent it, as a mail its sender, is told to ask for it again. A guest
+// asked after before the daemon answers is named once it does. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -41,6 +42,8 @@ ShellRoot {
 
         property bool open: true
         property var entered: null
+        // The steps held, as the launcher's are, each with its rows.
+        property var held: []
         // Whether People's rows are wanted (Provider.qml's wanted), as
         // the launcher says from where it stands.
         property bool wanting: true
@@ -74,6 +77,17 @@ ShellRoot {
         property bool asking: true
         readonly property var named: asking ? people.whoIs("ada@example.com") : null
         property int merges: 0
+    }
+
+    // A place holding a row People lent it, as Mail holds a mail's
+    // sender, and how often it was told its rows changed.
+    QtObject {
+        id: mailer
+
+        signal changed
+        property int told: 0
+
+        onChanged: told += 1
     }
 
     // Tuple's next presence, which the stand-in waits for.
@@ -345,6 +359,10 @@ ShellRoot {
             what: "a change heard while nobody looks",
             run: () => {
                 launcher.wanting = false;
+                // Ada's row lent to a mail shown, which said how she stood
+                // as it was made, and stayed so (Y2YBTS, 2026-11-10).
+                launcher.held = [{ row: { key: "mail:1", from: mailer },
+                    rows: [people.personOf("ada@example.com")] }];
                 root.mergedBefore = people.merging.merges;
                 root.heardBefore = people.revision;
                 touching.running = true;
@@ -354,6 +372,9 @@ ShellRoot {
                 const merges = people.merging.merges;
                 expect("merges no one", typeof merges === "number" && merges === root.mergedBefore,
                     `${merges} merges, ${root.mergedBefore} before`);
+                expect("tells the place a row was lent to, to ask for it again",
+                    mailer.told > 0, `told ${mailer.told} times`);
+                launcher.held = [];
                 launcher.wanting = true;
             }
         },
