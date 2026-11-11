@@ -1,0 +1,105 @@
+# The checks of the launcher's command line and query field, and the keys they
+# take as Vim's, which the folder's checks.nix gathers with every other place's;
+# its opening comment says why each place keeps its own.
+{
+  noFonts,
+  pkgs,
+  shellFolderLint,
+  ...
+}:
+{
+  # The region picker's keys start, move and size its box, and letters name
+  # the grid's cells, as tests/picking.qml says, in Qt's own engine.
+  the-picker-picks-what-the-keys-say =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-picker-picks-what-the-keys-say" { } ''
+      cp ${../../../tests/picking.qml} picking.qml
+      cp ${../Picking.js} Picking.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml picking.qml
+      touch $out
+    '';
+
+  # Vim's command line is read as Vim reads it, as tests/ex.qml holds Ex.js
+  # to: ranges, names by their short forms, a bang, :g and :v, the rows a
+  # range names, and Vim's own errors.
+  ex-reads-vims-command-lines =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "ex-reads-vims-command-lines" { } ''
+      cp ${../../../tests/ex.qml} ex.qml
+      cp ${../Ex.js} Ex.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml ex.qml
+      touch $out
+    '';
+
+  # The launcher's command line lists every command it can take, the cursor
+  # row's acts first, narrows as it's typed, chooses as his cmp does and
+  # runs exactly what's typed, with Vim's ranges and :g, and reads :set as
+  # Vim does, as tests/command-line.qml holds Commands.js and SetWords.js
+  # to, with the Ex.js they read ranges by and CommandBinding.js, which
+  # binds a line to things and asks by d's rule, in Operators.js.
+  the-command-line-lists-every-command =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-command-line-lists-every-command" { } ''
+      cp ${../../../tests/command-line.qml} command-line.qml
+      cp ${../Commands.js} Commands.js
+      cp ${../SetWords.js} SetWords.js
+      cp ${../Ex.js} Ex.js
+      cp ${../CommandBinding.js} CommandBinding.js
+      cp ${../Operators.js} Operators.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml command-line.qml
+      touch $out
+    '';
+
+  # The launcher's query line takes vi's two modes from one table, as
+  # tests/query-keys.qml holds QueryKeys.js and Editing.js to: insert's
+  # keys, normal's ways back into insert, its moves through the rows with counts and
+  # where each lands, its closing keys and ex line, its place used last,
+  # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
+  # to the keys Space ? lists; the drawer as a window, Space and the arrows
+  # into it and back, with DrawerPage.js to where its keys take its cursor
+  # and view and DrawerFigure.js to where a fact's figure stands; Operators.js to what d and y do to the rows they take; and
+  # Confirm.js to how the launcher asks once, as Vim's ask_yesno does.
+  the-query-field-takes-vi-modes =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
+      cp ${../../../tests/query-keys.qml} query-keys.qml
+      cp ${../KeyNames.js} KeyNames.js
+      cp ${../QueryKeys.js} QueryKeys.js
+      cp ${../ModeMarks.js} ModeMarks.js
+      cp ${../Editing.js} Editing.js
+      cp ${../ListedKeys.js} ListedKeys.js
+      cp ${../Typing.js} Typing.js
+      cp ${../Operators.js} Operators.js
+      cp ${../Finding.js} Finding.js
+      cp ${../Confirm.js} Confirm.js
+      cp ${../DrawerPage.js} DrawerPage.js
+      cp ${../DrawerFigure.js} DrawerFigure.js
+      cp ${../Identifier.js} Identifier.js
+      cp ${../Search.js} Search.js
+      cp ${../Reading.js} Reading.js
+      cp ${../LineEditing.js} LineEditing.js
+      cp ${../launcher/words.json} words.json
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml query-keys.qml
+      touch $out
+    '';
+}
