@@ -7,7 +7,9 @@
 // shut, a row served anew makes none of its rows, and Now's Volume borrows
 // a device's row as it's served; wanted again, they're made once, and a
 // device's row served anew remakes it alone; and what its spots are made
-// of moves only once a device comes or goes. (tests/sound.qml holds the
+// of moves only once a device comes or goes; and a device's Port, served
+// inside its row, steps into its choices, a choice's Return asking the
+// daemon to move it, as its option does. (tests/sound.qml holds the
 // parts and drawers.) It exits 0 once every case holds, and otherwise 1,
 // saying which didn't.
 pragma ComponentBehavior: Bound
@@ -62,6 +64,13 @@ ShellRoot {
         function wants(source) {
             return wanting;
         }
+
+        // An act asked draws its row as it becomes, here nowhere.
+        function becomesAll() {
+        }
+
+        function becameNot() {
+        }
     }
 
     Launcher.Sound {
@@ -92,6 +101,9 @@ ShellRoot {
     // whole, then only what changed, as `tell` and `forget` say it.
     property var records: ({})
     property var watchers: []
+    // Each act asked on the socket, as the daemon would take it.
+    property var acted: []
+    onActedChanged: heardNow()
 
     function tell(record) {
         records[record.key] = record;
@@ -125,6 +137,9 @@ ShellRoot {
                     else if (ask.ask === "watch") {
                         root.watchers.push(asked);
                         answer = { id: ask.id, records: Object.values(root.records) };
+                    } else if (ask.ask === "act") {
+                        root.acted = root.acted.concat([ask]);
+                        answer = { id: ask.id, done: true };
                     }
                     asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();
@@ -261,6 +276,67 @@ ShellRoot {
         expect("the rows looked through shut are the ones listed once wanted",
             seen.length === 1 && shown.length === 1 && shown[0] === seen[0],
             `${seen.length} looked through, ${shown.length} listed`);
-        Qt.exit(0);
+        tell(portPart());
+        tell(portChoice(1, "Speakers", false));
+        tell(portChoice(2, "Headphones", true));
+        // Each record comes on a line of its own, so the Port can be heard
+        // before its choices are.
+        when("the Port served with its choices", () => sound.everything()[0]?.targets()
+            .find(part => part.key === `sound:${deskSpeakers.name}:port`)?.targets()
+            .length === 2, ported);
+    }
+
+    // The speakers' Port, as rows.rs's port_rows serves it inside their
+    // row, and each port they can be moved to inside it.
+    function portPart() {
+        const parent = `row:sound:${deskSpeakers.name}`;
+        return {
+            key: `${parent}:port`, kind: "row",
+            row: {
+                key: `${parent}:port`, thing: `sound:${deskSpeakers.name}:port`,
+                place: "sound", kind: "setting", order: 1536, parent: parent, depth: 1,
+                name: "Port", glyph: "speaker", hue: "machine", side: [{ said: "Headphones" }],
+                acts: [{ key: "verb:more", step: "rows" }], held: { node: deskSpeakers.name }
+            }
+        };
+    }
+
+    function portChoice(index, name, chosen) {
+        const parent = `row:sound:${deskSpeakers.name}:port`;
+        return {
+            key: `${parent}:${index}`, kind: "row",
+            row: {
+                key: `${parent}:${index}`, thing: `verb:sound-port-${index}`, place: "sound",
+                kind: "port", order: 1536 + index, parent: parent, depth: 2,
+                name: `Use ${name}`, glyph: "speaker", hue: "action",
+                side: chosen ? [{ said: "chosen" }] : [], note: "",
+                acts: [{
+                    key: "verb:sound-port",
+                    ask: { ask: "act", act: "port", key: `device:${deskSpeakers.name}`,
+                        index: index }
+                }],
+                held: { node: deskSpeakers.name, port: name, index: index, chosen: chosen }
+            }
+        };
+    }
+
+    function ported() {
+        const port = sound.everything()[0].targets()
+            .find(part => part.key === `sound:${deskSpeakers.name}:port`);
+        expect("a served Port is a setting saying the one in use",
+            port.offers === true && port.side === "Headphones", `${port.offers}, ${port.side}`);
+        const choices = port.targets();
+        expect("it steps into each port to move to, as they were keyed",
+            names(choices) === "verb:sound-port-1, verb:sound-port-2", names(choices));
+        expect("only Sound's top rows are listed", sound.everything().length === 1,
+            names(sound.everything()));
+        choices[0].run();
+        when("the port asked", () => root.acted.length === 1, () => {
+            const ask = root.acted[0];
+            expect("a choice's Return asks the daemon to move it", ask.act === "port"
+                && ask.key === `device:${deskSpeakers.name}` && ask.index === 1,
+                JSON.stringify(ask));
+            Qt.exit(0);
+        });
     }
 }

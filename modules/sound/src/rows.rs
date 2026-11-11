@@ -10,6 +10,10 @@
 //! with nothing plugged in, or a display's output with no display, isn't
 //! listed unless it's the one chosen, which says so: its card says so of
 //! the route that plays it, live, as desk-facts' file said for Sound.qml.
+//!
+//! Inside a device's row go the parts the daemon serves of it: its Port,
+//! where its card offers more than one, and each it can be moved to. The
+//! rest of its parts are still made by Sound.qml, from the sound server.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -292,7 +296,8 @@ fn percent(share: f64) -> String {
     format!("{}%", (share * 100.0).round())
 }
 
-/// Every row Sound lists, outputs first and each way by name.
+/// Every row Sound lists, outputs first and each way by name, each
+/// device's parts served inside it after it.
 pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
     let devices: Vec<Device> = records
         .iter()
@@ -313,8 +318,92 @@ pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
     });
     order
         .into_iter()
-        .map(|at| row(&devices[at], &named[at], &devices, words))
+        .flat_map(|at| {
+            let device = &devices[at];
+            std::iter::once(row(device, &named[at], &devices, words))
+                .chain(port_rows(device, words))
+        })
         .collect()
+}
+
+/// A device's Port, where its card offers it two or more to choose from:
+/// a setting saying the one it plays through, and inside it each it can
+/// be moved to, done by the port act. A port nothing's plugged into is no
+/// choice, unless it's the one in use, which says so. None in use, as a
+/// card not yet saying its routes, is no Port yet.
+fn port_rows(device: &Device, words: &Words) -> Vec<Value> {
+    let offered = device.record["ports"]
+        .as_array()
+        .map_or(&[][..], Vec::as_slice);
+    let in_use = |port: &Value| port["chosen"] == true;
+    let choosable: Vec<&Value> = offered
+        .iter()
+        .filter(|port| in_use(port) || port["available"] != "no")
+        .collect();
+    let Some(now) = choosable.iter().find(|port| in_use(port)) else {
+        return Vec::new();
+    };
+    if choosable.len() < 2 {
+        return Vec::new();
+    }
+    let unplugged = words.said("unplugged", &[]);
+    let name_of = |port: &Value| port["name"].as_str().unwrap_or("").to_owned();
+    let side = if now["available"] == "no" {
+        format!("{}{APART}{unplugged}", name_of(now))
+    } else {
+        name_of(now)
+    };
+    let glyph = kind(device);
+    let parent = format!("row:{PLACE}:{}", device.name);
+    let part = format!("{parent}:port");
+    let mut rows = vec![json!({
+        "key": part,
+        "thing": format!("sound:{}:port", device.name),
+        "place": PLACE,
+        "kind": "setting",
+        "parent": parent,
+        "name": words.name("sound:port", &[]),
+        "glyph": glyph,
+        "hue": "machine",
+        "depth": 1,
+        "side": [{"said": side}],
+        "acts": [{"key": "verb:more", "step": "rows"}],
+        "held": {"node": device.name},
+    })];
+    for port in choosable {
+        let index = &port["index"];
+        let side: Vec<Value> = if in_use(port) {
+            vec![json!({"said": words.said("chosen", &[])})]
+        } else {
+            Vec::new()
+        };
+        let note = if port["available"] == "no" {
+            unplugged.clone()
+        } else {
+            String::new()
+        };
+        rows.push(json!({
+            "key": format!("{part}:{index}"),
+            // As the launcher's own verb row was keyed, so a step held on
+            // one stays where it was.
+            "thing": format!("verb:sound-port-{index}"),
+            "place": PLACE,
+            "kind": "port",
+            "parent": part,
+            "name": words.name("verb:sound-port", &[("port", &name_of(port))]),
+            "glyph": glyph,
+            "hue": "action",
+            "depth": 2,
+            "side": side,
+            "note": note,
+            "acts": [{"key": "verb:sound-port", "ask": {
+                "ask": "act", "act": "port",
+                "key": format!("device:{}", device.name), "index": index}}],
+            "held": {"node": device.name, "port": name_of(port), "index": index,
+                "chosen": in_use(port)},
+        }));
+    }
+    rows
 }
 
 /// What a device is called, saying the thing itself (Sound.qml's `named`).
@@ -428,6 +517,8 @@ mod tests {
                 {"id": "sound:called:microphones", "name": "Built-In Microphones"},
                 {"id": "sound:called:its-microphone", "name": "{device} Microphone"},
                 {"id": "sound:called:noise-cancelled", "name": "{device}, Noise Cancelled"},
+                {"id": "sound:port", "name": "Port"},
+                {"id": "verb:sound-port", "name": "Use {port}"},
             ]})
             .to_string(),
         )
@@ -603,6 +694,82 @@ mod tests {
         let listed = rows(&[headphones, speakers], &words());
         assert_eq!(names(&listed), ["Headphones", "Speakers"]);
         assert_eq!(listed[0]["note"], "volume 40% · nothing plugged in");
+    }
+
+    // A device its card offers two ports or more has a Port inside its
+    // row, saying the one in use, and inside that each it can be moved
+    // to, done by the port act: a port nothing's plugged into is no
+    // choice, unless it's in use, which says so.
+    #[test]
+    fn a_device_with_ports_to_choose_says_them_inside() {
+        fn port(index: i64, name: &str, available: &str, chosen: bool) -> Value {
+            json!({"index": index, "name": name, "available": available, "chosen": chosen})
+        }
+        let mut analog = device("analog", true, "Analog", &json!({}));
+        analog["ports"] = json!([
+            port(1, "Speakers", "unknown", false),
+            port(2, "Headphones", "no", true),
+            port(3, "Line Out", "no", false),
+            port(4, "Dock", "yes", false),
+        ]);
+        let made = rows(&[analog.clone()], &words());
+        let keys: Vec<&str> = made
+            .iter()
+            .map(|row| row["key"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "row:sound:analog",
+                "row:sound:analog:port",
+                "row:sound:analog:port:1",
+                "row:sound:analog:port:2",
+                "row:sound:analog:port:4",
+            ],
+            "a port nothing's plugged into, not in use, is no choice"
+        );
+        let part = &made[1];
+        assert_eq!(part["parent"], "row:sound:analog");
+        assert_eq!(part["depth"], 1);
+        assert_eq!(part["kind"], "setting");
+        assert_eq!(part["thing"], "sound:analog:port");
+        assert_eq!(part["name"], "Port");
+        assert_eq!(part["glyph"], "speaker");
+        assert_eq!(
+            part["side"],
+            json!([{"said": "Headphones \u{b7} nothing plugged in"}])
+        );
+        assert_eq!(part["acts"], json!([{"key": "verb:more", "step": "rows"}]));
+        let (speakers, headphones) = (&made[2], &made[3]);
+        assert_eq!(speakers["parent"], "row:sound:analog:port");
+        assert_eq!(speakers["depth"], 2);
+        assert_eq!(speakers["thing"], "verb:sound-port-1");
+        assert_eq!(speakers["name"], "Use Speakers");
+        assert_eq!(speakers["side"], json!([]));
+        assert_eq!(speakers["note"], "");
+        assert_eq!(
+            speakers["acts"],
+            json!([{"key": "verb:sound-port", "ask": {
+                "ask": "act", "act": "port", "key": "device:analog", "index": 1}}])
+        );
+        assert_eq!(
+            speakers["held"],
+            json!({"node": "analog", "port": "Speakers", "index": 1, "chosen": false})
+        );
+        assert_eq!(headphones["side"], json!([{"said": "chosen"}]));
+        assert_eq!(headphones["note"], "nothing plugged in");
+
+        // One choice, or none in use, is no Port.
+        analog["ports"] = json!([
+            port(1, "Speakers", "yes", true),
+            port(2, "Line Out", "no", false)
+        ]);
+        assert_eq!(rows(&[analog.clone()], &words()).len(), 1);
+        analog["ports"] = json!([
+            port(1, "Speakers", "yes", false),
+            port(2, "Dock", "yes", false)
+        ]);
+        assert_eq!(rows(&[analog], &words()).len(), 1);
     }
 
     // A smart filter in front of a device, as the speakers' tuning is,
