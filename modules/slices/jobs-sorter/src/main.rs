@@ -833,7 +833,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         {
             Ok(output) if output.status.success() => {
                 eprintln!(
-                    "Ranked {unit} at weight {}, floor {}, for {} windows Joel is at and {} orchestrators.",
+                    "Ranked {unit} at weight {}, floor {}: {} windows Joel's at, {} orchestrators.",
                     rank.weight, rank.floor, signs.viewed, signs.orchestrators
                 );
                 ranks.hosts.done(unit, rank);

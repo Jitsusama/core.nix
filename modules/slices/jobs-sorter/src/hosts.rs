@@ -183,8 +183,8 @@ pub fn size(value: &str, total: u64) -> Option<u64> {
         return Some(u64::MAX);
     }
     if let Some(percent) = value.strip_suffix('%') {
-        let percent: u64 = percent.trim().parse().ok()?;
-        return Some(total / 100 * percent);
+        let percent: u128 = percent.trim().parse().ok()?;
+        return u64::try_from(u128::from(total) * percent / 100).ok();
     }
     let (digits, shift) = match value.chars().last()? {
         'K' => (&value[..value.len() - 1], 10),
@@ -210,7 +210,9 @@ pub fn units(slice: &Path, prefix: &str) -> Vec<PathBuf> {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| {
                     name.starts_with(prefix)
-                        && Path::new(name).extension().is_some_and(|ext| ext == "service")
+                        && Path::new(name)
+                            .extension()
+                            .is_some_and(|ext| ext == "service")
                 })
         })
         .collect()
@@ -419,8 +421,14 @@ mod tests {
             2 * focus::FLOOR,
             "two windows shown from one host each keep a held window's floor"
         );
-        assert!(!rank.writeback, "a held host's pages stay out of the disk's swap");
-        assert_eq!(rank.preference, "avoid", "systemd-oomd ends a held host last");
+        assert!(
+            !rank.writeback,
+            "a held host's pages stay out of the disk's swap"
+        );
+        assert_eq!(
+            rank.preference, "avoid",
+            "systemd-oomd ends a held host last"
+        );
     }
 
     #[test]
@@ -438,9 +446,20 @@ mod tests {
             (512 << 20) + 2 * keep::FLOOR,
             "each orchestrator keeps its own floor on top of the host's"
         );
-        assert!(rank.writeback, "an orchestrator alone leaves writeback be, as a kept window's");
+        assert!(
+            rank.writeback,
+            "an orchestrator alone leaves writeback be, as a kept window's"
+        );
         assert_eq!(
-            wanted(&Own::default(), Signs { orchestrators: 1, ..Signs::default() }, 10).preference,
+            wanted(
+                &Own::default(),
+                Signs {
+                    orchestrators: 1,
+                    ..Signs::default()
+                },
+                10
+            )
+            .preference,
             "avoid",
             "a host holding an orchestrator is the last systemd-oomd ends"
         );
@@ -453,7 +472,15 @@ mod tests {
             ..Own::default()
         };
         assert_eq!(
-            wanted(&own, Signs { viewed: 1, ..Signs::default() }, 10).preference,
+            wanted(
+                &own,
+                Signs {
+                    viewed: 1,
+                    ..Signs::default()
+                },
+                10
+            )
+            .preference,
             "omit",
             "holding a host never lets oomd end one it was told never to"
         );
@@ -468,7 +495,10 @@ mod tests {
             "attach --host names the host's unit"
         );
         assert_eq!(
-            viewed(&words("mycelium attach --host=work-background --session 1"), "pi-host-"),
+            viewed(
+                &words("mycelium attach --host=work-background --session 1"),
+                "pi-host-"
+            ),
             Some("pi-host-work-background.service".to_owned()),
             "the joined form names it too"
         );
@@ -522,7 +552,11 @@ MemoryLow=
 MemoryLow=10%
 ";
         let own = own(text, 100 * GIB);
-        assert_eq!(own.floor, 10 * GIB, "the last floor said is the one that holds");
+        assert_eq!(
+            own.floor,
+            10 * GIB,
+            "the last floor said is the one that holds"
+        );
         assert!(!own.writeback, "writeback turned off stays off");
         assert_eq!(
             super::own("[Service]\nMemoryLow=\n", GIB).floor,
@@ -537,13 +571,21 @@ MemoryLow=10%
         assert_eq!(size("1G", 0), Some(GIB), "G is gibibytes");
         assert_eq!(size("4096", 0), Some(4096), "no suffix is bytes");
         assert_eq!(size("infinity", 0), Some(u64::MAX), "infinity is no limit");
-        assert_eq!(size("25%", 8 * GIB), Some(2 * GIB), "a percentage is of memory");
+        assert_eq!(
+            size("25%", 8 * GIB),
+            Some(2 * GIB),
+            "a percentage is of memory"
+        );
         assert_eq!(size("lots", 0), None, "words aren't a size");
     }
 
     #[test]
     fn the_host_is_the_one_process_whose_parent_is_outside() {
-        assert_eq!(host_of(&[(10, 1)]), Some(10), "a host alone is its unit's host");
+        assert_eq!(
+            host_of(&[(10, 1)]),
+            Some(10),
+            "a host alone is its unit's host"
+        );
         assert_eq!(
             host_of(&[(10, 1), (11, 10), (12, 11)]),
             Some(10),
@@ -592,12 +634,16 @@ MemoryLow=10%
         };
         assert_eq!(hosts.own("u", 1, start, || read(attended())), attended());
         assert_eq!(
-            hosts.own("u", 1, start + Duration::from_secs(1), || read(Own::default())),
+            hosts.own("u", 1, start + Duration::from_secs(1), || read(
+                Own::default()
+            )),
             attended(),
             "within a minute the same host's settings aren't read again"
         );
         assert_eq!(
-            hosts.own("u", 2, start + Duration::from_secs(2), || read(Own::default())),
+            hosts.own("u", 2, start + Duration::from_secs(2), || read(
+                Own::default()
+            )),
             Own::default(),
             "a host started again reads its unit again"
         );
@@ -618,16 +664,32 @@ MemoryLow=10%
             "a unit this sorter never set is set, as one before it may have held it"
         );
         hosts.done("u", rank.clone());
-        assert!(!hosts.changed("u", &rank), "a rank already set isn't asked for again");
-        let held = wanted(&attended(), Signs { viewed: 1, ..Signs::default() }, 10);
+        assert!(
+            !hosts.changed("u", &rank),
+            "a rank already set isn't asked for again"
+        );
+        let held = wanted(
+            &attended(),
+            Signs {
+                viewed: 1,
+                ..Signs::default()
+            },
+            10,
+        );
         assert!(hosts.changed("u", &held), "a change is asked for");
         hosts.keep_only(&[]);
-        assert!(hosts.changed("u", &rank), "a stopped host's unit is forgotten");
+        assert!(
+            hosts.changed("u", &rank),
+            "a stopped host's unit is forgotten"
+        );
     }
 
     #[test]
     fn the_call_sets_all_four_properties() {
-        let call = rank_call("pi-host-work-attended.service", &wanted(&attended(), Signs::default(), 10));
+        let call = rank_call(
+            "pi-host-work-attended.service",
+            &wanted(&attended(), Signs::default(), 10),
+        );
         let tail: Vec<&str> = call[9..].iter().map(String::as_str).collect();
         assert_eq!(
             tail,
