@@ -97,6 +97,10 @@ Scope {
     // bindings only: a handler of open's change can run before this has
     // followed it, so functions ask open || opening themselves.
     readonly property bool cardUp: open || opening
+    // Whether it has let go of the keys while still drawn, as Return on a
+    // row that acts at once does, so the window has them back in the next
+    // frame and the closing's own work waits until after it (run).
+    property bool lettingGo: false
 
     // Wide enough for a long action and its chord at the large size, or
     // as wide as a narrow screen gives, the margin the card keeps from the
@@ -6235,22 +6239,38 @@ Scope {
             into(choice.opens);
             return;
         }
-        // The clipboard takes text only from a program holding the keys.
-        if (choice.now)
+        // The clipboard takes text only from a program holding the keys,
+        // so one that acts at once acts before the keys go. They go back
+        // to the window in a frame of their own, before the closing's work,
+        // which took a paste's keys 91 ms on Joel's machine (2026-11-10):
+        // the clipboard's history presses the paste keys once niri says
+        // the launcher let go (clipboard/src/main.rs).
+        if (choice.now) {
             choice.run();
+            lettingGo = true;
+            afterFrame(() => closedAfter(choice));
+            return;
+        }
         learn(choice);
         // Said as the foot's other words are, beside the key they follow.
         if (verbOf(choice) === "copy")
             leaveSaying("copied");
         open = false;
-        if (choice.now)
-            return;
         if (below && choice.below)
             choice.below();
         else if (choice.later)
             runOnceGone(choice, true);
         else
             choice.run();
+    }
+
+    // A row that acted at once learned, said and closed for, once the frame
+    // giving the keys back has been drawn.
+    function closedAfter(choice) {
+        learn(choice);
+        if (verbOf(choice) === "copy")
+            leaveSaying("copied");
+        open = false;
     }
 
     function ranReturn(row, act) {
@@ -7534,6 +7554,9 @@ Scope {
             return;
         if (prompt.Window.active) {
             keysHeld = true;
+        } else if (lettingGo) {
+            // Let go on purpose, to be closed once its frame is drawn.
+            return;
         } else if (keysHeld && Niri.focused !== null) {
             console.info("launcher: closed, since a window took the keys");
             if (opening)
@@ -7632,6 +7655,7 @@ Scope {
         opening = false;
         openMark.setText(open ? "open\n" : "closed\n");
         keysHeld = filling && keysHeld;
+        lettingGo = false;
         handing = null;
         // A viewer's line is over once the launcher closes (viewerCommandLine),
         // and gv has nothing to bring back in the rows it opens on; nor is a
@@ -8370,7 +8394,8 @@ Scope {
         // Asked for on demand once niri gives them so (Niri.asksForKeys), so
         // the newest surface Joel opened has the keys and a click on a
         // window takes them, closing the launcher (keysMoved).
-        WlrLayershell.keyboardFocus: root.cardUp ? Niri.asksForKeys : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: root.cardUp && !root.lettingGo ? Niri.asksForKeys
+            : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
 
         Connections {
