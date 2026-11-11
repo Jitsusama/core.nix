@@ -3950,6 +3950,10 @@
     on comes back and warp-cli refusing in its words; and serving it, reads the link at once when
     a listening warp-cli tells a status or reason other than the last, and on nothing else
   '';
+  wezterm-finds-its-font-itself = ''
+    WezTerm draws in the theme's monospaced face from the files its own configuration names, on a
+    machine with no fonts of its own, so a switch swapping the system's fonts can't raise a window
+  '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
     bus, read a journal's cursor or refuse output without one, and pace each wait to how busy the
