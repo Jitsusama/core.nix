@@ -316,27 +316,34 @@ onLinux {
   # from the meaning daemon's stand-in, which loads no model
   # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli
   # answering from the files a test writes, the real warp reading them
-  # (tests/warp-cli-stand-in.sh).
-  the-launcher-answers-whats-typed-on-niri = launcherOnNiri {
-    name = "the-launcher-answers-whats-typed-on-niri";
-    tests = ../../tests/launcher-on-niri-test.py;
-    given = [
-      "MEANING=${
-        pkgs.writers.writePython3 "stand-in-meaning" {
-          doCheck = false;
-        } (builtins.readFile ../../tests/desktop/stand-in-meaning.py)
-      }"
-      "WARP_CONTRACT=${../warp/contract}"
-    ];
-    shell.launcher.providers.warp = {
-      enable = true;
-      warpCli = toString (
-        pkgs.writeShellScript "warp-cli" ''
-          exec ${lib.getExe pkgs.bash} ${../../tests/warp-cli-stand-in.sh} "$@"
-        ''
-      );
+  # (tests/warp-cli-stand-in.sh), and warp holds its link on the socket
+  # the account's systemd would, as WARP.
+  the-launcher-answers-whats-typed-on-niri =
+    let
+      warpCli = pkgs.writeShellScript "warp-cli" ''
+        exec ${lib.getExe pkgs.bash} ${../../tests/warp-cli-stand-in.sh} "$@"
+      '';
+      warp = lib.getExe (pkgs.callPackage ../warp/package.nix { });
+    in
+    launcherOnNiri {
+      name = "the-launcher-answers-whats-typed-on-niri";
+      tests = ../../tests/launcher-on-niri-test.py;
+      given = [
+        "MEANING=${
+          pkgs.writers.writePython3 "stand-in-meaning" {
+            doCheck = false;
+          } (builtins.readFile ../../tests/desktop/stand-in-meaning.py)
+        }"
+        "WARP_CONTRACT=${../warp/contract}"
+        "WARP=${pkgs.writeShellScript "warp-serve" ''
+          WARP_CLI=${warpCli} exec ${warp} serve "$@"
+        ''}"
+      ];
+      shell.launcher.providers.warp = {
+        enable = true;
+        warpCli = toString warpCli;
+      };
     };
-  };
 
   # An agent's row does, on Return, the act its state makes harmless, its
   # sessions the realm's own node's, as a workstation's are

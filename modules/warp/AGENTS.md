@@ -27,15 +27,20 @@ prints the page `src/page.rs` draws, held to golden pages
 ([`src/golden/`][golden]), written afresh with `WARP_GOLDEN=write cargo
 test`.
 
-## No Daemon
+## Serving the Shell
 
-Each run asks warp-cli five questions at once and keeps nothing: WARP's
-service is already the daemon, holding every figure and answering in
-about 20 ms, so a copy kept here would only be older. The shell runs
-`warp --json` while WARP is shown, every two seconds, and never otherwise
-(`../quickshell/launcher/Warp.qml`). `warp-cli --listen status` writes a
-line of JSON on every change of state, which a piece in the margin can
-listen to when one is wanted, rather than anything polling.
+Each read asks warp-cli five questions at once. Run by hand, `warp`
+keeps nothing, since WARP's service holds every figure and answers in
+about 20 ms. The shell spawns nothing to read or switch it (Joel,
+2026-11-10: "CLI execs is not performant"), so `warp serve` holds the
+link as one record, `warp:link`, over `$XDG_RUNTIME_DIR/daemons/warp.sock`
+in the shell's daemon interface ([`src/serve.rs`][serve]). It reads only
+while the link is watched, every two seconds, and at once after a switch
+asked as an `act`, so nothing asks warp-cli while WARP isn't shown. A
+watch is answered with what's held only while it's that fresh, so an old
+link is never shown as now. `warp-cli --listen status` writes a line of
+JSON on every change of state, which the daemon can listen to once its
+shape is in the contract, rather than waiting for the next read.
 
 ## The Switch
 
@@ -48,5 +53,6 @@ words. warp-cli decides the rest, as it does for anyone, so nothing here
 needs root.
 
 [contract]: contract/README.md
+[serve]: src/serve.rs
 [record]: warp.json
 [golden]: src/golden/

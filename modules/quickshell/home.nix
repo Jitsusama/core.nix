@@ -804,6 +804,8 @@ let
   # The program that keeps Joel's timers and rings them, for Timers.
   timers = pkgs.callPackage ./timers/package.nix { };
   keepsTimers = launcher.providers.timers.enable or false;
+  # Where the system installs warp-cli, warp holds WARP's link for Network.
+  keepsWarp = launcher.providers.warp.enable or false;
   # What a timer coming due is heard with: pi's loud, low, dog-safe ding
   # where the machine has pi (modules/pi/chime.nix), played by pw-play,
   # quietly while a-call-is-on says a call is on. A machine without pi
@@ -2434,6 +2436,38 @@ in
         SocketMode = "0600";
       };
       Install.WantedBy = [ "sockets.target" ];
+    };
+    # WARP's link, held by warp (modules/warp/src/serve.rs) for Network's
+    # WARP, so the launcher starts no process to read WARP or to switch it.
+    # systemd holds the socket and starts warp as the shell first connects;
+    # it asks warp-cli, the one the providers' settings name, only while
+    # WARP is shown.
+    systemd.user.sockets.warp = lib.mkIf keepsWarp {
+      Unit.Description = "Where the launcher asks how WARP's link stands";
+      Socket = {
+        ListenStream = "%t/daemons/warp.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+    systemd.user.services.warp = lib.mkIf keepsWarp {
+      Unit = {
+        Description = "Holds WARP's link for the launcher";
+        # Restarted after a switch, it comes back as the new one, holding
+        # nothing until the link is next watched.
+        X-SwitchMethod = "restart";
+        Requires = [ "warp.socket" ];
+        After = [ "warp.socket" ];
+      };
+      Service = {
+        ExecStart = "${launcher.providers.warp.warp} serve %t/daemons/warp.sock";
+        Environment = lib.optional (
+          launcher.providers.warp.warpCli != ""
+        ) "WARP_CLI=${launcher.providers.warp.warpCli}";
+        Restart = "on-failure";
+        RestartSec = 1;
+      };
     };
     # Joel's timers, kept and rung by their daemon whether or not the shell
     # is up (timers/src/main.rs). It runs from the start of the session, not

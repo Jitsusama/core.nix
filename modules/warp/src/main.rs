@@ -7,23 +7,25 @@
 //!   warp connect     bring WARP up, as the launcher's :connect does
 //!   warp disconnect  take it down, as :disconnect does (switch.rs says when
 //!                    each is left as it is), with --json as a record
+//!   warp serve SOCKET  hold the link for the shell, which reads it and
+//!                    switches it over SOCKET (serve.rs)
 //!
 //! `WARP_CLI` names the warp-cli to ask, as the shell names the one the
 //! system runs; without it, it's the one on the PATH.
 //!
-//! It asks warp-cli each time it's run and keeps nothing, rather than
-//! running as a daemon: WARP's service is the daemon, keeping every
-//! figure itself and answering each question in about 20 ms
-//! (2026-11-07, on a laptop), so a copy kept here would only ever be
-//! older. The shell asks it every couple of seconds while WARP is shown,
-//! and nothing otherwise.
+//! Run by hand, it asks warp-cli each time and keeps nothing: WARP's
+//! service keeps every figure itself, answering each question in about
+//! 20 ms (2026-11-07, on a laptop). Serving the shell, it asks only while
+//! the link is watched, every two seconds, so the launcher starts no
+//! process to read WARP or to switch it.
 //!
 //! It exits 0 having read WARP or switched it, 2 on a word it doesn't
 //! know, 3 when there's no warp-cli, so no WARP to read, 4 when WARP's
 //! service isn't answering, 5 when warp-cli said what it can't read, 6
 //! when the organisation holds the switch and 7 when warp-cli wouldn't
 //! switch it, each said in a line, never a trace; with --json, as
-//! { error, said } or the switch's record too.
+//! { error, said } or the switch's record too. Serving, it runs until
+//! stopped, and ends 1 only when it can't listen on its socket.
 
 mod ask;
 #[cfg(test)]
@@ -31,6 +33,7 @@ mod contract;
 mod model;
 mod page;
 mod read;
+mod serve;
 mod switch;
 
 use std::io::Write as _;
@@ -39,7 +42,7 @@ use std::process::ExitCode;
 use ask::{Ask, WarpCli};
 use read::Failure;
 
-const USAGE: &str = "usage: warp [connect | disconnect] [--json]";
+const USAGE: &str = "usage: warp [connect | disconnect] [--json] | warp serve SOCKET";
 
 /// What a run prints, and how it ends.
 #[derive(Debug, PartialEq)]
@@ -160,6 +163,17 @@ fn switched_ran(switched: &switch::Switched, json: bool) -> Ran {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [serving, socket] = args.as_slice()
+        && serving == "serve"
+    {
+        return match serve::serve(std::path::Path::new(socket), WarpCli::from_env()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(why) => {
+                eprintln!("warp: {socket} couldn't be listened on: {why}");
+                ExitCode::from(1)
+            }
+        };
+    }
     let ran = run(&args, &WarpCli::from_env());
     // A closed pipe, as `warp | head` gives, changes nothing about the
     // reading, so it isn't said.
@@ -271,7 +285,7 @@ mod tests {
                 2,
                 "",
                 "warp: reconnect isn't a word warp knows\n\
-                 usage: warp [connect | disconnect] [--json]\n"
+                 usage: warp [connect | disconnect] [--json] | warp serve SOCKET\n"
             )
         );
         let two = run(&args(&["connect", "disconnect"]), &Contract::whole());

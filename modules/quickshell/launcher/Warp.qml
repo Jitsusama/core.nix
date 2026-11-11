@@ -14,20 +14,22 @@
 // whose system installs no warp-cli has no WARP here at all (home.nix
 // enables this only where it does).
 //
-// What it shows comes from `warp --json` (modules/warp), which asks
-// warp-cli and keeps nothing, so it's run as the answer is wanted and
-// again every two seconds while it's shown, never between: warp-cli's
-// answers take about 80 ms together, and nothing is spawned while the
-// launcher is closed or shows something else, but for a terminal's ask
-// (`launcher show`). Whatever warp printed last stands until the next, so
-// the figures move in place rather than flickering back to waiting. What
-// was read while it's shown is kept for the tunnel's sparks, whose
-// drawers say once whose figures they are, and forgotten as the launcher
-// opens or closes. The switch is warp's too, `warp
-// connect` and `warp disconnect`, which leave one the organisation holds
-// as it is and say so.
+// What it shows comes from warp's daemon (modules/warp/src/serve.rs), over
+// the socket it holds, so the launcher starts no process for WARP (Joel,
+// 2026-11-10: "CLI execs is not performant"). Its one record, warp:link,
+// is what `warp --json` prints, read only while it's watched: while it's
+// shown, every two seconds, each read told as it lands; otherwise asked
+// once as the answer is wanted, as a terminal's ask (`launcher show`)
+// wants it. Whatever warp read last stands until the next, so the figures
+// move in place rather than flickering back to waiting. What was read
+// while it's shown is kept for the tunnel's sparks, whose drawers say
+// once whose figures they are, and forgotten as the launcher opens or
+// closes. The switch is the daemon's too, asked as an act, which leaves
+// one the organisation holds as it is and says so. This is a step toward
+// ready rows: Warp.js's working-out moves into the daemon once rows are
+// served in the ready-rows form.
 import qs
-import Quickshell.Io
+import Quickshell
 import QtQuick
 import "Warp.js" as Warp
 import "WarpSeen.js" as WarpSeen
@@ -39,10 +41,14 @@ Provider {
     // The words it answers whole, and by their start (Provider.qml).
     questions: Words.answers("warp")
 
+    // Where the system has WARP; without it there's no WARP here.
     readonly property string warp: settings.warp ?? ""
-    readonly property string warpCli: settings.warpCli ?? ""
-    // How old what warp printed may be and still be what's shown.
+    // How old what warp read may be and still be what's shown.
     readonly property int fresh: 2000
+    // Whether a get or a switch is awaiting the daemon's answer, so a
+    // second isn't asked over it.
+    property bool looking: false
+    property bool switching: false
 
     // What warp printed last, as JSON: the record, or { error, said }; null
     // before it first answers this opening.
@@ -63,7 +69,7 @@ Provider {
     // the next, rather than asked afresh.
     readonly property int keptOutside: 60000
 
-    // Whether anyone can see what it says, so warp is run only then.
+    // Whether anyone can see what it says, so it's watched only then.
     readonly property bool shown: launcher !== null && launcher.open
         && (launcher.answer?.live === provider || launcher.placed.includes("warp")
             || launcher.held.some(step => step.row.asker === provider))
@@ -197,19 +203,23 @@ Provider {
     // it so, and put back with why if warp leaves it. warp itself refuses
     // a switch the organisation holds, asking warp-cli nothing.
     function turn(up) {
-        if (switcher.running)
+        if (switching)
             return;
+        switching = true;
         switchSaid = "";
         becomes("warp:power", switchRow(up), Words.name("warp"), up ? "connect" : "disconnect");
-        switcher.command = [warp, up ? "connect" : "disconnect", "--json"];
-        switcher.running = true;
+        link.ask({ ask: "act", act: up ? "connect" : "disconnect" }, answer => {
+            provider.switching = false;
+            provider.switched(answer?.switched ?? {});
+        });
     }
 
-    // What warp said of a switch (modules/warp/src/switch.rs): done, its
-    // note says when WARP comes back where it will; held or refused, the
-    // row goes back and says why.
-    function switched(text) {
-        const done = WarpSwitch.switched(parsed(text), words);
+    // What warp said of a switch (modules/warp/src/switch.rs), as the
+    // daemon answered with it: done, its note says when WARP comes back
+    // where it will; held or refused, or not answered, the row goes back
+    // and says why.
+    function switched(printed) {
+        const done = WarpSwitch.switched(printed, words);
         if (done.refused !== "") {
             refused("warp:power", done.refused);
             return;
@@ -244,23 +254,35 @@ Provider {
             () => part.parts.map(partRow));
     }
 
+    // Asks for the link once, where it isn't watched; watched, each read
+    // is told as it lands.
     function look() {
-        if (!asker.running)
-            asker.running = true;
+        if (link.live || looking)
+            return;
+        looking = true;
+        link.get(["warp:link"], 0, () => {
+            provider.looking = false;
+        });
     }
 
-    // What warp printed, kept until the next, unless the launcher closed
+    // What warp read, kept until the next, unless the launcher closed
     // meanwhile, so the next opening asks afresh, or it was asked from
     // outside, so the next ask says it; and what the sparks keep of it.
-    function heard(text) {
+    // A read already taken, as a get and a watch begun together both say
+    // it, is taken once, so the sparks gain no point twice.
+    function heard(changed) {
+        const record = link.held["warp:link"];
+        if (!changed.includes("warp:link") || record === undefined
+            || record.read_at_ms === saidAt)
+            return;
         const kept = askedOutside;
         askedOutside = false;
         if (launcher === null || !(launcher.open || launcher.cataloguing || kept))
             return;
-        const printed = parsed(text);
+        const printed = record.said ?? {};
         said = printed.status !== undefined || printed.error !== undefined
             ? printed : { error: "unreadable", said: words.printedNothing ?? "" };
-        saidAt = Date.now();
+        saidAt = record.read_at_ms;
         if (said.status !== undefined)
             seen = WarpSeen.saw(seen, said, saidAt);
         answered();
@@ -273,38 +295,22 @@ Provider {
         // is never shown as though just asked.
         function onOpenChanged() {
             provider.said = null;
+            provider.saidAt = 0;
             provider.seen = null;
             provider.switchSaid = "";
         }
     }
 
-    Timer {
-        interval: provider.fresh
-        repeat: true
-        running: provider.shown
-        onTriggered: provider.look()
-    }
+    // WARP's link, watched only while it's shown. A daemon that isn't
+    // answering says nothing of it, so no old link is held as current.
+    Daemon {
+        id: link
 
-    Process {
-        id: asker
-        command: [provider.warp, "--json"]
-        // The warp-cli the system runs, rather than whatever the shell's
-        // PATH finds first.
-        environment: provider.warpCli === "" ? ({}) : ({ WARP_CLI: provider.warpCli })
-        stdout: StdioCollector {
-            id: printed
-            onStreamFinished: provider.heard(printed.text)
-        }
-    }
-
-    // warp connect or warp disconnect, which say what they did as a
-    // record with --json, done, held or refused.
-    Process {
-        id: switcher
-        environment: provider.warpCli === "" ? ({}) : ({ WARP_CLI: provider.warpCli })
-        stdout: StdioCollector {
-            id: switchPrinted
-            onStreamFinished: provider.switched(switchPrinted.text)
-        }
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/warp.sock`
+        kind: "warp"
+        live: provider.shown
+        keptThroughGap: false
+        answersWhole: true
+        onHeard: changed => provider.heard(changed)
     }
 }
