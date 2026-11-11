@@ -13,11 +13,13 @@
   ...
 }:
 onLinux {
-  # clippy finds nothing in gcloud-broker, its tests included, which run as
-  # it builds against a stand-in for gcloud: a token minted as the account
-  # and printed alone, kept for most of its hour where only the account
-  # reads it, an identity token per audience, a refusal said, and an
-  # account given twice refused.
+  # gcloud-broker's tests run as it builds against a stand-in for gcloud: a
+  # token minted as the account and printed alone, kept for most of its hour
+  # where only the account reads it, an identity token per audience, a
+  # refusal said, and an account given twice refused.
+  gcloud-broker-mints-and-keeps-its-tokens = pkgs.callPackage ./package.nix { };
+
+  # clippy finds nothing in gcloud-broker, its tests included.
   gcloud-broker-passes-clippy = passesClippy "gcloud-broker-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );

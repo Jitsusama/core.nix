@@ -10,6 +10,10 @@
   ...
 }:
 onLinux {
+  # The daemon's tests run as it builds: a level learned for the light the
+  # sensor reads, the keyboard's light, the monitors' and a shut lid.
+  the-screen-learns-its-level-for-the-room = pkgs.callPackage ./package.nix { };
+
   # clippy finds nothing in the backlight daemon, its tests included.
   backlight-passes-clippy = passesClippy "backlight-passes-clippy" (
     pkgs.callPackage ./package.nix { }

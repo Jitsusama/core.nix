@@ -10,10 +10,13 @@
   ...
 }:
 onLinux {
-  # clippy finds nothing in github-broker, its tests included, which run as
-  # it builds against a stand-in for GitHub: a token signed with the App's
-  # key, narrowed to reading code and writing pull requests and issues,
-  # asked for once while it lasts, a refusal said, and an App not made yet.
+  # github-broker's tests run as it builds against a stand-in for GitHub: a
+  # token signed with the App's key, narrowed to reading code and writing
+  # pull requests and issues, asked for once while it lasts, a refusal said,
+  # and an App not made yet.
+  github-broker-mints-a-narrow-token = pkgs.callPackage ./package.nix { };
+
+  # clippy finds nothing in github-broker, its tests included.
   github-broker-passes-clippy = passesClippy "github-broker-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );

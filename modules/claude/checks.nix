@@ -66,4 +66,8 @@ in
   claude-statusline-passes-clippy = passesClippy "claude-statusline-passes-clippy" (
     pkgs.callPackage ./statusline/package.nix { }
   );
+
+  # The status line's tests run as it builds: the context its transcript
+  # holds, rounded as it reads, and colours it can't read named.
+  claude-statusline-says-how-full-the-context-is = pkgs.callPackage ./statusline/package.nix { };
 }

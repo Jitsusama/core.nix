@@ -406,6 +406,10 @@
   claude-statusline-passes-clippy = ''
     clippy finds nothing in Claude Code's status line or its tests
   '';
+  claude-statusline-says-how-full-the-context-is = ''
+    Claude Code's status line says the context its transcript holds, leaves it out before one is
+    written, and names the colours it can't read rather than printing a line
+  '';
   claude-wears-the-theme = ''
     Claude Code's theme has the account's text colour and only hex colours, and the mix its tints
     come from is exact
@@ -423,6 +427,10 @@
   clock-follows-passes-clippy = ''
     clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
     or its tests
+  '';
+  collector-keeps-what-it-is-sent = ''
+    the collector reads a span it was sent back at its moment and in its trace, and keeps what a
+    slice holds in memory and swap, and the pressure on it, as spans and moments
   '';
   collector-passes-clippy = ''
     clippy finds nothing in the collector, which keeps the traces programs send it, or its tests
@@ -688,8 +696,12 @@
   gcloud-broker-asks-as-the-named-account = ''
     gcloud-broker is installed only where a machine names a service account, and asks only as it
   '';
+  gcloud-broker-mints-and-keeps-its-tokens = ''
+    gcloud-broker, against a stand-in for gcloud, prints a token minted as the account alone,
+    keeps it where only the account reads it, mints one per audience, and says a refusal
+  '';
   gcloud-broker-passes-clippy = ''
-    clippy finds nothing in gcloud-broker or its tests, which mint and keep tokens from a stand-in
+    clippy finds nothing in gcloud-broker or its tests
   '';
   gimp-accepts-its-configuration = ''
     GIMP reads its preferences, the theme's palette and colours
@@ -710,8 +722,12 @@
   github-broker-answers-only-its-account = ''
     github-broker listens on a socket only its account may open, and runs in the background
   '';
+  github-broker-mints-a-narrow-token = ''
+    github-broker, against a stand-in for GitHub, signs a narrow token with the App's key, asks
+    once while it lasts, says why GitHub refused, and answers before the App is made
+  '';
   github-broker-passes-clippy = ''
-    clippy finds nothing in github-broker or its tests, which mint a narrow token from a stand-in
+    clippy finds nothing in github-broker or its tests
   '';
   google-answers-on-systemds-socket = ''
     google serves the daemon interface on %t/daemons/google.sock, a socket systemd holds, made only
@@ -832,6 +848,10 @@
   ir-camera-passes-clippy = ''
     clippy finds nothing in ir-camera or its tests
   '';
+  ir-camera-relays-grey-frames = ''
+    ir-camera keeps each sample's highest eight bits, reads and writes lines their stride apart,
+    and refuses a short frame or a format it can't use
+  '';
   jobs-sorter-passes-clippy = ''
     clippy finds nothing in the jobs sorter or its tests
   '';
@@ -948,6 +968,10 @@
   '';
   launcher-passes-clippy = ''
     clippy finds nothing in launcher, the launcher in a terminal, or its tests
+  '';
+  lid-docked-holds-the-lid-only-with-a-screen = ''
+    lid-docked counts a monitor on any connector that isn't disconnected, its screen off or not,
+    and holds the lid only while one is there
   '';
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
@@ -1206,6 +1230,10 @@
   neovim-starts-with-only-what-it-draws = ''
     Neovim opens a file with only what draws its first screen, every key's command standing in,
     loads the rest when used or once drawn, and lua_ls reads only its runtime
+  '';
+  network-revive-looks-once-the-network-settles = ''
+    network-revive looks at the network once a burst of changes goes quiet, or anyway if it never
+    does, and reads each unit's check and whether it reloads, refusing a setting it doesn't know
   '';
   network-revive-passes-clippy = ''
     clippy finds nothing in network-revive or its tests
@@ -1668,6 +1696,11 @@
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
   '';
+  processor-telemetry-reads-each-region = ''
+    processor-telemetry finds each telemetry region by its GUID and no other processor's, names
+    each cluster by its CPUs, reads a counter across its wrap, and says which part kept the package
+    out of its deep idle states longest
+  '';
   programs-holds-whats-installed = ''
     the programs daemon says hello on the socket systemd hands it, says an entry whole from the
     nearest data folder with each file kind's globs and description, says an entry changed again
@@ -2007,6 +2040,10 @@
   '';
   spend-watch-accepts-its-configuration = ''
     spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it
+  '';
+  spend-watch-counts-each-budget-apart = ''
+    spend-watch counts each cap from its period's start against its own budget's spend, names a
+    burning hour's session, and tells a finding once, never a cap that flickers
   '';
   spend-watch-passes-clippy = ''
     clippy finds nothing in spend-watch or its tests
@@ -2867,6 +2904,10 @@
     the Nix daemon's door for sandboxes, run as its socket unit runs it, answers as a daemon and
     takes its caller as untrusted, so a sandbox passed it rather than the daemon's socket can't
     make itself root
+  '';
+  the-screen-learns-its-level-for-the-room = ''
+    the backlight daemon learns a level for the light the sensor reads from the levels picked,
+    sets the keyboard's light and the monitors' beside it, and stops a move when the lid shuts
   '';
   the-screen-keeps-its-level-as-it-changes = ''
     the screen's saved brightness is kept as it changes while the lid is open, through shutdown's
