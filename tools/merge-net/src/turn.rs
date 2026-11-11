@@ -114,12 +114,23 @@ pub fn ahead<'a>(
     })
 }
 
-/// Why `commit`, changing `ours` onto origin's main, waits for another
-/// gate before it merges, or nothing when it needn't. Its start is the
-/// one kept with its own pass; a head with none, passed only at an
-/// earlier commit of the same change, waits on nothing.
-pub fn waits(commit: &str, ours: &[String]) -> Option<String> {
-    let started = started(&crate::ready::record(commit))?;
+/// When the gate a change merges on started: the first of `passes`, the
+/// commits whose runs `ready` passes it on, newest first, whose record
+/// (`record`) kept a start. A head rebased onto main after its gate has no
+/// run of its own, and passes on an earlier commit of the same change, so
+/// that commit's start is the change's: on 10 November the lease read only
+/// the head's, found none on nearly every merge, and held nothing, so
+/// #2981 lost seven passes to changes sharing its files.
+pub fn start_of(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64> {
+    passes.iter().find_map(|commit| started(&record(commit)))
+}
+
+/// Why a change changing `ours` onto origin's main waits for another gate
+/// before it merges, or nothing when it needn't, given `passes`, the
+/// commits whose runs it merges on, newest first. A change whose runs
+/// kept no start, from before starts were, waits on nothing.
+pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
+    let started = start_of(passes, &crate::ready::record)?;
     let gates = gates(&folder()?);
     let here = std::env::current_dir().ok()?;
     let now = crate::state::now();
@@ -271,6 +282,23 @@ mod tests {
             None,
             "a gate sharing only a list held the change back"
         );
+    }
+
+    #[test]
+    fn a_rebased_head_takes_the_start_of_the_pass_it_merges_on() {
+        let kept = |started: u64| format!(r#"{{"run":["x"],"started":{started}}}"#);
+        let record = |commit: &str| match commit {
+            "newer" => kept(300),
+            "older" => kept(100),
+            _ => String::new(),
+        };
+        assert_eq!(
+            start_of(&["head", "older"], &record),
+            Some(100),
+            "a rebased head with no run of its own took no start"
+        );
+        assert_eq!(start_of(&["newer", "older"], &record), Some(300));
+        assert_eq!(start_of(&["head"], &record), None);
     }
 
     #[test]
