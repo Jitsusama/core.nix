@@ -159,6 +159,10 @@ in
     jitsusama.quickshell.launcher.providers.passwords = {
       order = 48;
       source = ./Passwords.qml;
+      # Off, reaching no daemon, until agents are fenced off Joel's runtime
+      # folder and Wayland; the checks that walk it turn it on, where no
+      # agent runs and no secret is real.
+      off = true;
       managers = map (manager: {
         inherit (manager)
           name

@@ -117,6 +117,8 @@ onLinux {
         # Nothing starts it or its socket until agents are fenced (home.nix).
         && !(service ? Install.WantedBy)
         && !(home.systemd.user.sockets.passwords ? Install.WantedBy)
+        # And the place reaches no daemon meanwhile.
+        && (provider.off or false)
         && (service.Service.StateDirectory or null) == "passwords"
         && lib.elem "graphical-session.target" (service.Unit.PartOf or [ ])
         && lib.any (lib.hasInfix "PASSWORDS_COPIER=") (lib.toList (service.Service.Environment or [ ]))
