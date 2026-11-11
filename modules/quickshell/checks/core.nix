@@ -317,18 +317,22 @@
   # key's act is said shown by the first frame begun after its refresh, and
   # an opening weighs the foot's verbs only once its words or face change,
   # and a daemon's changes are said presented by place, and keys with where
-  # their time went, as tests/pacing.qml
-  # holds launcher/Pacing.js, launcher/Presented.js and launcher/Wanted.js
-  # to it in Qt's own engine.
+  # their time went, and a closing makes again only the spots of things
+  # whose stamp moved, as tests/pacing.qml
+  # holds launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js and
+  # launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../../../tests/pacing.qml} pacing.qml
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Pacing.js} Pacing.js
       cp ${../launcher/Presented.js} Presented.js
+      cp ${../launcher/Spots.js} Spots.js
       cp ${../launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

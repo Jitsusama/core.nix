@@ -249,6 +249,29 @@ QtObject {
             Ready.drawerServed({ drawer: "drawer:wifi:gone" }, held), null);
         Expect.same("a drawer of the row's own is its own",
             Ready.drawerServed({ drawer: { title: "Own" } }, held), { title: "Own" });
+
+        // What a row's parts are made of, so a closing makes again only the
+        // spots of a row whose stamp moved (launcher/Spots.js).
+        const stamp = Ready.stampOf(keys, held, "net");
+        Expect.same("a row's stamp holds while nothing it's made of changes",
+            Ready.stampOf(keys, held, "net"), stamp);
+        const banded = Object.assign({}, held, {
+            band: { key: "band", kind: "row", row: { parent: "net", order: 1024, name: "5 GHz" } }
+        });
+        Expect.same("a part inside it changing moves it",
+            Ready.stampOf(keys, banded, "net") === stamp, false);
+        const drawn = Object.assign({}, held, { net: { key: "net", kind: "row",
+            row: { thing: "quest:net", order: 1024, drawer: "drawer:wifi:net" } } });
+        const drawnStamp = Ready.stampOf(keys, drawn, "net");
+        drawn["drawer:wifi:net"] = { key: "drawer:wifi:net", kind: "drawer",
+            drawer: { title: "Lantern 5G" } };
+        Expect.same("so does the drawer it names apart",
+            Ready.stampOf(keys, drawn, "net") === drawnStamp, false);
+        Expect.same("another row changing leaves it",
+            Ready.stampOf(keys, Object.assign({}, held, { off: record("off", 4096) }), "net"),
+            stamp);
+        Expect.same("a key holding no row has none", Ready.stampOf(keys, held, "drawer:wifi:net"),
+            null);
     }
 
     function acting() {

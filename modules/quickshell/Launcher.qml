@@ -70,6 +70,7 @@ import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Showing.js" as Showing
+import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/RowsKept.js" as RowsKept
@@ -844,8 +845,8 @@ Scope {
     // what a thing reads or holds is a spot; what it does, such as
     // Disconnect, is said once for each thing and would be found many
     // times over. Made a few seconds after the shell starts and a moment
-    // after each closing (spotsLater), and by the first search of three
-    // letters or more when none were made yet,
+    // after each closing (spotsLater), and after frames in slices when an
+    // opening or a key finds none made yet (spotsBegin), never by a key,
     // of the collections whose things are devices, few and read whole, so
     // a search never reads them again.
     readonly property var spotCollections: ["sound", "bluetooth", "displays", "wifi",
@@ -866,8 +867,12 @@ Scope {
     // and their figures a minute later (spotsFreshened), if it stayed
     // closed: closings made Displays' 87 rows and Wi-Fi's 17 to 65 again
     // as Joel went back to typing (2026-11-10), each its lights or its
-    // signal read while it showed. What the last making made and kept, for
-    // the closing's report.
+    // signal read while it showed. A collection made again keeps the spots
+    // of each thing whose own stamp holds (Spots.js), where its source says
+    // one (spotsStampOf), so a change to one screen or one network makes
+    // only its parts: Joel's closing at 14:36 on 2026-11-11 made Displays'
+    // 87 rows and Wi-Fi's 17 for a change to one of each. What the last
+    // making made and kept, for the closing's report.
     property var spotsKept: ({})
     property var spotsSaid: ({ made: [], kept: [] })
 
@@ -875,22 +880,40 @@ Scope {
     // answers a place holds and those home is, such as Disk: asked already
     // as their places are made, so finding them asks nothing more. Each
     // place's collections' spots come before its answers'.
-    function spotsFrom(freshening = false) {
+    function spotsFrom(freshening = false, until = Infinity) {
         const kept = {};
         const said = { made: [], kept: [] };
+        let short = false;
         const piece = (where, id, make) => {
             const name = Words.of(id).provider ?? id;
             const source = sources.find(one => one.settings.name === name) ?? null;
             const stamp = source !== null ? root.changesIn[name] ?? 0 : -1;
             const shape = source !== null && (source.spotsStamp ?? "") !== ""
                 ? source.spotsStamp : null;
+            const own = typeof source?.spotsStampOf === "function";
             const before = root.spotsKept[where];
-            // Its make, where it says one, and then, freshening, its
-            // figures; else, closing, any change, and freshening, none.
-            const same = before !== undefined && (shape === null
-                ? freshening || before.stamp === stamp
-                : before.shape === shape && (!freshening || before.stamp === stamp));
-            kept[where] = same ? before : Object.assign({ stamp: stamp, shape: shape }, make());
+            // Closing, its make, where it says one, else any change.
+            // Freshening, its figures, as they were when it was last made
+            // whole: a source that says neither keeps them, since any
+            // change makes it whole as it closes.
+            const same = before !== undefined && (freshening
+                ? (shape === null || before.shape === shape)
+                    && (shape === null && !own || before.figures === stamp)
+                : shape === null ? before.stamp === stamp : before.shape === shape);
+            // Past a slice's time, left for the next slice (spotsNext),
+            // with what it was, if anything.
+            if (!same && KeyTimes.now() >= until) {
+                short = true;
+                if (before !== undefined)
+                    kept[where] = before;
+                return before ?? { answers: false, spots: [] };
+            }
+            // A freshening makes a collection whole, so its figures are
+            // read again; a closing keeps each thing whose stamp holds.
+            const whole = freshening || before === undefined || !own;
+            kept[where] = same ? before : Object.assign({ stamp: stamp, shape: shape,
+                figures: whole ? stamp : before.figures },
+                make(whole ? undefined : before, source));
             (same ? said.kept : said.made).push(where);
             return kept[where];
         };
@@ -898,7 +921,7 @@ Scope {
         for (const shown of categories) {
             const pieces = holdings(shown.category).filter(id => !root.placeNamed(id))
                 .map(id => piece(`${shown.category.id}/${id}`, id,
-                    () => root.heldSpots(shown, id)));
+                    (before, source) => root.heldSpots(shown, id, before, source)));
             for (const each of pieces.filter(one => !one.answers))
                 out = out.concat(each.spots);
             for (const each of pieces.filter(one => one.answers))
@@ -912,21 +935,72 @@ Scope {
             }).spots);
         spotsKept = kept;
         spotsSaid = said;
+        spotsShort = short;
         return out;
     }
 
+    // Whether the last making left pieces for a later slice.
+    property bool spotsShort: false
+    property bool spotsSlicing: false
+    property int spotsSlices: 0
+
+    // The spots, none made yet, made after frames in slices of the wake's
+    // budget, each keeping what those before made, so no key makes them:
+    // the first "bat" of a shell's life spent 82 ms making them, every
+    // later one 0 to 1 (Y2YBTS's lab, 2026-11-11). A key finds the spots
+    // made so far. Only while open, since a closed launcher's frames come
+    // at once (afterFrame), so a refresh's search would make them all as
+    // the shell starts, reading the places a terminal's ask is still
+    // reading cold; closed, spotsLater and the start's timer make them.
+    function spotsBegin() {
+        if (spotsMade || spotsSlicing || !(open || opening))
+            return;
+        spotsSlicing = true;
+        spotsSlices = 0;
+        afterFrame(spotsNext);
+    }
+
+    function spotsNext() {
+        if (spotsMade || !(open || opening)) {
+            spotsSlicing = false;
+            return;
+        }
+        spots = spotsFrom(false, KeyTimes.now() + wakeBudget);
+        spotsSlices += 1;
+        if (spotsShort) {
+            afterFrame(spotsNext);
+            return;
+        }
+        spotsSlicing = false;
+        spotsMade = true;
+        spotsFreshened.restart();
+        Report.say(`spots made after frames in ${spotsSlices} slices`);
+    }
+
     // The spots of one thing a place holds: a device collection's, each
-    // thing's parts, or an answer's parts.
-    function heldSpots(shown, id) {
+    // thing's parts, or an answer's parts. A collection's things are kept
+    // from `before`, the last making, while their source's spotsStampOf
+    // says the same of each and of where it's said to be.
+    function heldSpots(shown, id, before, source) {
         const row = resolved(id);
-        const spots = [];
-        if (row && row.from && spotCollections.includes(row.opens))
-            for (const thing of row.verbs())
-                for (const part of (thing.verbs ? thing.verbs() ?? [] : []).concat(partsIn(thing)))
-                    if (isSpot(part))
-                        spots.push(spotOf(part, [shown, row, thing]));
+        let spots = [];
+        let things = null;
+        if (row && row.from && spotCollections.includes(row.opens)) {
+            const all = row.verbs();
+            const stampOf = typeof source?.spotsStampOf === "function" ? thing => {
+                const stamp = source.spotsStampOf(thing);
+                return stamp === null || stamp === undefined ? null
+                    : JSON.stringify([shown.name, row.name, thing.name, stamp]);
+            } : null;
+            things = Spots.eachKept(before?.things, all, stampOf, thing =>
+                (thing.verbs ? thing.verbs() ?? [] : []).concat(partsIn(thing))
+                    .filter(part => isSpot(part)).map(part => spotOf(part, [shown, row, thing])))
+                .kept;
+            spots = Spots.spotsOf(all, things);
+        }
         const answers = !!row && row.answered === true;
-        return { answers: answers, spots: answers ? answerSpots(row, [shown, row]) : spots };
+        return { answers: answers, spots: answers ? answerSpots(row, [shown, row]) : spots,
+            things: answers ? null : things };
     }
 
     // What's asked whole at the top, by any thing's words: a part named
@@ -983,13 +1057,9 @@ Scope {
     // more, but for one a row found already says: a thing found at the top
     // is its own row.
     function spotted(letters) {
+        spotsBegin();
         if (Fuzzy.plainly(letters).length < spotsFewest)
             return [];
-        if (!spotsMade) {
-            spots = spotsFrom();
-            spotsMade = true;
-            Report.say("spots made on a key");
-        }
         const found = [];
         for (const spot of spots) {
             // By its name, or else by a name it had.
@@ -7975,6 +8045,8 @@ Scope {
         markOpen(open);
         if (!open)
             Report.say("closing");
+        else
+            spotsBegin();
         keysHeld = filling && keysHeld;
         lettingGo = false;
         handing = null;
@@ -9088,7 +9160,9 @@ Scope {
         interval: 5000
         running: true
         onTriggered: {
-            if (!root.spotsMade)
+            if (!root.spotsMade && root.open)
+                root.spotsBegin();
+            else if (!root.spotsMade)
                 root.spotsMadeClosed();
             root.textsMadeClosed();
         }

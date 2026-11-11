@@ -351,6 +351,31 @@ Provider {
         .concat(adapterRow === null ? [] : [adapterRow])
     onAllChanged: changed()
 
+    // What a device's spots are made of, so a closing makes again only the
+    // parts of a device that changed (Launcher.qml's heldSpots): how it
+    // stands, which of its link's readings there are, its codec and what
+    // desk-facts says of it, never a level, since a battery or a signal
+    // moving shows only in its figures. Joel's closing at 14:36 on
+    // 2026-11-11 made Bluetooth's 20 rows again. Null for any other thing,
+    // Nearby's and the adapter's, which are made again. A daemon serving
+    // Bluetooth's rows ready, as wifid serves Wi-Fi's, would end it.
+    function spotsStampOf(thing) {
+        const device = thing?.device ?? null;
+        if (device === null || thing.key !== `bluetooth:${device.address}`)
+            return null;
+        const link = device.connected ? Links.of(links(false), device.address) : null;
+        const node = device.connected ? soundNode(device) : null;
+        const readings = [Links.signal(link), Links.quality(link), Links.channels(link),
+            Links.held(link)].map(one => one !== null);
+        const carried = node === null ? null
+            : Links.carried(node.properties, node.audio?.channels?.length ?? 0);
+        return JSON.stringify([device.address, device.name, device.icon ?? "",
+            device.connected, device.paired, device.trusted, device.wakeAllowed,
+            device.batteryAvailable, readings,
+            node === null ? "" : node.properties["api.bluez5.codec"] ?? "", carried,
+            (facts[device.address] ?? []).map(fact => `${fact.name}:${fact.value}`)]);
+    }
+
     // What desk-facts knows of each connected input device, by its address;
     // a device it says nothing of, or no file at all, has no facts.
     property var facts: ({})
