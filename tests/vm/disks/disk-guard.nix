@@ -108,6 +108,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       pkgs.cargo
       pkgs.jq
       pkgs.rustc
+      # Dates the store's paths back, as the guard never collects the last hour's.
+      pkgs.sqlite
       pkgs.stdenv.cc
     ];
 
