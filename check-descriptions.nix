@@ -2533,6 +2533,11 @@
     and Play the Copied Link is offered only while the clipboard's one web address is one mpv
     plays, a video site's page or a media file
   '';
+  the-launcher-puts-back-a-look-it-couldnt-write = ''
+    a look cleared in For You shows cleared in the act's own frame, and when its file can't be
+    written is put back as it read, its failure said in the journal, the shut launcher keeping
+    the looks it read
+  '';
   the-launcher-reads-on-where-the-reader-left = ''
     the reader's Recent merges each file the reader kept a place in by when it was left, newest
     first, with the files the shared list gives, each once and none open now, read once the reader
