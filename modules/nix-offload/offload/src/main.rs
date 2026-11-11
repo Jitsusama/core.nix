@@ -147,11 +147,13 @@
 
 mod changed;
 mod cloud;
+mod command;
 mod decide;
 mod finishing;
 mod freeing;
 mod held;
 mod journal;
+mod kept;
 mod lines;
 mod machines;
 mod passed;
@@ -250,7 +252,9 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     [--bulk] [--first] \
                     (FLAKE ATTR... | DRV...) \
                     | nix-offload there [--never-ask] [--first] --changed \
-                    [CHANGED-CHECKS ARGUMENT...]";
+                    [CHANGED-CHECKS ARGUMENT...] \
+                    | nix-offload there [--never-ask] --run [--copy PATH]... \
+                    [--longest SECONDS] -- COMMAND...";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -570,6 +574,11 @@ fn there(arguments: &[String]) -> ExitCode {
         && first == "--changed"
     {
         return changed_there(rest, waiting);
+    }
+    if let [first, rest @ ..] = arguments
+        && first == "--run"
+    {
+        return run_there(rest, waiting);
     }
     let Some(asked) = there::asked(arguments) else {
         eprintln!("nix-offload: there takes a flake and its attributes, or derivations\n{USED}");
@@ -1168,6 +1177,70 @@ fn standing(dir: &Path) -> Option<String> {
     fs::read_to_string(dir.join("store"))
         .ok()
         .filter(|store| !store.trim().is_empty())
+}
+
+/// `there --run`: a command run on a lent builder, in a checkout of the
+/// commit here, ending with its status (`command.rs` says why). With no
+/// builder standing it waits for one as `waiting` says, and with none it
+/// exits `NOT_TAKEN`, having run nothing, here or anywhere.
+fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
+    let asked = match command::asked(arguments) {
+        Ok(asked) => asked,
+        Err(why) => {
+            eprintln!("nix-offload: {why}\n{USED}");
+            return ExitCode::from(64);
+        }
+    };
+    let not_run = |why: &str| {
+        eprintln!("nix-offload: {why}, so nothing ran");
+        ExitCode::from(changed::NOT_TAKEN)
+    };
+    let scratch = env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(env::temp_dir, PathBuf::from)
+        .join("nix-offload-there");
+    let Ok(folder) = env::current_dir() else {
+        return not_run("this folder can't be read");
+    };
+    let source = match there::source(&folder, &scratch, None) {
+        Ok(source) => source,
+        Err(why) => return not_run(&why),
+    };
+    let (checkout, bundle) = changed::checked_out(source);
+    let sending = there::Sending {
+        command: command::command(&checkout, &asked),
+        bundle,
+    };
+    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    let more = more_dir();
+    let lenders = [dir.as_path(), more.as_path()];
+    let on = |store: &str| command::on(store, &sending, &asked, &scratch, ["ssh", "nix"]);
+    let mut status = changed::in_turn(lenders, std::process::id())
+        .iter()
+        .filter_map(|lender| standing(lender))
+        .find_map(|store| on(&store));
+    if status.is_none()
+        && let Some(lender) = lenders.into_iter().find(|lender| there::lends(lender))
+    {
+        eprintln!(
+            "nix-offload: no lent builder answered, so this waits for one to stand, for up \
+             to {} minutes",
+            waiting.longest.as_secs().div_ceil(60)
+        );
+        there::want(lender);
+        let since = std::time::Instant::now();
+        while status.is_none()
+            && let Some(store) = there::stood_again(lender, waiting, since)
+        {
+            status = on(&store);
+        }
+    }
+    if let Some(bundle) = &sending.bundle {
+        let _ = fs::remove_file(bundle);
+    }
+    match status {
+        Some(status) => ExitCode::from(u8::try_from(status).unwrap_or(1)),
+        None => not_run("no lent builder took it"),
+    }
 }
 
 /// `there --changed`: changed-checks run for the tree here on the lent

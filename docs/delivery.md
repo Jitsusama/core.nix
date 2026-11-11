@@ -84,6 +84,16 @@ filled them was runs that told nobody anything new.
 - Evaluation leaves the machine. `changed-checks` sends its whole run
   unless asked `--here`; a bare `nix flake check` held 24.5 GB beside
   Joel's work on 2026-10-25.
+- A gate is a command of its own. The harness's queue lets a run straight
+  to the builder only when every heavy step in its command sends its work
+  away, so a `git push` in the same command kept one 18 minutes at place 6
+  on 2026-11-10. `nix-offload there --changed` in the tree is the same gate
+  and waits behind nothing here; that afternoon a `changed-checks` run
+  waited a median 3 minutes for memory it never used.
+- A test suite that isn't a Nix check runs on a builder too: `nix-offload
+  there --run [--copy PATH]... -- COMMAND` runs it in a checkout of the
+  tree's commit, with the store paths it needs sent first. On 2026-11-10
+  suites run here held Joel's machine at a load of 99 to 229.
 - Commit before gating. An uncommitted tree's `changed-checks` runs on the
   machine Joel uses, since a builder can only fetch a commit: on
   2026-11-06 one compiled a whole machine's closure there.

@@ -1439,7 +1439,8 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
         let path = bin.join(name);
         executable(&path, script);
     }
-    fs::write(bin.join("status"), "0").unwrap();
+    // The builder's evaluation read an input this machine alone holds.
+    fs::write(bin.join("status"), "65").unwrap();
     let copy = folder.path().join("copy");
     fs::create_dir(&copy).unwrap();
     fs::write(copy.join("flake.nix"), "{ }").unwrap();
@@ -1456,7 +1457,8 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
     fs::write(offload.join("store"), STORE).unwrap();
     let out = folder.path().join("out");
     let flake = format!("path:{}", copy.display());
-    // Its inputs can't go anywhere, so it builds here only when asked to.
+    // Its inputs can't go anywhere, so it builds here once the builder
+    // reads one, only when asked to.
     let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
         .args(["there", "-L", "--here", "--out"])
         .arg(&out)
@@ -1473,21 +1475,48 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    assert!(!bin.join("ssh-was-given").exists(), "not sent");
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    assert!(given.contains("-e '/home/s'"), "{given}");
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
-        said.contains("takes mint, secrets from this machine alone"),
+        said.contains("read mint, secrets, which this machine alone holds"),
         "{said}"
     );
     assert!(said.contains("the build said this"), "{said}");
     assert_eq!(fs::read_to_string(out.join("guide")).unwrap(), "a guide");
+
+    // With nothing kept, a 65 is the build's own, and nothing is made here.
+    fs::remove_file(copy.join("flake.lock")).unwrap();
+    fs::remove_file(bin.join("nix-was-given")).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", "--here", flake.as_str(), "packages.x.guide"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(65), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(!said.contains("alone holds"), "{said}");
+    assert!(
+        !fs::read_to_string(bin.join("nix-was-given"))
+            .unwrap_or_default()
+            .contains("build"),
+        "it was built here"
+    );
 }
 
 /// No builder standing changes what a flake takes from this machine, so
 /// its refusal mustn't send a caller back to wait for one, as 75 does: it
 /// sent a run of 93 checks round three times on 3 November.
 #[test]
-fn a_folder_with_inputs_only_here_says_how_to_send_it_and_not_to_wait() {
+fn a_folder_whose_evaluation_reads_inputs_only_here_says_how_to_send_it_and_not_to_wait() {
     let folder = tempfile::tempdir().unwrap();
     let bin = folder.path().join("bin");
     fs::create_dir(&bin).unwrap();
@@ -1505,7 +1534,7 @@ fn a_folder_with_inputs_only_here_says_how_to_send_it_and_not_to_wait() {
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
-    fs::write(bin.join("status"), "0").unwrap();
+    fs::write(bin.join("status"), "65").unwrap();
     let flake = format!("path:{}", copy.display());
     let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
         .args(["there", "-L", flake.as_str(), "packages.x.guide"])
@@ -1522,9 +1551,9 @@ fn a_folder_with_inputs_only_here_says_how_to_send_it_and_not_to_wait() {
         .unwrap();
     let said = String::from_utf8_lossy(&ran.stderr);
     assert_eq!(ran.status.code(), Some(64), "{said}");
-    assert!(!bin.join("ssh-was-given").exists(), "not sent");
+    assert!(bin.join("ssh-was-given").exists(), "sent first");
     assert!(
-        said.contains("takes mint from this machine alone"),
+        said.contains("read mint, which this machine alone holds"),
         "{said}"
     );
     assert!(!said.contains("once a builder stands"), "{said}");
@@ -1532,6 +1561,66 @@ fn a_folder_with_inputs_only_here_says_how_to_send_it_and_not_to_wait() {
         said.contains("evaluate it here and give its derivations, or give --here"),
         "{said}"
     );
+}
+
+/// The home zone's lock names mint as a store path and the machine's
+/// secrets as a repository here, and its machine reads only mint: on 10
+/// November each change paid 25 minutes evaluating it here.
+#[test]
+fn a_folder_taking_a_store_path_sends_it_first_and_never_its_secrets() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    let copy = folder.path().join("copy");
+    fs::create_dir(&copy).unwrap();
+    fs::write(copy.join("flake.nix"), "{ }").unwrap();
+    fs::write(
+        copy.join("flake.lock"),
+        r#"{"nodes": {
+            "mint": {"locked": {"type": "path", "path": "/nix/store/x-mint"},
+                     "original": {"type": "path", "path": "/nix/store/x-mint"}},
+            "secrets": {"locked": {"type": "git", "url": "file:///home/me/.secrets"},
+                        "original": {"type": "git", "url": "file:///home/me/.secrets"}},
+            "copied": {"locked": {"type": "path", "path": "/nix/store/y-secrets"},
+                       "original": {"type": "git", "url": "file:///home/me/.secrets"}}}}"#,
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let flake = format!("path:{}", copy.display());
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", flake.as_str(), "packages.x.guide"])
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(0), "{said}");
+    let copied = fs::read_to_string(bin.join("nix-was-given")).unwrap();
+    assert!(
+        copied.contains("copy --to ssh-ng://nix-offload"),
+        "{copied}"
+    );
+    assert!(copied.contains("/nix/store/x-mint"), "{copied}");
+    assert!(
+        !copied.contains("y-secrets"),
+        "secrets' store copy went: {copied}"
+    );
+    assert!(!copied.contains(".secrets"), "the secrets went: {copied}");
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    assert!(given.contains("nix-offload-kept"), "{given}");
 }
 
 #[test]
@@ -2297,7 +2386,7 @@ fn it_says_what_it_takes_a_word_a_line() {
         String::from_utf8_lossy(&said.stdout),
         concat!(
             "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
-            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\nfirst\n"
+            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\nfirst\nrun\n"
         )
     );
 }
@@ -4307,4 +4396,99 @@ fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
     assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
     assert_eq!(tests_on(&built, "nix-offload-vm-more"), 3, "{built:?}");
     assert!(said.contains("another VM builder has room now"), "{said}");
+}
+
+#[test]
+fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 3);
+    let config = folder.path().join("gitconfig");
+    fs::write(
+        &config,
+        "[user]\nname = Tester\nemail = tester@example.com\n",
+    )
+    .unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir(&tree).unwrap();
+    let git = |arguments: &[&str]| git(&tree, &config, arguments);
+    git(&["init", "-q", "-b", "main"]);
+    git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+    fs::write(tree.join("package.json"), "{ }").unwrap();
+    git(&["add", "package.json"]);
+    git(&["commit", "-q", "-m", "pushed"]);
+    let head = git(&["rev-parse", "HEAD"]);
+    git(&["update-ref", "refs/remotes/origin/main", &head]);
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args([
+                "there",
+                "--never-ask",
+                "--run",
+                "--copy",
+                "/nix/store/a-runtime",
+            ])
+            .args(["--longest", "60", "--", "pnpm", "test", "--reporter", "dot"])
+            .current_dir(&tree)
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .envs(no_vm_builders(folder.path()))
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path())
+            .env("GIT_CONFIG_GLOBAL", &config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap()
+    };
+
+    // Lent, it runs there on the commit, its paths sent first, and its
+    // status is the run's. Its ssh names the builder while it runs, which
+    // is what the lender counts a builder in use by.
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(3), "{ran:?}");
+    let sent = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    assert_eq!(sent.lines().next(), Some("nix-offload"), "{sent}");
+    let command = within_far(sent.lines().nth(1).unwrap());
+    for part in [
+        format!("checkout -q -B nix-offload-changed {head}"),
+        "sleep 60".to_owned(),
+        "WORK_RUNS_ELSEWHERE=1 pnpm test --reporter dot;".to_owned(),
+    ] {
+        assert!(command.contains(&part), "{part} in {command}");
+    }
+    let calls = fs::read_to_string(bin.join("nix-calls")).unwrap();
+    assert!(
+        calls.contains("copy --to ssh-ng://nix-offload") && calls.contains("/nix/store/a-runtime"),
+        "{calls}"
+    );
+
+    // Paths that can't go keep it from running anywhere.
+    fs::remove_file(bin.join("ssh-was-given")).unwrap();
+    fs::write(bin.join("nix-status"), "1").unwrap();
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(
+        !bin.join("ssh-was-given").exists(),
+        "it ran without its paths"
+    );
+    fs::remove_file(bin.join("nix-status")).unwrap();
+
+    // With no builder lent, nothing runs, here or anywhere.
+    fs::remove_file(offload.join("store")).unwrap();
+    let ran = run();
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(!bin.join("ssh-was-given").exists(), "it ran somewhere");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("so nothing ran"),
+        "{ran:?}"
+    );
 }
