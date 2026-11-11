@@ -55,6 +55,7 @@ pub fn revive(
     let windows = windows();
     let node = node_holders(revive::realm_of(&reviving.restart));
     let mut said = Vec::new();
+    let mut told = Vec::new();
     for s in revive::watched(
         &seen,
         &reviving.orchestrators,
@@ -100,7 +101,7 @@ pub fn revive(
                 if closed > 0 {
                     line = format!("{line} It closed {closed} window(s) left showing it dead.");
                 }
-                tell(reviving, s, &line, send)?;
+                told.extend(tell(reviving, s, &line));
                 line
             }
             Gate::TooSoon(_) => continue,
@@ -120,27 +121,31 @@ pub fn revive(
         said.push(line);
     }
     fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
+    for (to, text) in revive::gathered(&told) {
+        let text = if reviving.watcher.as_ref() == Some(&to) {
+            format!("Revived: {text}")
+        } else {
+            text
+        };
+        send(&to, "fyi", text)?;
+    }
     Ok(said)
 }
 
-fn tell(
-    reviving: &Reviving,
-    s: &Seen,
-    line: &str,
-    send: &dyn Fn(&str, &str, String) -> io::Result<()>,
-) -> io::Result<()> {
-    send(&reviving.steward, "fyi", line.to_owned())?;
-    if let Some(by) = &s.orchestrated_by
-        && by != &reviving.steward
+/// Whom `line`, of `s` started again, is for: the steward, the session's
+/// own orchestrator, and the watcher, each once, and never the session.
+fn tell(reviving: &Reviving, s: &Seen, line: &str) -> Vec<(String, String)> {
+    let watcher = reviving.watcher.as_ref().filter(|&w| w != &s.address);
+    let mut told: Vec<(String, String)> = Vec::new();
+    for to in [Some(&reviving.steward), s.orchestrated_by.as_ref(), watcher]
+        .into_iter()
+        .flatten()
     {
-        send(by, "fyi", line.to_owned())?;
+        if !told.iter().any(|(peer, _)| peer == to) {
+            told.push((to.clone(), line.to_owned()));
+        }
     }
-    if let Some(watcher) = &reviving.watcher
-        && watcher != &s.address
-    {
-        send(watcher, "fyi", format!("Revived: {line}"))?;
-    }
-    Ok(())
+    told
 }
 
 /// Starts the session in a terminal of its own, held as the restart
