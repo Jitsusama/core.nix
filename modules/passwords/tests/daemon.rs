@@ -130,10 +130,14 @@ fn a_copy_is_marked_sensitive_and_cleared_when_its_time_is_up() {
     let copied = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
     assert_eq!(copied["copied"], true, "{copied}");
     holds_no_secret(&copied);
-    until("the password is copied", || {
+    // The copier writes what it's given, then its flags, so both are
+    // waited for: reading the flags once the copy is there races it.
+    let flagged = running.copied().with_extension("flags");
+    until("the password is copied with its flags", || {
         std::fs::read_to_string(running.copied()).is_ok_and(|copied| copied == "hunter2")
+            && std::fs::read_to_string(&flagged).is_ok_and(|flags| flags.ends_with('\n'))
     });
-    let flags = std::fs::read_to_string(running.copied().with_extension("flags")).unwrap();
+    let flags = std::fs::read_to_string(&flagged).unwrap();
     assert!(
         flags.contains("--sensitive") && flags.contains("--foreground"),
         "{flags}"
