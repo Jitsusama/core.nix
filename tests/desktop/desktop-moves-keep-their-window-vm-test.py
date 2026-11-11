@@ -7,10 +7,10 @@ same holder on the same terminal. A viewer whose host releases the session ends 
 then, and what runs in the window carries on as plain pi, as the rollback asks. Joel was told
 the windows stay where they are (OSPHT4, 11 November), so the window keeps its id, workspace,
 column and size, takes no focus, never changes on his screen, and loses none of his keys; the
-node gives the session that window, so
-the launcher opens no second viewer and Go To goes to it. The programs are tests/pi-stand-in.sh,
-whose in-place modes stand in for pi, the join and the viewer; how the real pi goes quiet and
-the real join decides are proven in the harness's own tests.
+node gives the session that window, so the launcher opens no second viewer and Go To goes to
+it. The programs are tests/pi-stand-in.sh, whose in-place modes stand in for pi, the join and
+the viewer; how the real pi goes quiet and the real join decides are proven in the harness's
+own tests.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
