@@ -1212,6 +1212,19 @@
   network-revive-passes-clippy = ''
     clippy finds nothing in network-revive or its tests
   '';
+  night-shift-passes-clippy = ''
+    clippy finds nothing in night-shift or its tests
+  '';
+  night-shift-runs-only-at-night = ''
+    a declared night job is tried only at night and never caught up on by day, runs behind the
+    account's work with the limits it names, stops by the apps', the desktop's and agents' slices,
+    escapes its command for systemd, and an account declaring none gets no unit
+  '';
+  night-shift-stops-for-joel = ''
+    night-shift runs a job once a night on a quiet machine, starts nothing on a busy one or beside
+    another, stops one for a watched slice's stall or the machine's past its backstop and kills what
+    ignores TERM, lets a job stalling only itself run on, and fails with a failing job
+  '';
   niri-accepts-its-configuration = ''
     niri loads the files an account gets
   '';

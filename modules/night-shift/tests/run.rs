@@ -107,9 +107,17 @@ fn a_quiet_machine_runs_the_job_once_a_night() {
     let job = "echo ran >> ran";
     let first = machine.run("", job);
     let second = machine.run("", job);
-    assert!(first.status.success() && second.status.success());
+    assert!(
+        first.status.success() && second.status.success(),
+        "{}{}",
+        said(&first),
+        said(&second)
+    );
     assert_eq!(fs::read_to_string(machine.path("ran")).unwrap(), "ran\n");
-    assert!(machine.state("test-job.done").exists());
+    assert!(
+        machine.state("test-job.done").exists(),
+        "a success left no done mark"
+    );
     assert!(said(&second).contains("already done"), "{}", said(&second));
 }
 
@@ -118,7 +126,7 @@ fn a_done_job_runs_again_once_it_has_rested() {
     let machine = Machine::new();
     machine.run("", "echo ran >> ran");
     let again = machine.run("--rests 0", "echo ran >> ran");
-    assert!(again.status.success());
+    assert!(again.status.success(), "{}", said(&again));
     assert_eq!(
         fs::read_to_string(machine.path("ran")).unwrap(),
         "ran\nran\n"
@@ -130,9 +138,12 @@ fn a_busy_machine_starts_nothing() {
     let machine = Machine::new();
     machine.set("proc/pressure/memory", 0.0, 3.5);
     let output = machine.run("--start-under 3", "echo ran > ran");
-    assert!(output.status.success());
-    assert!(!machine.path("ran").exists());
-    assert!(!machine.state("test-job.done").exists());
+    assert!(output.status.success(), "{}", said(&output));
+    assert!(!machine.path("ran").exists(), "the job ran");
+    assert!(
+        !machine.state("test-job.done").exists(),
+        "a refused start left a done mark"
+    );
     assert!(
         said(&output).contains("not started: memory full avg60 is 3.50%"),
         "{}",
@@ -147,8 +158,8 @@ fn only_one_night_job_runs_at_a_time() {
     let held = File::create(machine.path("runtime/night-shift/lock")).unwrap();
     held.try_lock().unwrap();
     let output = machine.run("", "echo ran > ran");
-    assert!(output.status.success());
-    assert!(!machine.path("ran").exists());
+    assert!(output.status.success(), "{}", said(&output));
+    assert!(!machine.path("ran").exists(), "the job ran beside another");
     assert!(
         said(&output).contains("another night job is running"),
         "{}",
@@ -174,7 +185,10 @@ fn a_stall_in_a_watched_slice_stops_the_job_and_kills_what_ignores_term() {
         "{said}"
     );
     assert!(said.contains("killing what is left"), "{said}");
-    assert!(!machine.state("test-job.done").exists());
+    assert!(
+        !machine.state("test-job.done").exists(),
+        "a stopped job left a done mark"
+    );
     let samples = fs::read_to_string(machine.state("test-job.samples")).unwrap();
     assert!(
         samples.contains("app.slice 1.50 agents.slice 0.00 own 0.00"),
@@ -197,7 +211,10 @@ fn the_machine_stalling_past_its_backstop_stops_the_job() {
         "{said}"
     );
     assert!(said.contains("stopped; a later try goes on"), "{said}");
-    assert!(!machine.state("test-job.done").exists());
+    assert!(
+        !machine.state("test-job.done").exists(),
+        "a stopped job left a done mark"
+    );
 }
 
 #[test]
@@ -217,7 +234,7 @@ fn a_job_stalling_only_itself_runs_on() {
 fn a_slice_with_nothing_to_read_is_said() {
     let machine = Machine::new();
     let output = machine.run("--stop session.slice=1", "true");
-    assert!(output.status.success());
+    assert!(output.status.success(), "{}", said(&output));
     assert!(
         said(&output).contains("session.slice has no pressure to read"),
         "{}",
@@ -230,7 +247,10 @@ fn a_failing_job_fails_the_run_with_its_status() {
     let machine = Machine::new();
     let output = machine.run("", "exit 3");
     assert_eq!(output.status.code(), Some(3));
-    assert!(!machine.state("test-job.done").exists());
+    assert!(
+        !machine.state("test-job.done").exists(),
+        "a failed job left a done mark"
+    );
     assert!(
         said(&output).contains("the job failed"),
         "{}",
@@ -249,7 +269,7 @@ fn a_command_that_isnt_there_fails_the_run() {
         .env("XDG_RUNTIME_DIR", machine.path("runtime"))
         .output()
         .unwrap();
-    assert!(!output.status.success());
+    assert!(!output.status.success(), "a missing program counted as run");
     assert!(
         said(&output).contains("can't start no-such-program-anywhere"),
         "{}",

@@ -389,7 +389,11 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(job.name, "repack");
-        assert!((job.start_under - 2.0).abs() < f64::EPSILON);
+        assert!(
+            (job.start_under - 2.0).abs() < f64::EPSILON,
+            "it starts under {}, not 2",
+            job.start_under
+        );
         assert_eq!(
             job.stops,
             vec![
@@ -397,21 +401,40 @@ mod tests {
                 ("agents.slice".to_owned(), 10.0)
             ]
         );
-        assert!((job.stop_machine - 30.0).abs() < f64::EPSILON);
+        assert!(
+            (job.stop_machine - 30.0).abs() < f64::EPSILON,
+            "it stops past {}, not 30",
+            job.stop_machine
+        );
         assert_eq!(job.rests, Duration::from_hours(6));
         assert_eq!(job.command, args("git maintenance run"));
     }
 
     #[test]
     fn a_job_with_no_command_is_refused() {
-        assert!(parse(&args("run repack --")).is_err());
-        assert!(parse(&args("run repack")).is_err());
+        assert!(
+            parse(&args("run repack --")).is_err(),
+            "an empty command was taken"
+        );
+        assert!(
+            parse(&args("run repack")).is_err(),
+            "a missing command was taken"
+        );
     }
 
     #[test]
     fn a_bar_that_isnt_a_number_is_refused() {
-        assert!(parse(&args("run repack --stop app.slice=lots -- true")).is_err());
-        assert!(parse(&args("run repack --start-under -1 -- true")).is_err());
-        assert!(parse(&args("run repack --stop app.slice -- true")).is_err());
+        assert!(
+            parse(&args("run repack --stop app.slice=lots -- true")).is_err(),
+            "a bar of words was taken"
+        );
+        assert!(
+            parse(&args("run repack --start-under -1 -- true")).is_err(),
+            "a negative bar was taken"
+        );
+        assert!(
+            parse(&args("run repack --stop app.slice -- true")).is_err(),
+            "a slice with no bar was taken"
+        );
     }
 }
