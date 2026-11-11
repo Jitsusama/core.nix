@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stands in for gcloud in tests/offload-lines.nix: describes any instance
+# Stands in for gcloud in offload-lines.nix, beside this: describes any instance
 # as its maker makes it, running the startup script the machine pins with
 # root's own key for its hook, from a disk of an image the machine allows,
 # in a project setting only what each builder overrides, with an audit log

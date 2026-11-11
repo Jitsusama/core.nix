@@ -1,6 +1,6 @@
 """Root's Nix is given only the lender's lines that name a builder nix-offload's lines trust.
 
-tests/offload-lines.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+offload-lines.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what stands in for the cloud. The lender here is the test, writing
 as the lender's account what the lender would: its lines, the instance it lent and a token.
 """

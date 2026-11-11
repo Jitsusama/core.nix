@@ -2,8 +2,9 @@
 
 Where a machine keeps its secrets and keys, on machines booted in QEMU:
 the keyring that holds what programs store, the passkeys and security keys
-the TPM makes through linux-id, and the keys commits are signed with. Each
-test's opening comment says what stands in for a browser, a prompt or Joel.
+the TPM makes through linux-id, the keys commits are signed with, and a
+YubiKey's touch answering polkit. Each test's opening comment says what
+stands in for a browser, a prompt, a key or Joel.
 
 | File                               | Holds                                                              |
 | ---------------------------------- | ------------------------------------------------------------------ |
@@ -13,3 +14,4 @@ test's opening comment says what stands in for a browser, a prompt or Joel.
 | `passkey.py`                       | that test's browser, through Yubico's FIDO library                 |
 | `signing.nix`, `-vm-test.py`       | Joel's and the agents' signing keys in the TPM, each commit signed |
 | `signing-askpass.sh`               | that test's askpass, giving the PIN and each confirmation          |
+| `yubikey-touch.nix`, `-vm-test.py` | a YubiKey's touch answering polkit only once Joel is at the seat   |

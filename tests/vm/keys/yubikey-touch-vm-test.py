@@ -1,6 +1,6 @@
 """A YubiKey's touch answering polkit only once the person is in, with canokey as the key.
 
-tests/yubikey-touch.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+yubikey-touch.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. Each test says what the shell's lock last
 wrote before it asks, so any runs alone. run0 is asked by typing into the desktop's terminal or
 the text console, and from an ssh login through ssh's own terminal.
