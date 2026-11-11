@@ -3,6 +3,7 @@
 # says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -32,26 +33,15 @@
     in
     pkgs.runCommandLocal "sound-hears-only-what-can-be-heard" { } ''
       mkdir -p launcher runtime && chmod 700 runtime
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Sounds.js} launcher/Sounds.js
-      cp ${../launcher/Targets.js} launcher/Targets.js
-      cp ${../launcher/Plate.js} launcher/Plate.js
-      cp ${../launcher/Sound.qml} launcher/Sound.qml
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../When.js} When.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/Sound.qml"
+        "launcher/words.json"
+      ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
       cp ${music} Music.qml
       cp ${../../../tests/sound.qml} shell.qml
@@ -76,7 +66,7 @@
     in
     pkgs.runCommandLocal "the-music-follows-the-player" { } ''
       cp ${../../../tests/music.qml} music.qml
-      cp ${../Music.js} Music.js
+      ${copied [ "Music.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -95,9 +85,10 @@
     pkgs.runCommandLocal "a-player-says-all-it-knows" { } ''
       mkdir launcher
       cp ${../../../tests/media.qml} media.qml
-      cp ${../Music.js} Music.js
-      cp ${../Pictures.js} Pictures.js
-      cp ${../launcher/Media.js} launcher/Media.js
+      ${copied [
+        "Pictures.js"
+        "launcher/Media.js"
+      ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

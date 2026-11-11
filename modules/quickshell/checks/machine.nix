@@ -3,6 +3,7 @@
 # place's; its opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   machine,
@@ -61,20 +62,15 @@
       mkdir -p runtime/daemons shell/launcher shell/pieces && chmod 700 runtime
       mkdir -p root/run/user/1000/disk-guard root/run/disk-guard
       cd shell
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Watchers.qml} Watchers.qml
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
-      cp ${../Files.qml} Files.qml
-      cp ${../pieces/Piece.qml} pieces/Piece.qml
-      cp ${../pieces/Disk.qml} pieces/Disk.qml
-      cp ${../pieces/Drawers.js} pieces/Drawers.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
+      ${copied [
+        "Daemon.qml"
+        "Files.qml"
+        "Watchers.qml"
+        "Words.qml"
+        "launcher/words.json"
+        "pieces/Disk.qml"
+        "pieces/Piece.qml"
+      ]}
       cp ${../../../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
@@ -112,17 +108,14 @@
       ''
         mkdir -p launcher runtime/daemons root/run/user/1000 && chmod 700 runtime
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../Daemon.qml} Daemon.qml
-        cp ${../Hearing.js} Hearing.js
-        cp ${../Watchers.qml} Watchers.qml
-        cp ${../Fuzzy.js} Fuzzy.js
-        cp ${../launcher/Provider.qml} launcher/Provider.qml
-        cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-        cp ${../launcher/Asking.js} launcher/Asking.js
-        cp ${../launcher/Numbers.js} launcher/Numbers.js
-        cp ${../launcher/Waits.qml} launcher/Waits.qml
-        cp ${../Words.qml} Words.qml
-        cp ${../launcher/words.json} launcher/words.json
+        ${copied [
+          "Daemon.qml"
+          "Watchers.qml"
+          "Words.qml"
+          "launcher/Provider.qml"
+          "launcher/Waits.qml"
+          "launcher/words.json"
+        ]}
         cp ${../../../tests/waits.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export MACHINE_ROOT=$PWD/root FONTCONFIG_FILE=${noFonts}
@@ -145,26 +138,15 @@
     pkgs.runCommandLocal "the-machine-answers-from-its-daemon" { }
       ''
         mkdir -p launcher runtime/daemons && chmod -R 700 runtime
-        cp ${../Daemon.qml} Daemon.qml
-        cp ${../Hearing.js} Hearing.js
-        cp ${../Fuzzy.js} Fuzzy.js
-        cp ${../launcher/Provider.qml} launcher/Provider.qml
-        cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-        cp ${../launcher/Asking.js} launcher/Asking.js
-        cp ${../launcher/Numbers.js} launcher/Numbers.js
-        cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-        cp ${../launcher/Machine.qml} launcher/Machine.qml
-        cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-        cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-        cp ${../launcher/Ago.js} launcher/Ago.js
-        cp ${../When.js} When.js
-        cp ${../launcher/Order.js} launcher/Order.js
-        cp ${../launcher/HomeNetwork.js} launcher/HomeNetwork.js
-        cp ${../launcher/Holders.js} launcher/Holders.js
-        cp ${../launcher/SessionRow.js} launcher/SessionRow.js
+        ${copied [
+          "Daemon.qml"
+          "Words.qml"
+          "launcher/Machine.qml"
+          "launcher/Provider.qml"
+          "launcher/ReadyRows.qml"
+          "launcher/words.json"
+        ]}
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../Words.qml} Words.qml
-        cp ${../launcher/words.json} launcher/words.json
         cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
         cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
         cp ${singleton "Facts.qml" "property var all: []"} Facts.qml

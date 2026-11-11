@@ -3,6 +3,7 @@
 # says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   launcherOnNiri,
   noFonts,
@@ -123,17 +124,15 @@
     pkgs.runCommandLocal "the-launcher-finds-the-desk-light" { } ''
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../DeskLight.qml} DeskLight.qml
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Light.qml} launcher/Light.qml
-      cp ${../launcher/Power.js} launcher/Power.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "DeskLight.qml"
+        "Words.qml"
+        "launcher/Light.qml"
+        "launcher/Order.js"
+        "launcher/Power.js"
+        "launcher/Provider.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../../tests/desk-light.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -159,30 +158,16 @@
     pkgs.runCommandLocal "the-launcher-remakes-only-the-screens-that-changed" { } ''
       mkdir -p launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Backlight.js} launcher/Backlight.js
-      cp ${../launcher/Catalogue.js} launcher/Catalogue.js
-      cp ${../launcher/Displays.qml} launcher/Displays.qml
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../launcher/Plate.js} launcher/Plate.js
-      cp ${../launcher/Power.js} launcher/Power.js
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../When.js} When.js
-      cp ${../launcher/ScreenAnswers.js} launcher/ScreenAnswers.js
-      cp ${../launcher/Screens.js} launcher/Screens.js
-      cp ${../launcher/Seen.js} launcher/Seen.js
-      cp ${../launcher/Warmth.js} launcher/Warmth.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Catalogue.js"
+        "launcher/Displays.qml"
+        "launcher/Plate.js"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../../tests/displays.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml

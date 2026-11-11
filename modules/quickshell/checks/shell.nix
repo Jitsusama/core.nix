@@ -3,6 +3,7 @@
 # every other place's; its opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   holds,
   lib,
@@ -135,8 +136,7 @@
         {"name": "tuple",
         "command": ["${lib.getExe pkgs.bash}", "${../tests/stand-ins/daemon-roster.sh}"]}]}
       EOF
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
+      ${copied [ "Daemon.qml" ]}
       cp ${../../../tests/daemon.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json

@@ -16,6 +16,12 @@ singletons, the shell as the account gets it, and the harnesses that run it
 offscreen or on niri. Each file takes what it needs of these by name, beside
 the folder's own arguments.
 
+A check copies the shell's own files with `copied` from `helpers.nix`,
+naming only the ones it uses. `imports.nix` says what each file imports of
+the shell's, and `copied` brings those with it, so a file gaining an import
+changes its row there and no check. A file whose imports differ from its row
+fails every check that copies it, naming the file, so the table can't drift.
+
 The folder's `checks.nix` lists every file here by name, never by reading
 the folder, so a new place adds its file to that list and nothing else
 changes there. A check name two files give stops the evaluation.

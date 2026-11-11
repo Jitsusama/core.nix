@@ -3,6 +3,7 @@
 # own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -51,25 +52,15 @@
     pkgs.runCommandLocal "the-launcher-finds-the-quests" { } ''
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Quests.qml} launcher/Quests.qml
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../launcher/RealmMachines.js} launcher/RealmMachines.js
-      cp ${../launcher/Machine.js} launcher/Machine.js
-      cp ${../When.js} When.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Provider.qml"
+        "launcher/Quests.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../../tests/quests.qml} shell.qml
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

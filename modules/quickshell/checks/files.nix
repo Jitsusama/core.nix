@@ -3,6 +3,7 @@
 # opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   noFonts,
   pkgs,
@@ -25,8 +26,7 @@
     in
     pkgs.runCommandLocal "a-file-says-its-size-and-when-it-changed" { } ''
       cp ${../../../tests/file-facts.qml} file-facts.qml
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
+      ${copied [ "FileFacts.js" ]}
       cp ${../launcher/words.json} words.json
       export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -71,18 +71,14 @@
       mkdir -p launcher kinds
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
+      ${copied [
+        "Files.qml"
+        "Words.qml"
+        "launcher/Provider.qml"
+        "launcher/Recents.js"
+        "launcher/words.json"
+      ]}
       cp ${../../open-with/FileChooser.qml} launcher/FileChooser.qml
-      cp ${../launcher/Recents.js} launcher/Recents.js
-      cp ${../Words.qml} Words.qml
-      cp ${../Files.qml} Files.qml
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
-      cp ${../launcher/words.json} launcher/words.json
       cp ${../../../tests/file-chooser.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR

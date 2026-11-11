@@ -3,6 +3,7 @@
 # opening comment says why each place keeps its own.
 {
   account,
+  copied,
   everyShellFile,
   graphical,
   holds,
@@ -207,17 +208,15 @@
     in
     pkgs.runCommandLocal "the-launchers-graphs-draw-in-braille" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Choice.qml} Choice.qml
-      cp ${../Ground.qml} Ground.qml
-      cp ${../ReadsOn.qml} ReadsOn.qml
-      cp ${../Wash.qml} Wash.qml
-      cp ${../Reading.js} Reading.js
-      cp ${../Measures.js} Measures.js
-      cp ${../MarkSize.js} MarkSize.js
-      cp ${../Mark.qml} Mark.qml
-      cp ${../Columns.js} Columns.js
-      cp ${../Graph.qml} Graph.qml
-      cp ${../Chord.qml} Chord.qml
+      ${copied [
+        "Choice.qml"
+        "Chord.qml"
+        "Graph.qml"
+        "Ground.qml"
+        "Mark.qml"
+        "ReadsOn.qml"
+        "Wash.qml"
+      ]}
       cp ${../../../tests/graphs.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
@@ -235,7 +234,7 @@
     pkgs.runCommandLocal "the-drawer-over-the-card-meets-it-square" { }
       ''
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../Floating.qml} Floating.qml
+        ${copied [ "Floating.qml" ]}
         cp ${../../../tests/floating.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
@@ -261,33 +260,22 @@
     in
     pkgs.runCommandLocal "the-launchers-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Choice.qml} Choice.qml
-      cp ${../Ground.qml} Ground.qml
-      cp ${../Gutter.qml} Gutter.qml
-      cp ${../ReadsOn.qml} ReadsOn.qml
-      cp ${../Wash.qml} Wash.qml
-      cp ${../Reading.js} Reading.js
-      cp ${../Measures.js} Measures.js
-      cp ${../MarkSize.js} MarkSize.js
-      cp ${../Mark.qml} Mark.qml
-      cp ${../Columns.js} Columns.js
-      cp ${../Graph.qml} Graph.qml
-      cp ${../Chord.qml} Chord.qml
-      cp ${../Prompt.qml} Prompt.qml
-      cp ${../Bands.js} Bands.js
-      cp ${../Confirm.js} Confirm.js
-      cp ${../KeyNames.js} KeyNames.js
-      cp ${../QueryKeys.js} QueryKeys.js
-      cp ${../Operators.js} Operators.js
-      cp ${../Finding.js} Finding.js
-      cp ${../Typing.js} Typing.js
-      cp ${../LineEditing.js} LineEditing.js
-      cp ${../Editing.js} Editing.js
-      cp ${../KeyHints.qml} KeyHints.qml
-      cp ${../PromptFoot.qml} PromptFoot.qml
-      cp ${../PromptHead.qml} PromptHead.qml
-      cp ${../Hairline.qml} Hairline.qml
-      cp ${../StatusLine.qml} StatusLine.qml
+      ${copied [
+        "Choice.qml"
+        "Chord.qml"
+        "Graph.qml"
+        "Ground.qml"
+        "Gutter.qml"
+        "Hairline.qml"
+        "KeyHints.qml"
+        "Mark.qml"
+        "Prompt.qml"
+        "PromptFoot.qml"
+        "PromptHead.qml"
+        "ReadsOn.qml"
+        "StatusLine.qml"
+        "Wash.qml"
+      ]}
       cp ${lights} Lights.qml
       cp ${../../../tests/rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

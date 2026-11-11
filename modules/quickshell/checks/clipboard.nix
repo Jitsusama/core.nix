@@ -2,6 +2,7 @@
 # folder's checks.nix gathers with every other place's; its opening comment says
 # why each place keeps its own.
 {
+  copied,
   launcherOnNiri,
   lib,
   noFonts,
@@ -34,7 +35,7 @@
     in
     pkgs.runCommandLocal "the-clipboard-says-once-it-is-silent" { } ''
       cp ${../../../tests/pasting.qml} pasting.qml
-      cp ${../Pasting.js} Pasting.js
+      ${copied [ "Pasting.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

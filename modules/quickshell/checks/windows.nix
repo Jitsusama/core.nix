@@ -3,6 +3,7 @@
 # opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   noFonts,
   pkgs,
@@ -72,31 +73,18 @@
     pkgs.runCommandLocal "the-launcher-remakes-only-the-windows-that-changed" { } ''
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/KeyLayers.js} launcher/KeyLayers.js
-      cp ${../launcher/Windows.qml} launcher/Windows.qml
-      cp ${../launcher/HeldWindows.js} launcher/HeldWindows.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../../../tests/lib/Expect.js} Expect.js
-      cp ${../launcher/Capture.qml} launcher/Capture.qml
       # Capture's Recent reads its rows ready, through ReadyRows.
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Previewer.qml} launcher/Previewer.qml
-      cp ${../launcher/Captured.js} launcher/Captured.js
-      cp ${../launcher/Recent.js} launcher/Recent.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Capture.qml"
+        "launcher/Previewer.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/Windows.qml"
+        "launcher/words.json"
+      ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/windows.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
@@ -127,10 +115,10 @@
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
     pkgs.runCommandLocal "niri-moving-the-keys-makes-no-list-again" { } ''
-      cp ${../Niri.qml} Niri.qml
-      cp ${../NiriRecords.js} NiriRecords.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
+      ${copied [
+        "Daemon.qml"
+        "Niri.qml"
+      ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/niri-focus.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -152,7 +140,7 @@
     pkgs.runCommandLocal "the-launcher-places-each-window-it-hears" { } ''
       mkdir launcher
       cp ${../../../tests/held-windows.qml} held-windows.qml
-      cp ${../launcher/HeldWindows.js} launcher/HeldWindows.js
+      ${copied [ "launcher/HeldWindows.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -171,7 +159,7 @@
     in
     pkgs.runCommandLocal "niri-is-held-as-the-windows-daemon-tells-it" { } ''
       cp ${../../../tests/niri-records.qml} niri-records.qml
-      cp ${../NiriRecords.js} NiriRecords.js
+      ${copied [ "NiriRecords.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

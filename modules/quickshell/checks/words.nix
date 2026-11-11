@@ -3,6 +3,7 @@
 # other place's; its opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -150,34 +151,21 @@
           property var lag: ({ trouble: [], niri: { p50_ms: 4, p99_ms: 21 }, band: "calm",
             ended: 0 })
         ''} Watchers.qml
-        cp ${../Fuzzy.js} Fuzzy.js
-        cp ${../launcher/Provider.qml} launcher/Provider.qml
-        cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-        cp ${../launcher/Asking.js} launcher/Asking.js
-        cp ${../launcher/Numbers.js} launcher/Numbers.js
-        cp ${../launcher/Zones.js} launcher/Zones.js
-        cp ${../launcher/Ago.js} launcher/Ago.js
-        cp ${../launcher/Addresses.js} launcher/Addresses.js
-        cp ${../launcher/Calculator.qml} launcher/Calculator.qml
-        cp ${../launcher/Clocks.qml} launcher/Clocks.qml
-        cp ${../launcher/Keeping.js} launcher/Keeping.js
-        cp ${../launcher/Today.qml} launcher/Today.qml
-        cp ${../launcher/Moment.js} launcher/Moment.js
-        cp ${../launcher/Waits.qml} launcher/Waits.qml
-        cp ${../launcher/Vendors.qml} launcher/Vendors.qml
-        cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-        cp ${../launcher/Networkd.js} launcher/Networkd.js
-        cp ${../launcher/Subnets.js} launcher/Subnets.js
-        cp ${../launcher/Networks.qml} launcher/Networks.qml
-        cp ${../launcher/Order.js} launcher/Order.js
-        cp ${../launcher/Characters.js} launcher/Characters.js
-        cp ${../launcher/Characters.qml} launcher/Characters.qml
-        cp ${../Daemon.qml} Daemon.qml
-        cp ${../Hearing.js} Hearing.js
+        ${copied [
+          "Daemon.qml"
+          "Words.qml"
+          "launcher/Calculator.qml"
+          "launcher/Characters.qml"
+          "launcher/Clocks.qml"
+          "launcher/Networks.qml"
+          "launcher/Provider.qml"
+          "launcher/Today.qml"
+          "launcher/Vendors.qml"
+          "launcher/Waits.qml"
+          "launcher/words.json"
+        ]}
         cp ${import ../launcher/names.nix { inherit lib pkgs; }} names.txt
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../Words.qml} Words.qml
-        cp ${../launcher/words.json} launcher/words.json
         cp ${import ../launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
         cp ${singleton "Location.qml" ''
           property var here: null

@@ -2,6 +2,7 @@
 # take as Vim's, which the folder's checks.nix gathers with every other place's;
 # its opening comment says why each place keeps its own.
 {
+  copied,
   noFonts,
   pkgs,
   shellFolderLint,
@@ -16,7 +17,7 @@
     in
     pkgs.runCommandLocal "the-picker-picks-what-the-keys-say" { } ''
       cp ${../../../tests/picking.qml} picking.qml
-      cp ${../Picking.js} Picking.js
+      ${copied [ "Picking.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -33,7 +34,7 @@
     in
     pkgs.runCommandLocal "ex-reads-vims-command-lines" { } ''
       cp ${../../../tests/ex.qml} ex.qml
-      cp ${../Ex.js} Ex.js
+      ${copied [ "Ex.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -53,11 +54,10 @@
     in
     pkgs.runCommandLocal "the-command-line-lists-every-command" { } ''
       cp ${../../../tests/command-line.qml} command-line.qml
-      cp ${../Commands.js} Commands.js
-      cp ${../SetWords.js} SetWords.js
-      cp ${../Ex.js} Ex.js
-      cp ${../CommandBinding.js} CommandBinding.js
-      cp ${../Operators.js} Operators.js
+      ${copied [
+        "CommandBinding.js"
+        "SetWords.js"
+      ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -80,21 +80,15 @@
     in
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
       cp ${../../../tests/query-keys.qml} query-keys.qml
-      cp ${../KeyNames.js} KeyNames.js
-      cp ${../QueryKeys.js} QueryKeys.js
-      cp ${../ModeMarks.js} ModeMarks.js
-      cp ${../Editing.js} Editing.js
-      cp ${../ListedKeys.js} ListedKeys.js
-      cp ${../Typing.js} Typing.js
-      cp ${../Operators.js} Operators.js
-      cp ${../Finding.js} Finding.js
-      cp ${../Confirm.js} Confirm.js
-      cp ${../DrawerPage.js} DrawerPage.js
-      cp ${../DrawerFigure.js} DrawerFigure.js
-      cp ${../Identifier.js} Identifier.js
-      cp ${../Search.js} Search.js
-      cp ${../Reading.js} Reading.js
-      cp ${../LineEditing.js} LineEditing.js
+      ${copied [
+        "Confirm.js"
+        "DrawerFigure.js"
+        "DrawerPage.js"
+        "Editing.js"
+        "KeyNames.js"
+        "ListedKeys.js"
+        "ModeMarks.js"
+      ]}
       cp ${../launcher/words.json} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
