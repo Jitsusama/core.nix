@@ -1,22 +1,19 @@
-// How the launcher says where a pi session stands and lays a list of them
-// out, run in Qt's own JavaScript engine, the one the shell runs it in.
-// The `the-launcher-lays-sessions-under-their-orchestrators` check copies
-// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js,
-// SessionMade.js and Holders.js beside this file and runs
+// How the launcher says where a pi session stands, run in Qt's own
+// JavaScript engine, the one the shell runs it in. The
+// `the-launcher-says-how-each-session-stands` check copies
+// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js
+// and Landed.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. Each list of sessions keeps
 // one order of how they stand (needs you, working, in line, listening,
-// paused, parked), and Agents sits each session under the one orchestrating it, a
-// step in, an orchestration standing where its most urgent row would
-// (QEST-20261026-15J7N3's agents-tree-look.md). A row says how it stands
-// and what it spent at its right, and its drawer the rest.
+// paused, parked). How Agents lays them out, each under the one
+// orchestrating it, is the agents daemon's (modules/agents/src/tree.rs),
+// as is what a row says at its right; its drawer is still said here.
 import QtQuick
 import "SessionDrawer.js" as SessionDrawer
 import "Holders.js" as Holders
-import "SessionMade.js" as SessionMade
 import "SessionRow.js" as SessionRow
 import "Landed.js" as Landed
 import "Reading.js" as Reading
-import "PiSource.js" as Pi
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -27,25 +24,6 @@ QtObject {
             console.warn(`the test threw: ${error}`);
             Qt.exit(1);
         }
-    }
-
-    // Sessions said as "address:state>orchestrator", in the order Sessions
-    // keeps them: "B:working>A" is B, working, orchestrated by A.
-    function sessions(said) {
-        return said.split(" ").filter(one => one !== "").map(one => {
-            const [own, under] = one.split(">");
-            const [address, state] = own.split(":");
-            return { address: address, state: state, under: under ?? "" };
-        });
-    }
-
-    // The laid-out list as it reads: each address, a dot for each step in.
-    // A fold reads as how many of each state it holds, then its members.
-    function read(list, laid) {
-        return laid.map(one => `${".".repeat(one.depth)}${one.fold
-            ? `(${one.counts.map(c => `${c.count} ${c.state}`).join(", ")}: ${read(list,
-                one.members)})`
-            : list[one.at].address}`).join(" ");
     }
 
     function run() {
@@ -82,71 +60,6 @@ QtObject {
             .sort((a, b) => SessionRow.rank(a) - SessionRow.rank(b)).join(" ");
         if (order !== "needs working inLine listening paused parked off")
             failures.push(`the one order of states: "${order}"`);
-
-        // [what, the sessions in Sessions' order, how they're laid out]
-        const trees = [
-            ["sessions alone keep the order of how they stand",
-                "A:listening B:needs C:working D:paused E:inLine",
-                "B C E A D"],
-            ["and within a state the order they came in", "A:working B:working", "A B"],
-            ["a session follows its orchestrator, a step in",
-                "A:working B:working C:working>A", "A .C B"],
-            ["its orchestrator's orchestrator two steps in",
-                "P:listening O:working>P B:working>O", "P .O ..B"],
-            ["and never deeper than two", "P:working O:working>P B:working>O C:working>B",
-                "P .O ..B ..C"],
-            ["rows under one orchestrator keep the order of how they stand",
-                "O:working A:listening>O B:needs>O C:working>O", "O .B .C .A"],
-            ["one parked sits under its orchestrator, last",
-                "O:parked A:parked>O B:listening>O X:paused", "O .B .A X"],
-            ["an orchestration stands where its most urgent row would",
-                "X:working O:listening A:needs>O", "O .A X"],
-            ["and so does one under it, with its own",
-                "O:working P:listening>O Q:working>O B:needs>P", "O .P ..B .Q"],
-            ["one whose orchestrator isn't listed stands at the top, not in",
-                "A:working B:working>GONE", "A B"],
-            ["one naming itself is its own", "A:working>A", "A"],
-            ["orchestrators naming each other are cut where they meet",
-                "A:working>B B:working>A", "A .B"]
-        ];
-        for (const [what, said, want] of trees) {
-            const list = sessions(said);
-            const got = read(list, SessionRow.tree(list));
-            if (got !== want)
-                failures.push(`${what}: "${got}", not "${want}"`);
-        }
-
-        // Folded, an orchestration's members that only wait fold into one
-        // entry after its own rows, saying each state it holds in the one
-        // order; a lone one stays a row, and sessions under none never fold.
-        const folds = [
-            ["the waiting fold after those that move",
-                "O:working A:listening>O B:working>O C:paused>O D:parked>O",
-                "O .B .(1 listening, 1 paused, 1 parked: A C D)"],
-            ["one waiting alone stays a row", "O:working A:listening>O B:working>O",
-                "O .B .A"],
-            ["one under it that moves keeps its orchestrator out of the fold",
-                "O:listening P:listening>O Q:listening>O R:listening>O B:working>P",
-                "O .P ..B .(2 listening: Q R)"],
-            ["one that waits with its own that wait folds whole",
-                "O:working P:listening>O Q:paused>O B:listening>P",
-                "O .(2 listening, 1 paused: P .B Q)"],
-            ["those under none never fold", "A:listening B:listening C:paused", "A B C"]
-        ];
-        for (const [what, said, want] of folds) {
-            const list = sessions(said);
-            const got = read(list, SessionRow.tree(list, true));
-            if (got !== want)
-                failures.push(`folded, ${what}: "${got}", not "${want}"`);
-        }
-
-        // Whom each row is under, and whether it orchestrates one listed.
-        const list = sessions("O:working A:working>O B:working>GONE");
-        const laid = SessionRow.tree(list);
-        const said = laid.map(one => `${list[one.at].address}<${one.under}${one.orchestrates
-            ? "*" : ""}`).join(" ");
-        if (said !== "O<* A<O B<")
-            failures.push(`whom each is under: "${said}"`);
 
         // A session's acts follow how it stands: one at work or in line can
         // be stopped, one paused resumed, one parked only woken or talked
@@ -395,56 +308,6 @@ QtObject {
         if (bare.eyebrow !== "8IDU4E")
             failures.push(`a bare drawer's eyebrow: "${bare.eyebrow}"`);
 
-        // Return does the act its state makes harmless, always one of its
-        // acts: Go To one at work, Talk to one listening, Resume one paused
-        // and Wake one parked; with no window to go to, Talk.
-        const returns = [
-            ["working", true, "switch"],
-            ["inLine", true, "switch"],
-            ["needs", true, "switch"],
-            ["working", false, "talk"],
-            ["listening", true, "talk"],
-            ["paused", true, "resume"],
-            ["paused", false, "resume"],
-            ["parked", false, "wake"]
-        ];
-        for (const [state, windowed, want] of returns) {
-            const got = SessionRow.returns(state, windowed);
-            if (got !== want || !SessionRow.acts(state, windowed, true).includes(got))
-                failures.push(`Return on one ${state}${windowed ? "" : " unwindowed"}: `
-                    + `"${got}", not "${want}"`);
-        }
-
-        // Together they say those needing Joel, those working, then the
-        // day's dollars; with neither, how the rest stand in the fold's
-        // order, the parked aside.
-        const words = {
-            workingCount: "{count} working",
-            inLineCount: "{count} in line",
-            needsCount: "1 needs you",
-            needCount: "{count} need you",
-            listening: "listening",
-            paused: "paused",
-            today: "{spent} today"
-        };
-        const summaries = [
-            ["working working listening needs working", "$214",
-                "1 needs you \u00b7 3 working \u00b7 $214 today"],
-            ["needs needs paused", "", "2 need you"],
-            ["paused listening parked listening listening", "$3.10",
-                "3 listening, 1 paused \u00b7 $3.10 today"],
-            ["listening inLine", "", "1 in line, 1 listening"],
-            ["parked", "", ""],
-            ["", "$0.40", "$0.40 today"],
-            ["", "", ""]
-        ];
-        for (const [states, spent, want] of summaries) {
-            const got = SessionRow.summary(states.split(" ").filter(one => one !== ""), spent,
-                words);
-            if (got !== want)
-                failures.push(`together, ${states || "none"}: "${got}", not "${want}"`);
-        }
-
         // What landed reads newest first, changes and what says what to
         // try, never a plan item ticked alone, and only a web link opens.
         // What says what to try waits in For You until Joel reads it, and
@@ -668,41 +531,8 @@ QtObject {
         if (Holders.talkSide("Reef", "").length !== 1)
             failures.push("a talk row with no state says an empty item");
 
-        madeFrom(failures);
-
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
-    }
-
-    // Agents keeps a session's row while what it's made from reads the same,
-    // and its acts go where the row was made to: so anything Go To reads,
-    // a kitty window, a held id or attach words, makes it anew, or Switch
-    // would go to the old window (Y2YBTS's review of #2521). Told alike as
-    // Agents tells them, with PiSource.js's alike.
-    function madeFrom(failures) {
-        const session = {
-            address: "A1", title: "Reef", folder: "~/src", machine: "here", here: true,
-            reachable: true, window: null, kitty: { socket: "unix:/k1", window: 3 },
-            held: null, attach: null, presence: { busy: true }
-        };
-        const around = ["working", "$2"];
-        const from = SessionMade.madeFrom(session, around);
-        const changed = {
-            "the same session": [{}, around],
-            "another kitty window": [{ kitty: { socket: "unix:/k1", window: 4 } }, around],
-            "another kitty": [{ kitty: { socket: "unix:/k2", window: 3 } }, around],
-            "a held id": [{ held: "pi-7" }, around],
-            "attach words": [{ attach: ["ssh", "far"] }, around],
-            "a niri window": [{ window: { id: 12 } }, around],
-            "another presence": [{ presence: { busy: false } }, around],
-            "how it stands": [{}, ["listening", "$2"]]
-        };
-        for (const [what, [fields, beside]] of Object.entries(changed)) {
-            const same = Pi.alike(SessionMade.madeFrom(Object.assign({}, session, fields), beside),
-                from);
-            if (same !== (what === "the same session"))
-                failures.push(`a session's row with ${what} is ${same ? "kept" : "made anew"}`);
-        }
     }
 }

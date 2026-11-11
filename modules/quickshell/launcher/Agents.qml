@@ -48,7 +48,6 @@ import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Recent.js" as Recent
 import "SessionDrawer.js" as SessionDrawer
-import "SessionMade.js" as SessionMade
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 
@@ -61,16 +60,15 @@ Provider {
     // helpers and spend are its parts there.
     collection: Words.collection("agents")
 
-    // In the one order of how they stand, each in the order Sessions keeps
-    // within it (this machine's, the one used last first, then the others,
-    // the one that changed last first), each under its orchestrator.
-    // Made only while they're wanted (Provider.qml's wanted), since every
-    // session's row reads the machine queue and the session's presence,
-    // which change every few seconds; Home's count reads Sessions itself.
-    // A row is kept while all it's made from reads the same (made), so a
-    // change remakes only the sessions it changed. Laying them out writes
-    // into `keeping`, a plain object that's never reassigned, so writing
-    // it notifies nothing and can't loop (Provider.qml's keeper).
+    // Every session's row, in its place in the tree, as the agents daemon
+    // makes them ready (modules/agents): how each stands, its words, its
+    // depth under its orchestrator and its place in the one order every
+    // list of sessions keeps are all the daemon's, so nothing here sorts,
+    // words or lays out a session (Joel, 2026-11-10: "the daemons need to
+    // be the data layer, and they need to serve the launcher"). Its rows
+    // are held by key as the daemon tells each change (rowsKind), each
+    // wrapped with its acts and drawer only as it changes, and laid out
+    // only while they're wanted (Provider.qml's wanted).
     readonly property var all: opened() && provider.wanted ? laidOut() : []
 
     function opened() {
@@ -98,63 +96,144 @@ Provider {
     onStartChanged: lastMade.start = start
     onBudgetsChanged: lastMade.budgets = budgets
 
-    // Every session's row, in its place in the tree, those not made again
-    // let go once it's laid out.
+    // The daemon's rows of Agents, each record held by its key, its fields
+    // under `row` (Y2YBTS's ready-rows.md), watched whether or not the
+    // launcher's open, so it opens on rows already held.
+    readonly property var rowsKind: rowsLink.item
+    LazyLoader {
+        id: rowsLink
+        active: !!Quickshell.env("XDG_RUNTIME_DIR")
+
+        Daemon {
+            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+            kind: ["row", "summary"]
+            watching: ({ place: "agents" })
+            answersWhole: true
+            onHeard: (changed, gone) => provider.placed(changed, gone)
+            // Told as it answers, and again as sharing changes, whether the
+            // screen is shared, which only the shell knows from niri's
+            // casts, so the daemon says no amount while it is.
+            onStateChanged: provider.tellSharing()
+        }
+    }
+    readonly property string summaryKey: "summary:agents"
+
+    function tellSharing() {
+        if (rowsKind?.state === "answering")
+            rowsKind.ask({ ask: "sharing", sharing: Quiet.sharing });
+    }
+    Connections {
+        target: Quiet
+
+        function onSharingChanged() {
+            provider.tellSharing();
+        }
+    }
+
+    // The keys of its rows in the order the daemon gives them, each put in
+    // its place by its `order` as it changes, never the list sorted; and
+    // each row as last wrapped, by key. Plain, so keeping them notifies
+    // nothing; `placings` says they moved.
+    readonly property var placing: ({ keys: [] })
+    readonly property var wrapped: ({})
+    property int placings: 0
+
+    // Takes what the daemon said moved: each key gone or changed let go,
+    // and each changed put back where its order places it. Its lists come
+    // through the signal converted, so they're read by index.
+    function placed(changed, gone) {
+        const held = rowsKind?.held ?? {};
+        const placedKeys = placing.keys;
+        const moved = [];
+        for (let at = 0; at < changed.length; at += 1)
+            moved.push(changed[at]);
+        for (let at = 0; at < gone.length; at += 1)
+            moved.push(gone[at]);
+        for (const key of moved) {
+            delete wrapped[key];
+            const at = placedKeys.indexOf(key);
+            if (at >= 0)
+                placedKeys.splice(at, 1);
+        }
+        for (let at = 0; at < changed.length; at += 1) {
+            const key = changed[at];
+            const order = held[key]?.row?.order;
+            if (typeof order !== "number")
+                continue;
+            let low = 0;
+            let high = placedKeys.length;
+            while (low < high) {
+                const middle = (low + high) >> 1;
+                if ((held[placedKeys[middle]]?.row?.order ?? 0) < order)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+            placedKeys.splice(low, 0, key);
+        }
+        placings += 1;
+    }
+
+    // Every row at the tree's top, in the daemon's order, a fold holding
+    // its members, then the closed orchestrators.
     function laidOut() {
-        keepingBegun(keeping);
-        const rows = rowsFor();
-        keptOnly(keeping);
-        return rows;
-    }
-
-    // Each session's row as last made, by its key, with what it was made
-    // from (made), and those made in the laying out underway.
-    readonly property var keeping: keeper()
-
-    function rowsFor() {
-        const running = sessionsInOrder();
-        // The orchestrators the harness lists, which say what their whole
-        // orchestration spent even with none of theirs running.
+        void placings;
+        const held = rowsKind?.held ?? {};
+        const rows = placing.keys.filter(key => !held[key]?.row?.held?.fold)
+            .map(key => rowOf(key, held)).filter(row => row !== null);
         const orchestrators = source("orchestrators");
-        const listed = (orchestrators?.listed ?? []).map(one => one.address);
-        return rowsOf(treeOf(running), running, listed)
-            .concat((orchestrators?.closed ?? []).map(one => closedRow(one, orchestrators)));
+        return rows.concat((orchestrators?.closed ?? [])
+            .map(one => closedRow(one, orchestrators)));
     }
 
-    // Every session, the one whose window was used last first as it is
-    // now (Sessions' inUse), those parked after, standing last in the one
-    // order, under their orchestrators as the rest are.
-    function sessionsInOrder() {
-        return Sessions.inUse(Sessions.running).concat(Sessions.parked);
+    // The session a row is of, by its address, running or parked.
+    function sessionAt(address) {
+        return Sessions.running.find(one => one.address === address)
+            ?? Sessions.parked.find(one => one.address === address) ?? null;
     }
 
-    // Where each session stands in the tree, read from Sessions alone.
-    function treeOf(running) {
-        return SessionRow.tree(running.map(session => ({
-            address: session.address,
-            under: session.presence?.orchestratedBy ?? "",
-            state: stateOf(session)
-        })), true);
+    // A row of the daemon's, wrapped with what doing it needs: a fold's
+    // Return steps in to its members, each wrapped as it changed; a
+    // session's acts and drawer are read from its session as they're
+    // shown. None for a session Sessions doesn't hold yet.
+    function rowOf(key, held) {
+        const served = held[key]?.row;
+        if (!served)
+            return null;
+        if (served.kind === "fold") {
+            const members = (served.held?.members ?? []).map(one => rowOf(one, held))
+                .filter(row => row !== null);
+            const row = thingRow({
+                key: served.row,
+                name: served.name,
+                glyph: Theme.glyph[served.glyph] ?? Theme.glyph.agent,
+                hue: served.hue,
+                copiesNothing: true,
+                depth: served.depth
+            }, () => members);
+            row.held = members;
+            return row;
+        }
+        if (!(key in wrapped)) {
+            const session = sessionAt(String(served.row).replace(/^agent:/, ""));
+            if (session === null)
+                return null;
+            wrapped[key] = sessionRow(session, served);
+        }
+        return wrapped[key];
     }
 
     // The names its row says after its own, its rows' names in their
-    // order, read from Sessions itself as how they stand is (states),
-    // never from its rows. Home says how its sessions stand, so it wants
-    // none of them (Wanted.js), and laying them out for their names would
-    // make every session's row at each change nobody sees
-    // (vm-desktop-launcher-keeps-up).
+    // order, read from the daemon's rows, never from what's made of them,
+    // so Home names them without laying any out.
     function memberNames() {
-        const running = sessionsInOrder();
+        void placings;
+        const held = rowsKind?.held ?? {};
         const closed = source("orchestrators")?.closed ?? [];
-        return treeOf(running)
-            .map(one => one.fold ? foldName(one.counts) : running[one.at].title)
+        return placing.keys.filter(key => !held[key]?.row?.held?.fold)
+            .map(key => held[key].row.name)
             .concat(closed.map(one => closedName(one)),
                 [toReopen, landed, recent].filter(row => row !== null).map(row => row.name));
-    }
-
-    // A fold's name: how many of its sessions stand each way.
-    function foldName(counts) {
-        return counts.map(each => `${each.count} ${word(each.state)}`).join(", ");
     }
 
     // A closed orchestrator's name: what the harness calls it, short first.
@@ -227,32 +306,6 @@ Provider {
     onEveryRowChanged: {
         if (everyRow !== null)
             changedTo(everyRow);
-    }
-
-    // The rows of what SessionRow.tree laid out: a session's own, or the
-    // fold of an orchestration's members that only wait, which says how
-    // many of each state it holds, "22 listening, 3 paused", and whose
-    // Return steps in to them (VKCF3Z, 2026-11-06). It holds their rows,
-    // so typing still finds each.
-    function rowsOf(laid, running, listed) {
-        return laid.map(one => {
-            if (!one.fold)
-                return made(running[one.at], {
-                    depth: one.depth,
-                    orchestrates: one.orchestrates || listed.includes(running[one.at].address)
-                });
-            const held = rowsOf(one.members, running, listed);
-            const row = thingRow({
-                key: `agents:fold:${one.under}`,
-                name: foldName(one.counts),
-                glyph: Theme.glyph.agent,
-                hue: "program",
-                copiesNothing: true,
-                depth: one.depth
-            }, () => held);
-            row.held = held;
-            return row;
-        });
     }
 
     // Every session's row, those folded too, as typing searches them.
@@ -330,110 +383,44 @@ Provider {
         return { spent, family };
     }
 
-    // A session's row, `depth` steps in under its orchestrator, and saying
-    // what its whole orchestration spent when it `orchestrates`.
-    // How a session stands, and its word for it: a want that isn't truly
-    // Joel's (Sessions.asks) reads as what the session does meanwhile.
-    function standingOf(session) {
-        const presence = session.presence;
-        const queued = inLine(presence);
-        const asks = Sessions.asks(session);
-        const state = SessionRow.state(presence, asks, queued !== "");
-        const doing = state === "off" ? ""
-            : state === "needs" ? Sessions.wanted(presence.wants)
-            : state === "inLine" ? queued
-            : word(state);
-        return { asks, state, doing };
-    }
-
-    // Kept from the making before while everything it's made from reads
-    // the same (SessionMade.js): the session's own fields, how it
-    // stands, what it spent and how it's listed, where it's placed, and
-    // whether the screen's shared.
-    function made(session, place) {
+    // A session's row as the daemon made it ready, its fields as given,
+    // with what its acts, drawer and copies do. Typing ranks it flat, as
+    // the daemon made it read at no depth too.
+    function sessionRow(session, served) {
+        const held = served.held ?? {};
         const presence = session.presence;
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
-        const read = {
-            standing: standingOf(session),
-            quest: quest,
-            spending: spendOf(presence, quest, place)
-        };
-        const from = SessionMade.madeFrom(session, [windowedOf(session), Sessions.isOf(session),
-            read.standing, read.spending, listedOf(session, place), place ?? null,
-            Quiet.sharing]);
-        // Kept by where it's placed too, as Now makes it at no depth while
-        // Agents lays it out in its tree.
-        const key = `${session.address}\u0000${JSON.stringify(place ?? null)}`;
-        return keptOr(keeping, key, from, () => madeAnew(session, place, read), Pi.alike);
-    }
-
-    // What the harness lists an orchestrator as, or null for any other.
-    function listedOf(session, place) {
-        return place?.orchestrates ? (source("orchestrators")?.listed ?? [])
-            .find(one => one.address === session.address) ?? null : null;
-    }
-
-    // A session's row made anew, from what made() read of it: how it
-    // stands, its quest and what it spent.
-    function madeAnew(session, place, read) {
-        const depth = place?.depth ?? 0;
-        const presence = session.presence;
-        const quest = read.quest;
-        const { asks, state, doing } = read.standing;
-        const { spent, family } = read.spending;
-        // What it works on leads with its quest's title, the row's own
-        // name, so the note says only the summary after it.
-        const note = asks && presence.wants.said ? presence.wants.said
-            : presence && presence.worksOn
-            ? SessionDrawer.about(presence.worksOn, [session.title, presence.questInfo?.title])
-            : "";
-        // Elsewhere, its machine leads the note; out of reach, it's all
-        // the note says, and the row does nothing.
-        const where = session.here ? ""
-            : elsewhere(session.reachable ? "on" : "away", session);
-        const noted = !session.reachable ? where
-            : [where, note].filter(part => part !== "").join(" \u00b7 ");
-        // Ranked flat, whom it's under leads.
-        const orchestrator = presence?.orchestratedBy ?? "";
-        const under = orchestrator !== "" && orchestrator !== session.address
-            ? word("under", { address: orchestrator }) : "";
-        // What it spent today, an orchestrator's whole orchestration's.
-        const figure = family ? word("allOf", { spent: family.all }) : spent;
-        // An orchestrator is found by what the harness lists it as too,
-        // its short name and its quest's title, as it was in the place of
-        // its own this tree replaced.
-        const listedAs = listedOf(session, place);
-        const known = listedAs ? ` ${listedAs.short ?? ""} ${listedAs.title ?? ""}` : "";
-        // A tier 2 figure, while it's true: its context past 80% full.
-        const full = state === "off" ? ""
-            : SessionRow.full(presence?.usage, Words.of("agents").said ?? {});
-        const items = SessionRow.side(doing, figure, full);
+        const place = { depth: served.depth, orchestrates: !!held.orchestrates };
+        const said = items => (items ?? []).map(item => item.said).join(" \u00b7 ");
+        const returning = String(held.returns ?? "").replace(/^verb:agent:/, "");
         const row = member({
             thing: true,
-            key: `agent:${session.address}`,
+            key: served.row,
             kind: SessionRow.KIND,
             // The session is its window, which the windows and its quest
             // also find, and it says the most of the three, so it's the
             // one row left of them (Launcher.qml's compose).
             is: Sessions.isOf(session),
             rich: 2,
-            name: session.title,
-            // Its address, folder and quest's id, made ready to match, since
-            // a member keeps its words as given.
-            also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}${known}`),
-            glyph: Theme.glyph.agent,
-            hue: SessionRow.hue(state, full !== ""),
-            side: items.map(item => item.said).join(" \u00b7 "),
-            sideItems: items,
-            note: noted,
-            depth: depth,
-            gone: !session.reachable,
-            // Return does the act its state makes harmless (SessionRow.js's
-            // returns), one of those its step in holds.
-            returns: provider.sessionAct(session,
-                SessionRow.returns(state, windowedOf(session))),
-            verbs: () => provider.verbs(session, quest, spent, family),
+            name: served.name,
+            // Its address, folder and quest's id, as the daemon words them,
+            // made ready to match, since a member keeps its words as given.
+            also: Fuzzy.prepare(String(held.also ?? "")),
+            glyph: Theme.glyph[served.glyph] ?? Theme.glyph.agent,
+            hue: served.hue,
+            side: said(served.side),
+            sideItems: served.side ?? [],
+            note: String(held.note ?? ""),
+            depth: served.depth,
+            gone: !!held.gone,
+            // Return does the act its state makes harmless, one of those
+            // its step in holds.
+            returns: returning !== "" ? provider.sessionAct(session, returning) : null,
+            verbs: () => {
+                const { spent, family } = provider.spendOf(presence, quest, place);
+                return provider.verbs(session, quest, spent, family);
+            },
             // Its parts, its acts and facts, are read as they're made, the
             // queue's jobs and its talks among them, and found only from
             // inside it, so the walk for where rows live never makes them
@@ -445,24 +432,32 @@ Provider {
             operands: () => [quest !== "" ? copyOperand("fact:agent:quest", quest)
                 : copyOperand("fact:agent:address",
                     (session.presence?.addresses ?? [session.address]).join(", "))],
-            drawer: () => provider.drawerOf(session, quest, place)
+            // Its drawer reads the session as it stands, since its row is
+            // kept while only its step moves.
+            drawer: () => provider.drawerOf(provider.sessionAt(session.address) ?? session,
+                quest, place)
         });
         // Itself as it reads ranked flat: at no depth, whom it's under
-        // leading its note. It isn't named flat, which Quickshell's
-        // JavaScript would read as the arrays' method it lacks.
-        // Whom it's under leads what it says at its right too, given way
-        // first, and found from the top its words after its name
-        // (Launcher.qml's gathering), since its note is said only in the
-        // foot (15J7N3, 2026-11-04).
-        const ranked = [{ said: under, keep: 1 }].concat(items).filter(item => item.said !== "");
+        // leading its note and what it says at its right (15J7N3,
+        // 2026-11-04). It isn't named flat, which Quickshell's JavaScript
+        // would read as the arrays' method it lacks.
+        const ranked = held.ranked ?? {};
         row.ranked = () => Object.assign({}, row, {
             depth: 0,
-            note: [under, noted].filter(part => part !== "").join(" \u00b7 "),
-            side: ranked.map(item => item.said).join(" \u00b7 "),
-            sideItems: ranked,
-            belongs: under
+            note: String(ranked.note ?? ""),
+            side: said(ranked.side),
+            sideItems: ranked.side ?? [],
+            belongs: String(ranked.belongs ?? "")
         });
         return row;
+    }
+
+    // A session's row at no depth, as Now and Ask show one, or none while
+    // the daemon hasn't said it.
+    function made(session) {
+        void placings;
+        const row = rowOf(`row:agents:${session.address}`, rowsKind?.held ?? {});
+        return row === null ? null : Object.assign({}, row, { depth: 0 });
     }
 
     // What a session's drawer says (SessionRow.js), read as it's shown:
@@ -600,8 +595,12 @@ Provider {
         orchestrators.start(one);
     }
 
-    // One of a session's acts, by its id in SessionRow.js's acts.
+    // One of a session's acts, by its id in SessionRow.js's acts. Go To
+    // and Wake take the session as it stands when pressed, since its row
+    // is kept while its window moves, and Switch would otherwise go to
+    // the old one (Y2YBTS's review of #2521).
     function sessionAct(session, id) {
+        const current = () => provider.sessionAt(session.address) ?? session;
         const act = (id, fields) => thing(Object.assign({
             key: `verb:agent:${id}`,
             verb: Words.verb(`verb:agent:${id}`),
@@ -611,7 +610,7 @@ Provider {
         }, fields));
         const steered = what => () => Sessions.steer(session.address, { act: what });
         const made = {
-            switch: () => act("switch", { later: true, run: () => Sessions.goTo(session) }),
+            switch: () => act("switch", { later: true, run: () => Sessions.goTo(current()) }),
             talk: () => act("talk", {
                 ask: Words.of("verb:agent:talk").ask ?? "",
                 chip: session.title,
@@ -624,7 +623,7 @@ Provider {
             }),
             // Wake keeps the launcher, its row reading as it will be at once,
             // since the session wakes in its own window without the focus.
-            wake: () => act("wake", { stays: true, run: () => provider.wakeNow(session) }),
+            wake: () => act("wake", { stays: true, run: () => provider.wakeNow(current()) }),
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
             // Stop ends the turn under way, which nothing puts back, so it's
@@ -1274,25 +1273,19 @@ Provider {
     things: [toReopen, landed, budgets, recent, start].filter(row => row !== null)
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
-    // held, its rows are laid out as asked, keeping those that read the same.
+    // held, its rows are laid out as asked, from the daemon's rows held.
     function everything() {
         const sessions = provider.wanted || !opened() ? all : laidOut();
         return sessions.concat([toReopen, landed, recent, start].filter(row => row !== null));
     }
 
-    // How every session stands, running and parked, read from Sessions
-    // itself, so it holds while the launcher is shut, as Home's row is read.
-    function states() {
-        return Sessions.running.concat(Sessions.parked).map(session => stateOf(session));
-    }
-
     // How they stand together, "1 needs you \u00b7 3 working \u00b7 $214
-    // today" (SessionRow.js), the day's dollars as spend-watch sums every
-    // session's, never added up here, and none of them while the screen is
-    // shared.
+    // today", as the daemon says it, the day's dollars none while the
+    // screen is shared; held while the launcher is shut, as Home's row is
+    // read.
     function summary() {
-        const spent = Quiet.sharing ? "" : SpendWatch.agentsToday;
-        return SessionRow.summary(states(), spent, Words.of("agents").said ?? {});
+        void rowsKind?.revision;
+        return String(rowsKind?.held?.[summaryKey]?.summary?.said ?? "");
     }
 
     // How its sessions stand together, at its row's right wherever it

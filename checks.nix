@@ -1211,6 +1211,7 @@ gather (
     ./hardware/apple-macbook-pro-m4-pro-a3401/checks.nix
     ./hardware/dell-xps-14-da14260/checks.nix
     ./hardware/microsoft-surface-laptop-4-1958/checks.nix
+    ./modules/agents/checks.nix
     ./modules/backlight/checks.nix
     ./modules/bat/checks.nix
     ./modules/bluetooth/checks.nix
@@ -1230,6 +1231,7 @@ gather (
     ./modules/console/checks.nix
     ./modules/creative-pebble-x-plus/checks.nix
     ./modules/daemon-client/checks.nix
+    ./modules/daemon-serve/checks.nix
     ./modules/ddcutil/checks.nix
     ./modules/desk-facts/checks.nix
     ./modules/device-check/checks.nix

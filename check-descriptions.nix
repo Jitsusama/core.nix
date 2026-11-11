@@ -208,6 +208,19 @@
     a YubiKey's keyboard interface is refused in the running system and in the initrd, so a touch
     types no one-time password at the disk prompt, and udev reads the rule without a complaint
   '';
+  agents-makes-the-launchers-rows = ''
+    the agents daemon says how each pi session stands, its acts and what Return does, lays
+    sessions under their orchestrators with the waiting folded, and words each row's side, its
+    drawer's figures and the sessions together as the launcher's vocabulary says them
+  '';
+  agents-passes-clippy = ''
+    clippy finds nothing in the agents daemon or its tests
+  '';
+  agents-runs-in-each-account = ''
+    the agents daemon runs in each account of a machine in a realm, following its node and the
+    to-do daemon and reading the launcher's words, its socket systemd's, a switch restarting it,
+    and a machine in no realm runs none
+  '';
   agents-work-runs-without-real-time = ''
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
@@ -423,6 +436,13 @@
   '';
   daemon-client-passes-clippy = ''
     clippy finds nothing in daemon-client, the daemon and client the daemons' tests share
+  '';
+  daemon-serve-passes-clippy = ''
+    clippy finds nothing in daemon-serve, the serving side the daemons share
+  '';
+  daemon-serve-tells-each-watch-what-moved = ''
+    a daemon's watch is answered whole, then told only what moved in what it watches, by kind,
+    key or place, and the daemon answers its own asks
   '';
   darwin-role-twice-is-once = ''
     importing a nix-darwin role twice leaves the machine unchanged
@@ -2411,11 +2431,9 @@
     Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
-  the-launcher-lays-sessions-under-their-orchestrators = ''
-    every list of pi sessions keeps one order of how they stand, and Agents lays each under the
-    session orchestrating it, a step in and at most two, an orchestration standing where its most
-    urgent row would; and a session's row is kept only while everything it shows or goes to
-    reads the same, its kitty window, held id and attach words among them
+  the-launcher-says-how-each-session-stands = ''
+    a pi session says how it stands in the one order every list keeps, offers its acts in their
+    order, and its drawer says what matters first, and what it landed is kept past its end
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this

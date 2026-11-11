@@ -54,6 +54,8 @@ STATE = Path(os.environ["XDG_STATE_HOME"])
 PRESENCE = STATE / "pi/agentic-harness.pi/mesh-workflow/presence"
 STEER = STATE / "pi/agentic-harness.pi/steer"
 NODE = Path(os.environ["XDG_RUNTIME_DIR"]) / "mycelium" / f"{REALM}.sock"
+# Where the agents daemon serves Agents' rows, as its unit's socket is.
+ROWS = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "agents.sock"
 RESTORE = STATE / "pi/restore.json"
 # Where the last boot's two sessions to reopen ran: one still there, one given back.
 KEPT = Path.home() / "harbour"
@@ -229,9 +231,24 @@ def shell() -> Iterator[Shell]:
     while held_by_node() != wanted:
         assert time.monotonic() < deadline, f"the node holds {held_by_node()}, not {wanted}"
         time.sleep(0.1)
+    with (logs / "agents.log").open("w") as log:
+        # The agents daemon makes Agents' rows from the node, the store's own as the check
+        # names it, as the account's unit runs it; this sandbox has no to-do daemon.
+        rows = subprocess.Popen(  # noqa: S603
+            [os.environ["AGENTS"], "--vocabulary", os.environ["WORDS"], "--node", str(NODE),
+             "--to-do", str(ROWS.parent / "to-do.sock"), "--spend", str(SPEND),
+             "--orchestrators", str(WORKFLOW / "orchestrators.json"), "--socket", str(ROWS)],
+            stdout=log, stderr=log,
+        )  # fmt: skip
+    while not ROWS.exists():
+        assert rows.poll() is None, (logs / "agents.log").read_text()
+        assert time.monotonic() < deadline, "the agents daemon never listened"
+        time.sleep(0.1)
     started = launcher_on_niri.started()
     yield started
     started.stop()
+    rows.terminate()
+    rows.wait()
     node.terminate()
     node.wait()
 
