@@ -113,29 +113,40 @@ function take(held, records, gone) {
     return differ;
 }
 
-// Takes when windows were used, as a watch of `order` alone tells it
-// while the launcher is shut, placing each window held where it now goes
-// and making nothing else, so the next opening lists them in the order
-// used now. Answers the keys it doesn't hold, windows opened since, whose
-// whole records are asked for.
+// Takes when windows were used and which has the focus, as a watch of
+// `order` and `focused` tells them while the launcher is shut, placing
+// each window held where it now goes and making nothing else, so the
+// next opening lists them in the order used now. Answers the keys it
+// doesn't hold, windows opened since, whose whole records are asked for
+// (`unknown`), and those whose focus turned, whose rows say it
+// (`turned`). Told only `order`, the window the focus left kept saying it
+// had it, so an opening's first frame listed it as Joel's, and its rows
+// were made again once the opening's whole answer said otherwise
+// (ZINAWZ, 2026-11-11).
 function used(held, records) {
     const unknown = [];
+    const turned = [];
     for (const record of records) {
         const was = held.records[record.key];
         if (was === undefined) {
             unknown.push(record.key);
             continue;
         }
-        if (was.order === record.order) {
+        const now = Object.assign({}, was, record);
+        if (same(was, now)) {
             continue;
         }
-        unlist(held, record.key);
-        const now = Object.assign({}, was, { order: record.order });
+        if (was.focused !== now.focused) {
+            turned.push(record.key);
+        }
         held.records[record.key] = now;
         held.windows[record.key] = asWindow(now);
-        held.order.splice(placeOf(held, now), 0, record.key);
+        if (was.order !== now.order) {
+            unlist(held, record.key);
+            held.order.splice(placeOf(held, now), 0, record.key);
+        }
     }
-    return unknown;
+    return { unknown, turned };
 }
 
 // The workspaces a window on this one could go to, from the daemon's

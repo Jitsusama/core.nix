@@ -59,13 +59,25 @@ QtObject {
         Expect.same("when windows were used places them, answering those not held",
             HeldWindows.used(held, [{ key: "window:3", order: 500 },
                 { key: "window:4", order: 400 }, { key: "window:7", order: 600 }]),
-            ["window:7"]);
+            { unknown: ["window:7"], turned: [] });
         Expect.same("the one used last goes first", held.order,
             ["window:3", "window:4", "window:2"]);
         Expect.same("and its window reads the time", held.windows["window:3"].focus_timestamp,
             { secs: 0, nanos: 500000000 });
         Expect.same("a whole answer saying the same after differs in none",
             HeldWindows.take(held, [record(3, 500, { title: "renamed" })], []), []);
+        // The focus moving is told of the window it left as well as the
+        // one it went to, so the windows held say which has it, and the
+        // rows of both are answered, to be made before they're next shown.
+        Expect.same("the focus moving turns the window it went to and the one it left",
+            HeldWindows.used(held, [{ key: "window:3", order: 800, focused: true },
+                { key: "window:2", order: 400, focused: false }]),
+            { unknown: [], turned: ["window:3", "window:2"] });
+        Expect.same("which their windows read", [held.windows["window:3"].is_focused,
+            held.windows["window:2"].is_focused], [true, false]);
+        Expect.same("so a whole answer after the focus moved differs in none",
+            HeldWindows.take(held, [record(3, 800, { title: "renamed", focused: true }),
+                record(2, 400), record(4, 400)], []), []);
 
         const window = HeldWindows.asWindow(record(5, 1000500,
             { workspace: 2, column: 3, down: 2, floating: true }));

@@ -124,6 +124,48 @@ QtObject {
         check(failures, "an empty list weighs none", named([], -1), "");
     }
 
+    // Going home and back weighed every one of Windows' rows again on each
+    // kept opening (2026-11-11).
+    function weighingPlaces(failures) {
+        let weighed = 0;
+        const weigh = row => {
+            weighed += 1;
+            return { keys: row.name };
+        };
+        const words = {};
+        const face = {};
+        const made = names => names.map(name => ({ name }));
+        const windows = made(["kitty", "chrome", "slack"]);
+        const home = made(["windows", "apps"]);
+        // Shows `rows` in the place `key`, as the foot weighs them, and
+        // gives what's held after.
+        const shown = (held, key, rows, place) => {
+            const now = Pacing.weighingAmong(held, key, { words, face }, place);
+            rows.forEach(row => Pacing.weighedRow(now[0], row, weigh));
+            return now;
+        };
+        let held = shown([], "windows|", windows, true);
+        held = shown(held, "|", home, true);
+        check(failures, "each place's rows are weighed once", weighed, 5);
+        held = shown(held, "windows|", windows, true);
+        check(failures, "a place shown again weighs none", weighed, 5);
+        const retitled = [windows[0], { name: "chrome, a new tab" }, windows[2]];
+        held = shown(held, "|", home, true);
+        held = shown(held, "windows|", retitled, true);
+        check(failures, "a row that changed is weighed again, alone", weighed, 6);
+        check(failures, "and the place lets go of the row it was",
+            held[0].seen.has(windows[1]), false);
+        held = shown(held, "windows|k", [windows[0]], false);
+        held = shown(held, "|", home, true);
+        held = shown(held, "windows|k", [windows[0]], false);
+        check(failures, "a typed search isn't held past the next", weighed, 8);
+        for (const key of ["a|", "b|", "c|"])
+            held = shown(held, key, made([key]), true);
+        check(failures, "no more than four places are held", held.length, 4);
+        held = shown(held, "windows|", retitled, true);
+        check(failures, "so one pushed out weighs again", weighed, 14);
+    }
+
     // An opening is usable once the shell's thread answers its ticks on
     // time for a while, not at its first frame: Joel's 15:08 openings
     // logged 437 ms to their frame and showed him the launcher 7 s after
@@ -388,6 +430,7 @@ QtObject {
         opening(failures);
         felt(failures);
         weighing(failures);
+        weighingPlaces(failures);
 
         for (const failure of failures)
             console.warn(failure);
