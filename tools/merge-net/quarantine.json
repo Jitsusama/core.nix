@@ -40,5 +40,12 @@
     "owner_pr": null,
     "reason": "failed, then passed, at 405fff7e09e7",
     "test": "vm-desktop-opens-and-sets"
+  },
+  {
+    "at": 1794381936,
+    "commit": "405fff7e09e75f5f21857d710e1f02306a80664b",
+    "owner_pr": 3048,
+    "reason": "has been broken since #3048, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "vm-desktop-minds-the-margin"
   }
 ]
