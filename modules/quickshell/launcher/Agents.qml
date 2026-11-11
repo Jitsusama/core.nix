@@ -132,7 +132,7 @@ Provider {
             id: agentsRows
 
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-            kind: ["row", "summary", "recent"]
+            kind: ["row", "summary", "recent", "landed", "landed-days"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             onWatchingChanged: {
@@ -193,6 +193,8 @@ Provider {
             moved.push(gone[at]);
         if (moved.some(key => String(key).startsWith("recent:")))
             recentMoves += 1;
+        if (moved.some(key => String(key).startsWith("landed")))
+            landedMoves += 1;
         if (!moved.some(rowKey))
             return;
         for (const key of moved) {
@@ -932,7 +934,8 @@ Provider {
         }
     }
 
-    // What sessions landed (Landed.js's all): Landed, one row always, after
+    // What sessions landed, as the agents daemon serves them ready
+    // (modules/agents/src/landed.rs): Landed, one row always, after
     // the sessions, the landings' own place, as a to-do lives in its app
     // (VKCF3Z, 2026-11-10). A step in, each landing of the past 30 days,
     // newest first: what it is as its name and its ref at the right in the
@@ -943,59 +946,32 @@ Provider {
     // ending, since no Return ends or takes away; its drawer shown reads it
     // too (`landingDrawn`). Its own step in holds Open the Change, Go To the
     // Session and Copy What to Try. Read, it stays, in Landed and in For
-    // You's History, so nothing read is lost. What landed is kept 30 days
-    // past its session's end (the
-    // harness's landings.json, served as the node's `landing` kind), so a
+    // You's History, so nothing read is lost, and the daemon keeps what he
+    // read. What landed is kept 30 days past its session's end, so a
     // session closed leaves what it landed in Landed. Its row says at its
     // right how many landed today, never how many are to read, which For
     // You alone counts (`forYou`), and its drawer, as a place's, what it
     // holds (VKCF3Z, adba1297).
-    readonly property var keptLandings: {
-        void landingKind?.revision;
-        return Object.values(landingKind?.held ?? {});
+    // Each landing is { key, at, ref, what, person, url, quest, repo,
+    // machine, session: { address, title, id }, read }, `read` when Joel
+    // read it, `true` before when was kept, or null; held as the daemon
+    // tells each move (landedMoves), newest first by its own time, so the
+    // shell works none of it out. It had worked out which of the realm's
+    // two thousand were worth reading, and whose, at every session's
+    // change (PT5P13, 2026-11-10).
+    property int landedMoves: 0
+    readonly property var landings: {
+        void landedMoves;
+        const held = Object.values(rowsKind?.held ?? {})
+            .filter(one => one?.kind === "landed" && one.landed);
+        return Order.sorted(held, Order.smaller(one => one.order)).map(one => one.landed);
     }
-    readonly property var landingKind: landingLink.item
-    LazyLoader {
-        id: landingLink
-        active: Sessions.nodePath !== ""
-
-        Daemon {
-            socket: Sessions.nodePath
-            kind: "landing"
-            changesDiffer: true
-            answersWhole: true
-        }
+    // How many landed each day, by date, as the daemon counts them by
+    // Joel's clock, which Landed's row says of today.
+    readonly property var landedDays: {
+        void landedMoves;
+        return (rowsKind?.held ?? {})["landed-days:agents"]?.days ?? {};
     }
-    // What Landed.all reads of each session, its id, address, title and
-    // own landings, said as text, so what landed is worked out again, and
-    // what's made of it made again, only as that text or a kept landing
-    // changes, never as the rest of a session's record moves. Worked out
-    // from the records themselves, Landed's row was made again at every
-    // session's change (the net's vm-desktop-launcher-keeps-up), and For
-    // You's rows for every landing, hundreds at a time with the launcher
-    // shut (PT5P13, 2026-11-10). The whole of what landed said as text was
-    // over six times this, and took twice Landed.all's time at each change
-    // (PT5P13, 2026-11-10).
-    readonly property string landersSaid: JSON.stringify(Sessions.running
-        .concat(Sessions.parked)
-        .map(session => ({
-            address: String(session.address ?? ""),
-            title: String(session.title ?? ""),
-            presence: {
-                session: session.presence?.session,
-                landings: session.presence?.landings ?? []
-            }
-        })))
-    // A landing's session is said by its address, title and id, and one
-    // still here is found again as it's acted on (landerOf).
-    readonly property var landings: Landed.all(keptLandings, JSON.parse(landersSaid))
-        .map(one => Object.assign({}, one, {
-            session: {
-                address: one.session.address,
-                title: one.session.title,
-                id: String(one.session.presence?.session ?? "")
-            }
-        }))
     // The session here that landed `one`, by its id, else by its address,
     // or null once it has ended.
     function landerOf(one) {
@@ -1004,11 +980,13 @@ Provider {
             && session.presence?.session === one.session.id)
             ?? here.find(session => session.address === one.session.address) ?? null;
     }
+    // Joel reads a landing, which the daemon keeps, and tells as its record
+    // moves; one read already is asked nothing.
     function readLanding(key) {
-        if (Sessions.landingsRead.includes(key))
+        const one = (rowsKind?.held ?? {})[`landed:agents:${key}`]?.landed;
+        if (!one || one.read !== null)
             return;
-        Sessions.readLandings([key], Landed.stillRead(keptLandings,
-            Sessions.running.concat(Sessions.parked), Sessions.landingsRead));
+        rowsKind.ask({ ask: "read", keys: [key] });
     }
     // Where a landing lives, Agents \u203a Landed \u203a it, which For You's rows
     // step into rather than show a copy of (VKCF3Z, 2026-11-10).
@@ -1022,8 +1000,8 @@ Provider {
     // (landedSides), and the whole moment said only as its drawer is
     // drawn, since saying both for over a thousand landings at every
     // opening was most of the date work pegging the shell after one
-    // (H6EDLC's profile, 2026-11-10). A stopgap until the agents daemon
-    // serves Landed's rows ready, KP0L6A's, on 2026-11-12.
+    // (H6EDLC's profile, 2026-11-10). Said here, since a time is the
+    // shell's to word as the day turns (modules/agents/src/clock.rs).
     readonly property var landedSides: ({ day: "", sides: new Map() })
     function landingShows(one) {
         const said = Words.of("agents:landed").said ?? {};
@@ -1103,7 +1081,8 @@ Provider {
         return thingRow({
             key: "agents:landed",
             name: Words.name("agents:landed"),
-            side: Landed.stands(Landed.landedToday(keptLandings, Date.now()), words.said ?? {}),
+            side: Landed.stands(Number(landedDays[String(Calendars.today ?? "")] ?? 0),
+                words.said ?? {}),
             // A place's drawer is drawn once it names what it holds, as a
             // Recent's is (Launcher.qml's drawable); with nothing landed,
             // it has nothing to say past its row.
@@ -1169,14 +1148,14 @@ Provider {
         const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
             JSON.stringify([one, fields.hue, today]), () => row(one, fields));
         provider.keepingBegun(forYouKeeping);
-        const given = Landed.toTry(landings, Sessions.landingsRead).map(one => ({
+        const given = Landed.toTry(landings).map(one => ({
             row: kept(one, {
                 key: `on:waiting:try:${one.key}`,
                 hue: "action",
                 forYou: { kind: "try", source: "sessions" }
             }),
             thing: { kind: "try", ready: true, since: one.at }
-        })).concat(Landed.triedRead(landings, Sessions.landingsReadAt).map(tried => ({
+        })).concat(Landed.triedRead(landings).map(tried => ({
             row: kept(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
             done: { how: String(said.read ?? ""), at: tried.at }
         })));
