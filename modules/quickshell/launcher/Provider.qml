@@ -251,10 +251,13 @@ Scope {
     // last, so it reads `wanted` alone and a change nobody sees wakes nothing. One that has made
     // nothing makes it once regardless, for what reads it shut (Sound's spots). Shut on Joel's
     // shell, Sound, Spend and Now made 426 rows in four minutes (YQZGPC, 2026-11-10). Kept in a
-    // plain object, so keeping notifies nothing.
+    // plain object, so keeping notifies nothing. While the launcher looks through its rows shut
+    // (looksThrough), they're made as they stand, since the first made may have come before
+    // what they're made of was heard.
     readonly property var madeLast: ({})
+    property bool lookingThrough: false
     function whileWanted(name, make) {
-        if (provider.wanted || !(name in provider.madeLast))
+        if (provider.wanted || provider.lookingThrough || !(name in provider.madeLast))
             provider.madeLast[name] = make();
         return provider.madeLast[name];
     }
@@ -390,9 +393,14 @@ Scope {
 
     // The rows its search looks through, whose texts the launcher makes
     // ready while it's closed: everything, unless it searches more than it
-    // lists, as Quests searches its finished quests too.
+    // lists, as Quests searches its finished quests too. Each is as it stands, not as first
+    // made: Sound's, first made before the sound server said any device, were none, so the
+    // first search after a restart made every device's text (2026-11-11).
     function looksThrough() {
-        return everything();
+        lookingThrough = true;
+        const rows = everything();
+        lookingThrough = false;
+        return rows;
     }
 
     // Makes ready the texts of one of those rows that its search reads, each

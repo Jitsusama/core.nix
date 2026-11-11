@@ -74,6 +74,26 @@ ShellRoot {
         serverNodes: [deskSpeakers]
     }
 
+    // A shell just started, shut, its rows first read before the sound
+    // server has said any device.
+    QtObject {
+        id: startedLauncher
+
+        property bool open: false
+        property bool wanting: false
+        readonly property var held: []
+
+        function wants(source) {
+            return wanting;
+        }
+    }
+
+    Launcher.Sound {
+        id: startedSound
+        launcher: startedLauncher
+        serverNodes: []
+    }
+
     // A device as the sound server gives one: its name, which way it goes,
     // its properties and its audio.
     function device(name, sink, properties) {
@@ -169,6 +189,29 @@ ShellRoot {
         shut();
         spotsMake();
         partsKept();
+        textsReadyShut();
+    }
+
+    // The rows whose texts are made ready while shut, a few seconds after
+    // the shell starts (Launcher.qml's textsMadeClosed), are those that
+    // stand then, and the ones listed once it opens, so the first search
+    // makes none. Read as first made, before the server said any device,
+    // they were none, and the first search made every device's text
+    // (vm-desktop-launcher-goes-places, 2026-11-11).
+    function textsReadyShut() {
+        expect("shut and started, it holds no device yet", startedSound.everything().length === 0,
+            `${startedSound.everything().length} rows`);
+        startedSound.serverNodes = [deskSpeakers, deskMicrophone];
+        const ready = startedSound.looksThrough();
+        expect("the rows looked through shut are the devices there are now",
+            ready.map(row => row.key).join(", ")
+                === "sound:usb-desk-speakers, sound:usb-desk-microphone",
+            ready.map(row => row.key).join(", "));
+        startedLauncher.wanting = true;
+        const shown = startedSound.everything();
+        expect("and they're the rows it lists once wanted",
+            shown.length === ready.length && shown.every((row, at) => row === ready[at]),
+            `${shown.length} listed of ${ready.length} ready`);
     }
 
     // Shut, a device's parts asked for again with nothing moved, as its
