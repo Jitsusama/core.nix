@@ -20,6 +20,7 @@ rustPlatform.buildRustPackage rec {
       # The crate's own tests, and not the QML case beside them, which the
       # shell's engine runs (checks.nix).
       ./tests/daemon.rs
+      ./tests/words.json
       ../daemon-client/Cargo.toml
       ../daemon-client/src
       ../ready-rows/Cargo.toml

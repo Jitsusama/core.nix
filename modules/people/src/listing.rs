@@ -502,16 +502,13 @@ impl Told {
 pub(crate) mod tests {
     use super::*;
 
-    /// The launcher's vocabulary as far as People's words go.
-    fn vocabulary() -> Value {
-        json!({"things": [
-            {"id": "person:recent", "said": {"none": "none"}},
-            {"id": "people", "said": {
-                "silent": "not answering", "available": "available", "active": "active",
-                "huddle": "in a huddle", "call": "in a call", "away": "away",
-                "offline": "offline", "count": 3
-            }}
-        ]})
+    /// The launcher's own words for what People's cases say
+    /// (tests/words.json), which `the-daemons-test-the-launchers-words`
+    /// holds to words.json, so a case holds the daemon to the words Joel
+    /// reads. drawer.rs's tests take them too.
+    pub(crate) fn vocabulary() -> Value {
+        serde_json::from_str(include_str!("../tests/words.json"))
+            .expect("the launcher's words parse")
     }
 
     fn tuple() -> Stands {
@@ -545,7 +542,14 @@ pub(crate) mod tests {
 
     #[test]
     fn peoples_words_are_the_launchers() {
-        let said = words(&vocabulary());
+        // A number among People's words, which the launcher never says.
+        let mut counted = vocabulary();
+        for thing in counted["things"].as_array_mut().into_iter().flatten() {
+            if thing["id"] == "people" {
+                thing["said"]["count"] = json!(3);
+            }
+        }
+        let said = words(&counted);
         assert_eq!(
             (said.get("call").map(String::as_str), said.get("count")),
             (Some("in a call"), None),

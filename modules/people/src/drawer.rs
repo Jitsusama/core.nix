@@ -183,15 +183,10 @@ pub fn drawer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::listing::tests::record;
+    use crate::listing::tests::{record, vocabulary};
 
     fn named() -> Named {
-        Named {
-            email: "Email".into(),
-            there: "Time There".into(),
-            silent: "not answering".into(),
-            sources: BTreeMap::from([("slack".to_owned(), "Slack".to_owned())]),
-        }
+        Named::read(&vocabulary())
     }
 
     fn sources() -> Vec<(String, Option<Stands>)> {
@@ -313,15 +308,16 @@ mod tests {
 
     #[test]
     fn a_drawers_names_are_the_launchers_or_their_ids() {
-        let vocabulary = json!({"things": [
-            {"id": EMAIL, "name": "Address"},
-            {"id": "slack:person:source", "name": "Slack"},
-            {"id": "people", "said": {"silent": "not answering"}},
-        ]});
+        // The launcher's words, less one, to see a word it lacks said by
+        // its id.
+        let mut lacking = vocabulary();
+        if let Some(things) = lacking["things"].as_array_mut() {
+            things.retain(|thing| thing["id"] != THERE);
+        }
         assert_eq!(
-            Named::read(&vocabulary),
+            Named::read(&lacking),
             Named {
-                email: "Address".into(),
+                email: "Email".into(),
                 there: THERE.into(),
                 silent: "not answering".into(),
                 sources: BTreeMap::from([("slack".to_owned(), "Slack".to_owned())]),
