@@ -96,7 +96,8 @@ with at most one branch, loop, pipe or `$(...)`, such as a check that copies
 its files in and runs a program on them. So may a string whose comment
 above says why, in a sentence beginning "Kept in Nix because". Those in
 strings before the rule wait, counted by file, in
-`tests/programs-live-in-their-own-files-waiting.nix`, and a count only falls.
+`tests/rules/programs-live-in-their-own-files-waiting.nix`, and a count only
+falls.
 
 ## Long Files Say Why
 
@@ -108,8 +109,8 @@ grew past them is usually several things that grew together, which a reader
 has to tell apart before they find the one they came for. A table, such as
 `check-descriptions.nix`, is a reason; a file that only grew isn't.
 `every-long-file-says-why` holds it, and those over before the rule wait in
-`tests/every-long-file-says-why-waiting.nix` while they're split, a list
-that only shrinks.
+`tests/rules/every-long-file-says-why-waiting.nix` while they're split, a
+list that only shrinks.
 
 ## Applications That Write Their Own Settings
 

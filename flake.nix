@@ -514,7 +514,7 @@
       # ./.; waiting = [ ... ]; }` is a check that fails on a code file past 800
       # lines or a folder of more than 40 entries that doesn't say why it stays
       # whole, and on a waiting one that's split, says why or is gone.
-      lib.everyLongFileSaysWhy = pkgs: pkgs.callPackage ./tests/every-long-file-says-why.nix { };
+      lib.everyLongFileSaysWhy = pkgs: pkgs.callPackage ./tests/rules/every-long-file-says-why.nix { };
 
       # How a repository built on core keeps its programs out of Nix strings, as
       # core does: `core.lib.programsLiveInTheirOwnFiles pkgs { src = ./.;
@@ -522,14 +522,14 @@
       # QML, Python or JavaScript past five lines in its strings than it waits
       # with, and on one holding fewer until its count is lowered.
       lib.programsLiveInTheirOwnFiles =
-        pkgs: pkgs.callPackage ./tests/programs-live-in-their-own-files.nix { };
+        pkgs: pkgs.callPackage ./tests/rules/programs-live-in-their-own-files.nix { };
 
       # How a repository built on core keeps its tests waiting on events, as core
       # does: `core.lib.everyFixedWaitSaysWhy pkgs { src = ./.; waiting = { ... };
       # }` is a check that fails on a test file holding more sleeps that neither
       # poll nor say what passes while they wait than it waits with, and on one
       # holding fewer until its count is lowered.
-      lib.everyFixedWaitSaysWhy = pkgs: pkgs.callPackage ./tests/every-fixed-wait-says-why.nix { };
+      lib.everyFixedWaitSaysWhy = pkgs: pkgs.callPackage ./tests/rules/every-fixed-wait-says-why.nix { };
 
       # How a repository built on core keeps its failing assertions saying what
       # was wrong, as core does: `core.lib.everyAssertSaysWhatWasWrong pkgs { src
@@ -537,20 +537,21 @@
       # Rust `assert!`s or Python non-comparison asserts without a message than
       # it waits with, and on one holding fewer until its count is lowered.
       lib.everyAssertSaysWhatWasWrong =
-        pkgs: pkgs.callPackage ./tests/every-assert-says-what-was-wrong.nix { };
+        pkgs: pkgs.callPackage ./tests/rules/every-assert-says-what-was-wrong.nix { };
 
       # How a repository built on core keeps a test that can't run from passing,
       # as core does: `core.lib.everyTestRunsOrFails pkgs { src = ./.; waiting =
       # { ... }; }` is a check that fails on a test file holding more skips than
       # it waits with, and on one holding fewer until its count is lowered.
-      lib.everyTestRunsOrFails = pkgs: pkgs.callPackage ./tests/every-test-runs-or-fails.nix { };
+      lib.everyTestRunsOrFails = pkgs: pkgs.callPackage ./tests/rules/every-test-runs-or-fails.nix { };
 
       # How a repository built on core keeps each lint suppression saying why, as
       # core does: `core.lib.everySuppressionSaysWhy pkgs { src = ./.; waiting =
       # { ... }; }` is a check that fails on a file holding more `# noqa`s, `#
       # type: ignore`s, shellcheck or qmllint disables without a reason than it
       # waits with, and on one holding fewer until its count is lowered.
-      lib.everySuppressionSaysWhy = pkgs: pkgs.callPackage ./tests/every-suppression-says-why.nix { };
+      lib.everySuppressionSaysWhy =
+        pkgs: pkgs.callPackage ./tests/rules/every-suppression-says-why.nix { };
 
       # How a repository built on core holds its shell scripts to shellcheck's
       # optional checks that find faults, as core does:
@@ -559,7 +560,7 @@
       # findings than it waits with, and on one holding fewer until its count is
       # lowered.
       lib.everyScriptMeetsShellcheckAtItsStrictest =
-        pkgs: pkgs.callPackage ./tests/every-script-meets-shellcheck-at-its-strictest.nix { };
+        pkgs: pkgs.callPackage ./tests/rules/every-script-meets-shellcheck-at-its-strictest.nix { };
 
       # How a repository built on core keeps each function in its test code
       # once, as core does: `core.lib.everyTestFunctionLivesOnce pkgs { src =
@@ -567,7 +568,7 @@
       # more functions copied from another than it waits with, and on one
       # holding fewer until its count is lowered.
       lib.everyTestFunctionLivesOnce =
-        pkgs: pkgs.callPackage ./tests/every-test-function-lives-once.nix { };
+        pkgs: pkgs.callPackage ./tests/rules/every-test-function-lives-once.nix { };
 
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;

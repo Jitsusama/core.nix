@@ -356,7 +356,7 @@ mod tests {
     fn a_file_naming_a_path_the_other_side_renamed_is_shared() {
         // #2597's case: the branch renamed a script, and main since moved a
         // list naming its old path, which the branch never touched.
-        let list = "tests/every-script-waiting.nix";
+        let list = "tests/rules/every-script-waiting.nix";
         let at_main = |file: &str| {
             if file == list {
                 "{ \"tests/pi-rings-low-and-says-it.sh\" = 21; }".to_owned()

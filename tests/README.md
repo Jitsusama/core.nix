@@ -12,7 +12,7 @@ and why.
 | ------------------------------------------- | ----------------------------------------- |
 | a VM test, `<name>.nix` and `<name>-vm-test.py` | `vm/` by area, or here until it moves |
 | a VM test split into areas                  | a folder named for it                     |
-| a rule held over every file, and its list   | here, `<rule>.py` and `<rule>-waiting.nix` |
+| a rule held over every file, and its list   | `rules/`                                  |
 | a check reading the repository as a whole   | `repository/`                             |
 | what several checks are built from          | `lib/`                                    |
 | a test on a nested niri, in the sandbox     | here, `<what>-on-niri-test.py`            |
@@ -20,13 +20,10 @@ and why.
 | a patch a test's machine takes              | here, `<what>.patch`                      |
 | a shell QML case not yet beside the shell   | here, `<case>.qml`                        |
 
-The rules held over every file stay at the top, since merge-net reads a
-waiting list only as `tests/<rule>-waiting.nix`, and each list only shrinks.
-
 ## Its Folders
 
-- `battery-stand-ins/`, `lib/`, `repository/` and `vm/` say what they hold in
-  their own READMEs.
+- `battery-stand-ins/`, `lib/`, `repository/`, `rules/` and `vm/` say what
+  they hold in their own READMEs.
 - `desktop/`: the desktop VM test's areas, one `-vm-test.py` each, with the
   programs its machine runs to drive the desktop. Five measure the launcher at
   Joel's scales, side by side, and share `looks_session.py`: looks itself
