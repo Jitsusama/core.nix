@@ -1017,6 +1017,8 @@ QtObject {
             if (quoted(got) !== quoted(expected))
                 failures.push(`${what} gave ${quoted(got)}, not ${quoted(expected)}`);
         };
+        machine("a list of CPUs", Machine.cpus("0-3,8\n"), [0, 1, 2, 3, 8]);
+        machine("no list of CPUs", Machine.cpus(""), []);
         // A served row's times are worded here, by their form, into the
         // item's own words: the uptime counts up from the boot, the start
         // is a moment.

@@ -60,6 +60,24 @@ function items(parts) {
         .join(" \u00b7 ");
 }
 
+// The ranges a CPU list is written in: "0-3,8".
+const RANGE = /^(\d+)(?:-(\d+))?$/;
+
+// The CPU numbers a list such as /sys/devices/cpu_core/cpus names, as
+// the telemetry names a cluster's.
+function cpus(text) {
+    const listed = [];
+    const ranges = text.trim().split(",").map(part => RANGE.exec(part.trim()))
+        .filter(range => range !== null);
+    for (const range of ranges) {
+        const last = Number(range[2] ?? range[1]);
+        for (let n = Number(range[1]); n <= last; n += 1) {
+            listed.push(n);
+        }
+    }
+    return listed;
+}
+
 // A served row's side as the launcher says it (ready-rows.md's Times),
 // since nothing that reads the clock is worded by a daemon: each item's
 // words, and a time by its form, `lasted` as `told.lasted` says the
