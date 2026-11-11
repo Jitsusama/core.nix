@@ -4,7 +4,8 @@
 //! [`memory`], [`disk`], [`boot`], [`using`], [`tree`], [`heat`],
 //! [`supply`], [`sleep`], [`firmware`], [`light`], and what the backlight
 //! program steers the screen to, [`steered`], and who has each camera open,
-//! [`camera`], both heard as they're written through [`written`]). Every
+//! [`camera`], both heard as they're written through [`written`]), and the
+//! user units the shell may restart, [`units`]. Every
 //! file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before.
@@ -34,6 +35,7 @@ pub mod sleep;
 pub mod steered;
 pub mod supply;
 pub mod tree;
+pub mod units;
 pub mod using;
 pub mod written;
 

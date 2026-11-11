@@ -55,9 +55,15 @@ the change first, never a second late.
 | Act            | Given                | What it does                                       |
 | -------------- | -------------------- | -------------------------------------------------- |
 | `charge-limit` | `supply`, `stop_pct` | stops charging there, starting 5 below where it can |
+| `restart-unit` | `unit`               | restarts a user unit the shell may, once queued    |
 
 A charge limit's files are written in the order the kernel takes them,
 which refuses a start at or above the stop.
+
+A restart goes through systemd's user bus, never a spawned `systemctl`,
+and is answered once systemd has queued it. Only the units in
+`src/units.rs`'s `RESTARTABLE` are restarted, spend-watch's alone now,
+for Spend's Start the Watch; any other is refused `not-allowed`.
 
 ## Every Figure, and Where It Shows
 
