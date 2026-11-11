@@ -3,12 +3,14 @@
 A session the launcher holds moves into pi's host in its own window, as the harness moves one
 (its mesh-workflow's in-place.ts and scripts/host-join.ts): pi ends naming the join, the join
 names the host's viewer, or plain pi when the host won't take it, and each is a start of the
-same holder on the same terminal. Joel was told the windows stay where they are (OSPHT4,
-11 November), so the window keeps its id, workspace, column and size, takes no focus, never
-changes on his screen, and loses none of his keys; the node gives the session that window, so
-the launcher opens no second viewer and Go To goes to it. The programs are tests/pi-stand-in.sh,
-whose in-place modes stand in for pi, the join and the viewer; how the real pi goes quiet and
-the real join decides are proven in the harness's own tests.
+same holder on the same terminal. A viewer whose host releases the session ends as attach does
+then, and what runs in the window carries on as plain pi, as the rollback asks. Joel was told
+the windows stay where they are (OSPHT4, 11 November), so the window keeps its id, workspace,
+column and size, takes no focus, never changes on his screen, and loses none of his keys; the
+node gives the session that window, so the launcher opens no second viewer and Go To goes to
+it. The programs are tests/pi-stand-in.sh, whose in-place modes stand in for pi, the join and
+the viewer; how the real pi goes quiet and the real join decides are proven in the harness's
+own tests.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -130,6 +132,37 @@ def test_a_session_its_host_wont_take_carries_on_as_plain_pi_in_its_window(
         cleaned(desktop, session)
 
 
+def test_a_session_its_host_releases_carries_on_as_plain_pi_in_its_window(
+    desktop: Desktop,
+) -> None:
+    """A hosted session the host lets go of carries on as plain pi on its log, in its window.
+
+    Its viewer ends as attach does on a release, with 3, and only then does what runs in the
+    window start the join again, which names plain pi: one program for the session, and no
+    window opened or closed, as plan item 11's rollback needs of every window Joel placed.
+    """
+    session = "01d1-released"
+    try:
+        window = opened_held(desktop, session)
+        moved_to_the_join(desktop, session)
+        desktop.as_account(f"touch ~/hosted-{session}")
+        started_as(desktop, session, "attach")
+        box, watching = watched_while_typing(desktop, session, window["id"])
+        desktop.as_account(f"touch ~/released-{session}")
+        started_as(desktop, session, "again")
+        typed_past(desktop, session)
+        changed = frames_changed(desktop, box)
+        typed = typed_by(desktop, session)
+        assert typed == [f"w{n}" for n in range(1, len(typed) + 1)], typed
+        assert_unmoved(desktop, window, watching)
+        assert changed == [], f"the window Joel types in changed in frames {changed}"
+        assert programs_for(desktop, session) == 1, "more than one program runs for it"
+        record = json.loads(desktop.as_account(f"cat {HOLDS}/{holding(desktop, session)}.json"))
+        assert record["command"][:2] == ["pi", "--session"], record
+    finally:
+        cleaned(desktop, session)
+
+
 def opened_held(desktop: Desktop, session: str) -> Json:
     """Reopen a session as the launcher does, held, focused, and give its window once drawn."""
     machine = desktop.machine
@@ -137,7 +170,7 @@ def opened_held(desktop: Desktop, session: str) -> Json:
     desktop.as_account(
         f"touch $XDG_RUNTIME_DIR/pi-moves-in-place && mkdir -p {folder} {PI_PRESENCE}"
         f" && rm -f ~/typed-{session} ~/move-{session} ~/hosted-{session} ~/refused-{session}"
-        f" $XDG_RUNTIME_DIR/moves-{session}"
+        f" ~/released-{session} $XDG_RUNTIME_DIR/moves-{session}"
     )
     handed = {"sessions": [{"id": session, "cwd": folder, "focus": True}]}
     answer = desktop.as_account(
@@ -379,7 +412,8 @@ def cleaned(desktop: Desktop, session: str) -> None:
     """
     desktop.launcher_left_closed()
     desktop.as_account(
-        f"touch ~/typing-done ~/move-{session} ~/refused-{session}; pkill -f 'event-strea[m]';"
+        f"touch ~/typing-done ~/move-{session} ~/refused-{session} ~/released-{session};"
+        " pkill -f 'event-strea[m]';"
         " pkill -INT -x wf-recorder; pkill -f 'sleep 60[1]';"
         # Bracketed, so the pattern doesn't match the shell running it.
         f" pkill -f '[p]i .*{session}'; rm -f $XDG_RUNTIME_DIR/pi-moves-in-place"
@@ -387,7 +421,7 @@ def cleaned(desktop: Desktop, session: str) -> None:
     )
     desktop.as_account(
         f"rm -rf ~/{session} ~/typed-{session} ~/move-{session} ~/hosted-{session}"
-        f" ~/refused-{session} ~/typing-done ~/typing-count ~/focus-events"
+        f" ~/released-{session} ~/refused-{session} ~/typing-done ~/typing-count ~/focus-events"
     )
 
 
