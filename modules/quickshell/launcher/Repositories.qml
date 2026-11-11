@@ -66,6 +66,9 @@ Singleton {
             root.files = {};
     }
 
+    // What the daemon last said of the folder, as again() compares it.
+    property string said: ""
+
     // The folder being read, so two acts asking as the launcher opens ask
     // once, or "".
     property string reading: ""
@@ -81,6 +84,13 @@ Singleton {
             const record = daemon.held[key];
             if (record === undefined)
                 return;
+            // Asked again at each opening, it says a change only where
+            // there is one, since each act reading it is drawn again.
+            const said = `${record.dated.join("\n")}\0${root.remoting ?
+                record.configs.join("\n") : ""}`;
+            if (root.read && said === root.said && (!root.remoting || root.remotesRead))
+                return;
+            root.said = said;
             root.listed = Repos.repositories(record.dated.join("\n"));
             root.read = true;
             if (root.remoting) {
