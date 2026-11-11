@@ -8,8 +8,8 @@
 # charges adaptively or to custom limits as it is, so the profile never changes
 # how the battery charges.
 #
-# UPower also decides what happens as the battery runs out. It powers the
-# machine off at 5%, warning at 20% and 10% as the desktop's battery does.
+# UPower also decides what happens as the battery runs out. It hibernates the
+# machine at 5%, warning at 20% and 10% as the desktop's battery does.
 {
   config,
   lib,
@@ -59,10 +59,12 @@ in
       percentageLow = 20;
       percentageCritical = 10;
       percentageAction = 5;
-      # Hibernation hasn't been proven on these machines, and UPower skips
-      # any sleep a program's lock holds off and powers off anyway, so it
-      # says what happens.
-      criticalPowerAction = "PowerOff";
+      # A laptop kept awake runs on with its lid shut and work open, so the
+      # battery running out hibernates it, keeping the work, rather than
+      # powering it off (tests/vm/disks/hibernate-vm-test.py proves it with
+      # Keep Awake's locks held). Where it can't hibernate, as with no swap
+      # file or none big enough, UPower powers it off instead.
+      criticalPowerAction = "Hibernate";
     };
 
     systemd.services.${service} = {

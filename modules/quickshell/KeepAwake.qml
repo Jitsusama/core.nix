@@ -9,7 +9,7 @@ pragma Singleton
 // asks for with it still goes through (home.nix says why only that one
 // would be held back). The lid is held on battery as on the charger, since
 // Joel keeps it awake to run with no power and the lid shut (2026-11-10),
-// and a battery run nearly flat still powers off. Where a shut lid never
+// and a battery run nearly flat still hibernates. Where a shut lid never
 // suspends, it's never held, since holding it would change nothing.
 import Quickshell
 import QtQuick

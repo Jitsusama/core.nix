@@ -2603,9 +2603,9 @@ in
       PartOf = [ "graphical-session.target" ];
     };
     # Only where a shut lid suspends: elsewhere it never does, and holding
-    # the lid would change nothing. A battery run nearly flat still powers
-    # off, as UPower has it (../power-profiles-daemon/nixos.nix), since
-    # neither lock holds that back.
+    # the lid would change nothing. A battery run nearly flat still
+    # hibernates, as UPower has it (../power-profiles-daemon/nixos.nix),
+    # since neither lock holds that back.
     systemd.user.services.keep-awake-lid = lib.mkIf lidSleeps (holding {
       what = "handle-lid-switch";
       flag = "kept-awake-lid";

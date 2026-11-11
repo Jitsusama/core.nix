@@ -247,8 +247,8 @@
     bat colours code in the account's theme from a cache built once, saying nothing, delta finds
     the theme through it too, and a switch builds no cache of its own
   '';
-  batteries-leave-time-to-power-off = ''
-    UPower powers a laptop off at 5%, before it goes flat
+  batteries-leave-time-to-hibernate = ''
+    UPower hibernates a laptop at 5%, before it goes flat, keeping its work
   '';
   bluetooth-firmware-reaches-the-disk-prompt-dell-xps-14-da14260 = ''
     the XPS 14's Bluetooth firmware for the disk prompt is in the machine's firmware
