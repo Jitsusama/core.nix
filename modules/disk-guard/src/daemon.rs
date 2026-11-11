@@ -2661,16 +2661,17 @@ fn spent_trees(
                 quests,
                 trees,
                 sessions,
+                rosters,
                 ..
-            } => Some((quests, trees, sessions)),
+            } => Some((quests, trees, sessions, rosters)),
             _ => None,
         })
-        .flat_map(|(quests, trees, sessions)| {
+        .flat_map(|(quests, trees, sessions, rosters)| {
             let unheld = trees.as_deref().map_or_else(Vec::new, |records| {
                 crate::workspaces::unheld_trees(records, quests, running)
             });
             let idle = sessions.as_deref().map_or_else(Vec::new, |sessions| {
-                crate::workspaces::idle_trees(quests, sessions, boot, alive)
+                crate::workspaces::idle_trees(quests, sessions, rosters.as_deref(), boot, alive)
             });
             crate::workspaces::finished_trees(quests)
                 .into_iter()
