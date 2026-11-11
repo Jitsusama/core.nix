@@ -1915,7 +1915,8 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-desktop-reads-the-spend-watch" { } ''
-      mkdir -p runtime/written runtime/spend-watch sessions/thing state launcher && chmod 700 runtime
+      mkdir -p runtime/written runtime/spend-watch runtime/daemons sessions/thing state launcher
+      chmod 700 runtime
       ${lib.getExe pkgs.bash} ${./tests/stand-ins/spend-session.sh} sessions/thing/session.jsonl
       cat > config.json <<EOF
       {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",
