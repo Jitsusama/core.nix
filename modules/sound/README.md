@@ -25,6 +25,7 @@ levels and choices, and read whole files rewritten by another daemon.
 |                         | `chosen`: whether the default metadata names it | Use, and the row's mark |
 |                         | `properties`: every property of its node        | its drawer's facts      |
 |                         | `form`: what its card says it is, as BlueZ does | the row's glyph         |
+|                         | `unplugged`: whether nothing is in its jack     | whether it's listed     |
 | `row:sound:<node name>` | the launcher's row for it, ready to draw        | Sound's place           |
 
 A volume is the mean of each channel's cube root, as Quickshell says it,
@@ -62,11 +63,17 @@ first, each way A to Z by that name, so the shell only places them by
 `order` and draws them. A watch on `{ "kind": "row" }` hears them,
 each sent again only when what it shows moves.
 
+A jack with nothing plugged in, as the headphones' while none are, and
+a display's output with no display aren't listed unless chosen, which
+the note then says. The card says so of each route it has (its
+EnumRoute), as a jack or a display comes and goes, so it's always
+current; a device no card's routes play, as a USB or a Bluetooth one,
+is always listed.
+
 ## What Comes Next
 
-Whether a jack with nothing plugged in or a display's output with no
-display is listed, from desk-facts and from the shell telling the
-displays it has; then the launcher's Sound lists these rows rather than
-making its own, and each device's parts, programs and ports are served
-ready too, with the port act, so `pw-top`, `pw-metadata` and the
-per-move processes go.
+The launcher's Sound lists these rows rather than making its own, so
+it no longer reads desk-facts' file and its service's control group to
+list; then each device's parts, programs and ports are served ready
+too, with the port act, so `pw-top`, `pw-metadata` and the per-move
+processes go.

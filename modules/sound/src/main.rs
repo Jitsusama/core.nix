@@ -51,7 +51,7 @@ use serde_json::{Value, json};
 use sound::acts::{Move, act, planned};
 use sound::devices::{Change, Devices, direction};
 use sound::interface::{Ask, VERSION, ask, error, kind_of};
-use sound::levels::{levels, route};
+use sound::levels::{levels, offered, route};
 use sound::rows::{Words, rows};
 
 /// How many lines a connection may have waiting to be written before
@@ -411,8 +411,8 @@ fn node(
     })
 }
 
-/// Binds a card, hearing what it says it is and which route plays each
-/// of its profile's devices.
+/// Binds a card, hearing what it says it is, which route plays each of
+/// its profile's devices, and whether anything is plugged into each.
 fn card(
     shared: &Arc<Mutex<Daemon>>,
     registry: &RegistryRc,
@@ -447,23 +447,34 @@ fn card(
         .param({
             let shared = Arc::clone(shared);
             move |_, kind, _, _, pod| {
-                let (Some(pod), ParamType::Route) = (pod, kind) else {
-                    return;
-                };
-                if let Some((index, device)) = route(pod.as_bytes()) {
-                    told(
-                        &shared,
-                        Change::Route {
+                let Some(pod) = pod else { return };
+                let change = match kind {
+                    ParamType::Route => {
+                        route(pod.as_bytes()).map(|(index, device)| Change::Route {
                             card: id,
                             index,
                             device,
-                        },
-                    );
+                        })
+                    }
+                    ParamType::EnumRoute => {
+                        offered(pod.as_bytes()).map(|(index, devices, unplugged)| Change::Offer {
+                            card: id,
+                            index,
+                            devices,
+                            unplugged,
+                        })
+                    }
+                    _ => None,
+                };
+                if let Some(change) = change {
+                    told(&shared, change);
                 }
             }
         })
         .register();
-    card.subscribe_params(&[ParamType::Route]);
+    // Every route it has, said again as a jack or a display comes or
+    // goes, says whether anything is plugged in where each device plays.
+    card.subscribe_params(&[ParamType::Route, ParamType::EnumRoute]);
     Some(Bound::Card {
         proxy: card,
         _listener: listener,
