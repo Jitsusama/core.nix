@@ -162,6 +162,20 @@ def unlocked(shell: Shell) -> None:
     shell.launcher_until(lambda shown: not shown["open"])
 
 
+def focus_reaches(shell: Shell, window: Json) -> None:
+    """Wait for niri to focus this window, which the launcher asks of it as it closes.
+
+    The ask goes down niri's socket after the launcher has said it closed, so a busy
+    builder can read the focus before niri has done it (2026-11-10).
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    focused = json.loads(shell.as_account("niri msg --json focused-window"))
+    while focused is None or focused["id"] != window["id"]:
+        assert time.monotonic() < deadline, f"niri never focused {window['title']}: {focused}"
+        time.sleep(launcher_on_niri.POLL)
+        focused = json.loads(shell.as_account("niri msg --json focused-window"))
+
+
 def test_passwords_asks_nothing_until_stepped_into_and_leads_with_letting_it_in(
     shell: Shell,
 ) -> None:
@@ -183,9 +197,7 @@ def test_passwords_asks_nothing_until_stepped_into_and_leads_with_letting_it_in(
     with shell.told(f"handed to {PROMPT}"):
         prompt = shell.opened("Unlock 1Password", PROMPT)
     shell.launcher_closed()
-    focused = json.loads(shell.as_account("niri msg --json focused-window"))
-    assert focused is not None, "niri focuses no window once the launcher went"
-    assert focused["id"] == prompt["id"], f"1Password's prompt isn't focused: {focused}"
+    focus_reaches(shell, prompt)
     shell.close(prompt)
     # Home's row says nothing after its name and that it's locked at its right, and its
     # drawer names what it holds, the manager, never Check Every Password, its act

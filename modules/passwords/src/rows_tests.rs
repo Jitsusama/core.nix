@@ -28,6 +28,15 @@ fn one_manager() -> Vec<Shown> {
     }]
 }
 
+/// The drawer a row names, as the daemon serves it beside the rows.
+fn drawer_of(row: &Value, records: &[Value], managers: &[Shown]) -> Value {
+    drawers(records, managers, &words())
+        .into_iter()
+        .find(|(key, _)| row["drawer"] == *key)
+        .map(|(_, drawer)| drawer)
+        .unwrap_or_default()
+}
+
 fn field<'a>(rows: &'a [Value], field: &str) -> Vec<&'a Value> {
     rows.iter().map(|row| &row[field]).collect()
 }
@@ -47,10 +56,14 @@ fn an_entry_is_a_row_keyed_as_the_launcher_keys_it_with_no_secret() {
     entry["details"] = json!([
         {"id": "password", "purpose": "password", "hidden": true, "strength": "VERY_GOOD"}
     ]);
-    let rows = rows(&[entry], &one_manager(), &words());
+    let rows = rows(&[entry], &one_manager());
     let row = &rows[0];
     assert_eq!(row["key"], "row:entry:onepassword:a");
     assert_eq!(row["row"], "entry:onepassword:a");
+    assert_eq!(
+        row["drawer"], "drawer:entry:onepassword:a",
+        "a row carried its drawer rather than naming it"
+    );
     assert_eq!(row["place"], "passwords");
     assert_eq!(row["name"], "Example");
     assert_eq!(row["glyph"], "login");
@@ -76,7 +89,7 @@ fn the_favourites_lead_by_title_then_the_latest_changed_and_the_rest_are_only_fo
     records[1]["favourite"] = json!(true);
     records[1]["title"] = json!("banking");
     records[3]["title"] = json!("Alpha");
-    let rows = rows(&records, &one_manager(), &words());
+    let rows = rows(&records, &one_manager());
     let ordered = |at: usize| rows[at]["order"].as_u64();
     assert_eq!(ordered(3), Some(0), "Alpha, a favourite, didn't lead");
     assert_eq!(
@@ -113,12 +126,12 @@ fn those_the_check_found_breached_or_reused_need_attention_by_title() {
     records[0]["health"] = json!({"reused": 2, "breached": 0});
     records[1]["health"] = json!({"reused": 0, "breached": 0});
     records[2]["health"] = json!({"reused": 0, "breached": 1_204});
-    let rows = rows(&records, &one_manager(), &words());
+    let rows = rows(&records, &one_manager());
     assert_eq!(
         field(&rows, "attention"),
         [&json!(1), &Value::Null, &json!(0)]
     );
-    let health = |at: usize| rows[at]["drawer"]["facts"][0].clone();
+    let health = |at: usize| drawer_of(&rows[at], &records, &one_manager())["facts"][0].clone();
     assert_eq!(
         health(0),
         json!({"label": "Health", "value": "reused in 2 other entries", "warns": true})
@@ -133,7 +146,7 @@ fn its_acts_come_in_the_design_order_each_with_what_it_asks() {
         {"id": "pw", "purpose": "password", "hidden": true},
         {"id": "otp", "type": "code", "hidden": true}
     ]);
-    let rows = rows(&[entry], &one_manager(), &words());
+    let rows = rows(&[entry], &one_manager());
     let shown = "onepassword://view-item?a=acct&v=v1&i=a";
     assert_eq!(
         rows[0]["acts"],
@@ -155,7 +168,7 @@ fn its_acts_come_in_the_design_order_each_with_what_it_asks() {
 fn a_note_has_no_password_to_copy_and_no_link_without_its_parts() {
     let note = json!({"key": "entry:onepassword:n", "manager": "onepassword", "id": "n",
         "title": "", "category": "note"});
-    let rows = rows(&[note], &one_manager(), &words());
+    let rows = rows(&[note], &one_manager());
     assert_eq!(rows[0]["passworded"], false);
     assert_eq!(rows[0]["name"], "Note", "a note without a title read blank");
     assert_eq!(rows[0]["glyph"], "secureNote");
@@ -180,9 +193,10 @@ fn its_drawer_says_every_figure_but_the_secret_its_times_to_word() {
         {"id": "pin", "label": "pin", "section": "Extra", "hidden": true},
         {"id": "plan", "label": "plan", "value": "gold"}
     ]);
-    let rows = rows(&[entry], &one_manager(), &words());
+    let records = [entry];
+    let rows = rows(&records, &one_manager());
     assert_eq!(
-        rows[0]["drawer"],
+        drawer_of(&rows[0], &records, &one_manager()),
         json!({
             "eyebrow": "in Keeping \u{b7} login", "eyebrowNames": true, "title": "Example",
             "facts": [
@@ -211,9 +225,10 @@ fn with_two_managers_each_row_names_its_own() {
         called: "Other".into(),
         shows: String::new(),
     });
-    let rows = rows(&[login("a", "Example", 1)], &managers, &words());
+    let records = [login("a", "Example", 1)];
+    let rows = rows(&records, &managers);
     assert_eq!(rows[0]["note"], "1Password \u{b7} example.com");
-    let facts = rows[0]["drawer"]["facts"]
+    let facts = drawer_of(&rows[0], &records, &managers)["facts"]
         .as_array()
         .cloned()
         .unwrap_or_default();

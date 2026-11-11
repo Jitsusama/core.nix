@@ -25,8 +25,10 @@
 //! Given the launcher's vocabulary, WORDS, it serves each entry's ready row
 //! too, as kind `row` to list and watch: worded, ordered and with its acts
 //! as rows.rs makes them, each watch told only the rows that changed, so
-//! the launcher makes none of its own. Without it, or with a word it
-//! lacks, it serves no rows and says why in the journal.
+//! the launcher makes none of its own. Each row's drawer is kind
+//! `drawer`, listed and watched by the keys the rows name, so only those
+//! shown are made and told. Without it, or with a word it lacks, it
+//! serves no rows or drawers and says why in the journal.
 //!
 //! An audit is the one ask that reads every password: asked by Joel alone
 //! (`asked`), never at start, on a timer or with a list, it asks each
@@ -62,8 +64,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use passwords::{
-    Ask, Changes, DOMAIN, Held, KIND, PATIENCE, ROW, Said, Standing, VERSION, ask, audit, cli,
-    error, key, named, now, rows, said, standing,
+    Ask, Changes, DOMAIN, DRAWER, Held, KIND, Of, PATIENCE, ROW, Said, Standing, VERSION, ask,
+    audit, cli, error, key, named, now, rows, said, standing,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -102,8 +104,19 @@ struct Watch {
     connection: u64,
     id: Value,
     told: Sender<String>,
-    /// Whether it watches the entries' rows rather than them.
-    rows: bool,
+    /// Whether it watches the entries, their rows or some drawers.
+    of: Of,
+}
+
+impl Watch {
+    /// Whether a row or drawer by this key is one it watches.
+    fn hears(&self, key: &str) -> bool {
+        match &self.of {
+            Of::Entries => false,
+            Of::Rows => key.starts_with("row:"),
+            Of::Drawers(keys) => keys.iter().any(|each| each == key),
+        }
+    }
 }
 
 /// What rows are made with, and the last each row watch was told.
@@ -229,29 +242,82 @@ fn vocabulary(path: &str) -> Option<rows::Words> {
 
 /// Every entry's row as it stands, as a record of kind `row`.
 fn rows_of(daemon: &Daemon) -> Vec<Value> {
-    let Some(words) = &daemon.rows.words else {
+    // Rows are served only in the launcher's words, whole.
+    if daemon.rows.words.is_none() {
         return Vec::new();
-    };
-    rows::rows(&daemon.held.records(), &daemon.rows.shown, words)
+    }
+    rows::rows(&daemon.held.records(), &daemon.rows.shown)
         .into_iter()
         .map(|row| json!({"key": row["key"], "kind": ROW, "row": row}))
         .collect()
 }
 
-/// Tells each row watch the rows that changed since it was last told,
-/// and those gone: one entry changing can move every row's order.
+/// The drawers by these keys as they stand, as records of kind `drawer`,
+/// made only for the entries they name.
+fn drawers_of(daemon: &Daemon, keys: &[String]) -> Vec<Value> {
+    let Some(words) = &daemon.rows.words else {
+        return Vec::new();
+    };
+    let shown: Vec<Value> = daemon
+        .held
+        .records()
+        .into_iter()
+        .filter(|record| {
+            let drawer = format!("drawer:{}", record["key"].as_str().unwrap_or_default());
+            keys.contains(&drawer)
+        })
+        .collect();
+    rows::drawers(&shown, &daemon.rows.shown, words)
+        .into_iter()
+        .map(|(key, drawer)| json!({"key": key, "kind": DRAWER, "drawer": drawer}))
+        .collect()
+}
+
+/// The rows and drawers a watch is of, as they stand now.
+fn made_of(daemon: &Daemon, of: &Of) -> Vec<Value> {
+    match of {
+        Of::Entries => daemon.held.records(),
+        Of::Rows => rows_of(daemon),
+        Of::Drawers(keys) => drawers_of(daemon, keys),
+    }
+}
+
+fn keyed(made: Vec<Value>) -> impl Iterator<Item = (String, Value)> {
+    made.into_iter().map(|record| {
+        (
+            record["key"].as_str().unwrap_or_default().to_owned(),
+            record,
+        )
+    })
+}
+
+/// Tells each row or drawer watch what it watches that changed since it
+/// was last told, and what's gone: one entry changing can move every
+/// row's order, and a drawer changes with its entry. Nothing is made
+/// that nobody watches, and a watch nothing changed for is told nothing.
 fn tell_rows(daemon: &mut Daemon) {
-    if !daemon.watches.iter().any(|watch| watch.rows) {
+    let rowing = daemon.watches.iter().any(|watch| watch.of == Of::Rows);
+    let drawing: Vec<String> = daemon
+        .watches
+        .iter()
+        .filter_map(|watch| match &watch.of {
+            Of::Drawers(keys) => Some(keys.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    if !rowing && drawing.is_empty() {
+        // Nobody is told against it, so the next watch starts it afresh.
+        daemon.rows.told.clear();
         return;
     }
-    let now: HashMap<String, Value> = rows_of(daemon)
-        .into_iter()
-        .map(|row| (row["key"].as_str().unwrap_or_default().to_owned(), row))
+    let made = if rowing { rows_of(daemon) } else { Vec::new() };
+    let now: HashMap<String, Value> = keyed(made)
+        .chain(keyed(drawers_of(daemon, &drawing)))
         .collect();
-    let changed: Vec<&Value> = now
+    let changed: Vec<(&String, &Value)> = now
         .iter()
-        .filter(|(key, row)| daemon.rows.told.get(*key) != Some(*row))
-        .map(|(_, row)| row)
+        .filter(|(key, record)| daemon.rows.told.get(*key) != Some(*record))
         .collect();
     let gone: Vec<&String> = daemon
         .rows
@@ -259,9 +325,19 @@ fn tell_rows(daemon: &mut Daemon) {
         .keys()
         .filter(|key| !now.contains_key(*key))
         .collect();
-    if !(changed.is_empty() && gone.is_empty()) {
-        for watch in daemon.watches.iter().filter(|watch| watch.rows) {
-            let line = json!({"id": watch.id, "changed": changed, "gone": gone});
+    for watch in &daemon.watches {
+        let heard: Vec<&Value> = changed
+            .iter()
+            .filter(|(key, _)| watch.hears(key))
+            .map(|(_, record)| *record)
+            .collect();
+        let ended: Vec<&String> = gone
+            .iter()
+            .copied()
+            .filter(|key| watch.hears(key))
+            .collect();
+        if !(heard.is_empty() && ended.is_empty()) {
+            let line = json!({"id": watch.id, "changed": heard, "gone": ended});
             let _ = watch.told.send(line.to_string());
         }
     }
@@ -484,7 +560,11 @@ fn took_in(shared: &Shared, manager: &str, line: &str) {
                     .iter()
                     .filter_map(|key| daemon.held.record(key))
                     .collect();
-                for watch in daemon.watches.iter().filter(|watch| !watch.rows) {
+                for watch in daemon
+                    .watches
+                    .iter()
+                    .filter(|watch| watch.of == Of::Entries)
+                {
                     let line = json!({"id": watch.id, "changed": records, "gone": changes.gone});
                     let _ = watch.told.send(line.to_string());
                 }
@@ -635,12 +715,12 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             asked,
             held,
             patience,
-            rows,
+            of,
         } => {
             if !held {
                 list(shared, fresh, asked, patience);
             }
-            listed(shared, &id, limit, rows)
+            listed(shared, &id, limit, &of)
         }
         Ask::Get {
             id,
@@ -650,14 +730,14 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             patience,
         } if !held => get(shared, &id, &keys, asked, patience),
         Ask::Get { id, keys, .. } => held_records(shared, &id, &keys),
-        Ask::Watch { id, rows } => {
+        Ask::Watch { id, of } => {
             watch(
                 shared,
                 Watch {
                     connection,
                     id,
                     told: told.clone(),
-                    rows,
+                    of,
                 },
             );
             Value::Null
@@ -716,21 +796,12 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
 /// change as it comes.
 fn watch(shared: &Shared, watch: Watch) {
     let mut daemon = lock(shared);
-    let records = if watch.rows {
-        let told = rows_of(&daemon);
-        daemon.rows.told = told
-            .iter()
-            .map(|row| {
-                (
-                    row["key"].as_str().unwrap_or_default().to_owned(),
-                    row.clone(),
-                )
-            })
-            .collect();
-        told
-    } else {
-        daemon.held.records()
-    };
+    let records = made_of(&daemon, &watch.of);
+    // What it's told now is what the next change is told against, beside
+    // what the other watches were told.
+    if watch.of != Of::Entries {
+        daemon.rows.told.extend(keyed(records.clone()));
+    }
     let _ = watch.told.send(
         json!({"id": watch.id, "records": records,
                "sources": daemon.held.standings(), "state": daemon.held.state()})
@@ -739,15 +810,11 @@ fn watch(shared: &Shared, watch: Watch) {
     daemon.watches.push(watch);
 }
 
-/// Every entry held, or its row where `rows` asks, at most `limit`, and
-/// how each manager stands.
-fn listed(shared: &Shared, id: &Value, limit: Option<usize>, rows: bool) -> Value {
+/// Every entry held, or its row or the drawers where `of` asks, at most
+/// `limit`, and how each manager stands.
+fn listed(shared: &Shared, id: &Value, limit: Option<usize>, of: &Of) -> Value {
     let daemon = lock(shared);
-    let mut records = if rows {
-        rows_of(&daemon)
-    } else {
-        daemon.held.records()
-    };
+    let mut records = made_of(&daemon, of);
     if let Some(limit) = limit {
         records.truncate(limit);
     }
@@ -1090,7 +1157,11 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
         .filter_map(|key| daemon.held.record(key))
         .collect();
     if !records.is_empty() {
-        for watch in daemon.watches.iter().filter(|watch| !watch.rows) {
+        for watch in daemon
+            .watches
+            .iter()
+            .filter(|watch| watch.of == Of::Entries)
+        {
             let line = json!({"id": watch.id, "changed": records, "gone": []});
             let _ = watch.told.send(line.to_string());
         }

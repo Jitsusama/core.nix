@@ -279,6 +279,10 @@ fn a_watch_of_rows_hears_each_entrys_row_without_a_secret() {
         rows.iter().all(|row| row["row"]["kind"] != "entry"),
         "a row was said as an entry: {heard}"
     );
+    assert_eq!(
+        github["row"]["drawer"], "drawer:entry:keeping:gh",
+        "a row carried its drawer rather than naming it"
+    );
     holds_no_secret(&heard);
     // Reading the same list again changes no row, so the watch hears none.
     asking.ask(&json!({"id": 2, "ask": "list", "fresh": true, "asked": true}));
@@ -293,6 +297,44 @@ fn a_watch_of_rows_hears_each_entrys_row_without_a_secret() {
     assert_eq!(
         next["id"], "h",
         "a watch of rows heard rows that hadn't changed: {next}"
+    );
+}
+
+#[test]
+fn a_drawer_is_heard_by_its_key_alone_and_only_as_it_changes() {
+    let running = Running::with("drawers", &[("keeping", KEEPING)]);
+    let mut asking = running.client();
+    asking.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let mut watching = running.client();
+    watching.say(&json!({"id": "d", "ask": "watch", "kind": "drawer",
+                         "keys": ["drawer:entry:keeping:gh"]}));
+    let first = watching.hear();
+    assert_eq!(
+        keys(&first),
+        ["drawer:entry:keeping:gh"],
+        "a drawer watch heard drawers it didn't name: {first}"
+    );
+    assert_eq!(first["records"][0]["kind"], "drawer");
+    assert_eq!(first["records"][0]["drawer"]["title"], "GitHub");
+    holds_no_secret(&first);
+    let listed = asking.ask(
+        &json!({"id": 2, "ask": "list", "kind": "drawer", "held": true,
+                                    "keys": ["drawer:entry:keeping:gh"]}),
+    );
+    assert_eq!(keys(&listed), ["drawer:entry:keeping:gh"]);
+    let none = asking.ask(&json!({"id": 3, "ask": "list", "kind": "drawer", "held": true}));
+    assert_eq!(
+        keys(&none),
+        Vec::<String>::new(),
+        "drawers asked by no key: {none}"
+    );
+    // Reading the same list again changes no drawer, so the watch hears none.
+    asking.ask(&json!({"id": 4, "ask": "list", "fresh": true, "asked": true}));
+    watching.say(&json!({"id": "h", "ask": "hello"}));
+    let next = watching.hear();
+    assert_eq!(
+        next["id"], "h",
+        "a drawer watch heard a drawer that hadn't changed: {next}"
     );
 }
 
