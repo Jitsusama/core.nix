@@ -378,7 +378,8 @@ in
       '';
 
   # A hosted pi's screen stays in its own conversation: quitting or a crash
-  # ends only that screen and what it was doing, a stopped screen builds
+  # ends only that screen and what it was doing, a quit waits on its host's
+  # yes and runs on without it, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
   # gave it, a suspend stops only the viewer that asked, every screen hears
   # a theme change, and ordinary pi keeps every path.
