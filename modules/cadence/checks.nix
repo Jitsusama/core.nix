@@ -22,8 +22,8 @@ onLinux {
   # once; a question lands whole and wakes a parked session; the card says
   # the hour's merges, switches and runs; and of the orchestrators and
   # their sessions, one that crashed is revived, one a live pi host holds
-  # runs, and one ended or done is left, once per address, not twice in ten minutes nor past three an
-  # hour.
+  # runs, and one ended or done is left, once per address, not twice in
+  # ten minutes nor past three an hour.
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });
