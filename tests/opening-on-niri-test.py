@@ -508,9 +508,7 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
     def since(before: dict[str, int]) -> dict[str, int]:
         now = made()
         return {
-            name: now[name] - before.get(name, 0)
-            for name in now
-            if now[name] > before.get(name, 0)
+            name: now[name] - before.get(name, 0) for name in now if now[name] > before.get(name, 0)
         }
 
     def in_for_you() -> None:
