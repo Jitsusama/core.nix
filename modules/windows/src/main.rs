@@ -19,8 +19,9 @@
 //! Handed the launcher's words (`--words`, its words.json), it serves
 //! the launcher's Screens too, as rows of kind `row` in place `displays`
 //! (screens.rs), asking niri for its outputs as the stream begins and at
-//! each workspace change, since niri says nothing of a screen itself.
-//! Handed none, it makes no rows.
+//! each workspace change, since niri says nothing of a screen itself,
+//! and again when asked to `look`, as the shell does once it's changed a
+//! screen. Handed none, it makes no rows.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -102,6 +103,8 @@ struct Daemon {
 struct Shared {
     daemon: Mutex<Daemon>,
     folders: Vec<PathBuf>,
+    /// niri's socket, asked for its outputs when a client asks to look.
+    niri: PathBuf,
 }
 
 fn main() {
@@ -154,6 +157,7 @@ fn main() {
             since: now_ms(),
         }),
         folders,
+        niri: niri.clone(),
     });
     // The entries' folders are watched before niri is heard, so no change
     // after the first reading goes unheard.
@@ -525,6 +529,21 @@ fn answer(
                 "watches": daemon.watches.len(),
                 "took_us": daemon.took.iter().collect::<Vec<_>>(),
             })
+        }
+        Ask::Look { id } => {
+            // Asked before the lock is taken, so no other ask waits on
+            // niri, and only where rows are made. What moved is told each
+            // watch before this answer, so a client watching on the same
+            // connection holds the new rows once it's answered.
+            let rowed = lock(&shared.daemon).words.is_some();
+            if let Some(outputs) = rowed.then(|| screens::asked(&shared.niri)).flatten() {
+                let mut daemon = lock(&shared.daemon);
+                if daemon.outputs != outputs {
+                    daemon.outputs = outputs;
+                    refresh(&mut daemon);
+                }
+            }
+            json!({"id": id, "looked": rowed})
         }
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))

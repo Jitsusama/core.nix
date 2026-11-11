@@ -6,8 +6,11 @@
 //! they change when a screen comes or goes (Displays.qml asked the same).
 //!
 //! Each row holds what the shell's own acts need of its screen (`held`:
-//! its connector and how it stands), since turning a screen on or
-//! focusing it is asked of niri by the shell until those acts move here.
+//! its connector, how it stands and niri's whole record of it), since
+//! its settings, its drawer and every act on it are the shell's until
+//! they move here, and the shell asks niri nothing of its own. A change
+//! the shell makes to a screen says nothing in niri's stream, so it asks
+//! this daemon to look again (main.rs's `look`).
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -230,7 +233,8 @@ pub fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Wo
                 "depth": 0,
                 "side": side.into_iter().map(|said| json!({"said": said})).collect::<Vec<_>>(),
                 "note": note,
-                "held": {"output": name, "standing": stands, "builtIn": built_in(name)},
+                "held": {"output": name, "standing": stands, "builtIn": built_in(name),
+                    "niri": output},
             })
         })
         .collect();
@@ -316,6 +320,10 @@ mod tests {
             "2560 \u{d7} 1600 \u{b7} 59.951 Hz \u{b7} scale 1.75\u{d7}"
         );
         assert_eq!(rows[0]["held"]["output"], "eDP-1");
+        assert_eq!(
+            rows[0]["held"]["niri"], desk()["eDP-1"],
+            "the shell's acts read niri's whole record of the screen"
+        );
         assert_eq!(rows[3]["key"], "row:displays:sleep");
         assert_eq!(rows[3]["note"], "a key wakes them");
     }
