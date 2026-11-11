@@ -220,6 +220,26 @@ in
       touch $out
     '';
 
+  # A key whose search awaits a daemon's answer is held a few milliseconds
+  # for it, a key typed over it drops its search, and Return searches it at
+  # once (Y2YBTS, 2026-11-11). Return inside those milliseconds can't be
+  # timed on niri, so tests/awaited.qml holds launcher/Awaited.js, which
+  # decides each, in Qt's own engine.
+  the-launcher-holds-a-key-for-its-answers =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-holds-a-key-for-its-answers" { } ''
+      cp ${../../../tests/awaited.qml} awaited.qml
+      cp ${../launcher/Awaited.js} Awaited.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml awaited.qml
+      touch $out
+    '';
+
   # A place's row reads alike at home and inside its parent (VKCF3Z's
   # 2a429f67, on Joel's 2026-11-08 "i don't like how the title and values on
   # the home screen differ from every other sub-menu"): tests/place-row.qml

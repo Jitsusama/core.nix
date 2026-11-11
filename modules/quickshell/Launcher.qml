@@ -81,6 +81,7 @@ import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
 import "launcher/KeysHeld.js" as KeysHeld
+import "launcher/Awaited.js" as Awaited
 import "launcher/RowsPlace.js" as RowsPlace
 
 Scope {
@@ -6437,31 +6438,24 @@ Scope {
         searchNow(true);
     }
     // What every key and setter that reads what was found runs first, so it
-    // acts on what's typed now rather than on the rows of a letter before:
-    // a key held for answers (answersAwaited) is searched at once, without
-    // those not come, as Return typed with the text acts on what the text
-    // finds. Typing alone (`typing`) holds a key whose search awaits a
-    // source's answer, and drops one held before it, whose search is never
-    // made.
+    // acts on what's typed now rather than on the rows of a letter before;
+    // typing alone (`typing`) holds a key for the answers its search awaits
+    // (launcher/Awaited.js says which does what).
     function searchNow(typing) {
-        if (keysDue.length === 0 && (typing === true || answersAwaited === null))
+        const next = Awaited.next({ due: keysDue, held: answersAwaited, typing: typing === true,
+            asking: asking }, () => awaitedFor(prompt.text));
+        if (next === null)
             return;
-        const waited = answersAwaited;
-        const due = (waited?.due ?? []).concat(keysDue);
         keysDue = [];
         answersAwaited = null;
         answersWaited.stop();
-        if (typing === true && !asking) {
-            const sources = awaitedFor(prompt.text);
-            if (sources.length > 0) {
-                answersAwaited = { text: prompt.text, due: due, sources: sources,
-                    began: Date.now() };
-                answersWaited.restart();
-                return;
-            }
+        if (next.hold) {
+            answersAwaited = { text: prompt.text, due: next.due, sources: next.hold,
+                began: Date.now() };
+            answersWaited.restart();
+            return;
         }
-        // A key typed over one held was never waited on itself.
-        searchedNow(due, typing === true ? null : waited);
+        searchedNow(next.due, next.waited);
     }
     function searchedNow(due, waited) {
         searchParts = null;

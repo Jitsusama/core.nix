@@ -813,20 +813,6 @@ def test_notices_answered_late_come_in_with_the_selection_on_its_row(shell: Shel
     assert now == selected, f"the notices came in and the selection went from {selected} to {now}"
 
 
-def test_return_typed_while_notices_are_asked_acts_on_what_the_text_found(shell: Shell) -> None:
-    """Return typed with the text, the notices not yet answered, acts on what the text found.
-
-    A key held for an answer is searched at once by a key that reads what was found, so Return
-    neither waits for the notices nor acts on the rows of the letters before.
-    """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    with notices_stopped():
-        typed_at_once(shell, "'for you' -k Return")
-        shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
-    shell.close_launcher()
-
-
 def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:
     """In For You, :filter look steps into its looks, the head naming it, and - comes back out.
 
