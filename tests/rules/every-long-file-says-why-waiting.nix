@@ -3,7 +3,6 @@
 # changes for one reason, or to say why it stays whole. The check fails on one
 # that's split, says why or is gone, so the list only shrinks.
 [
-  "modules/creative-pebble-x-plus/lights.rs"
   "modules/desk-facts/facts.rs"
   "modules/disk-guard/src/cli.rs"
   "modules/disk-guard/src/daemon.rs"
@@ -19,7 +18,6 @@
   "modules/google/src/watch.rs"
   "modules/google/tests/stand_in.rs"
   "modules/hibernate/unlock/src/main.rs"
-  "modules/lid-hinge/lid-hinge.rs"
   "modules/litra/litra.rs"
   "modules/machine/src/main.rs"
   "modules/nix-daemon/vm-first/src/main.rs"

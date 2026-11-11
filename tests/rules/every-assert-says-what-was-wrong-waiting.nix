@@ -33,7 +33,6 @@
   "modules/collector/src/when.rs" = 3;
   "modules/collector/tests/collector.rs" = 2;
   "modules/console/font/src/main.rs" = 10;
-  "modules/creative-pebble-x-plus/lights.rs" = 20;
   "modules/desk-facts/facts.rs" = 17;
   "modules/device-check/src/main.rs" = 13;
   "modules/dictation/src/bin/call-transcripts/book.rs" = 1;
@@ -181,7 +180,6 @@
   "modules/lag-watch/src/kernel.rs" = 2;
   "modules/lag-watch/src/report.rs" = 5;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/lid-hinge/lid-hinge.rs" = 1;
   "modules/litra/litra.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
   "modules/load-proof/src/main.rs" = 9;
