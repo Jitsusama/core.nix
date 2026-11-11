@@ -114,9 +114,14 @@ Scope {
     // whole-number keys are listed in rising order.
     readonly property var tracked: Object.values(Notices.live)
 
-    // When one arrived, for the footer's time and for which rests longest.
+    // When each arrived, by id, for the footer's time, which rests longest
+    // and the held list's order (HeldNotices.qml), as the daemon's
+    // records say it.
+    readonly property var arrived: Object.fromEntries(
+        tracked.map(one => [one.id, Notices.made[one.id]?.at ?? 0]))
+
     function arrivedAt(id) {
-        return Notices.made[id]?.at ?? 0;
+        return root.arrived[id] ?? 0;
     }
 
     // Where the notices sit: inside the window nearest the top right
@@ -315,7 +320,7 @@ Scope {
         const front = root.shown.slice(0, root.behind + 1);
         for (let i = 0; i < cards.count; i++) {
             const card = cards.itemAt(i);
-            if (card && front.includes(card.noticeId))
+            if (card && front.includes(carded.get(i).noticeId))
                 found.push(card);
         }
         return found;
@@ -397,7 +402,7 @@ Scope {
         function front(): string {
             let card = null;
             for (let i = 0; i < cards.count && card === null; i++) {
-                if (cards.itemAt(i)?.noticeId === root.shown[0])
+                if (carded.get(i).noticeId === root.shown[0])
                     card = cards.itemAt(i) as Card;
             }
             const screen = window.screen;

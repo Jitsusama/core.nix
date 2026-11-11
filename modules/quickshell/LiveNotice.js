@@ -18,9 +18,9 @@ const urgencies = { low: 0, normal: 1, critical: 2 };
 // (Quickshell.activationToken). It's asked as the action is chosen, since
 // niri gives one only for the input just made.
 function of(notice, ask, token) {
-    const id = notice.id;
+    const { id } = notice;
     return {
-        id: id,
+        id,
         appName: notice.app,
         appIcon: notice.icon,
         // Its own picture, a file the daemon keeps where one was sent as
@@ -47,8 +47,13 @@ function of(notice, ask, token) {
         dismiss: () => ask({ ask: "dismiss", notices: [id] }),
         // Gone because its time is up.
         expire: () => ask({ ask: "expire", notices: [id] }),
-        sendInlineReply: text => ask({ ask: "reply", notice: id, text: text })
+        sendInlineReply: text => ask({ ask: "reply", notice: id, text })
     };
+}
+
+// What no notice asks, and the token it never asks for.
+function unasked() {
+    // There's nothing open to ask the daemon about.
 }
 
 // No notice: what a card reads for the moment between its notice going
@@ -56,4 +61,4 @@ function of(notice, ask, token) {
 const none = of({
     id: -1, app: "", icon: "", picture: "", entry: "", summary: "", body: "",
     urgency: "normal", expire: -1, transient: false, resident: false, reply: null
-}, () => {}, () => {});
+}, unasked, unasked);

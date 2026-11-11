@@ -10,6 +10,7 @@
 # usage: NOTICES_DAEMON='<the unit's ExecStart>' notices-beside.sh <command>...
 set -euo pipefail
 
+# shellcheck disable=SC2154 # NOTICES_DAEMON is the check's, set in its environment.
 given=${NOTICES_DAEMON//%t/$XDG_RUNTIME_DIR}
 read -ra daemon <<< "${given//%S/$XDG_STATE_HOME}"
 mkdir -p "$XDG_RUNTIME_DIR/daemons" "$XDG_STATE_HOME"

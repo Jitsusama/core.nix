@@ -4707,6 +4707,7 @@ onLinux {
     pkgs.runCommandLocal "a-live-notice-asks-the-daemon" { } ''
       cp ${../../tests/live-notice.qml} live-notice.qml
       cp ${./LiveNotice.js} LiveNotice.js
+      cp ${../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
