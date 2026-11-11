@@ -17,6 +17,7 @@ They are grouped by what they prove, a folder an area:
 | `network/` | Wi-Fi, the clock, names, mDNS, a network coming back, the shaper   |
 | `admin/`   | switching and updating, memory and slices, niri traces, VMs first  |
 | `keys/`    | the keyring, passkeys and security keys in the TPM, signed commits |
+| `disks/`   | disks and memory filling or failing, the disk guard, hibernation   |
 
 The VM tests not yet grouped are still in `../`, and move into a folder
 here as their owners free them. Shared helpers are in `../lib/`, and

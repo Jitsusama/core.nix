@@ -1,6 +1,6 @@
 """Full swap ends the work that filled it, through systemd-oomd, and nothing else.
 
-tests/full-swap.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+full-swap.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what fills memory. grow, on the machine's path, takes data that
 compresses about two to one up to the MiB it's told and keeps it. The tests need no value
 from Nix.

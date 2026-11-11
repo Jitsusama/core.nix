@@ -1,7 +1,7 @@
 # How a laptop hibernates: its memory written to the swap file as an image,
 # and read back at the next start. Where the image went is kept by systemd in
-# an EFI variable, so nothing here names a disk (tests/hibernate.nix proves
-# the machine comes back). Coming back asks once, at the disk prompt: the
+# an EFI variable, so nothing here names a disk (tests/vm/disks/hibernate.nix
+# proves the machine comes back). Coming back asks once, at the disk prompt: the
 # lock screen lets go by itself. A hibernation that rolled back, leaving the
 # machine on, is said with why, tried again or slept through instead
 # (unlock/src/main.rs says when). While the image is made the slices' hard

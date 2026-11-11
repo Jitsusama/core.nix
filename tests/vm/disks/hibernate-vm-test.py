@@ -1,6 +1,6 @@
 """A machine hibernated to a swap file on btrfs inside LUKS comes back as it was.
 
-tests/hibernate.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+hibernate.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says how the machine is laid out. The disk is made here, on the first
 boot, since a test's empty disk can't be made beforehand, and opened by the TPM once its PIN
 is typed at the initrd's prompt on every start after. The tests need no value from Nix but
