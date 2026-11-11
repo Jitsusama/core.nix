@@ -144,7 +144,7 @@ fn deleting_nix(dir: &Path) -> std::path::PathBuf {
         &dir.join("nix"),
         &format!(
             "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
-             [ \"$1 $2\" = 'store delete' ] || exit 9\nshift 2\n\
+             [ \"$1 $2 $3\" = 'store delete --offline' ] || exit 9\nshift 3\n\
              echo \"$*\" >> {}\n\
              for p in $(printf '%s\\n' \"$@\" | sort); do\n\
                [ -e \"$p\" ] || {{ echo \"error: path '$p' is not valid\" >&2; exit 1; }}\n\

@@ -469,7 +469,10 @@ pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<
         }
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
         argv.extend(NIX_COMMAND.map(OsStr::new));
-        argv.extend(["store", "delete"].map(OsStr::new));
+        // Offline, as the listing is: Nix asks every substituter about a
+        // path it never registered before deleting it, and the system unit
+        // has no network, so a batch holding one waits on each, retried.
+        argv.extend(["store", "delete", "--offline"].map(OsStr::new));
         argv.extend(left.iter().map(|path| OsStr::new(path.as_str())));
         let (ok, said) = output(&argv, DELETE_TIMEOUT, idle)?;
         if ok {
