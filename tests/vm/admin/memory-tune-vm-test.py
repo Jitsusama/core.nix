@@ -1,6 +1,6 @@
 """The machine's administrators tune the kernel's memory with no password, and no more.
 
-tests/memory-tune.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
+memory-tune.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 An account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU
 and swappiness to a listed value, as an agent measuring them under load would, outside any
 session. An account outside wheel can't, and an administrator can't set a value the rules

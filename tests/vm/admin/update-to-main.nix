@@ -80,13 +80,13 @@ let
       (pkgs.lib.hiPrio (
         pkgs.runCommand "update-to-main-moved" { } ''
           mkdir -p $out/bin
-          cp ${pkgs.callPackage ../modules/update-to-main/package.nix { }}/bin/update-to-main $out/bin/
+          cp ${pkgs.callPackage ../../../modules/update-to-main/package.nix { }}/bin/update-to-main $out/bin/
         ''
       ))
     ];
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "update-to-main";
 
   nodes.machine = machine {

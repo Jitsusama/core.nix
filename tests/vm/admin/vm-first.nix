@@ -125,7 +125,7 @@ let
       }
     '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "vm-first";
 
   nodes.machine = {
@@ -169,7 +169,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     # Looking every 20 ms rather than every second, so a hand-off racing a
     # restart of the daemon is caught rather than missed.
     systemd.services.vm-first.serviceConfig.ExecStart = pkgs.lib.mkForce "${
-      pkgs.callPackage ../modules/nix-daemon/vm-first/package.nix { }
+      pkgs.callPackage ../../../modules/nix-daemon/vm-first/package.nix { }
     }/bin/vm-first --every 20";
   };
 

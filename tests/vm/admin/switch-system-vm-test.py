@@ -1,6 +1,6 @@
 """The machine's administrators switch it to a system it has run, and nobody else does.
 
-tests/switch-system.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
+switch-system.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 The machine's system has a specialisation that adds /etc/switched, which root puts in the
 system profile first, as update-to-main would, so switching to it and back is a switch to
 another system the machine has run and to the first again. A second, which adds /etc/unrun,

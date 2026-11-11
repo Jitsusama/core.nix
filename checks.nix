@@ -520,7 +520,7 @@ let
     vm-boot-says-it-wakes-from-hibernation = import ./tests/plymouth-restore.nix { inherit self pkgs; };
     # Whether libvirt's daemon stops in time shows only with the daemon
     # running and its threads short of CPU, as at a busy shutdown.
-    vm-libvirt-stops-quickly = import ./tests/libvirt.nix { inherit self pkgs; };
+    vm-libvirt-stops-quickly = import ./tests/vm/admin/libvirt.nix { inherit self pkgs; };
     # Whether the IR camera opens only while it's read, and hands each reader
     # its frames and none of the last one's, shows only with cameras there.
     vm-ir-camera-opens-for-readers = import ./tests/vm/devices/ir-camera.nix { inherit self pkgs; };
@@ -539,7 +539,7 @@ let
     vm-hibernation-comes-back = import ./tests/hibernate.nix { inherit self pkgs; };
     # Whether the kernel took a slice's disk latency shows only with the
     # account's manager starting it on a real drive.
-    vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };
+    vm-apps-come-first = import ./tests/vm/admin/slices.nix { inherit self pkgs; };
     # Which of CAKE's tins a slice's traffic reaches shows only with the
     # account's manager making the slices and packets crossing a real link.
     vm-the-network-keeps-its-order = import ./tests/vm/network/shaper.nix { inherit self pkgs; };
@@ -551,7 +551,7 @@ let
     vm-a-hidden-queue-is-taken-back = import ./tests/vm/network/shaper-owned.nix { inherit self pkgs; };
     # Whether a check's VM goes ahead of the builds shows only with a build
     # user's process in the daemon's own cgroup and the service's real rights.
-    vm-checks-go-first = import ./tests/vm-first.nix { inherit self pkgs; };
+    vm-checks-go-first = import ./tests/vm/admin/vm-first.nix { inherit self pkgs; };
     # Whether a reboot gets past what won't stop shows only by rebooting, with
     # a watchdog there to reset the machine.
     vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
@@ -580,7 +580,7 @@ let
     vm-plugging-in-wakes-it = import ./tests/vm/devices/usb-wake.nix { inherit self pkgs; };
     # Whether polkit lets an account switch the machine shows only with
     # polkit, systemd and a system to switch to.
-    vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };
+    vm-admins-switch-unasked = import ./tests/vm/admin/switch-system.nix { inherit self pkgs; };
     # Only a key plugged into a machine shows which sign-ins take its touch.
     vm-a-yubikey-answers-only-once-in = import ./tests/yubikey-touch.nix { inherit self pkgs; };
     # Whether root is given only the builders nix-offload's lines trust,
@@ -589,16 +589,18 @@ let
     vm-root-builds-only-where-it-trusts = import ./tests/offload-lines.nix { inherit self pkgs; };
     # Whether a machine updates itself to signed main, and goes back when it
     # isn't whole, shows only with systemd, a real switch and Nix building.
-    vm-updates-itself-to-signed-main = import ./tests/update-to-main.nix { inherit self pkgs; };
+    vm-updates-itself-to-signed-main = import ./tests/vm/admin/update-to-main.nix {
+      inherit self pkgs;
+    };
     # Whether polkit lets an administrator tune the work slices shows only
     # with polkit and systemd.
-    vm-admins-tune-the-work-slices = import ./tests/work-slices.nix { inherit self pkgs; };
+    vm-admins-tune-the-work-slices = import ./tests/vm/admin/work-slices.nix { inherit self pkgs; };
     # Whether polkit lets an administrator tune the kernel's memory, and
     # only to the values listed, shows only with polkit, systemd and a kernel.
-    vm-admins-tune-memory = import ./tests/memory-tune.nix { inherit self pkgs; };
+    vm-admins-tune-memory = import ./tests/vm/admin/memory-tune.nix { inherit self pkgs; };
     # Whether a niri's kernel stacks are traced for its account and nobody
     # else shows only with polkit, bpftrace and a kernel to trace.
-    vm-niri-is-traced-by-its-own = import ./tests/niri-off-cpu.nix { inherit self pkgs; };
+    vm-niri-is-traced-by-its-own = import ./tests/vm/admin/niri-off-cpu.nix { inherit self pkgs; };
   };
   vmTests = vmTestsOn vmHostPkgs;
 

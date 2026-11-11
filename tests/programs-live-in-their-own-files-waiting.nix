@@ -61,7 +61,7 @@
   "tests/vm/sound/dictation-chord.nix" = 1;
   "tests/vm/devices/ir-camera.nix" = 1;
   "tests/lib/qemu-after-its-sockets.nix" = 1;
-  "tests/vm-first.nix" = 1;
+  "tests/vm/admin/vm-first.nix" = 1;
   "tests/vm/guide/canokeys.nix" = 1;
   "tests/vm/guide/guide-one-stick.nix" = 1;
   "tests/vm/guide/guide-writer.nix" = 2;

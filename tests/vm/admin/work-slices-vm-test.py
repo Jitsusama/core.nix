@@ -1,6 +1,6 @@
 """The machine's administrators set the work slices' properties with no password, and no more.
 
-tests/work-slices.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
+work-slices.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 An account in wheel sets build.slice's and machine.slice's weight and cores for as long as
 the machine runs, as an agent measuring them would, outside any session. An account outside
 wheel can't, and an administrator still can't change any other unit without a password.

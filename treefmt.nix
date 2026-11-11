@@ -59,7 +59,7 @@ in
     "modules/signing/tests/*.sig"
     "tests/inkscape-recent.xbel"
     "*.pem"
-    "tests/update-to-main-signer"
+    "tests/vm/admin/update-to-main-signer"
     # C and C++ built by the kernel's, QMK's and CMake's own builds, which
     # stop on an error but don't lint.
     "*.c"

@@ -1,9 +1,9 @@
 """libvirt's daemon stops at once while its udev thread waits for the CPU.
 
-tests/libvirt.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says how the old daemon hung. A busy loop takes the first CPU, and each round
-pins the daemon there with its udev thread running only when nothing else will, so ten stops
-would almost surely catch the old code hanging. The test needs no value from Nix.
+libvirt.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says how the old daemon hung. A busy loop takes the first CPU, and each round
+pins the daemon there with its udev thread running only when nothing else will, so ten stops would
+almost surely catch the old code hanging. The test needs no value from Nix.
 """
 
 from __future__ import annotations

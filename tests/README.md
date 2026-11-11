@@ -31,8 +31,6 @@ waiting list only as `tests/<rule>-waiting.nix`, and each list only shrinks.
   programs its machine runs to drive the desktop.
 - `screens/`: the screens test's areas, as screens come and go, keep their
   places and keep the launcher, and the session they share.
-- `niri-off-cpu/`: a stand-in for niri's main thread, waiting and asleep as
-  niri does.
 - `stand-in-backlight/`, `stand-in-lid/`, `stand-in-light/` and
   `stand-in-monitor/`: kernel modules standing in for a device, each built by
   its `default.nix`.
