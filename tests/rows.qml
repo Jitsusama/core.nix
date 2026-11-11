@@ -818,6 +818,31 @@ ShellRoot {
         [saying.side, saying.say, noting.note] = was;
         expect("a row given new words names no face again", renamed === 0,
             `${renamed} faces named for 5 rows' words`);
+        // A row a find matches, then misses, then matches again, as the
+        // keys typed move the finds, keeps the wash it made: making one
+        // again was 12 to 36 ms of a key's frame (prof6, 2026-11-11).
+        washedNone.finds = [[0, 2]];
+        const washing = washUnder(washedNone);
+        washedNone.finds = [];
+        washedNone.finds = [[1, 3]];
+        const rewashed = washUnder(washedNone);
+        washedNone.finds = [];
+        expect("a row found again keeps its wash", washing !== null && rewashed === washing,
+            `${washing} then ${rewashed}`);
+        expect("and washes nothing once nothing's found", washedNone.washed.length === 0,
+            root.places(washedNone.washed));
+    }
+
+    // The wash under an item's words (Wash.qml), or null while it has none.
+    function washUnder(item) {
+        for (const child of item.children) {
+            if (child.laid !== undefined && child.runs !== undefined)
+                return child;
+            const found = washUnder(child);
+            if (found)
+                return found;
+        }
+        return null;
     }
 
     // What the cursor row says of how it stands, on the row rather than in
