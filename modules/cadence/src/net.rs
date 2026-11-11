@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn the_nets_lag_is_said_at_three_hours_then_at_each_doubling() {
-        let round = |hours, testing| Round {
+        let round = |hours: i64, testing| Round {
             head: "cb5b9b12dce0".into(),
             merged: 100_000 - hours * 3600,
             behind: 5,
