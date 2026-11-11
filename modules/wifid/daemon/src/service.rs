@@ -22,7 +22,7 @@ use zlink::introspect::{CustomType, Type};
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
-use crate::detail::{Best, Count, Detail, Joined, Point, Way};
+use crate::detail::{Best, Count, Detail, Joined, Point, Station, Way};
 use crate::radio::{Band, Load, Management, Protection};
 use crate::state::{Card, Described, Nearby, Reach, Saved, Security, State, Trouble};
 
@@ -213,7 +213,7 @@ impl Stage {
     interface = "io.jitsusama.Wifi",
     types = [
         Account, Address, Band, Best, Card, Count, Inner, Joined, Load, Management, Method, Nearby,
-        Point, Protection, Reach, Saved, Saving, Security, Stage, Trouble, Way
+        Point, Protection, Reach, Saved, Saving, Security, Stage, Station, Trouble, Way
     ],
     vendor = "jitsusama",
     product = "wifid",
