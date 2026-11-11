@@ -128,6 +128,10 @@ let
   # its specialisation is the one after. And onto a changed shell beside a
   # unit slow to stop, as disk-guard was on 10 November.
   switchesTheHome = area == "outlives-a-switch";
+  # The area that shuts the lid on battery to show Keep Awake holds it, so
+  # its lid suspends there, as the lid module has it, and its sleep stands
+  # in, leaving a file for the test to find and returning at once.
+  sleepsAtTheLid = area == "minds-the-margin";
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -513,8 +517,24 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # The VM has no backlight, keyboard light, light sensor, lid or sound
       # card, so it gets one of each that drives nothing, which the kernel and PipeWire report
       # as they do the laptop's. The lid shut asks nothing of logind, which
-      # would otherwise suspend the machine.
-      services.logind.settings.Login.HandleLidSwitch = "ignore";
+      # would otherwise suspend the machine, but where it sleeps at the lid.
+      # The lid module isn't imported there, since the VM's screen would
+      # read to lid-docked as a monitor plugged in. logind ignores the lid
+      # for a while after it starts and after every sleep, which would let
+      # a lid that should sleep seem held.
+      services.logind.settings.Login =
+        if sleepsAtTheLid then
+          {
+            HandleLidSwitch = "suspend";
+            HandleLidSwitchExternalPower = "ignore";
+            HoldoffTimeoutSec = "0";
+          }
+        else
+          { HandleLidSwitch = "ignore"; };
+      systemd.services.systemd-suspend.serviceConfig.ExecStart = lib.mkIf sleepsAtTheLid [
+        ""
+        "${pkgs.coreutils}/bin/touch /run/suspended"
+      ];
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
         (config.boot.kernelPackages.callPackage ./stand-in-light { })

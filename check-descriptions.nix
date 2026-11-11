@@ -846,8 +846,8 @@
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
   '';
   keeping-awake-holds-the-lid-only-where-it-sleeps = ''
-    keeping awake holds the lid only where a shut lid on the charger would suspend, and tells the
-    shell whether it does
+    keeping awake holds the lid only where a shut lid would suspend, on battery or on the charger,
+    and tells the shell whether it does
   '';
   kernel-settings-hold = ''
     the kernel's patches apply and every setting holds
