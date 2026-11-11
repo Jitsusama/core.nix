@@ -478,6 +478,107 @@ def test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them(
                 machine.succeed(booted.in_niri(f"niri msg action close-window --id {window['id']}"))
 
 
+# How long, in seconds, the windows daemon holds the workspaces' order after the last change once
+# a screen came or went (modules/windows/src/order.rs's SETTLING), and a little more.
+SETTLED = 6
+
+
+def niri_json(booted: Screens, what: str) -> list[dict[str, Any]]:
+    """Give what niri lists of its windows or workspaces."""
+    return list(json.loads(booted.machine.succeed(booted.in_niri(f"niri msg --json {what}"))))
+
+
+def on_its_own_workspace(booted: Screens, screen: str, title: str) -> int:
+    """Open a window with this title on the screen's empty workspace, and give its id."""
+    machine = booted.machine
+    machine.succeed(booted.in_niri(f"niri msg action focus-monitor {screen}"))
+    last = max(one["idx"] for one in niri_json(booted, "workspaces") if one["output"] == screen)
+    machine.succeed(booted.in_niri(f"niri msg action focus-workspace {last}"))
+    machine.succeed(booted.in_niri(f"niri msg action spawn -- kitty --title {title}"))
+    deadline = time.monotonic() + 120
+    while not (ids := [w["id"] for w in niri_json(booted, "windows") if w["title"] == title]):
+        assert time.monotonic() < deadline, f"{title} never opened"
+        time.sleep(1)
+    return int(ids[0])
+
+
+def in_order_on(booted: Screens, screen: str, titles: list[str]) -> list[str]:
+    """Give these windows by their workspaces' order on the screen, those on it alone."""
+    spaces = {one["id"]: one for one in niri_json(booted, "workspaces")}
+    there = [
+        (spaces[w["workspace_id"]]["idx"], w["title"])
+        for w in niri_json(booted, "windows")
+        if w["title"] in titles and spaces[w["workspace_id"]]["output"] == screen
+    ]
+    return [title for _, title in sorted(there)]
+
+
+def holds_order(booted: Screens, screen: str, wanted: list[str]) -> None:
+    """Wait until the screen holds these windows' workspaces in this order, and keeps it."""
+    deadline = time.monotonic() + 60
+    while (now := in_order_on(booted, screen, wanted)) != wanted:
+        assert time.monotonic() < deadline, f"not put back in Joel's order on {screen}: {now}"
+        time.sleep(1)
+    # Past the shell's taking workspaces home and the order settling, nothing moves them again.
+    kept_until = time.monotonic() + 2 * SETTLED
+    while time.monotonic() < kept_until:
+        now = in_order_on(booted, screen, wanted)
+        assert now == wanted, f"Joel's order on {screen} didn't hold: {now}"
+        time.sleep(1)
+
+
+def test_workspaces_go_back_in_the_order_joel_set_as_screens_come_and_go(
+    booted: Screens,
+) -> None:
+    """Workspaces go back in the order Joel last set when a screen comes or goes.
+
+    On 2026-11-11 a monitor plugged back in, then the laptop's lid shut, left Joel's seven
+    workspaces in niri's order rather than the one he'd set while undocked, his apps fifth.
+    """
+    machine = booted.machine
+    titles = ["Reed", "Kelp", "Sand", "Gull"]
+    try:
+        on_its_own_workspace(booted, MONITOR, "Reed")
+        for title in titles[1:]:
+            on_its_own_workspace(booted, "Virtual-2", title)
+        assert in_order_on(booted, "Virtual-2", titles) == titles[1:]
+        booted.plug("off", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=False)
+        time.sleep(SETTLED)
+        # Undocked, Joel puts Gull's workspace before Kelp's, and Reed's before them all.
+        gull, kelp, reed, sand = (
+            next(w["id"] for w in niri_json(booted, "windows") if w["title"] == title)
+            for title in ("Gull", "Kelp", "Reed", "Sand")
+        )
+        spaces = {w["id"]: w["workspace_id"] for w in niri_json(booted, "windows")}
+        index = {one["id"]: one["idx"] for one in niri_json(booted, "workspaces")}
+        machine.succeed(booted.in_niri(f"niri msg action focus-window --id {gull}"))
+        machine.succeed(
+            booted.in_niri(f"niri msg action move-workspace-to-index {index[spaces[kelp]]}")
+        )
+        machine.succeed(booted.in_niri(f"niri msg action focus-window --id {reed}"))
+        machine.succeed(booted.in_niri("niri msg action move-workspace-to-index 1"))
+        machine.succeed(booted.in_niri(f"niri msg action focus-window --id {sand}"))
+        assert in_order_on(booted, MONITOR, titles) == ["Reed", "Gull", "Kelp", "Sand"]
+        # The monitor comes back, then the laptop's lid shuts, as on 2026-11-11.
+        booted.plug("detect", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=True)
+        holds_order(booted, "Virtual-2", ["Gull", "Kelp", "Sand"])
+        machine.succeed(booted.in_niri(f"niri msg output {MONITOR} off"))
+        machine.wait_until_succeeds(
+            booted.in_niri(f'! niri msg --json workspaces | grep -qF \'"output":"{MONITOR}"\''),
+            timeout=dt.timedelta(seconds=60),
+        )
+        holds_order(booted, "Virtual-2", ["Reed", "Gull", "Kelp", "Sand"])
+    finally:
+        machine.succeed(booted.in_niri(f"niri msg output {MONITOR} on"))
+        booted.plug("detect", "Virtual-2")
+        booted.outputs_say("Virtual-2", there=True)
+        for window in niri_json(booted, "windows"):
+            if window["title"] in titles:
+                machine.succeed(booted.in_niri(f"niri msg action close-window --id {window['id']}"))
+
+
 def test_a_niri_from_before_the_hold_takes_the_settings_a_switch_brings(booted: Screens) -> None:
     """A niri started before the hold came in takes the account's settings, as at a switch."""
     older = "/etc/niri-before-the-hold/bin/niri"

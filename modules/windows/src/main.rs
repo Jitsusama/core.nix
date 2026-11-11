@@ -49,6 +49,7 @@ use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
 use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, placed, tells, trimmed};
 use windows::light::{Held, Seen};
+use windows::order;
 use windows::screens;
 use windows::screens::acts::{self, Act};
 use windows::screens::vocabulary::{numbered, worded};
@@ -315,6 +316,7 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         if daemon.desktop.hear(&event) == Heard::Changed || moved {
             refresh(&mut daemon);
         }
+        order::put_back(niri, daemon.desktop.put_back());
         let took = u64::try_from(began.elapsed().as_micros()).unwrap_or(u64::MAX);
         if daemon.took.len() == TIMES {
             daemon.took.pop_front();
