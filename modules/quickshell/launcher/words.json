@@ -13940,6 +13940,7 @@
       "refused": "{object} not {did}",
       "late": "{object} not {did} yet",
       "noAnswer": "no answer",
+      "couldNot": "couldn't",
       "objects": {
         "deskLight": "Desk Light",
         "recording": "Recording"

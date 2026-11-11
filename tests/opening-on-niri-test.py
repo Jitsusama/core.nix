@@ -61,6 +61,13 @@ WAKE_BUDGET_MS = 7
 # within a few milliseconds of each.
 SETTLING_S = 2
 
+# How far the shell's minute may stand from this clock's, in seconds: its clock's timer can
+# fire a little off the minute, and a loaded shell handles it late, so a minute this clock saw
+# turn just before or after an act may be the one the shell turned during it. A For You case
+# guarded by this clock alone failed so, on a minute turned around its act (FEH1HE,
+# 2026-11-11, at 8c5ff8bf).
+CLOCK_SLACK = 5
+
 # How long a closing's spots are given to be freshened: a minute after they're made
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
 FRESHENING = timedelta(seconds=75)
@@ -642,26 +649,38 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
         shell.close_launcher()
         shell.reported("spots made while closed ", lambda _: True, since_closing)
 
-    def within_a_minute(
-        act: Callable[[], None], ready: Callable[[], None] = lambda: None
-    ) -> dict[str, int]:
+    def within_a_minute(act: Callable[[], dict[str, int]]) -> dict[str, int]:
         """Give the rows the act made, done again once if a minute turned, which remakes some."""
         for _ in range(2):
-            ready()
-            minute, before = int(time.time() // 60), made()
-            act()
-            made_by_it = since(before)
-            if int(time.time() // 60) == minute:
+            began = time.time()
+            made_by_it = act()
+            if int((began - CLOCK_SLACK) // 60) == int((time.time() + CLOCK_SLACK) // 60):
                 break
         return made_by_it
 
-    def notified() -> None:
+    def reopened() -> dict[str, int]:
+        """Open For You and open it again, giving what the second made.
+
+        The minute is read before the first of the two places the time, since one turning
+        between them remakes the time rightly, which a minute read only around the second
+        missed (Y2YBTS, 2026-11-11, at 1f562159).
+        """
+        shut()
+        in_for_you()
+        shut()
+        before = made()
+        in_for_you()
+        return since(before)
+
+    def notified() -> dict[str, int]:
+        before = made()
         with shell.told("shows card Whimbrel"):
             shell.as_account("notify-send --expire-time=1000 'Whimbrel' 'a notice heard open'")
         settled(shell)
+        return since(before)
 
     in_for_you()
-    again = within_a_minute(in_for_you, ready=shut)
+    again = within_a_minute(reopened)
     heard = within_a_minute(notified)
     shell.close_launcher()
     assert again == {}, f"opened into For You again with nothing come, it made {again}"

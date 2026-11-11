@@ -230,7 +230,7 @@ ShellRoot {
     }
 
     // The day in other calendars, from a reading as timekeeping gives it
-    // (tests/calendars-reading.json): Date's Calendars steps into the
+    // (modules/quickshell/timekeeping/calendars-reading.json): Date's Calendars steps into the
     // Chinese, Japanese, Hebrew and Islamic, each a thing saying its date
     // in Latin letters, stepping into its figures, each named by the
     // vocabulary, and its plate in its own script: titled with its date

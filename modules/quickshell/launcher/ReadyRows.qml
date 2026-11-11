@@ -8,8 +8,11 @@ pragma ComponentBehavior: Bound
 // launcher"). What reads the clock, a time at a row's side or in its
 // drawer, is worded here (ReadyRows.js), and only the rows that say one are
 // made again as the minute turns, and only while they're drawn. Records
-// of other kinds the place watches beside its rows, a summary or a head,
-// are held by key and never placed.
+// of other kinds the place watches beside its rows, a summary, a head or
+// a drawer served apart, are held by key and never placed. A row is made
+// as every place's are by `thing`, its served acts its verbs, which ask
+// back on the same socket, copy, open a link or step within the launcher,
+// so a place moving onto it keeps no act of its own.
 import QtQuick
 import Quickshell
 import qs
@@ -32,12 +35,23 @@ Scope {
     // Whether it's watched: false where there's no runtime folder, as in
     // a test with no session, so nothing is asked of a socket never made.
     property bool active: !!Quickshell.env("XDG_RUNTIME_DIR")
+    // Whether the rows are watched now, as Daemon.qml's `live`: a place
+    // whose daemon reads only while watched, as Heat's reads its sensors
+    // each second, is live only while it's seen, and keeps its rows held
+    // meanwhile. `paced` waits a watch begun by a key on the next frame.
+    property bool live: true
+    property var paced: null
     // Whether what it makes is drawn now, so a row saying a time is said
     // again as the minute turns: the place's launcher open.
     property bool drawn: false
     // What the place makes of a row, given the row the record holds and the
     // record's key; by default the row as served.
     property var make: (row, key) => row
+    // The place's provider, which makes its rows as every place's are
+    // (`thing`) and holds what an act asks drawn until it's done. Not named
+    // `provider`, which would hide the place's own id of that name inside
+    // its ReadyRows.
+    property var maker: null
 
     // Each record by its key, as the daemon last said it, and its state.
     readonly property var link: daemon.item
@@ -50,6 +64,9 @@ Scope {
     // Each row as last made, by key, made again only once its record
     // changes or its time is said anew.
     readonly property var made: ({})
+    // Which row names each drawer served apart, by the drawer's key, so
+    // the row is made again once its drawer changes.
+    readonly property var drawers: ({})
     // The rows that say a time, by key, each saying how often it says a
     // new one, "minute" or "day" (ReadyRows.js's ticks), and how many say
     // one at all and how many each minute, so a binding is told.
@@ -72,9 +89,25 @@ Scope {
             kind: ["row"].concat(ready.beside)
             watching: Object.assign({ place: ready.place }, ready.watching)
             answersWhole: true
+            live: ready.live
+            paced: ready.paced
             ahead: ready.ahead
             onHeard: (changed, gone) => ready.took(changed, gone)
         }
+    }
+
+    // Not watched, nothing is held, so nothing it made stands.
+    onActiveChanged: {
+        if (active)
+            return;
+        for (const store of [made, drawers, ticking]) {
+            for (const key of Object.keys(store))
+                delete store[key];
+        }
+        timed = 0;
+        eachMinute = 0;
+        keys = [];
+        placings += 1;
     }
 
     // Each key a change names let go of what was made of it, and the rows
@@ -88,6 +121,8 @@ Scope {
         for (let at = 0; at < gone.length; at += 1)
             dropped.push(gone[at]);
         for (const key of said.concat(dropped)) {
+            if (key in drawers)
+                delete made[drawers[key]];
             delete made[key];
             if (ticking[key] === "minute")
                 eachMinute -= 1;
@@ -96,6 +131,9 @@ Scope {
             delete ticking[key];
         }
         for (const key of said) {
+            const drawer = Ready.rowOf(held[key])?.drawer;
+            if (typeof drawer === "string")
+                drawers[drawer] = key;
             const every = Ready.ticks(Ready.rowOf(held[key]));
             if (every !== "") {
                 ticking[key] = every;
@@ -123,10 +161,17 @@ Scope {
         return made[key];
     }
 
-    // Every row as the place made it, in the daemon's order.
-    function rows() {
+    // Every row of the place's own as the place made it, in the daemon's
+    // order, or with `parent` the key of a row, the rows inside it.
+    function rows(parent) {
         void placings;
-        return keys.map(key => rowAt(key)).filter(row => row !== null);
+        return Ready.inside(keys, held, parent ?? "").map(key => rowAt(key))
+            .filter(row => row !== null);
+    }
+
+    // The rows inside the row of `key`, as `rows` gives them.
+    function inside(key) {
+        return rows(key);
     }
 
     // The words a time is said in, the launcher's own for each form
@@ -155,9 +200,146 @@ Scope {
         return Ready.noteSaid(row?.note ?? "", Date.now(), timeWords);
     }
 
-    // A row's drawer as Drawer.qml draws one, its times said as of now.
+    // A row's drawer as Drawer.qml draws one, its times said as of now, its
+    // own or the one served beside it.
     function drawerOf(row) {
-        return Ready.drawerOf(row?.drawer, Date.now(), timeWords);
+        return Ready.drawerOf(Ready.drawerServed(row, held), Date.now(), timeWords);
+    }
+
+    // A served row, the record of `key`'s, as a place draws one, made by
+    // its provider: its words, its drawer read as it's shown, and its acts
+    // as its verbs, Return doing the first. A row whose acts step into rows
+    // steps into those inside it. `fields` are the place's own, over these,
+    // so a place's `make` is `(row, key) => ready.thing(row, key, {...})`;
+    // the row is given rather than looked up, as an act's `becomes` is made
+    // by it too. It's a collection's member, its name made ready to match
+    // only once it's searched (Provider.qml's member). Null without a
+    // provider or a row.
+    function thing(row, key, fields) {
+        if (!row || !maker)
+            return null;
+        const acts = actsOf(row);
+        const first = acts[0] ?? null;
+        const steps = acts.some(one => one.step === "rows");
+        const verbs = () => steps ? inside(key) : acts.map(one => actRow(key, one));
+        // A Return that steps into rows or asks leaves the launcher open, so
+        // Joel sees what it became, as a setting's choice always has; one
+        // that copies or opens closes it, as a value's row always has.
+        const acting = acts.length === 0 ? {} : {
+            verb: verbOf(first),
+            stays: first.step === "rows" || Ready.actForm(first) === "ask",
+            run: () => act(key, first),
+            verbs: verbs,
+            targets: verbs
+        };
+        // A row whose Return copies is a value, drawn as Provider.qml's
+        // copyRow draws one, and what it copies is what y joins.
+        const copying = Ready.actForm(first) !== "copy" ? {} : {
+            figure: true,
+            plain: true,
+            now: true,
+            copies: () => first.copy
+        };
+        const items = Ready.sideItems(row.side, Date.now(), timeWords);
+        return maker.member(Object.assign({
+            key: row.thing ?? key,
+            thing: !!row.drawer,
+            name: row.name ?? "",
+            glyph: Theme.glyph[row.glyph ?? ""] ?? "",
+            hue: row.hue ?? "",
+            side: Ready.sideJoined(items),
+            // Each item, so the row keeps an item's width and draws its hue.
+            sideItems: items,
+            note: noteOf(row),
+            // Its bar, strip or spark, { shape, values, warn }, as served.
+            graph: row.graph ?? null,
+            reads: row.reads ?? "",
+            unfinished: row.unfinished === true,
+            // A row a step in that asks Joel to be sure, so its Return does
+            // its act (Launcher.lands), as an act that can't be taken back is.
+            sure: row.sure === true,
+            drawer: () => drawerOf(row)
+        }, acting, copying, fields ?? {}));
+    }
+
+    // The acts of a row the launcher can do here: a step into the drawer
+    // only where the launcher steps into one, so nothing offered does
+    // nothing.
+    function actsOf(row) {
+        const launcher = maker?.launcher;
+        return Ready.actsOf(row).filter(one => one.step !== "drawer"
+            || typeof launcher?.intoDrawer === "function");
+    }
+
+    // The verb an act says, words.json's for its key.
+    function verbOf(one) {
+        return Ready.verbOf(one, Words.verb(one.key));
+    }
+
+    // An act as a row of its own, among a row's verbs.
+    function actRow(key, one) {
+        return maker.thing({
+            key: one.key,
+            what: "",
+            verb: verbOf(one),
+            name: Words.name(one.key),
+            glyph: Words.glyph(one.key),
+            hue: "action",
+            stays: one.step === "rows",
+            copies: typeof one.copy === "string" ? () => one.copy : undefined,
+            run: () => act(key, one)
+        });
+    }
+
+    // Does an act the row of `key` serves: copies its words, opens its link
+    // through niri, steps within the launcher, or asks it of the daemon.
+    function act(key, one) {
+        const launcher = maker?.launcher;
+        switch (Ready.actForm(one)) {
+        case "copy":
+            if (one.copy !== "")
+                Quickshell.clipboardText = one.copy;
+            return;
+        case "open":
+            Niri.spawn(["xdg-open", one.open]);
+            return;
+        case "step":
+            if (one.step === "rows")
+                launcher?.enter(rowAt(key));
+            else
+                launcher?.intoDrawer(rowAt(key));
+            return;
+        case "ask":
+            asked(key, one);
+        }
+    }
+
+    // Asks an act of the daemon on the rows' own connection, its row drawn
+    // at once as the act says it becomes, made as the place makes its rows,
+    // until the daemon serves it so. An act that says nothing of how its row
+    // reads holds the row as it is until it's answered. Either is taken back
+    // with the daemon's words if it's refused, or the launcher's if it isn't
+    // answered, so nothing fails silently (launcher/Becoming.js).
+    function asked(key, one) {
+        const row = served(key);
+        if (!row || !link)
+            return;
+        // What it becomes may be another row, as a charge limit's stop
+        // becomes the limit's own row, so that row is the one held.
+        const into = one.becomes ?? null;
+        const becomesKey = into?.key ?? key;
+        const shown = into ? (into.thing ?? becomesKey) : (row.thing ?? key);
+        let answered = false;
+        const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
+        const how = one.becomes ? undefined : { done: () => answered };
+        maker?.becomes(shown, becomes, row.name ?? "", one.ask.act ?? verbOf(one), how);
+        link.ask(one.ask, answer => {
+            const why = Ready.refusal(answer, Words.field.becoming ?? {});
+            if (why === "")
+                answered = true;
+            else
+                maker?.refused(shown, why);
+        });
     }
 
     // As the minute turns while drawn, the rows saying a time that can read
