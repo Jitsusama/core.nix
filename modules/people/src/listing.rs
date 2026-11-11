@@ -329,6 +329,22 @@ impl Person {
             },
         })
     }
+
+    /// Their row as the launcher draws it, ready, as the google daemon's
+    /// rows are (modules/google/src/rows.rs): its key, name, glyph and hue
+    /// by the theme's roles, how they stand beside it, their address under
+    /// it unless that's their name, and the key their drawer is told by.
+    /// So the shell words and builds nothing of it.
+    pub fn row(&self) -> Value {
+        let known = self.key.strip_prefix("person:").unwrap_or(&self.key);
+        json!({
+            "key": self.key, "place": "people", "kind": "person", "name": self.name,
+            "glyph": if self.stood.favourite { "favourite" } else { "person" },
+            "hue": "person", "side": self.stood.said,
+            "note": if self.name == self.email { "" } else { self.email.as_str() },
+            "drawer": format!("drawer:people:{known}"),
+        })
+    }
 }
 
 /// A name's runs of digits and of the rest, the rest in lower case, as
@@ -454,7 +470,7 @@ impl Told {
                 .map_or_else(|| json!({}), |record| json!(record.sources));
             let record = json!({
                 "key": person.key, "kind": LISTING, "person": person.json(),
-                "sources": sources_said,
+                "row": person.row(), "sources": sources_said,
             });
             if self.persons.get(&person.key) != Some(&record) {
                 said.push(record.clone());
@@ -647,6 +663,30 @@ mod tests {
             (by_id.name.as_str(), by_id.email.as_str()),
             ("tuple:7", ""),
             "one known only by a source's id is known by it"
+        );
+    }
+
+    #[test]
+    fn their_row_is_ready_to_draw() {
+        let favourite = person_of(&[(
+            "tuple",
+            json!({"name": "Bo Diddley", "status": "busy", "favourite": true}),
+        )]);
+        assert_eq!(
+            favourite.row(),
+            json!({
+                "key": "person:bo@example.com", "place": "people", "kind": "person",
+                "name": "Bo Diddley", "glyph": "favourite", "hue": "person",
+                "side": "in a call", "note": "bo@example.com",
+                "drawer": "drawer:people:bo@example.com",
+            }),
+            "a favourite's row wears the star, says how they stand and their address"
+        );
+        let bare = person_of(&[("google", json!({}))]);
+        assert_eq!(
+            (bare.row()["glyph"].clone(), bare.row()["note"].clone()),
+            (json!("person"), json!("")),
+            "one named by their address says it once"
         );
     }
 

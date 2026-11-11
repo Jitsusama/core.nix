@@ -499,6 +499,11 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
         "how they stand, in the launcher's words: {said}"
     );
     assert_eq!(
+        (&records[0]["row"]["name"], &records[0]["row"]["side"]),
+        (&json!("Ada Brightwater"), &json!("around")),
+        "with their row ready to draw: {said}"
+    );
+    assert_eq!(
         records[0]["sources"]["tuple"]["id"], 1,
         "with what each source said: {said}"
     );
@@ -515,7 +520,8 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
         said["changed"],
         json!([
             {"key": "person:eli@example.com", "kind": "listing",
-             "person": said["changed"][0]["person"], "sources": said["changed"][0]["sources"]},
+             "person": said["changed"][0]["person"], "row": said["changed"][0]["row"],
+             "sources": said["changed"][0]["sources"]},
             {"key": "people:order", "kind": "listing",
              "order": ["person:ada@example.com", "person:eli@example.com"]}
         ]),
