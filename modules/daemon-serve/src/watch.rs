@@ -3,12 +3,17 @@
 //! watch's records whole, then each change by key with only the fields
 //! that differ, a dropped one as null, and the keys gone. The records are
 //! held mended, as the shell's Daemon.qml holds them, so a change says
-//! only which keys moved and what they now read.
+//! only which keys moved and what they now read. Each is followed on a
+//! thread of its own ([`follow`]), its answers handed to the daemon's one
+//! loop.
 
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
+use std::thread;
+use std::time::Duration;
 
 use serde_json::{Map, Value, json};
 
@@ -176,6 +181,34 @@ impl Watch {
     }
 }
 
+/// How long to wait before opening a watch again once its daemon has gone,
+/// as while the node starts again on a switch: the one clock a daemon
+/// following another keeps, and only while that one is away.
+const AGAIN: Duration = Duration::from_secs(2);
+
+/// Follows a daemon's watch of `kind` at `socket`, handing each answer to
+/// `to` as `heard` names it, opening it again each time it ends, until
+/// the loop it hands to has gone.
+pub fn follow<Heard: Send + 'static>(
+    socket: PathBuf,
+    kind: &'static str,
+    heard: fn(Value) -> Heard,
+    to: Sender<Heard>,
+) {
+    thread::spawn(move || {
+        loop {
+            if let Ok(mut watch) = Watch::open(&socket, kind) {
+                while let Ok(answer) = watch.answer() {
+                    if to.send(heard(answer)).is_err() {
+                        return;
+                    }
+                }
+            }
+            thread::sleep(AGAIN);
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader, Write};
@@ -231,7 +264,8 @@ mod tests {
 
     #[test]
     fn over_its_socket_a_watch_hears_each_change_and_its_end() {
-        let folder = std::env::temp_dir().join(format!("agents-watch-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("daemon-serve-watch-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder for the socket");
         let socket = folder.join("node.sock");
         let _ = std::fs::remove_file(&socket);

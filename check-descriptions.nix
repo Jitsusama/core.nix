@@ -1663,6 +1663,18 @@
   qt-programs-wear-the-theme = ''
     Qt programs in the session take GTK's platform theme, and Quickshell is started without it
   '';
+  quests-makes-the-launchers-rows = ''
+    every quest open and ended is a row in Quests' order, saying its kind, its priority or the day
+    it ended, and the session holding it, with how many are open and driving, and a change tells a
+    watch only the rows that read differently
+  '';
+  quests-passes-clippy = ''
+    clippy finds nothing in the quests daemon or its tests
+  '';
+  quests-runs-in-each-account = ''
+    the quests daemon runs in each account of a machine in a realm, following its node, its socket
+    systemd's and restarted by a switch, and in none without a realm
+  '';
   quickshell-compiles-every-file = ''
     Qt's own compiler compiles every file of the account's shell and the greeter without refusing or
     crashing

@@ -4,13 +4,13 @@
 //! and whether the shell says the screen is shared. Each source changes
 //! its own part, and `made` makes every record from all of them.
 
+use daemon_serve::watch::Held;
 use serde_json::Value;
 
 use crate::row::{self, Known, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Session};
 use crate::summary;
-use crate::watch::Held;
 
 /// What each source last said.
 #[derive(Default)]

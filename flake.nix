@@ -220,6 +220,7 @@
         programs = ./modules/programs/home.nix;
         prompt = ./modules/prompt/home.nix;
         qt = ./modules/qt/home.nix;
+        quests = ./modules/quests/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         reader = ./modules/reader/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;

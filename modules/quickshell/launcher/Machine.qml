@@ -990,7 +990,7 @@ Provider {
     function filling(guard, chip) {
         const said = Words.of("machine:disk:filling").said ?? {};
         const quests = (launcher?.sources ?? []).find(one => one.settings.name === "quests");
-        const titled = id => ((quests?.quests ?? []).find(quest => quest.id === id) ?? {}).title;
+        const titled = id => quests?.titleOf(id);
         const called = holder => {
             const owner = holder.owner ?? {};
             const name = owner.kind === "quest" ? titled(owner.name) || owner.name

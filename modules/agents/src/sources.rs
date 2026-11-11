@@ -1,23 +1,19 @@
 //! Each source followed on a thread of its own, its answers handed to the
 //! daemon's one loop, which holds every record (inputs.rs): the node's
 //! watches, the to-do daemon's, the files heard as they land, and what
-//! the shell says over the daemon's own socket.
+//! the shell says over the daemon's own socket. A daemon's watch is
+//! followed as every daemon of the shell follows one (daemon-serve's
+//! `watch`).
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::Duration;
 
+pub use daemon_serve::watch::follow;
 use serde_json::Value;
 
 use crate::file::{self, Files};
 use crate::inputs::Inputs;
-use crate::watch::Watch;
-
-/// How long to wait before opening a watch again once its daemon has gone,
-/// as while the node starts again on a switch: the one clock the daemon
-/// keeps, and only while a source is away.
-const AGAIN: Duration = Duration::from_secs(2);
 
 /// Something a source said.
 #[derive(Debug)]
@@ -47,24 +43,6 @@ impl Paths {
     pub fn all(&self) -> Vec<PathBuf> {
         vec![self.spend.clone(), self.orchestrators.clone()]
     }
-}
-
-/// Follows a daemon's watch of `kind` at `socket`, handing each answer to
-/// `to` as `heard` names it, opening it again each time it ends, until
-/// the loop it hands to has gone.
-pub fn follow(socket: PathBuf, kind: &'static str, heard: fn(Value) -> Heard, to: Sender<Heard>) {
-    thread::spawn(move || {
-        loop {
-            if let Ok(mut watch) = Watch::open(&socket, kind) {
-                while let Ok(answer) = watch.answer() {
-                    if to.send(heard(answer)).is_err() {
-                        return;
-                    }
-                }
-            }
-            thread::sleep(AGAIN);
-        }
-    });
 }
 
 /// Follows the files the rows are made from, handing each that lands to

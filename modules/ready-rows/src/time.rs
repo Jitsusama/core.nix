@@ -20,6 +20,9 @@ pub enum Form {
     Dated,
     /// "12 min", "15 h", "3 d", as a password's age.
     Ago,
+    /// "22 Oct", the year when not this one, "5 Jan 2025", by the
+    /// shell's own calendar, as the day an ended quest was last touched.
+    Day,
 }
 
 impl Form {
@@ -31,6 +34,7 @@ impl Form {
             Form::Moment => "moment",
             Form::Dated => "dated",
             Form::Ago => "ago",
+            Form::Day => "day",
         }
     }
 }
@@ -58,9 +62,10 @@ mod tests {
             Form::Moment,
             Form::Dated,
             Form::Ago,
+            Form::Day,
         ]
         .map(|form| at(1_762_790_400_000, form)["as"].clone());
-        assert_eq!(forms, ["came", "opened", "moment", "dated", "ago"]);
+        assert_eq!(forms, ["came", "opened", "moment", "dated", "ago", "day"]);
         assert_eq!(
             at(5, Form::Came),
             json!({ "at": 5, "as": "came" }),

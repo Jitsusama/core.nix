@@ -83,6 +83,7 @@
     homeModules.open-with
     homeModules.mpv
     homeModules.qt
+    homeModules.quests
     homeModules.quickshell
     homeModules.reader
     homeModules.screen-text

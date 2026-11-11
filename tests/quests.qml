@@ -1,24 +1,25 @@
 pragma ComponentBehavior: Bound
 // Drives the launcher's quests (modules/quickshell/launcher/Quests.qml)
-// through Quickshell itself, over a stand-in for the realm's node serving
-// the harness's two lists, the open quests and the ended ones, as
-// mycelium's does (its PROTOCOL.md, The Daemon Interface), with niri, pi's
-// sessions and the launcher stood in. With nothing typed it lists the open
-// quests, the one driving first, each saying its kind, as the harness says
-// it past the node's own, and priority; typing finds an ended one too,
-// after the open ones that match as well, and by its id; Return opens pi
-// on a quest in the folder its record says, autoloaded, unless a
-// session has it loaded, when it goes to that session's window; the right
-// arrow steps into its facts, its parent's title among them, and y takes
-// its id without making them; Start a
-// Session there steps into the machines the realm's node places on, where
-// it has more than this one, each that can't take a session dimmed with
-// why, each other saying how it stands as Machines says it, from the
-// node's machine records, and Wherever It Fits last; and a quest made since is heard, each
-// other's row kept as every quest is told again, and a change remakes only the quests it
-// names, a list written again with only when each was heard moved remaking none; and each
-// title is broken into the pieces A to Z reads once, and again only when it changes. It
-// exits 0 once every case holds, and otherwise 1, saying which didn't.
+// through Quickshell itself, its rows made by the quests daemon
+// (modules/quests) from a stand-in for the realm's node serving the
+// harness's two lists, the open quests and the ended ones, and the
+// sessions, as mycelium's does (its PROTOCOL.md, The Daemon Interface),
+// with niri, pi's sessions and the launcher stood in. With nothing typed it
+// lists the open quests, the one driving first, each saying its kind, as
+// the harness says it past the node's own, and priority; typing finds an
+// ended one too, after the open ones that match as well, and by its id;
+// Return opens pi on a quest in the folder its record says, autoloaded,
+// unless a session has it loaded, when it goes to that session's window;
+// the right arrow steps into its facts, its parent's title among them,
+// and y takes its id without making them; Start a Session there steps
+// into the machines the realm's node places on, where it has more than
+// this one, each that can't take a session dimmed with why, each other
+// saying how it stands as Machines says it, from the node's machine
+// records, and Wherever It Fits last; and a quest made since is heard,
+// shut making no row, the daemon telling only the rows that moved, so a
+// list written again with only when each was heard moved tells none and
+// every other row is kept. It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -33,13 +34,8 @@ ShellRoot {
     // The rows before the store is written again, and how many were made.
     property var made: []
     property int counted: 0
-    // The quests before the store is written again, and how many times
-    // they were said anew since.
-    property var before: []
-    property int questsSaid: 0
-    // Each quest's title in pieces, by its id, before the store is written
-    // again.
-    property var namedBefore: ({})
+    // The keys the daemon told moved or gone since a case began.
+    property var told: []
 
     function expect(what, holds, said) {
         if (!holds)
@@ -71,30 +67,44 @@ ShellRoot {
 
         launcher: theLauncher
         settings: ({ name: "quests" })
-        // Each after the change is done, since a case changes them again.
         onAllChanged: {
-            if (root.waiting === "the first reading")
-                root.read();
-            else if (root.waiting === "the quest made since" && theQuests.all.length > 4)
+            root.read();
+            if (root.waiting === "the quest made since" && theQuests.all.length > 4)
                 Qt.callLater(root.since);
-        }
-        onQuestsChanged: {
-            if (root.waiting === "heard shut" && theQuests.quests.length > 4)
-                Qt.callLater(root.heardShut);
-            if (root.waiting === "only those heard") {
-                root.questsSaid += 1;
-                if (theQuests.quests.some(quest => quest.status === "retired"))
-                    Qt.callLater(root.onlyThoseHeard);
-            }
         }
     }
 
-    // The first cases wait for both quest lists and the machines, each
-    // heard over a watch of its own, in whichever order they come.
+    // Each change the daemon tells, after the quests took it, its keys
+    // kept for the case that waits on it.
+    Connections {
+        target: theQuests.rowsKind
+
+        function onHeard(changed, gone) {
+            for (let at = 0; at < changed.length; at += 1)
+                root.told.push(changed[at]);
+            for (let at = 0; at < gone.length; at += 1)
+                root.told.push(gone[at]);
+            root.read();
+            const rows = () => theQuests.looksThrough();
+            if (root.waiting === "its session heard"
+                && rows().some(row => row.side.endsWith("WCJQSG")))
+                Qt.callLater(root.sessionHeard);
+            if (root.waiting === "heard shut" && theQuests.counted() === "4 open, 1 driving")
+                Qt.callLater(root.heardShut);
+            if (root.waiting === "only those heard"
+                && !rows().some(row => row.key === "quest:QEST-20261020-NEWONE")
+                && rows().some(row => row.name === "Retune the banner"))
+                Qt.callLater(root.onlyThoseHeard);
+        }
+    }
+
+    // The first cases wait for the quests' rows and their count, and the
+    // machines, in whichever order they come.
     readonly property bool machinesHeard: theQuests.machineKind?.answered ?? false
     onMachinesHeardChanged: read()
     function read() {
-        if (root.waiting === "the first reading" && theQuests.all.length === 4 && machinesHeard)
+        if (root.waiting === "the first reading" && theQuests.all.length === 4 && machinesHeard
+            && theQuests.counted() === "3 open, 1 driving")
             Qt.callLater(root.first);
     }
 
@@ -131,7 +141,7 @@ ShellRoot {
             power: { on_battery: true, charge: 40 } }
     ]
 
-    // The shell's watch of each kind, by kind, so the node can tell it more.
+    // The node's watch of each kind, by kind, so the node can tell it more.
     property var watches: ({})
 
     function tell(kind, change) {
@@ -141,8 +151,9 @@ ShellRoot {
     }
 
     // A stand-in for the machine's node, speaking the daemon interface:
-    // hello, and a watch of either list, or of the machines, answered with
-    // it whole.
+    // hello, and a watch of either list or the sessions, which the quests
+    // daemon makes the rows from, or of the machines, which the shell
+    // reads, each answered whole.
     SocketServer {
         active: true
         path: Sessions.nodePath
@@ -151,15 +162,15 @@ ShellRoot {
             parser: SplitParser {
                 onRead: line => {
                     const ask = JSON.parse(line);
+                    const lists = { quest: root.open, "ended-quest": root.ended, session: [] };
                     let answer;
                     if (ask.ask === "hello") {
                         answer = { id: ask.id, version: 1, domain: "node", state: "running" };
                     } else if (ask.ask === "watch" && ask.kind === "machine") {
                         answer = { id: ask.id, records: root.machines };
-                    } else if (ask.ask === "watch" && ["quest", "ended-quest"].includes(ask.kind)) {
+                    } else if (ask.ask === "watch" && ask.kind in lists) {
                         root.watches[ask.kind] = { socket: asked, id: ask.id };
-                        answer = { id: ask.id,
-                            records: ask.kind === "quest" ? root.open : root.ended };
+                        answer = { id: ask.id, records: lists[ask.kind] };
                     } else {
                         root.fail(`an ask the quests have no need of: ${line}`);
                         answer = { id: ask.id, error: { code: "unknown-ask", message: line } };
@@ -197,7 +208,8 @@ ShellRoot {
             expect("an active one wears its own", laptop.glyph === Theme.glyph.active, laptop.glyph);
             expect("one reads its summary's first paragraph",
                 laptop.reads === "What Bootstrap the laptop is about.", laptop.reads);
-            expect("the foot's count", theQuests.counted() === "3 open, 1 driving", theQuests.counted());
+            expect("one with no session is its own", laptop.is === "quest:QEST-20261001-LAPTOP",
+                laptop.is);
 
             const banner = theQuests.search("banner").rows;
             expect("a finished one, found by typing",
@@ -264,6 +276,9 @@ ShellRoot {
                 facts[0].verbs === null && facts[0].note === "", facts[0].note);
             expect("the node asked where sessions may go", Sessions.lookedAround > 0,
                 Sessions.lookedAround);
+            expect("a quest's title found by its id",
+                theQuests.titleOf("QEST-20261004-STICK") === "Wait on the stick",
+                theQuests.titleOf("QEST-20261004-STICK"));
 
             // With another machine the realm links, out of reach now.
             Sessions.places = [
@@ -295,35 +310,41 @@ ShellRoot {
                 JSON.stringify(Sessions.startedOn));
             Sessions.places = [];
 
-            // A session with it loaded: Return goes there.
+            // A session with it loaded, as the node tells its sessions and
+            // Sessions holds its window.
             Sessions.running = [{
                 address: "WCJQSG",
                 window: { id: 7 },
                 presence: { owns: ["QEST-20261003-PROMPT"] }
             }];
+            root.waiting = "its session heard";
+            tell("session", { changed: [{ key: "session:WCJQSG", standing: "running",
+                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } }] });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Return goes to the session that has it loaded, and its row is that
+    // session's window.
+    function sessionHeard() {
+        if (root.waiting !== "its session heard")
+            return;
+        root.waiting = "the session's cases";
+        try {
             const held = theQuests.everything()[1];
             expect("a loaded one names its session",
                 held.side === "subquest \u00b7 queued \u00b7 WCJQSG" && held.verb === "go to", held.side);
+            expect("a loaded one is its session's window", held.is === "window:7", held.is);
             held.run();
             expect("going to its session", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":7}}',
                 JSON.stringify(Niri.acted));
             expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go to",
                 held.verbs()[0].name);
 
-            // Laid out again with nothing changed, no title is broken into
-            // pieces again: each sort broke both titles apart at every
-            // comparison, 20% of the stall after an opening's frame
-            // (2026-11-10).
-            const named = Object.assign({}, theQuests.named);
-            theQuests.laidOut();
-            const rebroken = Object.keys(named).filter(id => theQuests.named[id] !== named[id]);
-            expect("no title broken again laid out again", rebroken.length === 0
-                && Object.keys(theQuests.named).length === 4, rebroken.join(", "));
-
-            root.namedBefore = named;
             root.made = theQuests.looksThrough();
             root.counted = theQuests.tally.rows;
-            root.before = theQuests.quests.slice();
+            root.told = [];
             root.waiting = "heard shut";
             theLauncher.wanting = false;
             // The node tells every quest again as the harness writes its
@@ -348,14 +369,12 @@ ShellRoot {
                 `${theQuests.tally.rows - root.counted} rows`);
             expect("the rows last made still given", theQuests.all.length === 4,
                 `${theQuests.all.length} rows`);
-            expect("still counted shut", theQuests.counted() === "4 open, 1 driving",
-                theQuests.counted());
-            // Every quest of both lists was copied again at each list
-            // written, 1,063 on Joel's shell (2026-11-10); one told again
-            // with only when it was heard moved is kept as it was.
-            const remade = root.before.filter(quest => !theQuests.quests.includes(quest));
-            expect("every quest told again unchanged kept", remade.length === 0,
-                remade.map(quest => quest.id).join(", "));
+            // Every quest was told again as the list was written, and
+            // every quest's row was once made again at each, 1,063 on
+            // Joel's shell (2026-11-10): the daemon tells only the new one.
+            const told = root.told.slice().sort().join(", ");
+            expect("only the new quest's row and the count told",
+                told === "row:quests:QEST-20261020-NEWONE, summary:quests", told);
             root.waiting = "the quest made since";
             theLauncher.wanting = true;
         } catch (error) {
@@ -366,29 +385,23 @@ ShellRoot {
     function since() {
         if (root.waiting !== "the quest made since")
             return;
-        root.waiting = "the end";
+        root.waiting = "the change heard";
         try {
             const found = theQuests.search("newly").rows;
             expect("a quest made since", names(found) === "Newly made", names(found));
-            // Every quest is told again as a list is written, and every
-            // quest's row was made again: about 824 at each change on Joel's
-            // shell (2026-11-03). Each row is kept while its quest and its
-            // session read the same, so only the new one is made.
+            expect("after the open ones it ranks below", theQuests.everything()[3]?.name
+                === "Newly made", names(theQuests.everything()));
             const now = theQuests.looksThrough();
             const remade = root.made.filter(row => !now.includes(row));
             expect("every other quest's row kept", remade.length === 0, names(remade));
             expect("one row made, for the new quest", theQuests.tally.rows - root.counted === 1,
                 `${theQuests.tally.rows - root.counted} rows`);
-            const rebroken = Object.keys(root.namedBefore)
-                .filter(id => theQuests.named[id] !== root.namedBefore[id]);
-            expect("only the new quest's title broken into pieces", rebroken.length === 0
-                && theQuests.named["QEST-20261020-NEWONE"]?.title === "Newly made",
-                rebroken.join(", "));
             // The list written again with nothing moved but when each was
-            // heard, then the new one let go, then the ended one retired:
-            // the quests are said anew for the last two alone.
-            root.before = theQuests.quests.slice();
-            root.questsSaid = 0;
+            // heard, then the new one let go, then the ended one retired
+            // and retitled: only those two rows and the count are told.
+            root.made = now;
+            root.counted = theQuests.tally.rows;
+            root.told = [];
             root.waiting = "only those heard";
             tell("quest", { changed: root.open.map(one => ({ key: one.key, heard: 3 }))
                 .concat([{ key: "quest:QEST-20261020-NEWONE", heard: 3 }]) });
@@ -400,27 +413,27 @@ ShellRoot {
         }
     }
 
-    // A change remakes only the quests it names (Daemon.qml's heard).
+    // A change tells only the rows it moves, and the rest are kept.
     function onlyThoseHeard() {
         if (root.waiting !== "only those heard")
             return;
         root.waiting = "the end";
         try {
-            expect("said anew only for the quest let go and the one retired",
-                root.questsSaid === 2, `${root.questsSaid} times`);
-            expect("the one let go is gone",
-                !theQuests.quests.some(quest => quest.id === "QEST-20261020-NEWONE"),
-                theQuests.quests.map(quest => quest.id).join(", "));
-            const remade = root.before.filter(quest => !theQuests.quests.includes(quest)
-                && quest.id !== "QEST-20261020-NEWONE" && quest.id !== "QEST-20250105-BANNER");
-            expect("every other quest kept", remade.length === 0,
-                remade.map(quest => quest.id).join(", "));
-            // A title changed is broken into pieces anew, and sorts by them.
-            const banner = theQuests.named["QEST-20250105-BANNER"]?.pieces ?? [];
-            expect("a retitled quest's pieces made again", banner.join("|") === "retune the banner",
-                banner.join("|"));
-            expect("the one let go no longer kept",
-                theQuests.named["QEST-20261020-NEWONE"] === undefined, "still kept");
+            const told = Array.from(new Set(root.told)).sort().join(", ");
+            expect("told only the one let go, the one retired and the count", told
+                === "row:quests:QEST-20250105-BANNER, row:quests:QEST-20261020-NEWONE, "
+                + "summary:quests", told);
+            const now = theQuests.looksThrough();
+            const banner = now.find(row => row.name === "Retune the banner");
+            expect("the retired one wears its mark", banner.glyph === Theme.glyph.cancelled,
+                banner.glyph);
+            const remade = root.made.filter(row => !now.includes(row)
+                && row.key !== "quest:QEST-20261020-NEWONE" && row.key !== banner.key);
+            expect("every other quest's row kept", remade.length === 0, names(remade));
+            expect("one row made, for the one retired", theQuests.tally.rows - root.counted === 1,
+                `${theQuests.tally.rows - root.counted} rows`);
+            expect("counted again", theQuests.counted() === "3 open, 1 driving",
+                theQuests.counted());
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
