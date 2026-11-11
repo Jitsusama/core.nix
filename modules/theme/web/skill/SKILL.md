@@ -459,13 +459,37 @@ causing the page to reformat" (2026-11-10). `layout.js` measures all three.
 
 "playback needs to have speed, progress, and i should be able to scroll up
 to see previous things that were outputted. sometimes it is too fast and
-sometimes it is too slow" (2026-11-11).
+sometimes it is too slow" (2026-11-11); "I think we need a .25 speed as
+well, it still feels very fast, or maybe even just some CSS transitions to
+slow down how the text appears. Anyone that gets dizzy easy would be
+destroyed by it" (2026-11-11).
 
+- **Reach for a replay where a reader learns by watching output unfold.**
+  "i think the concept of terminal replays is something to put in there in
+  general, it is great medium for certain things" (2026-11-11). A flow at
+  the command line, a build or a deploy running, an agent's run, a
+  terminal before and after a change: where the order and the pace of what
+  prints is the point, a replay shows it as no still can. Where only the
+  end state matters, a still of it, or a table, says it quicker.
+- **Make it well.** Record a real run, or script one that types and prints
+  on a timed plan, so it can be made again when the tool changes; either
+  way the output is real, never mocked. Trim it to what teaches, cut each
+  wait to a beat, and keep secrets, paths, ids and machine names out of it.
+  Name its chapters in the cast (a step, a stage, a verdict), set its
+  columns to fit the measure in the kit's mono, and give it the controls
+  below, a reduced-motion form and a twin of its transcript.
 - **A terminal replay is a player the reader drives.** It opens paused, at
   1×, and plays only when asked. Its speed always shows beside it and
-  changes in steps (0.5×, 1×, 2×, 4×), so a reader slows what rushes and
-  hurries what drags; a long idle gap in the recording is capped, never
+  changes in steps (0.25×, 0.5×, 1×, 2×, 4×), so a reader slows what rushes
+  and hurries what drags; a long idle gap in the recording is capped, never
   sat through.
+- **Output arrives gently.** New lines fade in on the theme's `--arrive`,
+  and the scroll that follows them glides rather than snapping, so text
+  never jumps under the eye. With less motion asked for, nothing fades or
+  glides: each step's output shows whole, at once.
+- **A step mode that waits.** Switched on, it plays one step (a command
+  and what it printed) and stops until the reader asks for the next, so
+  anyone can go at reading pace, however fast the recording ran.
 - **Its progress is a bar the reader can seek**, with a marker at each
   chapter, and beside it the chapter it's in, by name, the time played and
   the whole.
@@ -474,8 +498,9 @@ sometimes it is too slow" (2026-11-11).
   never pulls them back down; a quiet "latest" returns them.
 - **Its keys, while it has focus, are the player's and Vim's**: Space
   plays and pauses, h and l step back and on, [ and ] jump chapter to
-  chapter, < and > change speed, and k and j scroll its output, all listed
-  in Keys. How it's built is in `craft.md`.
+  chapter, < and > change speed, s turns step mode on and off, n plays
+  the next step, and k and j scroll its output, all listed in Keys. How
+  it's built is in `craft.md`.
 
 ### Keys
 
@@ -651,6 +676,11 @@ Each is a verdict on a real site; the rule it gave is above.
   "not been considered consistently in so many ways".
 - A terminal replay with no speed, no progress and no way back: "sometimes it
   is too fast and sometimes it is too slow" (2026-11-11).
+- A command-line flow told in still screenshots or prose, where a replay
+  would have shown it: "it is great medium for certain things" (2026-11-11).
+- Replayed text that snaps onto the screen as fast as it ran, with nothing
+  slower than half speed: "Anyone that gets dizzy easy would be destroyed by
+  it" (2026-11-11).
 - Branches that don't look openable; "open" and "close" words on them.
 - Scroll animations that finish off screen, rush past, or snap past the text.
 - Counting numbers, and a freshness time that measures publishing, not facts.
