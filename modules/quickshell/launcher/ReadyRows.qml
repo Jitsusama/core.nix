@@ -253,12 +253,19 @@ Scope {
         const acts = actsOf(row);
         const first = acts[0] ?? null;
         const steps = acts.some(one => one.step === "rows");
+        // Its acts as rows, made once it's first asked for them and kept
+        // with the row, so an opening asking the cursor's row for its keys
+        // again makes none; a row made again makes its acts again.
+        let acted = null;
         const verbs = () => {
             if (steps)
                 return inside(key);
-            repeats[key] = repeats[key] ?? {};
-            const kept = Ready.actKeys(acts, repeats[key]);
-            return acts.map((one, at) => actRow(key, one, kept[at]));
+            if (acted === null) {
+                repeats[key] = repeats[key] ?? {};
+                const kept = Ready.actKeys(acts, repeats[key]);
+                acted = acts.map((one, at) => actRow(key, one, kept[at]));
+            }
+            return acted;
         };
         // How a Return leaves the launcher is ReadyRows.js's leaving's. A
         // row whose Return asks is that act's for the key language, so its
