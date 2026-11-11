@@ -52,7 +52,12 @@ let
   # `shaper proof` loads the link with curl only while swayidle says Joel
   # is away, a-call-is-on says no call is on and pw-dump shows nothing
   # playing, and reads the default route with ip; systemd-run and
-  # systemctl are the system's own.
+  # systemctl are the system's own. What else it waits on, such as the
+  # calendar, the machine names in proofWaitsWhile.
+  waitsWhile = config.jitsusama.shaper.proofWaitsWhile;
+  waitsFlag = lib.optionalString (waitsWhile != [ ]) (
+    "--set-default SHAPER_PROOF_WAITS_WHILE " + lib.escapeShellArg (builtins.toJSON waitsWhile)
+  );
   proofTools = [
     pkgs.curl
     pkgs.iproute2
@@ -65,7 +70,8 @@ let
     paths = [ shaper ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
-      wrapProgram $out/bin/shaper --suffix PATH : ${lib.makeBinPath proofTools} ${serverFlag}
+      wrapProgram $out/bin/shaper --suffix PATH : ${lib.makeBinPath proofTools} \
+        ${serverFlag} ${waitsFlag}
     '';
   };
   speedServer = config.jitsusama.shaper.speedServer;
@@ -115,6 +121,25 @@ in
       Where `shaper proof` loads the link: a server that takes what is
       posted to `/__up` and answers `/__down?bytes=N` with N bytes. Left
       unset, the proof asks for `--server`.
+    '';
+  };
+
+  options.jitsusama.shaper.proofWaitsWhile = lib.mkOption {
+    type = lib.types.listOf (lib.types.nonEmptyListOf lib.types.str);
+    default = [ ];
+    example = [
+      [
+        "a-meeting-is-near"
+        "/home/me/Documents/Calls"
+      ]
+    ];
+    description = ''
+      What else `shaper proof` waits on before it loads the link, past
+      Joel being idle, no call and no audio: commands run as him, each
+      succeeding while the link must carry no load, such as within ten
+      minutes of a meeting, and exiting 1 while it may. Anything else
+      counts as busy, since it couldn't tell. A call can ring before its
+      microphone opens, and the calendar knows it first.
     '';
   };
 
