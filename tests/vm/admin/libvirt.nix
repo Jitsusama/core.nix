@@ -7,7 +7,7 @@
 # so a stop often finds the thread still waiting, and ten leave the old code
 # next to no way through. The script is libvirt-vm-test.py.
 { self, pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "libvirt";
 
   nodes.machine = {

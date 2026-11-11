@@ -1,10 +1,10 @@
 """A machine updates itself to signed main when its asker asks, and nothing else moves it.
 
-tests/update-to-main.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
-The repository is bare, at /srv/machines.git, and a commit's flake gives one of the machine's
-systems as main's: its first, or a specialisation that adds /etc/switched, or one that adds
-/etc/unhealthy, which the machine's health check refuses. A third, moved, holds a copy of
-update-to-main at another path, for a switch made by hand. Each test commits the main it needs
+update-to-main.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py). The repository is bare, at /srv/machines.git, and a commit's flake gives
+one of the machine's systems as main's: its first, or a specialisation that adds /etc/switched, or
+one that adds /etc/unhealthy, which the machine's health check refuses. A third, moved, holds a copy
+of update-to-main at another path, for a switch made by hand. Each test commits the main it needs
 and reads what the machine runs afterwards.
 
 booting boots from its disk through systemd-boot, so starting it again boots what the switch

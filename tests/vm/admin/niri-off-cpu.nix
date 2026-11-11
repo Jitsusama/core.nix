@@ -9,7 +9,7 @@ let
     doCheck = false;
   } (builtins.readFile ./niri-off-cpu/stand-in-niri.py);
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "niri-off-cpu";
 
   nodes.machine = {

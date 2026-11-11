@@ -23,7 +23,7 @@ filesystem to be synced is told it's done, while sync itself still runs,
 there and outside the daemon. A build is signed by the key the machine made
 as it activated, whose secret half only root can read.
 
-tests/vm-first.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py). Each
+vm-first.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py). Each
 test asks for the state it starts from as a fixture: the daemon started, a VM's and a
 compiler's builds running beside it, or a quest's build beside those. The test that stops the
 builds comes last, as it ends what the others look at.

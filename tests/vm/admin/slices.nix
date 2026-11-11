@@ -20,7 +20,7 @@ let
     }
   );
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "slices";
 
   # Room enough for the door to let a few of thirteen heavy starts in, and

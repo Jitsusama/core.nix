@@ -1,6 +1,6 @@
 """An account in wheel traces its own niri off the CPU with no password, and nobody else does.
 
-tests/niri-off-cpu.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
+niri-off-cpu.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 A stand-in named as niri's session is runs as an account in wheel, waiting in epoll for an
 eventfd its waker thread writes and then sleeping outside it, over and over. Its trace says
 each, with the kernel stack it slept in, a time on the machine's monotonic clock, and who woke

@@ -1,12 +1,12 @@
 """What the kernel gives each slice, the account's and the system's, in a virtual machine.
 
-tests/slices.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says why the kernel is asked rather than the module's settings read back. Each
-test asks for the state it starts from as a fixture: the account's slices held open on the
-machine naming no disk, its jobs' holders running, or the measured machine with its own slices
-held open. A test that starts work names it by its own seconds, so any test runs alone with
-`-k`, and the one that stops the measured disk's sharing comes last. The programs the units run
-are slices.nix's, given as the `values` fixture.
+slices.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says why the kernel is asked rather than the module's settings read back. Each
+test asks for the state it starts from as a fixture: the account's slices held open on the machine
+naming no disk, its jobs' holders running, or the measured machine with its own slices held open. A
+test that starts work names it by its own seconds, so any test runs alone with `-k`, and the one
+that stops the measured disk's sharing comes last. The programs the units run are slices.nix's,
+given as the `values` fixture.
 """
 
 from __future__ import annotations
