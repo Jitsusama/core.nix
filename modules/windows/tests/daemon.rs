@@ -150,7 +150,7 @@ impl Running {
         let words = folder.join("words.json");
         if let Some(outputs) = outputs {
             niri.shows(outputs);
-            std::fs::write(&words, vocabulary().to_string()).unwrap();
+            std::fs::write(&words, SCREEN_WORDS).unwrap();
         }
         let program = env!("CARGO_BIN_EXE_windows");
         let mut command = match launcher.split_first() {
@@ -206,16 +206,9 @@ impl Running {
     }
 }
 
-/// The launcher's words for its Screens, as words.json says them.
-fn vocabulary() -> Value {
-    json!({"things": [
-        {"id": "displays", "said": {"dark": "dark", "off": "off", "focused": "focused",
-            "hubOn": "hub on", "scaleAt": "scale {scale}"}},
-        {"id": "displays:built-in", "name": "Built-in Screen"},
-        {"id": "displays:sleep", "name": "Turn Every Screen Off", "glyph": "displayOff",
-            "said": {"note": "a key wakes them"}},
-    ]})
-}
+/// The launcher's words for its Screens, as words.json says them, which
+/// screens.rs's own tests read too.
+const SCREEN_WORDS: &str = include_str!("screen-words.json");
 
 /// A screen niri lays out at this scale, or, with none, one it lays
 /// nothing out on.

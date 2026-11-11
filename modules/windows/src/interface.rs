@@ -340,8 +340,14 @@ mod tests {
         assert_eq!(place_of("row:displays:display:eDP-1"), Some("displays"));
         assert_eq!(place_of("window:12"), None);
         let displays = ["displays".to_owned()];
-        assert!(placed("row:displays:sleep", Some(&displays)));
-        assert!(!placed("row:windows:12", Some(&displays)));
+        assert!(
+            placed("row:displays:sleep", Some(&displays)),
+            "a row of the place named is taken"
+        );
+        assert!(
+            !placed("row:windows:12", Some(&displays)),
+            "a row of another place isn't"
+        );
         assert!(
             placed("window:12", Some(&displays)),
             "a window has no place"

@@ -255,18 +255,12 @@ pub fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Wo
 mod tests {
     use super::*;
 
+    /// The launcher's words for its Screens, as the socket's tests hand
+    /// the daemon them too.
     fn words() -> Words {
-        Words::read(&vocabulary()).expect("the words read")
-    }
-
-    fn vocabulary() -> Value {
-        json!({"things": [
-            {"id": "displays", "said": {"dark": "dark", "off": "off", "focused": "focused",
-                "hubOn": "hub on", "scaleAt": "scale {scale}"}},
-            {"id": "displays:built-in", "name": "Built-in Screen"},
-            {"id": "displays:sleep", "name": "Turn Every Screen Off", "glyph": "displayOff",
-                "said": {"note": "a key wakes them"}},
-        ]})
+        let vocabulary = serde_json::from_str(include_str!("../tests/screen-words.json"))
+            .expect("the test's words are JSON");
+        Words::read(&vocabulary).expect("the words read")
     }
 
     /// A screen as niri says one: lit at its first mode, unless `logical`
