@@ -67,11 +67,16 @@ Provider {
     // What the daemon serves, for a reader told of each change it hears.
     readonly property alias served: ready
 
-    // Whether the daemon hasn't yet answered this watch whole, so a
-    // terminal's show asks again for the figures rather than printing
-    // what it held before (Provider.stillReading).
-    stillReading: provider.seen && ready.link !== null && !ready.link.answeredThisWatch
-        && ready.state !== "not answering"
+    // Whether fwupd has answered the daemon: its headline served, saying
+    // nothing where fwupd lists no device. A place first watched after
+    // the daemon starts is answered before fwupd is asked.
+    readonly property bool fwupdAnswered: ready.placings >= 0 && !!ready.held["head:firmware"]
+
+    // Whether the daemon hasn't yet answered this watch whole, or fwupd
+    // the daemon, so a terminal's show asks again for the figures rather
+    // than printing what it held before (Provider.stillReading).
+    stillReading: provider.seen && ready.link !== null && ready.state !== "not answering"
+        && (!ready.link.answeredThisWatch || !fwupdAnswered)
 
     function answer(typed) {
         if (fwupdmgr === "" || asks(typed) === "")
@@ -80,7 +85,7 @@ Provider {
         // rather than waiting on it.
         if (ready.state === "not answering")
             return null;
-        if (!(ready.link?.answered ?? false))
+        if (!(ready.link?.answered ?? false) || !fwupdAnswered)
             return waitingAnswer();
         return told();
     }
@@ -102,14 +107,15 @@ Provider {
     // Firmware's answer: its headline and its rows, a step in each holding
     // what's inside it; none on a machine where fwupd lists no device.
     function told() {
-        const head = ready.held["head:firmware"]?.head ?? null;
-        if (head === null)
+        const head = ready.held["head:firmware"]?.head ?? {};
+        const rows = ready.rows();
+        if (rows.length === 0)
             return null;
         return {
             headline: head.said ?? "",
             warns: head.hue === "warning",
             glyph: Words.glyph("firmware"),
-            rows: ready.rows(),
+            rows: rows,
             note: "",
             // Its answer and each row are Firmware's, so the daemon is
             // watched while one is stepped into (Seen.js), and an act's

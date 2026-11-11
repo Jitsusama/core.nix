@@ -104,17 +104,27 @@ pub enum Ended {
 }
 
 /// Firmware's rows and headline from the daemon's firmware records, as
-/// its acts stand. A machine whose fwupd lists no device has none.
+/// its acts stand. A machine whose fwupd lists no device has no rows, and
+/// a headline saying nothing once fwupd has answered, its host held, so
+/// the shell tells a Firmware with none from one not yet read, as a
+/// place first watched after the daemon starts is answered before fwupd
+/// is asked.
 pub fn read(records: &[Value], acting: &Acting, words: &Words) -> Ready {
     let say = Say { words, acting };
     let devices = devices_of(records);
-    if devices.is_empty() {
-        return Ready::default();
-    }
-    let mut made: Vec<Made> = devices.iter().map(|device| say.device(device)).collect();
     let host = records
         .iter()
         .find(|record| record["key"] == "firmware:host");
+    if devices.is_empty() {
+        return Ready {
+            rows: Vec::new(),
+            head: host.map(|_| {
+                json!({ "key": format!("head:{PLACE}"), "place": PLACE,
+                "said": "" })
+            }),
+        };
+    }
+    let mut made: Vec<Made> = devices.iter().map(|device| say.device(device)).collect();
     if let Some(security) = host.and_then(|host| say.security(host)) {
         made.push(security);
     }
@@ -488,8 +498,28 @@ impl Say<'_> {
     }
 
     /// The one row inside an act that can't be taken back, asking Joel to
-    /// be sure, its Return asking the daemon's act.
-    fn sure(&self, id: String, verb: &str, name: String, note: String, ask: &Value) -> Made {
+    /// be sure, its Return asking the daemon's act. One that goes a while,
+    /// as an install does, says what the row becomes as it goes, so the
+    /// shell draws it at once rather than holding the row as it was until
+    /// the act is answered, once it's done (`ReadyRows.asked`).
+    fn sure(
+        &self,
+        id: String,
+        verb: &str,
+        name: String,
+        note: String,
+        ask: &Value,
+        going: Option<&str>,
+    ) -> Made {
+        let mut act = json!({ "key": verb, "ask": ask });
+        if let Some(phrase) = going {
+            let mut becomes = Vec::new();
+            let made = self.sure_going(id.clone(), verb, name.clone(), phrase);
+            crate::rows::placed(PLACE, vec![made], None, 0, &mut becomes);
+            if let Some(becomes) = becomes.into_iter().next() {
+                act["becomes"] = becomes;
+            }
+        }
         Made {
             id,
             kind: "act",
@@ -497,7 +527,7 @@ impl Say<'_> {
             glyph: self.words.glyph(verb),
             hue: "alert",
             note,
-            acts: vec![json!({ "key": verb, "ask": ask })],
+            acts: vec![act],
             sure: true,
             ..Made::default()
         }
@@ -524,14 +554,19 @@ impl Say<'_> {
     /// place the same row, by its key and name, saying so too and asking
     /// nothing, so the step Joel pressed Return in still holds it as it
     /// goes, as the shell's own asking rows did (Firmware.qml's standingOf).
-    fn going(&self, id: String, verb: &str, name: String, asked: String, note: &str) -> Made {
-        let said = self.said(verb, note, &[]);
-        let mut row = self.act(id.clone(), verb, name, said.clone());
-        row.inside = vec![Made {
-            hue: "alert",
-            ..self.act(format!("{id}:sure"), verb, asked, said)
-        }];
+    fn going(&self, id: &str, verb: &str, name: String, asked: String, note: &str) -> Made {
+        let mut row = self.act(id.to_owned(), verb, name, self.said(verb, note, &[]));
+        row.inside = vec![self.sure_going(format!("{id}:sure"), verb, asked, note)];
         row
+    }
+
+    /// The step that asked, as it reads while its act goes: in its place,
+    /// saying so, and asking nothing.
+    fn sure_going(&self, id: String, verb: &str, asked: String, phrase: &str) -> Made {
+        Made {
+            hue: "alert",
+            ..self.act(id, verb, asked, self.said(verb, phrase, &[]))
+        }
     }
 
     /// Install, as it stands: ready, holding the step that asks once,
@@ -554,7 +589,7 @@ impl Say<'_> {
         };
         let note = if self.acting.going.as_deref() == Some(key) {
             let asked = self.words.sure(VERB, &fill);
-            return self.going(id, VERB, name, asked, "installing");
+            return self.going(&id, VERB, name, asked, "installing");
         } else if device.waits.is_some() {
             return done(said("waits"));
         } else if device.offered.is_none() || ended == Some(&Ended::Done) {
@@ -576,6 +611,7 @@ impl Say<'_> {
                 self.words.sure(VERB, &fill),
                 said(last),
                 &ask,
+                Some("installing"),
             )];
             return row;
         };
@@ -919,7 +955,7 @@ impl Say<'_> {
         let ended = self.acting.ended.get(&key);
         if self.acting.going.as_ref() == Some(&key) {
             let asked = self.words.sure(&verb, &[("attribute", attribute.name)]);
-            return self.going(id, &verb, name, asked, "changing");
+            return self.going(&id, &verb, name, asked, "changing");
         }
         if ended == Some(&Ended::Done) {
             return Made {
@@ -942,6 +978,7 @@ impl Say<'_> {
             self.words.sure(&verb, &[("attribute", attribute.name)]),
             self.said(&verb, "final", &[]),
             &ask,
+            Some("changing"),
         )];
         row
     }
@@ -976,6 +1013,7 @@ impl Say<'_> {
             self.words.sure(VERB, &[]),
             self.said(VERB, "final", &[]),
             &ask,
+            None,
         )];
         row
     }
@@ -1114,9 +1152,15 @@ mod tests {
             json!([{ "said": "1.13.0 ready \u{b7} from 1.12.0" }])
         );
         assert_eq!(system["hue"], "warning");
+        let none = read_of(&[host()]);
+        assert_eq!(
+            (none.rows.len(), none.head.map(|head| head["said"].clone())),
+            (0, Some(json!(""))),
+            "no device lists no Firmware, its headline saying fwupd answered"
+        );
         assert!(
-            read_of(&[host()]).head.is_none(),
-            "no device lists no Firmware"
+            read_of(&[]).head.is_none(),
+            "nothing read is no headline, so the shell waits for fwupd"
         );
     }
 
@@ -1168,6 +1212,13 @@ mod tests {
                 json!([])
             ),
             "the asking step's row says it goes, in its place, and asks nothing"
+        );
+        let becomes = &sure["acts"][0]["becomes"];
+        let fields = |row: &Value| ["key", "name", "note", "hue"].map(|field| row[field].clone());
+        assert_eq!(
+            fields(becomes),
+            fields(asking),
+            "the ask says it becomes the row served as it goes, so that's drawn at once"
         );
         acting.going = None;
         acting.ended.insert(

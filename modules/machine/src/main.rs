@@ -1664,7 +1664,13 @@ fn firmware_loop(shared: &Arc<Shared>) {
                 std::thread::spawn(move || changes(&connection, &shared));
             }
         }
-        let said = bus.as_ref().map(fwupd).unwrap_or_default();
+        // An fwupd that can't be reached answers a bare host, so the
+        // shell is told Firmware has nothing rather than left waiting.
+        let said = bus
+            .as_ref()
+            .map(fwupd)
+            .filter(|said| !said.is_empty())
+            .unwrap_or_else(|| vec![firmware::host(None, &[], None, None)]);
         lock(&shared.daemon).firmware = said;
     }
 }
