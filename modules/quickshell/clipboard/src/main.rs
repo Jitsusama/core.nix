@@ -33,14 +33,15 @@
 //! rows and files going with them.
 //!
 //! The shell asks it, as its own asks, `{"ask": "copy", "copy": N}` to put
-//! copy N back on the clipboard (not `id`, which names the ask itself), or with `"text"` in place of the number to
-//! put the shell's own text there, kept as a copy is. `"paste"`, with
+//! copy N back on the clipboard (not `id`, which names the ask itself), or
+//! with `"text"` in place of the number to put the shell's own text there,
+//! kept as a copy is. `"paste"`, with
 //! `"into": "terminal"` or `"plain"`, puts it there and then presses the
 //! paste keys for the window the launcher closed over: Ctrl+Shift+V for a
 //! terminal, whose Ctrl+V is a key of its own, and Ctrl+V anywhere else.
 //! Without `"into"`, they're the keys of the window niri says has the
-//! focus once the launcher lets go, and with none focused, the copy is
-//! only put on the clipboard, with nowhere to paste it.
+//! focus under the launcher as the paste is asked, and with none, the copy
+//! is only put on the clipboard, with nowhere to paste it.
 //! They're pressed through the compositor's virtual keyboard, once niri
 //! says the launcher's layer has let go of the keys, so they reach the
 //! window and not the launcher, and nothing waits on the shell's thread:
@@ -314,9 +315,9 @@ fn asked_niri<T>(socket: &Path, ask: &[u8], read: fn(&str) -> Option<T>) -> Opti
     read(&answer)
 }
 
-/// The keys the window under the launcher takes, once it has let go of
-/// them, as niri says, or none with no window focused to paste into. With
-/// no niri to ask, or no answer from it, Ctrl+V, as most windows take.
+/// The keys the window under the launcher takes, as niri says, or none
+/// with no window focused to paste into. With no niri to ask, or no answer
+/// from it, Ctrl+V, as most windows take.
 fn under(niri: Option<&Path>) -> Option<Keys> {
     match niri.and_then(|niri| asked_niri(niri, b"\"FocusedWindow\"\n", focused)) {
         Some(Focus::Window(keys)) => Some(keys),
@@ -883,12 +884,16 @@ impl State {
         };
         let pressing = self.pressing.clone();
         thread::spawn(move || {
+            // Asked before the launcher lets go, since niri names the window
+            // under it while it holds the keys, and an ask after waits behind
+            // niri drawing, which held a paste's keys 119 ms on a builder
+            // (2026-11-11).
+            let Some(keys) = keys.or_else(|| under(niri.as_deref())) else {
+                let _ = reply.send(json!({ "copied": true }));
+                return;
+            };
             let said = if keys_let_go(niri.as_deref()) {
                 let let_go = Instant::now();
-                let Some(keys) = keys.or_else(|| under(niri.as_deref())) else {
-                    let _ = reply.send(json!({ "copied": true }));
-                    return;
-                };
                 Asked::Press(keys, let_go - asked, let_go, reply)
             } else {
                 eprintln!("The launcher never let go of the keys, so nothing was pasted.");
