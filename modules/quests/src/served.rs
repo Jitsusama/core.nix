@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 use crate::holder::{self, Holder};
 use crate::order;
 use crate::quest::{self, Quest};
+use crate::words::Words;
 
 /// The launcher's place the rows are in.
 pub const PLACE: &str = "quests";
@@ -24,13 +25,14 @@ pub const PLACE: &str = "quests";
 pub const SUMMARY: &str = "summary:quests";
 
 /// What every row is made from: the quests open and ended, by the node's
-/// key, the sessions and the folder at home. Never the clock: a day is
-/// sent as its moment, for the shell to word.
+/// key, the sessions, the folder at home and Quests' words. Never the
+/// clock: a day is sent as its moment, for the shell to word.
 pub struct Inputs<'a> {
     pub open: &'a Held,
     pub ended: &'a Held,
     pub sessions: &'a Held,
     pub home: &'a str,
+    pub words: &'a Words,
 }
 
 /// Every quest once, the open one where a quest is in both lists, as it
@@ -88,16 +90,22 @@ fn row(
 }
 
 /// How many are open and how many of those drive, or that none is.
-fn summary(quests: &[Quest]) -> String {
+fn summary(quests: &[Quest], words: &Words) -> String {
     let open = quests.iter().filter(|quest| quest.open()).count();
     let driving = quests
         .iter()
         .filter(|quest| quest.open() && quest.priority() == "driving")
         .count();
     match (open, driving) {
-        (0, _) => "empty".to_owned(),
-        (open, 0) => format!("{open} open"),
-        (open, driving) => format!("{open} open, {driving} driving"),
+        (0, _) => words.fill("empty", &[]),
+        (open, 0) => words.fill("open", &[("open", &open.to_string())]),
+        (open, driving) => words.fill(
+            "driving",
+            &[
+                ("open", &open.to_string()),
+                ("driving", &driving.to_string()),
+            ],
+        ),
     }
 }
 
@@ -113,7 +121,7 @@ pub fn made(inputs: &Inputs) -> (Vec<Value>, String) {
         .into_iter()
         .map(|quest| row(quest, holders.get(quest.id()), &named, inputs))
         .collect();
-    (rows, summary(&quests))
+    (rows, summary(&quests, inputs.words))
 }
 
 /// The record saying how many quests are open, served beside the rows.
@@ -144,11 +152,15 @@ mod tests {
 
     fn making(open: &[Value], ended: &[Value], sessions: &[Value]) -> (Vec<Value>, String) {
         let (open, ended, sessions) = (listed(open), listed(ended), listed(sessions));
+        // The launcher's own words, so a case reads as Quests says it.
+        let words = Words::from_vocabulary(include_str!("../../quickshell/launcher/words.json"))
+            .expect("core's vocabulary reads");
         made(&Inputs {
             open: &open,
             ended: &ended,
             sessions: &sessions,
             home: "/home/joel",
+            words: &words,
         })
     }
 

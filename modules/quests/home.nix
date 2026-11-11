@@ -5,7 +5,8 @@
 # $XDG_RUNTIME_DIR/daemons/quests.sock in the shell's daemon interface,
 # each watch told only the rows that moved, so the launcher holds and
 # sorts nothing of Quests (Joel, 2026-11-10: "the daemons need to be the
-# data layer, and they need to serve the launcher").
+# data layer, and they need to serve the launcher"). It says them in the
+# launcher's own words.json, so a word changes in one place.
 #
 # A machine with no realm runs no node and has no quests to show, so it
 # runs no daemon, and the shell runs only on Linux.
@@ -31,6 +32,8 @@ lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && realm != null) {
     Service = {
       ExecStart = lib.escapeShellArgs [
         (lib.getExe package)
+        "--vocabulary"
+        "${../quickshell/launcher/words.json}"
         "--node"
         "%t/mycelium/${realm}.sock"
         "--socket"

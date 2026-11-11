@@ -9,8 +9,10 @@
 //!   rank, then the newest, then A to Z with numbers as numbers.
 //! - [`holder`]: the session holding each quest, running before parked.
 //! - [`served`]: each quest's row in the launcher's form, and the summary.
+//! - [`words`]: Quests' words, as the launcher's vocabulary says them.
 
 pub mod holder;
 pub mod order;
 pub mod quest;
 pub mod served;
+pub mod words;
