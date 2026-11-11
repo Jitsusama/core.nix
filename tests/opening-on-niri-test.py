@@ -87,6 +87,10 @@ PRESENTED_OPENINGS = 5
 # shows a frame late, and well inside the half second before a closing makes its spots.
 KEPT_DRAWN = timedelta(milliseconds=200)
 
+# How many rows down a case moves the cursor before a letter, so the letter has a row to take
+# it from.
+ROWS_DOWN = 3
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -464,9 +468,9 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     shell.as_account(shell.ipc("collection", "emoji"))
     filled_after(shell, timed)
     settled(shell)
-    for _ in range(3):
+    for _ in range(ROWS_DOWN):
         shell.send_key("down")
-    shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == 3)
+    shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
     shell.send_chars("f")
     shell.launcher_until(lambda shown: shown["typed"] == "f")
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
