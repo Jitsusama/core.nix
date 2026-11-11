@@ -13,6 +13,10 @@ for slashes: `net.eeros.json` is `networks/<id>/eeros`,
 `usage.*` is the `data_usage` family, read for the last day at hourly
 cadence (devices daily).
 
+Many entries because each file is one read's answer, named for the read
+that gave it: folders would break that naming, and the tests find each
+answer by the name of the read it stands for.
+
 ## What Doesn't Answer
 
 The app's other reads, and why they're left out:

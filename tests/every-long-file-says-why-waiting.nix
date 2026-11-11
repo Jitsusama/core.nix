@@ -16,7 +16,6 @@
   "modules/disk-guard/src/survey.rs"
   "modules/disk-guard/tests/guard/collecting.rs"
   "modules/disk-guard/tests/guard/daemon.rs"
-  "modules/eero/contract"
   "modules/eero/src/history.rs"
   "modules/eero/src/notices.rs"
   "modules/eero/src/read.rs"
