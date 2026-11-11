@@ -5,7 +5,8 @@ The sorter starts memory-swap-in@PID.service as the focus comes to a window, and
 back what swap holds of PID's scope only if PID belongs to the session window niri says has the
 focus, at most once a window every 30 s. A stand-in niri, run as someone's own niri.service,
 answers for someone, an administrator, from a file the tests write, and stand-in heaps play pi's,
-each pushed out to swap on disk first.
+each pushed out to swap on disk first. A stand-in kitty plays one drawing many windows whose pis
+have no app id, which only it can tell apart.
 """
 
 from __future__ import annotations
@@ -71,10 +72,56 @@ def resident(machine: BaseMachine, name: str) -> int:
     return int(machine.succeed(f"cat {scope(name)}/memory.current"))
 
 
-def focus(machine: BaseMachine, window: int, app_id: str) -> None:
-    """Give the focus, as niri says it, to window `window` with `app_id`."""
-    said = json.dumps({"id": window, "app_id": app_id, "pid": 0, "is_focused": True})
+def focus(machine: BaseMachine, window: int, app_id: str, pid: int = 0, title: str = "") -> None:
+    """Give the focus, as niri says it, to window `window` with `app_id`, drawn by `pid`."""
+    said = json.dumps(
+        {"id": window, "app_id": app_id, "pid": pid, "title": title, "is_focused": True}
+    )
     machine.succeed(f"echo '{said}' > {runtime_of(machine)}/focus.json")
+
+
+def kitty(machine: BaseMachine, name: str, heaps: int, listens_as: str = "") -> int:
+    """Start a stand-in kitty as someone, with `heaps` heaps of its own, and give its pid."""
+    runtime = runtime_of(machine)
+    machine.succeed(
+        f"systemd-run --machine=someone@.host --user --unit=kitty-{name} "
+        "/run/current-system/sw/bin/python3 /etc/swap-in/kitty.py "
+        f"{runtime} {name} {heaps} {SIZE} {listens_as}"
+    )
+    for each in [name] + [f"{name}-{number}" for number in range(1, heaps + 1)]:
+        machine.wait_for_file(f"{runtime}/{each}.pid")
+    return int(machine.succeed(f"cat {runtime}/{name}.pid"))
+
+
+def shows(machine: BaseMachine, name: str, windows: list[tuple[bool, str, int]]) -> None:
+    """Have kitty `name` list `windows`, each its focus, its title and the pid it runs."""
+    listed = [
+        {
+            "id": number,
+            "is_focused": focused,
+            "tabs": [
+                {"is_active": True, "windows": [{"is_active": True, "title": title, "pid": pid}]}
+            ],
+        }
+        for number, (focused, title, pid) in enumerate(windows, 1)
+    ]
+    machine.succeed(f"echo '{json.dumps(listed)}' > {runtime_of(machine)}/{name}-shown.json")
+
+
+def held_by(machine: BaseMachine, pid: int) -> str:
+    """Give the cgroup folder `pid` runs in."""
+    cgroup = machine.succeed(f"cat /proc/{pid}/cgroup").strip()
+    return "/sys/fs/cgroup" + cgroup.split("::", 1)[1]
+
+
+def pid_in(machine: BaseMachine, name: str) -> int:
+    """Give the pid a stand-in wrote to `name`.pid."""
+    return int(machine.succeed(f"cat {runtime_of(machine)}/{name}.pid"))
+
+
+def stop_kittys(machine: BaseMachine) -> None:
+    """Stop every stand-in kitty and its heaps."""
+    machine.execute("systemctl --machine=someone@.host --user stop 'kitty-*'")
 
 
 def swap_in(machine: BaseMachine, account: str, pid: int) -> tuple[int, str]:
@@ -120,7 +167,8 @@ def test_a_process_outside_the_focused_window_is_left_alone(up: BaseMachine) -> 
     before = resident(up, "elsewhere")
     focus(up, 3, "pi-session.4")
     status, said = swap_in(up, "someone", pid)
-    assert status != 0, said
+    # The focus having moved on is an answer, not a failure: the unit ends well.
+    assert status == 0, said
     assert "isn't in the focused window" in said, said
     assert resident(up, "elsewhere") < before + (8 << 20), "the heap was read back anyway"
     # A call while the window lacks the focus doesn't use up its turn.
@@ -144,15 +192,59 @@ def test_a_socket_that_isnt_niris_is_never_asked(up: BaseMachine) -> None:
     focus(up, 9, "pi-session.9")
     status, said = swap_in(up, "someone", pid)
     up.succeed("systemctl stop planted-niri.service")
-    assert status != 0, said
+    assert status == 0, said
     assert "isn't in the focused window 9" in said, said
+
+
+def test_the_window_a_shared_kitty_names_is_read_back(up: BaseMachine) -> None:
+    runtime = runtime_of(up)
+    drawing = kitty(up, "shared", 2)
+    left, focused = pid_in(up, "shared-1"), pid_in(up, "shared-2")
+    shows(up, "shared", [(False, "π - left", left), (True, "π - focused", focused)])
+    up.wait_for_file(f"{runtime}/shared.listening")
+    cgroup = held_by(up, focused)
+    up.execute(f"echo {SIZE}M > {cgroup}/memory.reclaim")
+    swapped = int(up.succeed(f"cat {cgroup}/memory.swap.current"))
+    assert swapped >= (SIZE // 2) << 20, f"the focused heap has only {swapped} bytes in swap"
+    before = int(up.succeed(f"cat {cgroup}/memory.current"))
+    focus(up, 20, "pi-spawned", pid=drawing, title="π - focused")
+    status, said = swap_in(up, "someone", left)
+    assert status == 0, said
+    assert "isn't in the focused window 20" in said, said
+    status, said = swap_in(up, "someone", focused)
+    assert status == 0, said
+    assert "Read back" in said, said
+    up.wait_until_succeeds(
+        f"test $(cat {cgroup}/memory.current) -ge {before + ((SIZE // 2) << 20)}", timeout=30
+    )
+    asked = up.succeed(f"cat {runtime}/shared-asked.txt").split()
+    stop_kittys(up)
+    assert asked, "kitty was never asked"
+    assert set(asked) == {"ls"}, f"kitty was sent {asked}, not only ls"
+
+
+def test_a_kitty_socket_planted_by_another_process_is_never_asked(up: BaseMachine) -> None:
+    runtime = runtime_of(up)
+    drawing = kitty(up, "unheard", 2, "none")
+    named = pid_in(up, "unheard-1")
+    shows(up, "planted", [(True, "π - planted", named)])
+    # Under the name of the kitty drawing the window, as any of the account's processes could.
+    kitty(up, "planted", 0, str(drawing))
+    up.wait_for_file(f"{runtime}/planted.listening")
+    focus(up, 21, "pi-spawned", pid=drawing, title="π - planted")
+    status, said = swap_in(up, "someone", named)
+    sent = up.execute(f"test -e {runtime}/planted-asked.txt")[0] == 0
+    stop_kittys(up)
+    assert status == 0, said
+    assert "isn't in the focused window 21" in said, said
+    assert not sent, "the planted socket was sent a command"
 
 
 def test_a_window_that_is_no_session_is_left_alone(up: BaseMachine) -> None:
     pid = heap(up, "browser", "firefox")
     focus(up, 5, "firefox")
     status, said = swap_in(up, "someone", pid)
-    assert status != 0, said
+    assert status == 0, said
     assert "isn't in the focused window" in said, said
 
 
