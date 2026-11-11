@@ -50,6 +50,13 @@ impl Numbers {
         Numbers::new(mark("group"), mark("point"))
     }
 
+    /// The account's decimal point, for a figure said to its places with
+    /// its zeros kept, as a chromaticity's "0.060" is.
+    #[must_use]
+    pub fn point(&self) -> &str {
+        &self.point
+    }
+
     /// A number grouped in threes, with at most `places` places, trailing
     /// zeros dropped, and the plain hyphen a typed number takes.
     pub fn number(&self, value: f64, places: usize) -> String {

@@ -6,14 +6,14 @@
 //! they change when a screen comes or goes (Displays.qml asked the same).
 //!
 //! Each row carries its drawer, what niri says of the screen past its
-//! row (`drawer`), and holds what the shell's own acts need of it
-//! (`held`: its connector, how it stands and niri's whole record of it),
-//! since its settings and every act on it are the shell's until they
-//! move here, and the shell asks niri nothing of its own. The drawer's
-//! light and what the screen's EDID says join it here next; until then
-//! the shell still lays its own. A change
-//! the shell makes to a screen says nothing in niri's stream, so it asks
-//! this daemon to look again (main.rs's `look`).
+//! row and what desk-facts reads of its EDID (`drawer`), and holds what
+//! the shell's own acts need of it (`held`: its connector, how it stands
+//! and niri's whole record of it), since its settings and every act on it
+//! are the shell's until they move here, and the shell asks niri nothing
+//! of its own. The drawer's light joins it here next; until then the
+//! shell still lays its own. A change the shell makes to a screen says
+//! nothing in niri's stream, so it asks this daemon to look again
+//! (main.rs's `look`).
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -46,6 +46,19 @@ const FACTS: [&str; 10] = [
     "mode", "refresh", "variable", "logical", "position", "rotation", "modes", "density", "serial",
     "size",
 ];
+
+/// The facts desk-facts gives that are asked of a screen most, which lead
+/// the rest, its white point and primaries beside its colours (VKCF3Z,
+/// 2026-11-09).
+const ASKED_FIRST: [&str; 5] = ["depth", "colours", "white", "primaries", "hdr"];
+
+/// The primaries desk-facts gives figures for, in its order.
+const PRIMARIES: [&str; 3] = ["red", "green", "blue"];
+
+/// The places a chromaticity's coordinate is said to: ten bits a
+/// coordinate hold one to about a thousandth, so "0.060" says all an
+/// EDID knows.
+const COORDINATE_PLACES: usize = 3;
 
 /// niri's eight transforms, as Rotation says them.
 const TRANSFORMS: [&str; 8] = [
@@ -86,6 +99,27 @@ struct Told {
     preferred_mode: String,
     at: String,
     unsupported: String,
+    /// Every part of Screens the vocabulary names, by its id after
+    /// `displays:`, which desk-facts' facts are named by.
+    parts: BTreeMap<String, String>,
+    white: String,
+    primaries: [String; 3],
+}
+
+impl Told {
+    /// A fact desk-facts names, as the vocabulary names its part, or its
+    /// own name with a capital where the vocabulary has none, as the
+    /// shell's partNamed said it: "hot-plug detection" is
+    /// "Hot-plug detection".
+    fn part(&self, id: &str) -> String {
+        let key = id.split(' ').collect::<Vec<_>>().join("-");
+        self.parts.get(&key).cloned().unwrap_or_else(|| {
+            let mut letters = id.chars();
+            letters.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(letters).collect()
+            })
+        })
+    }
 }
 
 /// Turn Every Screen Off, as the vocabulary names it.
@@ -158,6 +192,16 @@ impl Words {
                 ),
                 at: word("displays:modes", &["said", "at"], "at"),
                 unsupported: word("displays:variable", &["said", "unsupported"], "unsupported"),
+                parts: things
+                    .iter()
+                    .filter_map(|(id, thing)| {
+                        let part = id.strip_prefix("displays:")?;
+                        Some((part.to_owned(), thing["name"].as_str()?.to_owned()))
+                    })
+                    .collect(),
+                white: word("displays:white", &["said", "point"], "point"),
+                primaries: PRIMARIES
+                    .map(|colour| word("displays:primaries", &["said", colour], colour)),
             },
             numbers: Numbers::default(),
         };
@@ -192,6 +236,20 @@ pub fn outputs(answer: &Value) -> Option<BTreeMap<String, Value>> {
             .map(|(name, output)| (name.clone(), output.clone()))
             .collect(),
     )
+}
+
+/// The file desk-facts keeps what each screen's EDID says in, in its
+/// folder in the runtime directory (modules/desk-facts).
+pub const DESK: &str = "displays.json";
+
+/// What desk-facts says of each screen, by connector, from its
+/// displays.json; none where it says nothing readable, as when it's gone.
+pub fn desk(said: &str) -> BTreeMap<String, Value> {
+    serde_json::from_str::<Value>(said)
+        .ok()
+        .and_then(|said| said.as_object().cloned())
+        .map(|screens| screens.into_iter().collect())
+        .unwrap_or_default()
 }
 
 /// How a screen stands: off where niri lays nothing out on it, dark
@@ -273,16 +331,136 @@ fn runs(values: &[&str]) -> String {
         .join(APART)
 }
 
+/// The figures desk-facts writes for a fact to say, or none where there
+/// aren't `count` of them.
+fn figures(given: &str, count: usize) -> Option<Vec<f64>> {
+    let all: Vec<f64> = given
+        .split_whitespace()
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    (all.len() == count && all.iter().all(|figure| figure.is_finite())).then_some(all)
+}
+
+/// A point on the CIE 1931 chart in a part's words, each coordinate named
+/// so nobody has to remember the order (VKCF3Z, 2026-11-09), to three
+/// places, pointed as the account says: "x 0.313 y 0.329". A coordinate
+/// halfway between rounds up, as the shell's toFixed did.
+fn xy(said: &str, x: f64, y: f64, numbers: &Numbers) -> String {
+    let scale = 10f64.powi(3);
+    let placed = |value: f64| {
+        format!("{:.COORDINATE_PLACES$}", (value * scale).round() / scale)
+            .replace('.', numbers.point())
+    };
+    said.replace("{x}", &placed(x)).replace("{y}", &placed(y))
+}
+
+/// What desk-facts says of a screen from its EDID, each named first as a
+/// part is, with its id: Colour Depth "10 bit", Colours, its white point
+/// and primaries, HDR, then who made it and when, in desk-facts' order.
+/// A monitor's brightness is the panel's, which its light says, so it
+/// isn't said again, and a white point or primaries whose figures aren't
+/// whole say nothing.
+fn edid(facts: &Value, words: &Words) -> Vec<(String, Value)> {
+    let told = &words.told;
+    let said: Vec<(String, String)> = facts
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|fact| {
+            let id = fact["name"].as_str()?.to_lowercase();
+            let value = fact["value"].as_str().unwrap_or("");
+            let value = match id.as_str() {
+                "brightness" => return None,
+                "white" => figures(value, 3).map_or_else(String::new, |at| {
+                    format!(
+                        "{} K{APART}{}",
+                        words.numbers.significant(at[0]),
+                        xy(&told.white, at[1], at[2], &words.numbers)
+                    )
+                }),
+                "primaries" => figures(value, 6).map_or_else(String::new, |at| {
+                    told.primaries
+                        .iter()
+                        .zip(at.chunks(2))
+                        .map(|(said, point)| xy(said, point[0], point[1], &words.numbers))
+                        .collect::<Vec<_>>()
+                        .join(APART)
+                }),
+                _ => value.to_owned(),
+            };
+            (!value.is_empty()).then_some((id, value))
+        })
+        .collect();
+    let (first, rest): (Vec<_>, Vec<_>) = said
+        .into_iter()
+        .partition(|(id, _)| ASKED_FIRST.contains(&id.as_str()));
+    first
+        .into_iter()
+        .chain(rest)
+        .map(|(id, value)| {
+            let fact = json!({"name": told.part(&id), "said": value});
+            (id, fact)
+        })
+        .collect()
+}
+
 /// A screen's drawer, as Displays.qml laid it from niri: its connector and
 /// what it is over its name, both as written, since a connector is a name
 /// from the world (VKCF3Z, 2026-11-07); then what it runs past its row,
-/// where it sits and what it offers and is, its size from niri and its
-/// serial last, since it identifies the screen. A screen that's off runs
+/// where it sits and what it offers and is; then what its EDID says, as
+/// desk-facts gives it (`desk`), its size from niri where that says none;
+/// and its serial last, niri's or the EDID's, since it identifies the
+/// screen. A screen that's off runs
 /// nothing and sits nowhere, so says only what it offers and is. A
 /// whole refresh, its size and its scale are its row's to say, so aren't
 /// said again, and variable refresh is its switch's, so only a screen
 /// without one says so.
-fn drawer(name: &str, output: &Value, words: &Words) -> Value {
+fn drawer(name: &str, output: &Value, desk: &Value, words: &Words) -> Value {
+    let told = &words.told;
+    let mut facts = niris(output, words);
+    let physical = |at: usize| output["physical_size"][at].as_f64().unwrap_or(0.0);
+    let mut serials = vec![match &output["serial"] {
+        Value::Null => String::new(),
+        Value::String(said) => said.clone(),
+        other => other.to_string(),
+    }];
+    let edid = edid(desk, words);
+    let sized = edid.iter().any(|(id, _)| id == "size");
+    for (id, fact) in edid {
+        if id == "serial" {
+            serials.push(fact["said"].as_str().unwrap_or("").to_owned());
+        } else {
+            facts.push(fact);
+        }
+    }
+    if !sized && physical(0) > 0.0 && physical(1) > 0.0 {
+        let measured = &output["physical_size"];
+        facts.push(json!({
+            "name": told.named["size"],
+            "said": format!("{} mm", size(&measured[0], &measured[1]))
+        }));
+    }
+    if let Some(serial) = serials.into_iter().find(|serial| !serial.is_empty()) {
+        facts.push(json!({"name": told.named["serial"], "said": serial, "identifies": true}));
+    }
+    let what = if built_in(name) {
+        told.built_in.as_str()
+    } else {
+        told.screen.as_str()
+    };
+    json!({
+        "eyebrow": runs(&[name, what]),
+        "eyebrowNames": true,
+        "title": named(name, output, words),
+        "facts": facts,
+    })
+}
+
+/// What niri says of a screen in its drawer, up to its density: the
+/// mode it runs and where it sits while it's on, then the modes it offers
+/// and how dense it is.
+fn niris(output: &Value, words: &Words) -> Vec<Value> {
     let told = &words.told;
     let mut facts = Vec::new();
     let mut add = |id: &str, said: String| {
@@ -358,29 +536,7 @@ fn drawer(name: &str, output: &Value, words: &Words) -> Value {
             format!("{} ppi", words.numbers.significant(density)),
         );
     }
-    if physical(0) > 0.0 && physical(1) > 0.0 {
-        let measured = &output["physical_size"];
-        add("size", format!("{} mm", size(&measured[0], &measured[1])));
-    }
-    let serial = match &output["serial"] {
-        Value::Null => String::new(),
-        Value::String(said) => said.clone(),
-        other => other.to_string(),
-    };
-    if !serial.is_empty() {
-        facts.push(json!({"name": told.named["serial"], "said": serial, "identifies": true}));
-    }
-    let what = if built_in(name) {
-        told.built_in.as_str()
-    } else {
-        told.screen.as_str()
-    };
-    json!({
-        "eyebrow": runs(&[name, what]),
-        "eyebrowNames": true,
-        "title": named(name, output, words),
-        "facts": facts,
-    })
+    facts
 }
 
 /// What a lit screen runs: its size, its refresh rate and its scale.
@@ -405,8 +561,14 @@ pub fn key(id: &str) -> String {
 /// The screens' rows, the built-in one first and the rest by connector,
 /// then Turn Every Screen Off while any is lit. `focused` is the
 /// connector of the workspace in front, said beside its screen only
-/// where more than one is lit.
-pub fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Words) -> Vec<Value> {
+/// where more than one is lit. `desk` is what desk-facts says of each
+/// screen's EDID, by connector.
+pub fn rows(
+    outputs: &BTreeMap<String, Value>,
+    desk: &BTreeMap<String, Value>,
+    focused: Option<&str>,
+    words: &Words,
+) -> Vec<Value> {
     let mut shown: Vec<(&String, &Value)> = outputs.iter().collect();
     shown.sort_by_key(|(name, _)| (!built_in(name), name.as_str()));
     let lit = shown
@@ -441,7 +603,8 @@ pub fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Wo
                 "depth": 0,
                 "side": side.into_iter().map(|said| json!({"said": said})).collect::<Vec<_>>(),
                 "note": note,
-                "drawer": drawer(name, output, words),
+                "drawer": drawer(name, output, desk.get(name.as_str()).unwrap_or(&Value::Null),
+                    words),
                 "held": {"output": name, "standing": stands, "builtIn": built_in(name),
                     "niri": output},
             })
@@ -465,300 +628,4 @@ pub fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Wo
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The launcher's words for its Screens, in the file the socket's
-    /// tests hand the daemon too.
-    fn vocabulary() -> Value {
-        serde_json::from_str(include_str!("../tests/screen-words.json"))
-            .expect("the test's words are JSON")
-    }
-
-    fn words() -> Words {
-        let (words, lacked) = Words::read(&vocabulary());
-        assert!(lacked.is_empty(), "the test's words lack {lacked:?}");
-        words
-    }
-
-    /// A screen as niri says one: lit at its first mode, unless `logical`
-    /// is null.
-    fn output(make: &str, model: &str, logical: &Value) -> Value {
-        json!({
-            "make": make, "model": model, "current_mode": 0,
-            "modes": [{"width": 2560, "height": 1600, "refresh_rate": 59_951}],
-            "logical": logical,
-        })
-    }
-
-    fn lit(scale: f64) -> Value {
-        json!({"x": 0, "y": 0, "scale": scale, "transform": "Normal"})
-    }
-
-    fn desk() -> BTreeMap<String, Value> {
-        BTreeMap::from([
-            (
-                "HDMI-A-1".to_owned(),
-                output("Dell Inc.", "U2723QE", &lit(1.5)),
-            ),
-            ("eDP-1".to_owned(), output("BOE", "0x0BCA", &lit(1.75))),
-            ("DP-2".to_owned(), output("LG", "0x5B11", &Value::Null)),
-        ])
-    }
-
-    fn names(rows: &[Value]) -> Vec<&str> {
-        rows.iter().filter_map(|row| row["name"].as_str()).collect()
-    }
-
-    #[test]
-    fn the_built_in_screen_leads_then_each_by_its_connector_then_turning_them_off() {
-        let rows = rows(&desk(), Some("eDP-1"), &words());
-        assert_eq!(
-            names(&rows),
-            [
-                "Built-in Screen",
-                "LG",
-                "Dell Inc. U2723QE",
-                "Turn Every Screen Off"
-            ],
-            "the built-in first, the rest by connector, a numbered model left out"
-        );
-        assert_eq!(rows[0]["key"], "row:displays:display:eDP-1");
-        assert_eq!(rows[0]["thing"], "display:eDP-1");
-        assert_eq!(rows[0]["glyph"], "display");
-        assert_eq!(
-            rows[0]["note"],
-            "2560 \u{d7} 1600 \u{b7} 59.951 Hz \u{b7} scale 1.75\u{d7}"
-        );
-        assert_eq!(rows[0]["held"]["output"], "eDP-1");
-        assert_eq!(
-            rows[0]["held"]["niri"],
-            desk()["eDP-1"],
-            "the shell's acts read niri's whole record of the screen"
-        );
-        assert_eq!(rows[3]["key"], "row:displays:sleep");
-        assert_eq!(rows[3]["note"], "a key wakes them \u{b7} hubs stay on");
-    }
-
-    #[test]
-    fn a_screen_says_how_it_stands_and_the_focused_one_only_beside_another_lit() {
-        let rows = rows(&desk(), Some("eDP-1"), &words());
-        assert_eq!(rows[0]["side"], json!([{"said": "focused"}]));
-        assert_eq!(rows[1]["side"], json!([{"said": "off"}]));
-        assert_eq!(rows[1]["note"], "off", "an unlaid screen runs nothing");
-        assert_eq!(rows[2]["side"], json!([]));
-        let alone = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
-        let rows = super::rows(&alone, Some("eDP-1"), &words());
-        assert_eq!(
-            rows[0]["side"],
-            json!([]),
-            "the only screen lit isn't said focused"
-        );
-    }
-
-    #[test]
-    fn a_screen_dark_by_name_says_its_hub_is_on() {
-        let mut dark = output("Dell Inc.", "U2723QE", &lit(1.0));
-        dark["powered_off"] = json!(true);
-        let outputs = BTreeMap::from([("DP-1".to_owned(), dark)]);
-        let rows = rows(&outputs, None, &words());
-        assert_eq!(rows[0]["side"], json!([{"said": "dark"}]));
-        assert_eq!(rows[0]["note"], "hub on");
-        assert_eq!(rows.len(), 1, "with none lit, none is turned off");
-    }
-
-    #[test]
-    fn a_screen_naming_nothing_is_its_connector() {
-        let outputs = BTreeMap::from([("DP-3".to_owned(), output("", "", &lit(1.0)))]);
-        assert_eq!(names(&rows(&outputs, None, &words()))[0], "DP-3");
-    }
-
-    #[test]
-    fn a_rate_keeps_every_digit_and_a_scale_two_places() {
-        assert_eq!(hertz(60_000), "60 Hz");
-        assert_eq!(hertz(59_951), "59.951 Hz");
-        assert_eq!(hertz(143_900), "143.9 Hz");
-        assert_eq!(scale(2.0), "2\u{d7}");
-        assert_eq!(scale(1.25), "1.25\u{d7}");
-        assert_eq!(scale(1.333_333), "1.33\u{d7}");
-    }
-
-    /// The built-in panel as niri says it, from tests/plate.qml's cases.
-    fn panel() -> Value {
-        json!({
-            "make": "LG Display", "model": "0x07C6", "serial": null,
-            "physical_size": [300, 190],
-            "modes": [
-                {"width": 2880, "height": 1800, "refresh_rate": 120_001, "is_preferred": true},
-                {"width": 2880, "height": 1800, "refresh_rate": 60_000, "is_preferred": true}
-            ],
-            "current_mode": 0, "is_custom_mode": false,
-            "vrr_supported": true, "vrr_enabled": false,
-            "logical": {"x": 560, "y": 1440, "width": 1440, "height": 900, "scale": 2.0,
-                "transform": "Normal"}
-        })
-    }
-
-    /// A drawer's facts, each name=said, a semicolon apart.
-    fn said(drawer: &Value) -> String {
-        drawer["facts"]
-            .as_array()
-            .expect("the drawer's facts")
-            .iter()
-            .map(|fact| format!("{}={}", fact["name"].as_str().unwrap_or(""), fact["said"]))
-            .collect::<Vec<_>>()
-            .join("; ")
-            .replace('"', "")
-    }
-
-    #[test]
-    fn a_screen_on_says_in_its_drawer_what_it_runs_past_its_row_where_it_sits_and_offers() {
-        let drawer = drawer("eDP-1", &panel(), &words());
-        assert_eq!(drawer["eyebrow"], "eDP-1 \u{b7} built in");
-        assert_eq!(
-            drawer["eyebrowNames"], true,
-            "a connector isn't set as written"
-        );
-        assert_eq!(
-            drawer["title"], "Built-in Screen",
-            "its title isn't its row's name"
-        );
-        assert_eq!(
-            said(&drawer),
-            "Screen Mode=preferred; Refresh=120.001 Hz; Logical Size=1440 \u{d7} 900; \
-             Position=560, 1440; Rotation=upright; \
-             Screen Modes=2 \u{b7} preferred 2880 \u{d7} 1800 at 120.001 Hz; \
-             Density=244 ppi; Size=300 \u{d7} 190 mm"
-        );
-    }
-
-    #[test]
-    fn a_drawer_says_custom_and_its_serial_last_as_what_identifies_it() {
-        let mut on = panel();
-        on["is_custom_mode"] = json!(true);
-        on["serial"] = json!("0x1234");
-        on["modes"][0]["is_preferred"] = json!(false);
-        let drawer = drawer("DP-1", &on, &words());
-        assert_eq!(drawer["eyebrow"], "DP-1 \u{b7} screen");
-        assert!(
-            said(&drawer).starts_with("Screen Mode=custom; Refresh=120.001 Hz; Logical Size="),
-            "a custom mode isn't said so: {}",
-            said(&drawer)
-        );
-        let facts = drawer["facts"].as_array().expect("facts");
-        assert_eq!(
-            facts.last(),
-            Some(&json!({"name": "Serial", "said": "0x1234", "identifies": true})),
-            "the serial doesn't end the drawer, identifying the screen"
-        );
-    }
-
-    #[test]
-    fn a_whole_refresh_is_the_rows_and_only_a_lack_of_variable_refresh_the_drawers() {
-        let mut on = panel();
-        on["modes"][0]["refresh_rate"] = json!(60_000);
-        on["modes"][0]["is_preferred"] = json!(false);
-        assert!(
-            said(&drawer("eDP-1", &on, &words())).starts_with("Logical Size="),
-            "a whole refresh or a plain mode is said again: {}",
-            said(&drawer("eDP-1", &on, &words()))
-        );
-        on["vrr_supported"] = json!(false);
-        assert!(
-            said(&drawer("eDP-1", &on, &words())).starts_with("Variable Refresh=unsupported; "),
-            "a screen without variable refresh doesn't say so: {}",
-            said(&drawer("eDP-1", &on, &words()))
-        );
-    }
-
-    #[test]
-    fn a_screen_off_says_only_what_it_offers_and_is_in_the_accounts_numbers() {
-        let mut off = panel();
-        off["logical"] = Value::Null;
-        off["current_mode"] = Value::Null;
-        off["physical_size"] = json!([3000, 0]);
-        let words = words().numbered(Numbers::new(".", ","));
-        assert_eq!(
-            said(&drawer("eDP-1", &off, &words)),
-            "Screen Modes=2 \u{b7} preferred 2880 \u{d7} 1800 at 120.001 Hz; Density=24,4 ppi",
-            "a screen off says what it runs, or a size niri half knows"
-        );
-    }
-
-    #[test]
-    fn each_screens_row_carries_its_drawer() {
-        let rows = rows(&desk(), None, &words());
-        assert_eq!(rows[0]["drawer"]["title"], "Built-in Screen");
-        assert_eq!(rows[2]["drawer"]["title"], "Dell Inc. U2723QE");
-        assert_eq!(
-            rows[3].get("drawer"),
-            None,
-            "Turn Every Screen Off has a drawer"
-        );
-    }
-
-    #[test]
-    fn niris_answer_holds_its_outputs_by_connector() {
-        let answer = json!({"Ok": {"Outputs": {"eDP-1": {"name": "eDP-1"}}}});
-        let outputs = outputs(&answer).expect("outputs");
-        assert_eq!(outputs.keys().collect::<Vec<_>>(), ["eDP-1"]);
-        assert_eq!(super::outputs(&json!({"Err": "no"})), None);
-    }
-
-    #[test]
-    fn a_vocabulary_without_a_word_says_it_by_its_id_and_which() {
-        let mut vocabulary = vocabulary();
-        vocabulary["things"][0]["said"]
-            .as_object_mut()
-            .expect("said")
-            .remove("hubOn");
-        let (words, lacked) = Words::read(&vocabulary);
-        assert_eq!(words.hub_on, "hubOn", "a word lacked isn't said by its id");
-        assert_eq!(
-            words.dark,
-            self::words().dark,
-            "a word held isn't said as held"
-        );
-        assert_eq!(lacked, vec!["displays said.hubOn".to_owned()]);
-    }
-
-    #[test]
-    fn no_vocabulary_still_words_every_row_by_its_ids() {
-        let (words, lacked) = Words::read(&Value::Null);
-        assert_eq!(
-            words.built_in, "displays:built-in",
-            "the built-in isn't named by its id"
-        );
-        assert_eq!(
-            words.sleep.name, "displays:sleep",
-            "Sleep isn't named by its id"
-        );
-        assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
-        assert_eq!(
-            lacked.len(),
-            34,
-            "not every word lacked was said: {lacked:?}"
-        );
-        let drawer = drawer("eDP-1", &panel(), &words);
-        assert_eq!(
-            drawer["facts"][0]["name"], "displays:mode",
-            "a fact isn't named by its id"
-        );
-        assert_eq!(
-            drawer["facts"][4]["said"], "Normal",
-            "a turn isn't said as niri says it"
-        );
-    }
-
-    /// The launcher's own words.json, where the build hands it in.
-    #[test]
-    fn the_launchers_vocabulary_has_every_screens_words() {
-        let Some(path) = option_env!("WINDOWS_TEST_WORDS") else {
-            return;
-        };
-        let read = std::fs::read_to_string(path).expect("the launcher's words read");
-        let vocabulary: Value = serde_json::from_str(&read).expect("the words are JSON");
-        let (_, lacked) = Words::read(&vocabulary);
-        assert!(lacked.is_empty(), "the launcher's words lack {lacked:?}");
-    }
-}
+mod tests;

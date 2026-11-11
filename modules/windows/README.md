@@ -58,10 +58,12 @@ words (`--words`, its words.json). A word the file lacks, or every word
 where it won't read, is said by its id, and warned of once in the
 journal, so Screens keeps its rows and acts for want of a word, as the
 sound daemon's do. Each screen's row carries its drawer: its connector
-over its name, then what niri says of it past its row, its size and its
-serial, which identifies it, a density said in the account's number
-settings (`--numbers`, `{ group, point }`). Its light and what its EDID
-says join it next. niri says nothing as a screen comes,
+over its name, then what niri says of it past its row, then what its
+EDID says as desk-facts writes it (`$XDG_RUNTIME_DIR/desk/displays.json`,
+heard with inotify as it's written again), niri's size where the EDID
+gives none, and its serial last, which identifies it. Figures are said
+in the account's number settings (`--numbers`, `{ group, point }`). Its
+light joins it next. niri says nothing as a screen comes,
 goes or turns off, so the daemon asks niri for its outputs as the stream
 begins and at each workspace change, which each of those makes, and
 tells a watch only the rows that moved. A change the shell makes to a
@@ -88,6 +90,6 @@ whose own page it opened deeper in (BrowserWindows.js said it so).
 - **Acting on a window or a screen.** The shell asks niri itself, on
   niri's own socket, so an act never waits on this daemon. A screen's row
   holds its connector, how it stands and niri's whole record of it
-  (`held`) for those acts, its settings and its drawer's light and EDID
-  until they move here, so the shell asks niri nothing of a screen
+  (`held`) for those acts, its settings and its drawer's light until
+  they move here, so the shell asks niri nothing of a screen
   itself.
