@@ -339,15 +339,17 @@ impl Person {
 
     /// Their row as the launcher draws it, ready, as the google daemon's
     /// rows are (modules/google/src/rows.rs): its key, name, glyph and hue
-    /// by the theme's roles, how they stand beside it, their address under
-    /// it unless that's their name, and the key their drawer is told by.
-    /// So the shell words and builds nothing of it.
+    /// by the theme's roles, how they stand as its side's items, their
+    /// address under it unless that's their name, and the key their drawer
+    /// is told by. So the shell words and builds nothing of it.
     pub fn row(&self) -> Value {
         let known = self.key.strip_prefix("person:").unwrap_or(&self.key);
         json!({
             "key": self.key, "place": "people", "kind": "person", "name": self.name,
             "glyph": if self.stood.favourite { "favourite" } else { "person" },
-            "hue": "person", "side": self.stood.said,
+            "hue": "person",
+            "side": if self.stood.said.is_empty() { json!([]) }
+                else { json!([{"said": self.stood.said}]) },
             "note": if self.name == self.email { "" } else { self.email.as_str() },
             "drawer": format!("drawer:people:{known}"),
         })
@@ -357,7 +359,7 @@ impl Person {
     pub fn found(&self) -> Value {
         let mut row = self.row();
         row["glyph"] = json!("person");
-        row["side"] = json!("");
+        row["side"] = json!([]);
         row
     }
 }
@@ -692,7 +694,7 @@ mod tests {
             json!({
                 "key": "person:bo@example.com", "place": "people", "kind": "person",
                 "name": "Bo Diddley", "glyph": "favourite", "hue": "person",
-                "side": "in a call", "note": "bo@example.com",
+                "side": [{"said": "in a call"}], "note": "bo@example.com",
                 "drawer": "drawer:people:bo@example.com",
             }),
             "a favourite's row wears the star, says how they stand and their address"
@@ -706,7 +708,7 @@ mod tests {
         let found = favourite.found();
         assert_eq!(
             (found["glyph"].clone(), found["side"].clone()),
-            (json!("person"), json!("")),
+            (json!("person"), json!([])),
             "found among everyone, they say nothing of how they stand"
         );
     }

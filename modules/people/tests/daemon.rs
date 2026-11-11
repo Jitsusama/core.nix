@@ -433,7 +433,7 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
     let row = &said["records"][0]["row"];
     assert_eq!(
         (&row["key"], &row["side"]),
-        (&json!("person:ada@example.com"), &json!(""))
+        (&json!("person:ada@example.com"), &json!([]))
     );
     let said = client.ask(&json!({"id": 2, "ask": "search", "words": "ada", "limit": 1}));
     assert_eq!(keys(&said), ["person:ada@example.com"]);
@@ -506,7 +506,7 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
     );
     assert_eq!(
         (&records[0]["row"]["name"], &records[0]["row"]["side"]),
-        (&json!("Ada Brightwater"), &json!("around")),
+        (&json!("Ada Brightwater"), &json!([{"said": "around"}])),
         "with their row ready to draw: {said}"
     );
     assert_eq!(
