@@ -45,8 +45,9 @@
       cp ${../whereabouts/tests/words.json} whereabouts.json
       cp ${../../windows/tests/screen-words.json} windows-screens.json
       cp ${../../machine/tests/words.json} machine.json
+      cp ${../../wifid/daemon/tests/words.json} wifid.json
       ${lib.getExe pkgs.python3} ${../../../tests/daemon-words.py} ${words} \
-        to-do.json whereabouts.json windows-screens.json machine.json
+        to-do.json whereabouts.json windows-screens.json machine.json wifid.json
       touch $out
     '';
 
