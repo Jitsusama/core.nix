@@ -372,13 +372,29 @@ def sorts(desktop: Desktop) -> Json:
     return cast("Json", json.loads(desktop.as_account("qs ipc call pi sorts")))
 
 
+def stepped(desktop: Desktop) -> int:
+    """Give the furthest step of the stand-in sessions the node holds, as their usage says it."""
+    said = json.loads(desktop.as_account("mycelium --realm harbour sessions"))
+    usage = "gen_ai.usage.input_tokens"
+    return max(
+        [
+            int(one["presence"].get("usage", {}).get("last", {}).get(usage, 0))
+            for one in said["Ok"]["Sessions"]
+            if str(one["address"]).startswith("LD")
+        ],
+        default=0,
+    )
+
+
 def test_a_shut_launcher_takes_no_step_only_it_shows(desktop: Desktop) -> None:
-    """With the launcher shut, sessions moving their steps and standing cost the shell no sorting.
+    """With the launcher shut, sessions moving their steps and standing wake the shell not at all.
 
     Joel's 113 sessions changed 26 times in 30 s, 21 of them only in their step and usage, and
     each cost his closed shell's main thread 20 to 370 ms (2026-11-09); of the rest, a quarter
     of all his changes turned only between working and listening, at about 50 ms each
-    (2026-11-10). Opened, it takes them. It runs before the arrows, which want them taken.
+    (2026-11-10). Skipping their sorting still parsed each change, and none of 56 a minute
+    moved what a shut launcher reads (2026-11-11), so the shell asks the node to send a change
+    only as that moves. Opened, it takes them. It runs before the arrows, which want them taken.
     """
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
@@ -387,14 +403,14 @@ def test_a_shut_launcher_takes_no_step_only_it_shows(desktop: Desktop) -> None:
     try:
         # Every session is heard of before counting, since a new one is taken as it comes: they're
         # all written before the first step, and the node tells of them within a beat or two.
-        start = sorts(desktop)
-        retry(lambda _: sorts(desktop)["heard"] >= start["heard"] + STEPS, REACHING)
+        retry(lambda _: stepped(desktop) >= STEPS, REACHING)
         before = sorts(desktop)
-        retry(lambda _: sorts(desktop)["heard"] >= before["heard"] + STEPS, REACHING)
+        at = stepped(desktop)
+        retry(lambda _: stepped(desktop) >= at + STEPS, REACHING)
         after = sorts(desktop)
-        assert after["taken"] == before["taken"], (
-            f"the shut launcher took {after['taken'] - before['taken']} of"
-            f" {after['heard'] - before['heard']} sortings that moved only steps and standing"
+        assert after["heard"] == before["heard"], (
+            f"the shut launcher heard {after['heard'] - before['heard']} changes while the node"
+            f" moved {stepped(desktop) - at} steps, which moved only steps and standing"
         )
         desktop.as_account("qs ipc call launcher toggle")
         try:
