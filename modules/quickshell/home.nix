@@ -604,7 +604,8 @@ let
     "warning"
   ];
 
-  # The program that hears every copy, for the clipboard collection.
+  # The program that hears every copy, for the shell's acts on a copy and
+  # the clipboard collection.
   clipboardHistory = pkgs.callPackage ./clipboard/package.nix { };
 
   # The package the system installs warp-cli by, WARP's own client, found by
@@ -2052,9 +2053,6 @@ in
         '';
       };
 
-    # Keeps the clipboard's copies for the launcher, which can't hear them
-    # itself, while the clipboard collection is on: text in memory, and
-    # pictures in the runtime directory, which is memory too.
     # pi makes its quests, presence and machine queue folders only as it
     # first needs them, and spend-watch its own as it starts. Sessions.qml
     # lists the first two, and a folder that isn't there can't be listed,
@@ -2160,20 +2158,34 @@ in
       Install.WantedBy = [ "graphical-session.target" ];
     };
 
-    systemd.user.services.clipboard-history = lib.mkIf keepsCopies {
+    # Hears the clipboard for the shell, which can't itself, and says what
+    # it holds to every act on a copy (Copied.qml). While the clipboard
+    # collection is on it keeps the copies for the launcher too: text in
+    # memory, and pictures in the runtime directory, which is memory too.
+    # Off, it keeps none.
+    systemd.user.services.clipboard-history = {
       Unit = {
-        Description = "The clipboard's history, kept in memory for the launcher";
+        Description = "The clipboard, heard for the shell and kept in memory for the launcher";
         PartOf = [ "graphical-session.target" ];
         After = [ "graphical-session.target" ];
         Before = [ "quickshell.service" ];
       };
       Service = {
-        ExecStart = lib.concatStringsSep " " [
-          (lib.getExe clipboardHistory)
-          "--socket %t/clipboard-history.sock"
-          "--keep ${toString launcher.providers.clipboard.keep}"
-          "--pictures %t/clipboard-history"
-        ];
+        ExecStart = lib.concatStringsSep " " (
+          [
+            (lib.getExe clipboardHistory)
+            "--socket %t/clipboard-history.sock"
+          ]
+          ++ (
+            if keepsCopies then
+              [
+                "--keep ${toString launcher.providers.clipboard.keep}"
+                "--pictures %t/clipboard-history"
+              ]
+            else
+              [ "--keep 0" ]
+          )
+        );
         Restart = "on-failure";
         RestartSec = 1;
       };

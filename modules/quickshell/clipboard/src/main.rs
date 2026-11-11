@@ -12,6 +12,15 @@
 //! when its type says them. Text and pictures are numbered from one count,
 //! and a copy made again keeps its number. Nothing is started per copy.
 //!
+//! Each shell is told what the clipboard holds now, after the copies when it
+//! connects and again whenever that changes, as
+//! `{"now":{"types":[...],"text":"..."}}`: the types it's offered as, and
+//! its text where it's offered as text, kept or not, so the shell's acts on
+//! a copy (Copied.qml) ask nothing of their own. A secret, the clipboard
+//! emptied with nothing to give back, or the history forgotten says no
+//! types and no text. With `--keep 0` nothing is kept and that is all it
+//! says, for a shell whose launcher keeps no copies.
+//!
 //! Text is kept in memory, and pictures in files of their own in the
 //! directory `--pictures` names, only this account's to read, which should
 //! be the runtime directory, since that's memory too and goes when the
@@ -503,6 +512,32 @@ struct History {
     room: usize,
     next: u64,
     gone: Vec<u64>,
+    // The line last telling the shells what the clipboard holds.
+    now: String,
+}
+
+/// The line telling the shells what the clipboard holds now: the types it's
+/// offered as, and its text, "" where it has none to read.
+fn holding<T: AsRef<str>>(types: &[T], text: &str) -> String {
+    let types: Vec<String> = types.iter().map(|kind| quoted(kind.as_ref())).collect();
+    format!(
+        "{{\"now\":{{\"types\":[{}],\"text\":{}}}}}\n",
+        types.join(","),
+        quoted(text)
+    )
+}
+
+/// What the clipboard holds once a program copies, said as `holding` says
+/// it: nothing of a secret, and text only where it was read as text.
+fn offered(types: &[String], heard: Option<&Heard>) -> String {
+    if types.iter().any(|kind| kind == SECRET) {
+        return holding::<&str>(&[], "");
+    }
+    let text = match heard {
+        Some(Heard::Text(text)) => text.as_str(),
+        _ => "",
+    };
+    holding(types, text)
 }
 
 impl History {
@@ -516,7 +551,28 @@ impl History {
             room,
             next: 1,
             gone: Vec::new(),
+            now: holding::<&str>(&[], ""),
         }
+    }
+
+    /// Tells the shells what the clipboard holds now, unless that's what
+    /// they were told last.
+    fn holds(&mut self, line: String) {
+        if line != self.now {
+            self.tell(&line);
+            self.now = line;
+        }
+    }
+
+    /// Tells the shells the clipboard holds the copy this offers, or
+    /// nothing while it offers none.
+    fn holds_current(&mut self) {
+        let line = match &self.current {
+            Some(Content::Text(text)) => holding(&TEXT, text),
+            Some(content @ Content::Picture(_)) => holding(&content.types(), ""),
+            None => holding::<&str>(&[], ""),
+        };
+        self.holds(line);
     }
 
     /// The line telling the shells which pictures were let go to make room,
@@ -633,6 +689,9 @@ impl History {
     /// the copy when it was kept.
     fn copied(&mut self, heard: Option<Heard>) -> Option<Copy> {
         self.current = None;
+        if self.keep == 0 {
+            return None;
+        }
         let content = match heard? {
             Heard::Text(text) => Content::Text(text),
             Heard::Picture { kind, bytes } => self.picture(kind, &bytes)?,
@@ -661,12 +720,14 @@ impl History {
         Some(copy)
     }
 
-    /// Forgets every copy, and what the clipboard holds with them.
+    /// Forgets every copy, and what the clipboard holds with them, telling
+    /// the shells it holds nothing now, since it gives nothing.
     fn forget(&mut self) {
         for copy in self.copies.drain(..) {
             discard(&copy.content);
         }
         self.current = None;
+        self.holds_current();
     }
 
     /// Sends a line to every shell, dropping any that has gone.
@@ -756,6 +817,7 @@ impl State {
                 if let Some(line) = history.went() {
                     history.tell(&line);
                 }
+                history.holds_current();
             }
             offered.is_some()
         };
@@ -981,6 +1043,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
                     None => None,
                 };
                 offer.destroy();
+                let now = offered(&types, heard.as_ref());
                 let mut history = state.history.lock().unwrap();
                 if let Some(copy) = history.copied(heard) {
                     history.tell(&copy.line());
@@ -988,6 +1051,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
                         history.tell(&line);
                     }
                 }
+                history.holds(now);
             }
             // The program holding the clipboard let go of it: what it held
             // is offered once the events after this are read (run).
@@ -1059,7 +1123,8 @@ fn serve(
         {
             let mut history = history.lock().unwrap();
             let mut client = client;
-            let all: String = history.copies.iter().rev().map(Copy::line).collect();
+            let mut all: String = history.copies.iter().rev().map(Copy::line).collect();
+            all.push_str(&history.now);
             if client.write_all(all.as_bytes()).is_ok() {
                 history.clients.push(client);
             }
@@ -1201,8 +1266,16 @@ fn run() -> Result<(), String> {
         if state.emptied {
             queue.roundtrip(&mut state).map_err(lost)?;
         }
-        if std::mem::take(&mut state.emptied) && state.history.lock().unwrap().current.is_some() {
-            state.hold(&handle);
+        // Emptied, the clipboard holds the copy given back, or nothing.
+        if std::mem::take(&mut state.emptied) {
+            let held = {
+                let mut history = state.history.lock().unwrap();
+                history.holds_current();
+                history.current.is_some()
+            };
+            if held {
+                state.hold(&handle);
+            }
         }
         for wanted in wanted.try_iter() {
             match wanted {
@@ -1647,6 +1720,87 @@ mod tests {
         let mut line = [0; UNPASTED.len()];
         heard.read_exact(&mut line).unwrap();
         assert_eq!(&line, b"{\"unpasted\":true}\n");
+    }
+
+    /// Everything the shells were told, once the history is gone.
+    fn told(history: History, mut heard: UnixStream) -> String {
+        drop(history);
+        let mut said = String::new();
+        heard.read_to_string(&mut said).unwrap();
+        said
+    }
+
+    fn listened(keep: usize) -> (History, UnixStream) {
+        let mut history = history(keep);
+        let (shell, heard) = UnixStream::pair().unwrap();
+        history.clients.push(shell);
+        (history, heard)
+    }
+
+    #[test]
+    fn a_copy_is_said_by_its_types_and_its_text() {
+        let said = offered(&types(&["text/plain", "image/png"]), text("a\nb").as_ref());
+        assert_eq!(
+            said,
+            "{\"now\":{\"types\":[\"text/plain\",\"image/png\"],\"text\":\"a\\nb\"}}\n"
+        );
+    }
+
+    #[test]
+    fn a_copy_read_as_no_text_says_none() {
+        let said = offered(&types(&["image/png"]), picture(b"a picture").as_ref());
+        assert_eq!(said, "{\"now\":{\"types\":[\"image/png\"],\"text\":\"\"}}\n");
+        // Text too large to read, or a program that never handed it over.
+        assert_eq!(
+            offered(&types(&["text/plain"]), None),
+            "{\"now\":{\"types\":[\"text/plain\"],\"text\":\"\"}}\n"
+        );
+    }
+
+    #[test]
+    fn a_secret_is_said_as_nothing() {
+        let said = offered(&types(&["text/plain", SECRET]), text("hunter2").as_ref());
+        assert_eq!(said, "{\"now\":{\"types\":[],\"text\":\"\"}}\n");
+    }
+
+    #[test]
+    fn what_the_clipboard_holds_is_told_once_each_time_it_changes() {
+        let (mut history, heard) = listened(5);
+        let one = offered(&types(&["text/plain"]), text("one").as_ref());
+        history.holds(one.clone());
+        history.holds(one.clone());
+        let two = offered(&types(&["text/plain"]), text("two").as_ref());
+        history.holds(two.clone());
+        assert_eq!(told(history, heard), format!("{one}{two}"));
+    }
+
+    #[test]
+    fn the_copy_it_gives_back_is_said_as_it_offers_it() {
+        let (mut history, heard) = listened(5);
+        history.copied(text("one"));
+        history.holds_current();
+        assert_eq!(told(history, heard), holding(&TEXT, "one"));
+    }
+
+    #[test]
+    fn forgetting_tells_the_shells_the_clipboard_holds_nothing() {
+        let (mut history, heard) = listened(5);
+        history.copied(text("one"));
+        history.holds_current();
+        history.forget();
+        let nothing = "{\"now\":{\"types\":[],\"text\":\"\"}}\n";
+        assert_eq!(
+            told(history, heard),
+            format!("{}{nothing}", holding(&TEXT, "one"))
+        );
+    }
+
+    #[test]
+    fn keeping_none_keeps_nothing_to_give_back() {
+        let mut history = history(0);
+        assert_eq!(history.copied(text("one")), None);
+        assert!(history.copies.is_empty());
+        assert_eq!(history.current, None);
     }
 
     #[test]
