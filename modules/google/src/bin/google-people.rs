@@ -6,7 +6,9 @@
 //! mail, so it wakes only when one of those does.
 //!
 //! While google's daemon isn't there, as before Joel signs in, it looks
-//! again after FIRST, then twice as long each time up to LOOKS. Once a
+//! again the moment its socket is made in its folder, which systemd does
+//! as google.socket starts, and otherwise after FIRST, then twice as long
+//! each time up to LOOKS, for a socket there that won't answer. Once a
 //! connection it had ends, it looks again after FIRST and so on: the next
 //! connection's answer says who's gone, as a restart leaves most where
 //! they were, and if none comes within LOOKS everyone it said is gone,
@@ -19,9 +21,11 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use google::people::{Met, changes, people};
+use inotify::{Inotify, WatchMask};
 use serde_json::{Value, json};
 
 /// How long it first waits to look for google's daemon again, short as a
@@ -58,6 +62,9 @@ fn main() -> ExitCode {
     if !say(&[json!({"roster": true})]) {
         return ExitCode::SUCCESS;
     }
+    // Watched before it's first looked for, so a socket made since is
+    // heard, waiting, at the first wait.
+    let mut appearing = appearing(&socket);
     let mut lost = Instant::now();
     let mut wait = FIRST;
     loop {
@@ -83,8 +90,67 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
         }
-        std::thread::sleep(wait);
+        appearing = waited(appearing, wait);
         wait = (wait * 2).min(LOOKS);
+    }
+}
+
+/// Tells each time a file of the socket's name is made in its folder, so
+/// the socket systemd makes as google.socket starts is looked at once
+/// (a 15 s wait for people after google started, XY9H5C, 2026-11-11).
+/// None where the folder can't be watched, said once, and then it waits.
+fn appearing(socket: &Path) -> Option<Receiver<()>> {
+    let (folder, name) = (socket.parent()?, socket.file_name()?.to_owned());
+    let inotify = Inotify::init().and_then(|inotify| {
+        inotify
+            .watches()
+            .add(folder, WatchMask::CREATE | WatchMask::MOVED_TO)
+            .map(|_| inotify)
+    });
+    let mut inotify = inotify
+        .inspect_err(|error| {
+            eprintln!(
+                "<4>google-people can't watch {} for google's socket, so it looks after \
+                 a wait: {error}",
+                folder.display()
+            );
+        })
+        .ok()?;
+    let (tell, appeared) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buffer = [0; 4096];
+        while let Ok(events) = inotify.read_events_blocking(&mut buffer) {
+            let made = events
+                .into_iter()
+                .any(|event| event.name == Some(name.as_os_str()));
+            if made && tell.send(()).is_err() {
+                return;
+            }
+        }
+    });
+    Some(appeared)
+}
+
+/// Waits `wait`, or less where the socket is made meanwhile, and gives
+/// back what tells of that while it still can.
+fn waited(appearing: Option<Receiver<()>>, wait: Duration) -> Option<Receiver<()>> {
+    let Some(appeared) = appearing else {
+        std::thread::sleep(wait);
+        return None;
+    };
+    match appeared.recv_timeout(wait) {
+        Ok(()) | Err(RecvTimeoutError::Timeout) => {
+            // A burst of events is one making.
+            while appeared.try_recv().is_ok() {}
+            Some(appeared)
+        }
+        Err(RecvTimeoutError::Disconnected) => {
+            eprintln!(
+                "<4>google-people stopped hearing its socket's folder, so it looks after a wait"
+            );
+            std::thread::sleep(wait);
+            None
+        }
     }
 }
 
