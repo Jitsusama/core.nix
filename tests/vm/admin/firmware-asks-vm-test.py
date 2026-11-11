@@ -26,6 +26,9 @@ FWUPD = "org.freedesktop.fwupd"
 SETUP = "org.freedesktop.login1.set-reboot-to-firmware-setup"
 # pkcheck's status when polkit would ask for an answer it wasn't let ask.
 ASKS = 2
+# What pkcheck says of an answer polkit keeps a few minutes, a dot in a detail's name written
+# as its octal escape.
+KEPT = "polkit\\56retains_authorization_after_challenge=1"
 # Where the console's pkcheck says its status, in someone's own folder.
 ANSWERED = "/home/someone/answered"
 
@@ -68,7 +71,7 @@ def test_the_seat_must_answer(machine: QemuMachine, seated: int, action: str) ->
     """Each needs an administrator's answer, kept a few minutes, even in the seat's session."""
     status, said = check(machine, action, seated)
     assert status == ASKS, f"{action} gave {status}: {said}"
-    assert "polkit.retains_authorization_after_challenge" in said, said
+    assert KEPT in said, said
 
 
 @pytest.mark.parametrize(
@@ -79,7 +82,7 @@ def test_a_security_change_asks_each_time(machine: QemuMachine, seated: int, act
     """Fixing or undoing a security attribute still asks, and keeps no answer."""
     status, said = check(machine, action, seated)
     assert status == ASKS, f"{action} gave {status}: {said}"
-    assert "polkit.retains_authorization_after_challenge" not in said, said
+    assert KEPT not in said, said
 
 
 @pytest.mark.parametrize(
@@ -107,10 +110,10 @@ def answered(machine: QemuMachine) -> Iterator[int]:
     machine.send_chars("typed\n")
     machine.wait_for_file(ANSWERED)
     yield pid
-    machine.send_chars("pkcheck --revoke-temp\n")
-    machine.wait_until_succeeds(
-        f"pkcheck --action-id {FWUPD}.update-internal --process {pid}; [ $? = {ASKS} ]"
-    )
+    # polkit keeps what it was answered in memory alone, so restarting it forgets the answer.
+    machine.succeed("systemctl restart polkit")
+    status, said = check(machine, f"{FWUPD}.update-internal", pid)
+    assert status == ASKS, f"the answer outlived polkit: {status}: {said}"
 
 
 def test_the_password_answers_for_that_action_alone(machine: QemuMachine, answered: int) -> None:
