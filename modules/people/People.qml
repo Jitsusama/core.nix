@@ -27,7 +27,7 @@
 // (2026-10-31, 09:31).
 //
 // Long because it still merges and ranks the people of the sources the
-// daemon doesn't hold yet, Slack's and Pages'; what works on plain values
+// daemon doesn't hold yet, Google's and Slack's; what works on plain values
 // lives apart, in Person.js, Recent.js and Zones.js. It shrinks as the
 // daemon takes those over, by Fri 13 Nov.
 import qs
@@ -362,9 +362,11 @@ Provider {
                 // same, which the daemon stamps `heard` anew when a source
                 // says anything new of them, so each search's answer remakes
                 // none it found before; and let go once no answer holds it.
-                // The rest are merged here from Slack's and Pages' own people
-                // until the daemon holds those too: Slack's by Wed 11 Nov
-                // 18:00 (47E61B48), Pages' by Fri 13 Nov 12:00.
+                // The rest are merged here from what QML sources hold, until
+                // the daemon holds them too: Google's people from meetings
+                // and mail (GoogleSource.qml) by Fri 13 Nov 12:00, and
+                // Slack's facts, which #3045 serves, with People's drawers
+                // by Thu 12 Nov 18:00.
                 const record = readyFor(person);
                 return record ? keptOr(made.keeping, person.key, record, () => provider.made(
                     person, Person.standing(person, []), null, record.row), heardAlike)
@@ -469,7 +471,9 @@ Provider {
             glyph: ready ? Theme.glyph[ready.glyph]
                 : stood.favourite ? Theme.glyph.favourite : Theme.glyph.person,
             hue: ready?.hue ?? "person",
-            side: ready?.side ?? stood.said,
+            // A ready row's side is its items (ready-rows.md), said here as
+            // one text until ReadyRows.qml draws items (Wed 11 Nov).
+            side: ready ? ready.side.map(item => item.said).join(" ") : stood.said,
             note: ready?.note ?? (person.name === person.email ? "" : person.email),
             nested: true,
             later: true,
