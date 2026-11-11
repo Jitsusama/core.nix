@@ -83,8 +83,11 @@ def test_a_session_moving_into_its_host_keeps_its_window_and_every_key(
         kept = desktop.as_account(f"qs ipc call sessions keepPlace {session}").strip()
         assert kept != "", "the launcher kept no place"
         moved_to_the_join(desktop, session)
+        # setsid -f returns before its fork runs, so the pid is looked for
+        # under a deadline: on a loaded builder a fixed pause can miss it.
         sleeper = desktop.as_account(
-            "setsid -f sleep 601 > /dev/null 2>&1; sleep 0.2; pgrep -n -f 'sleep 60[1]'"
+            "setsid -f sleep 601 > /dev/null 2>&1;"
+            " timeout 10 sh -c \"until pgrep -n -f 'sleep 60[1]'; do sleep 0.1; done\""
         ).strip()
         says_hosted(desktop, session, int(sleeper))
         desktop.as_account(f"touch ~/hosted-{session}")
