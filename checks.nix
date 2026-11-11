@@ -1299,6 +1299,7 @@ gather (
     ./modules/qt/checks.nix
     ./modules/quickshell/checks.nix
     ./modules/reader/checks.nix
+    ./modules/ready-rows/checks.nix
     ./modules/sccache/checks.nix
     ./modules/screen-text/checks.nix
     ./modules/session-backup/checks.nix

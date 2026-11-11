@@ -1707,6 +1707,14 @@
     Ctrl+Y, the files after :e, runs the last line again on @: and an earlier one from :his, and
     closes on :q; markdown files open in it
   '';
+  ready-rows-keeps-each-rows-place = ''
+    a row moved among a daemon's ready rows takes an order midway and the rest keep theirs, a
+    making is told only what reads differently and what went, and each figure is said as
+    numbers.json's cases say
+  '';
+  ready-rows-passes-clippy = ''
+    clippy finds nothing in ready-rows, the form every daemon serves the launcher's rows in
+  '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
   '';
