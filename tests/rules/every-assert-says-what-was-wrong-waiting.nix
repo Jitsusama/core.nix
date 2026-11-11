@@ -42,7 +42,7 @@
   "modules/dictation/src/bin/call-transcripts/notices.rs" = 6;
   "modules/dictation/src/bin/call-transcripts/said.rs" = 3;
   "modules/dictation/src/bin/call-transcripts/summarizer.rs" = 6;
-  "modules/dictation/src/bin/call-transcripts/summary.rs" = 20;
+  "modules/dictation/src/bin/call-transcripts/summary_tests.rs" = 20;
   "modules/dictation/src/bin/dictation-chord.rs" = 1;
   "modules/dictation/src/bin/meaning/known.rs" = 8;
   "modules/dictation/src/bin/meaning/quiet.rs" = 4;
@@ -57,7 +57,7 @@
   "modules/dictation/src/openvino.rs" = 6;
   "modules/dictation/src/parakeet.rs" = 2;
   "modules/dictation/src/picture.rs" = 9;
-  "modules/dictation/src/service.rs" = 11;
+  "modules/dictation/src/service_tests.rs" = 11;
   "modules/dictation/src/takes.rs" = 3;
   "modules/dictation/src/vocab.rs" = 3;
   "modules/dictation/src/wav.rs" = 2;
@@ -175,7 +175,6 @@
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
   "modules/lag-watch/src/report.rs" = 5;
-  "modules/lag-watch/src/window.rs" = 3;
   "modules/lid/docked/src/main.rs" = 11;
   "modules/lid-hinge/lid-hinge.rs" = 1;
   "modules/litra/litra.rs" = 11;
@@ -241,7 +240,7 @@
   "modules/reader/src/menu.rs" = 1;
   "modules/reader/src/motion.rs" = 10;
   "modules/reader/src/outline.rs" = 5;
-  "modules/reader/src/prompt.rs" = 7;
+  "modules/reader/src/prompt_tests.rs" = 7;
   "modules/reader/src/reading.rs" = 10;
   "modules/reader/src/select.rs" = 15;
   "modules/reader/src/theme.rs" = 2;
@@ -270,13 +269,12 @@
   "modules/spend-watch/src/collection.rs" = 10;
   "modules/spend-watch/src/config.rs" = 13;
   "modules/spend-watch/src/estimate.rs" = 5;
-  "modules/spend-watch/src/feed.rs" = 11;
+  "modules/spend-watch/src/feed_tests.rs" = 11;
   "modules/spend-watch/src/findings.rs" = 3;
   "modules/spend-watch/src/forecast.rs" = 2;
   "modules/spend-watch/src/go.rs" = 2;
   "modules/spend-watch/src/history.rs" = 8;
   "modules/spend-watch/src/ingest.rs" = 7;
-  "modules/spend-watch/src/logs.rs" = 2;
   "modules/spend-watch/src/notices.rs" = 1;
   "modules/spend-watch/src/picture.rs" = 1;
   "modules/spend-watch/src/random.rs" = 3;
