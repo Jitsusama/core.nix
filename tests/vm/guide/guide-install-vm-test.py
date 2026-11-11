@@ -8,12 +8,12 @@ stick booted, its vault opened, the disk confirmed, each key enrolled, the recov
 the install stopped and carried on, the system installed, the machine's first boots, the TPM
 sealed, the account's keys and spares made, the TPM cleared, a stick written by a writer, the
 reinstall from the machine's own stick carrying alice's home folder across on a USB drive, and
-the firmware cleared of its keys. A fixture's work
-is done once a run, so any test runs alone with `-k`, walking only as far as it needs. What a
-screen shows only in passing is checked where it shows, in the fixture that reaches it; what
-stays is checked by the tests. What the tests need from Nix, the keys' state, the sticks'
-images, the payload, the programs run beside the driver and the secrets typed at the guide, are
-guide-install.nix's, given as the `values` fixture.
+the firmware cleared of its keys. Long because a split would replay that story in each part.
+A fixture's work is done once a run, so any test runs alone with `-k`, walking only as far as
+it needs. What a screen shows only in passing is checked where it shows, in the fixture that
+reaches it; what stays is checked by the tests. What the tests need from Nix, the keys' state,
+the sticks' images, the payload, the programs run beside the driver and the secrets typed at
+the guide, are guide-install.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations

@@ -147,13 +147,10 @@
   "modules/guide/src/observe/sbctl.rs" = 2;
   "modules/guide/src/observe/tpm.rs" = 7;
   "modules/guide/src/process.rs" = 3;
-  "modules/guide/src/screen/run.rs" = 1;
-  "modules/guide/src/screen/view.rs" = 2;
   "modules/guide/src/sign/der.rs" = 1;
   "modules/guide/src/sign/pe.rs" = 6;
   "modules/guide/src/stick/blocks.rs" = 1;
   "modules/guide/src/stick/gpt.rs" = 4;
-  "modules/guide/src/vault/mod.rs" = 11;
   "modules/guide/src/vault/store.rs" = 1;
   "modules/guide/src/words.rs" = 2;
   "modules/guide/tests/carry.rs" = 12;
