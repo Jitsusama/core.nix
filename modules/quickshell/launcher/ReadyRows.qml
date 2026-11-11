@@ -68,6 +68,9 @@ Scope {
     // Each row as last made, by key, made again only once its record
     // changes or its time is said anew.
     readonly property var made: ({})
+    // Each row as it was served when it was last made, by key, so one told
+    // again with only its order moved keeps what was made (movedOnly).
+    readonly property var madeFrom: ({})
     // The acts served in a form the launcher refuses, by key, each
     // journalled once (ReadyRows.js's misformed).
     readonly property var misformed: ({})
@@ -112,7 +115,7 @@ Scope {
     onActiveChanged: {
         if (active)
             return;
-        for (const store of [made, madeOf, drawers, ticking, clocked, repeats]) {
+        for (const store of [made, madeOf, madeFrom, drawers, ticking, clocked, repeats]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -123,13 +126,21 @@ Scope {
     }
 
     // Each key a change names let go of what was made of it, and the rows
-    // placed again. Its lists come through the signal converted, so they're
-    // copied by index.
+    // placed again; a row told with only its order moved keeps what was
+    // made of it and only moves. Its lists come through the signal
+    // converted, so they're copied by index.
     function took(changed, gone) {
         const said = [];
         const dropped = [];
-        for (let at = 0; at < changed.length; at += 1)
-            said.push(changed[at]);
+        const moved = {};
+        for (let at = 0; at < changed.length; at += 1) {
+            const key = changed[at];
+            if (key in made && Ready.movedOnly(madeFrom[key], served(key))) {
+                moved[key] = true;
+                madeFrom[key] = served(key);
+            }
+            said.push(key);
+        }
         for (let at = 0; at < gone.length; at += 1)
             dropped.push(gone[at]);
         for (const key of dropped)
@@ -137,7 +148,10 @@ Scope {
         for (const key of said.concat(dropped)) {
             if (key in drawers)
                 delete made[drawers[key]];
+            if (moved[key] === true)
+                continue;
             delete made[key];
+            delete madeFrom[key];
             delete clocked[key];
             if (ticking[key] === "minute")
                 eachMinute -= 1;
@@ -146,6 +160,8 @@ Scope {
             delete ticking[key];
         }
         for (const key of said) {
+            if (moved[key] === true)
+                continue;
             const drawer = Ready.rowOf(held[key])?.drawer;
             if (typeof drawer === "string")
                 drawers[drawer] = key;
@@ -186,6 +202,7 @@ Scope {
             made[key] = row ? ready.make(row, key) : null;
             if (made[key])
                 madeOf[made[key].key] = key;
+            madeFrom[key] = row;
             if (key in ticking)
                 clocked[key] = clockSaid(row);
         }

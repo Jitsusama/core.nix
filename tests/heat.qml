@@ -6,8 +6,9 @@ pragma ComponentBehavior: Bound
 // own rows as served, in their order, each holding the rows inside it a
 // step in; its answer asked again, as each key typed asks it, makes no
 // row; a change to the fan's row makes it alone again and keeps the
-// processor's; Throttling asked alone answers its own rows; and a row let
-// go is gone. It exits 0 once every case holds, and otherwise 1, saying
+// processor's; the processor's row told again with only its order moved
+// moves and is made no more; Throttling asked alone answers its own rows;
+// and a row let go is gone. It exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import Quickshell
 import Quickshell.Io
@@ -152,6 +153,8 @@ ShellRoot {
                     root.first();
                 else if (root.waiting === "the fan's change")
                     root.fanChanged();
+                else if (root.waiting === "the processor moved")
+                    root.processorMoved();
                 else if (root.waiting === "the fan let go")
                     root.fanGone();
             } catch (error) {
@@ -210,11 +213,30 @@ ShellRoot {
         const fanRow = answer.rows[2];
         if (!fanRow || !fanRow.side.includes("3100"))
             return;
-        root.waiting = "the fan let go";
+        root.waiting = "the processor moved";
         Expect.expect("the processor's row kept", answer.rows[0] === root.before[0],
             answer.rows[0]?.name);
         Expect.expect("the fan's row made again", fanRow !== root.before[2], fanRow.side);
         Expect.expect("one row made", theHeat.tally.rows - root.counted === 1,
+            `${theHeat.tally.rows - root.counted} rows`);
+        root.counted = theHeat.tally.rows;
+        Watch.tell(root.watch, { changed: [{ key: root.processor.key, kind: "row",
+                    row: Object.assign({}, root.processor.row, { order: 4 }) }] });
+    }
+
+    // The daemon makes room and tells the processor's row again with only
+    // its order moved, as ready-rows' spacing does: it moves, and what was
+    // made of it is kept (Sound's 103 rows made again, 2026-11-11).
+    function processorMoved() {
+        const answer = theHeat.answer("heat");
+        if (answer.rows[2]?.name !== "Processor")
+            return;
+        root.waiting = "the fan let go";
+        Expect.expect("moved after the fan", answer.rows.map(row => row.name).join(", ")
+            === "Throttled, Fan 1, Processor", answer.rows.map(row => row.name));
+        Expect.expect("the processor's row kept as it moved", answer.rows[2] === root.before[0],
+            "made anew");
+        Expect.expect("and is made no more", theHeat.tally.rows === root.counted,
             `${theHeat.tally.rows - root.counted} rows`);
         Watch.tell(root.watch, { gone: [root.fan(3100).key] });
     }
@@ -225,8 +247,8 @@ ShellRoot {
         if (answer.rows.length !== 2)
             return;
         root.waiting = "the end";
-        Expect.expect("the fan gone, the rest kept", answer.rows[0] === root.before[0]
-            && answer.rows[1] === root.before[1], answer.rows.map(row => row.name));
+        Expect.expect("the fan gone, the rest kept", answer.rows[0] === root.before[1]
+            && answer.rows[1] === root.before[0], answer.rows.map(row => row.name));
         Qt.callLater(() => Qt.exit(0));
     }
 }

@@ -36,6 +36,7 @@ QtObject {
             ticking();
             insides();
             acting();
+            moving();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error}`);
@@ -426,6 +427,29 @@ QtObject {
         Expect.same("and isn't offered", Ready.actsOf({ acts: [both, paste] }).map(act => act.key),
             ["verb:copy:paste"]);
         Expect.same("a well-formed act says nothing", Ready.misformed(paste), "");
+    }
+
+    // Whether a row told again moved only, as a daemon making room between
+    // two rows tells every row it moved, so what was made of it stands.
+    function moving() {
+        const was = { thing: "sound:a", name: "Speakers", order: 1024,
+            side: [{ said: "50%" }], held: { volume: 0.5, muted: false } };
+        const moved = Object.assign({}, was, { order: 1536 });
+        Expect.same("a row whose order alone moved moved only", Ready.movedOnly(was, moved),
+            true);
+        Expect.same("one told alike moved only too", Ready.movedOnly(was,
+            JSON.parse(JSON.stringify(was))), true);
+        Expect.same("one whose words moved did more", Ready.movedOnly(was,
+            Object.assign({}, moved, { side: [{ said: "60%" }] })), false);
+        Expect.same("as one whose held facts moved did", Ready.movedOnly(was,
+            Object.assign({}, moved, { held: { volume: 0.5, muted: true } })), false);
+        Expect.same("and one that gained a field", Ready.movedOnly(was,
+            Object.assign({}, moved, { note: "new" })), false);
+        Expect.same("or lost one", Ready.movedOnly(was, { thing: "sound:a", name: "Speakers",
+            order: 1536, side: [{ said: "50%" }] }), false);
+        Expect.same("a list is not an object of its indexes", Ready.movedOnly({ side: ["a"] },
+            { side: { 0: "a" } }), false);
+        Expect.same("a row never made moved nowhere", Ready.movedOnly(undefined, moved), false);
     }
 
     function ticking() {

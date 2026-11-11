@@ -22,6 +22,27 @@ function rowOf(record) {
     return record?.kind === "row" && record.row ? record.row : null;
 }
 
+// Whether a row told again says all it said when made, `order` aside, so it
+// only moves: a daemon making room tells every row it moved, remaking some
+// 103 of Sound's rows every ten notification streams (1KZFHC, 2026-11-11).
+function movedOnly(was, now) {
+    return Boolean(was && now) && Object.keys(was).length === Object.keys(now).length
+        && Object.keys(now).every(name => name === "order"
+            ? Object.keys(was).includes(name) : alike(was[name], now[name]));
+}
+
+// Whether two values a daemon said are alike, as their JSON reads.
+function alike(one, other) {
+    if (one === other || typeof one !== "object" || typeof other !== "object" || !one
+        || !other || Array.isArray(one) !== Array.isArray(other)) {
+        return one === other;
+    }
+    const names = Object.keys(one);
+    const theirs = Object.keys(other);
+    return names.length === theirs.length
+        && names.every(name => theirs.includes(name) && alike(one[name], other[name]));
+}
+
 // The keys of the rows in their order once a message said the records
 // `changed` anew and let those `gone` go, the records held by key in
 // `held`: a new list, so whatever reads it is told, and the one before left
@@ -335,16 +356,13 @@ function closes(act) {
     return actForm(act) === "ask" && act.closes === true;
 }
 
-// How the launcher leaves once an act is done. A step into rows or an
-// ask keeps it open, so Joel sees what it became, as a setting's choice
-// always has; a copy or an open closes it, as a value's row always has.
-// An ask that shuts it, as a paste does, or that brings its sender forward
-// with a token, which niri gives only while the launcher holds the keys,
-// is done at once, in Return's own turn, the keys given back in the next
-// frame, before its closing's work (Launcher.qml's choose). Going to a
-// program is done once the launcher's gone, since niri focuses a window
-// only then, as is opening a link, so its window takes the keys, as a
-// row's Return opening one does.
+// How the launcher leaves once an act is done. A step into rows or an ask
+// keeps it open, so Joel sees what it became; a copy or an open closes it.
+// An ask that shuts it (a paste) or brings its sender forward with a token,
+// which niri gives only while the launcher holds the keys, is done at once in
+// Return's own turn, the keys given back the next frame (Launcher.qml's
+// choose). Going to a program, or opening a link, is done once the launcher's
+// gone, since niri focuses a window only then, so its window takes the keys.
 function leaving(act) {
     const now = closes(act) || (actForm(act) === "ask" && act.token === true);
     return {
@@ -354,20 +372,18 @@ function leaving(act) {
     };
 }
 
-// The words a row whose Return asks is read by in the key language, its
-// act's (CommandBinding.wordsFor), so Firmware's Install Now writes
-// `install!` on the line rather than running at the first Return; "" for
-// any other, and for an ask that shuts the launcher, which is done in
-// Return's own turn, as Super+V's paste is, though `put` changes
-// something: read by its words, Return from the find would land on it.
+// The words a row whose Return asks is read by in the key language, its act's
+// (CommandBinding.wordsFor), so Firmware's Install Now writes `install!` rather
+// than running at the first Return; "" for any other, and for an ask that
+// shuts the launcher, done in Return's own turn as Super+V's paste is, since
+// read by its words, Return from the find would land on it.
 function wordsOf(act) {
     return actForm(act) === "ask" && !closes(act) ? act.key : "";
 }
 
-// A row's mark as drawn: words.json's glyph role it names (`roles`, the
-// theme's glyphs), or a program's own mark no role names, served as
-// `{ code }` in hex and made its character once, as the row is made
-// (Y2YBTS, 2026-11-11, 3093d93d); "" for any other.
+// A row's mark as drawn: words.json's glyph role it names (`roles`, the theme's
+// glyphs), or a program's own mark no role names, served as `{ code }` in hex
+// and made its character once, as the row is made (3093d93d); "" for any other.
 const HEX = 16;
 function glyphOf(glyph, roles) {
     if (typeof glyph === "string") {
@@ -377,12 +393,11 @@ function glyphOf(glyph, roles) {
     return Number.isInteger(code) && code > 0 ? String.fromCodePoint(code) : "";
 }
 
-// Where an act going to a program takes Joel (ready-rows.md's `go`, the
-// program's desktop entry id, served only where the daemon found its
-// entry): its newest window, from `byApp`, Niri.qml's windows by app id
-// in lower case, else `entry`, the program's desktop entry as the shell
-// knows it, looked up only at Return, to open; null where there's
-// neither, so Return does nothing.
+// Where an act going to a program takes Joel (ready-rows.md's `go`, its
+// desktop entry id, served only where the daemon found its entry): its newest
+// window, from `byApp`, Niri.qml's windows by lowercased app id, else `entry`,
+// its desktop entry as the shell knows it, looked up only at Return, to open;
+// null where there's neither, so Return does nothing.
 function going(act, byApp, entry) {
     const window = byApp[String(act?.go ?? "").toLowerCase()] ?? null;
     if (window !== null) {
@@ -411,13 +426,12 @@ function tokened(act, token) {
         ? Object.assign({}, act.ask, { token }) : null;
 }
 
-// An act's row as it's said: `worded`, its key's words.json name and
-// glyph, with nothing at its side, but for words from outside the
-// vocabulary, which the daemon serves with it: a `name`, as a notice's
-// offer in its sender's words, and a `side`, as a link's host; and a
-// `glyph`, a role or `{ code }`, as rows' are. A verb whose words are the
-// launcher's has a key of its own instead (Y2YBTS, 2026-11-11, a9bce629).
-// `roles` are the theme's glyphs.
+// An act's row as it's said: `worded`, its key's words.json name and glyph,
+// with nothing at its side, but for words from outside the vocabulary, which
+// the daemon serves with it: a `name`, as a notice's offer in its sender's
+// words, a `side`, as a link's host, and a `glyph`, a role or `{ code }`. A
+// verb whose words are the launcher's has a key of its own instead (Y2YBTS,
+// 2026-11-11, a9bce629). `roles` are the theme's glyphs.
 function actWorded(act, worded, roles) {
     return {
         name: typeof act.name === "string" && act.name !== "" ? act.name : worded.name,
@@ -426,16 +440,13 @@ function actWorded(act, worded, roles) {
     };
 }
 
-// What each of a row's acts is kept by as a row of its own, since the
-// launcher holds its selection by key: its key where the row holds it
-// once, so every other place's keys stay as they were; where two share
-// one, as two links' "Open the Link", the key and what the act goes to,
-// so one going leaves the cursor on the other rather than moving it
-// along; only an act with no target of its own takes its place in the
-// row (Y2YBTS, 2026-11-11). A key the row has repeated before, in
-// `repeated`, is still told apart once it's held once, or the last link
-// left would take its bare key and the cursor go from it; each key
-// repeated now is added there.
+// What each of a row's acts is kept by as a row of its own, since the launcher
+// holds its selection by key: its key where the row holds it once; where two
+// share one, as two links' "Open the Link", the key and its target, so one
+// going leaves the cursor on the other, and an act with no target its place
+// (Y2YBTS, 2026-11-11). A key in `repeated` stays told apart once held once,
+// or the last link left would take its bare key and the cursor go from it;
+// each key repeated now is added there.
 function actKeys(acts, repeated) {
     const times = {};
     for (const one of acts) {
