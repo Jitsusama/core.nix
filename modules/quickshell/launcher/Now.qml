@@ -227,7 +227,11 @@ Provider {
     Connections {
         target: clock
 
+        // Said for the opening test, which reopens For You only within a
+        // minute the shell heard no turn of, since a turn rightly makes
+        // Time's and Today's rows again however late it's heard.
         function onDateChanged() {
+            Report.say("the clock turned a minute");
             if (provider.wanted)
                 Qt.callLater(provider.retime);
             else
@@ -1675,6 +1679,13 @@ Provider {
                 senders.join("\u241f")], () => made(fact, { forYou: forYou, count: "", note: "",
                 heldNames: senders }));
         });
+        // Desktop's row is asked for whatever it holds (leadsTo), so it's
+        // kept with nothing to read too, where its band is left out: let
+        // go at each asking, it was made again at each opening into For
+        // You with no notice come (2026-11-11).
+        const desktop = latelyKept.rows["notices:desktop"];
+        if (desktop !== undefined && !("notices:desktop" in latelyKept.next))
+            latelyKept.next["notices:desktop"] = desktop;
         keptOnly(latelyKept);
         return rows;
     }
