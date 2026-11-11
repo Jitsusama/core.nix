@@ -478,10 +478,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             return Ok(passed(&[&checked], &files, &said));
         }
         ready::Before::Shares(checked, shared) => {
-            if waits(&[commit, &checked], &files) {
-                return Ok(ExitCode::FAILURE);
-            }
-            if let Some(said) = lists_say(commit, &shared) {
+            if let Some(said) = lists_say(commit, &shared, &|| waits(&[commit, &checked], &files)) {
                 return Ok(said);
             }
             eprintln!(
@@ -565,11 +562,15 @@ fn status() -> ExitCode {
 
 /// What lists say of `commit`, when every file it shares with main's moves
 /// is a list each change adds to: whether each holds there with its own
-/// check passed, saying which way it went. None when some file isn't one.
-fn lists_say(commit: &str, shared: &[String]) -> Option<ExitCode> {
+/// check passed, saying which way it went, and holding a ready one back
+/// while it `waits` its turn. None when some file isn't one.
+fn lists_say(commit: &str, shared: &[String], waits: &dyn Fn() -> bool) -> Option<ExitCode> {
     let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]).unwrap_or_default();
     match lists::lists(shared, &ready::record(commit), &quarantine) {
         lists::Lists::Need(need) if need.is_empty() => {
+            if waits() {
+                return Some(ExitCode::FAILURE);
+            }
             println!(
                 "ready: {} sits on origin's main, and main moved only lists of its ({}), whose \
                  own checks passed there",
