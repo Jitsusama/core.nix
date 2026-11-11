@@ -158,8 +158,12 @@ ShellRoot {
             return;
         expect("no session while the node doesn't answer", addresses() === "", addresses());
         // The same three windows niri's stand-in lists (checks.nix), and
-        // the one a parked session's holder keeps.
+        // the one a parked session's holder keeps. Older windows of
+        // another kitty were opened with the same app ids, as old spawns
+        // share small numbers (2QZBX9, 2026-11-11), and are neither's.
         windowsTell({ records: [windowRecord(10, 500, "kitty"), windowRecord(20, 600, "kitty"),
+            windowRecord(17, 900, "pi-session.7", { workspace: 11, column: 1, down: 1 }),
+            windowRecord(18, 900, "pi-spawned.9", { workspace: 11, column: 2, down: 1 }),
             windowRecord(21, 600, "pi-session.7", { workspace: 3, column: 2, down: 1 }),
             windowRecord(22, 800, "pi-spawned.9", { workspace: 5, column: 1, down: 1 })] });
         stage = "listed";
@@ -267,8 +271,8 @@ ShellRoot {
         const record = { opened: "", kitty: null, presence: hosted.presence };
         const window = { id: 40, opened: "pi-hosted.s-hosted" };
         expect("its viewer is its window, by the name it opened with",
-            Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": window }) === window,
-            JSON.stringify(Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": window })));
+            Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": [window] }) === window,
+            JSON.stringify(Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": [window] })));
         Sessions.goTo(Object.assign({}, hosted, { window: window }));
         const raised = JSON.stringify(Niri.acted);
         expect("Go To raises its viewer", raised === '{"FocusWindow":{"id":40}}', raised);
