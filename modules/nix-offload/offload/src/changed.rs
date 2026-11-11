@@ -187,15 +187,23 @@ pub fn checked_out(source: Source) -> (String, Option<PathBuf>) {
              git -C {into}/tree fetch -q {into}/there.bundle {tip}:refs/heads/there; "
         )
     });
+    // Runs at once share the mirror, so each holds its lock from making it
+    // to cloning from it: two fetches moving main at once failed one with
+    // "cannot lock ref 'refs/heads/main'" on 11 November. A far side with
+    // no flock, as macOS has none, goes on without the lock, as before.
     let command = format!(
         "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
          command -v git >/dev/null || \
          git() {{ nix shell nixpkgs#git -c git \"$@\"; }}; \
+         command -v flock >/dev/null || flock() {{ :; }}; \
+         mkdir -p \"$HOME\"/.cache/nix-offload/changed; \
+         {{ flock 9; \
          [ -d {mirror} ] || git init -q --bare {mirror}; \
          git -C {mirror} fetch -q https://github.com/{github} \
          +refs/heads/main:refs/heads/main {base}; \
          git -C {mirror} symbolic-ref HEAD refs/heads/main; \
          git clone -q --shared {mirror} {into}/tree; \
+         }} 9> {mirror}.lock; \
          {unbundled}\
          git -C {into}/tree checkout -q -B nix-offload-changed {commit}; \
          cd {into}/tree/{}; ",
@@ -573,6 +581,45 @@ mod tests {
         assert!(
             !sent.command.contains("CHANGED_CHECKS_PASSED"),
             "{}",
+            sent.command
+        );
+    }
+
+    #[test]
+    fn runs_at_once_take_the_kept_mirror_in_turn() {
+        let sent = sending(
+            Source::Pushed {
+                github: "someone/thing".to_owned(),
+                commit: "abc123".to_owned(),
+                dir: None,
+            },
+            &words("--build"),
+            &[],
+        );
+        let at = |part: &str| {
+            sent.command
+                .find(part)
+                .unwrap_or_else(|| panic!("{part} in {}", sent.command))
+        };
+        let (taken, given) = (
+            at("{ flock 9;"),
+            at("} 9> \"$HOME\"/.cache/nix-offload/changed/someone-thing.git.lock;"),
+        );
+        for part in [
+            "git init -q --bare",
+            "fetch -q https://github.com",
+            "symbolic-ref",
+            "git clone",
+        ] {
+            assert!(
+                taken < at(part) && at(part) < given,
+                "{part} runs while the mirror's lock is held: {}",
+                sent.command
+            );
+        }
+        assert!(
+            given < at("checkout -q -B"),
+            "the lock is let go before the run's own checkout: {}",
             sent.command
         );
     }
