@@ -371,6 +371,8 @@ onLinux {
       "PASSWORDS=${lib.getExe (pkgs.callPackage ../passwords/package.nix { })}"
       "PASSWORDS_STAND_IN=${../../tests/passwords-stand-in.sh}"
     ];
+    # On here, where no agent runs and no secret is real.
+    shell.launcher.providers.passwords.off = lib.mkForce false;
   };
 
   # An opening draws home as the closed launcher kept it, each row as it

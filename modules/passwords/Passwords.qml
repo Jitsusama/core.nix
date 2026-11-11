@@ -72,7 +72,11 @@ Provider {
     Daemon {
         id: daemon
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/passwords.sock`
+        // Never reached while the place is off, so a daemon an agent
+        // started by hand is never asked, and Joel's step in never has his
+        // manager let in a daemon every agent could then ask.
+        socket: provider.off ? ""
+            : `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/passwords.sock`
         kind: "entry"
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
@@ -88,6 +92,33 @@ Provider {
     // Joel reads it, the pattern of its own link to an entry, and the app
     // ids its program's windows carry.
     readonly property var managers: settings.managers ?? []
+
+    // Whether the place is off, as it is until agents are fenced off Joel's
+    // runtime folder and Wayland: every agent runs as his uid, so a daemon
+    // his manager let in would answer any of them (2026-11-10, Joel: "we
+    // can't have a password backdoor here"). It then holds one row, saying
+    // so and opening the browser his manager's own extension fills in.
+    readonly property bool off: settings.off === true
+
+    // The one row while it's off: Return opens the browser a manager's
+    // extension fills sign-ins in, which needs no clipboard.
+    readonly property var offRow: {
+        const manager = managers.find(one => browserOf(one) !== null) ?? null;
+        const browser = manager === null ? null : browserOf(manager);
+        const name = said.off ?? "";
+        return Object.assign(thing({
+            key: "passwords:off",
+            name: name,
+            note: manager === null ? ""
+                : String(said.offNote ?? "").replace("{manager}", manager.called),
+            hue: "alert",
+            leads: true,
+            run: () => {
+                if (browser !== null)
+                    Niri.spawn(provider.command(browser));
+            }
+        }), { named: Fuzzy.letters([name.toLowerCase()]), worded: 0 });
+    }
 
     // How long after an ask of Joel's a manager's window may come and still
     // be his answer to it: the manager waits up to 20 s for a closed app to
@@ -159,6 +190,8 @@ Provider {
     // can't read, which lets the launcher in, then Needing Attention once a
     // check has found a problem, and ended by Check Every Password.
     readonly property var all: {
+        if (provider.off)
+            return [provider.offRow];
         const rows = everyone;
         const byKey = {};
         for (const row of rows)
@@ -227,7 +260,7 @@ Provider {
     // entry's health comes back on its record by the watch, and the answer
     // says only why it couldn't, if it couldn't.
     function checkEvery() {
-        if (checking)
+        if (checking || off)
             return;
         checking = true;
         checkWhy = "";
@@ -637,6 +670,8 @@ Provider {
     // before Return is (Launcher.qml's tellOnOpen): never nothing, as when
     // 1Password keeps its command out and no prompt ever comes.
     function letIn(manager) {
+        if (off)
+            return;
         handOver();
         daemon.ask({ ask: "let-in", manager: manager.name, patience: 120000 }, answer => {
             provider.changed();
@@ -653,7 +688,7 @@ Provider {
     property bool listedThisTime: false
 
     function listAsked() {
-        if (listedThisTime)
+        if (listedThisTime || off)
             return;
         listedThisTime = true;
         handOver();
@@ -668,7 +703,7 @@ Provider {
 
     function getAsked(key, asked) {
         const had = gotThisTime[key];
-        if (had === "asked" || (!asked && had === "rested"))
+        if (off || had === "asked" || (!asked && had === "rested"))
             return;
         // Read in full already, from resting on it, so stepping in needs
         // nothing more.
@@ -733,6 +768,8 @@ Provider {
     // How many entries it holds, or that a manager is locked while it holds
     // none, at its row's right at home.
     function counted() {
+        if (off)
+            return said.offSide ?? "";
         if (records.length === 0 && managers.some(manager => signedOut(manager)))
             return said.locked ?? "";
         if (records.length === 0 && managers.some(manager => refused(manager)))
@@ -746,6 +783,8 @@ Provider {
     // out, by the manager's name once: "1Password: needs Integrate with
     // 1Password CLI on, in Settings \u203a Developer".
     function noted() {
+        if (off)
+            return offRow.name;
         return (checking ? [said.checking ?? ""] : []).concat(managers
             .filter(manager => refused(manager))
             .map(manager => `${manager.called}: ${Managers.noted(
@@ -772,6 +811,8 @@ Provider {
     // A search looks through every entry held, not only those listed, and
     // the place's own rows: Check Every Password, and Needing Attention.
     function looksThrough() {
+        if (off)
+            return [offRow];
         return everyone.concat(attention, [checkRow]);
     }
 
@@ -843,6 +884,8 @@ Provider {
         const manager = managerOf(asked);
         if (manager === null)
             return [];
+        if (off)
+            return [offRow];
         if (signedOut(manager)) {
             const key = "verb:passwords:let-in";
             return [thing({

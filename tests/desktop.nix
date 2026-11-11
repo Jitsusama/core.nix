@@ -973,15 +973,20 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # build sandbox (modules/meaning/checks.nix).
         systemd.user.services.meaning.Service.ExecStart =
           lib.mkForce "${standInMeaning} %t/daemons/meaning.sock %t/meaning-means.json";
-        # Passwords walked with 1Password's own manager, in the passwords
-        # daemon's own unit, asking the stand-in for op in place of the
-        # one 1Password's app would answer.
         # Its socket, which nothing starts on a real machine until agents are
         # fenced (modules/passwords/home.nix), is listened on here, where no
         # agent runs and no secret is real.
         systemd.user.sockets.passwords.Install.WantedBy = lib.mkIf walksPasswords [
           "sockets.target"
         ];
+        # The place is off on a real machine until agents are fenced
+        # (modules/passwords/home.nix), and on here, where none runs.
+        jitsusama.quickshell.launcher.providers.passwords.off = lib.mkIf walksPasswords (
+          lib.mkForce false
+        );
+        # Passwords walked with 1Password's own manager, in the passwords
+        # daemon's own unit, asking the stand-in for op in place of the
+        # one 1Password's app would answer.
         jitsusama.passwords.managers."1password".command = lib.mkIf walksPasswords (
           lib.mkForce [
             (lib.getExe (pkgs.callPackage ../modules/onepassword/manager/package.nix { }))
