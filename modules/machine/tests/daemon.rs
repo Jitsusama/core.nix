@@ -770,7 +770,9 @@ fn shell() -> PathBuf {
 fn a_firmware_install_is_answered_once_done_and_the_connection_answers_meanwhile() {
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::PermissionsExt;
-    let folder = std::env::temp_dir().join(format!("machine-install-{}", std::process::id()));
+    // Its own folder, apart from the daemon's machine-install-*, which is
+    // cleared as the daemon starts.
+    let folder = std::env::temp_dir().join(format!("machine-fwupdmgr-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).unwrap();
     // The stand-in for fwupdmgr says what it was asked, then waits until

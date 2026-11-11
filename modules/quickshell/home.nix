@@ -2525,9 +2525,9 @@ in
     # Firmware's installs are put in by the machine daemon, with the
     # fwupdmgr Firmware names, so the shell spawns nothing; a machine
     # without fwupd names none, and installs nothing.
-    systemd.user.services.machine.Service.Environment =
-      lib.mkIf ((launcher.providers.firmware.fwupdmgr or "") != "")
-        [ "MACHINE_FWUPDMGR=${launcher.providers.firmware.fwupdmgr}" ];
+    systemd.user.services.machine.Service.Environment = lib.mkIf (
+      (launcher.providers.firmware.fwupdmgr or "") != ""
+    ) [ "MACHINE_FWUPDMGR=${launcher.providers.firmware.fwupdmgr}" ];
 
     systemd.user.services.timekeeping = lib.mkIf keepsTime {
       Unit = {
