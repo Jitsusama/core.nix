@@ -612,9 +612,8 @@ Singleton {
             }
         });
         // Read as it's shown, since thing() would copy it once.
-        return Object.defineProperty(row, "side", {
-            enumerable: true,
-            get: () => {
+        return provider.gotten(row, {
+            side: () => {
                 const given = root.gave[meeting.id] ?? root.meeting(meeting.id)?.answer;
                 return given === said ? "your answer" : "";
             }

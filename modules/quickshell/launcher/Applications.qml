@@ -342,14 +342,10 @@ Provider {
     // stepped into is made again as its player and streams change
     // (`playingNow`). Return copies nothing.
     function figure(key, name, side, graph) {
-        const row = copyRow({ key: key, name: name(), side: side(), copy: "" });
-        Object.defineProperties(row, {
-            name: { enumerable: true, get: name },
-            side: { enumerable: true, get: side }
-        });
+        const getters = { name: name, side: side };
         if (graph)
-            Object.defineProperty(row, "graph", { enumerable: true, get: graph });
-        return row;
+            getters.graph = graph;
+        return gotten(copyRow({ key: key, name: name(), side: side(), copy: "" }), getters);
     }
 
     // Whether a name another program gives, a player's desktop entry or
@@ -501,11 +497,7 @@ Provider {
                 return rows;
             }
         });
-        Object.defineProperty(row, "side", {
-            enumerable: true,
-            get: () => player.isPlaying ? "playing" : "paused"
-        });
-        return row;
+        return gotten(row, { side: () => player.isPlaying ? "playing" : "paused" });
     }
 
     // A player's drawer, where it is in its track read again each second
@@ -707,8 +699,7 @@ Provider {
                     }
                 })]
         });
-        Object.defineProperty(row, "side", { enumerable: true, get: hears });
-        return row;
+        return gotten(row, { side: hears });
     }
 
     // Sound: whether it's Muted, one switch saying yes or no, Louder and
@@ -742,19 +733,12 @@ Provider {
             }
         });
         // A program only recording says so, where one playing says how loud.
-        Object.defineProperties(row, {
-            side: {
-                enumerable: true,
-                get: () => streams.length > 0 ? provider.loudness(streams)
-                    : provider.muted(recorders) ? provider.soundSaid("muted")
-                    : provider.soundSaid("recording")
-            },
-            graph: {
-                enumerable: true,
-                get: () => streams.length > 0 ? provider.bar(streams) : undefined
-            }
+        return gotten(row, {
+            side: () => streams.length > 0 ? provider.loudness(streams)
+                : provider.muted(recorders) ? provider.soundSaid("muted")
+                : provider.soundSaid("recording"),
+            graph: () => streams.length > 0 ? provider.bar(streams) : undefined
         });
-        return row;
     }
 
     // Notifications: those it sent, newest first, each as the collection
@@ -1666,27 +1650,27 @@ Provider {
             under: () => provider.under(entry),
             operands: () => provider.operands(entry)
         });
-        // What another provider says of it, read as the row is, so it's
-        // never kept past being true.
-        Object.defineProperty(row, "note", {
-            enumerable: true,
-            get: () => provider.givenNote(entry.id) || provider.holding(entry)
-        });
-        if (provider.stepsIn(entry))
-            return Object.assign(row, {
+        // Each row is made again with its getters rather than a field
+        // turned into one (Provider's gotten), its note among them.
+        const noted = () => provider.noteOf(entry);
+        if (provider.stepsIn(entry)) {
+            const stepping = provider.gotten(row, { note: noted });
+            return Object.assign(stepping, {
                 verb: "more",
                 stays: true,
                 nested: true,
-                run: () => provider.launcher?.enter(row),
-                targets: row.verbs
+                run: () => provider.launcher?.enter(stepping),
+                targets: stepping.verbs
             });
+        }
         if (served)
             return provider.madeServed(row, served, entry, start);
         // Whether it's running, and so what Return does, is asked as
         // the row is read, never kept.
         const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;
-        Object.defineProperties(row, {
-            verb: { enumerable: true, get: () => latest() ? "go to" : "start" },
+        return provider.gotten(row, {
+            note: noted,
+            verb: () => latest() ? "go to" : "start",
             // What it is, then how many windows it has open, after its
             // name; only what it is while its say counts what it holds,
             // which says it's open already, so the say isn't cut for
@@ -1694,28 +1678,27 @@ Provider {
             // A closed one has no windows to count, so it asks nothing
             // of what it holds: a step into Programs reads every row it
             // draws (2026-11-10).
-            count: {
-                enumerable: true,
-                get: () => {
-                    const windows = provider.windowCount(entry);
-                    return [entry.genericName.toLowerCase(),
-                        windows !== "" && provider.holding(entry) === "" ? windows : ""]
-                        .filter(part => part !== "").join(" \u00b7 ");
-                }
+            count: () => {
+                const windows = provider.windowCount(entry);
+                return [entry.genericName.toLowerCase(),
+                    windows !== "" && provider.holding(entry) === "" ? windows : ""]
+                    .filter(part => part !== "").join(" \u00b7 ");
             },
             // The layer of its own keys it holds as Shortcuts, so the
             // layer, named as the program is, isn't listed beside it
             // (Rank.js's keysHeld).
-            ownLayer: { enumerable: true, get: () => provider.ownLayer(entry) },
-            run: {
-                enumerable: true,
-                get: () => {
-                    const window = latest();
-                    return window ? () => Niri.act({ FocusWindow: { id: window.id } }) : start;
-                }
+            ownLayer: () => provider.ownLayer(entry),
+            run: () => {
+                const window = latest();
+                return window ? () => Niri.act({ FocusWindow: { id: window.id } }) : start;
             }
         });
-        return row;
+    }
+
+    // What another provider says of a program, read as its row is, so it's
+    // never kept past being true.
+    function noteOf(entry) {
+        return provider.givenNote(entry.id) || provider.holding(entry);
     }
 
     // A program's row for Programs, saying what the daemon served: what it
@@ -1723,20 +1706,17 @@ Provider {
     // holds, which says it's open already (VKCF3Z, 2026-11-07).
     function madeServed(row, served, entry, start) {
         const window = served.window ?? null;
-        Object.defineProperties(row, {
-            verb: { enumerable: true, value: served.verb },
+        // Made again with its getters (Provider's gotten); its verb and
+        // run stay fields, so they're only written.
+        return Object.assign(provider.gotten(row, {
+            note: () => provider.noteOf(entry),
             // A closed one asks nothing of what it holds.
-            count: {
-                enumerable: true,
-                get: () => served.count === served.what || provider.holding(entry) === ""
-                    ? served.count : served.what
-            },
-            ownLayer: { enumerable: true, get: () => provider.ownLayer(entry) },
-            run: {
-                enumerable: true,
-                value: window === null ? start : () => Niri.act({ FocusWindow: { id: window } })
-            }
+            count: () => served.count === served.what || provider.holding(entry) === ""
+                ? served.count : served.what,
+            ownLayer: () => provider.ownLayer(entry)
+        }), {
+            verb: served.verb,
+            run: window === null ? start : () => Niri.act({ FocusWindow: { id: window } })
         });
-        return row;
     }
 }

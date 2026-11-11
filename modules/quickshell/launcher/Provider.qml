@@ -484,6 +484,20 @@ Scope {
         return made;
     }
 
+    // A row made again with each of `getters` read as it's asked for, in
+    // place of the field it has. Never turn a field a row has into a getter
+    // with Object.defineProperty: Qt 6.12 keeps the slot of a getter's
+    // setter once for every shape grown from the one it was first turned
+    // in, so the next such turn writes over another field, or past the
+    // row's end, which crashed the shell on 2026-11-11. Its other fields'
+    // getters are copied unread.
+    function gotten(row, getters) {
+        const fields = Object.getOwnPropertyDescriptors(row);
+        for (const name of Object.keys(getters))
+            fields[name] = { enumerable: true, configurable: true, get: getters[name] };
+        return Object.defineProperties({}, fields);
+    }
+
     // A file's text as it is now. A FileView blocks only on its first load:
     // after that, a reload or a new path loads in the background and text()
     // still says what the last load read, unless the load is waited for.
