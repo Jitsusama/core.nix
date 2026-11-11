@@ -317,6 +317,9 @@
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
   '';
+  btop-moves-on-vim-keys = ''
+    btop chooses processes on Vim's j, k and G, rather than leaving them to nothing
+  '';
   btop-names-its-window = ''
     btop names its terminal's window btop while it runs, and gives the title back as it quits
   '';

@@ -82,6 +82,27 @@ onLinux {
         touch $out
       '';
 
+  # btop moves on Vim's keys with the settings an account gets, where its
+  # own would leave j and k to nothing (moves-on-vim-keys.sh).
+  btop-moves-on-vim-keys =
+    let
+      home = account workstation;
+    in
+    pkgs.runCommandLocal "btop-moves-on-vim-keys"
+      {
+        nativeBuildInputs = [
+          home.programs.btop.package
+          pkgs.tmux
+        ];
+      }
+      ''
+        export HOME=$PWD LANG=C.UTF-8
+        mkdir -p .config/btop
+        cp ${home.xdg.configFile."btop/btop.conf".source} .config/btop/btop.conf
+        $BASH ${./moves-on-vim-keys.sh}
+        touch $out
+      '';
+
   # Escape backs out of btop a step at a time and never ends it (Joel,
   # 2026-11-05: "fuck escape quitting"): alone it does nothing, and with a
   # process chosen by Down one lets it go, a second doing nothing, where
