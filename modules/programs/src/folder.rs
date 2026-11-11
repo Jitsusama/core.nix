@@ -6,8 +6,8 @@
 //! time it's asked for, and read again on each change in it while its key
 //! is watched, and as each watch of it begins.
 
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::Path;
 
 use serde_json::{Value, json};
 
@@ -37,10 +37,10 @@ pub fn record(key: &str, path: &str) -> Value {
 /// (repositories.rs), and a folder can be heard for many keys.
 #[derive(Debug, Default)]
 pub struct Looked {
+    // inotify answers a folder already watched with its own number, and one
+    // removed and made again with a new one, so a key new to a number is a
+    // new watch, and no path is remembered as watched past its removal.
     keys: HashMap<i32, Vec<(String, Option<String>)>>,
-    // Each key's folders watched, with the one name each hears, if one:
-    // a folder heard from the one above it isn't yet watched itself.
-    watching: HashSet<(String, PathBuf, Option<String>)>,
 }
 
 impl Looked {
@@ -80,17 +80,13 @@ impl Looked {
         };
         let (mut folder, mut name) = (folder.to_path_buf(), name);
         loop {
-            let pair = (key.to_owned(), folder.clone(), name.clone());
-            if self.watching.contains(&pair) {
-                return false;
-            }
             if let Some(watch) = notify.watch(&folder) {
                 let keys = self.keys.entry(watch).or_default();
                 let held = (key.to_owned(), name);
-                if !keys.contains(&held) {
-                    keys.push(held);
+                if keys.contains(&held) {
+                    return false;
                 }
-                self.watching.insert(pair);
+                keys.push(held);
                 return true;
             }
             let (Some(parent), Some(child)) = (folder.parent(), folder.file_name()) else {
@@ -223,6 +219,30 @@ mod tests {
             [key],
             "heard as its file is written"
         );
+        std::fs::remove_dir_all(&there).unwrap();
+    }
+
+    #[test]
+    fn a_folder_removed_and_made_again_is_watched_again() {
+        let notify = Notify::new().expect("inotify is there");
+        let there = std::env::temp_dir().join(format!("looked-again-{}", std::process::id()));
+        std::fs::create_dir_all(&there).unwrap();
+        let mut looked = Looked::default();
+        let key = "repositories:/there";
+        assert!(
+            looked.watch(Some(&notify), key, &there),
+            "a watch begun is new"
+        );
+        std::fs::remove_dir_all(&there).unwrap();
+        std::fs::create_dir_all(&there).unwrap();
+        assert!(
+            looked.watch(Some(&notify), key, &there),
+            "the folder made again is watched again"
+        );
+        let watch = notify
+            .watch(&there)
+            .expect("the folder made again is watched");
+        assert_eq!(of(&looked, watch, "one"), [key], "heard as made again");
         std::fs::remove_dir_all(&there).unwrap();
     }
 

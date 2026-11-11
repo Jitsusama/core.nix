@@ -718,21 +718,24 @@ fn the_repositories_under_a_folder_made_once_watched_are_each_said_as_cloned() {
         paths_of(&first).is_empty(),
         "a folder not there held some: {first}"
     );
-    // Each cloned as git makes it, the folders on the way with it.
-    for (name, count) in [("one", 1), ("two", 2)] {
-        git_in(
-            &running.path("."),
-            &["init", "-q", &src.join(name).display().to_string()],
-        );
-        let mut said = watching.changed(&key);
-        while paths_of(&said).len() < count {
-            said = watching.changed(&key);
+    // Each cloned as git makes it, the folders on the way with it, and one
+    // removed and cloned again, as a test's stand-ins are.
+    for (name, cloned, count) in [
+        ("one", true, 1),
+        ("two", true, 2),
+        ("two", false, 1),
+        ("two", true, 2),
+    ] {
+        if cloned {
+            git_in(
+                &running.path("."),
+                &["init", "-q", &src.join(name).display().to_string()],
+            );
+        } else {
+            std::fs::remove_dir_all(src.join(name)).unwrap();
         }
-        assert_eq!(
-            paths_of(&said).len(),
-            count,
-            "{name} wasn't said as cloned: {said}"
-        );
+        // Told until it holds as many, or the client's patience runs out.
+        while paths_of(&watching.changed(&key)).len() != count {}
     }
 }
 
