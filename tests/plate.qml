@@ -5,18 +5,14 @@
 // Numbers.js and Order.js beside this file and runs `qml -platform offscreen plate.qml`.
 // A part's name is a fact's label and what it says the value, a level's
 // bar a stroke after it; an act or a choice isn't said; a holder of
-// figures is opened in place; and a screen says the mode it runs with
-// every digit niri has, where it sits, what it offers and how fine it is,
-// an off one only the last two. The backlight daemon's files are read as
-// Backlight.js reads them: what sets the level, the room or why nothing
-// does, and its curve, dimmest first;
-// the room's light measured to three digits, the curve's lux every digit.
-// The machine daemon's backlight and light sensor records are read as
-// Backlight.js reads them too: the panel's steps, what the kernel says
-// of them and what the sensor counts, each only where it's said.
+// figures is opened in place; and a screen's settings offer its rates
+// with every digit niri has, its sizes and its turns. The machine
+// daemon's backlight and light sensor records are read as Backlight.js
+// reads them: the panel's steps and the lux the sensor hears, the room's
+// light measured to three digits. A screen's drawer is the windows
+// daemon's (modules/windows), so it's tested there.
 import QtQuick
 import "Backlight.js" as Backlight
-import "Numbers.js" as Numbers
 import "Plate.js" as Plate
 import "Screens.js" as Screens
 
@@ -69,92 +65,15 @@ QtObject {
         check("figures that aren't whole say nothing", broken.join("") === "", broken);
     }
 
-    // The backlight's words as the vocabulary gives them, filled.
-    function backlightSaid(key, values) {
-        return Backlight.fill(({ "the-room": "the room", "on-its-way": "on its way to {share}",
-            "no-light": "no light heard", at: "{share} at {lux}" })[key] ?? key, values);
-    }
-
-    // What the machine daemon says of the level the backlight program
-    // settled (modules/machine's steered.rs, which reads its files and
-    // whose own tests hold how they're parsed): following the room, there,
-    // resting a gap too slight to move, or still stepping to what it asks;
-    // the lid shut, where the room is still said; no light heard, where
-    // the Room Light says so; and nothing, for no record or one with no
-    // level. Then the curve, as the daemon orders it.
-    function backlight(check) {
-        const lx = each => `${each} lx`;
-        const said = (level, lux, asks, following, curve) => Backlight.settledOf([{
-            key: "brightness:built-in", kind: "brightness", level_ratio: level, lux,
-            asks_ratio: asks, following, curve: curve ?? []
-        }]);
-        const there = said(0.38, 28, 0.38, true);
-        check("the daemon's level, what the curve asks and whether it follows",
-            JSON.stringify(there)
-                === JSON.stringify({ level: 0.38, lux: 28, asks: 0.38, following: true }),
-            JSON.stringify(there));
-        check("following the room, there", Backlight.follows(there, backlightSaid) === "the room"
-            && Backlight.room(there, 28, backlightSaid, lx) === "28 lx",
-            Backlight.follows(there, backlightSaid));
-        const stepping = said(0.6, 28, 0.95, true);
-        check("following the room, on its way",
-            Backlight.follows(stepping, backlightSaid) === "the room \u00b7 on its way to 95%",
-            Backlight.follows(stepping, backlightSaid));
-        // The panel's steps put the level a point or two from what's asked,
-        // under the daemon's 0.03, where it rests.
-        const resting = said(0.38, 28, 0.4, true);
-        check("a gap too slight to move is there",
-            Backlight.follows(resting, backlightSaid) === "the room",
-            Backlight.follows(resting, backlightSaid));
-        const shut = said(0.6, 28, 0.95, false);
-        check("the lid shut, the room still said",
-            Backlight.follows(shut, backlightSaid) === ""
-            && Backlight.room(shut, 30, backlightSaid, lx) === "30 lx"
-            && Backlight.room(shut, null, backlightSaid, lx) === "28 lx",
-            Backlight.room(shut, null, backlightSaid, lx));
-        const unheard = said(0.6, null, null, false);
-        check("no light heard, said where nothing hears the room", unheard?.asks === null
-            && unheard?.lux === null
-            && Backlight.follows(unheard, backlightSaid) === ""
-            && Backlight.room(unheard, null, backlightSaid, lx) === "no light heard"
-            && Backlight.room(unheard, 0, backlightSaid, lx) === "0 lx",
-            JSON.stringify(unheard));
-        const curveOnly = said(null, null, null, null, [{ lux: 6, level_ratio: 0.377 }]);
-        check("no record, or one with no level settled, says nothing",
-            Backlight.settledOf([]) === null && curveOnly === null
-            && Backlight.follows(null, backlightSaid) === ""
-            && Backlight.room(null, 28, backlightSaid, lx) === "28 lx"
-            && Backlight.room(null, null, backlightSaid, lx) === "",
-            JSON.stringify(curveOnly));
-        const points = Backlight.curve([{ kind: "brightness", curve: [
-            { lux: 6, level_ratio: 0.377 }, { lux: 28, level_ratio: 0.95 },
-            { lux: 10000, level_ratio: 1 }] }]);
-        const curve = Backlight.curveSaid(points, backlightSaid, each => Backlight.chosen(each));
-        check("the curve, dimmest first",
-            curve === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10 klx", curve);
+    // The machine daemon's records of the panel's backlight and the room's
+    // sensor (modules/machine's light.rs), as a step into a screen reads
+    // them: what the kernel reads back only where it differs, and the room's
+    // light measured to three digits.
+    function lights(check) {
         const readings = [0, 5.2, 28.47, 999.4, 999.6, 1235, 40000]
             .map(each => Backlight.reading(each)).join("; ");
         check("the room's light measured to three digits, zeros kept", readings
             === "0 lx; 5.20 lx; 28.5 lx; 999 lx; 1.00 klx; 1.24 klx; 40.0 klx", readings);
-        const chosen = [0, 50, 400, 1234, 1500, 2000]
-            .map(each => Backlight.chosen(each)).join("; ");
-        check("a curve's lux every digit, none added, in a reading's units", chosen
-            === "0 lx; 50 lx; 400 lx; 1.234 klx; 1.5 klx; 2 klx", chosen);
-        check("no record is no curve", Backlight.curve([]).length === 0,
-            JSON.stringify(Backlight.curve([])));
-    }
-
-    // The machine daemon's records of the panel's backlight and the room's
-    // sensor (modules/machine's light.rs), as its drawer says them: what
-    // the kernel reads back only where it differs, its stepping and its
-    // driver only where the kernel says them, counts grouped in threes,
-    // and an offset of none unsaid.
-    function lights(check) {
-        const named = id => id;
-        const told = { "stepping-linear": "linear", "stepping-non-linear": "non-linear",
-            "driven-firmware": "the firmware", "driven-raw": "the graphics chip",
-            perCount: "{n} lx" };
-        const count = each => Numbers.format(each, undefined, ",", ".");
         const panel = { key: "backlight:intel_backlight", kind: "backlight",
             device: "intel_backlight", brightness: 57_600, actual_brightness: 57_600,
             max_brightness: 96_000, type: "raw", scale: "non-linear", connector: "eDP-1" };
@@ -165,39 +84,24 @@ QtObject {
             lit.now === 57_600 && lit.most === 96_000 && lit.share === 60 && lit.reads === null
                 && lit.connector === "eDP-1" && lit.device === "intel_backlight",
             JSON.stringify(lit));
-        check("the kernel's say of its steps, read back the same",
-            said(Backlight.kernelFacts(lit, named, told, count))
-                === "stepping=non-linear; driven-by=the graphics chip",
-            said(Backlight.kernelFacts(lit, named, told, count)));
         const moved = Backlight.lit([Object.assign({}, panel,
             { actual_brightness: 1200, scale: null, type: "platform" })]);
-        check("steps read back otherwise are said, grouped; a driver with no word isn't",
-            said(Backlight.kernelFacts(moved, named, told, count)) === "reads=1,200",
-            said(Backlight.kernelFacts(moved, named, told, count)));
-        const platform = Object.assign({ "driven-platform": "a platform driver" }, told);
-        check("a platform driver is said as what drives it",
-            said(Backlight.kernelFacts(moved, named, platform, count))
-                === "reads=1,200; driven-by=a platform driver",
-            said(Backlight.kernelFacts(moved, named, platform, count)));
+        check("steps read back otherwise are held, with what steps and drives it",
+            lit.stepping === "non-linear" && lit.driven === "raw" && moved.reads === 1200
+                && moved.stepping === null && moved.driven === "platform",
+            JSON.stringify(moved));
         check("no backlight that says its most is none",
             Backlight.lit([Object.assign({}, panel, { max_brightness: 0 }), sensor]) === null
                 && Backlight.lit([]) === null,
             JSON.stringify(Backlight.lit([Object.assign({}, panel, { max_brightness: 0 })])));
         const room = Backlight.sensor([panel, sensor]);
         check("a sensor is the lux it hears, its count and its device",
-            room.lux === 123.4 && room.device === "iio:device0"
-                && said(Backlight.sensorFacts(room, named, told, count))
-                === "raw=1,234; per-count=0.1 lx",
-            said(Backlight.sensorFacts(room, named, told, count)));
-        const offset = Backlight.sensor([Object.assign({}, sensor, { offset: 6 })]);
-        check("an offset is said where it isn't none",
-            said(Backlight.sensorFacts(offset, named, told, count))
-                === "raw=1,234; per-count=0.1 lx; offset=6",
-            said(Backlight.sensorFacts(offset, named, told, count)));
+            room.lux === 123.4 && room.raw === 1234 && room.perCount === 0.1
+                && room.offset === 0 && room.device === "iio:device0",
+            JSON.stringify(room));
         const unread = Backlight.sensor([Object.assign({}, sensor, { raw: null, lux: null })]);
-        check("a sensor not yet read says no lux and no count",
-            unread.lux === null && said(Backlight.sensorFacts(unread, named, told, count))
-                === "per-count=0.1 lx",
+        check("a sensor not yet read holds no lux and no count",
+            unread.lux === null && unread.raw === null && unread.perCount === 0.1,
             JSON.stringify(unread));
         check("no sensor is none", Backlight.sensor([panel]) === null,
             JSON.stringify(Backlight.sensor([panel])));
@@ -409,48 +313,7 @@ QtObject {
         check("a scale is a multiple", [2, 1.25, 1.5, 1.75].map(Screens.scale).join(" ")
             === "2\u00d7 1.25\u00d7 1.5\u00d7 1.75\u00d7",
             [2, 1.25, 1.5, 1.75].map(Screens.scale).join(" "));
-        check("density takes three figures, its zeros kept",
-            Screens.density(2880, 300) === "244 ppi" && Screens.density(1920, 527) === "92.5 ppi"
-            && Screens.density(1920, 508) === "96.0 ppi" && Screens.density(1920, 0) === ""
-            && Screens.density(1920, 527, ".", ",") === "92,5 ppi",
-            `${Screens.density(2880, 300)}, ${Screens.density(1920, 527)}, `
-            + `${Screens.density(1920, 508)}, ${Screens.density(1920, 527, ".", ",")}`);
         colours(check);
-
-        const on = panel();
-        check("a screen on says what it runs past its row, where it sits and what it offers",
-            said(Screens.facts(on, words)) === "mode=preferred; "
-            + "refresh=120.001 Hz; "
-            + "logical=1440 \u00d7 900; position=560, 1440; rotation=upright; "
-            + "modes=2 \u00b7 preferred 2880 \u00d7 1800 at 120.001 Hz; density=244 ppi",
-            said(Screens.facts(on, words)));
-        on.vrr_enabled = true;
-        on.is_custom_mode = true;
-        on.serial = "0x1234";
-        on.modes[0].is_preferred = false;
-        check("variable, custom and a serial say so",
-            said(Screens.facts(on, words)).startsWith("mode=custom; "
-                + "refresh=120.001 Hz; logical=")
-            && said(Screens.facts(on, words)).endsWith("serial=0x1234"),
-            said(Screens.facts(on, words)));
-        on.modes[0].refresh_rate = 60000;
-        on.is_custom_mode = false;
-        check("a whole refresh and a mode neither preferred nor custom are the row's",
-            said(Screens.facts(on, words)).startsWith("logical="), said(Screens.facts(on, words)));
-        on.vrr_supported = false;
-        check("variable refresh is its switch's to say, and only its lack the drawer's",
-            said(Screens.facts(on, words)).startsWith("variable=unsupported; logical="),
-            said(Screens.facts(on, words)));
-        const off = panel();
-        off.logical = null;
-        off.current_mode = null;
-        check("a screen off says only what it offers and is",
-            said(Screens.facts(off, words)) === "modes=2 \u00b7 preferred 2880 \u00d7 1800 at "
-            + "120.001 Hz; density=244 ppi", said(Screens.facts(off, words)));
-        check("niri's size, in millimetres", Screens.physical(on) === "300 \u00d7 190 mm"
-            && Screens.physical({ physical_size: [0, 0] }) === "", Screens.physical(on));
-
-        backlight(check);
         lights(check);
         settings(check);
         onTheLine(check);
