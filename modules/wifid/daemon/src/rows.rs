@@ -189,7 +189,7 @@ fn with_acts(network: &Network, signing: Option<&str>, words: &Words) -> Value {
     row
 }
 
-fn key(id: &str) -> String {
+pub fn key(id: &str) -> String {
     format!("row:{PLACE}:{id}")
 }
 

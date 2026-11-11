@@ -16,12 +16,27 @@
 //! store, and reads each once: the rows made in one vocabulary are made
 //! once a change, whoever watches them.
 //!
+//! A watch may name the account's number settings the same way, as
+//! `numbers`, a file in the store holding `{ "group", "point" }`; with
+//! none, figures take the comma and the full stop.
+//!
 //! What a row's acts ask comes back on the same connection, as an `act`
 //! ask (acts.rs), so the shell acts without starting anything.
+//!
+//! A watch whose `keys` name a network's row, as the shell's watch ahead
+//! does while the network's selected or stepped into (Y2YBTS,
+//! 2026-11-11), has wifid read each card's link and serve the network's
+//! insides (parts.rs): its drawer on its row, and the rows a step in
+//! shows, in the place's own stream. Once no watch names it, they're
+//! told gone, and the link is read no more.
+//!
+//! Long because its cases drive a connection end to end, from a watch to
+//! a look ahead and an act, through the private helpers they share.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -31,9 +46,11 @@ use tokio::task::JoinHandle;
 
 use crate::acts;
 use ready_rows::kept::Kept;
+use ready_rows::numbers::Numbers;
 
+use crate::parts::{self, Look};
 use crate::rows::{self, Words};
-use crate::service::Ask;
+use crate::service::{Ask, Watching};
 use crate::state::State;
 
 /// The interface's version this speaks.
@@ -53,22 +70,63 @@ const WAITING: usize = 64;
 /// `{ key, kind: "row", row }` as every daemon serves them (ready-rows).
 pub type Made = BTreeMap<String, Value>;
 
+/// Where a vocabulary's words and number settings are read from: the
+/// rows made in one pair are made once, whoever watches them.
+type Said = (PathBuf, Option<PathBuf>);
+
 /// The rows made in one vocabulary, made again as wifid's state changes
 /// for as long as anyone watches them.
 struct Vocabulary {
     words: Words,
+    parts: parts::Words,
+    numbers: Numbers,
     kept: Kept,
     made: watch::Sender<Arc<Made>>,
+    /// The networks watches look ahead at, by name.
+    looked: BTreeMap<String, Looked>,
+}
+
+/// A network looked ahead at: by how many watches, and what's kept of it
+/// while they do.
+#[derive(Default)]
+struct Looked {
+    watchers: usize,
+    look: Look,
 }
 
 impl Vocabulary {
     /// Makes the rows again from the state, each keeping its spaced order
     /// where it can, and tells whoever watches only when one of them
-    /// changed.
+    /// changed. Each network looked at has its drawer on its row and its
+    /// insides after every row of the list.
     fn make(&mut self, state: &State) {
-        let moved = self
-            .kept
-            .take(rows::rows(&state.described(), &self.words), Vec::new());
+        let described = state.described();
+        let mut rows = rows::rows(&described, &self.words);
+        let now = now();
+        for (name, looked) in &mut self.looked {
+            let detail = state.detail(name);
+            looked.look.follow(&detail, now);
+            let connected = described
+                .cards
+                .iter()
+                .any(|card| card.network.as_deref() == Some(name.as_str()));
+            let read = parts::Read {
+                detail: &detail,
+                connected,
+                look: &looked.look,
+                seen: state.seen(),
+                now,
+            };
+            let insides = parts::insides(&read, &self.parts, &self.numbers);
+            let key = rows::key(&format!("network:{name}"));
+            if let Some(drawer) = insides.drawer
+                && let Some(row) = rows.iter_mut().find(|row| row["key"] == key.as_str())
+            {
+                row["drawer"] = drawer;
+            }
+            rows.extend(insides.rows);
+        }
+        let moved = self.kept.take(rows, Vec::new());
         if moved.is_empty() {
             return;
         }
@@ -81,29 +139,103 @@ impl Vocabulary {
     }
 }
 
+/// Now, in milliseconds since the epoch, as a row's times travel.
+fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|since| i64::try_from(since.as_millis()).ok())
+        .unwrap_or(0)
+}
+
+/// A watch looking ahead at networks, for as long as it's kept: while it
+/// is, each is made with its insides, and each card's link is read.
+struct Looking {
+    face: Arc<Face>,
+    said: Said,
+    names: Vec<String>,
+    _watching: Watching,
+}
+
+impl Drop for Looking {
+    fn drop(&mut self) {
+        self.face.look(&self.said, &self.names, false);
+    }
+}
+
+/// The networks a watch's keys name by their rows, as
+/// `row:wifi:network:Lantern`.
+fn looked_at(keys: &[String]) -> Vec<String> {
+    let network = rows::key("network:");
+    let mut names: Vec<String> = keys
+        .iter()
+        .filter_map(|key| key.strip_prefix(&network))
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
 /// What every connection to the socket shares: wifid's state, and the
 /// rows made in each vocabulary asked for.
 pub struct Face {
     state: watch::Receiver<State>,
     /// Where vocabularies are read from, the Nix store but in tests.
     store: PathBuf,
-    vocabularies: Mutex<HashMap<PathBuf, Vocabulary>>,
+    vocabularies: Mutex<HashMap<Said, Vocabulary>>,
     /// Where wifid's main loop takes what a row's act asks.
     asks: mpsc::Sender<Ask>,
+    /// How many look at a network, which the main loop reads each card's
+    /// link for (service.rs).
+    watching: watch::Sender<u32>,
 }
 
 impl Face {
-    pub fn new(state: watch::Receiver<State>, asks: mpsc::Sender<Ask>) -> Arc<Face> {
-        Face::within(state, PathBuf::from(STORE), asks)
+    pub fn new(
+        state: watch::Receiver<State>,
+        asks: mpsc::Sender<Ask>,
+        watching: watch::Sender<u32>,
+    ) -> Arc<Face> {
+        Face::within(state, PathBuf::from(STORE), asks, watching)
     }
 
-    fn within(state: watch::Receiver<State>, store: PathBuf, asks: mpsc::Sender<Ask>) -> Arc<Face> {
+    fn within(
+        state: watch::Receiver<State>,
+        store: PathBuf,
+        asks: mpsc::Sender<Ask>,
+        watching: watch::Sender<u32>,
+    ) -> Arc<Face> {
         Arc::new(Face {
             state,
             store,
             vocabularies: Mutex::new(HashMap::new()),
             asks,
+            watching,
         })
+    }
+
+    /// Counts watches looking at networks in or out, and makes the rows
+    /// again, so a network's insides come as it's looked at and go once
+    /// nobody does.
+    fn look(&self, said: &Said, names: &[String], looking: bool) {
+        let state = self.state.borrow().clone();
+        let mut vocabularies = self.held();
+        let Some(vocabulary) = vocabularies.get_mut(said) else {
+            return;
+        };
+        for name in names {
+            if looking {
+                vocabulary.looked.entry(name.clone()).or_default().watchers += 1;
+            } else if let Some(looked) = vocabulary.looked.get_mut(name) {
+                looked.watchers = looked.watchers.saturating_sub(1);
+                if looked.watchers == 0 {
+                    vocabulary.looked.remove(name);
+                }
+            }
+        }
+        vocabulary.make(&state);
     }
 
     /// Answers everyone who connects, for as long as wifid runs, and makes
@@ -132,42 +264,55 @@ impl Face {
         }
     }
 
-    fn held(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, Vocabulary>> {
+    fn held(&self) -> std::sync::MutexGuard<'_, HashMap<Said, Vocabulary>> {
         self.vocabularies
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The rows made in the vocabulary at a path, as they stand now and as
-    /// they change; or why it can't be read.
-    fn rows_in(&self, path: &str) -> Result<watch::Receiver<Arc<Made>>, String> {
-        let path = self.vocabulary_at(path)?;
+    /// The rows made in the vocabulary at a path, said in the number
+    /// settings at another if any, as they stand now and as they change;
+    /// or why they can't be read.
+    fn rows_in(
+        &self,
+        words: &str,
+        numbers: Option<&str>,
+    ) -> Result<(Said, watch::Receiver<Arc<Made>>), String> {
+        let said = (
+            self.in_store(words)?,
+            numbers.map(|numbers| self.in_store(numbers)).transpose()?,
+        );
         let state = self.state.borrow().clone();
         let mut vocabularies = self.held();
-        if let Some(vocabulary) = vocabularies.get_mut(&path) {
+        if let Some(vocabulary) = vocabularies.get_mut(&said) {
             // Nobody watched while it changed, so it's made afresh first.
             if vocabulary.made.receiver_count() == 0 {
                 vocabulary.make(&state);
             }
-            return Ok(vocabulary.made.subscribe());
+            let rows = vocabulary.made.subscribe();
+            return Ok((said, rows));
         }
-        let text = std::fs::read_to_string(&path)
-            .map_err(|error| format!("{} can't be read: {error}", path.display()))?;
-        let whole: Value = serde_json::from_str(&text)
-            .map_err(|error| format!("{} isn't JSON: {error}", path.display()))?;
+        let whole = read(&said.0)?;
+        let numbers = match &said.1 {
+            Some(path) => Numbers::read(&read(path)?),
+            None => Numbers::default(),
+        };
         let mut vocabulary = Vocabulary {
             words: Words::read(&whole)?,
+            parts: parts::Words::read(&whole)?,
+            numbers,
             kept: Kept::default(),
             made: watch::Sender::new(Arc::new(Made::new())),
+            looked: BTreeMap::new(),
         };
         vocabulary.make(&state);
         let rows = vocabulary.made.subscribe();
-        vocabularies.insert(path, vocabulary);
-        Ok(rows)
+        vocabularies.insert(said.clone(), vocabulary);
+        Ok((said, rows))
     }
 
-    /// The vocabulary's path, once it's found to be in the store.
-    fn vocabulary_at(&self, path: &str) -> Result<PathBuf, String> {
+    /// A file's path, once it's found to be in the store.
+    fn in_store(&self, path: &str) -> Result<PathBuf, String> {
         let found = Path::new(path)
             .canonicalize()
             .map_err(|error| format!("{path} can't be found: {error}"))?;
@@ -193,6 +338,7 @@ impl Face {
             face: Arc::clone(&self),
             told,
             words: None,
+            numbers: None,
             watches: HashMap::new(),
         };
         let mut lines = BufReader::new(reading).lines();
@@ -214,12 +360,20 @@ impl Face {
     }
 }
 
-/// One client's connection: where its lines go, the vocabulary it last
-/// watched in, and its watches by id.
+/// A file in the store, read whole as JSON.
+fn read(path: &Path) -> Result<Value, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("{} can't be read: {error}", path.display()))?;
+    serde_json::from_str(&text).map_err(|error| format!("{} isn't JSON: {error}", path.display()))
+}
+
+/// One client's connection: where its lines go, the vocabulary and number
+/// settings it last watched in, and its watches by id.
 struct Connection {
     face: Arc<Face>,
     told: mpsc::Sender<String>,
     words: Option<String>,
+    numbers: Option<String>,
     watches: HashMap<String, JoinHandle<()>>,
 }
 
@@ -257,11 +411,18 @@ impl Connection {
                         "say the launcher's words.json as words",
                     ));
                 };
-                let rows = match self.face.rows_in(&words) {
+                let numbers = said
+                    .get("numbers")
+                    .and_then(Value::as_str)
+                    .filter(|numbers| !numbers.is_empty())
+                    .map(str::to_owned)
+                    .or_else(|| self.numbers.clone());
+                let (made_in, rows) = match self.face.rows_in(&words, numbers.as_deref()) {
                     Ok(rows) => rows,
                     Err(why) => return Some(error(&id, "no-words", &why)),
                 };
                 self.words = Some(words);
+                self.numbers = numbers;
                 let keys: Option<Vec<String>> =
                     said.get("keys").and_then(Value::as_array).map(|keys| {
                         keys.iter()
@@ -270,7 +431,7 @@ impl Connection {
                             .collect()
                     });
                 if asked == "watch" {
-                    self.watch(id, rows, keys);
+                    self.watch(id, rows, keys, made_in);
                     return None;
                 }
                 let held = rows.borrow().clone();
@@ -299,12 +460,14 @@ impl Connection {
     }
 
     /// Answers a watch whole now, then with each change, until it's
-    /// unwatched, watched again by its id, or the connection goes.
+    /// unwatched, watched again by its id, or the connection goes. One
+    /// whose keys name networks looks at them for as long as it lasts.
     fn watch(
         &mut self,
         id: Value,
         mut rows: watch::Receiver<Arc<Made>>,
         keys: Option<Vec<String>>,
+        said: Said,
     ) {
         let told = self.told.clone();
         let named = id.to_string();
@@ -312,6 +475,18 @@ impl Connection {
         if let Some(before) = self.watches.remove(&named) {
             before.abort();
         }
+        let networks = looked_at(keys.as_deref().unwrap_or_default());
+        // Looked at before it's answered, so its first answer holds the
+        // network's drawer as far as it's read.
+        let looking = (!networks.is_empty()).then(|| {
+            self.face.look(&said, &networks, true);
+            Looking {
+                face: Arc::clone(&self.face),
+                said,
+                names: networks,
+                _watching: Watching::new(&self.face.watching),
+            }
+        });
         let wanted = move |key: &String| keys.as_ref().is_none_or(|keys| keys.contains(key));
         // Taken as it's seen, so a change made after it is told after it.
         let mut sent = Arc::clone(&*rows.borrow_and_update());
@@ -327,6 +502,8 @@ impl Connection {
             return;
         }
         let watching = tokio::spawn(async move {
+            // Kept as long as the watch is, and let go as it ends.
+            let _looking = looking;
             while rows.changed().await.is_ok() {
                 let now = Arc::clone(&*rows.borrow_and_update());
                 let (changed, gone) = between(&sent, &now, &wanted);
@@ -426,16 +603,34 @@ mod tests {
     /// A face over a state with one card on Lantern, and a store holding
     /// the launcher's words.
     fn face() -> (Arc<Face>, watch::Sender<State>, tempfile::TempDir, String) {
+        let (face, state, store, words, _watching) = looking_face();
+        (face, state, store, words)
+    }
+
+    /// A face as `face()` is, with how many look at a network.
+    fn looking_face() -> (
+        Arc<Face>,
+        watch::Sender<State>,
+        tempfile::TempDir,
+        String,
+        watch::Receiver<u32>,
+    ) {
         let store = tempfile::tempdir().expect("a store");
         let words = store.path().join("words.json");
-        let vocabulary = json!({"things": [
-            {"id": "wifi:radio", "name": "Wi-Fi Off", "glyph": "offline",
-                "states": {"off": {"name": "Wi-Fi On", "glyph": "wireless"}}},
-            {"id": "wifi:sign-in", "name": "Sign in to {network}", "glyph": "signIn"},
-            {"id": "wifi:network", "said": {"connected": "connected", "saved": "saved",
+        let mut things = vec![
+            json!({"id": "wifi:radio", "name": "Wi-Fi Off", "glyph": "offline",
+                "states": {"off": {"name": "Wi-Fi On", "glyph": "wireless"}}}),
+            json!({"id": "wifi:sign-in", "name": "Sign in to {network}", "glyph": "signIn"}),
+            json!({"id": "wifi:network", "said": {"connected": "connected", "saved": "saved",
                 "bars": "{n} of 4 bars", "open": "open", "password": "a password",
-                "account": "an account"}},
-        ]});
+                "account": "an account"}}),
+        ];
+        things.extend(
+            parts::tests::things()
+                .into_iter()
+                .filter(|thing| thing["id"] != "wifi:network"),
+        );
+        let vocabulary = json!({ "things": things });
         std::fs::write(&words, vocabulary.to_string()).expect("written");
         let mut state = State::default();
         state.follow(&Link {
@@ -450,7 +645,15 @@ mod tests {
         let root = store.path().canonicalize().expect("the store is there");
         let words = words.to_string_lossy().into_owned();
         let (asks, _) = mpsc::channel(1);
-        (Face::within(state, root, asks), sending, store, words)
+        let watching = watch::Sender::new(0);
+        let looked = watching.subscribe();
+        (
+            Face::within(state, root, asks, watching),
+            sending,
+            store,
+            words,
+            looked,
+        )
     }
 
     fn connect(face: &Arc<Face>) -> Client {
@@ -476,7 +679,7 @@ mod tests {
     async fn an_act_on_the_socket_is_done_by_the_main_loop() {
         let (_state, state) = watch::channel(State::default());
         let (asks, mut taken) = mpsc::channel(1);
-        let face = Face::within(state, PathBuf::from(STORE), asks);
+        let face = Face::within(state, PathBuf::from(STORE), asks, watch::Sender::new(0));
         let mut client = connect(&face);
         client
             .ask(json!({"id": 9, "ask": "act", "act": "scan"}))
@@ -581,6 +784,110 @@ mod tests {
             )
             .await;
         assert_eq!(client.heard().await["error"]["code"], "unknown-kind");
+    }
+
+    /// Lantern in the air at one access point, which the card's joined
+    /// and its driver has read.
+    fn heard_lantern(state: &watch::Sender<State>) {
+        state.send_modify(|state| {
+            state.polled(
+                "wlan0",
+                Some(crate::detail::Polled::read("/ap/1".into(), &HashMap::new())),
+            );
+            state.heard(
+                "/ap/1",
+                Some(crate::air::Heard {
+                    name: "Lantern".into(),
+                    security: crate::state::Security::Personal,
+                    signal: -52,
+                    bssid: "aa:aa".into(),
+                    frequency: 5180,
+                    age: 0,
+                    radio: crate::radio::Radio::default(),
+                }),
+            );
+        });
+    }
+
+    #[tokio::test]
+    async fn a_network_looked_ahead_at_is_served_with_its_insides_until_nobody_looks() {
+        let (face, state, _store, words, looked) = looking_face();
+        heard_lantern(&state);
+        tokio::spawn({
+            let face = Arc::clone(&face);
+            async move { face.follow().await }
+        });
+        let mut client = connect(&face);
+        client
+            .ask(
+                json!({"id": "all", "ask": "watch", "kind": "row", "place": "wifi",
+                "words": words}),
+            )
+            .await;
+        let whole = client.heard().await;
+        assert_eq!(
+            keys(&whole, "records"),
+            ["row:wifi:network:Lantern", "row:wifi:radio"],
+            "nothing inside a network until one looks"
+        );
+        assert_eq!(*looked.borrow(), 0, "no link is read while nobody looks");
+        client
+            .ask(json!({"id": "ahead", "ask": "watch", "kind": "row",
+                "keys": ["row:wifi:network:Lantern"]}))
+            .await;
+        let ahead = client.heard().await;
+        let change = client.heard().await;
+        let (ahead, change) = if ahead["id"] == "ahead" {
+            (ahead, change)
+        } else {
+            (change, ahead)
+        };
+        assert_eq!(
+            keys(&ahead, "records"),
+            ["row:wifi:network:Lantern"],
+            "the watch ahead hears only the row it names"
+        );
+        assert_eq!(*looked.borrow(), 1, "the link is read while it's looked at");
+        let inside = keys(&change, "changed");
+        assert!(
+            inside.contains(&"row:wifi:network:Lantern:heard".to_owned()),
+            "the place's watch hears the network's insides: {inside:?}"
+        );
+        assert!(
+            inside.contains(&"row:wifi:network:Lantern:heard:point-aa:aa".to_owned()),
+            "and its access points: {inside:?}"
+        );
+        client.ask(json!({"id": "ahead", "ask": "unwatch"})).await;
+        let mut gone = Vec::new();
+        let mut unwatched = false;
+        while gone.is_empty() || !unwatched {
+            let said = client.heard().await;
+            unwatched |= said["unwatched"] == true;
+            if let Some(keys) = said["gone"].as_array() {
+                gone.extend(keys.iter().filter_map(Value::as_str).map(str::to_owned));
+            }
+        }
+        assert!(
+            gone.contains(&"row:wifi:network:Lantern:heard".to_owned()),
+            "once nobody looks, its insides are told gone: {gone:?}"
+        );
+        assert!(
+            !gone.contains(&"row:wifi:network:Lantern".to_owned()),
+            "and the network's own row stays"
+        );
+        assert_eq!(*looked.borrow(), 0, "and its link is read no more");
+    }
+
+    #[test]
+    fn a_watchs_keys_name_the_networks_it_looks_at() {
+        let keys = [
+            "row:wifi:network:Lantern",
+            "row:wifi:radio",
+            "row:wifi:network:Lantern",
+            "row:wifi:network:Harbour Wi-Fi",
+        ]
+        .map(str::to_owned);
+        assert_eq!(looked_at(&keys), ["Harbour Wi-Fi", "Lantern"]);
     }
 
     #[tokio::test]

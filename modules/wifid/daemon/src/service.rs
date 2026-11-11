@@ -451,12 +451,13 @@ impl Wifi {
 /// How long a network in detail goes unsaid while nothing of it changes.
 const AGAIN: tokio::time::Duration = tokio::time::Duration::from_secs(5);
 
-/// One caller asking for a network in detail as it changes, counted for as
-/// long as it's kept.
-struct Watching(watch::Sender<u32>);
+/// One caller asking for a network in detail as it changes, or a watch
+/// on the rows socket looking ahead at one (face.rs), counted for as long
+/// as it's kept, so each card's link is read only while someone looks.
+pub(crate) struct Watching(watch::Sender<u32>);
 
 impl Watching {
-    fn new(watching: &watch::Sender<u32>) -> Watching {
+    pub(crate) fn new(watching: &watch::Sender<u32>) -> Watching {
         watching.send_modify(|watching| *watching += 1);
         Watching(watching.clone())
     }
