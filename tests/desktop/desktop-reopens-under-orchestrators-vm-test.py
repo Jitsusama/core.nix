@@ -8,9 +8,13 @@ numbers have since gone or been taken by Joel's own puts each orchestration alon
 workspace of its own, moving nothing on screen; and a session one starts for another's tree
 opens with that tree, wherever Joel moved it, in title order after its orchestrator. One pi's host
 brought back comes back as its viewer alone, beside the windows kept with it, and ten the host
-gave back come back as plain pis where their viewers sat this boot. Joel, after the
+gave back come back as plain pis where their viewers sat this boot, while a shell started again
+opens no viewer kept before it. Joel, after the
 21:24 reboot on 2026-11-08 left 31 windows on the wrong workspaces: "i'm so confused, i don't
-like my operating system confusing me."
+like my operating system confusing me." The area stays one file. Long because each test lays
+out windows and kept places on the one desktop the area boots, with the helpers that read them
+back shared between them: split, each part would boot a machine of its own to read the same
+shell.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
