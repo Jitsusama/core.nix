@@ -311,10 +311,22 @@ Scope {
     // only where the launcher steps into one, so nothing offered does
     // nothing. Going to a program is always offered, since the daemon
     // serves it only where it found the program's entry.
+    // An open in a program keeps that program's name as Programs shows it
+    // (`program`), read while its entry's here, so one gone by Return is
+    // named in saying it opened nothing.
     function actsOf(row) {
         const launcher = maker?.launcher;
-        return Ready.actsOf(row, id => DesktopEntries.byId(id) !== null)
-            .filter(one => one.step !== "drawer" || typeof launcher?.intoDrawer === "function");
+        const named = {};
+        const here = id => {
+            const entry = DesktopEntries.byId(id);
+            if (entry)
+                named[id] = entry.name;
+            return entry !== null;
+        };
+        return Ready.actsOf(row, here)
+            .filter(one => one.step !== "drawer" || typeof launcher?.intoDrawer === "function")
+            .map(one => Ready.openedIn(one) in named
+                ? Object.assign({ program: named[Ready.openedIn(one)] }, one) : one);
     }
 
     // What a program a link opens in runs, by its desktop entry's id, as
@@ -360,9 +372,12 @@ Scope {
             alsoAsked(one);
             return;
         case "open": {
-            const opening = Ready.opening(one, id => commandOf(id));
-            if (opening)
-                Niri.spawn(opening);
+            const opened = Ready.opened(one, id => commandOf(id), Words.field.becoming ?? {});
+            if (opened.run === null) {
+                notOpened(key, one, opened.why);
+                return;
+            }
+            Niri.spawn(opened.run);
             alsoAsked(one);
             return;
         }
@@ -387,6 +402,18 @@ Scope {
         case "ask":
             asked(key, one);
         }
+    }
+
+    // An open whose program went between its rows being listed and Return
+    // opens nothing and says so as a refused ask does, on the next opening,
+    // since the launcher has gone by then; nothing was done, so nothing
+    // else it asks is sent.
+    function notOpened(key, one, why) {
+        const row = served(key);
+        const shown = row?.thing ?? key;
+        console.info(`launcher: ${one.key} opened nothing, its ${Ready.openedIn(one)} gone`);
+        maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
+        maker?.refused(shown, why);
     }
 
     // Sends what an act the shell did asks besides, once it's done, as a
