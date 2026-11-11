@@ -173,6 +173,14 @@
     # lights them all once every one is off by name; a reconnect or niri
     # restarting lights it too. niri msg outputs says which is off, and
     # NIRI_POWERS_OFF_EACH_OUTPUT tells the shell it can ask.
+    #
+    # niri never told a window it was hidden, and kitty skips drawing only
+    # a window told it's suspended, so the kitty holding 74 sessions' windows
+    # drew every hidden one, 106 ms of its main thread's CPU each second at
+    # the median, on the thread that draws the window being typed in. The
+    # patch (suspends-hidden-windows.patch) suspends a window within a
+    # second of no output drawing it, unless it's cast, and unsuspends it as
+    # a frame holds it again. Its tests run as niri builds.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -205,6 +213,7 @@
         ./panel-saturation.patch
         ./refreshes-once-a-frame.patch
         ./powers-off-each-output.patch
+        ./suspends-hidden-windows.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

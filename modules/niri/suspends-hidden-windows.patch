@@ -1,0 +1,245 @@
+Tells a window no output drew that it's suspended, and that it isn't once
+an output draws it again, as xdg-shell's suspended state lets a compositor
+say of a window nobody can see. niri never sent the state, so a client
+that skips only suspended windows, as kitty does, kept drawing every
+hidden one: on a workspace not shown, scrolled out of view or a tab
+behind another. Each second the fallback timer suspends each window whose
+surface no output's last frame held; a frame that holds it unsuspends it,
+and it shows what it last drew for that one frame, as a window scrolled
+into view already does. A window being cast is never suspended, since
+its cast would freeze. The headless backend draws nothing, so its timer
+suspends nothing; src/tests/suspended.rs says what each output drew.
+
+diff --git a/src/niri.rs b/src/niri.rs
+index e8743307..83523401 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -2615,6 +2615,11 @@ impl Niri {
+             .insert_source(
+                 Timer::from_duration(Duration::from_secs(1)),
+                 |_, _, state| {
++                    // The headless backend draws nothing, so no window it holds is ever known
++                    // shown, and its tests suspend windows themselves where they mean to.
++                    if !matches!(state.backend, Backend::Headless(_)) {
++                        state.niri.suspend_hidden_windows();
++                    }
+                     state.niri.send_frame_callbacks_on_fallback_timer();
+                     TimeoutAction::ToDuration(Duration::from_secs(1))
+                 },
+@@ -5408,6 +5413,13 @@ impl Niri {
+         let frame_callback_time = get_monotonic_time();
+ 
+         for mapped in self.layout.windows_for_output_mut(output) {
++            // A window this output just drew is shown, so one suspended while hidden draws
++            // again. It shows what it last drew for this one frame, as a window scrolled into
++            // view already does (see the FIXME in redraw).
++            if primary_output(mapped).as_ref() == Some(output) {
++                mapped.set_shown(true);
++            }
++
+             mapped.send_frame(
+                 output,
+                 frame_callback_time,
+@@ -5456,6 +5468,23 @@ impl Niri {
+         }
+     }
+ 
++    /// Tells each window no output drew that it's suspended: one on a workspace not shown,
++    /// scrolled out of view or a tab behind another. A client that heeds it, as kitty does,
++    /// stops drawing frames nobody sees, which a terminal holding dozens of hidden windows
++    /// otherwise does each time the fallback timer asks. A window drawn again is told it's
++    /// shown in send_frame_callbacks; one cast is never suspended.
++    pub fn suspend_hidden_windows(&mut self) {
++        if !self.monitors_active || self.output_state.is_empty() {
++            return;
++        }
++
++        self.layout.with_windows_mut(|mapped, _| {
++            if primary_output(mapped).is_none() {
++                mapped.set_shown(false);
++            }
++        });
++    }
++
+     pub fn send_frame_callbacks_on_fallback_timer(&mut self) {
+         if !self.monitors_active || self.output_state.is_empty() {
+             return;
+@@ -6854,6 +6883,13 @@ impl ClientData for ClientState {
+     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+ }
+ 
++/// The output a window's own surface was last drawn on, or none where no output's last frame
++/// held it, as each render keeps it.
++fn primary_output(mapped: &Mapped) -> Option<Output> {
++    let surface = mapped.toplevel().wl_surface();
++    with_states(surface, |states| surface_primary_scanout_output(surface, states))
++}
++
+ fn scale_relocate_crop<E: Element>(
+     elem: E,
+     output_scale: Scale<f64>,
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index a3d3ab82..bd4f7270 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -13,5 +13,6 @@ mod lid;
+ mod power;
+ mod refresh_pacing;
+ mod remove_output;
++mod suspended;
+ mod transactions;
+ mod window_opening;
+diff --git a/src/tests/suspended.rs b/src/tests/suspended.rs
+new file mode 100644
+index 00000000..f458678c
+--- /dev/null
++++ b/src/tests/suspended.rs
+@@ -0,0 +1,117 @@
++//! A window no output drew is told it's suspended, and told again it isn't once one draws it,
++//! so a client that heeds the state stops drawing frames nobody sees. The headless backend
++//! draws nothing, so these cases say what each output drew, as a render would.
++
++use std::collections::HashMap;
++
++use client::ClientId;
++use smithay::backend::renderer::element::{
++    Id, RenderElementPresentationState, RenderElementState, RenderElementStates,
++};
++use smithay::reexports::wayland_protocols::xdg::shell::client::xdg_toplevel;
++use wayland_client::protocol::wl_surface::WlSurface;
++
++use super::*;
++
++/// A fixture with one output and a 100×100 window on it, its first configures read.
++fn set_up() -> (Fixture, ClientId, WlSurface) {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++
++    let id = f.add_client();
++    let window = f.client(id).create_window();
++    let surface = window.surface.clone();
++    window.commit();
++    f.roundtrip(id);
++
++    let window = f.client(id).window(&surface);
++    window.attach_new_buffer();
++    window.set_size(100, 100);
++    window.ack_last_and_commit();
++    f.double_roundtrip(id);
++    let _ = f.client(id).window(&surface).recent_configures();
++
++    (f, id, surface)
++}
++
++/// The output's frame drawn, holding every window on it where `shown`, else none of them,
++/// followed by the frame callbacks a render sends.
++fn draw(f: &mut Fixture, shown: bool) {
++    let output = f.niri_output(1);
++    let niri = f.niri();
++    let mut states = RenderElementStates {
++        states: HashMap::new(),
++    };
++    if shown {
++        for mapped in niri.layout.windows_for_output(&output) {
++            states.states.insert(
++                Id::from_wayland_resource(mapped.toplevel().wl_surface()),
++                RenderElementState {
++                    visible_area: 100 * 100,
++                    presentation_state: RenderElementPresentationState::Rendering { reason: None },
++                    needs_capture: false,
++                },
++            );
++        }
++    }
++    niri.update_primary_scanout_output(&output, &states);
++    niri.send_frame_callbacks(&output);
++}
++
++/// Whether the window's newest configure since the last look says it's suspended, or `None`
++/// where none came.
++fn suspended(f: &mut Fixture, id: ClientId, surface: &WlSurface) -> Option<bool> {
++    f.double_roundtrip(id);
++    let window = f.client(id).window(surface);
++    let newest = window.recent_configures().last().cloned();
++    newest.map(|configure| configure.states.contains(&xdg_toplevel::State::Suspended))
++}
++
++#[test]
++fn a_window_no_output_drew_is_suspended_until_one_does() {
++    let (mut f, id, surface) = set_up();
++
++    draw(&mut f, false);
++    f.niri().suspend_hidden_windows();
++    assert_eq!(
++        suspended(&mut f, id, &surface),
++        Some(true),
++        "a window no frame held wasn't told it's suspended"
++    );
++
++    draw(&mut f, true);
++    assert_eq!(
++        suspended(&mut f, id, &surface),
++        Some(false),
++        "a suspended window drawn again wasn't told it's shown"
++    );
++}
++
++#[test]
++fn a_window_drawn_is_left_alone() {
++    let (mut f, id, surface) = set_up();
++
++    draw(&mut f, true);
++    f.niri().suspend_hidden_windows();
++    assert_eq!(
++        suspended(&mut f, id, &surface),
++        None,
++        "a window the output drew was sent a configure, so its state changed"
++    );
++}
++
++#[test]
++fn a_window_cast_is_never_suspended() {
++    let (mut f, id, surface) = set_up();
++
++    f.niri()
++        .layout
++        .with_windows_mut(|mapped, _| mapped.set_is_window_cast_target(true));
++    draw(&mut f, false);
++    f.niri().suspend_hidden_windows();
++    assert_ne!(
++        suspended(&mut f, id, &surface),
++        Some(true),
++        "a window someone casts was told it's suspended, so its cast would freeze"
++    );
++}
+diff --git a/src/window/mapped.rs b/src/window/mapped.rs
+index 3db1f66c..466b8070 100644
+--- a/src/window/mapped.rs
++++ b/src/window/mapped.rs
+@@ -404,6 +404,26 @@ impl Mapped {
+ 
+         self.is_window_cast_target = value;
+         self.need_to_recompute_rules = true;
++
++        // A cast shows the window to someone, so a hidden one cast is drawn again.
++        if value {
++            self.set_shown(true);
++        }
++    }
++
++    /// Says whether any output showed the window when it last drew. One that none did, and
++    /// that no cast shows either, is told it's suspended, as xdg-shell lets a compositor say of
++    /// a window nobody can see, so a client such as kitty stops drawing it. The state goes out
++    /// with the window's next configure, which a layout refresh sends within a frame.
++    pub fn set_shown(&mut self, shown: bool) {
++        let suspended = !shown && !self.is_window_cast_target;
++        self.toplevel().with_pending_state(|state| {
++            if suspended {
++                state.states.set(xdg_toplevel::State::Suspended)
++            } else {
++                state.states.unset(xdg_toplevel::State::Suspended)
++            }
++        });
+     }
+ 
+     /// Renders a snapshot of the window without popups.
