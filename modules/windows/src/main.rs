@@ -1,4 +1,4 @@
-//! windows SOCKET [--words FILE]
+//! windows SOCKET [--words FILE] [--numbers FILE]
 //!
 //! niri's windows, held ready for the shell and anything else that asks,
 //! over SOCKET in the shell's daemon interface (interface.rs): each
@@ -21,7 +21,9 @@
 //! (screens.rs), asking niri for its outputs as the stream begins and at
 //! each workspace change, since niri says nothing of a screen itself,
 //! and again when asked to `look`, as the shell does once it's changed a
-//! screen. Handed none, it makes no rows.
+//! screen. Handed none, it makes no rows. Each screen's drawer says its
+//! figures in the account's number settings (`--numbers`, `{ group,
+//! point }`), or the comma and the full stop where it's handed none.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -36,6 +38,7 @@ use std::time::{Duration, Instant};
 
 use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
+use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
@@ -109,18 +112,20 @@ struct Shared {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (mut named, mut words) = (Vec::new(), None);
+    let (mut named, mut words, mut numbers) = (Vec::new(), None, None);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--words" => words = args.next(),
+            "--numbers" => numbers = args.next(),
             _ => named.push(arg),
         }
     }
     let Some(socket) = named.into_iter().next() else {
-        eprintln!("usage: windows SOCKET [--words FILE]");
+        eprintln!("usage: windows SOCKET [--words FILE] [--numbers FILE]");
         std::process::exit(64);
     };
-    let words = words.map(|path| worded(Path::new(&path)));
+    let numbers = numbered(numbers.as_deref().map(Path::new));
+    let words = words.map(|path| worded(Path::new(&path)).numbered(numbers));
     let Some(niri) = std::env::var_os("NIRI_SOCKET").map(PathBuf::from) else {
         eprintln!("<3>NIRI_SOCKET isn't set, so there's no niri to hear");
         std::process::exit(78);
@@ -195,6 +200,25 @@ fn worded(path: &Path) -> screens::Words {
         );
     }
     words
+}
+
+/// The account's number settings, or the comma and the full stop where
+/// it's handed none, or none it can read, which it says once, here.
+fn numbered(path: Option<&Path>) -> Numbers {
+    let Some(path) = path else {
+        return Numbers::default();
+    };
+    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
+    match read.and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string())) {
+        Ok(settings) => Numbers::read(&settings),
+        Err(why) => {
+            eprintln!(
+                "<4>couldn't read the number settings in {}, so Screens says the usual: {why}",
+                path.display()
+            );
+            Numbers::default()
+        }
+    }
 }
 
 /// The socket systemd holds for it (windows.socket), or, run by hand,
