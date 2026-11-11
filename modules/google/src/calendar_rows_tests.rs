@@ -279,10 +279,10 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
     assert_eq!(
         (first(inside[2]), inside[2]["drawer"].clone()),
         (
-            json!({"key": "verb:calendar:see", "step": "drawer"}),
+            json!({"key": "verb:more", "step": "rows"}),
             json!("drawer:calendar:e1")
         ),
-        "Show in Calendar shows the meeting's own drawer"
+        "Show in Calendar steps in to what's known of it, beside the meeting's own drawer"
     );
     assert_eq!(
         first(inside[3]),
@@ -314,6 +314,74 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
             json!([{"said": "its call"}])
         ),
         "with a call it copies the call's link"
+    );
+}
+
+#[test]
+fn show_in_calendar_steps_into_each_fact_copied_then_opens_its_page() {
+    let mut meeting = planned();
+    meeting.place = Some("Room 4".into());
+    meeting.about = Some("The plan,\n  and  the review.".into());
+    let rows = meetings(&[meeting], &[], MONDAY, &zone(), &words());
+    let facts = within(&rows, "row:calendar:e1:see");
+    let named: Vec<(String, Value, Value)> = facts
+        .iter()
+        .map(|row| {
+            (
+                row["name"].as_str().unwrap().to_owned(),
+                row["side"].clone(),
+                row["acts"][0].clone(),
+            )
+        })
+        .collect();
+    let fact = |name: &str, side: &str, copy: &str| {
+        (
+            name.to_owned(),
+            json!([{"said": side}]),
+            json!({"key": "verb:copy", "copy": copy}),
+        )
+    };
+    let link = "https://meet.google.com/abc-defg-hij";
+    assert!(
+        named[0].0.starts_with("Monday 26 October") && named[0].1 == json!([{"said": "when"}]),
+        "first when it is, as the drawer says it: {:?}",
+        named[0]
+    );
+    assert_eq!(
+        named[1..4],
+        [
+            fact("Room 4", "where", "Room 4"),
+            fact(link, "call", link),
+            fact("going", "your answer", "going"),
+        ],
+        "each fact the drawer has, Return copying what it says"
+    );
+    let about = named
+        .iter()
+        .find(|(_, side, _)| side[0]["said"] == "what it's about");
+    assert_eq!(
+        about.cloned(),
+        Some(fact(
+            "The plan, and the review.",
+            "what it's about",
+            "The plan,\n  and  the review."
+        )),
+        "what it's about is one line, copied whole"
+    );
+    let last = facts.last().unwrap();
+    assert_eq!(
+        (
+            last["name"].clone(),
+            last["acts"].clone(),
+            last["depth"].clone()
+        ),
+        (
+            json!("Open in Calendar"),
+            json!([{"key": "verb:calendar:open", "in": "google-opens",
+                "open": "https://calendar.google.com/event?eid=e1"}]),
+            json!(2)
+        ),
+        "last, its page opens in Google's window"
     );
 }
 
@@ -413,8 +481,8 @@ fn one_joel_holds_cancels_once_sure_and_without_a_call_copies_its_page() {
     let inside = within(&rows, "row:calendar:mine");
     assert_eq!(
         inside.iter().flat_map(|row| acted(row)).collect::<Vec<_>>(),
-        ["verb:calendar:see", "verb:more", "verb:calendar:link"],
-        "Cancel steps in to be sure"
+        ["verb:more", "verb:more", "verb:calendar:link"],
+        "Show in Calendar steps in to its facts, and Cancel to be sure"
     );
     let sure: Vec<(Value, Value, Value)> = within(&rows, "row:calendar:mine:cancel")
         .iter()

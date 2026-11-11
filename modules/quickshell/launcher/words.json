@@ -11727,7 +11727,8 @@
         "rd": "{n}rd",
         "th": "{n}th",
         "and": "{some} and {last}",
-        "yourAnswer": "your answer"
+        "yourAnswer": "your answer",
+        "aboutSide": "what it's about"
       },
       "weekdays": [
         "Sunday",

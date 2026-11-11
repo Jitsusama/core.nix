@@ -157,12 +157,14 @@ pub fn meetings(
     for each in listed(meetings, held, now) {
         let row = row(&each, now, zone, words);
         let text = |field: &str| row[field].as_str().unwrap_or_default().to_owned();
-        let (key, thing, drawer) = (text("key"), text("thing"), text("drawer"));
+        let (key, thing, drawn) = (text("key"), text("thing"), text("drawer"));
+        let details = drawer(&each, zone, words);
         let within = Within {
             key: &key,
             thing: &thing,
             place: each.place,
-            drawer: &drawer,
+            drawer: &drawn,
+            details: &details,
         };
         let acts = acts(each.meeting, words);
         rows.push(row);

@@ -52,10 +52,11 @@ pub struct Words {
 }
 
 /// Each act a row inside a meeting does, by its id in the vocabulary.
-const ACTS: [&str; 15] = [
+const ACTS: [&str; 16] = [
     "verb:calendar:join",
     "verb:calendar:write",
     "verb:calendar:see",
+    "verb:calendar:open",
     "verb:calendar:transcript",
     "verb:calendar:yes",
     "verb:calendar:maybe",
@@ -72,7 +73,7 @@ const ACTS: [&str; 15] = [
 
 /// The words a meeting's own `said` must hold, each one Calendar's rows
 /// say.
-const SAID: [&str; 44] = [
+const SAID: [&str; 45] = [
     "earlier",
     "eyebrow",
     "going",
@@ -117,6 +118,7 @@ const SAID: [&str; 44] = [
     "th",
     "and",
     "yourAnswer",
+    "aboutSide",
 ];
 
 /// Each fact a drawer names, `calendar:<fact>` in the vocabulary, with the

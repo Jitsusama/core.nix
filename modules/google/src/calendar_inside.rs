@@ -2,13 +2,16 @@
 //! a row whose acts step into rows has the rows whose `parent` is its key
 //! as its verbs), so the launcher words and builds none of them: each of
 //! the meeting's acts in the one order every surface lists them, a row
-//! whose Return does it; Guests and Attachments a row each that steps in
-//! to who and what is on it; and Cancel a row that steps in to the one row
-//! asking Joel to be sure. Return on the meeting itself joins its call from
-//! ten minutes before it starts until it ends, and shows its details in the
-//! drawer otherwise, so the row is served again as that turns, which the
-//! daemon's look each minute does, rather than the shell reading the clock
-//! to choose.
+//! whose Return does it; Show in Calendar a row that steps in to what's
+//! known of it, each a value Return copies, then Open in Calendar; Guests
+//! and Attachments a row each that steps in to who and what is on it; and
+//! Cancel a row that steps in to the one row asking Joel to be sure.
+//! Return on the meeting itself joins its call from ten minutes before it
+//! starts until it ends, and shows its details in the drawer otherwise
+//! (or, where the launcher has no step into a drawer, steps in to its
+//! acts), so the row is served again as that turns, which the daemon's
+//! look each minute does, rather than the shell reading the clock to
+//! choose.
 //!
 //! Two of its acts are still the shell's, each named for what takes it
 //! next: Move the Meeting's later times and one typed there, which need
@@ -47,12 +50,14 @@ pub(crate) fn returns(meeting: &Meeting, now: i64) -> Vec<Value> {
 }
 
 /// The meeting row a row inside belongs to: its key, thing and place,
-/// and the drawer it names.
+/// the drawer it names, and that drawer as served, whose facts Show in
+/// Calendar lists.
 pub(crate) struct Within<'a> {
     pub key: &'a str,
     pub thing: &'a str,
     pub place: &'a str,
     pub drawer: &'a str,
+    pub details: &'a Value,
 }
 
 /// Every row inside the meeting's row, made from its acts as
@@ -72,8 +77,12 @@ pub(crate) fn inside(
         let mut row = acted(within, within.key, id, verb, 1, words);
         match verb {
             "verb:calendar:see" => {
-                row["acts"] = json!([{"key": verb, "step": "drawer"}]);
+                row["acts"] = json!([more()]);
                 row["drawer"] = json!(within.drawer);
+                let key = row["key"].as_str().unwrap_or_default().to_owned();
+                rows.push(row);
+                rows.extend(facts(within, &key, meeting, words));
+                continue;
             }
             // Open the Transcript is call-transcripts' to serve.
             "verb:calendar:transcript" => continue,
@@ -140,6 +149,55 @@ fn acted(within: &Within, parent: &str, id: &str, verb: &str, depth: u8, words: 
         "hue": "action",
         "side": [],
     })
+}
+
+/// What's known of it, each a row inside Show in Calendar: each of its
+/// drawer's facts, named by what it says, which Return copies, what fact
+/// it is at its side; what it's about on one line, copied whole; then
+/// Open in Calendar, its page in Google's window, where it's changed
+/// (Calendar.qml's `facts`, as it was).
+fn facts(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Vec<Value> {
+    let value = |id: &str, name: &str, copy: &str, side: String, note: &str| {
+        json!({
+            "key": format!("{parent}:{id}"),
+            "thing": format!("{}:fact:{id}", within.thing),
+            "place": within.place,
+            "kind": "fact",
+            "parent": parent,
+            "depth": 2,
+            "name": name,
+            "hue": "text",
+            "side": [{"said": side}],
+            "note": note,
+            "acts": [{"key": "verb:copy", "copy": copy}],
+        })
+    };
+    let served = within.details["facts"].as_array().into_iter().flatten();
+    let mut rows: Vec<Value> = served
+        .filter_map(|fact| {
+            let name = fact["name"].as_str()?;
+            let said = fact["said"].as_str()?;
+            let id = name.to_lowercase().replace(' ', "-");
+            let note = fact["qualifier"].as_str().unwrap_or_default();
+            Some(value(&id, said, said, name.to_lowercase(), note))
+        })
+        .collect();
+    if let Some(about) = meeting
+        .about
+        .as_deref()
+        .filter(|about| !about.trim().is_empty())
+    {
+        let line = about.split_whitespace().collect::<Vec<_>>().join(" ");
+        let side = words.word("aboutSide").to_owned();
+        rows.push(value("about", &line, about, side, ""));
+    }
+    if let Some(page) = &meeting.page {
+        let verb = "verb:calendar:open";
+        let mut open = acted(within, parent, "see:open", verb, 2, words);
+        open["acts"] = json!([opens(verb, page)]);
+        rows.push(open);
+    }
+    rows
 }
 
 /// Who is on it besides Joel, each a row inside Guests: who holds it,
