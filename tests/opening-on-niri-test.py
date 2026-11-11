@@ -48,6 +48,10 @@ REOPENINGS_TRIED = 3
 # a second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
 UNANSWERED_MS = 900
 
+# How long a kept opening's sources are woken for in a frame (Launcher.qml's wakeBudget), less
+# the millisecond its times are rounded by.
+WAKE_BUDGET_MS = 7
+
 # How long a window opening is given to reach the closed shell, which hears niri's events
 # within a few milliseconds of each.
 SETTLING_S = 2
@@ -347,6 +351,30 @@ def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:
     opening = opened_from_kept(shell)
     assert opening["frames"] == 1, f"the kept opening waited on niri's size: {opening}"
     assert opening["took"] < UNANSWERED_MS, f"the opening waited on a frame unanswered: {opening}"
+
+
+def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
+    """A kept opening's sources wake a few a frame once it's filled in, home's first row's first.
+
+    Woken at once as it filled in, they held Joel's shell 195 to 220 ms past its first frame,
+    each key in that time waiting on them (2026-11-10). A slice ends once it's run past its
+    budget, so every one but the last has, and each source wakes once.
+    """
+    nth = opened_from_kept(shell)["nth"]
+    woke: list[Json] = []
+
+    def slept(_: Json) -> bool:
+        woke[:] = [each for each in openings(shell) if each.get("nth") == nth]
+        return bool(woke) and "slices" in woke[0]
+
+    shell.launcher_until(slept)
+    slices = cast("list[Json]", woke[0]["slices"])
+    names = [name for each in slices for name in each["woke"]]
+    assert names[:1] == ["on"], f"home's first row's source didn't wake first: {slices}"
+    assert len(names) == len(set(names)), f"a source woke twice: {slices}"
+    assert all(each["took"] >= WAKE_BUDGET_MS for each in slices[:-1]), (
+        f"a slice ended before its budget: {slices}"
+    )
 
 
 def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> None:

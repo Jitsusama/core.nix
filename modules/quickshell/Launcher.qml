@@ -709,7 +709,9 @@ Scope {
     property int choicesJoined: 0
     function stale() {
         choicesStale = true;
-        if (open)
+        // While a kept opening's sources wake, each would join it whole
+        // again in its own slice, so it's joined once the last has woken.
+        if (open && !waking)
             Qt.callLater(freshen);
     }
     function freshen() {
@@ -7692,6 +7694,10 @@ Scope {
         // line Return wrote and Joel left, which would hold the next
         // opening's rows still and take its next line's place.
         if (!open) {
+            // Shut while its sources woke, the rest are woken, so a source
+            // walked from outside or a closed launcher's check finds it as
+            // ever; shut, none of its rows are wanted, so none are made.
+            wakeRest();
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
             afterFramesDue();
@@ -8040,11 +8046,103 @@ Scope {
             return;
         openFilledBy = by;
         const began = KeyTimes.now();
+        // Its sources wake a few a frame from the next (wakeNext), so home
+        // is found again here from what each made last.
+        wakeQueue = wakingOrder();
+        for (const source of wakeQueue)
+            source.asleep = true;
+        wakeSlices = [];
+        waking = true;
         open = true;
+        wakeBegan = KeyTimes.now();
+        afterFrame(wakeNext);
         if (openAsked >= 0)
             fillEarly = KeyTimes.now() - began;
         else
             filledSaid(KeyTimes.now() - began);
+    }
+
+    // Whether a kept opening's sources are waking, and those still to wake,
+    // in order, each `asleep` till then (Provider.qml). Each woke inside
+    // `open` at once before, and Joel's kept openings stood 195 to 220 ms
+    // past their first frame with the thread busy throughout: a fifth of
+    // it was Quests sorting as it woke, and a third the collector (a
+    // profile of 20:39 to 20:43, 2026-11-10).
+    property bool waking: false
+    property var wakeQueue: []
+    property var wakeSlices: []
+    property real wakeBegan: 0
+    // Half a frame, so a slice and its frame's drawing fit in one.
+    readonly property real wakeBudget: 8
+
+    // Those home's rows read, in home's order, so the rows shown fill
+    // first, then the rest; none that says what it holds itself, whose rows
+    // home never wants.
+    function wakingOrder() {
+        const named = id => sources.find(one => one.settings.name
+            === (Words.of(id).provider ?? id)) ?? null;
+        const place = id => {
+            const category = placeNamed(id)?.category;
+            return category ? { stands: category.stands ?? null, holds: holdings(category) }
+                : null;
+        };
+        return Wanted.wakingOrder(Words.home, place, named, sources)
+            .filter(one => !one.saysAtHome);
+    }
+
+    // Wakes the next of a filling opening's sources, as many as fit in the
+    // budget, then waits for the frame that draws what they made, so no
+    // slice holds the thread past a frame and a key between two acts on
+    // what's there then. Each slice is said by the sources whose rows end
+    // it. Typed into, what's typed searches every source already, so the
+    // rest wake in one.
+    function wakeNext() {
+        if (!open || !waking)
+            return;
+        const budget = typed === "" ? wakeBudget : Infinity;
+        const began = KeyTimes.now();
+        const slice = [];
+        while (wakeQueue.length > 0 && KeyTimes.now() - began < budget) {
+            const source = wakeQueue[0];
+            wakeQueue = wakeQueue.slice(1);
+            const at = KeyTimes.now();
+            source.asleep = false;
+            slice.push({ name: source.settings.name, took: KeyTimes.now() - at });
+        }
+        wakeSlices = wakeSlices.concat([{ took: KeyTimes.now() - began, woke: slice }]);
+        if (wakeQueue.length > 0) {
+            afterFrame(wakeNext);
+            return;
+        }
+        waking = false;
+        wokeSaid(KeyTimes.now() - wakeBegan);
+        if (choicesStale)
+            afterFrame(freshen);
+    }
+
+    // Every source still asleep woken at once, as a closing wants none.
+    function wakeRest() {
+        for (const source of wakeQueue)
+            source.asleep = false;
+        wakeQueue = [];
+        waking = false;
+    }
+
+    // How the sources woke, said once the last has, with the opening it
+    // filled in, so its slices, the longest and what ended each are read.
+    function wokeSaid(span) {
+        const slices = wakeSlices.map(one => ({ took: Math.round(one.took),
+            woke: one.woke.map(each => each.name) }));
+        const longest = slices.reduce((most, one) => Math.max(most, one.took), 0);
+        const last = openingsTimed[openingsTimed.length - 1];
+        if (last?.kept && last.slices === undefined) {
+            openingsTimed = openingsTimed.slice(0, -1)
+                .concat([Object.assign({}, last, { slices, longestSlice: longest })]);
+        }
+        const said = wakeSlices.map(one => one.woke.map(each =>
+            `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
+        console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
+            + ` ${Math.round(span)} ms, the longest ${longest} ms (${said})`);
     }
 
     // Shut again before it was filled in, as a second press of the chord
