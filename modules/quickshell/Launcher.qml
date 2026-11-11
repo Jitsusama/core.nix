@@ -4633,10 +4633,13 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
-        // Only a key that acted owns a change beside it (Pacing.keyed),
-        // timed from when its work was done (Pacing.sinceKey).
+        // Only a key that acted owns a change beside it, to a place on
+        // screen (Pacing.keyed), timed from when its work was done
+        // (Pacing.sinceKey). What's on screen is read only beside such a
+        // key, since it looks through what's listed.
         const ago = Pacing.sinceKey(KeyTimes.now(), keyHeardAt, keyDoneAt);
-        const byKey = open && Pacing.keyed(ago, prompt.keyMoved, keyedWithin);
+        const near = open && !prompt.keyMoved && ago < keyedWithin;
+        const byKey = near && Pacing.keyed(ago, prompt.keyMoved, keyedWithin, onScreen(source));
         // One just past it is said, so a key's change left to the pace is
         // seen for what it was.
         if (open && !byKey && !prompt.keyMoved && ago < 1000)
@@ -4732,15 +4735,23 @@ Scope {
     }
 
     // The acts whose refresh has run, begun at `begun`, to be timed by the
-    // frame after it.
-    function actsRefreshed(due, begun) {
-        const shown = keyedActs.filter(one => due.includes(one.source));
-        if (shown.length === 0)
+    // frame after it. One whose refresh drew nothing (`done`'s `shown`) is
+    // said so and not timed: no frame of its own follows it, so the next,
+    // drawn for anything else, would be taken for its.
+    function actsRefreshed(done, begun) {
+        const due = done.map(one => one.source);
+        const refreshed = keyedActs.filter(one => due.includes(one.source));
+        if (refreshed.length === 0)
             return;
         keyedActs = keyedActs.filter(one => !due.includes(one.source));
+        const drew = done.filter(one => one.shown).map(one => one.source);
+        const shown = refreshed.filter(one => drew.includes(one.source));
+        for (const one of refreshed.filter(each => !drew.includes(each.source)))
+            Report.say(`act in ${one.source.settings.name} drew nothing`);
         for (const one of shown)
             one.begun = begun;
-        actsDrawing = Pacing.refreshedActs(actsDrawing, shown);
+        if (shown.length > 0)
+            actsDrawing = Pacing.refreshedActs(actsDrawing, shown);
     }
 
     // Each act a frame showed, `shown`, timed to it, said for the test and,
@@ -4856,7 +4867,7 @@ Scope {
             traces.did("refresh", one.startedAt, { source: one.source.settings.name,
                 tookMs: one.tookMs, rows: matches.length, depth: held.length });
         }
-        actsRefreshed(due, begun);
+        actsRefreshed(done, begun);
         heldAgreed(due);
     }
 
@@ -5013,6 +5024,30 @@ Scope {
     // Whether what's shown is to be said again for the source, which
     // refreshDue does once for all of them; the steps held are made again
     // here, each source's on the last's.
+    // Whether any of `source`'s rows are on screen now, as refreshNow reads
+    // them: at home its collection's row, or with something typed a row of
+    // its own listed; stepped in, a step it gave or holds, or the thing
+    // of its own the top found.
+    function onScreen(source) {
+        if (!open)
+            return false;
+        if (held.length === 0) {
+            if (typed.trim() === "")
+                return collections.includes(source);
+            const listed = new Set(matches.map(row => row.key));
+            return listed.has(`collection:${source.settings.name}`)
+                || matches.some(row => row.endedBy === source)
+                || source.things.some(own => listed.has(own.key));
+        }
+        const top = held[0].row;
+        const found = own => own.key === top.key;
+        return held.some(step => step.row.from === source
+            || !!step.row.category && holdsFrom(step.row.category, source))
+            || top.endedBy === source
+            || !top.from && !top.category
+                && (source.things.some(found) || source.looksThrough().some(found));
+    }
+
     function refreshNow(source) {
         if (!open || asking)
             return false;
