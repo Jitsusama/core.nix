@@ -21,8 +21,9 @@ onLinux {
   # left out, a volume said as the shell shows it and a mute alone keeping
   # it, the chosen ones those the default metadata names, a node gone let
   # go of, a card saying what it is and whether anything is plugged in
-  # where each device plays, each channel's volume and the mute read
-  # from a Props and a card's routes from its EnumRoute, Sound's rows
+  # where each device plays and the ports offered it, each channel's
+  # volume and the mute read from a Props, a card's ports from its
+  # EnumRoute and its profile, a port chosen on its card, Sound's rows
   # named, ordered, worn and worded as the launcher's, an empty jack
   # listed only while chosen, a volume moving sending its own row alone, hello
   # saying PipeWire isn't answering, a list and a watch answering no

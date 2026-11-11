@@ -2,8 +2,9 @@
 //! the Props or the Route an act sets: each channel's volume and whether
 //! it's muted. A Props names only what it says, so either may be missing,
 //! and a missing one keeps what was said before. A card's device says
-//! which of its routes plays each of its profile's devices, and whether
-//! anything is plugged into each route it has, read here too.
+//! which of its routes plays each of its profile's devices, the profile
+//! it's in, and each route it has, a port, read here too, and a Route
+//! written to choose one.
 
 use std::io::Cursor;
 
@@ -52,32 +53,105 @@ pub fn route(pod: &[u8]) -> Option<(i32, i32)> {
     Some((index?, device?))
 }
 
-/// What a card's `EnumRoute` pod says of one route it has: its index, the
-/// profile's devices it can play, and whether the card says nothing is
-/// plugged into it, as a jack with nothing in it and a display's output
-/// with no display are. A route it can't tell of is plugged in.
-pub fn offered(pod: &[u8]) -> Option<(i32, Vec<i32>, bool)> {
+/// One route a card has, a port: a jack, the speakers, a display's output.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Port {
+    pub index: i32,
+    /// Whether it's played through (true) or listened with (false), or
+    /// neither said.
+    pub sink: Option<bool>,
+    /// What the card calls it, "Headphones", by its description first.
+    pub name: String,
+    /// The profile's devices it can play.
+    pub devices: Vec<i32>,
+    /// The profiles it's in, or none said for every profile.
+    pub profiles: Vec<i32>,
+    /// Whether the card says anything is plugged into it: "yes", "no",
+    /// or "unknown" for one it can't tell of, as the speakers are.
+    pub available: &'static str,
+}
+
+impl Port {
+    /// Whether the card says nothing is plugged into it, as a jack with
+    /// nothing in it and a display's output with no display are. One it
+    /// can't tell of is plugged in.
+    pub fn unplugged(&self) -> bool {
+        self.available == "no"
+    }
+}
+
+fn availability(said: u32) -> &'static str {
+    match said {
+        sys::SPA_PARAM_AVAILABILITY_no => "no",
+        sys::SPA_PARAM_AVAILABILITY_yes => "yes",
+        _ => "unknown",
+    }
+}
+
+/// What a card's `EnumRoute` pod says of one route it has.
+pub fn offered(pod: &[u8]) -> Option<Port> {
     let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(pod) else {
         return None;
     };
     let mut index = None;
-    let mut devices = Vec::new();
-    let mut unplugged = false;
+    let mut port = Port {
+        available: "unknown",
+        ..Port::default()
+    };
+    let mut named = String::new();
     for property in object.properties {
-        match property.value {
-            Value::Int(n) if property.key == sys::SPA_PARAM_ROUTE_index => index = Some(n),
-            Value::ValueArray(ValueArray::Int(said))
-                if property.key == sys::SPA_PARAM_ROUTE_devices =>
-            {
-                devices = said;
+        match (property.key, property.value) {
+            (sys::SPA_PARAM_ROUTE_index, Value::Int(n)) => index = Some(n),
+            (sys::SPA_PARAM_ROUTE_direction, Value::Id(Id(way))) => {
+                port.sink = Some(way == sys::SPA_DIRECTION_OUTPUT);
             }
-            Value::Id(Id(said)) if property.key == sys::SPA_PARAM_ROUTE_available => {
-                unplugged = said == sys::SPA_PARAM_AVAILABILITY_no;
+            (sys::SPA_PARAM_ROUTE_name, Value::String(said)) => named = said,
+            (sys::SPA_PARAM_ROUTE_description, Value::String(said)) => port.name = said,
+            (sys::SPA_PARAM_ROUTE_devices, Value::ValueArray(ValueArray::Int(said))) => {
+                port.devices = said;
+            }
+            (sys::SPA_PARAM_ROUTE_profiles, Value::ValueArray(ValueArray::Int(said))) => {
+                port.profiles = said;
+            }
+            (sys::SPA_PARAM_ROUTE_available, Value::Id(Id(said))) => {
+                port.available = availability(said);
             }
             _ => {}
         }
     }
-    Some((index?, devices, unplugged))
+    if port.name.is_empty() {
+        port.name = named;
+    }
+    port.index = index?;
+    Some(port)
+}
+
+/// The profile a card's Profile pod says it's in, by its index.
+pub fn profile(pod: &[u8]) -> Option<i32> {
+    let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(pod) else {
+        return None;
+    };
+    object
+        .properties
+        .into_iter()
+        .find_map(|property| match (property.key, property.value) {
+            (sys::SPA_PARAM_PROFILE_index, Value::Int(n)) => Some(n),
+            _ => None,
+        })
+}
+
+/// A Route pod choosing the port a card plays one of its profile's
+/// devices through, saved, as `wpctl set-route` sets it.
+pub fn ported(index: i32, device: i32) -> Vec<u8> {
+    written(&Value::Object(Object {
+        type_: sys::SPA_TYPE_OBJECT_ParamRoute,
+        id: sys::SPA_PARAM_Route,
+        properties: vec![
+            keyed(sys::SPA_PARAM_ROUTE_index, Value::Int(index)),
+            keyed(sys::SPA_PARAM_ROUTE_device, Value::Int(device)),
+            keyed(sys::SPA_PARAM_ROUTE_save, Value::Bool(true)),
+        ],
+    }))
 }
 
 fn keyed(key: u32, value: Value) -> Property {
@@ -173,31 +247,68 @@ mod tests {
         assert_eq!(route(&props(None, Some(true))), None);
     }
 
-    fn enumerated(index: i32, devices: &[i32], available: u32) -> Vec<u8> {
+    fn enumerated(index: i32, description: &str, available: u32) -> Vec<u8> {
+        let ints = |said: &[i32]| Value::ValueArray(ValueArray::Int(said.to_vec()));
+        let mut properties = vec![
+            keyed(sys::SPA_PARAM_ROUTE_index, Value::Int(index)),
+            keyed(
+                sys::SPA_PARAM_ROUTE_direction,
+                Value::Id(Id(sys::SPA_DIRECTION_OUTPUT)),
+            ),
+            keyed(
+                sys::SPA_PARAM_ROUTE_name,
+                Value::String("analog-output".into()),
+            ),
+            keyed(sys::SPA_PARAM_ROUTE_devices, ints(&[index])),
+            keyed(sys::SPA_PARAM_ROUTE_profiles, ints(&[1, 2])),
+            keyed(sys::SPA_PARAM_ROUTE_available, Value::Id(Id(available))),
+        ];
+        if !description.is_empty() {
+            let said = Value::String(description.into());
+            properties.push(keyed(sys::SPA_PARAM_ROUTE_description, said));
+        }
         written(&Value::Object(Object {
             type_: sys::SPA_TYPE_OBJECT_ParamRoute,
             id: sys::SPA_PARAM_EnumRoute,
-            properties: vec![
-                keyed(sys::SPA_PARAM_ROUTE_index, Value::Int(index)),
-                keyed(
-                    sys::SPA_PARAM_ROUTE_devices,
-                    Value::ValueArray(ValueArray::Int(devices.to_vec())),
-                ),
-                keyed(sys::SPA_PARAM_ROUTE_available, Value::Id(Id(available))),
-            ],
+            properties,
         }))
     }
 
     // The headphones' jack with nothing in it, as the laptop's card says
     // while none are plugged in, and the speakers, which it can't tell of.
     #[test]
-    fn a_route_offered_says_its_devices_and_whether_its_plugged_in() {
-        let headphones = enumerated(1, &[1], sys::SPA_PARAM_AVAILABILITY_no);
-        assert_eq!(offered(&headphones), Some((1, vec![1], true)));
-        let speakers = enumerated(0, &[0], sys::SPA_PARAM_AVAILABILITY_unknown);
-        assert_eq!(offered(&speakers), Some((0, vec![0], false)));
-        let plugged = enumerated(1, &[1], sys::SPA_PARAM_AVAILABILITY_yes);
-        assert_eq!(offered(&plugged), Some((1, vec![1], false)));
+    fn a_route_offered_says_its_port() {
+        let headphones = enumerated(1, "Headphones", sys::SPA_PARAM_AVAILABILITY_no);
+        let expected = Port {
+            index: 1,
+            sink: Some(true),
+            name: "Headphones".into(),
+            devices: vec![1],
+            profiles: vec![1, 2],
+            available: "no",
+        };
+        assert_eq!(offered(&headphones), Some(expected));
+        let speakers = offered(&enumerated(0, "", sys::SPA_PARAM_AVAILABILITY_unknown));
+        let said = speakers.map(|port| (port.name.clone(), port.available, port.unplugged()));
+        assert_eq!(said, Some(("analog-output".into(), "unknown", false)));
+        let plugged = offered(&enumerated(1, "", sys::SPA_PARAM_AVAILABILITY_yes));
+        assert_eq!(plugged.map(|port| port.unplugged()), Some(false));
         assert_eq!(offered(&props(None, Some(true))), None);
+    }
+
+    #[test]
+    fn a_profile_says_its_index() {
+        let pod = written(&Value::Object(Object {
+            type_: sys::SPA_TYPE_OBJECT_ParamProfile,
+            id: sys::SPA_PARAM_Profile,
+            properties: vec![keyed(sys::SPA_PARAM_PROFILE_index, Value::Int(2))],
+        }));
+        assert_eq!(profile(&pod), Some(2));
+        assert_eq!(profile(&props(None, Some(true))), None);
+    }
+
+    #[test]
+    fn a_port_chosen_reads_back_as_its_route() {
+        assert_eq!(route(&ported(4, 1)), Some((4, 1)));
     }
 }

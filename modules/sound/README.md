@@ -26,6 +26,8 @@ levels and choices, and read whole files rewritten by another daemon.
 |                         | `properties`: every property of its node        | its drawer's facts      |
 |                         | `form`: what its card says it is, as BlueZ does | the row's glyph         |
 |                         | `unplugged`: whether nothing is in its jack     | whether it's listed     |
+|                         | `ports`: its card's ports for it, each's index, | Port                    |
+|                         | name and `available`, and the one `chosen`      |                         |
 | `row:sound:<node name>` | the launcher's row for it, ready to draw        | Sound's place           |
 
 A volume is the mean of each channel's cube root, as Quickshell says it,
@@ -42,14 +44,16 @@ it moved comes to every watch as the server says it back.
 | `volume` | `volume` 0 to 1, and `muted` if set   | scales each channel alike to it       |
 | `mute`   | `muted`                               | mutes it, or lets it be heard         |
 | `use`    | nothing more                          | makes it the output or input chosen   |
+| `port`   | `index`, one of its `ports`           | plays it through that port, saved     |
 
 A card's own device takes its levels on the route that plays it, saved,
 as the session manager keeps a route's levels and as Quickshell sets
 them; any other device, a filter's or a virtual one, on its node's own
 Props. Use goes into the default metadata's configured key, which the
 session manager keeps and follows. An act on a device not heard is
-refused as `no-device`, one missing what it needs as `bad-act`, and any
-while the server is away as `not-answering`.
+refused as `no-device`, one missing what it needs as `bad-act`, a port
+its card doesn't offer it as `no-port`, and any while the server is
+away as `not-answering`.
 
 ## Sound's Rows
 
@@ -68,12 +72,13 @@ a display's output with no display aren't listed unless chosen, which
 the note then says. The card says so of each route it has (its
 EnumRoute), as a jack or a display comes and goes, so it's always
 current; a device no card's routes play, as a USB or a Bluetooth one,
-is always listed.
+is always listed. Only the ports going its way, for its device, in the
+profile the card is in count, as `wpctl` counts them.
 
 ## What Comes Next
 
 The launcher's Sound lists these rows rather than making its own, so
 it no longer reads desk-facts' file and its service's control group to
-list; then each device's parts, programs and ports are served ready
-too, with the port act, so `pw-top`, `pw-metadata` and the per-move
-processes go.
+list, nor `pw-dump` for ports and `wpctl` to choose one; then each
+device's parts and programs are served ready too, so `pw-top`,
+`pw-metadata` and the per-move processes go.
