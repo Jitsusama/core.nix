@@ -7,7 +7,7 @@
 //! listener. When eero can't be reached the last model stays, its cloud
 //! saying so, since the internet being down is what the shell most needs
 //! to show. After each read it records what moves in the history
-//! (history.rs), in eero's folder in the account's state. With each read
+//! (history/), in eero's folder in the account's state. With each read
 //! of the network, and every 10 seconds while eero can't be reached, it
 //! takes its own look at the internet (probe.rs), so an outage is seen and
 //! timed even when eero can't say; then it asks eero again as often, so a

@@ -108,10 +108,8 @@
   "modules/disk-loss-panic/disk-loss-panic.rs" = 9;
   "modules/eero/src/api.rs" = 8;
   "modules/eero/src/cloud.rs" = 2;
-  "modules/eero/src/history.rs" = 7;
   "modules/eero/src/listeners.rs" = 2;
   "modules/eero/src/probe.rs" = 13;
-  "modules/eero/src/read.rs" = 4;
   "modules/eero/src/schedule.rs" = 5;
   "modules/eero/src/views/golden.rs" = 1;
   "modules/eero/src/waiting.rs" = 1;

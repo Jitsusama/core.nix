@@ -5,7 +5,7 @@
 //! leaves out is `None`, never a guess. Times are RFC 3339 in UTC, as
 //! eero's own are once their offsets are read.
 //!
-//! What eero gives only as it stands now, the daemon keeps (history.rs),
+//! What eero gives only as it stands now, the daemon keeps (history/),
 //! so the model also carries each figure that moves over the last hour,
 //! as a series: a sample a read, oldest first, each series's lists as long
 //! as its `at`, so a figure is found by its sample's place in them. A key

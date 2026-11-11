@@ -14,7 +14,7 @@
 //! Only what changed while the daemon watched is told: the first model
 //! after it starts, once eero answers, is what later ones are compared
 //! with, and says nothing itself. Each change is told once, by a kind and
-//! a subject the history records (history.rs), so a restart, or a figure
+//! a subject the history records (history/), so a restart, or a figure
 //! flapping back to one already told, never tells it again. Nothing
 //! changing says nothing.
 
