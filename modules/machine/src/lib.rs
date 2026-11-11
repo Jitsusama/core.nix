@@ -33,6 +33,7 @@ pub mod camera;
 pub mod counts;
 pub mod disk;
 pub mod firmware;
+pub mod firmware_rows;
 pub mod heat;
 pub mod heat_rows;
 pub mod interface;

@@ -41,13 +41,15 @@
 //! since the shell watches them while the launcher's shut: neither is
 //! read on a clock, so watching them wakes nothing until they change.
 //!
-//! Heat's and Power's rows and headlines are made here too, ready for
-//! the launcher (`heat_rows.rs`, `power_rows.rs`), in the launcher's words
+//! Heat's, Power's and Firmware's rows and headlines are made here too,
+//! ready for the launcher (`heat_rows.rs`, `power_rows.rs`,
+//! `firmware_rows.rs`), in the launcher's words
 //! (`--words`, its `words.json`) and number settings (`--numbers`,
 //! `{ group, point }`): a watch of kind `row` or `head` with `place`
 //! `heat` has the sensors, zones, cooling and processor read as their
-//! own watch would, and one with `place` `power` the supplies, and each
-//! read makes that place's rows again and tells only those that changed.
+//! own watch would, one with `place` `power` the supplies, and one with
+//! `place` `firmware` fwupd, and each read makes that place's rows again
+//! and tells only those that changed.
 //! The processor's own telemetry is asked only while Heat's are watched.
 //! Handed no words, it makes no rows.
 //!
@@ -74,9 +76,9 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, acts, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, kept, keyboards,
-    light, memory, now_ms, power_rows, processor, rounded, rows, sleep, status, steered, supply,
-    telemetry, tree, units, using, written::Written,
+    Root, acts, boot, camera, clock_ms, counts, disk, firmware, firmware_rows, heat, heat_rows,
+    kept, keyboards, light, memory, now_ms, power_rows, processor, rounded, rows, sleep, status,
+    steered, supply, telemetry, tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -156,7 +158,11 @@ const POWER: Place = Place {
     name: "power",
     sources: &["supply"],
 };
-const PLACES: [Place; 2] = [HEAT, POWER];
+const FIRMWARE: Place = Place {
+    name: "firmware",
+    sources: &["firmware"],
+};
+const PLACES: [Place; 3] = [HEAT, POWER, FIRMWARE];
 /// How long to wait before asking the processor's telemetry again once
 /// it couldn't be reached, as on a machine with none.
 const TELEMETRY_AGAIN: Duration = Duration::from_secs(30);
@@ -421,6 +427,8 @@ struct Daemon {
     heat: heat_rows::Heat,
     /// The reads Power's sparks keep while its rows are watched.
     power: power_rows::Power,
+    /// How Firmware's acts stand while its rows are watched.
+    acting: firmware_rows::Acting,
     /// Each place's rows and headline as last told, by the place's name,
     /// so each row keeps its order and one coming or going sends itself
     /// alone, where ordering siblings by where they stood sent every one
@@ -617,6 +625,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             words,
             heat: heat_rows::Heat::default(),
             power: power_rows::Power::default(),
+            acting: firmware_rows::Acting::default(),
             kept: BTreeMap::new(),
             telemetry: Vec::new(),
             hurried: HashSet::new(),
@@ -735,6 +744,12 @@ fn sources_of(kinds: &HashSet<String>, places: &[Place]) -> HashSet<String> {
     read
 }
 
+/// The kinds read while what's watched is: those watched, and what the
+/// places watched are made of, as fwupd is asked for Firmware's rows.
+fn reads(daemon: &Daemon) -> HashSet<String> {
+    sources_of(&watched(daemon), &making(daemon))
+}
+
 /// Lets a place's reads go once nothing watches its rows, so a shut
 /// launcher keeps none, and the next watch starts afresh.
 fn let_go(daemon: &mut Daemon) {
@@ -745,8 +760,12 @@ fn let_go(daemon: &mut Daemon) {
         if place == HEAT {
             daemon.heat.forget();
             daemon.telemetry.clear();
-        } else {
+        } else if place == POWER {
             daemon.power.forget();
+        } else {
+            // How an act ended is said until the launcher shuts, as
+            // Firmware kept it; one still going is kept.
+            daemon.acting.ended.clear();
         }
         daemon.kept.remove(place.name);
         daemon.held.retain(|key, _| !place.holds(key));
@@ -767,6 +786,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
         held,
         heat,
         power,
+        acting,
         words,
         telemetry,
         ..
@@ -776,6 +796,9 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
     };
     if place == POWER {
         return power.read(&held_of(held, "supply"), clock_ms(), words);
+    }
+    if place == FIRMWARE {
+        return firmware_rows::read(&held_of(held, "firmware"), acting, words);
     }
     let (sensors, zones, cooling) = (
         held_of(held, "sensor"),
@@ -1036,7 +1059,7 @@ fn watch_loop(shared: &Shared) {
 fn due(shared: &Shared, kind: &str, every: Duration, last: &mut Option<Instant>) {
     let mut daemon = lock(&shared.daemon);
     loop {
-        let watching = watched(&daemon).contains(kind);
+        let watching = reads(&daemon).contains(kind);
         let hurried = watching && daemon.hurried.remove(kind);
         if watching && (hurried || last.is_none_or(|at| at.elapsed() >= every)) {
             break;
@@ -1066,7 +1089,7 @@ fn due_while_watched(
 ) -> bool {
     let mut daemon = lock(&shared.daemon);
     loop {
-        if !watched(&daemon).contains(kind) {
+        if !reads(&daemon).contains(kind) {
             *last = None;
             return false;
         }
