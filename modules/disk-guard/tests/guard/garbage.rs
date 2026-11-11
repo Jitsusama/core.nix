@@ -579,7 +579,8 @@ fn property_every_batch_holds_or_follows_the_garbage_referring_to_it() {
     for seed in 1..=2000u64 {
         let mut draw = Draw(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
         let count = 1 + draw.index(40);
-        // Few distinct days, so dates tie as one build's paths do.
+        // Few distinct days, so dates tie as one build's paths do, none of
+        // them within the hour that is never collected.
         let all: Vec<Dead> = (0..count)
             .map(|at| {
                 let references: Vec<String> = (0..draw.below(4))
@@ -590,7 +591,7 @@ fn property_every_batch_holds_or_follows_the_garbage_referring_to_it() {
                 let references: Vec<&str> = references.iter().map(String::as_str).collect();
                 dead(
                     &format!("p{:02}", (at * 37) % 100),
-                    float(draw.below(6)),
+                    1.0 + float(draw.below(6)),
                     1 + draw.below(5),
                     &references,
                 )
@@ -671,6 +672,33 @@ fn with_no_cache_kept_the_largest_goes_first_however_old() {
             false
         )]
     );
+}
+
+#[test]
+fn nothing_registered_in_the_last_hour_goes_however_full() {
+    // On 11 November a pass took the derivation an update had just
+    // evaluated, before its build held it. What it refers to is as fresh
+    // as it is, and stays with it; the old apart from it still goes.
+    let minutes = |count: f64| count / (24.0 * 60.0);
+    let all = [
+        dead("system.drv", minutes(5.0), 1, &["launcher.drv"]),
+        dead("launcher.drv", 2.0, 1, &[]),
+        dead("output", minutes(59.0), 100, &[]),
+        dead("old", 2.0, 10, &[]),
+        dead("hour-old", minutes(61.0), 10, &[]),
+    ];
+    for keep in [0.0, KEEP] {
+        let mut gone: Vec<String> = names(&batches(&all, NOW, keep, 0, 100))
+            .into_iter()
+            .flat_map(|(paths, _)| paths)
+            .collect();
+        gone.sort_unstable();
+        assert_eq!(
+            gone,
+            ["hour-old", "old"],
+            "keeping {keep} s, only garbage an hour old that nothing younger refers to goes"
+        );
+    }
 }
 
 #[test]

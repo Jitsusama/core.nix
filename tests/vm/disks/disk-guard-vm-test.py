@@ -425,6 +425,12 @@ def test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_d
         machine.succeed(f"nix-env -p /nix/var/nix/profiles/test --set {paths[-1]}")
     machine.succeed("echo junk > /root/junk")
     junk = machine.succeed("nix-store --add /root/junk").strip()
+    # The guard never collects what was registered in the last hour, so the
+    # store is dated two hours back, as garbage it may take is.
+    machine.succeed(
+        "sqlite3 /nix/var/nix/db/db.sqlite"
+        " 'UPDATE ValidPaths SET registrationTime = registrationTime - 7200'"
+    )
     machine.succeed("systemctl daemon-reload", "systemctl restart disk-guard")
     account.gone(junk)
     account.gone(dead_build)
