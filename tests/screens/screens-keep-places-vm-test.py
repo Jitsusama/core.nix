@@ -293,7 +293,10 @@ def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sa
 
     def windows() -> list[dict[str, Any]]:
         """Give every window niri lays out."""
-        return json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
+        listed: list[dict[str, Any]] = json.loads(
+            machine.succeed(booted.in_niri("niri msg --json windows"))
+        )
+        return listed
 
     def focused() -> list[str]:
         """Give the title of each window niri says has the focus."""
