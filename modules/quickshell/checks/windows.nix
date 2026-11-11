@@ -84,6 +84,11 @@
       cp ${../Hearing.js} Hearing.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../launcher/Capture.qml} launcher/Capture.qml
+      # Capture's Recent reads its rows ready, through ReadyRows.
+      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
+      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
+      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
+      cp ${../launcher/Ago.js} launcher/Ago.js
       cp ${../launcher/Previewer.qml} launcher/Previewer.qml
       cp ${../launcher/Captured.js} launcher/Captured.js
       cp ${../launcher/Recent.js} launcher/Recent.js
