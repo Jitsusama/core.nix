@@ -3,8 +3,8 @@
 modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh. The daemon
 is the store's own, which the check gives the shell to run, with no socket, with one password
 manager: a stand-in for 1Password's, named as 1Password's is (tests/passwords-stand-in.sh),
-which never runs op, and logs where this file's environment says. It starts signed out. Nothing asks it
-anything until Joel steps into Passwords, which asks it once, and while it's signed out the
+which never runs op, and logs where this file's environment says. It starts signed out.
+Nothing asks it anything until Joel steps into Passwords, which asks it once, and while it's signed out the
 place leads with 1Password's row, its side saying it's locked, whose Return unlocks it, and a
 window of 1Password's opening for that ask closes the launcher and takes the keys. Refused
 the first time, as a dismissed prompt is, the launcher says why the next time it opens. Once
@@ -342,11 +342,15 @@ def test_a_walk_from_outside_the_launcher_reaches_no_entry(shell: Shell) -> None
     shell.launcher_until(lambda shown: shown["rows"][:1] == ["GitHub"])
     shell.close_launcher()
     before = len(asked())
-    shown = shell.as_account(shell.ipc("show", shlex.quote("\u203aPasswords")))
+    # As the terminal's launcher calls them, after `--`, since `show` is qs ipc's own command
+    # too; what qs says when it fails is on its standard error, said here too.
+    walk = f"qs -p {shell.folder} ipc call -- launcher"
+    path = shlex.quote("\u203aPasswords")
+    shown = shell.as_account(f"{walk} show {path} 2>&1")
     for held in ["GitHub", "Bank Card", "Check Every Password"]:
         assert held not in shown, f"a walk from outside found {held}: {shown}"
     walked = json.dumps({"steps": ["Passwords", "GitHub", "Copy the Password"]})
-    done = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(walked))))
+    done = json.loads(shell.as_account(f"{walk} doing {shlex.quote(walked)}"))
     assert done.get("missing") == "GitHub", f"a do from outside reached GitHub: {done}"
     assert len(asked()) == before, f"a walk from outside asked: {asked()[before:]}"
     shell.launcher_until(lambda shown: not shown["open"])

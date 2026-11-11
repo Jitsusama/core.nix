@@ -135,30 +135,37 @@ Provider {
     }
 
     // The one row while it's off: Return opens the browser a manager's
-    // extension fills sign-ins in, which needs no clipboard. Its drawer
-    // says why it's off, which its name alone doesn't.
+    // extension fills sign-ins in, which needs no clipboard, or else what
+    // Managers.js's offOpens says. Its drawer says why it's off, which its
+    // name alone doesn't. The entries are read as a binding, so one read
+    // before they're loaded is read again once they are, which
+    // DesktopEntries.byId isn't.
     readonly property var offRow: {
-        const manager = offManager;
-        const browser = offBrowser;
+        const ids = DesktopEntries.applications.values.map(entry => entry.id);
+        const listed = id => (id ?? "") !== "" && ids.includes(id) ? DesktopEntries.byId(id) : null;
+        const opens = Managers.offOpens(managers, one => listed(one.fills),
+            one => listed(one.program));
         const name = Words.name("passwords:off");
-        return Object.assign(thing({
+        const row = {
             key: "passwords:off",
             name: name,
-            verb: Words.verb("passwords:off"),
             glyph: Words.glyph("passwords:off"),
-            note: manager === null ? ""
-                : String(said.offNote ?? "").replace("{manager}", manager.called),
+            note: String(said[opens.note] ?? "")
+                .replace("{manager}", opens.manager?.called ?? ""),
             hue: "alert",
             leads: true,
             // An act with something to say beyond its name, so its drawer
             // comes out (Launcher.qml's detailed).
             thing: true,
-            drawer: { title: name, body: offAbout },
-            run: () => {
-                if (browser !== null)
-                    Niri.spawn(provider.command(browser));
-            }
-        }), { named: Fuzzy.letters([name.toLowerCase()]), worded: 0 });
+            drawer: { title: name, body: offAbout }
+        };
+        if (opens.opened !== null)
+            Object.assign(row, {
+                verb: Words.verb("passwords:off"),
+                run: () => Niri.spawn(provider.command(opens.opened))
+            });
+        return Object.assign(thing(row), { named: Fuzzy.letters([name.toLowerCase()]),
+            worded: 0 });
     }
 
     // How long after an ask of Joel's a manager's window may come and still
@@ -203,6 +210,12 @@ Provider {
     // none or the machine hasn't that browser.
     function browserOf(manager) {
         return (manager?.fills ?? "") === "" ? null : DesktopEntries.byId(manager.fills);
+    }
+
+    // The desktop entry of a manager's own app, or null where the machine
+    // hasn't it.
+    function appOf(manager) {
+        return (manager?.program ?? "") === "" ? null : DesktopEntries.byId(manager.program);
     }
 
     // Whether a manager can't read until Joel lets the launcher in.

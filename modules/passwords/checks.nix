@@ -133,7 +133,8 @@ onLinux {
   # its password reused and breached once every password is checked and
   # nothing before, those needing attention and the foot counting a copy
   # down are Passwords.js's, a manager's entries by vault and what its
-  # drawer says it holds Managers.js's, and For You's one to-do for what
+  # drawer says it holds and what the place's one row opens while it's off
+  # Managers.js's, and For You's one to-do for what
   # the last check found, whether it stands or is done, its side and its
   # weight, Checked.js's, run in Qt's own engine (tests/passwords.qml),
   # beside the launcher's own wording of how long ago (Ago.js) and of a
