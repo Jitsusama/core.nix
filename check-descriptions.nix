@@ -1400,9 +1400,10 @@
     its word, and the check refuses a stand-in name breaking each of its rules
   '';
   noise-cancelled-cleans-a-noisy-clip = ''
-    a person's voice recorded over a room's noise comes out of the noise-cancelled denoiser, on
-    the CPU, with the noise past it at least 10 dB quieter and the voice within 6 dB of how it
-    was spoken
+    a person's voice recorded over a room's noise comes out of each noise-cancelled cleaner, on
+    the CPU, with the noise past it as much quieter as the cleaner promises (10 dB for
+    DeepFilterNet, 6 for its gentle one and RNNoise), the voice within 6 dB of how it was
+    spoken, and the gentle one keeping more of the room than the full one
   '';
   noise-cancelled-switches-to-the-new-one = ''
     a switch restarts noise-cancelled after it reloads the units, so the microphones offered are

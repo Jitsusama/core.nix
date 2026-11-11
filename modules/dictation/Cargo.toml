@@ -16,6 +16,10 @@ calls = { path = "../calls" }
 # interface gives it what a stream asks for each cycle and target.object;
 # nixpkgs' PipeWire is 1.6.
 pipewire = { version = "0.10", features = ["v1_2_0"] }
+# RNNoise, the light one of the noise-cancelled microphone's cleaners, in
+# Rust alone with its weights built in; its defaults are its own command
+# line's.
+nnnoiseless = { version = "0.5", default-features = false }
 # Screenshots are PNGs, which screen-text reads the words of and meaning
 # looks at (picture.rs).
 png = "0.18"

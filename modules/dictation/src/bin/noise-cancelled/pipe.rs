@@ -29,7 +29,7 @@ use pw::stream::{StreamFlags, StreamListener, StreamRc};
 use pw::types::ObjectType;
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::denoise::{FRAME, RATE};
+use crate::denoise::{Cleaner, FRAME, RATE};
 use crate::worker::{Ends, Shared, Worker};
 
 /// What each source's node name starts with, so they're never taken for
@@ -70,7 +70,7 @@ impl Microphone {
 }
 
 /// Serves until PipeWire goes away.
-pub fn serve(models: &Path) -> Result<(), String> {
+pub fn serve(models: &Path, cleaner: Cleaner) -> Result<(), String> {
     pw::init();
     let main_loop = MainLoopRc::new(None).map_err(|why| format!("PipeWire's loop: {why}"))?;
     let context =
@@ -81,7 +81,7 @@ pub fn serve(models: &Path) -> Result<(), String> {
     let registry = core
         .get_registry_rc()
         .map_err(|why| format!("PipeWire's registry: {why}"))?;
-    let worker = Rc::new(Worker::start(models.to_path_buf())?);
+    let worker = Rc::new(Worker::start(models.to_path_buf(), cleaner)?);
     let pairs: Rc<RefCell<HashMap<u32, Pair>>> = Rc::default();
     // Each link from a source, by its id, to the microphone whose pair
     // the source is, so its going is known by its id alone.

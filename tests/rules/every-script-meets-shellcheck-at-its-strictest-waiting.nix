@@ -43,7 +43,6 @@
   "modules/niri-off-cpu/off-cpu-as-root.sh" = 2;
   "modules/niri-off-cpu/off-cpu-begun.sh" = 2;
   "modules/nix-daemon/tests/the-sandboxes-door-trusts-no-one.sh" = 1;
-  "modules/noise-cancelled/tests/a-noisy-clip-comes-out-clean.sh" = 2;
   "modules/open-with/tests/xdg-open-opens-each-kind.sh" = 1;
   "modules/open-with/xdg-open.sh" = 1;
   "modules/panel/refresh.sh" = 7;
