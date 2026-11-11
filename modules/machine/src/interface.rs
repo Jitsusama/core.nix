@@ -7,8 +7,9 @@ use serde_json::{Value, json};
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
 
-/// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 20] = [
+/// The kinds of record this daemon keeps: what it reads, then what it
+/// makes of them, a place's ready rows and its headline (`MADE`).
+pub const KINDS: [&str; 22] = [
     "processor",
     "memory",
     "disk",
@@ -29,7 +30,20 @@ pub const KINDS: [&str; 20] = [
     "camera",
     "kept",
     "profile",
+    "row",
+    "head",
 ];
+
+/// The kinds made of what's read rather than read themselves, each
+/// keyed by its place: `row:heat:processor:0`, `head:heat`.
+pub const MADE: [&str; 2] = ["row", "head"];
+
+/// The place a made record's key names: `heat` for `row:heat:fan:1`.
+pub fn place_of(key: &str) -> Option<&str> {
+    let (kind, rest) = key.split_once(':')?;
+    MADE.contains(&kind)
+        .then(|| rest.split_once(':').map_or(rest, |(place, _)| place))
+}
 
 /// The kind a key names: `disk` for `disk:nvme0n1`.
 pub fn kind_of(key: &str) -> Option<&str> {
@@ -53,11 +67,14 @@ pub enum Ask {
         id: Value,
         kinds: Vec<String>,
     },
-    /// Records of these kinds as they change, all of them or these keys.
+    /// Records of these kinds as they change, all of them or these keys,
+    /// and of the rows and headlines these places' alone, or every
+    /// place's.
     Watch {
         id: Value,
         kinds: Vec<String>,
         keys: Option<Vec<String>>,
+        places: Option<Vec<String>>,
     },
     Unwatch {
         id: Value,
@@ -124,6 +141,17 @@ pub fn ask(line: &str) -> Ask {
             .map(str::to_owned)
             .collect::<Vec<_>>()
     });
+    let places = match said.get("place") {
+        Some(Value::String(place)) => Some(vec![place.clone()]),
+        Some(Value::Array(places)) => Some(
+            places
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect(),
+        ),
+        _ => None,
+    };
     let named = || kinds(&said);
     match asked.as_str() {
         "hello" => Ask::Hello { id },
@@ -136,7 +164,12 @@ pub fn ask(line: &str) -> Ask {
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "watch" => match named() {
-            Ok(kinds) => Ask::Watch { id, kinds, keys },
+            Ok(kinds) => Ask::Watch {
+                id,
+                kinds,
+                keys,
+                places,
+            },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "unwatch" => Ask::Unwatch { id },
@@ -170,7 +203,8 @@ mod tests {
             Ask::Watch {
                 id: json!(1),
                 kinds: vec!["disk".into()],
-                keys: None
+                keys: None,
+                places: None
             }
         );
         let Ask::Watch { kinds, .. } =
@@ -183,6 +217,23 @@ mod tests {
             panic!("not a watch");
         };
         assert_eq!(kinds.len(), KINDS.len());
+    }
+
+    #[test]
+    fn a_watch_of_rows_names_its_place() {
+        let Ask::Watch { kinds, places, .. } =
+            ask(r#"{"id":1,"ask":"watch","kind":["row","head"],"place":"heat"}"#)
+        else {
+            panic!("not a watch");
+        };
+        assert_eq!(
+            (kinds, places),
+            (vec!["row".into(), "head".into()], Some(vec!["heat".into()]))
+        );
+        assert_eq!(
+            ["row:heat:fan:dell_smm:1", "head:heat", "sensor:coretemp"].map(place_of),
+            [Some("heat"), Some("heat"), None]
+        );
     }
 
     #[test]

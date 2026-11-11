@@ -8,8 +8,9 @@
 //! brightness and warmth the backlight program steers the screen to are
 //! told as it writes them, as are Keep Awake's locks and the machine's
 //! chosen profile; who has each camera is told as its file is; a charge
-//! limit set is told before it's answered; and an ask, act or kind it
-//! doesn't know is refused.
+//! limit set is told before it's answered; Heat's rows are made for a
+//! watch of their place and told as they move; and an ask, act or kind
+//! it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -237,6 +238,16 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, launcher: &[&str]) -> Running {
+        Running::started(test, launcher, None)
+    }
+
+    /// Handed the launcher's `words`, and a comma and a full stop for its
+    /// numbers.
+    fn worded(test: &str, words: &Value) -> Running {
+        Running::started(test, &[], Some(words))
+    }
+
+    fn started(test: &str, launcher: &[&str], words: Option<&Value>) -> Running {
         let folder = std::env::temp_dir().join(format!("machine-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let root = folder.join("root");
@@ -256,9 +267,18 @@ impl Running {
             None => Command::new(program),
         };
         // The session's folders, as paths on the machine under its root.
+        command.arg(&socket).arg(&root);
+        if let Some(words) = words {
+            let (vocabulary, numbers) = (folder.join("words.json"), folder.join("numbers.json"));
+            std::fs::write(&vocabulary, words.to_string()).unwrap();
+            std::fs::write(&numbers, r#"{"group": ",", "point": "."}"#).unwrap();
+            command
+                .arg("--words")
+                .arg(&vocabulary)
+                .arg("--numbers")
+                .arg(&numbers);
+        }
         command
-            .arg(&socket)
-            .arg(&root)
             .env("XDG_RUNTIME_DIR", "/run/user/1000")
             .env_remove("XDG_STATE_HOME")
             .env("HOME", "/home/joel")
@@ -494,6 +514,54 @@ fn the_sensors_zones_and_cooling_say_every_reading() {
     assert_eq!(throttled["package_longest_ms"], json!(129));
 }
 
+#[test]
+fn heats_rows_are_made_for_its_watch_and_told_as_they_move() {
+    let words = json!({ "things": [
+        { "id": "heat", "name": "Heat", "glyph": "heat", "said": {
+            "hottest": "{degrees} at the {part}", "stopped": "fans stopped",
+            "turning": "a fan turning", "turnings": "{count} fans turning" } },
+        { "id": "heat:processor", "name": "Processor" },
+        { "id": "heat:cpu-fan", "name": "Processor Fan" }
+    ] });
+    let running = Running::worded("rows", &words);
+    heat(&running.root());
+    let mut client = running.client();
+    let said = client
+        .ask(&json!({"id": "heat", "ask": "watch", "kind": ["row", "head"], "place": "heat"}));
+    let records = &said["records"];
+    let head = &record(records, "head:heat")["head"];
+    assert_eq!(head["said"], "79.0 \u{b0}C at the processor, a fan turning");
+    assert_eq!(head["graph"]["shape"], "bar");
+    let processor = &record(records, "row:heat:processor:0")["row"];
+    assert_eq!(processor["name"], "Processor");
+    assert_eq!(processor["side"][0]["said"], "79.0 \u{b0}C");
+    assert_eq!(
+        record(records, "row:heat:fan:cpu-fan:1")["row"]["name"],
+        "Processor Fan"
+    );
+    assert!(
+        records
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["kind"] == "row" || record["kind"] == "head"),
+        "only Heat's rows and headline: {records}"
+    );
+    // Another place's rows are another daemon's.
+    let mail = client.ask(&json!({"id": "mail", "ask": "watch", "kind": "row", "place": "mail"}));
+    assert_eq!(mail["records"], json!([]));
+    // As the processor warms, its row is told again within a read.
+    std::fs::write(
+        running
+            .root()
+            .join("sys/devices/platform/coretemp.0/hwmon/hwmon1/temp1_input"),
+        "85000\n",
+    )
+    .unwrap();
+    let warmer = client.changed("row:heat:processor:0");
+    assert_eq!(warmer["row"]["side"][0]["said"], "85.0 \u{b0}C");
+}
+
 /// A battery, a charger and a USB-C port with a charger in it, and the
 /// kernel's counts of the machine's sleeps.
 fn power(root: &Path) {
@@ -671,6 +739,51 @@ fn a_unit_the_shell_may_not_restart_is_refused() {
     assert_eq!(refused["error"]["code"], "not-allowed", "{refused}");
     let unnamed = client.ask(&json!({"id": 2, "ask": "act", "act": "restart-unit"}));
     assert_eq!(unnamed["error"]["code"], "bad-act", "{unnamed}");
+}
+
+#[test]
+fn powers_rows_are_made_for_its_watch_and_move_with_its_limit() {
+    let words = json!({ "things": [
+        { "id": "power", "name": "Battery", "said": { "battery": "on battery" } },
+        { "id": "power:charge", "name": "Charge" },
+        { "id": "power:limit", "name": "Charge Limit", "said": {
+            "both": "stops at {stop}%, starts below {start}%" } },
+        { "id": "power:limit:stop", "name": "Stop at {n}%", "said": { "chosen": "chosen" } }
+    ] });
+    let running = Running::worded("power-rows", &words);
+    power(&running.root());
+    let mut client = running.client();
+    let said = client
+        .ask(&json!({"id": "power", "ask": "watch", "kind": ["row", "head"], "place": "power"}));
+    let records = &said["records"];
+    let head = &record(records, "head:power")["head"];
+    assert_eq!(head["said"], "80% \u{b7} on battery");
+    assert_eq!(
+        record(records, "row:power:charge")["row"]["side"][0]["said"],
+        "80%"
+    );
+    let limit = &record(records, "row:power:limit")["row"];
+    assert_eq!(limit["side"][0]["said"], "stops at 80%, starts below 75%");
+    assert!(
+        records
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["key"]
+                .as_str()
+                .is_some_and(|key| key.contains(":power"))),
+        "only Power's rows and headline: {records}"
+    );
+    // A limit set is told on its row before the act is answered.
+    client.send(
+        &json!({"id": 2, "ask": "act", "act": "charge-limit", "supply": "BAT0",
+        "stop_pct": 60}),
+    );
+    let moved = client.changed("row:power:limit");
+    assert_eq!(
+        moved["row"]["side"][0]["said"],
+        "stops at 60%, starts below 55%"
+    );
 }
 
 #[test]
