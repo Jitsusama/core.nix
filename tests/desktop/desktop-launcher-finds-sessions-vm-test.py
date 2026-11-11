@@ -27,12 +27,15 @@ from desktop_session import (
     PI_PRESENCE,
     PI_WINDOW,
     SHELL_STARTS,
+    focus_given,
     kept,
     laid_out,
     lighthouse_listed,
     listed_quest,
     quests_listed,
     started_apart,
+    watch_the_focus,
+    window_box,
 )
 from PIL import Image, ImageChops
 
@@ -1179,43 +1182,6 @@ def apart_as_kept(back: dict[str, tuple[int, int]]) -> bool:
     if len(back) != 2:  # noqa: PLR2004
         return False
     return back["01c8-far"][0] == back["01c8-near"][0] + 1
-
-
-def watch_the_focus(desktop: Desktop) -> None:
-    """Keep what niri says from now on, to read what it focused with focus_given."""
-    desktop.as_account(
-        "setsid sh -c 'niri msg --json event-stream > ~/focus-events' > /dev/null 2>&1 &"
-    )
-    desktop.machine.wait_until_succeeds(desktop.in_session("[ -s ~/focus-events ]"))
-
-
-def focus_given(desktop: Desktop) -> tuple[list[int | None], list[int]]:
-    """Give each window and each workspace niri focused since watch_the_focus, in order."""
-    said = [json.loads(line) for line in desktop.as_account("cat ~/focus-events").splitlines()]
-    windows = [one["WindowFocusChanged"]["id"] for one in said if "WindowFocusChanged" in one]
-    workspaces = [
-        one["WorkspaceActivated"]["id"]
-        for one in said
-        if one.get("WorkspaceActivated", {}).get("focused")
-    ]
-    return windows, workspaces
-
-
-def window_box(desktop: Desktop, window: int) -> tuple[int, int, int, int]:
-    """Give where a window shows on its screen, in the screen's pixels: x, y, width, height."""
-    shown = next(one for one in desktop.windows() if one["id"] == window)
-    layout = shown["layout"]
-    output = json.loads(desktop.as_account("niri msg --json focused-output"))
-    scale = float(output["logical"]["scale"])
-    x, y = layout["tile_pos_in_workspace_view"]
-    dx, dy = layout["window_offset_in_tile"]
-    width, height = layout["window_size"]
-    return (
-        round((x + dx) * scale),
-        round((y + dy) * scale),
-        round(width * scale),
-        round(height * scale),
-    )
 
 
 def record_the_screen(desktop: Desktop) -> None:

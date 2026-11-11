@@ -26,12 +26,16 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import PI_PRESENCE, SHELL_STARTS
+from desktop_session import (
+    PI_PRESENCE,
+    SHELL_STARTS,
+    focus_given,
+    watch_the_focus,
+    window_box,
+)
 from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
@@ -58,13 +62,6 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    desktop.launcher_left_closed()
-
-
 def test_a_session_moving_into_its_host_keeps_its_window_and_every_key(
     desktop: Desktop,
 ) -> None:
@@ -76,9 +73,9 @@ def test_a_session_moving_into_its_host_keeps_its_window_and_every_key(
     """
     machine = desktop.machine
     session = "01d1-moves"
-    window = opened_held(desktop, session)
-    before = go_to_from_elsewhere(desktop, session, window["id"])
     try:
+        window = opened_held(desktop, session)
+        before = go_to_from_elsewhere(desktop, session, window["id"])
         box, watching = watched_while_typing(desktop, session, window["id"])
         kept = desktop.as_account(f"qs ipc call sessions keepPlace {session}").strip()
         assert kept != "", "the launcher kept no place"
@@ -116,8 +113,8 @@ def test_a_session_its_host_wont_take_carries_on_as_plain_pi_in_its_window(
     Only that one program runs for the session then, so its log has one writer.
     """
     session = "01d1-refused"
-    window = opened_held(desktop, session)
     try:
+        window = opened_held(desktop, session)
         box, watching = watched_while_typing(desktop, session, window["id"])
         moved_to_the_join(desktop, session)
         desktop.as_account(f"touch ~/refused-{session}")
@@ -328,7 +325,7 @@ def node_row(desktop: Desktop, session: str) -> dict[str, Any]:
         rows += ok.get("Sessions", []) if isinstance(ok, dict) else []
     found = [row for row in rows if row.get("presence", {}).get("session") == session]
     assert found, f"the node lists no {session}: {rows}"
-    return cast("dict[str, Any]", found[0])
+    return found[0]
 
 
 def title_of(session: str) -> str:
@@ -376,7 +373,11 @@ def says_hosted(desktop: Desktop, session: str, host: int) -> None:
 
 
 def cleaned(desktop: Desktop, session: str) -> None:
-    """Stop the typing, the recorder and the session's programs, and take away what they left."""
+    """Stop the typing, the recorder and the session's programs, and take away what they left.
+
+    The launcher closes too, so a test failing with it open fails alone.
+    """
+    desktop.launcher_left_closed()
     desktop.as_account(
         f"touch ~/typing-done ~/move-{session} ~/refused-{session}; pkill -f 'event-strea[m]';"
         " pkill -INT -x wf-recorder; pkill -f 'sleep 60[1]';"
@@ -387,46 +388,6 @@ def cleaned(desktop: Desktop, session: str) -> None:
     desktop.as_account(
         f"rm -rf ~/{session} ~/typed-{session} ~/move-{session} ~/hosted-{session}"
         f" ~/refused-{session} ~/typing-done ~/typing-count ~/focus-events"
-    )
-
-
-def watch_the_focus(desktop: Desktop) -> None:
-    """Keep what niri says from now on, to read what it focused with focus_given."""
-    desktop.as_account(
-        "setsid sh -c 'niri msg --json event-stream > ~/focus-events' > /dev/null 2>&1 &"
-    )
-    desktop.machine.wait_until_succeeds(desktop.in_session("[ -s ~/focus-events ]"))
-
-
-def focus_given(desktop: Desktop) -> tuple[list[int | None], list[int]]:
-    """Give each window and each workspace niri focused since watch_the_focus, in order.
-
-    The stream opens by saying what is focused already, which is the session's window.
-    """
-    said = [json.loads(line) for line in desktop.as_account("cat ~/focus-events").splitlines()]
-    windows = [one["WindowFocusChanged"]["id"] for one in said if "WindowFocusChanged" in one]
-    workspaces = [
-        one["WorkspaceActivated"]["id"]
-        for one in said
-        if one.get("WorkspaceActivated", {}).get("focused")
-    ]
-    return windows, workspaces
-
-
-def window_box(desktop: Desktop, window: int) -> tuple[int, int, int, int]:
-    """Give where a window shows on its screen, in the screen's pixels: x, y, width, height."""
-    shown = next(one for one in desktop.windows() if one["id"] == window)
-    layout = shown["layout"]
-    output = json.loads(desktop.as_account("niri msg --json focused-output"))
-    scale = float(output["logical"]["scale"])
-    x, y = layout["tile_pos_in_workspace_view"]
-    dx, dy = layout["window_offset_in_tile"]
-    width, height = layout["window_size"]
-    return (
-        round((x + dx) * scale),
-        round((y + dy) * scale),
-        round(width * scale),
-        round(height * scale),
     )
 
 
