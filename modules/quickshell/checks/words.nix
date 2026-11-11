@@ -46,6 +46,7 @@
         "machine.json" = ../../machine/tests/words.json;
         "people.json" = ../../people/tests/words.json;
         "slack.json" = ../../slack/tests/words.json;
+        "sound.json" = ../../sound/tests/words.json;
         "to-do.json" = ../../to-do/tests/words.json;
         "whereabouts.json" = ../whereabouts/tests/words.json;
         "wifid.json" = ../../wifid/daemon/tests/words.json;
