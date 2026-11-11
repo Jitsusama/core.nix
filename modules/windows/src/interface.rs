@@ -89,6 +89,11 @@ pub enum Ask {
     Health {
         id: Value,
     },
+    /// Asks niri for its screens again, as after the shell changed one,
+    /// which niri's stream says nothing of.
+    Look {
+        id: Value,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -183,6 +188,7 @@ pub fn ask(line: &str) -> Ask {
         },
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
+        "look" => Ask::Look { id },
         _ => Ask::Unknown { id, ask: asked },
     }
 }

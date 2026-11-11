@@ -146,13 +146,13 @@
       touch $out
     '';
 
-  # The launcher's Screens, asked of niri anew at every workspace change and
-  # opening, makes no screen's row again while niri's answer reads the same,
-  # and draws a screen that changed as it now stands (tests/displays.qml),
-  # with niri stood in.
+  # The launcher's Screens draws each screen's row as the windows daemon
+  # serves it, makes again only the row a change names, and asks the daemon
+  # to look again once it's changed a screen itself (tests/displays.qml),
+  # with the daemon and niri stood in.
   the-launcher-remakes-only-the-screens-that-changed =
     let
-      # A panel and a monitor, answered anew at each ask, as niri does.
+      # niri as Screens still asks it, a change to a screen answered.
       niri = ../tests/stand-ins/displays-niri.qml;
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
@@ -173,6 +173,11 @@
       cp ${../launcher/Order.js} launcher/Order.js
       cp ${../launcher/Plate.js} launcher/Plate.js
       cp ${../launcher/Power.js} launcher/Power.js
+      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
+      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
+      cp ${../launcher/Ago.js} launcher/Ago.js
+      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
+      cp ${../When.js} When.js
       cp ${../launcher/ScreenAnswers.js} launcher/ScreenAnswers.js
       cp ${../launcher/Screens.js} launcher/Screens.js
       cp ${../launcher/Seen.js} launcher/Seen.js
@@ -183,7 +188,7 @@
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/daemons
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

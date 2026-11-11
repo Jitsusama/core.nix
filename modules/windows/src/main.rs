@@ -19,8 +19,9 @@
 //! Handed the launcher's words (`--words`, its words.json), it serves
 //! the launcher's Screens too, as rows of kind `row` in place `displays`
 //! (screens.rs), asking niri for its outputs as the stream begins and at
-//! each workspace change, since niri says nothing of a screen itself.
-//! Handed none, it makes no rows.
+//! each workspace change, since niri says nothing of a screen itself,
+//! and again when asked to `look`, as the shell does once it's changed a
+//! screen. Handed none, it makes no rows.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -102,6 +103,8 @@ struct Daemon {
 struct Shared {
     daemon: Mutex<Daemon>,
     folders: Vec<PathBuf>,
+    /// niri's socket, asked for its outputs when a client asks to look.
+    niri: PathBuf,
 }
 
 fn main() {
@@ -117,13 +120,7 @@ fn main() {
         eprintln!("usage: windows SOCKET [--words FILE]");
         std::process::exit(64);
     };
-    let words = words.and_then(|path| match worded(Path::new(&path)) {
-        Ok(words) => Some(words),
-        Err(why) => {
-            eprintln!("<3>the launcher's words in {path} won't do, so no rows: {why}");
-            None
-        }
-    });
+    let words = words.map(|path| worded(Path::new(&path)));
     let Some(niri) = std::env::var_os("NIRI_SOCKET").map(PathBuf::from) else {
         eprintln!("<3>NIRI_SOCKET isn't set, so there's no niri to hear");
         std::process::exit(78);
@@ -154,6 +151,7 @@ fn main() {
             since: now_ms(),
         }),
         folders,
+        niri: niri.clone(),
     });
     // The entries' folders are watched before niri is heard, so no change
     // after the first reading goes unheard.
@@ -177,11 +175,26 @@ fn main() {
     }
 }
 
-/// The words a screen's row is said in, from the launcher's words.json.
-fn worded(path: &Path) -> Result<screens::Words, String> {
-    let read = std::fs::read_to_string(path).map_err(|why| why.to_string())?;
-    let vocabulary = serde_json::from_str(&read).map_err(|why| why.to_string())?;
-    screens::Words::read(&vocabulary)
+/// The words a screen's row is said in, from the launcher's words.json,
+/// each it lacks said by its id and warned of once, here.
+fn worded(path: &Path) -> screens::Words {
+    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
+    let vocabulary =
+        read.and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string()));
+    let (words, lacked) = screens::Words::read(vocabulary.as_ref().unwrap_or(&Value::Null));
+    if let Err(why) = &vocabulary {
+        eprintln!(
+            "<4>couldn't read the words in {}, so Screens says ids: {why}",
+            path.display()
+        );
+    } else if !lacked.is_empty() {
+        eprintln!(
+            "<4>the words in {} lack {}, said by id",
+            path.display(),
+            lacked.join(", ")
+        );
+    }
+    words
 }
 
 /// The socket systemd holds for it (windows.socket), or, run by hand,
@@ -525,6 +538,21 @@ fn answer(
                 "watches": daemon.watches.len(),
                 "took_us": daemon.took.iter().collect::<Vec<_>>(),
             })
+        }
+        Ask::Look { id } => {
+            // Asked before the lock is taken, so no other ask waits on
+            // niri, and only where rows are made. What moved is told each
+            // watch before this answer, so a client watching on the same
+            // connection holds the new rows once it's answered.
+            let rowed = lock(&shared.daemon).words.is_some();
+            if let Some(outputs) = rowed.then(|| screens::asked(&shared.niri)).flatten() {
+                let mut daemon = lock(&shared.daemon);
+                if daemon.outputs != outputs {
+                    daemon.outputs = outputs;
+                    refresh(&mut daemon);
+                }
+            }
+            json!({"id": id, "looked": rowed})
         }
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))

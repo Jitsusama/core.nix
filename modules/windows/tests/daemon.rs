@@ -496,6 +496,47 @@ fn a_watch_of_screens_is_told_each_screens_row_and_only_those_a_change_moved() {
 }
 
 #[test]
+fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() {
+    let running = Running::worded("look", &json!({"eDP-1": screen("BOE", Some(2.0))}));
+    let mut client = running.daemon.client();
+    loop {
+        let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
+            "place": "displays"}));
+        if said["records"]
+            .as_array()
+            .is_some_and(|records| records.len() == 2)
+        {
+            break;
+        }
+        client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    }
+    // Scaled by the shell, niri's stream says nothing; asked to look, the
+    // daemon asks niri, and its row is told before the look is answered.
+    running
+        .niri
+        .shows(&json!({"eDP-1": screen("BOE", Some(1.5))}));
+    let looked = running
+        .daemon
+        .client()
+        .ask(&json!({"id": 2, "ask": "look"}));
+    assert_eq!(
+        looked["looked"], true,
+        "a daemon making rows looks: {looked}"
+    );
+    let said = client.heard();
+    assert_eq!(keys(&said), ["row:displays:display:eDP-1"]);
+    let row = &said["changed"][0]["row"];
+    assert_eq!(
+        row["note"], "2880 \u{d7} 1920 \u{b7} 120 Hz \u{b7} scale 1.5\u{d7}",
+        "the new scale is said: {said}"
+    );
+    assert_eq!(
+        row["held"]["niri"]["logical"]["scale"], 1.5,
+        "the shell's acts read niri's record as it is now: {said}"
+    );
+}
+
+#[test]
 fn an_ask_or_kind_it_doesnt_know_is_refused() {
     let running = Running::new("refused");
     let mut client = running.daemon.client();

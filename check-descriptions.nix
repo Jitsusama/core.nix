@@ -2661,9 +2661,8 @@
     path, and the reader's drawer says how many files are still to finish
   '';
   the-launcher-remakes-only-the-screens-that-changed = ''
-    the launcher's Screens, asking niri again at every workspace change and opening, makes no
-    screen's row again while niri's answer reads the same, and draws a screen that changed as it
-    now stands
+    the launcher's Screens draws each screen's row as the windows daemon serves it, makes again
+    only the row a change names, and asks the daemon to look again once it's changed a screen
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows, as the windows daemon tells of them, list This Window, then the rest

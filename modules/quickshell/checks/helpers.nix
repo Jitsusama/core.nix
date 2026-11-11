@@ -287,8 +287,10 @@ let
           "MACHINE=${lib.getExe machine}"
           # And the words it says Machine's rows in, as the account's has.
           "MACHINE_WORDS=${../launcher/words.json}"
-          # The windows come from theirs, hearing the nested niri.
+          # The windows come from theirs, hearing the nested niri, and the
+          # screens' rows in the words the account's has too.
           "WINDOWS=${lib.getExe windows}"
+          "WINDOWS_WORDS=${../launcher/words.json}"
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given

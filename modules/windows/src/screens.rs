@@ -6,8 +6,11 @@
 //! they change when a screen comes or goes (Displays.qml asked the same).
 //!
 //! Each row holds what the shell's own acts need of its screen (`held`:
-//! its connector and how it stands), since turning a screen on or
-//! focusing it is asked of niri by the shell until those acts move here.
+//! its connector, how it stands and niri's whole record of it), since
+//! its settings, its drawer and every act on it are the shell's until
+//! they move here, and the shell asks niri nothing of its own. A change
+//! the shell makes to a screen says nothing in niri's stream, so it asks
+//! this daemon to look again (main.rs's `look`).
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -49,44 +52,46 @@ struct Sleep {
 }
 
 impl Words {
-    /// The words a screen's row is said in, or which the vocabulary
-    /// lacks.
-    pub fn read(vocabulary: &Value) -> Result<Words, String> {
+    /// The words a screen's row is said in, and what the vocabulary
+    /// lacks. A word it lacks is said as its id, and a glyph it lacks is
+    /// none, so Screens keeps its rows and what they do rather than
+    /// showing none for want of a word, as the sound daemon does.
+    pub fn read(vocabulary: &Value) -> (Words, Vec<String>) {
         let things: BTreeMap<&str, &Value> = vocabulary["things"]
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(|thing| Some((thing["id"].as_str()?, thing)))
             .collect();
-        let thing = |id: &str| {
-            things
-                .get(id)
-                .copied()
-                .ok_or_else(|| format!("the vocabulary has no {id}"))
-        };
-        let word = |id: &str, path: &[&str]| -> Result<String, String> {
-            let mut at = thing(id)?;
+        let lacked = std::cell::RefCell::new(Vec::new());
+        let found = |id: &str, path: &[&str]| -> Option<String> {
+            let mut at = *things.get(id)?;
             for step in path {
                 at = &at[*step];
             }
-            at.as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| format!("the vocabulary's {id} has no {}", path.join(".")))
+            at.as_str().map(str::to_owned)
         };
-        let said = |key: &str| word("displays", &["said", key]);
-        Ok(Words {
-            built_in: word("displays:built-in", &["name"])?,
-            dark: said("dark")?,
-            off: said("off")?,
-            focused: said("focused")?,
-            hub_on: said("hubOn")?,
-            scale_at: said("scaleAt")?,
+        let word = |id: &str, path: &[&str], unsaid: &str| {
+            found(id, path).unwrap_or_else(|| {
+                lacked.borrow_mut().push(format!("{id} {}", path.join(".")));
+                unsaid.to_owned()
+            })
+        };
+        let said = |key: &str| word("displays", &["said", key], key);
+        let words = Words {
+            built_in: word("displays:built-in", &["name"], "displays:built-in"),
+            dark: said("dark"),
+            off: said("off"),
+            focused: said("focused"),
+            hub_on: said("hubOn"),
+            scale_at: said("scaleAt"),
             sleep: Sleep {
-                name: word("displays:sleep", &["name"])?,
-                glyph: word("displays:sleep", &["glyph"])?,
-                note: word("displays:sleep", &["said", "note"])?,
+                name: word("displays:sleep", &["name"], "displays:sleep"),
+                glyph: word("displays:sleep", &["glyph"], ""),
+                note: word("displays:sleep", &["said", "note"], "note"),
             },
-        })
+        };
+        (words, lacked.into_inner())
     }
 }
 
@@ -230,7 +235,8 @@ pub fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Wo
                 "depth": 0,
                 "side": side.into_iter().map(|said| json!({"said": said})).collect::<Vec<_>>(),
                 "note": note,
-                "held": {"output": name, "standing": stands, "builtIn": built_in(name)},
+                "held": {"output": name, "standing": stands, "builtIn": built_in(name),
+                    "niri": output},
             })
         })
         .collect();
@@ -263,7 +269,9 @@ mod tests {
     }
 
     fn words() -> Words {
-        Words::read(&vocabulary()).expect("the words read")
+        let (words, lacked) = Words::read(&vocabulary());
+        assert!(lacked.is_empty(), "the test's words lack {lacked:?}");
+        words
     }
 
     /// A screen as niri says one: lit at its first mode, unless `logical`
@@ -316,6 +324,11 @@ mod tests {
             "2560 \u{d7} 1600 \u{b7} 59.951 Hz \u{b7} scale 1.75\u{d7}"
         );
         assert_eq!(rows[0]["held"]["output"], "eDP-1");
+        assert_eq!(
+            rows[0]["held"]["niri"],
+            desk()["eDP-1"],
+            "the shell's acts read niri's whole record of the screen"
+        );
         assert_eq!(rows[3]["key"], "row:displays:sleep");
         assert_eq!(rows[3]["note"], "a key wakes them");
     }
@@ -372,15 +385,38 @@ mod tests {
     }
 
     #[test]
-    fn a_vocabulary_without_a_word_says_which() {
+    fn a_vocabulary_without_a_word_says_it_by_its_id_and_which() {
         let mut vocabulary = vocabulary();
         vocabulary["things"][0]["said"]
             .as_object_mut()
             .expect("said")
             .remove("hubOn");
+        let (words, lacked) = Words::read(&vocabulary);
+        assert_eq!(words.hub_on, "hubOn", "a word lacked isn't said by its id");
         assert_eq!(
-            Words::read(&vocabulary),
-            Err("the vocabulary's displays has no said.hubOn".to_owned())
+            words.dark,
+            self::words().dark,
+            "a word held isn't said as held"
+        );
+        assert_eq!(lacked, vec!["displays said.hubOn".to_owned()]);
+    }
+
+    #[test]
+    fn no_vocabulary_still_words_every_row_by_its_ids() {
+        let (words, lacked) = Words::read(&Value::Null);
+        assert_eq!(
+            words.built_in, "displays:built-in",
+            "the built-in isn't named by its id"
+        );
+        assert_eq!(
+            words.sleep.name, "displays:sleep",
+            "Sleep isn't named by its id"
+        );
+        assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
+        assert_eq!(
+            lacked.len(),
+            9,
+            "not every word lacked was said: {lacked:?}"
         );
     }
 
@@ -392,8 +428,7 @@ mod tests {
         };
         let read = std::fs::read_to_string(path).expect("the launcher's words read");
         let vocabulary: Value = serde_json::from_str(&read).expect("the words are JSON");
-        if let Err(why) = Words::read(&vocabulary) {
-            panic!("the launcher's words lack one: {why}");
-        }
+        let (_, lacked) = Words::read(&vocabulary);
+        assert!(lacked.is_empty(), "the launcher's words lack {lacked:?}");
     }
 }
