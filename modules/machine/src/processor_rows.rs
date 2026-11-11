@@ -305,19 +305,19 @@ impl Cpu<'_> {
         if clocks.is_empty() {
             return None;
         }
-        let mean = mean(&clocks);
+        let average = mean(&clocks);
         let tops = khz_of(cores, "max_khz");
         let most = if tops.is_empty() { 0.0 } else { mean(&tops) };
         let (graph, note) = if most > 0.0 {
             let most_said = self.ghz(most);
             (
-                Some(bar(mean / most, false)),
+                Some(bar(average / most, false)),
                 self.say.says("cpu:clock", "of", &[("most", &most_said)]),
             )
         } else {
             (None, self.say.says("cpu:clock", "mean", &[]))
         };
-        let made = self.figure("clock", self.ghz(mean), graph, note);
+        let made = self.figure("clock", self.ghz(average), graph, note);
         Some(self.holder(made, self.clock_parts(cores)))
     }
 
@@ -786,7 +786,10 @@ mod tests {
         made.inside
             .iter()
             .find(|part| part.id == id)
-            .unwrap_or_else(|| panic!("no {id} among {:?}", made.inside))
+            .unwrap_or_else(|| {
+                let ids: Vec<&str> = made.inside.iter().map(|part| part.id.as_str()).collect();
+                panic!("no {id} among {ids:?}")
+            })
     }
 
     fn said(made: &Made) -> &str {
