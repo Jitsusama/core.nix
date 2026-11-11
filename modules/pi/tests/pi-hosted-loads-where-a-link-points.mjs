@@ -5,7 +5,15 @@
 // given, and a host's import of it failed with ENOENT on the old copy's helper.
 // Run as: node THIS PI_ROOT, the built package's pi-monorepo folder.
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -22,9 +30,10 @@ assert.ok(loaderModule, `no extension loader under ${root}`);
 const { clearExtensionCache, loadExtensions } = await import(pathToFileURL(loaderModule).href);
 
 const folder = mkdtempSync(join(tmpdir(), "pi-hosted-link-"));
-// Each copy names itself through a helper beside it, as the harness's
-// extensions import their own modules, so a load that resolved the helper
-// through the gone copy fails rather than passing on the entry alone.
+// Each copy names itself through a helper beside it, imported as its built
+// name, as the harness's extensions and Shopify's proxy import their own, so
+// a load that resolved the helper through the gone copy fails rather than
+// passing on the entry alone.
 const copy = (name) => {
   const where = join(folder, "copies", name);
   mkdirSync(where, { recursive: true });
@@ -32,16 +41,18 @@ const copy = (name) => {
   writeFileSync(
     join(where, "index.ts"),
     [
-      'import { copy } from "./helper.ts";',
+      'import { copy } from "./helper.js";',
       "export default function (pi) {",
-      '  pi.registerCommand(`from-${copy}`, { description: copy, handler: async () => {} });',
+      '  pi.registerCommand("from-" + copy, { description: copy, handler: async () => {} });',
       "}",
       "",
     ].join("\n"),
   );
   return where;
 };
-const link = join(folder, "extension");
+const link = join(folder, "extensions", "linked");
+mkdirSync(join(folder, "extensions"));
+// The entry as pi's discovery names it, through the link.
 const entry = join(link, "index.ts");
 const commandsOf = (loaded) => loaded.extensions.flatMap((one) => [...one.commands.keys()]);
 
@@ -50,11 +61,11 @@ const before = await loadExtensions([entry], folder);
 assert.deepEqual(before.errors, [], "the first copy didn't load through its link");
 assert.deepEqual(commandsOf(before), ["from-first"]);
 
-// A harness update: the link moves to the new copy and the old one goes, as a
-// package swap removes the versions no pi runs. A reload starts with an empty
-// extension cache.
-rmSync(link);
-symlinkSync(copy("second"), link);
+// A harness update: the link moves to the new copy in one rename and the old
+// copy goes, as a package swap removes the versions no pi runs. A reload
+// starts with an empty extension cache.
+symlinkSync(copy("second"), `${link}.next`);
+renameSync(`${link}.next`, link);
 rmSync(join(folder, "copies", "first"), { recursive: true });
 clearExtensionCache();
 
