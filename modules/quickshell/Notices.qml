@@ -259,7 +259,11 @@ Singleton {
                 continue;
             const id = notice.id;
             const was = made[id];
-            made[id] = madeOf(notice);
+            // Kept as it was while what the history holds of it is the
+            // same, so a change it doesn't hold, such as its card resting,
+            // remakes no reader's row of it.
+            const now = madeOf(notice);
+            made[id] = was && JSON.stringify(was) === JSON.stringify(now) ? was : now;
             if (notice.live) {
                 nowLive[id] = LiveNotice.of(notice, said => daemon.ask(said),
                     then => Quickshell.activationToken(then));
