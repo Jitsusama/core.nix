@@ -20,9 +20,13 @@
 //! (ask.rs), so the shell can do everything on one connection.
 //!
 //! Each piece of mail that wants Joel is also a `row:mail:<id>` record,
-//! and each document a `row:documents:<id>`, the row the launcher shows
-//! for it, worded in the vocabulary this program is handed (`rows.rs`,
-//! `document_rows.rs`), so the shell makes no rows of its own; a `list` or
+//! each in Mail's Recent a `row:lately:<id>`, each document a
+//! `row:documents:<id>`, each meeting to come a `row:calendar:<id>`,
+//! each held lately in Calendar's Recent a `row:held:<id>` and each call
+//! in Meet's Recent a `row:meet:<code>`, the row the launcher shows for
+//! it, worded in the vocabulary this program is handed (`rows.rs`,
+//! `document_rows.rs`, `calendar_rows.rs`), so the shell makes no rows
+//! of its own; a `list` or
 //! `watch` of rows names its `place`, one or a list of them, to hear only
 //! those. Each row's drawer is a `drawer:<place>:<id>` record of its own,
 //! which the row names, watched by its key only while it shows, so a
@@ -46,10 +50,12 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
+use jiff::tz::TimeZone;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::ask;
+use crate::calendar_rows;
 use crate::document_rows;
 use crate::drive::Drive;
 use crate::files::Fetched;
@@ -125,23 +131,41 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
 }
 
 /// Every ready row the state makes, in each place's order, as records
-/// keyed as rows.rs keys them, each its row under `row`.
-fn rows_of(state: &State, words: &Vocabulary) -> Vec<(String, Value)> {
+/// keyed as rows.rs keys them, each its row under `row`, at `now` on
+/// Joel's clock, which says which meetings are over.
+fn rows_of(state: &State, words: &Vocabulary, now: i64) -> Vec<(String, Value)> {
+    let zone = TimeZone::system();
+    let (meetings, held) = (&state.meetings, &state.held);
     let rows = rows::mail(&state.mail, &words.mail)
         .into_iter()
+        .chain(rows::lately(&state.lately, &state.mail, &words.mail))
         .chain(document_rows::documents(&state.documents, &words.documents))
+        .chain(calendar_rows::meetings(
+            meetings,
+            held,
+            now,
+            &zone,
+            &words.calendar,
+        ))
         .map(|row| {
             let key = row["key"].as_str().unwrap_or_default().to_owned();
             let record = json!({"key": key, "kind": "row", "row": row});
             (key, record)
         });
     let drives = &state.drive.places.drives.files;
-    let drawers = rows::mail_drawers(&state.mail, &words.mail)
+    let drawers = rows::mail_drawers(&state.mail, &state.lately, &words.mail)
         .into_iter()
         .chain(document_rows::drawers(
             &state.documents,
             drives,
             &words.documents,
+        ))
+        .chain(calendar_rows::drawers(
+            meetings,
+            held,
+            now,
+            &zone,
+            &words.calendar,
         ))
         .map(|(key, drawer)| {
             let record = json!({"key": key, "kind": "drawer", "drawer": drawer});
@@ -268,7 +292,7 @@ impl Daemon {
         let before = word(held.state.as_ref());
         let mut made = records(state);
         if let Some(words) = &held.words {
-            made.extend(rows_of(state, words));
+            made.extend(rows_of(state, words, now));
         }
         let mut changed = Vec::new();
         let mut order = Vec::with_capacity(made.len());

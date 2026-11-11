@@ -15,6 +15,7 @@ pub mod account;
 pub mod api;
 pub mod ask;
 pub mod calendar;
+pub mod calendar_rows;
 pub mod daemon;
 pub mod document_rows;
 pub mod done;
