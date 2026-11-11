@@ -88,6 +88,18 @@ function workspaceOf(record) {
     };
 }
 
+// Whether an app id is a kitty window opened for a session, as the windows
+// daemon's app_of judges it (modules/windows/src/desktop.rs), for niri's own
+// stream to agree: pi-spawned or pi-session, bare or with a number, or a
+// hosted conversation's viewer, pi-hosted with its session's id of letters,
+// digits and dashes (Sessions.qml's viewerOf). A bare pi-hosted is a program
+// of its own.
+const NUMBERED_SESSION = /^pi-(?:spawned|session)(?:\.[0-9]+)?$/;
+const HOSTED_VIEWER = /^pi-hosted\.[A-Za-z0-9-]+$/;
+function isSessionApp(app) {
+    return NUMBERED_SESSION.test(app) || HOSTED_VIEWER.test(app);
+}
+
 function kindOf(key) {
     const at = String(key).indexOf(":");
     return at < 0 ? [String(key), ""] : [key.slice(0, at), key.slice(at + 1)];

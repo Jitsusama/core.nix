@@ -153,5 +153,15 @@ QtObject {
         Expect.same("a window closed is said", told.closed, [3]);
         Expect.expect("and is a change a list shows", told.listed, "it isn't");
         Expect.expect("and is let go", !(3 in held.windows), "it's still held");
+
+        // niri's own stream judges a session's window as the daemon does.
+        const apps = ["pi-session", "pi-session.3", "pi-spawned.12",
+            "pi-hosted.01a1be5c-fff0-70a1-9301-f505d5634bf6", "pi-hosted", "pi-hosted.",
+            "pi-hosted.a b", "pi-hosted.a_b", "pi-session.x", "kitty"];
+        const sessions = [];
+        for (const app of apps)
+            sessions.push(NiriRecords.isSessionApp(app));
+        Expect.same("a hosted viewer is a session's window, a bare pi-hosted isn't", sessions,
+            [true, true, true, true, false, false, false, false, false, false]);
     }
 }
