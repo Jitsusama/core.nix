@@ -13,6 +13,16 @@
 // The compositor's time is 32 bits of milliseconds, which wrap every 49.7
 // days, so it's widened against the clock now: a press is always handled
 // within 49 days of its making.
+//
+// A held key's repeats are Qt's own, made on its timer as the compositor's
+// repeat rate says, and Qt gives every one the time the key first went
+// down (qwaylandinputdevice.cpp's mRepeatKey.time). So a repeat is timed
+// from when Qt made it instead: timed from the press, a held arrow's
+// twentieth step read 790 ms from its key though it was drawn in 13, and
+// put Joel's median at 375 ms (2026-11-11, 09:38).
+//
+// keytimes_test.cpp holds it to both.
+
 #include "keytimes.h"
 
 #include <QCoreApplication>
@@ -45,10 +55,15 @@ bool KeyTimes::eventFilter(QObject *watched, QEvent *event) {
         const auto stamp = static_cast<std::uint32_t>(static_cast<QInputEvent *>(event)->timestamp());
         const double now = monotonicNow();
         const auto since = static_cast<std::uint32_t>(static_cast<std::uint64_t>(now)) - stamp;
+        const bool repeat =
+            type == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->isAutoRepeat();
         // A key a program typed can come with no time, as wtype's do in the
         // test machine, which widened would read as pressed a moment after
         // the clock began; it's a press of unknown time instead.
-        handling = stamp == 0 ? 0 : now - static_cast<double>(since);
+        if (stamp == 0)
+            handling = 0;
+        else
+            handling = repeat ? now : now - static_cast<double>(since);
         const quint64 press = ++presses;
         QMetaObject::invokeMethod(
             this,
