@@ -39,6 +39,9 @@
 // lists them as its `questions`, best first, and answers each read
 // plainly; the start of one, three letters or more, shows its answer too,
 // asked by the first it starts, so a word half remembered still finds it.
+//
+// Long because it's the one shape every source is written to: split, a
+// source's author would read half of what it promises and miss the rest.
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
