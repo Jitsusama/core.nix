@@ -773,8 +773,9 @@ def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
         shell.down_to("To Look At")
         shell.step_in()
         shell.launcher_until(
-            lambda shown: shown["path"][-1:] == ["To Look At"]
-            and len(shown["rows"]) >= LOOKS_WAITING
+            lambda shown: (
+                shown["path"][-1:] == ["To Look At"] and len(shown["rows"]) >= LOOKS_WAITING
+            )
         )
         shell.normal()
         with shell.told("ask ready"):
