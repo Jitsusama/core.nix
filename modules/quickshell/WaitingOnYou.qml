@@ -78,6 +78,12 @@ Singleton {
         Daemon {
             socket: Sessions.nodePath
             kind: "quest"
+            // Only a change moving a quest's status or title, which is all
+            // Waiting.owners reads, or bringing or taking one: in five
+            // minutes on 2026-11-11 the node told the shut shell five
+            // quest changes, of their sessions and starts, it never read
+            // (KP0L6A). The node holds the rest back.
+            watching: ({ when: ["status", "title"] })
             changesDiffer: true
             answersWhole: true
         }
