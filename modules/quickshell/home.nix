@@ -1358,11 +1358,6 @@ in
         order = 103;
         source = "sound";
         weight = 0.9;
-        # What reads how a device keeps time while its drawer is out, a
-        # line at a time through stdbuf. The sound daemon reads and moves a
-        # card's ports and where each program's streams are sent.
-        pwTop = lib.getExe' pkgs.pipewire "pw-top";
-        stdbuf = lib.getExe' pkgs.coreutils "stdbuf";
       };
       # Every media player and what it plays, beside Sound, which holds the
       # devices it plays through.
