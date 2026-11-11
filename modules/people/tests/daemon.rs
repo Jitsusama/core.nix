@@ -518,6 +518,16 @@ fn who_is_held_is_known_by_key_with_no_source_asked() {
     );
 }
 
+/// The keys of records, in the order told.
+fn keys_of(records: &Value) -> Vec<&str> {
+    records
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|record| record["key"].as_str())
+        .collect()
+}
+
 #[test]
 fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
     let stands =
@@ -534,54 +544,61 @@ fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
     let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "listing"}));
     let records = said["records"].as_array().expect("a listing is records");
     assert_eq!(
-        records.len(),
-        2,
-        "Ada, the one favourite, and the order: {said}"
+        keys_of(&said["records"]),
+        ["person:ada@example.com", "row:people:ada@example.com"],
+        "Ada, the one favourite, as who she is and as her row: {said}"
     );
-    assert_eq!(records[0]["person"]["name"], "Ada Brightwater", "{said}");
-    assert_eq!(records[0]["person"]["stood"]["favourite"], true, "{said}");
+    let (ada, row) = (&records[0], &records[1]);
+    assert_eq!(ada["person"]["name"], "Ada Brightwater", "{said}");
+    assert_eq!(ada["person"]["stood"]["favourite"], true, "{said}");
     assert_eq!(
-        records[0]["person"]["stood"]["said"], "around",
+        ada["person"]["stood"]["said"], "around",
         "how they stand, in the launcher's words: {said}"
     );
     assert_eq!(
-        (&records[0]["row"]["name"], &records[0]["row"]["side"]),
-        (&json!("Ada Brightwater"), &json!([{"said": "around"}])),
-        "with their row ready to draw: {said}"
-    );
-    assert_eq!(
-        records[0]["sources"]["tuple"]["id"], 1,
+        ada["sources"]["tuple"]["id"], 1,
         "with what each source said: {said}"
     );
     assert_eq!(
-        records[1]["order"],
-        json!(["person:ada@example.com"]),
-        "{said}"
+        (
+            &row["kind"],
+            &row["row"]["thing"],
+            &row["row"]["name"],
+            &row["row"]["side"]
+        ),
+        (
+            &json!("row"),
+            &json!("person:ada@example.com"),
+            &json!("Ada Brightwater"),
+            &json!([{"said": "around"}])
+        ),
+        "her row ready to draw, in the form every daemon's take: {said}"
     );
-    // Eli made a favourite is told alone, with the order he joins.
+    let first = row["row"]["order"].as_i64().expect("a row has its order");
+    // Eli made a favourite is told alone, his row ordered after Ada's.
     client.ask(&json!({"id": 2, "ask": "get", "keys": ["person:eli@example.com"]}));
     let said = next_change(&mut client);
     assert_eq!(said["id"], 1, "{said}");
     assert_eq!(
-        said["changed"],
-        json!([
-            {"key": "person:eli@example.com", "kind": "listing",
-             "person": said["changed"][0]["person"], "row": said["changed"][0]["row"],
-             "sources": said["changed"][0]["sources"]},
-            {"key": "people:order", "kind": "listing",
-             "order": ["person:ada@example.com", "person:eli@example.com"]}
-        ]),
-        "Ada, unchanged, isn't told again"
+        keys_of(&said["changed"]),
+        ["person:eli@example.com", "row:people:eli@example.com"],
+        "Ada, unchanged, isn't told again: {said}"
     );
-    // Ada no longer a favourite is gone from the listing.
+    assert!(
+        said["changed"][1]["row"]["order"].as_i64() > Some(first),
+        "Eli is placed after Ada: {said}"
+    );
+    // Ada no longer a favourite is gone from the listing, and Eli, still
+    // in his place, isn't told again.
     client.ask(&json!({"id": 3, "ask": "get", "keys": ["person:ada@example.com"]}));
     let said = next_change(&mut client);
     assert_eq!(
-        said["changed"],
-        json!([
-            {"key": "person:ada@example.com", "kind": "listing", "gone": true},
-            {"key": "people:order", "kind": "listing", "order": ["person:eli@example.com"]}
-        ])
+        (&said["changed"], &said["gone"]),
+        (
+            &json!([]),
+            &json!(["person:ada@example.com", "row:people:ada@example.com"])
+        ),
+        "{said}"
     );
     let said = client.ask(&json!({"id": 4, "ask": "list", "kind": "listing"}));
     assert_eq!(

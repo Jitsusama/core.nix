@@ -1,7 +1,8 @@
 # The people daemon, built from this directory, its tests run as it builds.
 # Its socket's tests ask it with a crate every daemon's tests share
-# (../daemon-client), so the source is cut from the modules folder holding
-# both, and built from this one.
+# (../daemon-client), and it keeps its rows as every daemon does
+# (../ready-rows), so the source is cut from the modules folder holding
+# them all, and built from this one.
 {
   lib,
   rustPlatform,
@@ -21,6 +22,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/daemon.rs
       ../daemon-client/Cargo.toml
       ../daemon-client/src
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
     ];
   };
   sourceRoot = "${src.name}/people";

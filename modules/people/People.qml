@@ -36,6 +36,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Person.js" as Person
+import "Placed.js" as Placed
 import "Recent.js" as Recent
 import "Zones.js" as Zones
 
@@ -77,9 +78,10 @@ Provider {
     }
 
     // Those listed with nothing typed, kept ready by the people daemon
-    // (its listing kind): one person each, how they stand, and their
-    // order, told whole once and after only who changed, each with what
-    // every source told of them. So the shell neither merges nor orders
+    // (its listing kind): each one's row in the form every daemon's rows
+    // take (ready-rows.md), and their record, as one person with how they
+    // stand and what every source told of them, told whole once and after
+    // only what changed. So the shell neither merges nor orders
     // them: with 600 people in Qt's engine, merging everyone took the GUI
     // thread 26 to 38 ms, and ordering those listed 19 more (2026-11-10).
     // It's said when the daemon stops answering, and those it last listed
@@ -112,7 +114,33 @@ Provider {
     // they stand changes far more often, and isn't counted, so it
     // remakes none of those rows.
     property int namesRevision: 0
+    // Each listed person's row as the daemon last told it, by its key, and
+    // those keys in the order each row's `order` says, each a change names
+    // placed as it comes (Placed.js), never sorted. Plain, so keeping them
+    // notifies nothing; listedRevision counts each time they're placed,
+    // which is after the lister's revision moves, so nothing reads the
+    // order before it's placed.
+    readonly property var rowsHeld: ({})
+    readonly property var placing: ({ keys: [] })
+    property int listedRevision: 0
     function nameAll(changed, gone) {
+        const rowsChanged = [];
+        const rowsGone = [];
+        for (const key of changed) {
+            const record = lister.held[key];
+            if (record?.kind === "row") {
+                rowsHeld[key] = record.row;
+                rowsChanged.push(key);
+            }
+        }
+        for (const key of gone) {
+            if (key in rowsHeld) {
+                delete rowsHeld[key];
+                rowsGone.push(key);
+            }
+        }
+        placing.keys = Placed.placed(placing.keys, rowsHeld, rowsChanged, rowsGone);
+        listedRevision += 1;
         let renamed = false;
         for (const key of changed) {
             const person = lister.held[key]?.person;
@@ -151,9 +179,6 @@ Provider {
         interval: 1000
         onTriggered: provider.unanswered = lister.state === "not answering"
     }
-    // The record the listing says its order in.
-    readonly property string orderKey: "people:order"
-
     // Counts each change the daemon says, for a source that keeps
     // something of its own until then (Tuple's favourites changed here).
     readonly property int revision: lister.revision
@@ -184,7 +209,7 @@ Provider {
     // a change nobody looks at merges no one: merging everyone took 26 to
     // 38 ms of the GUI thread at every change to any source's people,
     // open or shut, 600 of them in Qt's engine (2026-11-10).
-    readonly property var heard: [lister.revision, sought].concat(sources.map(source =>
+    readonly property var heard: [listedRevision, sought].concat(sources.map(source =>
         [source.people, source.stands, source.standing]))
     onHeardChanged: {
         merging.stale = true;
@@ -438,10 +463,14 @@ Provider {
             // only when they changed: so nothing about them is written out
             // again to find it the same, and nothing of the row is worded
             // here.
+            // Their row reads only what their record says, but for its
+            // order, which places it and is read no further, so it's kept
+            // by the record.
             const record = person.stood ? lister.held[`person:${person.key}`] : null;
-            if (record?.row)
+            const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
+            if (ready)
                 return keptOr(keptListed, person.key, record,
-                    () => made(person, person.stood, factsOf(person), record.row));
+                    () => made(person, person.stood, factsOf(person), ready));
             const stood = person.stood ?? standOf(person);
             return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
                 () => made(person, stood, person.stood ? factsOf(person) : null));
@@ -477,7 +506,9 @@ Provider {
     // One the daemon listed is drawn as its ready row says (`ready`).
     function made(person, stood, facts, ready) {
         const row = member({
-            key: ready?.key ?? `person:${person.key}`,
+            // A ready row's key is the daemon's; the person it is, which
+            // Joel's picks remember, is its `thing`.
+            key: ready?.thing ?? `person:${person.key}`,
             component: "person",
             name: ready?.name ?? person.name,
             person: person,
@@ -843,10 +874,10 @@ Provider {
             told.revision = -1;
             return listedHere();
         }
-        if (told.revision !== lister.revision) {
-            told.listed = (lister.held[orderKey]?.order ?? [])
-                .map(key => lister.held[key]?.person).filter(Boolean);
-            told.revision = lister.revision;
+        if (told.revision !== listedRevision) {
+            told.listed = placing.keys
+                .map(key => lister.held[rowsHeld[key]?.thing]?.person).filter(Boolean);
+            told.revision = listedRevision;
         }
         return told.listed;
     }
