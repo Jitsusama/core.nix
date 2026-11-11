@@ -497,14 +497,19 @@ destroyed by it" (2026-11-11).
   anyone can go at reading pace, however fast the recording ran.
 - **Its progress is a bar the reader can seek**, with a marker at each
   chapter, and beside it the chapter it's in, by name, the time played and
-  the whole.
+  the whole. It counts only time the page is seen: a reader who leaves the
+  tab comes back to where they left it, never further on. A replay that's
+  evidence reads one clock, the recording's, in its chapters and its
+  readout alike, so a step's time matches what it printed; how long it
+  takes to play is said once, in its head.
 - **Scrollback through everything printed so far.** The reader scrolls up
   in it to read what went by, whether it plays or is paused, and new output
   never pulls them back down; a quiet "latest" returns them.
 - **Its keys, while it has focus, are the player's and Vim's**: Space
   plays and pauses, h and l step back and on, [ and ] jump chapter to
   chapter, < and > change speed, s turns step mode on and off, n plays
-  the next step, and k and j scroll its output, all listed in Keys. How
+  the next step, k and j scroll its output, and gg and G go to its top
+  and its latest line, all listed in Keys. How
   it's built is in `craft.md`.
 
 ### Keys

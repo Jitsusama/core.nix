@@ -150,7 +150,9 @@ and passed every run with a mouse.
   and every line printed so far can be scrolled back to. At 0.25× new lines
   fade in and the scroll glides; with reduced motion each step shows whole,
   with nothing fading or gliding; in step mode it stops after each command
-  until n.
+  until n. Playing, leave the tab a minute and come back: it's where it was
+  left. On evidence, a chapter's time in the list and the readout matches
+  the page without script.
 
 ## Keys and Access
 
