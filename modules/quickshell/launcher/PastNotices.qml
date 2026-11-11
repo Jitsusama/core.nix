@@ -150,18 +150,34 @@ Provider {
         const forgetting = acts.find(one => one.key === "verb:notice:forget") ?? null;
         if (forgetting === null || parting.some(one => one.id === held.id))
             return copy;
+        // d reads it where its sender offers Read, and only forgets it
+        // where not, so it says which, as the held notices' d does.
+        const reading = readingOf(acts);
+        const read = reading === null ? {} : { ends: Words.field.operators?.read ?? "" };
         return [Object.assign({ key: "verb:notice:forget" }, Words.ending("verb:notice:forget"),
-            done(ready, key, held, forgetting))].concat(copy);
+            read, done(ready, key, held, forgetting, reading))].concat(copy);
+    }
+
+    // Its sender's own Read among what it offers (Notice.js's readOffer),
+    // as an act asked with no token, since d asks it with the launcher
+    // still open and no window need come forward; else null.
+    function readingOf(acts) {
+        const offers = acts.filter(one => one.key.startsWith("verb:notice:offer:"))
+            .map(one => ({ identifier: one.ask?.action ?? "", text: one.name ?? "", act: one }));
+        const offer = Notice.readOffer(offers);
+        return offer === null ? null : { key: offer.act.key, ask: offer.act.ask };
     }
 
     // d's done, as the held notices' is (HeldNotices.qml's finish): read at
-    // once, and let go as the launcher closes, a dismissed notice being
-    // gone for good, so u brings it back until then, its read state
-    // staying, as the spec's notices do.
-    function done(ready, key, held, forgetting) {
+    // once, at its sender too where it offers Read, and let go as the
+    // launcher closes, a dismissed notice being gone for good, so u brings
+    // it back until then, its read state staying, as the spec's notices do.
+    function done(ready, key, held, forgetting, reading) {
         return {
             run: () => {
-                if (held.read !== true)
+                if (reading !== null)
+                    ready.act(key, reading);
+                else if (held.read !== true)
                     ready.act(key, { key: "verb:notice:read",
                         ask: { ask: "mark", notices: [held.id], read: true } });
                 provider.parting = provider.parting.concat([
@@ -183,8 +199,12 @@ Provider {
         function onOpenChanged() {
             if (provider.launcher.open)
                 return;
-            for (const one of provider.parting)
-                one.ready.act(one.key, one.act);
+            // A sender's Read closes a notice it doesn't keep, so only one
+            // still open, still offering to be let go, is let go.
+            for (const one of provider.parting) {
+                if ((one.ready.served(one.key)?.acts ?? []).some(act => act.key === one.act.key))
+                    one.ready.act(one.key, one.act);
+            }
             provider.parting = [];
         }
     }
@@ -203,15 +223,17 @@ Provider {
     // while Joel looks stays where it was (VKCF3Z, 2026-11-09), as the
     // daemon words it.
     // Desktop's are in the order of `ids`, each its own place's row once
-    // that's told of it, and until then the one every notice has: Desktop
-    // is watched again only as the launcher opens, so one come while it
-    // was closed would be missing from the step into it, then put at its
-    // end once told, rather than where it belongs.
+    // that's told of it, and until then, while unread, the one every
+    // notice has: Desktop is watched again only as the launcher opens, so
+    // one come while it was closed would be missing from the step into
+    // it, then put at its end once told, rather than where it belongs. A
+    // read one is Desktop's only once it's been watched, so it's told.
     function rowsOf(ids, where) {
         if (where !== "desktop")
             return lined(mixed.rows().filter(row => ids.includes(row.notice)), []);
         return lined(ids.map(id => desktop.rowAt(`row:${desktop.place}:${id}`)
-            ?? mixed.rowAt(`row:${mixed.place}:${id}`)).filter(row => !!row), []);
+            ?? [mixed.rowAt(`row:${mixed.place}:${id}`)].find(row => row?.unread === true))
+            .filter(row => !!row), []);
     }
 
     // Whether a text holds a word typed, as search finds it.
