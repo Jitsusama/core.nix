@@ -13,7 +13,8 @@
 //! removes one.
 //!
 //! The account can reach the socket, so what one asks is bounded: a line
-//! of at most 64 KiB, a record of at most 16 MiB. Idle for a minute, the
+//! of at most 64 KiB, a record of at most 16 MiB, 20,000 records, and five
+//! seconds to say it all. Idle for a minute, the
 //! keeper ends, and its socket starts it again when it's next asked.
 
 use std::fs;
@@ -22,7 +23,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::process::ExitCode;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::passed::At;
 
@@ -42,13 +43,17 @@ const LINE_AT_MOST: usize = 64 * 1024;
 /// The largest record it lets a commit's file grow to.
 const RECORD_AT_MOST: u64 = 16 * 1024 * 1024;
 
+/// The most commits it keeps a record for, so an asker looping over
+/// commits can't fill the disk a record at a time.
+const RECORDS_AT_MOST: usize = 20_000;
+
 /// How long a record stays untouched before it ages out.
 const KEPT_FOR: Duration = Duration::from_hours(30 * 24);
 
 /// How long the keeper waits, idle, before ending.
 const IDLE: Duration = Duration::from_mins(1);
 
-/// How long one asking may take to say what it asks.
+/// How long one asking may take, in all, to say what it asks.
 const HEARD_WITHIN: Duration = Duration::from_secs(5);
 
 /// Whether this machine runs the keeper.
@@ -104,6 +109,12 @@ pub fn heard(text: &str) -> Result<Asked, String> {
 
 /// Do what was asked in `folder`.
 pub fn answer(folder: &Path, asked: &Asked) -> Result<(), String> {
+    answer_holding(folder, asked, RECORDS_AT_MOST)
+}
+
+/// Do what was asked in `folder`, taking no new commit once it holds
+/// `most` records.
+fn answer_holding(folder: &Path, asked: &Asked, most: usize) -> Result<(), String> {
     match asked {
         Asked::Forget(at) => match fs::remove_file(folder.join(&at.commit)) {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.to_string()),
@@ -115,6 +126,10 @@ pub fn answer(folder: &Path, asked: &Asked) -> Result<(), String> {
                 .iter()
                 .fold(String::new(), |text, line| text + line + "\n");
             let had = fs::metadata(&file).map_or(0, |kept| kept.len());
+            let holds = || fs::read_dir(folder).map_or(0, Iterator::count);
+            if !file.exists() && holds() >= most {
+                return Err(format!("the keeper holds {most} records already"));
+            }
             if had + text.len() as u64 > RECORD_AT_MOST {
                 return Err(format!("{} would pass {RECORD_AT_MOST} bytes", at.short()));
             }
@@ -171,20 +186,43 @@ pub fn serve(listener: &UnixListener, folder: &Path, idle: Duration) {
 
 /// Hear one asking out, do it, and say how it went.
 fn asked_of(mut asking: UnixStream, folder: &Path) -> io::Result<()> {
-    asking.set_read_timeout(Some(HEARD_WITHIN))?;
-    let mut text = String::new();
-    let bound = RECORD_AT_MOST + 1024;
-    (&mut asking).take(bound + 1).read_to_string(&mut text)?;
-    let done = if text.len() as u64 > bound {
-        Err("asks too much at once".to_owned())
-    } else {
-        heard(&text).and_then(|asked| answer(folder, &asked))
-    };
+    let bound = usize::try_from(RECORD_AT_MOST).unwrap_or(usize::MAX) + 1024;
+    let done = said_within(&mut asking, HEARD_WITHIN, bound)
+        .and_then(|text| heard(&text))
+        .and_then(|asked| answer(folder, &asked));
     let said = match done {
         Ok(()) => "ok\n".to_owned(),
         Err(why) => format!("refused: {why}\n"),
     };
     asking.write_all(said.as_bytes())
+}
+
+/// All `asking` says, within `within` of its start in all and at most
+/// `bound` bytes, so one slow asker holds the keeper no longer than that.
+fn said_within(asking: &mut UnixStream, within: Duration, bound: usize) -> Result<String, String> {
+    let deadline = Instant::now() + within;
+    let (mut said, mut read) = (Vec::new(), [0; 16 * 1024]);
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(format!("said nothing whole within {within:?}"));
+        }
+        asking
+            .set_read_timeout(Some(left))
+            .map_err(|error| error.to_string())?;
+        match asking.read(&mut read) {
+            Ok(0) => break,
+            Ok(count) => said.extend_from_slice(&read[..count]),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+            Err(error) if error.kind() == io::ErrorKind::TimedOut => {}
+            Err(error) => return Err(error.to_string()),
+        }
+        if said.len() > bound {
+            return Err("asks too much at once".to_owned());
+        }
+    }
+    String::from_utf8(said).map_err(|_| "not text".to_owned())
 }
 
 /// Ask the keeper at `socket` for `asked`, a JSON object as `heard` reads.

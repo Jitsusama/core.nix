@@ -86,6 +86,49 @@ fn a_record_only_grows_until_its_bound() {
 }
 
 #[test]
+fn a_full_keeper_takes_no_new_commit_but_adds_to_one_it_holds() {
+    let folder = tempfile::tempdir().unwrap();
+    let keep = |commit: &str| Asked::Keep(At::new(commit, None).unwrap(), vec!["{}".to_owned()]);
+    answer_holding(folder.path(), &keep(COMMIT), 1).unwrap();
+    let refused = answer_holding(folder.path(), &keep(OTHER), 1);
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|why| why.contains("holds 1 records")),
+        "a new commit past the most was taken: {refused:?}"
+    );
+    assert_eq!(
+        answer_holding(folder.path(), &keep(COMMIT), 1),
+        Ok(()),
+        "a commit it holds was refused more lines"
+    );
+}
+
+#[test]
+fn a_slow_asker_is_cut_off_within_the_whole_time_not_each_read() {
+    let (mut keeper, mut asker) = UnixStream::pair().unwrap();
+    let dripping = thread::spawn(move || {
+        for _ in 0..20 {
+            if asker.write_all(b"{").is_err() {
+                return;
+            }
+            // A byte each 100 ms, well inside any one read's wait.
+            thread::sleep(Duration::from_millis(100));
+        }
+    });
+    let started = Instant::now();
+    let said = said_within(&mut keeper, Duration::from_millis(300), 1024);
+    assert!(said.is_err(), "a dripping asker was heard out: {said:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "it was held {:?}",
+        started.elapsed()
+    );
+    drop(keeper);
+    dripping.join().unwrap();
+}
+
+#[test]
 fn forget_removes_one_commits_record_alone() {
     let folder = tempfile::tempdir().unwrap();
     for commit in [COMMIT, OTHER] {
