@@ -3,9 +3,9 @@
 //! one loop, and serves them to the launcher over the socket systemd
 //! holds for it, each watch told only the rows that moved.
 //!
-//! Usage: `quests --node NODE --socket SOCKET`, where NODE is the
-//! mycelium node's socket. A quest with no folder of its own starts in
-//! `$HOME`.
+//! Usage: `quests --vocabulary WORDS --node NODE --socket SOCKET`, where
+//! WORDS is the launcher's `words.json` and NODE the mycelium node's
+//! socket. A quest with no folder of its own starts in `$HOME`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -15,6 +15,7 @@ use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use daemon_serve::watch::{Held, follow};
 use quests::served::{self, Inputs};
+use quests::words::Words;
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 
@@ -25,7 +26,7 @@ const DOMAIN: Domain = Domain {
     kinds: &["row", "summary"],
 };
 
-const USAGE: &str = "usage: quests --node NODE --socket SOCKET";
+const USAGE: &str = "usage: quests --vocabulary WORDS --node NODE --socket SOCKET";
 
 /// Something the node said, of one of its watches.
 enum Heard {
@@ -36,6 +37,7 @@ enum Heard {
 
 /// Where it reads and serves.
 struct Args {
+    vocabulary: PathBuf,
     node: PathBuf,
     socket: PathBuf,
 }
@@ -47,6 +49,7 @@ fn args() -> Option<Args> {
         args.get(at + 1).map(PathBuf::from)
     };
     Some(Args {
+        vocabulary: named("--vocabulary")?,
         node: named("--node")?,
         socket: named("--socket")?,
     })
@@ -57,6 +60,18 @@ fn main() -> ExitCode {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     };
+    // Started without the launcher's words, it would serve a summary
+    // saying nothing, so it says why and stops for systemd to start again.
+    let read = std::fs::read_to_string(&args.vocabulary).map_err(|why| why.to_string());
+    let words =
+        match read.and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string())) {
+            Ok(words) => words,
+            Err(why) => {
+                let path = args.vocabulary.display();
+                eprintln!("quests: can't read the vocabulary {path}: {why}");
+                return ExitCode::FAILURE;
+            }
+        };
     let home = std::env::var("HOME").unwrap_or_default();
     let own: Own = Box::new(|_| None);
     let shared = Shared::new(DOMAIN, own);
@@ -93,6 +108,7 @@ fn main() -> ExitCode {
             ended: &ended,
             sessions: &sessions,
             home: &home,
+            words: &words,
         });
         if !kept
             .take(rows, vec![served::summary_record(&said)])

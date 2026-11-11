@@ -462,7 +462,12 @@
       "what": "quest",
       "glyph": "agent",
       "ask": "which quest?",
-      "empty": "No quests."
+      "empty": "No quests.",
+      "said": {
+        "empty": "empty",
+        "open": "{open} open",
+        "driving": "{open} open, {driving} driving"
+      }
     },
     {
       "id": "quests:id",

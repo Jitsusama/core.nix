@@ -79,6 +79,11 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
     let socket = folder.join("quests.sock");
     let daemon = Daemon::start(
         Command::new(env!("CARGO_BIN_EXE_quests"))
+            .arg("--vocabulary")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../quickshell/launcher/words.json"
+            ))
             .arg("--node")
             .arg(&node_socket)
             .arg("--socket")

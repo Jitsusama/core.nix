@@ -3,7 +3,8 @@
 # (../daemon-serve) in the one form every daemon's rows take
 # (../ready-rows), and its test asks it with the client every daemon's
 # tests share (../daemon-client), so the source is cut from the modules
-# folder holding all four, and built from this one.
+# folder holding all four, and built from this one. Its tests read the
+# launcher's words.json, which the summary is said in.
 {
   lib,
   rustPlatform,
@@ -22,6 +23,7 @@ rustPlatform.buildRustPackage rec {
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../quickshell/launcher/words.json
       ../ready-rows/Cargo.toml
       ../ready-rows/src
     ];

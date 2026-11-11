@@ -40,9 +40,10 @@ onLinux {
       started = lib.concatStringsSep " " (lib.toList service.Service.ExecStart);
     in
     holds "quests-runs-in-each-account"
-      "The quests daemon lacks its node or its socket, outlives a switch, or runs with no realm."
+      "The quests daemon lacks its words, node or socket, outlives a switch, or runs with no realm."
       (
-        lib.hasInfix "--node %t/mycelium/harbour.sock" started
+        lib.hasInfix "-words.json" started
+        && lib.hasInfix "--node %t/mycelium/harbour.sock" started
         && lib.hasInfix "--socket %t/daemons/quests.sock" started
         && socket.Socket.ListenStream == "%t/daemons/quests.sock"
         && service.Unit.Requires == [ "quests.socket" ]
