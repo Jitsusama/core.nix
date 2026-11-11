@@ -514,6 +514,16 @@ Replays).
 - **Step mode pauses on a marker per step**: a marker at each command's
   start, from its input event or its prompt, and `pauseOnMarkers: true`.
   n resumes to the next one; the band says "step 3 of 12" while it's on.
+- **Its clock counts only what's seen.** A page's own clock, driven by
+  `requestAnimationFrame`, stops while the tab is hidden, and the first
+  frame back carries the whole time away: cap each frame's step, as
+  `Math.min(now - last, 100)`, so a reader who comes back finds it where
+  they left it. asciinema-player keeps its own time and needs none of it.
+- **Evidence keeps the recording's clock.** Where gaps play shortened,
+  map the time played back through the cast's events to the time
+  recorded, and show that in the chapter list and the readout, as the
+  page without script does; how long it takes to play is said once, in
+  the head, as "0:18 recorded, 0:09 to play".
 - **Chapters are named in the cast**, as its `m` events, so the bar's
   markers, the Keys list and the twin's headings come from one list.
 - **Its band is text too**: play state, the speed, the time played and the
