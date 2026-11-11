@@ -104,12 +104,28 @@ onLinux {
         lib.hasInfix "/bin/passwords daemon /nix/store/" daemon
         && !(home.systemd.user.services ? passwords)
         && !(home.systemd.user.sockets ? passwords)
-        && !(lib.hasInfix "PASSWORDS_COPIER" daemon)
+        && !(provider ? copier)
         && (provider.off or false)
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
+  # Nothing of the Passwords place, nor the daemon interface it asks its
+  # daemon through, answers the shell's IPC, so no `qs ipc call` another
+  # process makes reaches a secret or lets a manager in, now or once
+  # something is added: only Joel's keys in the launcher do.
+  the-passwords-answer-no-ipc =
+    let
+      read = map builtins.readFile [
+        ./Passwords.qml
+        ./Copied.qml
+        ./Clearing.qml
+        ../quickshell/Daemon.qml
+      ];
+    in
+    holds "the-passwords-answer-no-ipc"
+      "The Passwords place or its daemon's interface answers the shell's IPC."
+      (!lib.any (text: lib.hasInfix "IpcHandler" text || lib.hasInfix "Ipc." text) read);
   # Each kind's mark, who's listed with nothing typed and in what order,
   # what a row says, an entry's acts and their order, opening it where its
   # manager fills only on a web page, its link in its manager's program, its drawer's eyebrow, and its facts saying every

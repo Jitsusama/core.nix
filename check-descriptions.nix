@@ -1839,15 +1839,17 @@
     clippy finds nothing in pain-points or its tests
   '';
   passwords-completes-in-zsh = ''
-    passwords completes in zsh with its commands, audit among them, each entry the daemon holds by
-    its title, a held entry's details by their labels, each password manager and --json, and no
-    Tab asks a password manager anything
+    passwords completes in zsh with keys, help and keys' --json, and none of the commands that
+    reached an entry or a secret before the daemon answered the shell alone
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
-    given with its secrets on, answers a held list or get without asking a manager, gives a secret
-    only to the client that asked to see it or to the clipboard marked sensitive and cleared when
-    its time is up, says a one-time code's period, gives a one-time code's detail as its code and
+    given with its secrets on, answers over its standard input and output as the shell runs it, a
+    held list or get without asking a manager, gives a secret only to the ask for it, never to a
+    watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
+    before reading any secret while no copier is named, can't be read through /proc by the
+    account's other processes nor write a core dump, ends once whatever ran it closes its end,
+    says a one-time code's period, gives a one-time code's detail as its code and
     never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
     serves each entry's row and drawer keyed by its place, in the account's own words and with no
     secret, rows spaced 1024 apart and one row moving told alone, a row with nothing to copy or
@@ -1859,10 +1861,8 @@
     keeps what an audit found in the state folder for Joel alone, holding no secret nor any hash,
     dresses the entries with it again once the daemon starts again, holds since when trouble was
     found until a check finds none, and tells a watch each change;
-    and the passwords command sets each answer in columns under a header for a person and
-    tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
-    finds an entry by its title and a detail by its label, lists an audit's entries with a
-    problem, and exits as its usage says
+    and no passwords command reaches an entry or a secret, each refused as mistyped, the usage
+    saying passwords are in the launcher's Passwords place
   '';
   passwords-lists-1passwords-ssh-keys = ''
     passwords keys lists the keys an SSH agent holds at 1Password's socket, each by its type, size,
@@ -1873,10 +1873,9 @@
     clippy finds nothing in the passwords daemon or its tests
   '';
   passwords-runs-each-password-manager = ''
-    on a machine with 1Password, the passwords daemon runs 1Password's manager through the system's
-    op on the daemons' socket systemd holds, copies with wl-copy, writes no core dump and has a
-    state folder of its own for what the checks found, and the launcher's Passwords knows
-    1Password's program
+    on a machine with 1Password, the launcher's Passwords place runs the passwords daemon as the
+    shell's own child with 1Password's manager through the system's op, with no unit and no
+    socket, names no copier, stays off until agents are fenced, and knows 1Password's program
   '';
   pause-for-calls-follows-the-calls = ''
     pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five
@@ -3513,8 +3512,12 @@
     the kernel's panic screen draws the account's text colour on its background, whatever the theme,
     and keeps the kernel's with no account
   '';
+  the-passwords-answer-no-ipc = ''
+    nothing of the Passwords place nor the daemon interface it asks through answers the shell's IPC
+  '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
-    on a nested niri, the Passwords place asks the passwords daemon nothing until Joel steps in,
+    on a nested niri, the Passwords place runs the passwords daemon as the shell's own child and
+    asks it nothing until Joel steps in,
     then lists once as his, leads with the locked manager's row, whose Return unlocks it, one
     refused saying why the next time the launcher opens, copies
     an entry's password on Return through the daemon to the clipboard as the launcher goes, the
@@ -3522,8 +3525,8 @@
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
     once it's stepped into, Open the Website handing a stand-in Chrome its website as the
-    launcher goes, its foot saying 1Password offers to fill it, with a stand-in for 1Password's
-    manager
+    launcher goes, its foot saying 1Password offers to fill it, and a walk from outside the
+    launcher finding no entry and asking nothing, with a stand-in for 1Password's manager
   '';
   the-passwords-place-says-why-its-off-on-niri = ''
     on a nested niri, with the Passwords place off as the module leaves it, Home's Passwords row
