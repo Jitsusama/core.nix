@@ -120,13 +120,7 @@ fn main() {
         eprintln!("usage: windows SOCKET [--words FILE]");
         std::process::exit(64);
     };
-    let words = words.and_then(|path| match worded(Path::new(&path)) {
-        Ok(words) => Some(words),
-        Err(why) => {
-            eprintln!("<3>the launcher's words in {path} won't do, so no rows: {why}");
-            None
-        }
-    });
+    let words = words.map(|path| worded(Path::new(&path)));
     let Some(niri) = std::env::var_os("NIRI_SOCKET").map(PathBuf::from) else {
         eprintln!("<3>NIRI_SOCKET isn't set, so there's no niri to hear");
         std::process::exit(78);
@@ -181,11 +175,26 @@ fn main() {
     }
 }
 
-/// The words a screen's row is said in, from the launcher's words.json.
-fn worded(path: &Path) -> Result<screens::Words, String> {
-    let read = std::fs::read_to_string(path).map_err(|why| why.to_string())?;
-    let vocabulary = serde_json::from_str(&read).map_err(|why| why.to_string())?;
-    screens::Words::read(&vocabulary)
+/// The words a screen's row is said in, from the launcher's words.json,
+/// each it lacks said by its id and warned of once, here.
+fn worded(path: &Path) -> screens::Words {
+    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
+    let vocabulary =
+        read.and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string()));
+    let (words, lacked) = screens::Words::read(vocabulary.as_ref().unwrap_or(&Value::Null));
+    if let Err(why) = &vocabulary {
+        eprintln!(
+            "<4>couldn't read the words in {}, so Screens says ids: {why}",
+            path.display()
+        );
+    } else if !lacked.is_empty() {
+        eprintln!(
+            "<4>the words in {} lack {}, said by id",
+            path.display(),
+            lacked.join(", ")
+        );
+    }
+    words
 }
 
 /// The socket systemd holds for it (windows.socket), or, run by hand,
