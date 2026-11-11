@@ -27,7 +27,9 @@
 //! only when the head sits on origin's main as it is now and changed-checks
 //! built what it named there (`ready.rs`), and otherwise says what to run.
 //! It waits, too, for a gate that started before the head's own and shares
-//! its files, so changes merge in the order their gates started (`turn.rs`).
+//! its files, so changes merge in the order their gates started (`turn.rs`),
+//! a change run again after a merge left its pass stale keeping the place
+//! its tree's first gate had (`places.rs`).
 //!
 //! `merge-net status` says where the net is.
 //!
@@ -48,6 +50,7 @@ mod holds;
 mod lists;
 mod movers;
 mod owners;
+mod places;
 mod ready;
 mod rules;
 mod running;
@@ -481,6 +484,8 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             if let Some(said) = lists_say(commit, &shared, &|| waits(&[commit, &checked], &files)) {
                 return Ok(said);
             }
+            // Its run again keeps the place this pass's gate had.
+            turn::keep_place(&[commit, &checked]);
             eprintln!(
                 "merge-net: the same change passed at {}, but main has since moved {}; run \
                  changed-checks at {}, committed so it's sent, which builds only what the \

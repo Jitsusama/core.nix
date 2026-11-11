@@ -212,7 +212,10 @@ gate going in `nix-offload/running/<pid>.json` and keeps its start with its
 pass, and `ready` refuses a head while a gate that started before its own,
 in another tree, still runs and changes one of its files other than the
 lists. A gate whose process is gone, or that started three hours ago, holds
-nothing back. A machine switches only
+nothing back. A change run again after a merge left its pass stale keeps
+its tree's place, the start of the first gate `ready` saw there in the last
+six hours (`places.json` in the net's state), so it goes behind only the
+gates that started before that one. A machine switches only
 to merged main, and a bad switch is undone by switching back to the
 generation before it.
 

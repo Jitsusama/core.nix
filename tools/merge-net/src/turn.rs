@@ -14,12 +14,17 @@
 //! whose process is gone, or is another process now, started at another
 //! time than the gate's, or that ran past [`LONGEST`], holds nothing
 //! back; nor does one in the asking tree, or one sharing only lists each
-//! change adds a line to (`lists.rs`), which never make a pass stale.
+//! change adds a line to (`lists.rs`), which never make a pass stale. A
+//! gate counts as having started when its tree's first gate did
+//! (`places.rs`), so a change that runs again after a merge left its pass
+//! stale keeps its place rather than going behind every gate since.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use crate::places::Places;
 
 /// The longest a gate is waited on. Gates have run past an hour on
 /// saturated lenders, so this leaves room, while a gate that hangs still
@@ -75,34 +80,45 @@ pub fn started(record: &str) -> Option<u64> {
 pub struct Ahead<'a> {
     pub gate: &'a Gate,
     pub shared: Vec<String>,
+    /// When it counts as having started, its tree's place.
+    pub started: u64,
 }
 
-/// The gate among `gates` that holds back a change whose own gate started
-/// at `started`, in the tree at `here`, changing `ours`: the earliest that
-/// started before it, still runs as `alive` says of it, hasn't
-/// run past [`LONGEST`] by `now`, and changes, as `files_of` says, a file
-/// of `ours` that's no list.
+/// The change asking to merge: when its gate counts as having started,
+/// the tree it's in, and the files it changes.
+pub struct Asking<'a> {
+    pub started: u64,
+    pub here: &'a Path,
+    pub ours: &'a [String],
+}
+
+/// The gate among `gates` that holds back the change `asking`: the
+/// earliest that counts, as `place` says, as started before it, still runs
+/// as `alive` says of it, hasn't run past [`LONGEST`] by `now` since it
+/// really started, and changes, as `files_of` says, a file of its that's no
+/// list.
 pub fn ahead<'a>(
     gates: &'a [Gate],
-    started: u64,
-    here: &Path,
+    asking: &Asking,
     now: u64,
+    place: &dyn Fn(&Gate) -> u64,
     alive: &dyn Fn(&Gate) -> bool,
     files_of: &dyn Fn(&Gate) -> Option<Vec<String>>,
-    ours: &[String],
 ) -> Option<Ahead<'a>> {
-    let ours: BTreeSet<&str> = ours
+    let ours: BTreeSet<&str> = asking
+        .ours
         .iter()
         .map(String::as_str)
         .filter(|file| crate::lists::list(file).is_none())
         .collect();
-    let mut earlier: Vec<&Gate> = gates
+    let mut earlier: Vec<(u64, &Gate)> = gates
         .iter()
-        .filter(|gate| gate.started < started && now.saturating_sub(gate.started) < LONGEST)
-        .filter(|gate| gate.folder != here)
+        .filter(|gate| now.saturating_sub(gate.started) < LONGEST && gate.folder != asking.here)
+        .map(|gate| (place(gate), gate))
+        .filter(|(started, _)| *started < asking.started)
         .collect();
-    earlier.sort_by_key(|gate| gate.started);
-    earlier.into_iter().find_map(|gate| {
+    earlier.sort_by_key(|(started, _)| *started);
+    earlier.into_iter().find_map(|(started, gate)| {
         if !alive(gate) {
             return None;
         }
@@ -110,7 +126,11 @@ pub fn ahead<'a>(
             .into_iter()
             .filter(|file| ours.contains(file.as_str()))
             .collect();
-        (!shared.is_empty()).then_some(Ahead { gate, shared })
+        (!shared.is_empty()).then_some(Ahead {
+            gate,
+            shared,
+            started,
+        })
     })
 }
 
@@ -130,21 +150,60 @@ pub fn start_of(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64>
 /// commits whose runs it merges on, newest first. A change whose runs
 /// kept no start, from before starts were, waits on nothing.
 pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
-    let started = start_of(passes, &crate::ready::record)?;
+    let its_gate = start_of(passes, &crate::ready::record)?;
     let gates = gates(&folder()?);
     let here = std::env::current_dir().ok()?;
     let now = crate::state::now();
-    let held = ahead(&gates, started, &here, now, &alive, &files_of, ours)?;
+    let places = placed(&gates, &here, Some(its_gate), now);
+    let asking = Asking {
+        started: places.start(&here, its_gate, now),
+        here: &here,
+        ours,
+    };
+    let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
+    let held = ahead(&gates, &asking, now, &place, &alive, &files_of)?;
     Some(format!(
-        "merge-net: the gate in {} at {}, which started {} minutes before this one's, \
-         still runs and changes {} too; merging first would leave its pass stale, so \
-         merge again once it ends, which needs no new run here unless it merges first \
-         and moves these",
+        "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
+         one's, as its tree's first gate did, still runs and changes {} too; merging first \
+         would leave its pass stale, so merge again once it ends, which needs no new run \
+         here unless it merges first and moves these",
         held.gate.folder.display(),
         crate::state::short(&held.gate.commit),
-        (started - held.gate.started) / 60,
+        (asking.started - held.started) / 60,
         held.shared.join(", ")
     ))
+}
+
+/// Keep the place of the tree asking, whose pass at the first of `passes`
+/// that kept a start a move of main has left stale, so its run again goes
+/// where that pass's gate did. Main may have moved by a merge made by hand,
+/// which no `ready` saw the gate through.
+pub fn keep_place(passes: &[&str]) {
+    let (Some(folder), Ok(here)) = (folder(), std::env::current_dir()) else {
+        return;
+    };
+    let its_gate = start_of(passes, &crate::ready::record);
+    placed(&gates(&folder), &here, its_gate, crate::state::now());
+}
+
+/// The places kept, with the start of each gate still going, and the
+/// asking tree's at `here` of its pass at `passed`, kept too, and those
+/// past keeping given up. Failing to write them only loses a place, which
+/// the next `ready` to see the gate keeps again.
+fn placed(gates: &[Gate], here: &Path, passed: Option<u64>, now: u64) -> Places {
+    let file = crate::places::file();
+    let mut places = Places::read(&file);
+    for gate in gates.iter().filter(|gate| alive(gate)) {
+        places.keep(&gate.folder, gate.started);
+    }
+    if let Some(passed) = passed {
+        places.keep(here, passed);
+    }
+    places.tidy(now, &|folder| folder.exists());
+    if let Err(why) = places.write(&file) {
+        eprintln!("merge-net: {why}");
+    }
+    places
 }
 
 /// The files a gate's commit changes from where it left origin's main, as
@@ -214,23 +273,38 @@ mod tests {
         move |_| Some(files.clone())
     }
 
+    /// Each gate counted as started when it did, as with no places kept.
+    fn own(gate: &Gate) -> u64 {
+        gate.started
+    }
+
+    fn asking<'a>(started: u64, here: &'a str, ours: &'a [String]) -> Asking<'a> {
+        Asking {
+            started,
+            here: Path::new(here),
+            ours,
+        }
+    }
+
     #[test]
     fn an_earlier_gate_sharing_a_file_holds_a_later_change_back() {
         let gates = [gate(1, "/a", 100)];
+        let ours = owned(&["y.rs", "z.rs"]);
+        let touch = touching(&["x.rs", "y.rs"]);
         let held = ahead(
             &gates,
-            200,
-            Path::new("/b"),
+            &asking(200, "/b", &ours),
             NOW,
+            &own,
             &everyone,
-            &touching(&["x.rs", "y.rs"]),
-            &owned(&["y.rs", "z.rs"]),
+            &touch,
         );
         assert_eq!(
             held,
             Some(Ahead {
                 gate: &gates[0],
-                shared: owned(&["y.rs"])
+                shared: owned(&["y.rs"]),
+                started: 100,
             }),
             "an earlier gate sharing y.rs didn't hold the change back"
         );
@@ -239,16 +313,56 @@ mod tests {
     #[test]
     fn a_later_gate_holds_an_earlier_change_back_never() {
         let gates = [gate(1, "/a", 300)];
+        let ours = owned(&["y.rs"]);
+        let touch = touching(&["y.rs"]);
         let held = ahead(
             &gates,
-            200,
-            Path::new("/b"),
+            &asking(200, "/b", &ours),
             NOW,
+            &own,
             &everyone,
-            &touching(&["y.rs"]),
-            &owned(&["y.rs"]),
+            &touch,
         );
         assert_eq!(held, None, "a gate started later held the change back");
+    }
+
+    #[test]
+    fn a_rerun_keeps_its_trees_place_ahead_of_gates_started_since_its_first() {
+        // The tree at /a passed a gate at 100, a merge left it stale, and
+        // it runs again from 300; /b's gate started at 200, between them.
+        let mut places = Places::default();
+        places.keep(Path::new("/a"), 100);
+        let place = |gate: &Gate| places.start(&gate.folder, gate.started, NOW);
+        let rerun = [gate(1, "/a", 300)];
+        let ours = owned(&["y.rs"]);
+        let touch = touching(&["y.rs"]);
+        let held = ahead(
+            &rerun,
+            &asking(200, "/b", &ours),
+            NOW,
+            &place,
+            &everyone,
+            &touch,
+        );
+        assert_eq!(
+            held.map(|held| held.started),
+            Some(100),
+            "a rerun went behind a gate started after its tree's first"
+        );
+        let first = [gate(2, "/c", 50)];
+        let held = ahead(
+            &first,
+            &asking(100, "/a", &ours),
+            NOW,
+            &place,
+            &everyone,
+            &touch,
+        );
+        assert_eq!(
+            held.map(|held| held.gate.pid),
+            Some(2),
+            "a rerun in its tree's place went ahead of a gate started before it"
+        );
     }
 
     #[test]
@@ -257,28 +371,29 @@ mod tests {
         let gone = [gate(1, "/a", 100)];
         let nobody = |_: &Gate| false;
         let touch = touching(&["y.rs"]);
-        let at = Path::new("/b");
+        let at = asking(200, "/b", &ours);
         assert_eq!(
-            ahead(&gone, 200, at, NOW, &nobody, &touch, &ours),
+            ahead(&gone, &at, NOW, &own, &nobody, &touch),
             None,
             "a gate whose process is gone held the change back"
         );
         let here = [gate(1, "/b", 100)];
         assert_eq!(
-            ahead(&here, 200, at, NOW, &everyone, &touch, &ours),
+            ahead(&here, &at, NOW, &own, &everyone, &touch),
             None,
             "a gate in the asking tree held its own change back"
         );
         let old = [gate(1, "/a", 100)];
         let later = 100 + LONGEST;
+        let placed_early = |_: &Gate| 10;
         assert_eq!(
-            ahead(&old, 200, at, later, &everyone, &touch, &ours),
+            ahead(&old, &at, later, &placed_early, &everyone, &touch),
             None,
             "a gate past the longest wait held the change back"
         );
         let lists = touching(&["check-descriptions.nix"]);
         assert_eq!(
-            ahead(&old, 200, at, NOW, &everyone, &lists, &ours),
+            ahead(&old, &at, NOW, &own, &everyone, &lists),
             None,
             "a gate sharing only a list held the change back"
         );
