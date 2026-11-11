@@ -157,9 +157,11 @@ ShellRoot {
         if (Sessions.node?.state !== "not answering")
             return;
         expect("no session while the node doesn't answer", addresses() === "", addresses());
-        // The same three windows niri's stand-in lists (checks.nix).
+        // The same three windows niri's stand-in lists (checks.nix), and
+        // the one a parked session's holder keeps.
         windowsTell({ records: [windowRecord(10, 500, "kitty"), windowRecord(20, 600, "kitty"),
-            windowRecord(21, 600, "pi-session.7", { workspace: 3, column: 2, down: 1 })] });
+            windowRecord(21, 600, "pi-session.7", { workspace: 3, column: 2, down: 1 }),
+            windowRecord(22, 800, "pi-spawned.9", { workspace: 5, column: 1, down: 1 })] });
         stage = "listed";
         node.active = true;
     }
@@ -295,8 +297,14 @@ ShellRoot {
                 && one.endedAt === undefined) && closed[0].address === "ENDED3",
             JSON.stringify(closed[0]));
         const napper = Sessions.parked[0];
-        expect("one parked is named by its record, with no window",
-            napper.title === "Napper" && napper.window === null, JSON.stringify(napper));
+        expect("one parked is named by its record, in the window its holder keeps",
+            napper.title === "Napper" && napper.window?.id === 22, JSON.stringify(napper));
+        // The cutover wakes a parked one to move it, so where its window
+        // sits is kept first, as a running one's is.
+        expect("a parked session's window kept", Sessions.keepPlace("s-NAPPER") === "kept"
+            && JSON.stringify(Sessions.keptPlaces["s-NAPPER"] ?? null).startsWith(
+                '{"workspace":5,"column":1,'), JSON.stringify(Sessions.keptPlaces));
+        Sessions.keepPlaces({});
         Sessions.wake(napper);
         const woken = Niri.spawned;
         expect("Wake writes the file its marker names, in place",
@@ -730,8 +738,10 @@ ShellRoot {
             here("NOWIN6", "idle", { terminal: terminal("unix:@kitty-700", "2") }),
             here("ENDED3", "ended", {}),
             // Parked, as the node tells of one: ended, saying it's parked.
-            here("NAPPER", "ended", { state: "parked", busy: false,
+            Object.assign(here("NAPPER", "ended", { state: "parked", busy: false,
                 title: "\u03c0 - Napper - core.nix" }, "parked"),
+            { window: { terminal: "kitty", id: "1", within: "unix:@kitty-800",
+                app_id: "pi-spawned.9" } }),
             // Closed, though each record says parked: its marker gone, or
             // laid before this boot, which the node sees and the shell
             // needn't.

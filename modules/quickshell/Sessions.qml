@@ -73,9 +73,9 @@ Singleton {
     // Each session parked here (the harness's park-workflow): ended while
     // idle to give back its memory, until its holder starts it again in
     // its window, for a message that gives it a turn or a key typed there.
-    // Shown as each running one is, but with no window known, since its
-    // process, and the window its node knew it by, have gone; in the order
-    // the records are. Never among `running`, so nothing counts it as
+    // Shown as each running one is, in the window its holder keeps where
+    // the node knows it, though its process has gone; in the order the
+    // records are. Never among `running`, so nothing counts it as
     // running or starts another session in its place.
     readonly property var parked: resting.map(record => shown(record, {}))
     // Each session here that ended this boot and isn't parked, closed or
@@ -1807,9 +1807,13 @@ Singleton {
     // Keeps where the window of the session here that pi knows as `id`
     // sits, answering "kept", or "no window to keep" for one with no
     // window niri has laid out, so the cutover can list the viewers it
-    // couldn't put back.
+    // couldn't put back. One parked here keeps its window while its
+    // process is gone, and the cutover wakes it to move it, so it's
+    // looked for among the parked too (2QZBX9, 2026-11-11: a parked
+    // canary's window closed with no place kept).
     function keepPlace(id) {
-        const session = running.find(one => one.here && one.presence.session === id);
+        const session = running.concat(parked)
+            .find(one => one.here && one.presence.session === id);
         const place = /^[A-Za-z0-9-]+$/.test(id) ? Places.placeOf(session?.window, Date.now())
             : null;
         if (place === null)
