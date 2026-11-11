@@ -1080,10 +1080,7 @@ def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop
     kept(desktop, path, {"quest": "QEST-20261027-GONEQA", "items": [later]})
     machine.wait_until_fails(notices, timeout=dt.timedelta(seconds=5))
     machine.wait_until_succeeds(
-        desktop.in_session(
-            "cat ~/.local/state/quickshell/by-shell/*/notices.json"
-            ' | grep -q \'"summary":"Plug in the dock"[^}]*"read":true\''
-        ),
+        desktop.notice_kept('.summary == "Plug in the dock" and .read'),
         timeout=dt.timedelta(seconds=10),
     )
     desktop.as_account(f"rm {path} {INDEX}")

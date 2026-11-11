@@ -33,7 +33,6 @@ CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
 # The keys that close the viewfinder, as they close Joel's other programs.
 ZZ = ("shift-z", "shift-z")
 # Where the shell keeps the notices it holds.
-KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
 # How long a stopped recording may take to be saved. Over a still screen, wf-recorder went
@@ -377,7 +376,7 @@ def test_capture_records_the_window_and_says_why_when_niri_cant_share_it(
         desktop.machine.send_key("ret")
     print(
         desktop.machine.wait_until_succeeds(
-            desktop.in_session(KEPT + ' | grep -o \'"summary":"The window could not[^}]*\''),
+            desktop.notice_kept('.summary | startswith("The window could not")'),
             timeout=timedelta(seconds=10),
         )
     )
@@ -508,13 +507,10 @@ class Camera:
 
     def recording(self, count: int, last: bool) -> bool:  # As retry calls it.
         """Say whether there are so many videos, the newest grown, so recording."""
-        kept = self.desktop.in_session(
-            "find ~/.local/state/quickshell -name notices.json -exec cat {} + 2>/dev/null; true"
+        status, failed = self.machine.execute(
+            self.desktop.notice_kept('.summary == "The video could not be recorded"')
         )
-        failed = re.search(
-            r'"summary":"The video could not be recorded",[^}]*', self.machine.succeed(kept)
-        )
-        if failed is not None:
+        if status == 0:
             # What the recording said, and who had the camera then.
             print(self.machine.execute("cat /run/user/1000/camera-recording.log")[1])
             holders = (
@@ -523,7 +519,7 @@ class Camera:
                 " grep -qs video9 $p/maps && echo mapped $p $(cat $p/comm); done; true"
             )
             print(self.machine.succeed(holders))
-            raise AssertionError(failed.group(0))
+            raise AssertionError(failed)
         grown = (
             f"[ $(ls {self.videos}/*.mp4 | wc -l) = {count} ]"
             f' && [ $(stat -c %s "$(ls -t {self.videos}/*.mp4 | head -1)") -gt 50000 ]'

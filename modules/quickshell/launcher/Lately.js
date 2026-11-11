@@ -56,32 +56,6 @@ function doneOf(thing) {
         ? ended : null;
 }
 
-// Whether a notice is kept until it's read: one of the desktop's, whose
-// only record it is. Slack's are kept as read ones are, whether read or
-// not, since Slack holds its own and says what's read there, so those
-// Joel never clicked neither wait for good nor fill the history.
-function awaits(notice) {
-    return notice.read !== true && sourceOf(notice) !== "slack";
-}
-
-// The notices the history keeps, in their order, newest first: every one
-// awaiting Joel, since one stays until it's read or forgotten (Y2YBTS,
-// 2026-11-08), and the rest for good, since History keeps what's done
-// with and no timer clears it (VKCF3Z, 2026-11-09). Past `most`, the
-// oldest of the rest go first, and never one awaiting, so what Joel
-// hasn't seen outlasts what he has.
-function kept(notices, most) {
-    let over = notices.length - most;
-    const gone = new Set();
-    for (let at = notices.length - 1; at >= 0 && over > 0; at--) {
-        if (!awaits(notices[at])) {
-            gone.add(at);
-            over--;
-        }
-    }
-    return notices.filter((_notice, at) => !gone.has(at));
-}
-
 // The unread notices of each source, as { slack, desktop }, newest first
 // as Notices' history holds them. A source in `answering`, one whose own
 // piece says what's done with by itself, holds none: Slack's notices

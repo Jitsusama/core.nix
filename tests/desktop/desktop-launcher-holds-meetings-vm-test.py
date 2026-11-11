@@ -655,7 +655,6 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     call = "chrome-meet.google.com__pqr-stuv-wxy-Default"
-    notices = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     try:
         # The stand-in's Design Review twenty minutes on: Now counts it
         # down, and the margin leaves its mark out until ten minutes off.
@@ -687,8 +686,9 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
         # reminder.
         machine.wait_until_succeeds(
             desktop.in_session(
-                f'{notices} | grep -q \'"summary":"Design Review now"\''
-                f" && ! {notices} | grep -q 'Design Review in 1 min'"
+                'jq -e \'any(.notices[]; .summary == "Design Review now")'
+                ' and all(.notices[]; tostring | contains("Design Review in 1 min") | not)\''
+                f" {desktop.NOTICES_KEPT}"
             ),
             timeout=dt.timedelta(seconds=10),
         )
@@ -712,9 +712,7 @@ def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_start
             timeout=dt.timedelta(seconds=30),
         )
         machine.wait_until_succeeds(
-            desktop.in_session(
-                f'{notices} | grep -q \'"summary":"Design Review now"[^}}]*"read":true\''
-            ),
+            desktop.notice_kept('.summary == "Design Review now" and .read'),
             timeout=dt.timedelta(seconds=10),
         )
         desktop.close(desktop.window_titled("Meet"))

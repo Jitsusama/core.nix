@@ -395,6 +395,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         )
         return f"su - {self.account} -c " + shlex.quote(environment + command)
 
+    # Every notice the notices daemon keeps, newest first (modules/notices).
+    NOTICES_KEPT = "~/.local/state/notices/notices.json"
+
+    def notice_kept(self, where: str) -> str:
+        """Give a command that prints each notice kept that jq's `where` holds of, or fails."""
+        return self.in_session(f"jq -ec '.notices[] | select({where})' {self.NOTICES_KEPT}")
+
     def as_account(self, command: str) -> str:
         """Run a command as the account, inside its session, and give what it printed."""
         return self.machine.succeed(self.in_session(command))

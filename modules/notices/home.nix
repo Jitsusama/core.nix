@@ -8,10 +8,12 @@
 # serve the launcher"). It judges each sender by the levels the shell's
 # senders option sets, and holds a notice back while Quiet's file says so.
 #
-# Only one server may hold the notifications name, and the shell's own
-# holds it today, so nothing starts this unit yet: it's wanted by no
-# target and named by no D-Bus service file, and it never takes the name
-# from another. The change that starts it takes the shell's server out.
+# Only one server may hold the notifications name, and it never takes the
+# name from another, so a shell still serving it as a switch lands keeps
+# it until it goes, the daemon starting again each second meanwhile. A
+# notice sent while the daemon is down starts it, since the bus knows
+# the unit by the name (the D-Bus service file below), and the bus holds
+# the notice until it's up, so none is lost.
 {
   config,
   lib,
@@ -63,9 +65,9 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
     };
   };
 
-  # Its socket, held by systemd whether or not the daemon runs, so the
-  # shell asking while it starts, or starts again, waits on it rather than
-  # finding no socket.
+  # Its socket, held by systemd from the start of the session whether or
+  # not the daemon runs, so the shell asking while it starts, or starts
+  # again, waits on it rather than finding no socket, and starts it.
   systemd.user.sockets.notices = {
     Unit.Description = "Where the shell asks for the desktop's notices";
     Socket = {
@@ -73,5 +75,15 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       SocketMode = "0600";
       DirectoryMode = "0700";
     };
+    Install.WantedBy = [ "sockets.target" ];
   };
+
+  # The bus starts the unit for a notice sent while it's down, rather than
+  # running a program of its own: systemd's unit is the only way it runs.
+  xdg.dataFile."dbus-1/services/org.freedesktop.Notifications.service".text = ''
+    [D-BUS Service]
+    Name=org.freedesktop.Notifications
+    Exec=${lib.getExe' pkgs.coreutils "false"}
+    SystemdService=notices.service
+  '';
 }

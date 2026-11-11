@@ -255,8 +255,6 @@ ShellRoot {
                     && last.includes("--action=0=See What Spends") && root.idOf(last) === 103, last);
                 expect("no card was taken back for it",
                     JSON.stringify(root.dismissed) === "[7,10]", JSON.stringify(root.dismissed));
-                expect("what's kept of it says the new count",
-                    JSON.stringify(Notices.reworded) === "[103]", JSON.stringify(Notices.reworded));
                 root.waiting = "a level lower raises the same card";
                 tokens.hint = "Tokens Run Out in About 14 Min";
                 tokens.now = true;

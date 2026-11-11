@@ -79,6 +79,7 @@
     homeModules.load-proof
     homeModules.meaning
     homeModules.noise-cancelled
+    homeModules.notices
     homeModules.onepassword
     homeModules.open-with
     homeModules.mpv
