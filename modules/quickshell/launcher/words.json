@@ -9324,7 +9324,6 @@
         "cleared": "{title}'s {detail} is cleared from the clipboard",
         "unfinished": "{title}'s {detail} not copied \u00b7 {why}",
         "away": "the passwords daemon isn't answering",
-        "off": "Passwords is off while it's made safe",
         "offNote": "use {manager}'s browser extension",
         "offSide": "off",
         "password": "password",
@@ -9424,6 +9423,13 @@
       "name": "Check Every Password",
       "verb": "check",
       "glyph": "retry"
+    },
+    {
+      "id": "passwords:off",
+      "in": "passwords",
+      "name": "Passwords Is Off While It's Made Safe",
+      "verb": "open",
+      "glyph": "caution"
     },
     {
       "id": "passwords:attention",

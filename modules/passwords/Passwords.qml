@@ -105,10 +105,12 @@ Provider {
     readonly property var offRow: {
         const manager = managers.find(one => browserOf(one) !== null) ?? null;
         const browser = manager === null ? null : browserOf(manager);
-        const name = said.off ?? "";
+        const name = Words.name("passwords:off");
         return Object.assign(thing({
             key: "passwords:off",
             name: name,
+            verb: Words.verb("passwords:off"),
+            glyph: Words.glyph("passwords:off"),
             note: manager === null ? ""
                 : String(said.offNote ?? "").replace("{manager}", manager.called),
             hue: "alert",

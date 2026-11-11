@@ -981,9 +981,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         ];
         # The place is off on a real machine until agents are fenced
         # (modules/passwords/home.nix), and on here, where none runs.
-        jitsusama.quickshell.launcher.providers.passwords.off = lib.mkIf walksPasswords (
-          lib.mkForce false
-        );
+        jitsusama.quickshell.launcher.providers.passwords = lib.mkIf walksPasswords {
+          off = lib.mkForce false;
+        };
         # Passwords walked with 1Password's own manager, in the passwords
         # daemon's own unit, asking the stand-in for op in place of the
         # one 1Password's app would answer.
