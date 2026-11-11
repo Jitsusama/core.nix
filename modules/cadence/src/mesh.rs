@@ -187,11 +187,22 @@ impl Mesh {
         Ok(())
     }
 
-    /// Every message `address` sent, oldest first by id.
+    /// Every message `address` sent, oldest first by id. The harness files
+    /// older messages into a folder for each day, so those are read too:
+    /// a card filed away would otherwise look never sent.
     #[must_use]
     pub fn sent_by(&self, address: &str) -> Vec<Message> {
         let mark = format!("-{address}-");
-        let mut sent: Vec<Message> = json_files(&self.messages())
+        let folder = self.messages();
+        let days: Vec<PathBuf> = fs::read_dir(&folder)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .map(|entry| entry.path())
+            .collect();
+        let mut sent: Vec<Message> = json_files(&folder)
+            .chain(days.iter().flat_map(|day| json_files(day)))
             .filter(|p| {
                 p.file_name()
                     .is_some_and(|n| n.to_string_lossy().contains(&mark))
@@ -454,5 +465,28 @@ mod tests {
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].re.as_deref(), Some("1-CADENCE-1-aa"));
         assert_eq!(stamped_at(&sent[0].id), Some(2));
+    }
+
+    #[test]
+    fn what_an_address_sent_is_read_from_the_day_folders_too() {
+        let (_dir, mesh) = mesh();
+        let mut card = question("1-WATCHER-9-aa", "CADENCE");
+        card.from = "WATCHER".into();
+        mesh.send(&card).unwrap();
+        let day = mesh.messages().join("2026-11-11");
+        fs::create_dir_all(&day).unwrap();
+        fs::rename(
+            mesh.messages().join("1-WATCHER-9-aa.json"),
+            day.join("1-WATCHER-9-aa.json"),
+        )
+        .unwrap();
+        card.id = "2-WATCHER-9-bb".into();
+        mesh.send(&card).unwrap();
+        let ids: Vec<String> = mesh.sent_by("WATCHER").into_iter().map(|m| m.id).collect();
+        assert_eq!(
+            ids,
+            ["1-WATCHER-9-aa", "2-WATCHER-9-bb"],
+            "a message filed into its day's folder is still read, in order"
+        );
     }
 }
