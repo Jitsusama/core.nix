@@ -29,7 +29,8 @@
 //! A window is found by the app id the shell opened it with, which the
 //! process the shell started in it is given as `MYCELIUM_APP_ID`
 //! (modules/quickshell's Sessions.qml), or else, for a kitty of its own,
-//! by the one scope that kitty has.
+//! by the one scope that kitty has, or else by what the kitty drawing it
+//! says runs there (`src/kitty.rs`).
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
@@ -69,6 +70,8 @@ pub struct Window {
     pub id: u64,
     pub app_id: String,
     pub pid: u32,
+    /// What its title bar says, which its kitty says too (`src/kitty.rs`).
+    pub title: String,
 }
 
 impl Window {
@@ -94,6 +97,11 @@ pub fn window(value: &Value) -> Option<(Window, bool)> {
                 .and_then(Value::as_u64)
                 .and_then(|pid| u32::try_from(pid).ok())
                 .unwrap_or(0),
+            title: value
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
         },
         value.get("is_focused").and_then(Value::as_bool) == Some(true),
     ))
@@ -464,6 +472,7 @@ mod tests {
             id,
             app_id: format!("pi-session.{id}"),
             pid: 2684,
+            title: String::new(),
         }
     }
 
@@ -488,7 +497,8 @@ mod tests {
             Some(&Window {
                 id: 23,
                 app_id: "pi-session.22".into(),
-                pid: 2684
+                pid: 2684,
+                title: String::new(),
             })
         );
         assert!(
@@ -538,6 +548,7 @@ mod tests {
             id: 70,
             app_id: "slack".into(),
             pid: 311_171,
+            title: String::new(),
         };
         recent.focus(Some(&slack), at(50));
         assert_eq!(recent.held(at(50)), [pi(2), pi(4), pi(3)]);
@@ -619,6 +630,7 @@ mod tests {
                 id: 1,
                 app_id: app_id.into(),
                 pid,
+                title: String::new(),
             };
             scope_of(&window, &scopes).map(str::to_owned)
         };
