@@ -581,6 +581,73 @@ ACROSS = 5
 REOPEN_ALL = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
 
 
+def test_a_shell_started_again_opens_no_viewer_kept_before_it(desktop: Desktop) -> None:
+    """A shell started again, as a switch does, opens no viewer for a windowless hosted session.
+
+    A place kept for its viewer by a move before the shell started stays kept, unopened. At
+    13:41:38 on 2026-11-11 a switch restarted the shell, which opened viewers for two hosted
+    sessions kept by earlier moves, on a new workspace, while Joel was at the machine, and woke
+    one parked in its host.
+    """
+    machine = desktop.machine
+    session = "01d5-kept"
+    # The host, standing in for pi's own, as test_a_hosted_session_comes_back_... has it.
+    host = desktop.as_account(
+        "setsid -f sleep 606 > /dev/null 2>&1;"
+        " timeout 10 sh -c \"until pgrep -n -f 'sleep 60[6]'; do sleep 0.1; done\""
+    ).strip()
+    ticks = desktop.as_account(f"awk '{{sub(/.*\\) /, \"\"); print $20}}' /proc/{host}/stat")
+    presence = {
+        "session": session,
+        "addresses": ["KEPTVW"],
+        "title": f"pi --session {session}",
+        "at": dt.datetime.now(dt.UTC).isoformat(),
+        "owner": {
+            "pid": int(host),
+            "bootId": desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip(),
+            "startTicks": int(ticks),
+            "startedAt": int(desktop.as_account("date +%s%3N")),
+        },
+        "hosted": {"host": "harbour-attended", "conversation": session, "view": ["sleep", "607"]},
+    }
+    machine.wait_until_succeeds(
+        desktop.in_session("ls -d ~/.local/state/quickshell/by-shell/*"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    shell = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    try:
+        kept(desktop, f"{PI_PRESENCE}/keptvw.json", presence)
+        machine.wait_until_succeeds(
+            desktop.in_session(f"mycelium --realm harbour sessions | grep -qF '{session}'"),
+            timeout=dt.timedelta(seconds=60),
+        )
+        desktop.as_account("systemctl --user stop quickshell")
+        # Kept on a workspace since gone, as both were at 13:41:38.
+        at = int(desktop.as_account("date +%s%3N"))
+        kept(
+            desktop,
+            f"{shell}/kept-places.json",
+            {session: {"workspace": 999, "column": 1, "at": at}},
+        )
+        desktop.as_account("systemctl --user start quickshell")
+        machine.wait_until_succeeds(
+            desktop.in_session("qs ipc call launcher list > /dev/null"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        # The shell opened those two within seconds of hearing the node, so half a minute
+        # with no viewer shows it opens none.
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            viewers = [w for w in desktop.windows() if w["app_id"] == f"pi-hosted.{session}"]
+            assert viewers == [], f"a viewer opened as the shell started: {viewers}"
+            time.sleep(0.5)
+        still = json.loads(desktop.as_account(f"cat {shell}/kept-places.json"))
+        assert session in still, still
+    finally:
+        kept(desktop, f"{shell}/kept-places.json", {})
+        desktop.as_account(f"rm -f {PI_PRESENCE}/keptvw.json; pkill -f 'sleep 60[67]'; true")
+
+
 def hosted_here(desktop: Desktop, sessions: list[str]) -> None:
     """Say these run in one host here, standing in for pi's, each viewed by a sleep."""
     # setsid -f returns before its fork runs, so the pid is looked for under a deadline.

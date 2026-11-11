@@ -1469,11 +1469,12 @@ Singleton {
     // columns after it land beside it (Y2YBTS and KP0L6A, [342c50d4]). One
     // whose viewer is open, or that the boot kept no place of, opens none.
     // One whose host isn't serving it yet, one parked in its host, which
-    // viewing would wake, or one coming while Joel is at the machine or
-    // bound for the workspace he is on, where a window would catch his
-    // eye, has its place kept for viewKept, which opens it there once the
-    // host serves it awake and Joel is away, and the walk goes on (OSPHT4
-    // [0762284c]: a parked QCXZEB woken, 11 November).
+    // viewing would wake (OSPHT4 [0762284c]: a parked QCXZEB woken, 11
+    // November), or one bound for the workspace Joel is on, where a window
+    // would catch his eye, has its place kept for viewKept, which opens it
+    // there once the host serves it awake and Joel is away, and the walk
+    // goes on. The walk itself opens with Joel there, since it runs only
+    // when asked: his Reopen Them All, or `sessions reopen`.
     function reopenViewer(next) {
         const id = next.one.id;
         const session = root.hostedHere(id);
@@ -1491,7 +1492,7 @@ Singleton {
         const served = session !== null && Array.isArray(session.attach)
             && session.attach.length > 0 && named !== "";
         const parked = Viewers.parkedHere(session);
-        if (!served || parked || !Away.now || Niri.workspaces[into.workspace]?.is_focused) {
+        if (!served || parked || Niri.workspaces[into.workspace]?.is_focused) {
             keepPlaces(Object.assign({}, keptPlaces, { [id]: { workspace: into.workspace,
                 column: into.column, at: Date.now() } }));
             console.info(`sessions: ${id}'s viewer waits for `
@@ -1899,7 +1900,6 @@ Singleton {
     // for Joel to leave its workspace opens once he has, and as he goes
     // away. Only places kept since this shell started open, and only while
     // he is away (Away.qml), so a shell restarted by a switch opens none.
-    readonly property real startedAt: Date.now()
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
             return;
