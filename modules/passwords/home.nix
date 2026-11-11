@@ -209,7 +209,12 @@ in
         # No secret it holds is ever written, and a core dump would write one.
         LimitCORE = 0;
       };
-      Install.WantedBy = [ "graphical-session.target" ];
+      # Nothing starts it, nor its socket below, until agents are fenced
+      # off Joel's runtime folder and Wayland: every agent runs as his uid,
+      # so any of them could ask it to reveal, copy or give a code once
+      # 1Password lets it in (2026-11-10, Joel: "we can't have a password
+      # backdoor here"). It runs only when started by hand, as the desktop's
+      # VM tests do; the Passwords place says it can't reach it meanwhile.
     };
 
     # Its socket, held by systemd whether or not the daemon runs, so the
@@ -222,7 +227,6 @@ in
         SocketMode = "0600";
         DirectoryMode = "0700";
       };
-      Install.WantedBy = [ "sockets.target" ];
     };
   };
 }

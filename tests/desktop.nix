@@ -976,6 +976,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # Passwords walked with 1Password's own manager, in the passwords
         # daemon's own unit, asking the stand-in for op in place of the
         # one 1Password's app would answer.
+        # Its socket, which nothing starts on a real machine until agents are
+        # fenced (modules/passwords/home.nix), is listened on here, where no
+        # agent runs and no secret is real.
+        systemd.user.sockets.passwords.Install.WantedBy = lib.mkIf walksPasswords [
+          "sockets.target"
+        ];
         jitsusama.passwords.managers."1password".command = lib.mkIf walksPasswords (
           lib.mkForce [
             (lib.getExe (pkgs.callPackage ../modules/onepassword/manager/package.nix { }))
