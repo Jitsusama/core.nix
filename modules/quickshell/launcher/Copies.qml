@@ -130,11 +130,12 @@ Provider {
             // As it was copied, lines and all, which the row cuts short.
             reads: held.reads
         };
-        const row = ready.thing(served, key, Object.assign(fields, kept));
-        if (row === null)
+        const readied = ready.thing(served, key, Object.assign(fields, kept));
+        if (readied === null)
             return null;
+        const row = withoutWindow(readied, served, key);
         makings[key] = { served, row };
-        return withoutWindow(row, served, key);
+        return row;
     }
 
     // A row as it reads with no window to paste into, where the history
@@ -142,15 +143,13 @@ Provider {
     // What y takes are plain fields, rather than rows made searchable, since
     // y over hundreds asks every row (Launcher.qml's actionsOf), and what y
     // joins with other rows' copies is the text, for a copy that's one, and
-    // nothing for a picture, which y copies alone.
-    function withoutWindow(row, served, key) {
+    // nothing for a picture, which y copies alone. Its verb a getter, made
+    // afresh with it (Provider.qml's gotten), so no field is lost.
+    function withoutWindow(readied, served, key) {
         const copying = (served.acts ?? []).find(one => one.key === "verb:copy:copy");
-        const verbs = row.verbs;
-        row.run = pastes(row.run);
-        Object.defineProperty(row, "verb", {
-            enumerable: true,
-            get: () => Pasting.verb()
-        });
+        const verbs = readied.verbs;
+        const row = provider.gotten(readied, { verb: () => Pasting.verb() });
+        row.run = pastes(readied.run);
         row.verbs = () => {
             const all = verbs();
             if (Pasting.under() === null)
