@@ -242,12 +242,14 @@ impl Core {
             )?;
         }
         let core = Self { dir };
-        core.git(&[
-            "fetch",
-            "--quiet",
-            "origin",
-            "+refs/heads/main:refs/heads/main",
-        ])?;
+        fetch_or_keep(|| {
+            core.git(&[
+                "fetch",
+                "--quiet",
+                "origin",
+                "+refs/heads/main:refs/heads/main",
+            ])
+        });
         Ok(core)
     }
 
@@ -453,8 +455,66 @@ fn command(program: &str, args: &[&str]) -> io::Result<String> {
     }
 }
 
+/// Fetches with `fetch`, once more when it fails, and when both fail says
+/// so and keeps the history the clone has, minutes behind: on 11 November
+/// one GitHub error ("Error in the HTTP2 framing layer") failed a whole
+/// tick, its card and questions with it. Says whether it fetched.
+fn fetch_or_keep(fetch: impl Fn() -> io::Result<String>) -> bool {
+    let Err(first) = fetch() else {
+        return true;
+    };
+    eprintln!("cadence: fetching core again: {first}");
+    match fetch() {
+        Ok(_) => true,
+        Err(again) => {
+            eprintln!("cadence: core's history is from its last fetch: {again}");
+            false
+        }
+    }
+}
+
 fn write_whole(path: &Path, text: &str) -> io::Result<()> {
     let staged = path.with_extension("new");
     fs::write(&staged, text)?;
     fs::rename(staged, path)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+
+    #[test]
+    fn a_fetch_that_fails_once_is_tried_again() {
+        let tries = Cell::new(0);
+        let fetched = fetch_or_keep(|| {
+            tries.set(tries.get() + 1);
+            if tries.get() == 1 {
+                Err(io::Error::other("Error in the HTTP2 framing layer"))
+            } else {
+                Ok(String::new())
+            }
+        });
+        assert!(fetched, "a fetch that failed once wasn't tried again");
+        assert_eq!(tries.get(), 2, "the fetch wasn't tried exactly twice");
+    }
+
+    #[test]
+    fn a_fetch_that_keeps_failing_leaves_the_tick_to_go_on() {
+        let tries = Cell::new(0);
+        let fetched = fetch_or_keep(|| {
+            tries.set(tries.get() + 1);
+            Err(io::Error::other("Error in the HTTP2 framing layer"))
+        });
+        assert!(
+            !fetched,
+            "a fetch that failed twice was said to have fetched"
+        );
+        assert_eq!(
+            tries.get(),
+            2,
+            "a failing fetch wasn't given up after two tries"
+        );
+    }
 }
