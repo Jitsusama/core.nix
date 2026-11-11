@@ -194,8 +194,8 @@ in
   xdg.configFile."quickshell/launcher/ChromeDownloads.js".source = ./ChromeDownloads.js;
 
   # Chrome's own acts in the launcher (ChromeProgram.qml): Open a
-  # Repository on GitHub, through the git repositories under ~/src, which fd
-  # finds, stat dates and grep reads the remotes of, and Open the Copied
+  # Repository on GitHub, through the git repositories under ~/src and
+  # their remotes, which the programs daemon reads, and Open the Copied
   # Link, each in a new window, and Open the Latest Download, as the
   # desktop opens the file. Its downloads, which the programs daemon has
   # recent-sites list as Chrome is stepped into, are in its Recent too. After every other
@@ -206,9 +206,6 @@ in
     # The programs daemon's key for its downloads, the list above.
     downloads = "listed:google-chrome:downloads";
     folder = "${config.home.homeDirectory}/src";
-    fd = lib.getExe pkgs.fd;
-    stat = lib.getExe' pkgs.coreutils "stat";
-    grep = lib.getExe pkgs.gnugrep;
     command = [
       "google-chrome-stable"
       "--new-window"

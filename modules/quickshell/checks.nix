@@ -4858,7 +4858,7 @@ onLinux {
   # and Neovim's NeovimOpening.js and Neovim.js), then each program's
   # provider with the shell's one watcher of the clipboard, through
   # Quickshell itself, over repositories made here and read once for both
-  # programs by the real fd, stat and grep (launcher/Repositories.qml),
+  # programs by the real programs daemon (launcher/Repositories.qml),
   # with niri and the clipboard's history stood in (tests/program-acts.qml).
   # Chrome's downloads are read from Chrome's ChromeDownloads.js in Qt's
   # engine and through its provider from the real programs daemon, running
@@ -4922,12 +4922,13 @@ onLinux {
       );
       # Three repositories a folder deep, alpha's git written last, alpha's
       # origin and gamma's upstream on GitHub and beta's on GitLab, and one
-      # four folders deep, past where they're looked for.
+      # four folders deep, past where they're looked for; real ones, since
+      # git lists a repository's files.
+      git = lib.getExe pkgs.git;
       repositories = ''
         repository() {
-          mkdir -p "$HOME/src/$1/.git"
-          printf '[core]\n\tbare = false\n[remote "%s"]\n\turl = %s\n' "$2" "$3" \
-            > "$HOME/src/$1/.git/config"
+          ${git} init --quiet "$HOME/src/$1"
+          ${git} -C "$HOME/src/$1" remote add "$2" "$3"
           touch -d "@$4" "$HOME/src/$1/.git"
         }
         mkdir -p $HOME/src/alpha/docs $HOME/src/beta
@@ -5012,7 +5013,7 @@ onLinux {
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
       mkdir $XDG_RUNTIME_DIR/daemons
-      XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$TMPDIR/data \
+      XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$TMPDIR/data PROGRAMS_GIT=${git} \
         ${programs}/bin/programs $XDG_RUNTIME_DIR/daemons/programs.sock ${sources} &
       daemon=$!
       ${shellFolderLint}

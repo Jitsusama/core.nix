@@ -18,16 +18,16 @@
 //! read by this daemon itself, with no command, as its watch begins if
 //! one of them changed since, and on each change in them while watched;
 //! a folder asked for by its path, as `folder`, as each ask names it and
-//! on each change in it while watched (folder.rs). Each command runs on
+//! on each change in it while watched (folder.rs); and the repositories
+//! under a folder, or one's files, as each ask names them
+//! (repositories.rs). Each command runs on
 //! a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
-use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -35,10 +35,11 @@ use std::time::{Duration, Instant, SystemTime};
 
 use programs::folder::{self, Looked};
 use programs::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
+use programs::listen::listen;
 use programs::mime::Mime;
 use programs::notify::Notify;
 use programs::source::{self, Source};
-use programs::{command, entry, now_ms, xdg};
+use programs::{command, entry, now_ms, repositories, xdg};
 use serde_json::{Value, json};
 
 /// How many of the last answers' times health says.
@@ -170,32 +171,6 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
-}
-
-/// The socket systemd holds for it (programs.socket), or, run by hand,
-/// its own, in a folder only Joel reads, replacing one left behind.
-fn listen(socket: &Path) -> std::io::Result<UnixListener> {
-    if let Some(listener) = handed() {
-        return Ok(listener);
-    }
-    if let Some(folder) = socket.parent() {
-        std::fs::create_dir_all(folder)?;
-        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let _ = std::fs::remove_file(socket);
-    UnixListener::bind(socket)
-}
-
-/// The listening socket systemd hands this process (`sd_listen_fds`).
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -363,17 +338,21 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
         .collect()
 }
 
-/// Reads each folder a key names, on this thread, and keeps its record,
-/// watching it from the first time it's asked for.
+/// Reads each folder or repository a key names, on this thread, and keeps
+/// its record, watching a folder from the first time it's asked for.
 fn read_folders(shared: &Shared, keys: &[String]) {
     for key in keys {
-        let Some(path) = folder::path_of(key) else {
+        let record = if let Some(path) = folder::path_of(key) {
+            lock(&shared.daemon)
+                .looked
+                .watch(shared.notify.as_ref(), key, path);
+            folder::record(key, path)
+        } else if let Some(record) = repositories::record(key) {
+            record
+        } else {
             continue;
         };
-        let record = folder::record(key, path);
-        let mut daemon = lock(&shared.daemon);
-        daemon.looked.watch(shared.notify.as_ref(), key, path);
-        keep(&mut daemon, vec![record], &[]);
+        keep(&mut lock(&shared.daemon), vec![record], &[]);
     }
 }
 

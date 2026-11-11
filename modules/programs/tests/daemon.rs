@@ -6,7 +6,9 @@
 //! changes, and not while nobody watches, and one whose command fails
 //! is heard empty, saying why; a page's own list is read only as its
 //! key is watched, its lines as printed; what a program has open is
-//! read as it's asked; and an ask or kind it doesn't know is refused.
+//! read as it's asked; the repositories under a folder and one's files
+//! are read as each is asked; and an ask or kind it doesn't know is
+//! refused.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -391,6 +393,82 @@ fn a_folder_named_by_its_key_is_read_as_its_watch_begins_and_as_a_file_comes() {
         said["records"][0]["lines"],
         json!([]),
         "a folder that isn't there didn't hold nothing: {said}"
+    );
+}
+
+#[test]
+fn the_repositories_under_a_folder_and_their_files_are_read_as_each_is_asked() {
+    let running = Running::new("repositories");
+    let src = running.path("src");
+    let alpha = src.join("alpha");
+    let git = |args: &[&str]| {
+        let ran = Command::new("git")
+            .arg("-C")
+            .arg(&alpha)
+            .args(args)
+            .status();
+        assert!(ran.unwrap().success(), "git {args:?} failed");
+    };
+    std::fs::create_dir_all(&alpha).unwrap();
+    git(&["init", "--quiet"]);
+    git(&[
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:someone/alpha.git",
+    ]);
+    std::fs::create_dir_all(src.join("far/away/too/.git")).unwrap();
+    std::fs::write(alpha.join(".gitignore"), "ignored.txt\n").unwrap();
+    std::fs::write(alpha.join("ignored.txt"), "not listed").unwrap();
+    std::fs::write(alpha.join(".env"), "KEY=1").unwrap();
+    let key = format!("repositories:{}", src.display());
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "get", "keys": [key]}));
+    let record = &said["records"][0];
+    let dated = record["dated"].as_array().cloned().unwrap_or_default();
+    assert_eq!(
+        dated.len(),
+        1,
+        "not alpha alone, three folders deep at most: {said}"
+    );
+    let alpha_git = format!("\t{}/.git", alpha.display());
+    assert!(
+        dated[0]
+            .as_str()
+            .is_some_and(|line| line.ends_with(&alpha_git)),
+        "alpha's .git wasn't dated as stat says it: {said}"
+    );
+    let url = format!(
+        "{}/.git/config:\turl = git@github.com:someone/alpha.git",
+        alpha.display()
+    );
+    assert!(
+        record["configs"]
+            .as_array()
+            .is_some_and(|lines| lines.contains(&json!(url))),
+        "alpha's remote wasn't said as grep says it: {said}"
+    );
+    let files = format!("files:{}", alpha.display());
+    let said = client.ask(&json!({"id": 2, "ask": "get", "keys": [files]}));
+    let mut named: Vec<String> = said["records"][0]["dated"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|line| Some(line.as_str()?.rsplit('/').next()?.to_owned()))
+        .collect();
+    named.sort();
+    assert_eq!(
+        named,
+        [".env", ".gitignore"],
+        "its hidden files but not what git ignores weren't said: {said}"
+    );
+    std::fs::write(alpha.join("main.rs"), "fn main() {}").unwrap();
+    let said = client.ask(&json!({"id": 3, "ask": "get", "keys": [files]}));
+    assert_eq!(
+        said["records"][0]["dated"].as_array().map_or(0, Vec::len),
+        3,
+        "a file made since wasn't read as it was asked again: {said}"
     );
 }
 

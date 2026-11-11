@@ -6,6 +6,7 @@
   lib,
   rustPlatform,
   systemd,
+  git,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "programs";
@@ -24,8 +25,12 @@ rustPlatform.buildRustPackage rec {
   sourceRoot = "${src.name}/programs";
   cargoLock.lockFile = ./Cargo.lock;
   # A test starts the daemon as systemd does for programs.socket, through
-  # systemd-socket-activate, handing it the socket it answers on.
-  nativeCheckInputs = [ systemd ];
+  # systemd-socket-activate, handing it the socket it answers on, and
+  # one makes a git repository whose files it lists with git.
+  nativeCheckInputs = [
+    systemd
+    git
+  ];
   meta = {
     description = "Holds what's installed and what each program had open ready for the shell";
     license = lib.licenses.mit;
