@@ -6,10 +6,11 @@
 // niri has, a scale as a multiple, and the white point and primaries from
 // the figures desk-facts gives. Its drawer is the windows daemon's to say
 // (modules/windows, screens.rs). It also says how each screen stands and
-// the ways that turn it off or on, apart from drawing (tests/screens.qml),
-// where `each` says whether the running niri powers one output off by
-// name (modules/niri/powers-off-each-output.patch), the only niri that
-// says `powered_off`. Its settings' choices of mode and turn
+// which of the acts the daemon serves the : line's :setl power and
+// unplugged ask, apart from drawing (tests/screens.qml); the ways a screen
+// turns off or on are the daemon's (screens/acts.rs). niri says
+// `powered_off` only where it darkens one screen by name
+// (modules/niri/powers-off-each-output.patch). Its settings' choices of mode and turn
 // are said here too, each by its value, the mode it prefers noted so,
 // and what each takes typed on the : line's :setl, as scale=1.5.
 // What niri answers a change is said in ScreenAnswers.js.
@@ -166,73 +167,25 @@ function standing(output) {
     return output.powered_off === true ? "dark" : "lit";
 }
 
-// Whether no other screen is lit, so this one is all that shows the
-// launcher, and once it's dark a key lights every screen again.
-function lastLit(output, outputs) {
-    return !outputs.some(other => other.name !== output.name && standing(other) === "lit");
-}
-
-function outputAsked(output, action) {
-    return { Output: { output: output.name, action } };
-}
-
-function actAsked(action, output) {
-    return { Action: { [action]: { output: output.name } } };
-}
-
-// What a screen's step-in offers to turn it off or on, in order, each as
-// { word, asks, note, waits }: the word it's named by, what niri is
-// asked, the note it says beside (a key "wakes" the last one lit, and
-// unplugging "moves" its windows), and whether it waits for the key that
-// asked to come up, since niri lights every screen at any key once all
-// are off by name. Darkening comes before unplugging, the bigger step,
-// and the last lit screen is never unplugged, or nothing would show the
-// launcher; an older niri only unplugs, as its Turn It Off.
-function ways(output, outputs, each) {
-    const stands = standing(output);
-    if (stands === "off") {
-        return [{ word: "on", asks: outputAsked(output, "On"), note: "", waits: false }];
-    }
-    if (stands === "dark") {
-        return [{ word: "on", asks: actAsked("PowerOnMonitor", output), note: "", waits: false }];
-    }
-    const last = lastLit(output, outputs);
-    const offered = [];
-    if (each) {
-        offered.push({
-            word: "off",
-            asks: actAsked("PowerOffMonitor", output),
-            note: last ? "wakes" : "",
-            waits: last
-        });
-    }
-    if (!last) {
-        offered.push({
-            word: each ? "unplug" : "off",
-            asks: outputAsked(output, "Off"),
-            note: each ? "moves" : "",
-            waits: false
-        });
-    }
-    return offered;
-}
-
-// The way the : line turns a screen, as :setl nopower or :setl unplugged
-// asks, of those `ways` offers: power on is "on" and off "off";
-// unplugged is "unplug" where niri darkens each screen by name, an older
-// niri's "off" where it doesn't, and back "on" only for one unplugged,
-// never a dark one. Null where the screen stands so already or the way
-// isn't offered, as unplugging the last lit screen, so nothing else is
-// done in its place. `asked` is the option and the state asked of it,
-// { option, on }.
-function wayTo(output, outputs, each, asked) {
+// The act the : line does to a screen, as :setl nopower or :setl
+// unplugged asks, of the acts its row serves (`acts`, each { key, ask }):
+// power on is Turn It On and off Turn It Off; unplugged is the act that
+// takes it out of niri's outputs, Unplug It where niri darkens each
+// screen by name and an older niri's Turn It Off where it doesn't, and
+// back is Turn It On only for one unplugged, never a dark one. Null where
+// the screen stands so already or the act isn't served, as unplugging
+// the last lit screen, so nothing else is done in its place. `asked` is
+// the option and the state asked of it, { option, on }.
+function wayTo(output, acts, asked) {
     const { option, on } = asked;
     if (option === "unplugged" && !on && standing(output) !== "off") {
         return null;
     }
-    const unplugging = each ? "unplug" : "off";
-    const word = option === "power" ? (on ? "on" : "off") : on ? unplugging : "on";
-    return ways(output, outputs, each).find(way => way.word === word) ?? null;
+    const lights = option === "power" ? on : !on;
+    const found = option === "unplugged" && on
+        ? one => one.ask?.do === "unplug" || one.ask?.do === "off"
+        : one => one.key === `verb:display-${lights ? "on" : "off"}`;
+    return acts.find(found) ?? null;
 }
 
 // What the : line says for a screen where it does nothing, by its words'
@@ -240,7 +193,7 @@ function wayTo(output, outputs, each, asked) {
 // true where it's already as asked, as Vim's :set says it, and a refused
 // act's words where the way isn't offered, which is only ever the last
 // lit screen (VKCF3Z, 2026-11-08). `asked` is as wayTo's.
-function toldOf(output, outputs, each, asked) {
+function toldOf(output, acts, asked) {
     const { option, on } = asked;
     if (optionNow(output, option) === on) {
         if (option === "unplugged" && !on) {
@@ -248,7 +201,7 @@ function toldOf(output, outputs, each, asked) {
         }
         return { lit: "isOn", dark: "isDark", off: "isUnplugged" }[standing(output)] ?? "";
     }
-    if (wayTo(output, outputs, each, asked) !== null) {
+    if (wayTo(output, acts, asked) !== null) {
         return "";
     }
     // A screen that isn't lit always offers to come on, so only a way off

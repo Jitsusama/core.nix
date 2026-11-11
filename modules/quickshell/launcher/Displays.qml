@@ -646,8 +646,8 @@ Provider {
             : Screens.typedSaid(id, String(to));
     }
 
-    // A screen's option for the : line's :setl, which turns it as its Turn
-    // It Off, Turn It On and Unplug It rows do (Screens.wayTo); one it
+    // A screen's option for the : line's :setl, which does the act its
+    // Turn It Off, Turn It On or Unplug It row does (Screens.wayTo); one it
     // can't take, as unplugging the last lit screen, says so and does
     // nothing else.
     function screenOption(output, option) {
@@ -655,18 +655,20 @@ Provider {
             kind: "switch",
             now: () => Screens.optionNow(output, option),
             set: on => {
+                const key = screenKey(output);
+                const acts = ready.served(key)?.acts ?? [];
                 const asked = { option: option, on: on };
-                const told = Screens.toldOf(output, shown, Niri.powersOffEach, asked);
+                const told = Screens.toldOf(output, acts, asked);
                 if (told !== "")
                     return ScreenAnswers.toldSaid(told, named(output), screenWords);
-                const way = Screens.wayTo(output, shown, Niri.powersOffEach, asked);
-                if (way.waits)
-                    provider.darkenLast(way.asks);
-                else
-                    provider.ask(way.asks, { thing: named(output), done: way.word }, output);
+                ready.act(key, Screens.wayTo(output, acts, asked));
                 return "";
             }
         };
+    }
+
+    function screenKey(output) {
+        return `row:displays:display:${output.name}`;
     }
 
     // Every screen off, as niri's power-off-monitors turns them off: each
@@ -727,15 +729,6 @@ Provider {
     readonly property var all: ready.rows()
     onAllChanged: changed()
 
-    // niri wakes the screens at any key, so the one that asked, still held
-    // or let go just after, would wake the last lit screen at once: it's
-    // darkened once it has come up and the launcher has closed.
-    Timer {
-        id: sleeping
-        interval: 750
-        onTriggered: provider.ask(provider.darkening)
-    }
-
     // A setting's choice, said by its value alone, its setting named in the
     // path above (design.md), with what it is beside it, as a mode the
     // screen prefers, muted in its note, and Return's verb "set", as
@@ -786,7 +779,7 @@ Provider {
     property string spotsStamp: JSON.stringify([ready.placings,
         light === null ? false : light.connector ?? "", roomSensor !== null,
         warmth === null ? null : warmth.seesColour === true,
-        Niri.powersOffEach, Object.keys(facts).sort().map(name => [name,
+        Object.keys(facts).sort().map(name => [name,
             (facts[name] ?? []).map(fact => `${fact.name}:${fact.value === ""}`)])])
 
     // What desk-facts says of a display, each named first as a part is:
@@ -836,56 +829,46 @@ Provider {
     // here, so "scale 1.5" is Scale's 1.5\u00d7), then the ways it turns
     // off that Screens.js gives, then what its EDID says.
     function verbs(output) {
-        const ways = Screens.ways(output, shown, Niri.powersOffEach)
-            .map(way => powerRow(way, output));
+        const key = screenKey(output);
+        const ways = (ready.served(key)?.acts ?? [])
+            .filter(one => String(one.key).startsWith("verb:display-"))
+            .map(one => powerRow(one, key));
         if (Screens.standing(output) !== "lit")
             return ways.concat(factRows(output));
         return setUp(output).concat(ways, factRows(output));
     }
 
-    // One way a screen turns off or on, as a choice: its words the
-    // vocabulary's, its note why it matters, and the last lit screen's
-    // darkening closing the launcher, since nothing would show it, and
-    // waiting for the key to come up, which would light every screen.
-    function powerRow(way, output) {
-        const id = `verb:display-${way.word}`;
+    // One way a screen turns off or on, as a choice, an act the daemon
+    // serves and does (modules/windows, screens/acts.rs): its words the
+    // vocabulary's and its note the daemon's, and the last lit screen's
+    // darkening, which waits for the key to come up, closing the launcher,
+    // since nothing would show it.
+    function powerRow(act, key) {
         return thing({
-            key: id,
-            name: Words.name(id),
-            glyph: Words.glyph(id),
+            key: act.key,
+            name: Words.name(act.key),
+            glyph: Words.glyph(act.key),
             hue: "action",
-            note: way.note === "" ? "" : Words.of(id).said?.[way.note] ?? "",
-            stays: !way.waits,
-            run: way.waits ? () => provider.darkenLast(way.asks)
-                : () => provider.ask(way.asks, { thing: named(output), done: way.word }, output)
+            note: act.note ?? "",
+            stays: act.waits !== true,
+            run: () => ready.act(key, act)
         });
     }
 
-    // Asks niri to change a screen, then asks again how they stand, so a
-    // screen dark by name says so at once. A change niri refuses says so
-    // on the warning line, in niri's words for why, and one to a screen
-    // gone before it came says it's unplugged (VKCF3Z, 2026-11-09), where
-    // Return would otherwise look done (ScreenAnswers.js). Where nothing
-    // is there to say it, as the last lit screen darkening once the
-    // launcher has closed, `refusal` is null and the shell's log has it.
+    // Asks niri to change a screen's setting, then asks again how they
+    // stand. A change niri refuses says so on the warning line, in niri's
+    // words for why, and one to a screen gone before it came says it's
+    // unplugged (VKCF3Z, 2026-11-09), where Return would otherwise look
+    // done (ScreenAnswers.js).
     function ask(asked, refusal, output) {
         Niri.request(asked, answer => {
-            if (output)
-                warn(ScreenAnswers.answerSaid(answer, named(output), screenWords));
+            warn(ScreenAnswers.answerSaid(answer, named(output), screenWords));
             provider.refresh();
-        }, refusal ? why => {
+        }, why => {
             warn(ScreenAnswers.refusalSaid(refusal, why, screenWords));
             provider.refresh();
-        } : null);
+        });
     }
-
-    function darkenLast(asked) {
-        darkening = asked;
-        sleeping.restart();
-    }
-
-    // What the last lit screen's darkening asks, once the key is up.
-    property var darkening: null
 
     // A setting as a part: its name, how it's set, and the choices a step
     // in, or only how it's set when there's nothing else to choose.

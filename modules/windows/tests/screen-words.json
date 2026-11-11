@@ -11,6 +11,8 @@
         "hubOn": "hub on",
         "scaleAt": "scale {scale}",
         "not-on": "{thing} not turned on \u00b7 {why}",
+        "not-off": "{thing} not turned off \u00b7 {why}",
+        "not-unplugged": "{thing} not unplugged \u00b7 {why}",
         "isUnplugged": "{name} is unplugged",
         "steps": "{now} of {most} steps",
         "stepping-linear": "linear",
@@ -27,6 +29,11 @@
       }
     },
     { "id": "displays:built-in", "name": "Built-in Screen" },
+    { "id": "verb:display-off", "said": { "wakes": "a key wakes it" } },
+    {
+      "id": "verb:display-unplug",
+      "said": { "moves": "its windows move to the other screens" }
+    },
     {
       "id": "displays:sleep",
       "name": "Turn Every Screen Off",
