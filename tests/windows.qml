@@ -200,11 +200,15 @@ ShellRoot {
             theLauncher.open = true;
             Expect.same("before the answer, no row of the last opening is offered",
                 names(windows.everything()), "");
+            Expect.same("and it says it's still reading, never that there are none",
+                windows.collection.empty, "\u2026");
             told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
                 Object.assign({}, draft, { order: 250000, focused: true }),
                 Object.assign({}, notes, { order: 220000 })] }, desktop(draft));
             Expect.same("once answered, the rows in the order used now",
                 names(windows.everything()), "Notes, Logbook");
+            Expect.same("and its empty line is its own again", windows.collection.empty,
+                "No other windows.");
             theLauncher.open = false;
             told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
                 Object.assign({}, draft, { order: 250000, focused: true }), notes] },

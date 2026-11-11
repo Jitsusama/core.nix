@@ -50,11 +50,12 @@ Provider {
     // with the daemon down it says so, rather than reading forever or
     // saying there are none (Daemon.qml's gone). The rows stay as last
     // listed through the gap, so the empty line speaks only when none
-    // ever were.
+    // ever were. An opening that waits for the answer (waiting) says it's
+    // still reading too, never that there are no other windows.
     readonly property bool silent: unanswered
     collection: Words.collection("windows", Object.assign({ searched: false },
         silent ? { empty: Words.of("windows", "silent").empty }
-            : daemon.answered ? {} : { empty: "\u2026" }))
+            : daemon.answered && !provider.waiting ? {} : { empty: "\u2026" }))
 
     // Whether the daemon has been silent a second, so it's said: a restart
     // or a reconnect answers within it, and saying so at once blinked it
@@ -114,10 +115,12 @@ Provider {
     // The rows are listed in the order held, which the watch of when each
     // window was used keeps current while the launcher is shut (orderKept),
     // so then the first frame offers them in the order used now.
+    readonly property bool waiting: !daemon.answeredThisWatch
+        && daemon.state !== "not answering" && !provider.orderKept
+        && provider.launcher?.open !== false
     function everything() {
         const heard = daemon.answeredThisWatch;
-        if (!heard && daemon.state !== "not answering" && !provider.orderKept
-            && provider.launcher?.open !== false)
+        if (provider.waiting)
             return [];
         const others = provider.held.order.map(key => provider.kept[key])
             .filter(window => window !== undefined
