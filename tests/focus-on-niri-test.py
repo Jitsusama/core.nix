@@ -1,6 +1,6 @@
 """The launcher, the held notices and a window share the keys by one rule, on niri.
 
-modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh, with the
+modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run. The newest surface Joel opened takes the keys, a
 notice arriving never does, and a click on a window gives that window the keys and closes the
 launcher, since one left open without them hears nothing he can see (Joel, 2026-11-07: "we
