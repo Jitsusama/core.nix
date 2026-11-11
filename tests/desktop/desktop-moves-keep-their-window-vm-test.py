@@ -193,6 +193,9 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in(session.split("-")[1], selecting=title_of(session))
+    # Return goes to the session only once the launcher knows its window, as the kitty it's in
+    # says; until then the row offers Talk first.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "go to")
     began = time.monotonic()
     machine.send_key("ret")
     machine.wait_until_succeeds(
@@ -269,7 +272,8 @@ def typed_past(desktop: Desktop, session: str) -> None:
 
 def programs_for(desktop: Desktop, session: str) -> int:
     """Count the stand-ins running for the session, its holder aside, which name pi bare."""
-    return int(desktop.as_account(f"pgrep -c -f 'bin/pi .*{session}' || true").strip())
+    # Bracketed, so the pattern doesn't match the shell running it.
+    return int(desktop.as_account(f"pgrep -c -f 'bin/p[i] .*{session}' || true").strip())
 
 
 def typed_by(desktop: Desktop, session: str) -> list[str]:
