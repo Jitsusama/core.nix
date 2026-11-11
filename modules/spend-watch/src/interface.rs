@@ -297,12 +297,38 @@ impl Hub {
     /// was told before was the last run's and said as such.
     pub fn publish(&self, collection: &Collection, budgets: Option<&Standing>) {
         let whole = serde_json::to_value(collection).unwrap_or_default();
+        self.tell(whole, budgets.map(budget_records).unwrap_or_default());
+    }
+
+    /// Takes the files as they were written again, `collection.json`'s
+    /// text and `budgets.json`'s, telling each watch what changed as a
+    /// pass would, for a hub serving only what was written
+    /// (`daemon::serve`), so a fixture that writes them anew is heard. A
+    /// collection of another shape is passed over, and budgets that can't
+    /// be read are none.
+    pub fn rewritten(&self, collection: &str, budgets: &str) {
+        let Ok(whole) = serde_json::from_str::<Value>(collection) else {
+            return;
+        };
+        if whole["v"].as_u64() != Some(u64::from(crate::collection::VERSION)) {
+            return;
+        }
+        let standing = serde_json::from_str::<Value>(budgets)
+            .ok()
+            .filter(|said| said["v"].as_u64() == Some(u64::from(crate::standing::VERSION)));
+        self.tell(
+            whole,
+            standing.as_ref().map(cut_budgets).unwrap_or_default(),
+        );
+    }
+
+    /// Tells each watch what changed between the records held and those
+    /// `whole` and `budgets` make, and holds those.
+    fn tell(&self, whole: Value, budgets: BTreeMap<String, Value>) {
         let mut held = self.lock();
         let mut now = held.served.take(&whole, &self.words);
         now.extend(cut(whole));
-        if let Some(budgets) = budgets {
-            now.extend(budget_records(budgets));
-        }
+        now.extend(budgets);
         let first = !held.passed;
         held.passed = true;
         let was = std::mem::take(&mut held.records);
@@ -760,6 +786,36 @@ mod tests {
             client.next()["error"]["code"],
             "not-answering",
             "with nothing to do it, every act is refused as not answering"
+        );
+    }
+
+    #[test]
+    fn what_is_written_again_is_told_as_it_changes() {
+        let hub = Arc::new(Hub::new(1));
+        hub.seed(&serde_json::to_string(&collection()).expect("the collection, written"));
+        hub.answering();
+        let mut client = Client::to(&hub, r#"{"id":"all","ask":"watch","kind":"summary"}"#);
+        client.next();
+        let mut again = serde_json::to_value(collection()).expect("the collection, as a value");
+        again["today"] = json!("$9 today");
+        hub.rewritten(&again.to_string(), "");
+        let told = client.next();
+        let said: Vec<&str> = told["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|record| record["summary"]["said"].as_str())
+            .collect();
+        assert_eq!(
+            said,
+            ["$9 today"],
+            "a rewrite should tell what it changed: {told}"
+        );
+        hub.rewritten(&again.to_string(), "");
+        hub.rewritten("{}", "");
+        assert!(
+            client.silent(),
+            "the same written again, or another shape, should tell nothing"
         );
     }
 

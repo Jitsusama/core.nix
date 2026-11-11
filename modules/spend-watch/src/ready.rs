@@ -123,8 +123,12 @@ impl Served {
             .or_else(|| lines(&whole["now"]).next().map(|line| text(line, "side")))
             .unwrap_or_default();
         let quietly = quiet.first().map_or("", |line| text(line, "side"));
+        // The spend answer's headline is how today stands, as copied.
+        let headline = lines(&whole["now"])
+            .next()
+            .map_or("", |line| text(line, "copy"));
         let summary = json!({"key": SUMMARY, "kind": "summary",
-            "summary": {"place": PLACE, "said": today, "rows": summed}});
+            "summary": {"place": PLACE, "said": today, "headline": headline, "rows": summed}});
         let quiet_summary = json!({"key": QUIET_SUMMARY, "kind": "summary",
             "summary": {"place": QUIET, "said": quietly}});
         let mut told = BTreeMap::new();
@@ -174,16 +178,33 @@ fn key_of(place: &str, id: &str) -> String {
 
 /// The rows of one place, each line's after it, in the order shown, the
 /// reports its lines stand for by id in `reports`.
-pub fn rows(place: &str, lines: &[&Value], reports: &Value, words: &Words) -> Vec<Value> {
+pub fn rows(place: &str, listed: &[&Value], reports: &Value, words: &Words) -> Vec<Value> {
     let mut laid = Laid {
         place,
         reports,
         words,
         rows: Vec::new(),
         taken: BTreeSet::new(),
+        stood: BTreeSet::new(),
     };
-    for line in lines {
+    for line in listed {
         laid.lay(line, None, 0);
+    }
+    // A report no row stands for is still asked as an answer, so its rows
+    // are laid behind `answer:<id>`, a parent no row is, where the answer
+    // lists them and the place's own rows never do.
+    if place == PLACE
+        && let Some(each) = reports.as_object()
+    {
+        for (id, report) in each {
+            if laid.stood.contains(id) {
+                continue;
+            }
+            let within = format!("answer:{id}");
+            for behind in lines(&report["rows"]) {
+                laid.lay(behind, Some(within.as_str()), 1);
+            }
+        }
     }
     laid.rows
 }
@@ -195,6 +216,8 @@ struct Laid<'a> {
     words: &'a Words,
     rows: Vec<Value>,
     taken: BTreeSet<String>,
+    // The reports a laid row stands for, by id.
+    stood: BTreeSet<String>,
 }
 
 impl Laid<'_> {
@@ -213,7 +236,11 @@ impl Laid<'_> {
 
     fn lay(&mut self, line: &Value, within: Option<&str>, depth: u64) {
         let id = self.id(text(line, "key"), within);
-        let report = &self.reports[text(line, "report")];
+        let standing = text(line, "report");
+        if !standing.is_empty() {
+            self.stood.insert(standing.to_owned());
+        }
+        let report = &self.reports[standing];
         let row = ready(self.place, &id, line, report, within, depth, self.words);
         let at = self.rows.len();
         self.rows.push(row);
@@ -638,7 +665,8 @@ mod tests {
         assert!(first.windows(2).all(|two| two[0] < two[1]), "{first:?}");
         assert_eq!(
             told[SUMMARY]["summary"],
-            json!({"place": "spend", "said": "$4 today", "rows": ["row:spend:today"]})
+            json!({"place": "spend", "said": "$4 today", "headline": "",
+                "rows": ["row:spend:today"]})
         );
         assert_eq!(told[QUIET_SUMMARY]["summary"]["place"], "spend-quiet");
         whole["now"][1]["side"] = json!("$31");
@@ -722,5 +750,43 @@ mod tests {
         assert_eq!(said(&whole, QUIET_SUMMARY), "ahead");
         whole["today"] = json!("");
         assert_eq!(said(&whole, SUMMARY), "about $960 · ahead");
+    }
+
+    // A report no row stands for is laid behind its answer, a parent no
+    // row is, so asking it lists its rows and the place lists none of
+    // them; one a row stands for is laid behind that row alone. The
+    // summary's headline is today's row as copied.
+    #[test]
+    fn a_report_no_row_stands_for_is_laid_behind_its_answer() {
+        let today = json!({"key": "today", "name": "Today", "side": "$4",
+            "copy": "Today: about $4", "role": ""});
+        let model = json!({"key": "today/model", "name": "By Model", "side": "",
+            "copy": "", "role": "report", "report": "today/model"});
+        let row = |key: &str| json!({"key": key, "name": key, "side": "", "copy": ""});
+        let whole = json!({
+            "now": [today, model], "findings": [], "more": [], "quiet": [],
+            "shown": ["today", "today/model"], "summaryRows": [],
+            "reports": {
+                "today/model": {"title": "By model", "rows": [row("today/model/0")]},
+                "caps": {"title": "Caps", "rows": [row("caps/0"), row("caps/1")]},
+            },
+        });
+        let told = Served::default().take(&whole, &words());
+        let parents: Vec<(&str, &str)> = told
+            .values()
+            .filter(|record| record["kind"] == "row")
+            .map(|record| (text(record, "key"), text(&record["row"], "parent")))
+            .collect();
+        assert_eq!(
+            parents,
+            [
+                ("row:spend:caps/0", "row:spend:answer:caps"),
+                ("row:spend:caps/1", "row:spend:answer:caps"),
+                ("row:spend:today", ""),
+                ("row:spend:today/model", ""),
+                ("row:spend:today/model/0", "row:spend:today/model"),
+            ]
+        );
+        assert_eq!(told[SUMMARY]["summary"]["headline"], "Today: about $4");
     }
 }
