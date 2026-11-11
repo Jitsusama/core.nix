@@ -102,6 +102,21 @@ impl Numbers {
         format!("{whole}{}{fraction:0<places$}", self.point)
     }
 
+    /// A figure said to `places` places, its zeros kept, grouped, with the
+    /// real minus: 0.06 to 3 as "0.060", as a chromaticity's coordinate
+    /// is said.
+    #[must_use]
+    pub fn fixed(&self, value: f64, places: usize) -> String {
+        let said = self
+            .number(value, places)
+            .replacen('-', &MINUS.to_string(), 1);
+        if places == 0 {
+            return said;
+        }
+        let (whole, fraction) = said.split_once(&self.point).unwrap_or((&said, ""));
+        format!("{whole}{}{fraction:0<places$}", self.point)
+    }
+
     /// A reading whole by nature, as a signal's dBm is, rounded and
     /// grouped with the real minus: -14.4 as "−14".
     pub fn whole(&self, value: f64) -> String {
@@ -144,6 +159,11 @@ mod tests {
             let places = usize::try_from(case["places"].as_u64().unwrap_or(0)).unwrap_or(0);
             let said = numbers_of(&case).number(value_of(&case), places);
             assert_eq!(said, case["said"], "a number of {case}");
+        }
+        for case in cases("fixed") {
+            let places = usize::try_from(case["places"].as_u64().unwrap_or(0)).unwrap_or(0);
+            let said = numbers_of(&case).fixed(value_of(&case), places);
+            assert_eq!(said, case["said"], "a fixed figure of {case}");
         }
         for case in cases("whole") {
             let said = numbers_of(&case).whole(value_of(&case));

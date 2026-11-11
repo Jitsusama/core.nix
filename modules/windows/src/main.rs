@@ -1,4 +1,4 @@
-//! windows SOCKET [--words FILE]
+//! windows SOCKET [--words FILE] [--numbers FILE]
 //!
 //! niri's windows, held ready for the shell and anything else that asks,
 //! over SOCKET in the shell's daemon interface (interface.rs): each
@@ -21,7 +21,9 @@
 //! (screens.rs), asking niri for its outputs as the stream begins and at
 //! each workspace change, since niri says nothing of a screen itself,
 //! and again when asked to `look`, as the shell does once it's changed a
-//! screen. Handed none, it makes no rows.
+//! screen. Handed none, it makes no rows. Each screen's drawer says its
+//! figures in the account's number settings (`--numbers`, `{ group,
+//! point }`), or the comma and the full stop where it's handed none.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -34,8 +36,10 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use programs::notify::Notify;
 use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
+use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
@@ -89,6 +93,8 @@ struct Daemon {
     outputs: BTreeMap<String, Value>,
     /// The words the launcher's rows are said in, or none, so no rows.
     words: Option<screens::Words>,
+    /// What desk-facts says of each screen's EDID, by connector.
+    desk: BTreeMap<String, Value>,
     /// The rows as last told, so each keeps its order.
     rows: Kept,
     /// How niri's stream stands: "starting" until it first answers,
@@ -109,18 +115,20 @@ struct Shared {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (mut named, mut words) = (Vec::new(), None);
+    let (mut named, mut words, mut numbers) = (Vec::new(), None, None);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--words" => words = args.next(),
+            "--numbers" => numbers = args.next(),
             _ => named.push(arg),
         }
     }
     let Some(socket) = named.into_iter().next() else {
-        eprintln!("usage: windows SOCKET [--words FILE]");
+        eprintln!("usage: windows SOCKET [--words FILE] [--numbers FILE]");
         std::process::exit(64);
     };
-    let words = words.map(|path| worded(Path::new(&path)));
+    let numbers = numbered(numbers.as_deref().map(Path::new));
+    let words = words.map(|path| worded(Path::new(&path)).numbered(numbers));
     let Some(niri) = std::env::var_os("NIRI_SOCKET").map(PathBuf::from) else {
         eprintln!("<3>NIRI_SOCKET isn't set, so there's no niri to hear");
         std::process::exit(78);
@@ -135,6 +143,12 @@ fn main() {
     };
     let folders = xdg::folders_here();
     let (entries, looked) = Entries::read(&folders);
+    // Screens' drawers say what desk-facts reads of each EDID, so only a
+    // daemon making rows reads or hears it.
+    let desk = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|_| words.is_some())
+        .map(|runtime| PathBuf::from(runtime).join("desk"));
+    let said = desk.as_deref().map_or_else(BTreeMap::new, read_desk);
     let shared = Arc::new(Shared {
         daemon: Mutex::new(Daemon {
             held: BTreeMap::new(),
@@ -144,6 +158,7 @@ fn main() {
             names: Names::default(),
             outputs: BTreeMap::new(),
             words,
+            desk: said,
             rows: Kept::default(),
             niri: "starting",
             events: 0,
@@ -160,6 +175,10 @@ fn main() {
         entries_changed(&following);
     }) {
         eprintln!("<4>inotify isn't there, so entries changing aren't heard: {why}");
+    }
+    if let Some(desk) = desk {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || follow_desk(&shared, &desk));
     }
     {
         let shared = Arc::clone(&shared);
@@ -195,6 +214,25 @@ fn worded(path: &Path) -> screens::Words {
         );
     }
     words
+}
+
+/// The account's number settings, or the comma and the full stop where
+/// it's handed none, or none it can read, which it says once, here.
+fn numbered(path: Option<&Path>) -> Numbers {
+    let Some(path) = path else {
+        return Numbers::default();
+    };
+    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
+    match read.and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string())) {
+        Ok(settings) => Numbers::read(&settings),
+        Err(why) => {
+            eprintln!(
+                "<4>couldn't read the number settings in {}, so Screens says the usual: {why}",
+                path.display()
+            );
+            Numbers::default()
+        }
+    }
 }
 
 /// The socket systemd holds for it (windows.socket), or, run by hand,
@@ -309,12 +347,16 @@ fn refresh(daemon: &mut Daemon) {
         names,
         outputs,
         words,
+        desk,
         rows,
         ..
     } = &mut *daemon;
     let mut records = desktop.records(entries, names);
     if let Some(words) = words {
-        rows.take(screens::rows(outputs, desktop.output(), words), Vec::new());
+        rows.take(
+            screens::rows(outputs, desk, desktop.output(), words),
+            Vec::new(),
+        );
         records.extend(rows.all().cloned());
     }
     let said: HashSet<String> = records
@@ -384,6 +426,56 @@ fn entries_changed(shared: &Shared) {
     daemon.entries = entries;
     daemon.names.forget();
     refresh(&mut daemon);
+}
+
+/// What desk-facts says of each screen in its folder, or nothing where it
+/// has written nothing yet.
+fn read_desk(folder: &Path) -> BTreeMap<String, Value> {
+    std::fs::read_to_string(folder.join(screens::DESK))
+        .map(|said| screens::desk(&said))
+        .unwrap_or_default()
+}
+
+/// Hears desk-facts write each screen's EDID again, as when one is
+/// plugged in, and has the screens' drawers say it. desk-facts writes the
+/// file whole and renames it into place, so a reading never meets it half
+/// written; the folder is made here where desk-facts hasn't yet, since it
+/// removes only its files when it stops.
+fn follow_desk(shared: &Shared, folder: &Path) {
+    let notify = match Notify::new() {
+        Ok(notify) => notify,
+        Err(why) => {
+            eprintln!("<4>inotify isn't there, so desk-facts writing isn't heard: {why}");
+            return;
+        }
+    };
+    let _ = std::fs::create_dir_all(folder);
+    if notify.watch(folder).is_none() {
+        eprintln!(
+            "<4>couldn't watch {}, so desk-facts writing isn't heard",
+            folder.display()
+        );
+        return;
+    }
+    // Read again once watched, so nothing written before the watch is
+    // missed.
+    desk_changed(shared, folder);
+    while let Ok(changes) = notify.changes() {
+        if changes.iter().any(|(_, name)| name == screens::DESK) {
+            desk_changed(shared, folder);
+        }
+    }
+}
+
+/// desk-facts wrote its file: the screens' drawers say it where it
+/// changed.
+fn desk_changed(shared: &Shared, folder: &Path) {
+    let desk = read_desk(folder);
+    let mut daemon = lock(&shared.daemon);
+    if daemon.desk != desk {
+        daemon.desk = desk;
+        refresh(&mut daemon);
+    }
 }
 
 fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {

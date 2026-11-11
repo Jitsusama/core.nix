@@ -12,12 +12,21 @@
 }:
 let
   windows = pkgs.callPackage ./package.nix { };
-  # The launcher's vocabulary, which Screens' ready rows are said in; none
-  # where the shell isn't imported, and then it makes no rows.
+  # The launcher's vocabulary and Screens' number settings, which Screens'
+  # ready rows are said in; none where the shell isn't imported, and then
+  # it makes no rows.
   launcher = config.jitsusama.quickshell.launcher or null;
+  displays = if launcher == null then { } else launcher.providers.displays or { };
   worded = lib.optionals (launcher != null) [
     "--words"
     (pkgs.writeText "words.json" (builtins.toJSON launcher.words))
+    "--numbers"
+    (pkgs.writeText "numbers.json" (
+      builtins.toJSON {
+        group = displays.group or "";
+        point = displays.point or "";
+      }
+    ))
   ];
 in
 {

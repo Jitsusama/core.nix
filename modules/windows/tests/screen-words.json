@@ -3,6 +3,8 @@
     {
       "id": "displays",
       "said": {
+        "built-in": "built in",
+        "screen": "screen",
         "dark": "dark",
         "off": "off",
         "focused": "focused",
@@ -16,6 +18,56 @@
       "name": "Turn Every Screen Off",
       "glyph": "displayOff",
       "said": { "note": "a key wakes them \u00b7 hubs stay on" }
-    }
+    },
+    { "id": "displays:mode", "name": "Screen Mode" },
+    { "id": "displays:refresh", "name": "Refresh" },
+    {
+      "id": "displays:variable",
+      "name": "Variable Refresh",
+      "said": { "unsupported": "unsupported" }
+    },
+    { "id": "displays:logical", "name": "Logical Size" },
+    { "id": "displays:position", "name": "Position" },
+    {
+      "id": "displays:rotation",
+      "name": "Rotation",
+      "said": {
+        "90": "a quarter turn left",
+        "180": "upside down",
+        "270": "a quarter turn right",
+        "Normal": "upright",
+        "Flipped": "mirrored",
+        "Flipped90": "mirrored, a quarter turn left",
+        "Flipped180": "mirrored, upside down",
+        "Flipped270": "mirrored, a quarter turn right"
+      }
+    },
+    {
+      "id": "displays:modes",
+      "name": "Screen Modes",
+      "said": {
+        "preferred": "preferred",
+        "custom": "custom",
+        "preferred-mode": "preferred {mode}",
+        "at": "{size} at {rate}"
+      }
+    },
+    { "id": "displays:density", "name": "Density" },
+    { "id": "displays:serial", "name": "Serial" },
+    { "id": "displays:size", "name": "Size" },
+    { "id": "displays:depth", "name": "Colour Depth" },
+    { "id": "displays:colours", "name": "Colours" },
+    { "id": "displays:white", "name": "White Point", "said": { "point": "x {x} y {y}" } },
+    {
+      "id": "displays:primaries",
+      "name": "Primaries",
+      "said": { "red": "red x {x} y {y}", "green": "green x {x} y {y}", "blue": "blue x {x} y {y}" }
+    },
+    { "id": "displays:hdr", "name": "HDR" },
+    { "id": "displays:maker", "name": "Maker" },
+    { "id": "displays:model", "name": "Model" },
+    { "id": "displays:made", "name": "Made" },
+    { "id": "displays:input", "name": "Input" },
+    { "id": "displays:edid", "name": "EDID" }
   ]
 }
