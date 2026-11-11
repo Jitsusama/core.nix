@@ -68,10 +68,12 @@ pub fn act(name: &str, said: &Value) -> Result<Act, Refused> {
         .to_owned();
     match name {
         "volume" => {
+            // No further than full, as the shell shows it: any process of
+            // the account can ask, and a volume of 10 would be 1,000%.
             let volume = said["volume"]
                 .as_f64()
-                .filter(|volume| *volume >= 0.0)
-                .ok_or_else(|| refused("bad-act", "a volume act says a volume of 0 or more"))?;
+                .filter(|volume| (0.0..=1.0).contains(volume))
+                .ok_or_else(|| refused("bad-act", "a volume act says a volume from 0 to 1"))?;
             Ok(Act::Volume {
                 key,
                 volume: share(volume),

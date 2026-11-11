@@ -36,7 +36,7 @@ it moved comes to every watch as the server says it back.
 
 | Act      | Says                                  | Does                                  |
 | -------- | ------------------------------------- | ------------------------------------- |
-| `volume` | `volume` as shown, and `muted` if set | scales each channel alike to it       |
+| `volume` | `volume` 0 to 1, and `muted` if set   | scales each channel alike to it       |
 | `mute`   | `muted`                               | mutes it, or lets it be heard         |
 | `use`    | nothing more                          | makes it the output or input chosen   |
 
