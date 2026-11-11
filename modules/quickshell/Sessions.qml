@@ -1818,12 +1818,17 @@ Singleton {
     // couldn't put back. One parked here keeps its window while its
     // process is gone, and the cutover wakes it to move it, so it's
     // looked for among the parked too (2QZBX9, 2026-11-11: a parked
-    // canary's window closed with no place kept).
+    // canary's window closed with no place kept). A parked one's window is
+    // found here with niri's windows by kitty, as a running one's is, since
+    // `parked` finds only those opened with an app id of their own, and
+    // one in a kitty opened without, as the oldest are, had none to keep
+    // (2QZBX9, 2026-11-11: B8RBNW's window 435 was on workspace 8).
     function keepPlace(id) {
-        const session = running.concat(parked)
-            .find(one => one.here && one.presence.session === id);
-        const place = /^[A-Za-z0-9-]+$/.test(id) ? Places.placeOf(session?.window, Date.now())
-            : null;
+        const windows = niriWindows;
+        const resting = root.resting.find(one => one.presence.session === id);
+        const window = running.find(one => one.here && one.presence.session === id)?.window
+            ?? (resting ? windowOf(resting, windows.pids, windows.opened) : null);
+        const place = /^[A-Za-z0-9-]+$/.test(id) ? Places.placeOf(window, Date.now()) : null;
         if (place === null)
             return "no window to keep";
         keepPlaces(Object.assign({}, keptPlaces, { [id]: place }));
