@@ -440,15 +440,16 @@
   # link is doing from what bluetooth-links writes, what Sound makes of a
   # sound device's properties, the machine's connections from what ip, the
   # routing tables, resolv.conf and wifid say, and how WARP's link stands from
-  # the record warp prints (modules/warp/warp.json), as tests/answers.qml
-  # lists them, and leaves alone what isn't one, in Qt's own JavaScript
-  # engine.
+  # the record warp prints (modules/warp/warp.json), as tests/answers/ lists
+  # them a place a file, and leaves alone what isn't one, in Qt's own
+  # JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-answers-what-is-asked" { } ''
       cp ${../../../tests/answers.qml} answers.qml
+      cp -r ${../../../tests/answers} answers
       cp ${../launcher/Numbers.js} Numbers.js
       cp ${../launcher/Addresses.js} Addresses.js
       cp ${../launcher/Subnets.js} Subnets.js

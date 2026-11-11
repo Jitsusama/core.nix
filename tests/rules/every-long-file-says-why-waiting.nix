@@ -76,7 +76,6 @@
   "modules/wifid/daemon/src/service.rs"
   "modules/wifid/daemon/src/state.rs"
   "tests"
-  "tests/answers.qml"
   "tests/command-line.qml"
   "tests/desktop"
   "tests/desktop.nix"
