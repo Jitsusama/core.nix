@@ -10,9 +10,11 @@
 //!
 //! What a row steps into comes after it, each a row of its own saying its
 //! `parent`: for a finding Return acts on, copying it and marking it
-//! expected, then the lines behind it. A row standing for a report says
-//! which in `held`, and that report's rows stay its own record, told
-//! while Spend is wanted.
+//! expected, then the lines behind it, and for a row standing for a
+//! report, the report's rows. Such a row says so with a `verb:more` act
+//! stepping into them, after the act Return does. A report's row copies
+//! the report whole, as markdown, says which in `held`, and is found by
+//! the report's title and words too, in `held.also`.
 //!
 //! How Spend stands, said after its title at home and in Agents, is each
 //! place's `summary:<place>` record, `{ place, said }` as every daemon's
@@ -113,6 +115,7 @@ impl Served {
             .map(|key| key_of(PLACE, key))
             .collect();
         let quiet: Vec<&Value> = lines(&whole["quiet"]).collect();
+        let reports = &whole["reports"];
         // Until the daemon has counted today, as just after a switch,
         // today's row's side says it.
         let today = Some(text(whole, "today"))
@@ -129,13 +132,29 @@ impl Served {
         for (place, of, summary) in places {
             let beside = vec![summary];
             let kept = self.places.entry(place).or_default();
-            kept.take(rows(place, &of, words), beside);
+            kept.take(rows(place, &of, reports, words), beside);
             told.extend(
                 kept.all()
                     .map(|record| (text(record, "key").to_owned(), record.clone())),
             );
         }
         told
+    }
+}
+
+/// Whether a record is one a watch of `place` hears: a row or a summary
+/// only of that place, and every record of another kind. Every record is
+/// of a watch naming no place.
+pub fn in_place(key: &str, place: Option<&str>) -> bool {
+    let Some(place) = place else {
+        return true;
+    };
+    match key
+        .strip_prefix("row:")
+        .or_else(|| key.strip_prefix("summary:"))
+    {
+        Some(of) => of == place || of.strip_prefix(place).is_some_and(|id| id.starts_with(':')),
+        None => true,
     }
 }
 
@@ -153,10 +172,12 @@ fn key_of(place: &str, id: &str) -> String {
     format!("row:{place}:{id}")
 }
 
-/// The rows of one place, each line's after it, in the order shown.
-pub fn rows(place: &str, lines: &[&Value], words: &Words) -> Vec<Value> {
+/// The rows of one place, each line's after it, in the order shown, the
+/// reports its lines stand for by id in `reports`.
+pub fn rows(place: &str, lines: &[&Value], reports: &Value, words: &Words) -> Vec<Value> {
     let mut laid = Laid {
         place,
+        reports,
         words,
         rows: Vec::new(),
         taken: BTreeSet::new(),
@@ -170,6 +191,7 @@ pub fn rows(place: &str, lines: &[&Value], words: &Words) -> Vec<Value> {
 /// A place's rows as they're laid, and the ids taken in it.
 struct Laid<'a> {
     place: &'a str,
+    reports: &'a Value,
     words: &'a Words,
     rows: Vec<Value>,
     taken: BTreeSet<String>,
@@ -191,7 +213,9 @@ impl Laid<'_> {
 
     fn lay(&mut self, line: &Value, within: Option<&str>, depth: u64) {
         let id = self.id(text(line, "key"), within);
-        let row = ready(self.place, &id, line, within, depth, self.words);
+        let report = &self.reports[text(line, "report")];
+        let row = ready(self.place, &id, line, report, within, depth, self.words);
+        let at = self.rows.len();
         self.rows.push(row);
         let inner = depth + 1;
         for doing in doings(line, self.words) {
@@ -199,8 +223,15 @@ impl Laid<'_> {
             let made = self.id(&own, Some(&id));
             self.rows.push(placed(doing, self.place, &made, &id, inner));
         }
-        for behind in lines(&line["rows"]) {
+        for behind in lines(&line["rows"]).chain(lines(&report["rows"])) {
             self.lay(behind, Some(&id), inner);
+        }
+        // Return does the row's own act; the right arrow steps into what's
+        // behind it.
+        if self.rows.len() > at + 1
+            && let Some(acts) = self.rows[at]["acts"].as_array_mut()
+        {
+            acts.push(json!({"key": "verb:more", "step": "rows"}));
         }
     }
 }
@@ -244,11 +275,13 @@ fn marked_hue(role: &str) -> &'static str {
     }
 }
 
-/// What a line's own row is, ready.
+/// What a line's own row is, ready, `report` the report it stands for,
+/// or null.
 fn ready(
     place: &str,
     id: &str,
     line: &Value,
+    report: &Value,
     within: Option<&str>,
     depth: u64,
     words: &Words,
@@ -267,12 +300,16 @@ fn ready(
         let verb = text(line, "verb");
         held["verb"] = json!(if verb.is_empty() { "run" } else { verb });
         acts.push(json!({"key": "verb:spend:run", "ask": asked("run", of)}));
+    } else if report.is_object() {
+        acts.push(json!({"key": "verb:copy", "copy": text(report, "markdown")}));
+        let also = format!("{} {}", text(report, "title"), text(report, "words"));
+        held["also"] = json!(also.trim());
     } else {
         acts.push(json!({"key": "verb:copy", "copy": text(line, "copy")}));
     }
-    let report = text(line, "report");
-    if !report.is_empty() {
-        held["report"] = json!(report);
+    let standing = text(line, "report");
+    if !standing.is_empty() {
+        held["report"] = json!(standing);
     }
     let mut row = json!({
         "key": key_of(place, id), "thing": format!("spend:{of}"), "place": place,
@@ -411,7 +448,7 @@ mod tests {
     // marking it expected, then its own lines, each saying where it is.
     #[test]
     fn a_finding_is_served_ready_with_what_it_offers_behind_it() {
-        let made = rows(PLACE, &[&finding()], &words());
+        let made = rows(PLACE, &[&finding()], &Value::Null, &words());
         assert_eq!(
             keys(&made),
             [
@@ -431,7 +468,8 @@ mod tests {
         assert_eq!(
             row["acts"],
             json!([{"key": "verb:spend:run",
-                "ask": {"ask": "act", "act": "run", "line": "finding:burn"}}])
+                "ask": {"ask": "act", "act": "run", "line": "finding:burn"}},
+                {"key": "verb:more", "step": "rows"}])
         );
         assert_eq!(row["held"], json!({"verb": "go"}));
         assert_eq!(row.get("parent"), None);
@@ -463,7 +501,7 @@ mod tests {
             "role": "warning", "mark": "clock"});
         let report = json!({"key": "report:week/model", "name": "By Model", "side": "",
             "copy": "", "role": "report", "report": "week/model"});
-        let made = rows(PLACE, &[&day, &near, &report], &words());
+        let made = rows(PLACE, &[&day, &near, &report], &Value::Null, &words());
         let worn: Vec<(&str, &str)> = made
             .iter()
             .map(|row| (text(row, "glyph"), text(row, "hue")))
@@ -480,6 +518,34 @@ mod tests {
         assert_eq!(made[2]["held"], json!({"report": "week/model"}));
     }
 
+    // A report's row copies the report whole and is found by its title
+    // and words, and steps into the report's rows, which copy their own.
+    #[test]
+    fn a_report_s_row_steps_into_the_report() {
+        let report = json!({"key": "today/model", "name": "By Model", "side": "",
+            "copy": "", "role": "report", "report": "today/model"});
+        let reports = json!({"today/model": {"title": "Spend today by model",
+            "words": "model", "markdown": "## Spend today by model", "rows": [
+                {"key": "today/model/0", "name": "opus", "side": "$4", "copy": "opus: $4",
+                    "role": "text"}]}});
+        let made = rows(PLACE, &[&report], &reports, &words());
+        assert_eq!(
+            keys(&made),
+            ["row:spend:today/model", "row:spend:today/model/0"]
+        );
+        assert_eq!(
+            made[0]["acts"],
+            json!([{"key": "verb:copy", "copy": "## Spend today by model"},
+                {"key": "verb:more", "step": "rows"}])
+        );
+        assert_eq!(made[0]["held"]["also"], "Spend today by model model");
+        assert_eq!(made[1]["parent"], "row:spend:today/model");
+        assert_eq!(
+            made[1]["acts"],
+            json!([{"key": "verb:copy", "copy": "opus: $4"}])
+        );
+    }
+
     // A drawer comes worded: each fact named by its label, else by the
     // vocabulary's name for its id, one that says nothing left out, and
     // its title its row's name unless it says one.
@@ -494,7 +560,7 @@ mod tests {
                     "figure": {"shape": "stroke", "values": [0.4], "warn": false}},
                 {"id": "unnamed", "value": "said", "words": true},
             ]}});
-        let made = rows(PLACE, &[&window], &words());
+        let made = rows(PLACE, &[&window], &Value::Null, &words());
         assert_eq!(
             made[0]["drawer"],
             json!({"eyebrow": "in Claude Pro · window", "names": true, "title": "Five Hours",
@@ -514,7 +580,7 @@ mod tests {
         let cap = json!({"key": "cap:day", "name": "Day", "side": "", "copy": "", "role": ""});
         let today = json!({"key": "today", "name": "Today", "side": "", "copy": "",
             "role": "", "rows": [cap.clone()]});
-        let made = rows(PLACE, &[&cap, &today], &words());
+        let made = rows(PLACE, &[&cap, &today], &Value::Null, &words());
         assert_eq!(
             keys(&made),
             [
@@ -606,6 +672,34 @@ mod tests {
         assert_eq!(told["row:spend:held"]["row"]["name"], "Watch on hold");
         assert_eq!(told["row:spend-quiet:held"]["row"]["hue"], "warning");
         assert_eq!(told[SUMMARY]["summary"]["rows"], json!(["row:spend:held"]));
+    }
+
+    // A watch naming the launcher's place hears only that place's rows
+    // and summary, so each place's reader holds its own.
+    #[test]
+    fn a_place_hears_its_own_rows() {
+        let quiet = Some(QUIET);
+        assert!(in_place("row:spend-quiet:today", quiet), "its own row");
+        assert!(in_place(QUIET_SUMMARY, quiet), "its own summary");
+        assert!(!in_place("row:spend:today", quiet), "the shown list's row");
+        assert!(!in_place(SUMMARY, quiet), "the shown list's summary");
+        assert!(
+            !in_place("row:spend-quiet:today", Some(PLACE)),
+            "the quiet list's row"
+        );
+        assert!(
+            in_place("report:today/model", quiet),
+            "a record of another kind"
+        );
+        assert!(in_place("row:spend:today", None), "a watch of every place");
+        assert_eq!(
+            crate::interface::ask(r#"{"id":1,"ask":"watch","kind":"row","place":"spend"}"#),
+            crate::interface::Ask::Watch {
+                id: json!(1),
+                kinds: vec!["row".into()],
+                place: Some("spend".into())
+            }
+        );
     }
 
     // How Spend stands is said as the collection says today, or by

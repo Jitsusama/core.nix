@@ -13,10 +13,12 @@
 //!
 //! collection.json and budgets.json are still written whole for the
 //! command line, and for the shell while the socket isn't there.
+//!
+//! Long because its tests, nearly half of it, drive the socket itself.
 
 use crate::acts::{self, Doer};
 use crate::collection::Collection;
-use crate::ready::{Served, Words};
+use crate::ready::{Served, Words, in_place};
 use crate::records::{BUDGETS, budget_records, cut, cut_budgets, kind_of, kinds};
 use crate::standing::Standing;
 use crate::status::ShellAction;
@@ -46,15 +48,18 @@ pub enum Ask {
         id: Value,
         keys: Vec<String>,
     },
-    /// Every record of these kinds.
+    /// Every record of these kinds, of one launcher's place where it
+    /// names one.
     List {
         id: Value,
         kinds: Vec<String>,
+        place: Option<String>,
     },
-    /// Records of these kinds as they change.
+    /// Records of these kinds as they change, as `List` names them.
     Watch {
         id: Value,
         kinds: Vec<String>,
+        place: Option<String>,
     },
     Unwatch {
         id: Value,
@@ -96,6 +101,7 @@ pub fn ask(line: &str) -> Ask {
         .unwrap_or("")
         .to_owned();
     let named = || kinds(&said);
+    let place = said["place"].as_str().map(str::to_owned);
     match asked.as_str() {
         "hello" => Ask::Hello { id },
         "get" => Ask::Get {
@@ -113,11 +119,11 @@ pub fn ask(line: &str) -> Ask {
                 .unwrap_or_default(),
         },
         "list" => match named() {
-            Ok(kinds) => Ask::List { id, kinds },
+            Ok(kinds) => Ask::List { id, kinds, place },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "watch" => match named() {
-            Ok(kinds) => Ask::Watch { id, kinds },
+            Ok(kinds) => Ask::Watch { id, kinds, place },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "unwatch" => Ask::Unwatch { id },
@@ -141,6 +147,7 @@ struct Watch {
     connection: u64,
     id: Value,
     kinds: Vec<String>,
+    place: Option<String>,
     told: SyncSender<String>,
     stream: Arc<UnixStream>,
 }
@@ -148,6 +155,7 @@ struct Watch {
 impl Watch {
     fn wants(&self, key: &str) -> bool {
         kind_of(key).is_some_and(|kind| self.kinds.iter().any(|wanted| wanted == kind))
+            && in_place(key, self.place.as_deref())
     }
 }
 
@@ -388,15 +396,17 @@ impl Hub {
                 let found: Vec<&Value> = keys.iter().filter_map(|k| held.records.get(k)).collect();
                 json!({"id": id, "records": found})
             }
-            Ask::List { id, kinds } => json!({"id": id, "records": of(&held, &kinds)}),
-            Ask::Watch { id, kinds } => {
+            Ask::List { id, kinds, place } => {
+                json!({"id": id, "records": of(&held, &kinds, place.as_deref())})
+            }
+            Ask::Watch { id, kinds, place } => {
                 // A watch asked again by its id, with more kinds or fewer,
                 // replaces the one before and is told its kinds whole.
                 held.watches
                     .retain(|watch| !(watch.connection == connection && watch.id == id));
                 // Queued under the lock that publishing takes, so no pass's
                 // change is said before the whole it moved on from.
-                let first = json!({"id": id, "records": of(&held, &kinds)});
+                let first = json!({"id": id, "records": of(&held, &kinds, place.as_deref())});
                 if told.try_send(first.to_string()).is_err() {
                     let _ = hangup.shutdown(Shutdown::Both);
                     return None;
@@ -405,6 +415,7 @@ impl Hub {
                     connection,
                     id,
                     kinds,
+                    place,
                     told: told.clone(),
                     stream: Arc::clone(hangup),
                 });
@@ -429,11 +440,12 @@ impl Hub {
     }
 }
 
-/// Every record held of these kinds, by key.
-fn of<'a>(held: &'a Held, kinds: &[String]) -> Vec<&'a Value> {
+/// Every record held of these kinds, of `place` where it's named, by key.
+fn of<'a>(held: &'a Held, kinds: &[String], place: Option<&str>) -> Vec<&'a Value> {
     held.records
         .iter()
         .filter(|(key, _)| kind_of(key).is_some_and(|kind| kinds.iter().any(|k| k == kind)))
+        .filter(|(key, _)| in_place(key, place))
         .map(|(_, record)| record)
         .collect()
 }

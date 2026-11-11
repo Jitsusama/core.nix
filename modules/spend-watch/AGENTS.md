@@ -19,7 +19,9 @@ the shell remakes only what a pass moved and watches each kind only while
 it draws it. The launcher's rows are told ready too (`src/ready.rs`), in
 the form every daemon serves its rows in (`../ready-rows`): each worded
 from the launcher's words.json, which the config names as `vocabulary`,
-and spaced, so the launcher only places and draws them. The socket takes
+and spaced, so the launcher only places and draws them. A watch naming a
+`place` hears only that place's rows and summary, so the shown list's
+reader and the quiet one's each hold their own. The socket takes
 the shell's acts too (`src/acts.rs`): `run` does what a row offers, going
 to a session or starting its sign-in through niri, and `expect` marks its
 finding expected, each named by the row's key so the socket runs only what
