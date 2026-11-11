@@ -414,3 +414,38 @@ def test_the_closed_launcher_draws_nothing_as_it_lets_its_closing_go(shell: Shel
     shell.reported("spots made while closed ", lambda _: True, since)
     shell.reported("spots freshened while closed ", lambda _: True, since, FRESHENING)
     assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
+
+
+def test_openings_make_only_the_notices_rows_that_came(shell: Shell) -> None:
+    """Opened again and searched, the launcher makes only the notice rows of notices come since.
+
+    Joel's first opening after a restart made 942 notices' rows in its settling (2026-11-10).
+    That was the first making since the start: each row is kept by its notice and its sender's
+    window and program as niri and the desktop entries say (launcher/PastNotices.qml), so an
+    opening makes none again, and a notice arriving makes its own row alone.
+    """
+
+    def notices_rows() -> int:
+        return int(json.loads(shell.as_account(shell.ipc("made")))["rows"].get("notices", 0))
+
+    def searched(word: str) -> int:
+        """Open home, search the notices for the word, close, and give the rows that made."""
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        before = notices_rows()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        settled(shell)
+        shell.type_in(word, selecting=word)
+        shell.close_launcher()
+        return notices_rows() - before
+
+    for summary in ["Dunlin", "Sanderling"]:
+        with shell.told(f"shows card {summary}"):
+            shell.as_account(f"notify-send --expire-time=1000 '{summary}' 'a notice kept'")
+    searched("dunlin")
+    again = searched("sanderling")
+    with shell.told("shows card Turnstone"):
+        shell.as_account("notify-send --expire-time=1000 'Turnstone' 'a notice come since'")
+    came = searched("turnstone")
+    assert again == 0, f"opened again with no notice come, it made {again} notices' rows"
+    assert came == 1, f"one notice come, an opening made {came} notices' rows"
