@@ -64,9 +64,21 @@ Singleton {
         return root.files.filter(file => file.folder === folder && named.test(file.path)).length;
     }
 
+    // The daemon's lines as last heard, joined, so a read that finds what
+    // the last did changes nothing: each opening's watch is answered whole,
+    // every record told as changed, and a list made anew remade every row
+    // drawn from it (Capture's Recent, the image programs' screenshots) at
+    // every opening, though nothing was taken. Gone once the programs
+    // daemon serves those rows ready, by Thu 12 Nov.
+    property string lines: ""
+
     // The daemon's lines, as find prints them: a file's time in seconds, its
     // size and its path each.
     function heard(lines) {
+        const said = lines.join("\n");
+        if (said === root.lines)
+            return;
+        root.lines = said;
         root.files = lines.filter(line => line.includes("\t"))
             .map(line => {
                 const first = line.indexOf("\t");
