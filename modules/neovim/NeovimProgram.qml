@@ -222,11 +222,18 @@ Provider {
     // A file's drawer: where it is and its kind, its name, its first lines
     // and how many once file-preview has said, asked a frame after it's
     // first drawn, never while the drawer's binding reads, since that
-    // would change what it reads; then what only Neovim knows of it.
+    // would change what it reads; its lines said not to be answering where
+    // file-preview isn't; then what only Neovim knows of it.
     function plate(one, name) {
         const shown = previewing.shown(one.path);
         const file = { path: one.path, name: name, where: Files.within(one.path), entry: null };
         const drawn = FileFacts.plate(file, shown ?? null, provider.fileWords);
+        if (previewing.silent && !shown) {
+            drawn.facts = drawn.facts.concat([{
+                label: provider.fileWords.lines,
+                value: provider.said().silent ?? ""
+            }]);
+        }
         const now = Date.now();
         const own = Neovim.plateFacts(one, at => FileFacts.when(at, now, provider.fileWords));
         drawn.facts = drawn.facts.concat(own.map(fact => ({

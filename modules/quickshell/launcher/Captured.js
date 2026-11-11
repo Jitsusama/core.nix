@@ -90,7 +90,9 @@ function shownFrom(line) {
 // (Recent.takenEyebrow), where, then the kind of file it is, a picture or
 // a video, as the folder already says what took it: "in
 // ~/Pictures/Screenshots \u00b7 picture" (VKCF3Z, 2026-11-08). Short of
-// room the kind gives way first, then the folder from its middle.
+// room the kind gives way first, then the folder from its middle. Where
+// file-preview isn't answering (told.silent), the fact it would have said
+// says so, rather than being left out as one not said yet.
 function drawer(file, shown, told) {
     const { now, named, said, days } = told;
     const kind = said[PICTURE.test(file.path) ? "picture" : VIDEO.test(file.path) ? "video"
@@ -98,7 +100,13 @@ function drawer(file, shown, told) {
     return Object.assign(Recent.takenEyebrow(file.where, kind, said), {
         title: file.name,
         preview: preview(file, shown),
-        facts: facts(file, shown, now, days)
+        facts: facts(file, shown, now, days).concat(unanswered(file, shown, told))
             .map(fact => ({ label: named(fact.id), value: fact.value }))
     });
+}
+
+// The fact file-preview would have said, where it's silent and hasn't.
+function unanswered(file, shown, told) {
+    const id = PICTURE.test(file.path) ? "dimensions" : VIDEO.test(file.path) ? "length" : "";
+    return told.silent && !shown && id !== "" ? [{ id, value: told.said.silent ?? "" }] : [];
 }

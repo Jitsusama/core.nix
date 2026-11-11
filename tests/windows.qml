@@ -55,6 +55,20 @@ ShellRoot {
         settings: ({ name: "previews", camera: false, preview: [Quickshell.env("PREVIEWER")] })
     }
 
+    // One whose file-preview stops before it answers anything.
+    Launcher.Previewer {
+        id: mute
+
+        command: [Quickshell.env("PREVIEWER"), "silent"]
+        onSilentChanged: {
+            Expect.expect("one that stops unanswered is said silent", silent,
+                `waiting for ${root.waiting}`);
+            Expect.same("and what it was asked has nothing said", mute.shown("/g.png"),
+                undefined);
+            Qt.callLater(() => Qt.exit(0));
+        }
+    }
+
     // Which of file-preview's answers the case waits for, and the one
     // file-preview it keeps (Previewer.qml).
     property int previewing: 0
@@ -328,7 +342,29 @@ ShellRoot {
                 const by = Object.values(said).map(shown => shown.by);
                 Expect.expect("every picture is asked of one file-preview",
                     by.every(one => one === by[0]), by.join(", "));
-                Qt.callLater(() => Qt.exit(0));
+                // A picture rewritten in place keeps its path, so it's known
+                // changed by its change time, and asked again; and only the
+                // newest `most` are kept.
+                Expect.same("a picture first drawn with its change time is asked again",
+                    kept.shown("/d.png", 1)?.picture, undefined);
+                kept.most = 2;
+                root.previewing = 3;
+                root.waiting = "file-preview's answer for a picture changed";
+            } else if (root.previewing === 3 && "/d.png" in said) {
+                Expect.same("one changed is asked again", kept.shown("/d.png", 1)?.picture,
+                    "/d.png");
+                Expect.same("and while it's the same, it's said with nothing asked",
+                    [kept.asking, kept.next].join(""), "");
+                Expect.same("only the newest kept", Object.keys(said).join(", "),
+                    "/f.png, /d.png");
+                Expect.expect("and the rest forgotten, asked again when next drawn",
+                    !("/c.png" in kept.asked), Object.keys(kept.asked).join(", "));
+                Expect.same("and changed again, it's unsaid until asked again",
+                    kept.shown("/d.png", 2), undefined);
+                // One that can't start says so once, and its drawers say so.
+                root.previewing = 4;
+                root.waiting = "a file-preview that stops unanswered is said";
+                mute.shown("/g.png");
             }
         } catch (error) {
             Expect.fail(error.message);

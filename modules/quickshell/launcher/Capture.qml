@@ -489,10 +489,11 @@ Provider {
     // the picture, when it was taken and its size, as Taken read them, then
     // its dimensions or length once file-preview has said, which is asked
     // a frame later, never while the drawer's binding reads, since that
-    // would change what it reads.
+    // would change what it reads; asked again once the file has changed,
+    // by the change time Taken read.
     function takenDrawer(path, name) {
         const read = Taken.files.find(file => file.path === path) ?? { path };
-        const shown = previewing.shown(path);
+        const shown = previewing.shown(path, read.at);
         return Captured.drawer({
             path,
             name,
@@ -503,7 +504,8 @@ Provider {
             now: Date.now(),
             named: id => Words.name(id === "size" ? "file-chooser:size" : `capture:${id}`),
             said: Words.of("capture:recent").said ?? {},
-            days: provider.factWords.days
+            days: provider.factWords.days,
+            silent: previewing.silent
         });
     }
 
