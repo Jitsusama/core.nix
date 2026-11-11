@@ -204,12 +204,26 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
     }
     // One act, its words saying what it will do, Mark It Read or Mark It
     // Unread, as the vocabulary words its key's states, since the : line
-    // names one command for it (VKCF3Z, 2026-11-08).
+    // names one command for it (VKCF3Z, 2026-11-08). Unread and still
+    // open, it's read at its sender where the sender offers Read, so
+    // :delete and d tell the program too, with no token, since nothing
+    // need come forward.
     let state = if notice.read { "read" } else { "" };
+    let reading = (notice.live && !notice.read)
+        .then(|| {
+            notice
+                .actions
+                .iter()
+                .find(|action| says_read(&action.id) || says_read(&action.text))
+        })
+        .flatten();
+    let ask = reading.map_or_else(
+        || json!({ "ask": "mark", "notices": [notice.id], "read": !notice.read }),
+        |action| invoke(&action.id),
+    );
     acts.push(json!({
         "key": "verb:notice:read", "name": words.name("verb:notice:read", state),
-        "glyph": words.glyph("verb:notice:read", state),
-        "ask": { "ask": "mark", "notices": [notice.id], "read": !notice.read },
+        "glyph": words.glyph("verb:notice:read", state), "ask": ask,
     }));
     if notice.live {
         acts.push(json!({
@@ -218,6 +232,28 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
     }
     acts.push(json!({ "key": "verb:notice:copy", "copy": said, "also": reads(notice) }));
     acts
+}
+
+/// Whether an action's identifier or words are a sender's own Read, as
+/// "read", "mark-read" or "Mark as read", whatever the case.
+fn says_read(word: &str) -> bool {
+    let word = word.to_lowercase();
+    let Some(before) = word.strip_suffix("read") else {
+        return false;
+    };
+    if before.is_empty() {
+        return true;
+    }
+    let Some(after_mark) = before.strip_prefix("mark") else {
+        return false;
+    };
+    let after_mark = after_mark
+        .strip_prefix(['-', '_', ' '])
+        .unwrap_or(after_mark);
+    after_mark.is_empty()
+        || after_mark
+            .strip_prefix("as")
+            .is_some_and(|after_as| matches!(after_as, "" | "-" | "_" | " "))
 }
 
 /// A notice's row in `place`, not yet given its `order`, its side saying
@@ -472,6 +508,29 @@ mod tests {
     }
 
     #[test]
+    fn a_senders_read_is_known_by_its_identifier_or_words() {
+        for word in [
+            "read",
+            "Read",
+            "mark-read",
+            "mark_as_read",
+            "Mark as read",
+            "markasread",
+        ] {
+            assert!(says_read(word), "{word} is Read");
+        }
+        for word in [
+            "readme",
+            "Reply",
+            "mark as unread",
+            "marks read",
+            "mark as  read",
+        ] {
+            assert!(!says_read(word), "{word} isn't");
+        }
+    }
+
+    #[test]
     fn its_kind_is_said_from_its_category_or_left_out() {
         let words = crate::words::tests::core();
         let said = |category| kind(category, &words);
@@ -571,6 +630,21 @@ mod tests {
             json!([{ "name": "Left", "said": "put away at {time}", "at": 8000, "as": "moment" }]),
             "left the minute it came, Left says both"
         );
+        let offering = notice(
+            11,
+            &json!({ "live": true, "actions": [{ "id": "read", "text": "Mark as read" }] }),
+        );
+        let [mixed, ..] = making(&[offering], &[]);
+        let read = &mixed[0]["acts"][2];
+        assert_eq!(
+            (&read["key"], &read["ask"]),
+            (
+                &json!("verb:notice:read"),
+                &json!({ "ask": "invoke", "notice": 11, "action": "read", "read": true })
+            ),
+            "one whose sender offers Read is read there"
+        );
+        assert!(read.get("token").is_none(), "with nothing to bring forward");
         let nowhere = notice(9, &json!({ "app": "some-tool" }));
         let [mixed, ..] = making(&[nowhere], &[]);
         assert_eq!(

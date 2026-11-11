@@ -150,22 +150,15 @@ Provider {
         const forgetting = acts.find(one => one.key === "verb:notice:forget") ?? null;
         if (forgetting === null || parting.some(one => one.id === held.id))
             return copy;
-        // d reads it where its sender offers Read, and only forgets it
-        // where not, so it says which, as the held notices' d does.
-        const reading = readingOf(acts);
-        const read = reading === null ? {} : { ends: Words.field.operators?.read ?? "" };
+        // d reads it, at its sender where it offers Read, as the daemon's
+        // Mark It Read does then, and only forgets it where not, so it
+        // says which, as the held notices' d does.
+        const marking = held.read === true ? null
+            : acts.find(one => one.key === "verb:notice:read") ?? null;
+        const read = marking?.ask?.ask === "invoke"
+            ? { ends: Words.field.operators?.read ?? "" } : {};
         return [Object.assign({ key: "verb:notice:forget" }, Words.ending("verb:notice:forget"),
-            read, done(held, forgetting, reading))].concat(copy);
-    }
-
-    // Its sender's own Read among what it offers (Notice.js's readOffer),
-    // as an act asked with no token, since d asks it with the launcher
-    // still open and no window need come forward; else null.
-    function readingOf(acts) {
-        const offers = acts.filter(one => one.key.startsWith("verb:notice:offer:"))
-            .map(one => ({ identifier: one.ask?.action ?? "", text: one.name ?? "", act: one }));
-        const offer = Notice.readOffer(offers);
-        return offer === null ? null : { key: offer.act.key, ask: offer.act.ask };
+            read, done(held, forgetting, marking))].concat(copy);
     }
 
     // d's done, as the held notices' is (HeldNotices.qml's finish): read at
@@ -174,15 +167,12 @@ Provider {
     // it back until then, its read state staying, as the spec's notices do.
     // Each is asked through the place every notice is in, which stays
     // watched as the launcher closes, where Desktop's is let go.
-    function done(held, forgetting, reading) {
+    function done(held, forgetting, marking) {
         const key = `row:${mixed.place}:${held.id}`;
         return {
             run: () => {
-                if (reading !== null)
-                    mixed.act(key, reading);
-                else if (held.read !== true)
-                    mixed.act(key, { key: "verb:notice:read",
-                        ask: { ask: "mark", notices: [held.id], read: true } });
+                if (marking !== null)
+                    mixed.act(key, marking);
                 provider.parting = provider.parting.concat([
                     { id: held.id, key: key, act: forgetting }]);
             },
