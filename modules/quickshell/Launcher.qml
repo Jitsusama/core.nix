@@ -4157,12 +4157,23 @@ Scope {
         return refused ? refused.to : { options, steps };
     }
 
-    // Sets or says each of a plan's steps, giving what each says.
+    // Sets or says each of a plan's steps, giving what each says. An
+    // option whose answer waits, as a screen's setting waits on niri, says
+    // nothing at once and its words later, on the line only while the
+    // prompt holds the keys that ran it (SetWords.later).
     function commandSetSteps(options, steps, unread) {
         const said = [];
+        const ranAt = prompt.keysTaken;
         for (const { change, to } of steps) {
             if (to !== undefined) {
-                said.push(options[change.option].set(to.to, change));
+                const later = (words, failed) => {
+                    const heard = SetWords.later(change.option, words, ranAt, prompt.keysTaken);
+                    if (heard?.say !== undefined)
+                        commandSay(heard.say, failed);
+                    else if (heard?.journal !== undefined)
+                        console.info(heard.journal);
+                };
+                said.push(options[change.option].set(to.to, change, later));
                 continue;
             }
             const names = change.option === "all" ? Object.keys(options).sort()

@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 use crate::light::{self, Seen};
 
 pub mod acts;
+pub mod line;
 pub mod settings;
 pub mod vocabulary;
 use acts::Act;
@@ -102,6 +103,12 @@ pub struct Words {
     not_set: String,
     /// Beside the choice a setting is at.
     chosen: String,
+    /// A setting's value the : line typed that the screen doesn't offer,
+    /// none typed, and what it offers: "{value} not set · {screen}
+    /// offers {offers}", its figures "{first} to {last}".
+    not_offered: String,
+    none_given: String,
+    offers_range: String,
     /// A screen gone before niri came to it: "{name} is unplugged".
     is_unplugged: String,
     /// Beside the last lit screen's Turn It Off: a key wakes it.
@@ -203,6 +210,9 @@ impl Words {
             not_unplugged: said("not-unplugged"),
             not_set: said("not-set"),
             chosen: said("chosen"),
+            not_offered: said("not-offered"),
+            none_given: said("none-given"),
+            offers_range: said("offers-range"),
             is_unplugged: said("isUnplugged"),
             wakes: word("verb:display-off", &["said", "wakes"], "wakes"),
             moves: word("verb:display-unplug", &["said", "moves"], "moves"),
@@ -733,6 +743,12 @@ pub fn rows(
             } else {
                 described(output, words)
             };
+            // What the : line's :setl takes, on a lit screen alone.
+            let line = if stands == "lit" && output["logical"].is_object() {
+                line::of(output, words)
+            } else {
+                json!({})
+            };
             json!({
                 "key": key(&format!("display:{name}")),
                 "thing": format!("display:{name}"),
@@ -749,7 +765,7 @@ pub fn rows(
                 "drawer": drawer(name, output, desk.get(name.as_str()).unwrap_or(&Value::Null),
                     lit_by(name), words),
                 "held": {"output": name, "standing": stands, "builtIn": built_in(name),
-                    "niri": output},
+                    "niri": output, "line": line},
                 "acts": acts::of(name, stands, lit == 1, each, words),
             })
         })

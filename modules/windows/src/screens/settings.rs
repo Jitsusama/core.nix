@@ -21,36 +21,64 @@ const SCALES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 const SAME_SCALE: f64 = 0.01;
 
 /// One choice of a setting, as its row is made.
-struct Choice {
+pub(super) struct Choice {
     /// Its own part of its key, as `scale-1.5`, which the shell keyed it
     /// by too.
     id: String,
-    name: String,
+    pub(super) name: String,
     chosen: bool,
-    note: String,
+    pub(super) note: String,
     /// niri's action on the screen's output that sets it.
-    action: Value,
+    pub(super) action: Value,
     /// What finds it besides its name and its setting's, as a scale's
     /// share, "150%".
     keywords: String,
     /// How the : line's :setl types it, as "1.5".
-    typed: String,
+    pub(super) typed: String,
+}
+
+/// A setting with choices, by its part's id: how it's set, said on its
+/// row and typed as the : line types it, and its choices.
+pub(super) struct Setting {
+    pub(super) id: &'static str,
+    side: String,
+    pub(super) typed: String,
+    pub(super) choices: Vec<Choice>,
 }
 
 /// The settings' rows of the lit screen `name`, each inside its screen's
 /// row, each choice inside its setting's, in the order a step in offers
-/// them.
+/// them, Variable Refresh after Refresh.
 #[must_use]
 pub fn rows(name: &str, output: &Value, words: &Words) -> Vec<Value> {
     let screen = key(&format!("display:{name}"));
+    let mut rows = Vec::new();
+    for each in settings(output, words) {
+        rows.extend(setting(
+            name,
+            &screen,
+            each.id,
+            &each.side,
+            each.choices,
+            words,
+        ));
+        if each.id == "refresh" && output["vrr_supported"] == true {
+            rows.push(variable(name, &screen, output, words));
+        }
+    }
+    rows
+}
+
+/// A lit screen's settings with choices, in the order a step in offers
+/// them: its mode's only where niri says which it runs.
+pub(super) fn settings(output: &Value, words: &Words) -> Vec<Setting> {
     let logical = &output["logical"];
     let now = logical["scale"].as_f64().unwrap_or(1.0);
-    let mut rows = setting(
-        name,
-        &screen,
-        "scale",
-        &scale(now),
-        SCALES
+    let mut settings = vec![Setting {
+        id: "scale",
+        side: scale(now),
+        typed: multiple(now),
+        choices: SCALES
             .iter()
             .map(|each| Choice {
                 id: format!("scale-{}", multiple(*each)),
@@ -62,37 +90,28 @@ pub fn rows(name: &str, output: &Value, words: &Words) -> Vec<Value> {
                 typed: multiple(*each),
             })
             .collect(),
-        words,
-    );
+    }];
     if let Some(mode) = mode_of(output) {
-        let rate = mode["refresh_rate"].as_u64().unwrap_or(0);
-        rows.extend(setting(
-            name,
-            &screen,
-            "refresh",
-            &hertz(rate),
-            refreshes(output, mode, words),
-            words,
-        ));
-        if output["vrr_supported"] == true {
-            rows.push(variable(name, &screen, output, words));
-        }
-        rows.extend(setting(
-            name,
-            &screen,
-            "resolution",
-            &format!("{} \u{d7} {}", mode["width"], mode["height"]),
-            sizes(output, mode, words),
-            words,
-        ));
+        let rate = hertz(mode["refresh_rate"].as_u64().unwrap_or(0));
+        settings.push(Setting {
+            id: "refresh",
+            typed: rate.trim_end_matches(" Hz").to_owned(),
+            side: rate,
+            choices: refreshes(output, mode, words),
+        });
+        settings.push(Setting {
+            id: "resolution",
+            side: format!("{} \u{d7} {}", mode["width"], mode["height"]),
+            typed: format!("{}x{}", mode["width"], mode["height"]),
+            choices: sizes(output, mode, words),
+        });
     }
     let turned = logical["transform"].as_str().unwrap_or("Normal");
-    rows.extend(setting(
-        name,
-        &screen,
-        "rotation",
-        words.told.turned.get(turned).map_or("", String::as_str),
-        TRANSFORMS
+    settings.push(Setting {
+        id: "rotation",
+        side: words.told.turned.get(turned).cloned().unwrap_or_default(),
+        typed: words.told.typed.get(turned).cloned().unwrap_or_default(),
+        choices: TRANSFORMS
             .iter()
             .map(|turn| Choice {
                 id: format!("turn-{turn}"),
@@ -104,9 +123,8 @@ pub fn rows(name: &str, output: &Value, words: &Words) -> Vec<Value> {
                 typed: words.told.typed[turn].clone(),
             })
             .collect(),
-        words,
-    ));
-    rows
+    });
+    settings
 }
 
 /// A multiple as the : line types it and as a scale's choice is keyed:
@@ -118,7 +136,7 @@ fn multiple(each: f64) -> String {
 
 /// A setting's option on the : line, its name lowercased and joined, as
 /// Vim's are: Scale's scale, Variable Refresh's variablerefresh.
-fn option(named: &str) -> String {
+pub(super) fn option(named: &str) -> String {
     named.to_lowercase().split(' ').collect()
 }
 

@@ -10,11 +10,12 @@
 // and what lasts belongs in the configuration. Each screen's row comes
 // ready from the windows daemon (modules/windows, screens.rs), its name,
 // how it stands, what it runs and its drawer, light and all, said there,
-// with niri's record of it, which its settings and acts read here; the
-// daemon asks niri for its screens as a display comes or goes, so the
-// shell asks niri nothing of them itself. A change made here goes over niri's
-// socket, which says nothing of it in niri's stream, so the daemon is
-// asked to look again (refresh). What a display's EDID says of itself, who
+// with what the : line's :setl takes for each setting (screens/line.rs)
+// and niri's record of it, which its acts read here; the daemon asks
+// niri for its screens as a display comes or goes, so the shell asks
+// niri nothing of them itself. A change made here, from a row or the :
+// line, is the daemon's to ask of niri, which says nothing of it in its
+// stream, so the daemon looks again once niri answers. What a display's EDID says of itself, who
 // made it and when, its size, native mode, refresh range, colour depth,
 // colours, white point, primaries and HDR, desk-facts writes to a file
 // (modules/desk-facts), which the daemon's drawer says, and the right
@@ -176,19 +177,6 @@ Provider {
     // launcher is closed, since what's inside a screen is made from what's
     // held while it's closed (Daemon.qml's refresh).
     Component.onCompleted: lights.refresh()
-
-    // Tells niri what to change, then asks again how things stand.
-    // `refusal` is what the row did, as { thing, done }, for the words
-    // should niri refuse it (ask).
-    function change(output, action, refusal) {
-        ask({ Output: { output: output.name, action: action } }, refusal, output);
-    }
-
-    // Says a word on the launcher's warning line, where there's one.
-    function warn(word) {
-        if (word !== "")
-            provider.launcher?.operatorSays(word);
-    }
 
     function builtIn(output) {
         return output.name.startsWith("eDP");
@@ -616,62 +604,45 @@ Provider {
             options: Object.assign({
                 power: provider.screenOption(output, "power"),
                 unplugged: provider.screenOption(output, "unplugged")
-            }, stands === "lit" && output.logical !== null ? provider.lineOptions(output) : {})
+            }, provider.lineOptions(output))
         });
     }
 
-    // A setting's option on the : line, its name lowercased and joined, as
-    // Vim's are (shiftwidth): Scale's scale, Variable Refresh's
-    // variablerefresh (VKCF3Z, 2026-11-09).
-    function lineName(id) {
-        return partName(id).toLowerCase().split(" ").join("");
-    }
-
-    // A lit screen's settings as :setl takes them, as their choices set
-    // them: scale=1.5, refresh=59.951 (or 60, where one mode rounds to
-    // it), resolution=2560x1440 and rotation=upright, each completing
-    // from its screen's own choices with their words beside, and one it
-    // doesn't offer saying what it does (Screens.lineSet). Variable
-    // Refresh is a switch, :setl variablerefresh and novariablerefresh,
-    // as power is, where the screen has it.
+    // A lit screen's settings as :setl takes them, as the windows daemon
+    // serves them on its row (line.rs): scale=1.5, refresh=59.951,
+    // resolution=2560x1440, rotation=upright and variablerefresh, each
+    // completing from its screen's own choices with their words beside
+    // and saying where it stands. What's typed is the daemon's to find,
+    // and to refuse in words saying what the screen offers, so a set says
+    // nothing at once and the answer comes later.
     function lineOptions(output) {
+        const key = screenKey(output);
+        const line = name => ready.served(key)?.held?.line?.[name] ?? null;
         const options = {};
-        for (const id of Screens.lineSettings(output)) {
-            options[lineName(id)] = {
-                kind: "choice",
-                choices: () => Screens.lineValues(output, id, screenWords)
-                    .map(each => ({ value: each.value, note: each.note })),
-                now: () => Screens.lineNow(output, id, screenWords),
-                set: to => {
-                    const asked = Screens.lineSet(output, { setting: id, typed: String(to) },
-                        screenWords, named(output));
-                    if (asked.refused !== undefined)
-                        return asked.refused;
-                    change(output, asked.asks,
-                        { thing: lineSaid(id, to, asked.asks), done: "set" });
-                    return "";
-                }
-            };
+        for (const [name, served] of Object.entries(ready.served(key)?.held?.line ?? {})) {
+            const set = (to, change, later) => lineAsk(output, name, to, later);
+            options[name] = served.kind === "switch"
+                ? { kind: "switch", now: () => line(name)?.now === true, set: set }
+                : { kind: "choice", choices: () => line(name)?.values ?? [],
+                    now: () => line(name)?.now ?? null, set: set };
         }
-        if (output.vrr_supported)
-            options[lineName("variable")] = {
-                kind: "switch",
-                now: () => output.vrr_enabled === true,
-                set: on => {
-                    change(output, { Vrr: { vrr: { vrr: on, on_demand: false } } },
-                        { thing: partName("variable"), done: on ? "on" : "off" });
-                    return "";
-                }
-            };
         return options;
     }
 
-    // A setting typed on the : line, said as its choice's row says it: a
-    // rotation by the vocabulary's words for its turn, the rest by their
-    // value.
-    function lineSaid(id, to, asks) {
-        return id === "rotation" ? turnedSaid(asks.Transform.transform)
-            : Screens.typedSaid(id, String(to));
+    // Asks the windows daemon to set what the line typed, a switch's on or
+    // off and a choice's words, and hands `later` the words it answers
+    // with where it wasn't set: the daemon's own, or the launcher's for an
+    // answer that never came. Gone, the daemon can't be asked, so it says
+    // so at once.
+    function lineAsk(output, option, to, later) {
+        const becoming = Words.field.becoming ?? {};
+        if (!ready.link)
+            return becoming.noAnswer ?? "";
+        const typed = typeof to === "boolean" ? to : String(to);
+        ready.link.ask({ ask: "screen", do: "line", output: output.name, option, typed },
+            answer => later?.(!answer ? becoming.noAnswer ?? ""
+                : answer.error ? answer.error.said || (becoming.couldNot ?? "") : "", true));
+        return "";
     }
 
     // A screen's option for the : line's :setl, which does the act its
@@ -724,16 +695,9 @@ Provider {
             ?? key);
     }
 
-    // How niri turns a screen, mirrored ones too, in the vocabulary's words.
-    function turnedSaid(transform) {
-        return partSaid("rotation", transform);
-    }
-
-    // The vocabulary as Screens.js says a screen in it.
+    // The vocabulary as ScreenAnswers.js says a screen in it.
     readonly property var screenWords: ({
-        named: id => provider.partName(id),
-        said: (id, key) => provider.partSaid(id, key),
-        turned: transform => provider.turnedSaid(transform)
+        said: (id, key) => provider.partSaid(id, key)
     })
 
     // The screen whose drawer shows, by its row's key, which is watched
@@ -900,21 +864,6 @@ Provider {
             note: act.note ?? "",
             stays: act.waits !== true,
             run: () => ready.act(key, act)
-        });
-    }
-
-    // Asks niri to change a screen's setting, then asks again how they
-    // stand. A change niri refuses says so on the warning line, in niri's
-    // words for why, and one to a screen gone before it came says it's
-    // unplugged (VKCF3Z, 2026-11-09), where Return would otherwise look
-    // done (ScreenAnswers.js).
-    function ask(asked, refusal, output) {
-        Niri.request(asked, answer => {
-            warn(ScreenAnswers.answerSaid(answer, named(output), screenWords));
-            provider.refresh();
-        }, why => {
-            warn(ScreenAnswers.refusalSaid(refusal, why, screenWords));
-            provider.refresh();
         });
     }
 

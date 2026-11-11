@@ -487,7 +487,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        68,
+        71,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);

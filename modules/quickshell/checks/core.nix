@@ -353,12 +353,13 @@ in
     '';
 
   # A thing's drawer says each of its parts as a fact, leaving out its
-  # acts and opening a holder of figures in place, and a screen's settings
-  # offer what niri says it runs, and its light is read from the machine
-  # daemon's records, as tests/plate.qml holds launcher/Plate.js,
-  # Screens.js and Backlight.js to it in Qt's own engine, with the
-  # Numbers.js Backlight.js says lux through and the Order.js it lists
-  # devices by. A screen's drawer is the windows daemon's, tested there.
+  # acts and opening a holder of figures in place, a screen's white point
+  # and primaries are said from desk-facts' figures, and its light is read
+  # from the machine daemon's records, as tests/plate.qml holds
+  # launcher/Plate.js, Screens.js and Backlight.js to it in Qt's own
+  # engine, with the Numbers.js Backlight.js says lux through and the
+  # Order.js it lists devices by. A screen's drawer and its settings are
+  # the windows daemon's, tested there.
   a-things-drawer-says-its-parts =
     let
       qt = pkgs.qt6.qtdeclarative;

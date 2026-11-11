@@ -204,6 +204,20 @@ function shown(name, now, option) {
     return now === true ? name : `${name}=${now}`;
 }
 
+// What an option's answer that comes after the line is done does with
+// its words, as a screen's setting answers once niri has (Launcher.qml's
+// commandSetSteps): { say } while the prompt still holds the keys that
+// ran it, so a refusal is said where the line was; { journal } once Joel
+// has typed on, so a late one never writes over what he's doing, said
+// in the journal instead; and null where it has no words.
+function later(option, words, ranAt, keysNow) {
+    if (words === "") {
+        return null;
+    }
+    return keysNow === ranAt ? { say: words }
+        : { journal: `launcher: ${option} refused after Joel typed on: ${words}` };
+}
+
 const escapedSpace = /\s/g;
 
 // :set's arguments, as a space after it lists them: the options, in name
