@@ -321,7 +321,8 @@ mod tests {
         );
         assert_eq!(rows[0]["held"]["output"], "eDP-1");
         assert_eq!(
-            rows[0]["held"]["niri"], desk()["eDP-1"],
+            rows[0]["held"]["niri"],
+            desk()["eDP-1"],
             "the shell's acts read niri's whole record of the screen"
         );
         assert_eq!(rows[3]["key"], "row:displays:sleep");

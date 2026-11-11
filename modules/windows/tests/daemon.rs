@@ -502,7 +502,10 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
     loop {
         let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
             "place": "displays"}));
-        if said["records"].as_array().is_some_and(|records| records.len() == 2) {
+        if said["records"]
+            .as_array()
+            .is_some_and(|records| records.len() == 2)
+        {
             break;
         }
         client.ask(&json!({"id": 1, "ask": "unwatch"}));
@@ -516,7 +519,10 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
         .daemon
         .client()
         .ask(&json!({"id": 2, "ask": "look"}));
-    assert_eq!(looked["looked"], true, "a daemon making rows looks: {looked}");
+    assert_eq!(
+        looked["looked"], true,
+        "a daemon making rows looks: {looked}"
+    );
     let said = client.heard();
     assert_eq!(keys(&said), ["row:displays:display:eDP-1"]);
     let row = &said["changed"][0]["row"];
