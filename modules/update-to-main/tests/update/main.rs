@@ -105,7 +105,11 @@ impl World {
         // big-waits is, it waits up to five seconds for the heavy piece to
         // be sent beside it, failing if it never is. While drops-once is
         // there, the next build on the builders loses its builder, as a
-        // corrupted tunnel did on 11 November. A batch built here is
+        // corrupted tunnel did on 11 November. A dry run lists nothing sent
+        // away or built here already, and while collected is there, every
+        // dry run after the first lists a big piece too, as one collected
+        // between them would be, which fails on the builders while
+        // collected-fails is there. A batch built here is
         // written in batched, and the pieces linked to be kept in kept, with
         // the outputs of the secret piece the wrapper is built from. A system's
         // build starts a call while call-starts is there. Each input
@@ -120,15 +124,19 @@ impl World {
                  && input=${{a##*rev=}} && input=${{input%%&*}}\n\
                  before=$prev; prev=$a; last=$a; done\n\
                  case \" $* \" in\n\
-                 *' --dry-run '*) printf 'these 4 derivations will be built:\\n  \
-                 /nix/store/a-light.drv\\n  /nix/store/b-heavy.drv\\n  \
-                 /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; \
-                 if [ -e {big} ]; then printf '  /nix/store/e-big.drv\\n  \
-                 /nix/store/d-modules.drv\\n' >&2; fi; exit 0;;\n\
+                 *' --dry-run '*) echo 'these derivations will be built:' >&2; \
+                 for p in a-light b-heavy c-wrapper t-secret-tool \
+                 $([ -e {big} ] && echo e-big d-modules) \
+                 $([ -e {collected} ] && [ -e {listed} ] && echo g-collected); do \
+                 cat {away} {here} 2>/dev/null | grep -q \"/nix/store/$p.drv\" \
+                 || echo \"  /nix/store/$p.drv\" >&2; done; touch {listed}; exit 0;;\n\
                  *' derivation show /nix/store/s-secret.drv '*) echo '{{\"derivations\": \
                  {{\"s-secret.drv\": {{\"outputs\": {{\"out\": {{\"path\": \"{secret_out}\"}}, \
                  \"doc\": {{\"path\": \"{secret_out}-doc\"}}}}}}}}}}'; exit 0;;\n\
                  *' derivation show '*) secret=\n\
+                 collected=; [ -e {collected} ] && collected=', \"g-collected.drv\": \
+                 {{\"name\": \"linux-7\", \"env\": {{\"requiredSystemFeatures\": \
+                 \"big-parallel\"}}}}'\n\
                  big=; [ -e {big} ] && big=', \"e-big.drv\": {{\"name\": \"big-1\", \
                  \"env\": {{\"requiredSystemFeatures\": \"big-parallel\"}}}}, \
                  \"d-modules.drv\": {{\"name\": \"modules\", \"env\": {{}}, \
@@ -140,13 +148,16 @@ impl World {
                  \"c-wrapper.drv\": {{\"name\": \"wrapper\", \"env\": {{}}, \
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
                  \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}\
-                 '\"$secret$big\"'}}}}'; exit 0;;\n\
+                 '\"$secret$big$collected\"'}}}}'; exit 0;;\n\
                  *'/evaluated/drv '*|*'/evaluated/built '*) echo \"$*\" >> {kept}; exit 0;;\n\
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' build --no-link -L '*) echo \"$*\" >> {batched}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' --max-jobs 0 '*) case \" $* \" in *e-big*)\n\
+                 *' --max-jobs 0 '*) case \" $* \" in *g-collected*)\n\
+                 if [ -e {collected_fails} ]; then echo 'error: g-collected failed' >&2; \
+                 exit 1; fi;; esac\n\
+                 case \" $* \" in *e-big*)\n\
                  if [ -e {big_fails} ]; then echo 'error: e-big failed' >&2; exit 1; fi\n\
                  if [ -e {big_waits} ]; then n=0; while :; do \
                  case $(cat {away} 2>/dev/null) in *b-heavy*) break;; esac; n=$((n+1)); \
@@ -185,6 +196,9 @@ impl World {
                 drops_once = root.join("drops-once").display(),
                 no_small_builder = root.join("no-small-builder").display(),
                 big = root.join("big").display(),
+                collected = root.join("collected").display(),
+                collected_fails = root.join("collected-fails").display(),
+                listed = root.join("listed").display(),
                 big_fails = root.join("big-fails").display(),
                 big_waits = root.join("big-waits").display(),
                 no_kept_builder = root.join("no-kept-builder").display(),
@@ -891,37 +905,14 @@ fn a_stop_ends_an_update_still_building_and_the_next_builds_again() {
     let world = World::new();
     let main = world.signed("one");
     world.system(&main);
-    // The build waits for a gate, so the stop comes while it runs.
-    let gate = world.root.join("gate");
-    let nix = world.config.tools.nix.clone();
-    let text = fs::read_to_string(&nix).unwrap();
-    let waiting = text.replacen(
-        "\nfor a;",
-        &format!(
-            "\nwhile [ ! -e {} ]; do sleep 0.05; done\nfor a;",
-            gate.display()
-        ),
-        1,
-    );
-    write_program(&nix, &waiting);
-    let config = world.config.clone();
-    thread::spawn(move || serve::serve(config));
-    let socket = world.config.socket.clone();
-    while !socket.exists() {
-        thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let gate = builds_wait_for_a_gate(&world);
+    let socket = serving(&world);
     let nothing = ask::stop(&socket).unwrap();
     assert!(
         matches!(&nothing, Line::Refused { why, .. } if why.contains("nothing was stopped")),
         "{nothing:?}"
     );
-    let asking = {
-        let socket = socket.clone();
-        thread::spawn(move || ask::ask(&socket, &mut |_| {}).unwrap())
-    };
-    while !fs::read_to_string(&world.config.running).is_ok_and(|line| line.contains("building")) {
-        thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let asking = building(&world, &socket);
     let stopped = ask::stop(&socket).unwrap();
     assert!(
         matches!(&stopped, Line::Refused { why, .. }
@@ -935,6 +926,77 @@ fn a_stop_ends_an_update_still_building_and_the_next_builds_again() {
     // What stopped that one doesn't stop the next.
     fs::write(&gate, "").unwrap();
     assert_eq!(ask::ask(&socket, &mut |_| {}).unwrap(), done(&main));
+}
+
+#[test]
+fn a_persons_stop_ends_an_update_a_hold_was_given_for_and_one_for_a_newer_head_doesnt() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    let main = world.signed("one");
+    daemon_unit(&world.system(&main), "same");
+    fs::write(world.root.join("given"), "").unwrap();
+    builds_wait_for_a_gate(&world);
+    let socket = serving(&world);
+    let asking = building(&world, &socket);
+    let newer = ask::stop_for_newer(&socket).unwrap();
+    assert!(
+        matches!(&newer, Line::Refused { why, .. } if why.ends_with("so it runs on")),
+        "a stop for a newer head ended an update a hold was given for: {newer:?}"
+    );
+    let stopped = ask::stop(&socket).unwrap();
+    assert!(
+        matches!(&stopped, Line::Refused { why, .. }
+            if why.starts_with("stopped the update building")
+                && why.contains("the hold given for it is spent")),
+        "a person's stop didn't end an update a hold was given for: {stopped:?}"
+    );
+    let ending = asking.join().unwrap();
+    assert!(
+        matches!(ending, Line::Failed { .. }),
+        "the stopped update didn't fail: {ending:?}"
+    );
+    assert_eq!(world.builds(), 0, "the stopped update built a system");
+}
+
+/// Makes every Nix command wait for the world's `gate` file, so a stop
+/// comes while the build runs, and gives the gate.
+fn builds_wait_for_a_gate(world: &World) -> PathBuf {
+    let gate = world.root.join("gate");
+    let nix = world.config.tools.nix.clone();
+    let text = fs::read_to_string(&nix).unwrap();
+    let waiting = text.replacen(
+        "\nfor a;",
+        &format!(
+            "\nwhile [ ! -e {} ]; do sleep 0.05; done\nfor a;",
+            gate.display()
+        ),
+        1,
+    );
+    write_program(&nix, &waiting);
+    gate
+}
+
+/// Serves the world's update-to-main, giving its socket once it's there.
+fn serving(world: &World) -> PathBuf {
+    let config = world.config.clone();
+    thread::spawn(move || serve::serve(config));
+    let socket = world.config.socket.clone();
+    while !socket.exists() {
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    socket
+}
+
+/// Asks for an update, giving its ending's thread once it builds.
+fn building(world: &World, socket: &Path) -> thread::JoinHandle<Line> {
+    let asking = {
+        let socket = socket.to_path_buf();
+        thread::spawn(move || ask::ask(&socket, &mut |_| {}).unwrap())
+    };
+    while !fs::read_to_string(&world.config.running).is_ok_and(|line| line.contains("building")) {
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    asking
 }
 
 #[test]
@@ -1958,6 +2020,49 @@ fn building_elsewhere_sends_only_the_heavy_pieces_away() {
     let last = world.read("last-build");
     assert!(last.contains("--builders  "), "{last}");
     assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn a_heavy_piece_missing_again_before_the_build_here_goes_to_the_builders() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    let head = world.signed("one");
+    world.system(&head);
+    fs::write(world.root.join("collected"), "").unwrap();
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    assert!(
+        away.contains("/nix/store/g-collected.drv^*"),
+        "a piece missing again by the build here wasn't sent to the builders: {away}"
+    );
+    assert!(
+        away.contains("/nix/store/b-heavy.drv^*"),
+        "the first listing's heavy piece wasn't sent: {away}"
+    );
+    assert_eq!(
+        away.matches("b-heavy").count(),
+        1,
+        "a piece the first listing sent was sent again: {away}"
+    );
+    assert_eq!(world.builds(), 1, "the system wasn't built once");
+}
+
+#[test]
+fn a_heavy_piece_missing_again_that_no_builder_builds_fails_the_ask() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    let head = world.signed("one");
+    world.system(&head);
+    fs::write(world.root.join("collected"), "").unwrap();
+    fs::write(world.root.join("collected-fails"), "").unwrap();
+    let Line::Failed { why, .. } = world.update().1 else {
+        panic!("an ask whose heavy piece no builder built didn't fail")
+    };
+    assert!(
+        why.contains("on the machine's builders"),
+        "the failure didn't say the builders failed: {why}"
+    );
+    assert_eq!(world.builds(), 0, "the system was built here regardless");
 }
 
 #[test]

@@ -7,7 +7,8 @@
 //!   or already did, 1 when the update failed, 2 when it was refused and 3
 //!   when the daemon couldn't be asked or stopped answering.
 //! - `update-to-main stop [--socket FILE]`: stops the update the daemon is
-//!   fetching or building, and prints what it did. A switch runs on.
+//!   fetching or building, one a hold was given for too, and prints what
+//!   it did. A switch runs on.
 //! - `update-to-main pause|resume [--socket FILE]`: refuses the
 //!   follower's updates, stopping one it alone asked for, until resumed,
 //!   while a person's ask still updates; and `update-to-main
@@ -212,7 +213,7 @@ fn heard(config: &Config, heads: &Followed) -> std::io::Result<Line> {
                 };
                 if follow::stale(heads, &now, latest.as_ref(), since.elapsed()) {
                     println!("main moved past the heads this update builds; stopping it");
-                    match ask::stop(&config.socket) {
+                    match ask::stop_for_newer(&config.socket) {
                         Ok(line) => println!("{}", line.json()),
                         Err(e) => eprintln!("update-to-main: stopping the update: {e}"),
                     }
