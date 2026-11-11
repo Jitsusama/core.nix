@@ -25,6 +25,11 @@
 // daemon as each text is typed. Holding Tuple's 7,731 contacts here made
 // 23,276 rows at each opening and held Joel's first key a second
 // (2026-10-31, 09:31).
+//
+// Long because it still merges and ranks the people of the sources the
+// daemon doesn't hold yet, Slack's and Pages'; what works on plain values
+// lives apart, in Person.js, Recent.js and Zones.js. It shrinks as the
+// daemon takes those over, by Fri 13 Nov.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -153,6 +158,15 @@ Provider {
     // first; and the words asked last, so each text is asked once.
     property var sought: ({ words: "", records: [] })
     property string seeking: ""
+    // Those the search found, by key, for the rows they came with: a listed
+    // record's row says how they stand, which one found among everyone
+    // doesn't.
+    readonly property var soughtOf: {
+        const by = {};
+        for (const record of sought.records)
+            by[record.key] = record;
+        return by;
+    }
     // As many as a search is answered with, as the daemon does unasked.
     readonly property int soughtMost: 50
 
@@ -337,12 +351,38 @@ Provider {
         const made = rowsOfEveryone;
         if (made.stale) {
             keepingBegun(made.keeping);
-            made.rows = persons().map(person => keptOr(made.keeping, person.key,
-                JSON.stringify(person), () => provider.made(person, Person.standing(person, []))));
+            made.rows = persons().map(person => {
+                // One only the daemon's sources know comes with the row a
+                // search finds them as, kept while their record says the
+                // same, which the daemon stamps `heard` anew when a source
+                // says anything new of them, so each search's answer remakes
+                // none it found before; and let go once no answer holds it.
+                // The rest are merged here from Slack's and Pages' own people
+                // until the daemon holds those too: Slack's by Wed 11 Nov
+                // 18:00 (47E61B48), Pages' by Fri 13 Nov 12:00.
+                const record = readyFor(person);
+                return record ? keptOr(made.keeping, person.key, record, () => provider.made(
+                    person, Person.standing(person, []), null, record.row), heardAlike)
+                    : keptOr(made.keeping, person.key, JSON.stringify(person),
+                        () => provider.made(person, Person.standing(person, [])));
+            });
             keptOnly(made.keeping);
             made.stale = false;
         }
         return made.rows;
+    }
+
+    // Whether two of the daemon's records say the same of someone.
+    function heardAlike(was, now) {
+        return was?.key === now.key && was.heard === now.heard;
+    }
+
+    // The daemon's record for one only its sources know, when it came
+    // with their row, or null.
+    function readyFor(person) {
+        const record = soughtOf[`person:${person.key}`];
+        const ready = record?.row && !record.gone;
+        return ready && person.from.every(name => heldBy.includes(name)) ? record : null;
     }
 
     // How each stands, which changes often, read from every source in
@@ -647,6 +687,9 @@ Provider {
     }
 
     // Inside the place, what's typed finds anyone, as at the top.
+    // Ranked here over everyone merged, a stopgap: the people daemon ranks
+    // them itself once it holds every source's people, by Fri 13 Nov
+    // 18:00, and the shell shows its answer in order.
     function search(typed) {
         return gather(typed);
     }

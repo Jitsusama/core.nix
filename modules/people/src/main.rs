@@ -593,7 +593,13 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 .book
                 .search(&words, limit)
                 .into_iter()
-                .map(Record::json)
+                .map(|record| {
+                    // Each with the row it's found as, ready to draw.
+                    let row = listing::person(record, &daemon.sources).found();
+                    let mut said = record.json();
+                    said["row"] = row;
+                    said
+                })
                 .collect();
             json!({"id": id, "records": records})
         }

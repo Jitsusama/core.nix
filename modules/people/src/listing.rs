@@ -345,6 +345,15 @@ impl Person {
             "drawer": format!("drawer:people:{known}"),
         })
     }
+
+    /// Their row as a search finds them among everyone, ready: as `row`,
+    /// but saying nothing of how they stand, since only those listed do.
+    pub fn found(&self) -> Value {
+        let mut row = self.row();
+        row["glyph"] = json!("person");
+        row["side"] = json!("");
+        row
+    }
 }
 
 /// A name's runs of digits and of the rest, the rest in lower case, as
@@ -687,6 +696,14 @@ mod tests {
             (bare.row()["glyph"].clone(), bare.row()["note"].clone()),
             (json!("person"), json!("")),
             "one named by their address says it once"
+        );
+        assert_eq!(
+            (
+                favourite.found()["glyph"].clone(),
+                favourite.found()["side"].clone()
+            ),
+            (json!("person"), json!("")),
+            "found among everyone, they say nothing of how they stand"
         );
     }
 
