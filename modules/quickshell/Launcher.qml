@@ -8719,6 +8719,26 @@ Scope {
         homeHeld = true;
     }
 
+    // Once a closing is drawn, the shell's garbage is collected, so the
+    // next opening starts with none to collect. A kept opening that set a
+    // collection off paid 24 to 30 ms for it, past the 50 ms Joel's
+    // openings are held to, where one that didn't drew Emoji in 36
+    // (the launcher's lab, 2026-11-11). It waits for the closed card's
+    // frame, as the keys go back to the window in it, and for that frame's
+    // handlers, so nothing Joel does then waits on it, and it isn't run
+    // once an opening has begun. Said in the journal each time, so what
+    // it costs, and whether a quick reopening ever waits on it, is read
+    // there.
+    property bool collectDue: false
+    function collectClosed() {
+        if (open || opening || parting !== "")
+            return;
+        const began = KeyTimes.now();
+        gc();
+        const took = Math.round(KeyTimes.now() - began);
+        console.info(`launcher: collected after closing in ${took} ms`);
+    }
+
     // The rows the card shows, by what each is, what each says at its
     // right, and where the cursor is, for the check that rows filled in
     // land where the kept ones stood.
@@ -9450,6 +9470,19 @@ Scope {
             }
         }
 
+        // The closed card's first frame given to niri, the keys back with
+        // the window, is when the closing's garbage is collected.
+        Connections {
+            target: card.Window.window
+            enabled: root.collectDue
+
+            function onFrameSwapped() {
+                root.collectDue = false;
+                if (!root.cardUp)
+                    Qt.callLater(root.collectClosed);
+            }
+        }
+
         Connections {
             target: card.Window.window
             enabled: root.afterFrames.length > 0 || root.afterFramesDrawing.length > 0
@@ -9516,8 +9549,10 @@ Scope {
             // Clear, it's put back to home for the next opening, once the
             // closing's own handler is done (keepHome checks it's still shut).
             onOpacityChanged: {
-                if (opacity === 0)
+                if (opacity === 0) {
                     Qt.callLater(root.keepHome);
+                    root.collectDue = true;
+                }
             }
 
             // A click before an opening's first frame is drawn fills it in
