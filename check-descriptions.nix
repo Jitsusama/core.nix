@@ -1379,10 +1379,10 @@
     holds its ink the inset from the frame on every side, at 2 and at 1.5, with its mark centred
     on the title's capitals and its text column moved by the gutter alone
   '';
-  notices-starts-nowhere-yet = ''
-    no role starts the notices daemon, and imported it's wanted by no target, so the shell's server
-    alone holds the notifications name; imported, it reads the shell's levels, Quiet's file and its
-    socket
+  notices-starts-in-each-account = ''
+    each graphical account's session starts the notices daemon from its socket, the bus starts it
+    for a notice sent while it's down, and no QML of the shell serves the notifications name
+    besides; it reads the shell's levels, Quiet's file and its socket
   '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes

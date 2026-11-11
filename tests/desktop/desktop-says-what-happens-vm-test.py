@@ -1806,6 +1806,25 @@ def test_super_shift_n_puts_the_notices_away(desktop: Desktop) -> None:
     )
 
 
+def test_a_notice_sent_while_the_notices_daemon_is_down_is_shown_once_it_is_up(
+    desktop: Desktop,
+) -> None:
+    """A notice sent while the notices daemon is down starts it, and is shown and kept."""
+    machine = desktop.machine
+    # Its socket too, so only the bus, knowing the daemon by the name, can
+    # start it again.
+    desktop.as_account("systemctl --user stop notices.socket notices.service")
+    machine.fail(desktop.in_session("systemctl --user is-active --quiet notices.service"))
+    with desktop.told("shows card Backup ready"):
+        desktop.as_account("notify-send 'Backup ready' 'the disk can go'")
+    machine.succeed(desktop.in_session("systemctl --user is-active --quiet notices.socket"))
+    machine.wait_until_succeeds(
+        desktop.notice_kept('.summary == "Backup ready"'), timeout=timedelta(seconds=10)
+    )
+    with desktop.told("gone notifications"):
+        machine.send_key("meta_l-shift-n")
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
