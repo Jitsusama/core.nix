@@ -1017,32 +1017,6 @@ QtObject {
             if (quoted(got) !== quoted(expected))
                 failures.push(`${what} gave ${quoted(got)}, not ${quoted(expected)}`);
         };
-        const cores = loads => loads.map((load, n) => ({ n: n, load: load }));
-        machine("no core maxed", Machine.maxed(cores([0.5, 0.94])), "none");
-        machine("one core maxed", Machine.maxed(cores([0.5, 0.95])), "core 1");
-        machine("three cores maxed", Machine.maxed(cores([1, 0.2, 0.99, 0.97])), "cores 0, 2 and 3");
-        machine("most cores maxed", Machine.maxed(cores([1, 1, 1, 1, 1, 0])), "5 of 6");
-        machine("a list of CPUs", Machine.cpus("0-3,8\n"), [0, 1, 2, 3, 8]);
-        machine("no list of CPUs", Machine.cpus(""), []);
-        machine("one core named", Machine.cores([4]), "core 4");
-        machine("cores unbroken", Machine.cores([0, 1, 2, 3]), "cores 0 to 3");
-        machine("cores broken", Machine.cores([0, 2, 5]), "cores 0, 2 and 5");
-        machine("no cores", Machine.cores([]), "");
-        // Where the processor's time went, interrupts both kinds together
-        // and guests' both kinds, each field the kernel keeps.
-        const timeSpent = { user: 0.4, nice: 0, system: 0.1, idle: 0.4, iowait: 0.05, irq: 0.01,
-            softirq: 0.02, steal: 0.02, guest: 0.01, guest_nice: 0 };
-        machine("the processor's time spent inside another machine",
-            Machine.spent(timeSpent, true).map(each => [each.id, Math.round(each.share * 100)]),
-            [["user", 40], ["system", 10], ["iowait", 5], ["interrupts", 3], ["niced", 0],
-                ["stolen", 2], ["guests", 1]]);
-        machine("the processor's time spent on its own hardware, none stolen",
-            Machine.spent(timeSpent, false).map(each => each.id),
-            ["user", "system", "iowait", "interrupts", "niced", "guests"]);
-        machine("an old kernel's time, without steal or guests",
-            Machine.spent({ user: 0.5, nice: 0, system: 0.1, idle: 0.4, iowait: 0, irq: 0, softirq: 0 },
-                true).map(each => each.id), ["user", "system", "iowait", "interrupts", "niced"]);
-        machine("no time said", Machine.spent(null, false), []);
         // A served row's times are worded here, by their form, into the
         // item's own words: the uptime counts up from the boot, the start
         // is a moment.
@@ -1208,18 +1182,12 @@ QtObject {
         machine("what kept it from resting, as a note says it", ["display", "internal",
             "novel"].map(by => Machine.keeper(by).said), ["the display engine",
             "the processor's own power controller", "novel"]);
-        // The NPU's clock to three significant digits, and "resting"
-        // while it's powered down.
-        machine("the NPU's clock", Machine.npuClock({ clock_mhz: 1400, max_mhz: 2050 }),
-            "at 1.40 GHz of 2.05 GHz");
         // Bytes in decimal units to three significant digits, each
         // converted from bytes, stepping up past 999, whole below a kB.
         machine("bytes, each converted", [873 * 1048576, 6.4 * 1048576, 1.52e9, 873, 0, 999.7e3,
             4096].map(Machine.bytes), ["915 MB", "6.71 MB", "1.52 GB", "873 B", "0 B",
             "1.00 MB", "4.10 kB"]);
         machine("a rate", Machine.rate(12000), "12.0 kB/s");
-        machine("a clock from kilohertz", [4700000, 400000].map(Machine.hertz),
-            ["4.70 GHz", "400 MHz"]);
         // Every measure takes the one rule: three significant digits, zeros
         // kept, a carry into the next digit, grouped past three whole
         // digits, and the real minus under nothing.
@@ -1234,7 +1202,6 @@ QtObject {
         machine("rates both still", Machine.both(0, 0), "none");
         machine("a note's items, the empty given way", Machine.items(["btrfs", "", null, "dm-0"]),
             "btrfs \u00b7 dm-0");
-        machine("the NPU resting", Machine.npuClock({ clock_mhz: 0, max_mhz: 2050 }), "resting");
         machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
             .length, 5);
         machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps

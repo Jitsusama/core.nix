@@ -3,10 +3,10 @@
 // running over the sandbox's own /proc: Machine's place holds the
 // processors' place before the daemon answers, and asks it; then the
 // processors', memory's and uptime's headlines are the daemon's, and
-// make none of their parts, the memory's and the uptime's from the rows
-// it serves ready; the programs using the machine aren't asked for until
-// the processor's parts are stepped into, and then are, the memory's
-// served Using It naming them once they're read. It exits 0
+// make none of their parts, each from the rows it serves ready; the
+// programs using the machine aren't asked for until the processor's
+// parts are stepped into, and then are, the processor's and the
+// memory's served Using It naming them once they're read. It exits 0
 // once every case holds, and otherwise 1, saying which case didn't.
 import Quickshell
 import QtQuick
@@ -112,8 +112,7 @@ ShellRoot {
         interval: 100
         repeat: true
         onTriggered: {
-            if (machine.processor() === null || machine.memory().asking
-                || machine.uptime().asking) {
+            if (machine.cpu().asking || machine.memory().asking || machine.uptime().asking) {
                 if (--left > 0)
                     return;
                 stop();
@@ -157,19 +156,23 @@ ShellRoot {
         interval: 100
         repeat: true
         onTriggered: {
-            const users = machine.using("cpu");
-            if (users === null || users.length === 0) {
+            // The daemon makes the processor's Using It again once the
+            // programs are read, naming them rather than still reading.
+            const parts = machine.answer("processor").rows;
+            const using = parts.find(row => row.name === "Using It");
+            if (using === undefined || using.side === "\u2026") {
                 if (--left > 0)
                     return;
                 stop();
-                root.fail(new Error(`the programs were never asked for: ${machine.usingWanted}`));
+                root.fail(new Error(`the programs were never asked for: ${machine.usingWanted}; `
+                    + parts.map(row => `${row.name} ${row.side}`).join(", ")));
                 return;
             }
             stop();
             try {
-                const parts = machine.answer("processor").rows;
-                const using = parts.find(row => row.name === "Using It");
-                root.expect("the programs using it", using !== undefined && using.side !== "\u2026",
+                const load = parts.find(row => row.name === "Load");
+                root.expect("the processor's load, served",
+                    load !== undefined && /^\d/.test(load.side),
                     parts.map(row => `${row.name} ${row.side}`).join(", "));
                 root.servedParts();
             } catch (error) {

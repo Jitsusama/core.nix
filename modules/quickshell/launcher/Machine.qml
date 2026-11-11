@@ -41,10 +41,13 @@
 // Every figure is the machine daemon's (modules/machine), held over one
 // connection to its socket (Daemon.qml), so nothing is read or spawned
 // here: the daemon reads the kernel and asks UDisks, and says each
-// record as it changes. It reads only while watched, so the processor,
-// memory and boot are watched while one of Machine's answers is shown,
-// the disks while a Disk answer or row is, and the programs using the machine, which cost it the most to
-// read, only while a Using row can be seen: the processor's or the
+// record as it changes. The processor, the memory and the uptime come
+// from it as rows ready to draw, worded and in their words' order, so
+// nothing here makes them. It reads only while watched, so those are
+// watched while one of Machine's answers is shown, the disks while a
+// Disk answer or row is, and the programs using the machine, which cost
+// it the most to read, only while a Using row can be seen: the
+// processor's or the
 // memory's parts stepped into, or Using asked for alone. Its
 // records come at most once a second, and once more a moment after the
 // first, whose rates are since the machine started, so a rate stands for
@@ -109,10 +112,6 @@ Provider {
             return alone(part[0], part[1]);
         return told(Object.keys(kinds).find(kind => Words.answers(kinds[kind]).includes(question)));
     }
-
-    // The kinds of cache Linux names, each a name of its own in the
-    // vocabulary (machine:cpu:cache-data), since a name is Title Case.
-    readonly property var cacheTypes: ["data", "instruction", "unified"]
 
     // A part's name, as the vocabulary says it: "Cores" for
     // machine:cpu:cores.
@@ -206,7 +205,7 @@ Provider {
     // place is made once, and an answer that came later would never join
     // it.
     function unheld(kind) {
-        const down = daemon.state === "not answering";
+        const down = served.state === "not answering";
         return {
             headline: down ? "" : "\u2026",
             copy: "",
@@ -246,21 +245,6 @@ Provider {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
 
-    // A part whose figures aren't held yet, as the programs aren't until a
-    // part saying them is first looked at: listed from the first, saying
-    // it's still reading, so its place is held and nothing below it moves
-    // once they come.
-    function reading(name) {
-        return figure({ name: name, side: "\u2026" });
-    }
-
-    // The programs using most of something, known by their place rather
-    // than their name, so the first stays first as the programs change
-    // and the rows say who it is now, rather than swapping places.
-    function ranked(what, at) {
-        return `machine:${what}:using:${at + 1}`;
-    }
-
     function leaf(fields) {
         return copyRow(Object.assign({
             copy: fields.side,
@@ -277,16 +261,6 @@ Provider {
 
     function bar(value, warn) {
         return { shape: "bar", values: [Math.max(0, Math.min(1, value))], warn: warn === true };
-    }
-
-    // A strip of more members than it draws gives each of its places the
-    // most of the members it stands for, so a maxed core still shows.
-    function strip(values) {
-        const per = Math.ceil(values.length / graphed);
-        const drawn = [];
-        for (let at = 0; at < values.length; at += per)
-            drawn.push(Math.max(...values.slice(at, at + per)));
-        return { shape: "strip", values: drawn, warn: false };
     }
 
     function spark(values, least) {
@@ -330,10 +304,6 @@ Provider {
 
     function degrees(value) {
         return `${number(value, 0)} \u00b0C`;
-    }
-
-    function ghz(khz) {
-        return pointed(Machine.hertz(khz));
     }
 
     function ms(value) {
@@ -411,16 +381,6 @@ Provider {
 
     // The daemon's records.
 
-    // A record by its key, read beside the revision so a binding is told
-    // once a change, or null while it isn't held.
-    function record(key) {
-        return daemon.revision >= 0 ? daemon.held[key] ?? null : null;
-    }
-
-    function processor() {
-        return record("processor:0");
-    }
-
     // The disk records, the machine's own first.
     function diskRecords() {
         const held = diskWatch.revision >= 0 ? diskWatch.held : {};
@@ -431,89 +391,21 @@ Provider {
         return Machine.biggest(diskRecords());
     }
 
-    // The programs using most of something, in their places, or null while
-    // the programs aren't held yet.
-    function using(of) {
-        if (!users.answered || users.state === "not answering")
-            return null;
-        const held = users.revision >= 0 ? users.held : {};
-        const found = [];
-        for (let rank = 1; held[`using:${of}:${rank}`]; rank++)
-            found.push(held[`using:${of}:${rank}`]);
-        return found;
-    }
-
     // The processors.
 
+    // The processor, as the daemon serves it ready, with what held it back
+    // and what kept it from resting beside its served parts.
     function cpu() {
-        const p = processor();
-        if (!p || p.busy_ratio === null || p.busy_ratio === undefined)
-            return unheld("cpu");
-        return fresh({
-            headline: `${percent(p.busy_ratio)} busy`,
-            graph: bar(p.busy_ratio),
-            glyph: Words.glyph(kinds.cpu),
-            title: Words.name(kinds.cpu),
-            about: kinds.cpu,
-            note: since(p)
-        }, () => cpuParts(p));
+        return servedAnswer("cpu", kinds.cpu, telemetryRows);
     }
 
-    // The processors' parts, from the record the headline said.
-    function cpuParts(p) {
+    // What held the processor back and what kept it from resting, from its
+    // telemetry, which the daemon hears only while Heat is watched. They're
+    // made here, and placed among the served parts by their words' order,
+    // until the daemon serves them too.
+    function telemetryRows() {
         const chip = Words.glyph(kinds.cpu);
-        const cores = (p.cores ?? []).filter(core => core.online);
-        const loads = cores.map(core => ({ n: core.n, load: core.busy_ratio ?? 0 }));
-        const rows = [holderRow({
-            name: named("cpu:cores"),
-            side: `${cores.length}`,
-            graph: strip(loads.map(core => core.load)),
-            glyph: chip,
-            note: since(p)
-        }, () => cores.map(core => figure({
-            name: named("cpu:core", { n: core.n }),
-            side: percent(core.busy_ratio ?? 0),
-            graph: bar(core.busy_ratio ?? 0),
-            note: Machine.items([core.kind ?? "",
-                core.clock_khz > 0 ? ghz(core.clock_khz) : "",
-                typeof core.temperature_c === "number" ? degrees(core.temperature_c) : ""])
-        }))), figure({
-            name: named("cpu:maxed"),
-            side: Machine.maxed(loads),
-            note: "at 95% or more"
-        })];
-        const spent = Machine.spent(p.time, p.guest === true);
-        if (spent.length > 0)
-            rows.push(holderRow({
-                name: named("cpu:spent"),
-                side: percent(p.busy_ratio),
-                graph: bar(p.busy_ratio),
-                glyph: chip,
-                note: ""
-            }, () => spent.map(each => figure({
-                name: named(`cpu:spent-${each.id}`),
-                side: percent(each.share),
-                graph: bar(each.share),
-                note: says(`cpu:spent-${each.id}`, "note")
-            }))));
-        // Every task waiting for a processor is never said of the whole
-        // machine (the kernel keeps it for a cgroup alone, and says 0
-        // here), so only some is.
-        if (p.pressure?.some)
-            rows.push(pressured("cpu:pressure", p.pressure, false));
-        const clocked = cores.filter(core => core.clock_khz > 0);
-        if (clocked.length > 0) {
-            const mean = clocked.reduce((a, b) => a + b.clock_khz, 0) / clocked.length;
-            const tops = cores.map(core => core.max_khz ?? 0).filter(top => top > 0);
-            const most = tops.length > 0 ? tops.reduce((a, b) => a + b, 0) / tops.length : 0;
-            rows.push(holderRow({
-                name: named("cpu:clock"),
-                side: ghz(mean),
-                graph: most > 0 ? bar(mean / most) : undefined,
-                glyph: chip,
-                note: most > 0 ? `on average, of ${ghz(most)} at most` : "on average"
-            }, () => clockParts(p, cores)));
-        }
+        const rows = [];
         // Held Back stands while the telemetry answers, held or not, so the
         // rows under it never move under Joel's selection (VKCF3Z).
         const telemetry = ProcessorTelemetry.reading;
@@ -539,96 +431,6 @@ Provider {
                 note: held ? `by ${Machine.limit(held.by)}, over the last second`
                     : "nothing holds it back now"
             }));
-        if (typeof p.temperature?.temperature_c === "number")
-            rows.push(heated("cpu:temperature", p.temperature, "processor"));
-        const users = using("cpu");
-        if (users && users.length > 0)
-            rows.push(holderRow({
-                name: named("cpu:using"),
-                side: `${users[0].name} ${percent(users[0].share_ratio)}`,
-                glyph: chip,
-                note: "of the whole processor"
-            }, () => users.map((user, at) => figure({
-                key: ranked("cpu", at),
-                name: user.name,
-                side: percent(user.share_ratio),
-                graph: bar(user.share_ratio),
-                note: user.processes > 1 ? `${user.processes} processes` : ""
-            }))));
-        else if (!users)
-            rows.push(reading(named("cpu:using")));
-        if ((p.load ?? []).length === 3)
-            rows.push(figure({
-                name: named("cpu:load"),
-                side: p.load.map(load => number(load, 2)).join(" \u00b7 "),
-                note: "over 1, 5 and 15 minutes"
-            }));
-        if (typeof p.running === "number")
-            rows.push(figure({
-                name: named("cpu:running"),
-                side: `${p.running}`,
-                note: Machine.items([p.blocked > 0 ? says("cpu:running", "blocked", {
-                    blocked: p.blocked }) : "", p.tasks > 0 ? says("cpu:running", "tasks", {
-                    tasks: number(p.tasks, 0) }) : ""])
-            }));
-        if (typeof p.switches_per_s === "number")
-            rows.push(figure({
-                name: named("cpu:switches"),
-                side: often(p.switches_per_s),
-                note: since(p)
-            }));
-        if (typeof p.interrupts_per_s === "number")
-            rows.push(figure({
-                name: named("cpu:interrupts"),
-                side: often(p.interrupts_per_s),
-                note: p.softirqs_per_s > 0 ? says("cpu:interrupts", "note", {
-                    deferred: often(p.softirqs_per_s) }) : ""
-            }));
-        if (typeof p.forks_per_s === "number")
-            rows.push(figure({
-                name: named("cpu:started"),
-                side: often(p.forks_per_s),
-                note: says("cpu:started", "note")
-            }));
-        // The NPU's load sits with the processors', so the two read as a
-        // pair (VKCF3Z, 2026-10-29).
-        if (p.npu)
-            rows.push(p.npu.busy_ratio === null ? reading(named("cpu:npu-load")) : figure({
-                name: named("cpu:npu-load"),
-                side: percent(p.npu.busy_ratio),
-                graph: bar(p.npu.busy_ratio),
-                note: Machine.npuClock(p.npu)
-            }));
-        const order = ["performance", "efficient", "low-power"];
-        const present = order.filter(kind => cores.some(core => core.kind === kind));
-        if (present.length > 0) {
-            const inKind = kind => cores.filter(core => core.kind === kind);
-            rows.push(holderRow({
-                name: named("cpu:kinds"),
-                side: present.map(kind => inKind(kind).length).join(" \u00b7 "),
-                glyph: chip,
-                note: Machine.items(present)
-            }, () => present.map(kind => {
-                const members = inKind(kind);
-                const clocks = members.map(core => core.clock_khz ?? 0).filter(clock => clock > 0);
-                return figure({
-                    name: named(`cpu:${kind}`),
-                    side: clocks.length > 0
-                        ? `${members.length} at ${ghz(clocks.reduce((a, b) => a + b, 0)
-                            / clocks.length)}`
-                        : `${members.length}`,
-                    graph: strip(members.map(core => core.busy_ratio ?? 0)),
-                    note: Machine.cores(members.map(core => core.n))
-                });
-            })));
-        }
-        if (p.model)
-            rows.push(holderRow({
-                name: named("cpu:model"),
-                side: p.model,
-                copy: p.model,
-                glyph: chip
-            }, () => modelParts(p)));
         // Kept From Resting stands while the telemetry says it, kept from
         // resting or not, as Held Back does, and beside it.
         const resting = ProcessorTelemetry.kept;
@@ -649,78 +451,6 @@ Provider {
                     graph: bar(part.share)
                 }))) : figure(fields));
         }
-        return ordered(kinds.cpu, rows);
-    }
-
-    // The clock's range, the base it's sold at, and how it's driven.
-    function clockParts(p, cores) {
-        const lows = cores.map(core => core.min_khz ?? 0).filter(low => low > 0);
-        const tops = cores.map(core => core.max_khz ?? 0).filter(top => top > 0);
-        const bases = cores.map(core => core.base_khz ?? 0).filter(base => base > 0);
-        const rows = [];
-        if (lows.length > 0 && tops.length > 0)
-            rows.push(figure({
-                name: named("cpu:clock-range"),
-                side: `${ghz(Math.min(...lows))} to ${ghz(Math.max(...tops))}`,
-                note: Math.max(...tops) !== Math.min(...tops)
-                    ? says("cpu:clock-range", "kinds", { least: ghz(Math.min(...tops)) }) : ""
-            }));
-        if (bases.length > 0)
-            rows.push(figure({
-                name: named("cpu:clock-base"),
-                side: Math.min(...bases) === Math.max(...bases) ? ghz(bases[0])
-                    : `${ghz(Math.min(...bases))} to ${ghz(Math.max(...bases))}`,
-                note: says("cpu:clock-base", "note")
-            }));
-        if (p.driver)
-            rows.push(leaf({ name: named("cpu:clock-driver"), side: p.driver }));
-        if (p.governor)
-            rows.push(leaf({ name: named("cpu:clock-governor"), side: p.governor }));
-        if (p.preference)
-            rows.push(leaf({ name: named("cpu:clock-preference"), side: p.preference }));
-        if (typeof p.turbo === "boolean")
-            rows.push(figure({
-                name: named("cpu:clock-turbo"),
-                side: p.turbo ? "on" : "off",
-                note: says("cpu:clock-turbo", p.turbo ? "on" : "off")
-            }));
-        return rows;
-    }
-
-    // What the processor is: who made it, its family, model and stepping
-    // as it says them, its microcode, and its caches.
-    function modelParts(p) {
-        const rows = [leaf({ name: named("cpu:model-name"), side: p.model })];
-        if (p.vendor)
-            rows.push(leaf({ name: named("cpu:vendor"), side: p.vendor }));
-        if (typeof p.family === "number")
-            rows.push(leaf({
-                name: named("cpu:family"),
-                side: says("cpu:family", "side", { family: p.family,
-                    model: p.model_number ?? "", stepping: p.stepping ?? "" })
-            }));
-        if (p.microcode)
-            rows.push(leaf({ name: named("cpu:microcode"), side: p.microcode }));
-        const caches = p.caches ?? [];
-        if (caches.length > 0)
-            rows.push(holderRow({
-                name: named("cpu:caches"),
-                side: bytes(caches.reduce((all, cache) => all + (cache.size_b ?? 0) * cache.count, 0)),
-                glyph: Words.glyph(kinds.cpu),
-                note: says("cpu:caches", "note")
-            }, () => caches.map(cache => figure({
-                // A type Linux names has its own words; another, its own name.
-                name: cacheTypes.includes(cache.type)
-                    ? named(`cpu:cache-${cache.type}`, { level: cache.level })
-                    : named("cpu:cache", { level: cache.level, type: cache.type }),
-                side: cache.count > 1 ? `${bytes(cache.size_b)} \u00d7 ${cache.count}`
-                    : bytes(cache.size_b),
-                note: Machine.items([cache.shared_by > 1
-                    ? says("cpu:cache", "shared", { n: cache.shared_by }) : says("cpu:cache", "own"),
-                    Machine.cores(cache.cpus ?? []),
-                    cache.ways ? says("cpu:cache", "ways", { ways: cache.ways }) : "",
-                    cache.line_b ? says("cpu:cache", "line", { line: cache.line_b }) : ""])
-            }))));
         return rows;
     }
 
@@ -737,8 +467,8 @@ Provider {
     // the crate's wrapped form): the keys under each row's, placed as
     // they come (Placed.js), so nothing here words, weighs or sorts them.
     // Drawing them is this file's only until the launcher reads served
-    // rows itself (ReadyRows.qml); the processor's and the disks' rows
-    // come next, the same way.
+    // rows itself (ReadyRows.qml); the disks' rows come next, the same
+    // way.
     property var nested: ({})
 
     function take(changed, gone) {
@@ -759,9 +489,10 @@ Provider {
     })
 
     // A top row the daemon serves, as the answer the launcher asks for by
-    // its words: its side the headline, its parts a step in; held in its
+    // its words: its side the headline, its parts a step in, with any rows
+    // `more` makes here placed among them by its words' order; held in its
     // place while it hasn't been served.
-    function servedAnswer(id, kind) {
+    function servedAnswer(id, kind, more) {
         const top = served.revision >= 0 ? served.held[`row:machine:${id}`] ?? null : null;
         if (!top)
             return unheld(id);
@@ -773,7 +504,8 @@ Provider {
             title: said.name,
             about: kind,
             note: said.note
-        }, () => servedRows(top.key));
+        }, () => more ? ordered(kind, servedRows(top.key).concat(more()))
+            : servedRows(top.key));
     }
 
     // The rows served inside one, each a figure or, holding more, a step
@@ -802,15 +534,6 @@ Provider {
         add("read", disk.read_b_per_s ?? 0);
         add("write", disk.written_b_per_s ?? 0);
         add("moved", (disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0));
-    }
-
-    Connections {
-        target: daemon
-
-        function onHeard(keys) {
-            if (provider.shown)
-                provider.answered();
-        }
     }
 
     Connections {
@@ -1363,7 +1086,7 @@ Provider {
     // Whether a daemon it watches hasn't yet answered this watch whole, so
     // what it shows is the placeholder, or what an earlier watch left,
     // still being read (Provider.stillReading).
-    stillReading: [daemon, served, diskWatch, users].some(watch => watch.live
+    stillReading: [served, diskWatch, users].some(watch => watch.live
         && !watch.answeredThisWatch && watch.state !== "not answering")
 
     // What the open launcher holds, answers and lists is left as it was
@@ -1416,27 +1139,14 @@ Provider {
         onTriggered: provider.answered()
     }
 
-    // The machine daemon: the processor while one of Machine's answers is
-    // shown (its memory and uptime are served rows, above), the disks
-    // while a Disk answer or row is,
-    // and the programs while a Using row can be, in the open launcher or
-    // a terminal's show. Nothing is read while neither sees them; a first
-    // look holds the placeholder for the few milliseconds the daemon's
-    // first read takes.
-    Daemon {
-        id: daemon
-
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: "processor"
-        live: provider.shown
-        paced: provider.launcher
-        keptThroughGap: false
-        answersWhole: true
-    }
-
-    // Machine's own rows, served ready while one of its answers is shown;
-    // the place is remade as the programs are read, so Using It names
-    // them only while a Using row can be seen.
+    // The machine daemon: Machine's own rows, served ready while one of
+    // its answers is shown (the processor, the memory and the uptime), the
+    // disks while a Disk answer or row is, and the programs while a Using
+    // row can be, in the open launcher or a terminal's show. Nothing is
+    // read while neither sees them; a first look holds the placeholder for
+    // the few milliseconds the daemon's first read takes. The place is
+    // remade as the programs are read, so Using It names them only while a
+    // Using row can be seen.
     Daemon {
         id: served
 
