@@ -268,6 +268,12 @@ fn derivation(word: &str) -> bool {
 }
 
 impl Asked {
+    /// Whether it may ever be built here, by `--here` or
+    /// `--here-when-idle`.
+    pub fn builds_here(&self) -> bool {
+        self.here.unsent || self.here.idle
+    }
+
     /// Where the flake is when what's asked is checks whose passing is all
     /// that comes of them, so one that passed there needn't be built again:
     /// a GitHub flake at a whole commit, or a git tree here that's its
@@ -639,6 +645,12 @@ fn inputs_up(inputs: &kept::Inputs, lent: &Builder, nix: &str) -> Result<(), Str
     if inputs.sent.is_empty() {
         return Ok(());
     }
+    if lent_only() {
+        return Err(format!(
+            "it takes {} from this machine alone, and --lent-only sends none of it",
+            inputs.sent.join(", ")
+        ));
+    }
     eprintln!(
         "nix-offload: sending {} the flake takes from this machine alone to {}",
         inputs.sent.join(", "),
@@ -659,12 +671,25 @@ fn sending_of(asked: &Asked, scratch: &Path) -> Result<Sending, Untaken> {
             command: asked.command(),
             bundle: None,
         }),
+        // Its files, which a fenced session can write, never go.
+        Some(_) if lent_only() && asked.flake.starts_with("path:") => Err(Untaken::Stays(
+            "--lent-only sends a git tree's commit, never a folder's files".to_owned(),
+        )),
         // A `path:` flake is read as its folder holds it, git or not.
         Some(folder) if asked.flake.starts_with("path:") => packed(&folder, asked, scratch, true),
+        Some(folder) if lent_only() => source(
+            &folder,
+            scratch,
+            asked.pinned.as_ref().map(|it| &*it.commit),
+            Sends::Committed,
+        )
+        .map(|source| source.sending(asked))
+        .map_err(Untaken::Stays),
         Some(folder) => source(
             &folder,
             scratch,
             asked.pinned.as_ref().map(|it| &*it.commit),
+            Sends::Changes,
         )
         .map(|source| source.sending(asked))
         .or_else(|why| {
@@ -1673,9 +1698,10 @@ impl Source {
 /// `--outlive`, a build that goes on once its caller is gone, `--bulk`,
 /// one whose VM tests let others' go first, `--never-ask`, a run
 /// that asks the lender for no builder, `--first`, one that goes ahead of
-/// every other run waiting for room or for a turn, and `--run`, a command
-/// run on a lent builder (`command.rs`).
-pub const TAKES: [&str; 15] = [
+/// every other run waiting for room or for a turn, `--run`, a command
+/// run on a lent builder (`command.rs`), and `--lent-only`, a run that
+/// goes to a lent builder or nowhere ([`LENT_ONLY`]).
+pub const TAKES: [&str; 16] = [
     "tree",
     "apply",
     "out",
@@ -1691,6 +1717,7 @@ pub const TAKES: [&str; 15] = [
     "never-ask",
     "first",
     "run",
+    "lent-only",
 ];
 
 /// The variable, with its value, that marks a run sent first, as
@@ -1701,6 +1728,22 @@ pub const FIRST: (&str, &str) = ("NIX_OFFLOAD_FIRST", "1");
 /// Whether this run was sent first.
 pub fn first() -> bool {
     std::env::var_os(FIRST.0).is_some_and(|value| value == FIRST.1)
+}
+
+/// The variable, with its value, that keeps a run to the lent builders, as
+/// `there --lent-only` sets it for everything the run starts.
+///
+/// A fenced session's runs go out as the person, and a nearby machine, an
+/// evaluator or this one would build or evaluate as them, so such a run
+/// goes to a lent builder or nowhere. It sends a git tree's HEAD alone,
+/// as `--run` does ([`Sends::Committed`]), never a tarball of its files,
+/// nor anything the flake takes from this machine alone, and never builds
+/// here.
+pub const LENT_ONLY: (&str, &str) = ("NIX_OFFLOAD_LENT_ONLY", "1");
+
+/// Whether this run goes to the lent builders alone.
+pub fn lent_only() -> bool {
+    std::env::var_os(LENT_ONLY.0).is_some_and(|value| value == LENT_ONLY.1)
 }
 
 /// Where a run waiting for a VM builder's room stands among the others:
@@ -1736,10 +1779,52 @@ fn github_of(url: &str) -> Option<String> {
     (path.split('/').count() == 2 && !path.starts_with('/')).then(|| path.to_owned())
 }
 
+/// What the caller's environment may say of where a repository's files
+/// and objects are, none of which git is let read here: `top` alone names
+/// the repository.
+const ELSEWHERE: [&str; 6] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+];
+
 /// git's answer, trimmed, in `top`, or none when it fails.
+///
+/// A run sent from a fenced session reads a tree the fence lets it write,
+/// so nothing in it may start a program or reach outside it: no hook,
+/// such as the reference transaction `update-ref` runs, no file system
+/// monitor, which a diff would start, no replaced object and none from a
+/// caller's alternates.
 fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
+    git_with(top, arguments, index, &[])
+}
+
+/// [`git`], with `vars` set as well.
+fn git_with(
+    top: &Path,
+    arguments: &[&str],
+    index: Option<&Path>,
+    vars: &[(&str, &str)],
+) -> Option<String> {
     let mut command = Command::new("git");
-    command.arg("-C").arg(top).args(arguments);
+    command
+        .args([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+        ])
+        .arg("-C")
+        .arg(top)
+        .args(arguments)
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .envs(vars.iter().copied());
+    for name in ELSEWHERE {
+        command.env_remove(name);
+    }
     if let Some(index) = index {
         command.env("GIT_INDEX_FILE", index);
     }
@@ -1755,7 +1840,12 @@ fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
 /// commit GitHub has is where it meets its upstream branch, else origin's
 /// main. A tree that isn't git, or whose origin isn't on GitHub, can't
 /// reach it.
-pub fn source(folder: &Path, scratch: &Path, pinned: Option<&str>) -> Result<Source, String> {
+pub fn source(
+    folder: &Path,
+    scratch: &Path,
+    pinned: Option<&str>,
+    sends: Sends,
+) -> Result<Source, String> {
     let folder =
         fs::canonicalize(folder).map_err(|error| format!("{}: {error}", folder.display()))?;
     let not = |what: &str| format!("{} {what}", folder.display());
@@ -1771,9 +1861,10 @@ pub fn source(folder: &Path, scratch: &Path, pinned: Option<&str>) -> Result<Sou
         .ok()
         .map(|dir| dir.to_string_lossy().into_owned())
         .filter(|dir| !dir.is_empty());
-    let commit = match pinned {
-        Some(commit) => commit.to_owned(),
-        None => committed(&top, scratch).map_err(not)?,
+    let commit = match (pinned, sends) {
+        (Some(commit), _) => commit.to_owned(),
+        (None, Sends::Changes) => committed(&top, scratch).map_err(not)?,
+        (None, Sends::Committed) => head_alone(&top).map_err(not)?,
     };
     let base = ["@{upstream}", "origin/main"]
         .iter()
@@ -1800,11 +1891,70 @@ fn tree_now(folder: &Path, scratch: &Path) -> Option<String> {
     git(&top, &["rev-parse", &format!("{commit}^{{tree}}")], None)
 }
 
+/// What [`source`] sends of a tree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sends {
+    /// Its HEAD, with its changes as one more commit, as Nix reads a tree.
+    Changes,
+    /// Its HEAD alone, refused while it has changes, for a command run as
+    /// the person from a session fenced off from much of what they own.
+    Committed,
+}
+
+/// The empty tree's hash, which git takes its attributes from, rather than
+/// the tree's own, when `GIT_ATTR_SOURCE` names it.
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+/// The HEAD of the git tree `top`, refused while it has changes or borrows
+/// objects from another repository.
+///
+/// `there --run` runs as the person, out of a fence that hides some of
+/// what they own from the session asking, and on 11 November a tree that
+/// session could write was shown to send more than its own commits. Its
+/// index and files went into the commit, so a gitlink whose `.git` names
+/// a hidden repository had that repository's HEAD read through, and its
+/// attributes picked filters git ran outside the fence. So only HEAD's
+/// objects go: a gitlink in them is a hash the builder never fetches, the
+/// diff that finds changes reads no attribute and no submodule, and a tree
+/// with alternates, whose objects could be any repository's, is refused.
+fn head_alone(top: &Path) -> Result<String, &'static str> {
+    let borrows = ["objects/info/alternates", "objects/info/http-alternates"]
+        .iter()
+        .any(|one| {
+            git(top, &["rev-parse", "--git-path", one], None)
+                .is_none_or(|path| top.join(path).exists())
+        });
+    if borrows {
+        return Err("borrows objects from another repository, so --run sends nothing of it");
+    }
+    let head =
+        git(top, &["rev-parse", "--verify", "HEAD^{commit}"], None).ok_or("has no commit")?;
+    git_with(
+        top,
+        &[
+            "-c",
+            "diff.ignoreSubmodules=all",
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            "--no-textconv",
+            "HEAD",
+        ],
+        None,
+        &[("GIT_ATTR_SOURCE", EMPTY_TREE)],
+    )
+    .map(|_| head)
+    .ok_or("has changes not committed, and --run sends only what is, so commit them first")
+}
+
 /// The commit the git tree `top` is built at: its HEAD, or, with changes to
 /// the files its index holds, staged new ones included, a commit of them
 /// made without touching the branch or the index, as `nix build` of the
 /// tree here would read them.
 fn committed(top: &Path, scratch: &Path) -> Result<String, &'static str> {
+    if lent_only() {
+        return head_alone(top);
+    }
     let head = git(top, &["rev-parse", "HEAD"], None).ok_or("has no commit")?;
     if git(top, &["diff", "--quiet", "HEAD"], None).is_some() {
         Ok(head)
