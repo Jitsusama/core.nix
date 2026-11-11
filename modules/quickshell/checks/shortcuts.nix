@@ -4,6 +4,7 @@
 {
   account,
   bareNixos,
+  copied,
   graphical,
   lib,
   machine,
@@ -87,17 +88,13 @@
       cd $TMPDIR/shell
       mkdir -p runtime launcher && chmod 700 runtime
       cp ${../../../tests/key-map.qml} shell.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/KeyMap.qml} launcher/KeyMap.qml
-      cp ${../launcher/KeyGroups.js} launcher/KeyGroups.js
-      cp ${../launcher/KeyLayers.js} launcher/KeyLayers.js
+      ${copied [
+        "Words.qml"
+        "launcher/KeyMap.qml"
+        "launcher/Provider.qml"
+      ]}
       cp ${files."quickshell/Theme.qml".source} Theme.qml
       cp ${files."quickshell/Shortcuts.qml".source} Shortcuts.qml
-      cp ${../Words.qml} Words.qml
       cp ${words} launcher/words.json
       cp ${niri} Niri.qml
       export XDG_RUNTIME_DIR=$TMPDIR/shell/runtime
@@ -114,9 +111,10 @@
     mkdir -p runtime/leds/test::kbd_backlight runtime/leds/input0::capslock && chmod 700 runtime
     echo 3 > runtime/leds/test::kbd_backlight/max_brightness
     touch runtime/leds/test::kbd_backlight/brightness_hw_changed
-    cp ${../Lights.qml} Lights.qml
-    cp ${../Daemon.qml} Daemon.qml
-    cp ${../Hearing.js} Hearing.js
+    ${copied [
+      "Daemon.qml"
+      "Lights.qml"
+    ]}
     cp ${../../../tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
@@ -169,25 +167,20 @@
       printf '1\n9\n' > root/run/keyboard-lights/keyboards
       cp ${firmware}/shell.json config/ergodox/layout.json
       cp ${laptop} laptop.json
-      cp ${../ConnectedKeyboards.qml} ConnectedKeyboards.qml
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
+      ${copied [
+        "ConnectedKeyboards.qml"
+        "Daemon.qml"
+        "KeyboardLayer.qml"
+        "KeyboardLayout.qml"
+        "Words.qml"
+        "launcher/Keyboard.qml"
+        "launcher/Keyboards.qml"
+        "launcher/Order.js"
+        "launcher/Provider.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../../tests/keyboard.qml} shell.qml
-      cp ${../KeyboardLayout.qml} KeyboardLayout.qml
-      cp ${../KeyboardLayer.qml} KeyboardLayer.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Keyboard.qml} launcher/Keyboard.qml
-      cp ${../launcher/Keyboards.qml} launcher/Keyboards.qml
-      cp ${../launcher/Keyboards.js} launcher/Keyboards.js
-      cp ${../launcher/KeyCounts.js} launcher/KeyCounts.js
-      cp ${../launcher/Order.js} launcher/Order.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
       cp ${shortcuts} Shortcuts.qml
       cp ${lights} Lights.qml

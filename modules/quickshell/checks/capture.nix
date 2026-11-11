@@ -2,6 +2,7 @@
 # recording a window, which the folder's checks.nix gathers with every other
 # place's; its opening comment says why each place keeps its own.
 {
+  copied,
   lib,
   noFonts,
   passesClippy,
@@ -33,10 +34,10 @@
       touch shots/2026-10-{29,30,31}\ 09-00-00.png
       substitute ${../tests/stand-ins/taken-texts.json} texts.json --subst-var-by shots "$PWD/shots"
       printf '[{"name": "taken", "folders": ["%s"]}]' "$PWD/shots" > sources.json
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Taken.qml} Taken.qml
-      cp ${../Fuzzy.js} Fuzzy.js
+      ${copied [
+        "Daemon.qml"
+        "Taken.qml"
+      ]}
       cp ${../../../tests/taken.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} SHOTS=$PWD/shots
@@ -58,11 +59,7 @@
     pkgs.runCommandLocal "a-capture-says-what-it-took" { } ''
       mkdir launcher
       cp ${../../../tests/captured.qml} captured.qml
-      cp ${../launcher/Captured.js} launcher/Captured.js
-      cp ${../launcher/Recent.js} launcher/Recent.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
+      ${copied [ "launcher/Captured.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

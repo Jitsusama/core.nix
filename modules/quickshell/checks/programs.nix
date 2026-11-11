@@ -3,6 +3,7 @@
 # place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -219,34 +220,17 @@
       cp ${ghost} share/applications/ghost.desktop
       cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Applications.qml} launcher/Applications.qml
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../launcher/HeldWindows.js} launcher/HeldWindows.js
-      cp ${../launcher/Media.js} launcher/Media.js
-      cp ${../launcher/Program.js} launcher/Program.js
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Music.js} Music.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../launcher/Recents.qml} launcher/Recents.qml
-      cp ${../launcher/Recents.js} launcher/Recents.js
-      cp ${../launcher/Recent.js} launcher/Recent.js
-      cp ${../launcher/Captured.js} launcher/Captured.js
-      cp ${../launcher/PastNotices.qml} launcher/PastNotices.qml
-      cp ${../launcher/Notice.js} launcher/Notice.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../Words.qml} Words.qml
-      cp ${../Files.qml} Files.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "Daemon.qml"
+        "Files.qml"
+        "Words.qml"
+        "launcher/Applications.qml"
+        "launcher/PastNotices.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/Recents.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../../tests/program-controls.qml} shell.qml
       cp ${../../../tests/lib/HeardWindows.js} HeardWindows.js
       cp ${../../../tests/lib/NoticesDaemon.qml} NoticesDaemon.qml
@@ -335,10 +319,7 @@
     pkgs.runCommandLocal "a-program-says-all-it-knows" { } ''
       mkdir launcher
       cp ${../../../tests/program-drawer.qml} program-drawer.qml
-      cp ${../launcher/Program.js} launcher/Program.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
+      ${copied [ "launcher/Program.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

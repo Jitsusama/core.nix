@@ -3,6 +3,7 @@
 # comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   holds,
   lib,
@@ -49,8 +50,10 @@ in
     in
     pkgs.runCommandLocal "reopening-finds-each-screen" { } ''
       cp ${../../../tests/places.qml} places.qml
-      cp ${../Places.js} Places.js
-      cp ${../Viewers.js} Viewers.js
+      ${copied [
+        "Places.js"
+        "Viewers.js"
+      ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -113,20 +116,14 @@ in
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
-      cp ${../Sessions.qml} Sessions.qml
-      cp ${../SessionWindows.js} SessionWindows.js
-      cp ${../PiSource.qml} PiSource.qml
-      cp ${../PiSource.js} PiSource.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Waiting.js} Waiting.js
-      cp ${../Places.js} Places.js
-      cp ${../Viewers.js} Viewers.js
+      ${copied [
+        "Daemon.qml"
+        "PiSource.qml"
+        "Sessions.qml"
+      ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions.qml} shell.qml
-      mkdir launcher
-      cp ${../launcher/Order.js} launcher/Order.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
@@ -186,20 +183,14 @@ in
     pkgs.runCommandLocal "a-session-behind-the-lock-waits-for-its-kin" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
-      cp ${../Sessions.qml} Sessions.qml
-      cp ${../SessionWindows.js} SessionWindows.js
-      cp ${../PiSource.qml} PiSource.qml
-      cp ${../PiSource.js} PiSource.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Waiting.js} Waiting.js
-      cp ${../Places.js} Places.js
-      cp ${../Viewers.js} Viewers.js
+      ${copied [
+        "Daemon.qml"
+        "PiSource.qml"
+        "Sessions.qml"
+      ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions-behind-the-lock.qml} shell.qml
-      mkdir launcher
-      cp ${../launcher/Order.js} launcher/Order.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
@@ -241,20 +232,14 @@ in
     pkgs.runCommandLocal "a-hosted-viewer-reopens-where-it-was" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
-      cp ${../Sessions.qml} Sessions.qml
-      cp ${../SessionWindows.js} SessionWindows.js
-      cp ${../PiSource.qml} PiSource.qml
-      cp ${../PiSource.js} PiSource.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Waiting.js} Waiting.js
-      cp ${../Places.js} Places.js
-      cp ${../Viewers.js} Viewers.js
+      ${copied [
+        "Daemon.qml"
+        "PiSource.qml"
+        "Sessions.qml"
+      ]}
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions-hosted-reopen.qml} shell.qml
-      mkdir launcher
-      cp ${../launcher/Order.js} launcher/Order.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${niri} Niri.qml

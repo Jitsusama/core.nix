@@ -3,6 +3,7 @@
 # place keeps its own.
 {
   account,
+  copied,
   graphical,
   noFonts,
   pkgs,
@@ -23,23 +24,15 @@
       mkdir -p launcher runtime/daemons && chmod -R 700 runtime
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Watch.js} Watch.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../When.js} When.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../launcher/Power.qml} launcher/Power.qml
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Seen.js} launcher/Seen.js
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Power.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/words.json"
+      ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
       cp ${singleton "Niri.qml" ''
         function spawn(command) { }
       ''} Niri.qml
@@ -59,7 +52,7 @@
     in
     pkgs.runCommandLocal "a-low-charge-is-said-once" { } ''
       cp ${../../../tests/crossing.qml} crossing.qml
-      cp ${../Crossing.js} Crossing.js
+      ${copied [ "Crossing.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -77,8 +70,7 @@
     in
     pkgs.runCommandLocal "a-low-device-is-its-own-notice" { } ''
       cp ${../../../tests/devices.qml} devices.qml
-      cp ${../Devices.js} Devices.js
-      cp ${../Crossing.js} Crossing.js
+      ${copied [ "Devices.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

@@ -4,6 +4,7 @@
 {
   account,
   bareNixos,
+  copied,
   holds,
   lib,
   noFonts,
@@ -100,9 +101,7 @@
     pkgs.runCommandLocal "a-piece-says-all-it-knows" { } ''
       mkdir pieces
       cp ${../../../tests/piece-drawers.qml} piece-drawers.qml
-      cp ${../pieces/Drawers.js} pieces/Drawers.js
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
+      ${copied [ "pieces/Drawers.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -120,7 +119,7 @@
     in
     pkgs.runCommandLocal "the-margins-marks-stand-level" { } ''
       cp ${../../../tests/marks.qml} marks.qml
-      cp ${../Marks.js} Marks.js
+      ${copied [ "Marks.js" ]}
       cp ${../pieces/Holding.js} Holding.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -156,8 +155,7 @@
     pkgs.runCommandLocal "the-margins-marks-are-drawn-level" { } ''
       cp ${../../../tests/drawings.qml} drawings.qml
       cp ${drawings} Drawings.js
-      cp ${../Devices.js} Devices.js
-      cp ${../Crossing.js} Crossing.js
+      ${copied [ "Devices.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -173,7 +171,7 @@
     in
     pkgs.runCommandLocal "a-piece-may-stand-for-several" { } ''
       cp ${../../../tests/facts.qml} facts.qml
-      cp ${../Facts.js} Facts.js
+      ${copied [ "Facts.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

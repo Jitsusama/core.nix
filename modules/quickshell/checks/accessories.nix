@@ -3,6 +3,7 @@
 # opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   noFonts,
   pkgs,
@@ -52,20 +53,13 @@
            "held": {"central": false, "outgoing": true, "security": "none"}}
         ]}
         EOF
-        cp ${../Fuzzy.js} Fuzzy.js
-        cp ${../Devices.js} Devices.js
-        cp ${../Crossing.js} Crossing.js
-        cp ${../launcher/Provider.qml} launcher/Provider.qml
-        cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-        cp ${../launcher/Asking.js} launcher/Asking.js
-        cp ${../launcher/Numbers.js} launcher/Numbers.js
-        cp ${../launcher/Accessories.qml} launcher/Accessories.qml
-        cp ${../launcher/Order.js} launcher/Order.js
-        cp ${../launcher/Links.js} launcher/Links.js
-        cp ${../launcher/Nearby.js} launcher/Nearby.js
+        ${copied [
+          "Words.qml"
+          "launcher/Accessories.qml"
+          "launcher/Provider.qml"
+          "launcher/words.json"
+        ]}
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../Words.qml} Words.qml
-        cp ${../launcher/words.json} launcher/words.json
         cp ${../../../tests/bluetooth-pairing.qml} shell.qml
         cp ${pkgs.writeText "Niri.qml" ''
           pragma Singleton

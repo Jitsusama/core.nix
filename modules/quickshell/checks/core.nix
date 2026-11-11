@@ -3,6 +3,7 @@
 # every other place's; its opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   launcherOnNiri,
   lib,
@@ -87,7 +88,7 @@
   # Qt's own JavaScript engine, the one the shell runs the matcher in.
   the-launcher-finds-what-is-meant = pkgs.runCommandLocal "the-launcher-finds-what-is-meant" { } ''
     cp ${../../../tests/fuzzy.qml} fuzzy.qml
-    cp ${../Fuzzy.js} Fuzzy.js
+    ${copied [ "Fuzzy.js" ]}
     export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
     ${timedQml "fuzzy.qml"}
@@ -104,7 +105,7 @@
     in
     pkgs.runCommandLocal "the-launcher-makes-texts-ready-lightly" { } ''
       cp ${../../../tests/fuzzy-light.qml} fuzzy-light.qml
-      cp ${../Fuzzy.js} Fuzzy.js
+      ${copied [ "Fuzzy.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}
@@ -232,7 +233,7 @@
     in
     pkgs.runCommandLocal "the-selection-lands-within-50-ms-of-its-key" { } ''
       cp ${../../../tests/glide.qml} glide.qml
-      cp ${../Glide.js} Glide.js
+      ${copied [ "Glide.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -385,8 +386,7 @@
         export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
         mkdir -m 700 launcher $XDG_RUNTIME_DIR
-        cp ${../Trials.qml} Trials.qml
-        cp ${../launcher/Trials.js} launcher/Trials.js
+        ${copied [ "Trials.qml" ]}
         cp ${../../../tests/trials-kept.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         ${shellFolderLint}
@@ -526,8 +526,10 @@
     in
     pkgs.runCommandLocal "a-long-name-reads-at-one-pace" { } ''
       cp ${../../../tests/reading.qml} reading.qml
-      cp ${../Reading.js} Reading.js
-      cp ${../Measures.js} Measures.js
+      ${copied [
+        "Measures.js"
+        "Reading.js"
+      ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -545,7 +547,7 @@
     pkgs.runCommandLocal "the-launcher-places-each-row-it-is-served" { } ''
       mkdir launcher
       cp ${../../../tests/placed.qml} placed.qml
-      cp ${../launcher/Placed.js} launcher/Placed.js
+      ${copied [ "launcher/Placed.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -567,10 +569,7 @@
     pkgs.runCommandLocal "the-launcher-words-each-ready-row-it-is-served" { } ''
       mkdir launcher
       cp ${../../../tests/ready-rows.qml} ready-rows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../When.js} When.js
+      ${copied [ "launcher/ReadyRows.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -588,7 +587,7 @@
     in
     pkgs.runCommandLocal "a-card-says-how-it-stands-in-one-row" { } ''
       cp ${../../../tests/status-line.qml} status-line.qml
-      cp ${../StatusLine.js} StatusLine.js
+      ${copied [ "StatusLine.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -698,7 +697,7 @@
       mkdir cases shell
       cd $TMPDIR/cases
       cp ${../../../tests/quick-acts.qml} quick-acts.qml
-      cp ${../Copied.js} Copied.js
+      ${copied [ "Copied.js" ]}
       cp ${../launcher/Repositories.js} Repositories.js
       cp ${../../neovim/NeovimOpening.js} NeovimOpening.js
       cp ${../../chrome/ChromeDownloads.js} ChromeDownloads.js
@@ -710,34 +709,25 @@
       cd $TMPDIR/shell
       mkdir -p launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../Words.qml} Words.qml
-      cp ${../Files.qml} Files.qml
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
-      cp ${../Copied.qml} Copied.qml
-      cp ${../Copied.js} Copied.js
+      ${copied [
+        "Copied.qml"
+        "Daemon.qml"
+        "Files.qml"
+        "Words.qml"
+        "launcher/Ago.js"
+        "launcher/Captured.js"
+        "launcher/Listed.qml"
+        "launcher/Previewer.qml"
+        "launcher/Provider.qml"
+        "launcher/Repositories.qml"
+        "launcher/words.json"
+      ]}
       cp ${niri} Niri.qml
-      cp ${../launcher/words.json} launcher/words.json
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Repositories.qml} launcher/Repositories.qml
-      cp ${../launcher/Repositories.js} launcher/Repositories.js
       cp ${../../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
-      cp ${../launcher/Previewer.qml} launcher/Previewer.qml
-      cp ${../launcher/Captured.js} launcher/Captured.js
-      cp ${../launcher/Recent.js} launcher/Recent.js
-      cp ${../launcher/Order.js} launcher/Order.js
       cp ${../../neovim/NeovimOpening.js} launcher/NeovimOpening.js
       cp ${../../neovim/Neovim.js} launcher/Neovim.js
       cp ${../../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
       cp ${../../chrome/ChromeDownloads.js} launcher/ChromeDownloads.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../launcher/Listed.qml} launcher/Listed.qml
       cp ${../../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${../../zathura/ZathuraProgram.qml} launcher/ZathuraProgram.qml
       cp ${../../zathura/Zathura.js} launcher/Zathura.js

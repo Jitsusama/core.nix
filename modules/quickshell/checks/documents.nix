@@ -3,6 +3,7 @@
 # place keeps its own.
 {
   account,
+  copied,
   graphical,
   noFonts,
   pkgs,
@@ -41,18 +42,14 @@
       mkdir -p launcher
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../Words.qml} Words.qml
-      cp ${../FileFacts.js} FileFacts.js
-      cp ${../When.js} When.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/words.json} launcher/words.json
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../launcher/Placed.js} launcher/Placed.js
+      ${copied [
+        "Daemon.qml"
+        "FileFacts.js"
+        "Words.qml"
+        "launcher/Placed.js"
+        "launcher/Provider.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../google/Documents.qml} launcher/Documents.qml
       cp ${../../google/Drive.qml} Drive.qml
       cp ${../../google/Drive.js} Drive.js

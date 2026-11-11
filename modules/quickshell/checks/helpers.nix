@@ -12,6 +12,56 @@
   ...
 }:
 let
+  # What each file the checks copy imports of the shell's own (imports.nix).
+  imports = import ./imports.nix;
+  # A path under modules/quickshell, as an import in a file in folder names it.
+  under =
+    folder: path:
+    lib.concatStringsSep "/" (
+      lib.foldl' (kept: part: if part == ".." then lib.init kept else kept ++ [ part ]) [ ] (
+        lib.filter (part: part != "" && part != ".") (lib.splitString "/" "${folder}/${path}")
+      )
+    );
+  # What a QML or JavaScript file imports of the shell's own, as it says.
+  importing =
+    file:
+    lib.unique (
+      lib.concatMap (
+        line:
+        let
+          named = builtins.match "[[:space:]]*[.]?import[[:space:]]+\"([^\"]+)\".*" line;
+        in
+        if named == null then [ ] else [ (under (dirOf file) (lib.head named)) ]
+      ) (lib.splitString "\n" (builtins.readFile (../. + "/${file}")))
+    );
+  # Copies each file a check names into the folder it runs in, where the
+  # shell's folder holds it, with everything it imports, once each. A file
+  # whose imports aren't what imports.nix says fails the check instead,
+  # naming what differs, so the table can't drift from the files.
+  copied =
+    files:
+    let
+      bring =
+        seen: file:
+        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (imports.${file} or [ ]);
+      every = lib.sort lib.lessThan (lib.foldl' bring [ ] files);
+      wrong = lib.filter (
+        file:
+        (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
+        && lib.sort lib.lessThan (importing file) != imports.${file} or [ ]
+      ) every;
+      folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
+    in
+    if wrong == [ ] then
+      lib.concatStringsSep "\n" (
+        lib.optional (folders != [ ]) "mkdir -p ${lib.concatStringsSep " " folders}"
+        ++ map (file: "cp ${../. + "/${file}"} ${file}") every
+      )
+    else
+      ''
+        echo "imports.nix doesn't say what these import: ${lib.concatStringsSep ", " wrong}" >&2
+        exit 1
+      '';
   # Runs a test that times itself in Qt's engine, in a fresh process each
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
@@ -358,35 +408,18 @@ let
     in
     pkgs.runCommandLocal name { } ''
       mkdir launcher pieces
-      cp ${../ForYouHolds.qml} ForYouHolds.qml
-      cp ${../pieces/Holding.js} pieces/Holding.js
+      ${copied [
+        "Daemon.qml"
+        "ForYouHolds.qml"
+        "Location.qml"
+        "Words.qml"
+        "launcher/Now.qml"
+        "launcher/PastNotices.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/words.json"
+      ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../Marks.js} Marks.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Now.qml} launcher/Now.qml
-      cp ${../launcher/PastNotices.qml} launcher/PastNotices.qml
-      cp ${../launcher/Notice.js} launcher/Notice.js
-      cp ${../launcher/NeedsYou.js} launcher/NeedsYou.js
-      cp ${../launcher/Moment.js} launcher/Moment.js
-      cp ${../launcher/NowGroups.js} launcher/NowGroups.js
-      cp ${../launcher/Showing.js} launcher/Showing.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../launcher/ForYou.js} launcher/ForYou.js
-      cp ${../launcher/ForYouFilter.js} launcher/ForYouFilter.js
-      cp ${../launcher/Lately.js} launcher/Lately.js
-      cp ${../launcher/PlaceRow.js} launcher/PlaceRow.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Here.js} launcher/Here.js
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../When.js} When.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
       cp ${test} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/NoticesDaemon.qml} NoticesDaemon.qml
@@ -396,9 +429,6 @@ let
       cp ${sessions} Sessions.qml
       cp ${niri} Niri.qml
       cp ${notices} Notices.qml
-      cp ${../Location.qml} Location.qml
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       mkdir -p $XDG_RUNTIME_DIR/whereabouts $XDG_RUNTIME_DIR/daemons root/etc
@@ -419,6 +449,7 @@ let
 in
 {
   inherit
+    copied
     timedQml
     singleton
     qs

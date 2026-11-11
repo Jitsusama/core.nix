@@ -3,6 +3,7 @@
 # why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -83,30 +84,23 @@
     pkgs.runCommandLocal "the-launcher-finds-the-people" { } ''
       mkdir -p launcher/people
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Placed.js"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.js"
+        "launcher/Recent.js"
+        "launcher/Zones.js"
+        "launcher/words.json"
+      ]}
       cp ${../../people/People.qml} launcher/People.qml
-      cp ${../launcher/Placed.js} launcher/Placed.js
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../When.js} When.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../launcher/Recent.js} launcher/Recent.js
       cp ${../../people/Person.js} launcher/Person.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../launcher/Zones.js} launcher/Zones.js
       cp ${import ../launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       cp ${../../people/PersonSource.qml} PersonSource.qml
       cp ${../../tuple/TupleSource.qml} launcher/people/tuple.qml
       cp ${../../../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../../tuple/TuplePeople.qml} TuplePeople.qml
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
       cp ${../../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${report} Report.qml
@@ -147,7 +141,7 @@
     pkgs.runCommandLocal "the-desktop-follows-tuple-calls" { } ''
       cp ${../../../tests/tuple.qml} tuple.qml
       cp ${../../tuple/Tuple.js} Tuple.js
-      cp ${../When.js} When.js
+      ${copied [ "When.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -222,19 +216,18 @@
     in
     pkgs.runCommandLocal "the-desktop-hears-tuples-call" { } ''
       cp ${../../tuple/Tuple.qml} Tuple.qml
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
       # The copied link Tuple offers to join is read from the shell's one
       # watcher of the clipboard.
-      cp ${../Copied.qml} Copied.qml
-      cp ${../Copied.js} Copied.js
       # Tuple's rows are named as the launcher's vocabulary says.
-      mkdir launcher
+      ${copied [
+        "Copied.qml"
+        "Daemon.qml"
+        "When.js"
+        "Words.qml"
+        "launcher/words.json"
+      ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
       cp ${../../tuple/Tuple.js} Tuple.js
-      cp ${../When.js} When.js
       cp ${../../../tests/tuple-call.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data

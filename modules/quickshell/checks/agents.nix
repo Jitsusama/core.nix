@@ -4,6 +4,7 @@
 # keeps its own.
 {
   account,
+  copied,
   graphical,
   launcherOnNiri,
   lib,
@@ -39,7 +40,7 @@
     in
     pkgs.runCommandLocal "pi-tells-of-its-sessions-as-an-agent-source" { } ''
       cp ${../../../tests/pi-source.qml} pi-source.qml
-      cp ${../PiSource.js} PiSource.js
+      ${copied [ "PiSource.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -59,7 +60,7 @@
     in
     pkgs.runCommandLocal "pi-sorts-without-collecting" { } ''
       cp ${../../../tests/pi-source-collects.qml} pi-source-collects.qml
-      cp ${../PiSource.js} PiSource.js
+      ${copied [ "PiSource.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       export QML_IMPORT_PATH=${qt}/lib/qt-6/qml QT_LOGGING_RULES=qt.qml.gc.allocatorStats=true
@@ -85,7 +86,7 @@
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Landed.js} Landed.js
       cp ${../launcher/SessionDrawer.js} SessionDrawer.js
-      cp ${../Reading.js} Reading.js
+      ${copied [ "Reading.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -102,7 +103,7 @@
     in
     pkgs.runCommandLocal "the-queue-is-heard-from-the-node" { } ''
       cp ${../../../tests/jobs.qml} jobs.qml
-      cp ${../Jobs.js} Jobs.js
+      ${copied [ "Jobs.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -145,22 +146,16 @@
         > state/quest-workflow/orchestrators.json
       echo '{"quests":[]}' > state/quest-workflow/quests.json
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Orchestrators.qml} launcher/Orchestrators.qml
-      cp ${../launcher/SessionRow.js} launcher/SessionRow.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "AgentSources.qml"
+        "Daemon.qml"
+        "PiSource.qml"
+        "Words.qml"
+        "launcher/Orchestrators.qml"
+        "launcher/Provider.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../../tests/talks.qml} shell.qml
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
-      cp ${../AgentSources.qml} AgentSources.qml
-      cp ${../PiSource.qml} PiSource.qml
-      cp ${../PiSource.js} PiSource.js
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${waiting} WaitingOnYou.qml
@@ -199,16 +194,13 @@
     pkgs.runCommandLocal "the-launcher-asks-a-fresh-pi" { } ''
       mkdir -p launcher runtime && chmod 700 runtime
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Ask.qml} launcher/Ask.qml
-      cp ${../launcher/SessionRow.js} launcher/SessionRow.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "Words.qml"
+        "launcher/Ask.qml"
+        "launcher/Order.js"
+        "launcher/Provider.qml"
+        "launcher/words.json"
+      ]}
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       cp ${../../../tests/ask.qml} shell.qml
@@ -241,19 +233,14 @@
     in
     pkgs.runCommandLocal "the-launcher-finds-the-runs" { } ''
       mkdir launcher
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Provider.qml"
+        "launcher/Runs.qml"
+        "launcher/words.json"
+      ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Runs.qml} launcher/Runs.qml
-      cp ${../PiSource.js} PiSource.js
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
       cp ${../../../tests/runs.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
@@ -294,15 +281,12 @@
       # 5.8 GiB, held by the running job's slice.
       echo 6227702579 > cgroups/work.scope/memory.current
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Queue.qml} launcher/Queue.qml
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
+      ${copied [
+        "Words.qml"
+        "launcher/Provider.qml"
+        "launcher/Queue.qml"
+        "launcher/words.json"
+      ]}
       cp ${../../../tests/queue.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml

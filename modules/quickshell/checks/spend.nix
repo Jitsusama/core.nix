@@ -3,6 +3,7 @@
 # place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -66,25 +67,17 @@
       cp ${../pieces/Tokens.qml} Tokens.qml
       cp ${sessions} Sessions.qml
       cp ${../pieces/StatusFile.qml} StatusFile.qml
-      cp ${../Fuzzy.js} Fuzzy.js
-      cp ${../launcher/Provider.qml} launcher/Provider.qml
-      cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../launcher/Asking.js} launcher/Asking.js
-      cp ${../launcher/Numbers.js} launcher/Numbers.js
-      cp ${../launcher/Spend.qml} launcher/Spend.qml
-      cp ${../launcher/SpendDrawer.js} launcher/SpendDrawer.js
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Ago.js} launcher/Ago.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${../When.js} When.js
+      ${copied [
+        "Daemon.qml"
+        "SpendWatch.qml"
+        "Words.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/Spend.qml"
+        "launcher/SpendDrawer.js"
+        "launcher/words.json"
+      ]}
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../Words.qml} Words.qml
-      cp ${../launcher/words.json} launcher/words.json
-      cp ${../SpendWatch.qml} SpendWatch.qml
-      cp ${../SpendWatch.js} SpendWatch.js
-      cp ${../Daemon.qml} Daemon.qml
-      cp ${../Hearing.js} Hearing.js
       cp ${../../../tests/spend.qml} shell.qml
       cp ${../../../tests/spend-served.qml} served.qml
       cp ${../../../tests/spend-told.qml} told.qml

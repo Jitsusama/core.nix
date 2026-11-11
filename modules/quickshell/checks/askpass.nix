@@ -3,6 +3,7 @@
 # comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -19,7 +20,7 @@
     in
     pkgs.runCommandLocal "the-askpass-says-who-asks-for-what" { } ''
       cp ${../../../tests/askpass.qml} askpass.qml
-      cp ${../Askpass.js} Askpass.js
+      ${copied [ "Askpass.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

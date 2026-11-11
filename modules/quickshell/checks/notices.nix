@@ -3,6 +3,7 @@
 # opening comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   lib,
   noFonts,
@@ -46,7 +47,7 @@
     in
     pkgs.runCommandLocal "do-not-disturb-holds-while-sharing" { } ''
       mkdir runtime && chmod 700 runtime
-      cp ${../Quiet.qml} Quiet.qml
+      ${copied [ "Quiet.qml" ]}
       cp ${../../../tests/quiet.qml} shell.qml
       cp ${singleton "Niri.qml" "property var casts: ({})"} Niri.qml
       cp ${singleton "Notices.qml" "property var history: []"} Notices.qml
@@ -117,14 +118,14 @@
         mkdir at-$scale
         cd at-$scale
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-        cp ${../Floating.qml} Floating.qml
-        cp ${../Card.qml} Card.qml
-        cp ${../NoticeRow.qml} NoticeRow.qml
-        cp ${../Mark.qml} Mark.qml
-        cp ${../MarkSize.js} MarkSize.js
-        cp ${../Columns.js} Columns.js
-        cp ${../Signature.qml} Signature.qml
-        cp ${../Cover.qml} Cover.qml
+        ${copied [
+          "Card.qml"
+          "Cover.qml"
+          "Floating.qml"
+          "Mark.qml"
+          "NoticeRow.qml"
+          "Signature.qml"
+        ]}
         cp ${../../../tests/notice-columns.qml} shell.qml
         ${shellFolderLint}
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
@@ -143,7 +144,7 @@
     in
     pkgs.runCommandLocal "a-notice-comes-forward" { } ''
       cp ${../../../tests/notice-comes-forward.qml} notice-comes-forward.qml
-      cp ${../Forward.js} Forward.js
+      ${copied [ "Forward.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -200,7 +201,7 @@
       '';
     in
     pkgs.runCommandLocal "an-arrival-is-said-once-each-time" { } ''
-      cp ${../Arrivals.qml} Arrivals.qml
+      ${copied [ "Arrivals.qml" ]}
       cp ${facts} Facts.qml
       cp ${notices} Notices.qml
       cp ${options} Options.qml
@@ -225,7 +226,7 @@
     in
     pkgs.runCommandLocal "the-notices-keep-their-order" { } ''
       cp ${../../../tests/stack.qml} stack.qml
-      cp ${../Stack.js} Stack.js
+      ${copied [ "Stack.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -242,7 +243,7 @@
     in
     pkgs.runCommandLocal "a-live-notice-asks-the-daemon" { } ''
       cp ${../../../tests/live-notice.qml} live-notice.qml
-      cp ${../LiveNotice.js} LiveNotice.js
+      ${copied [ "LiveNotice.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -263,9 +264,10 @@
     in
     pkgs.runCommandLocal "the-notices-take-vi-keys" { } ''
       cp ${../../../tests/notice-keys.qml} notice-keys.qml
-      cp ${../NoticeKeys.js} NoticeKeys.js
-      cp ${../LineEditing.js} LineEditing.js
-      cp ${../Search.js} Search.js
+      ${copied [
+        "NoticeKeys.js"
+        "Search.js"
+      ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -283,10 +285,10 @@
     in
     pkgs.runCommandLocal "the-notices-are-a-quickfix-list" { } ''
       cp ${../../../tests/notice-list.qml} notice-list.qml
-      cp ${../NoticeList.js} NoticeList.js
-      mkdir launcher
-      cp ${../launcher/Order.js} launcher/Order.js
-      cp ${../Changes.js} Changes.js
+      ${copied [
+        "Changes.js"
+        "NoticeList.js"
+      ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

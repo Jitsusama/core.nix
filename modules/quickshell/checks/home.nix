@@ -3,6 +3,7 @@
 # comment says why each place keeps its own.
 {
   account,
+  copied,
   graphical,
   noFonts,
   nowShown,
@@ -100,16 +101,13 @@
   # case gives Location's here, ahead of the place set and the time zone.
   the-launcher-answers-the-rain = pkgs.runCommandLocal "the-launcher-answers-the-rain" { } ''
     mkdir launcher
-    cp ${../Fuzzy.js} Fuzzy.js
-    cp ${../launcher/Provider.qml} launcher/Provider.qml
-    cp ${../ProgramGlyphs.js} ProgramGlyphs.js
-    cp ${../launcher/Asking.js} launcher/Asking.js
-    cp ${../launcher/Numbers.js} launcher/Numbers.js
-    cp ${../launcher/Moment.js} launcher/Moment.js
-    cp ${../launcher/Weather.qml} launcher/Weather.qml
+    ${copied [
+      "Words.qml"
+      "launcher/Provider.qml"
+      "launcher/Weather.qml"
+      "launcher/words.json"
+    ]}
     cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-    cp ${../Words.qml} Words.qml
-    cp ${../launcher/words.json} launcher/words.json
     cp ${../../../tests/weather.qml} shell.qml
     cp ${singleton "Location.qml" ''
       property var here: null
@@ -168,8 +166,7 @@
     in
     pkgs.runCommandLocal "needs-you-is-true" { } ''
       cp ${../../../tests/waiting-on-you.qml} waiting-on-you.qml
-      cp ${../Waiting.js} Waiting.js
-      cp ${../PiSource.js} PiSource.js
+      ${copied [ "Waiting.js" ]}
       cp ${../launcher/NeedsYou.js} NeedsYou.js
       cp ${../launcher/Ago.js} Ago.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
