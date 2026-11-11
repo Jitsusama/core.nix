@@ -84,13 +84,13 @@ Provider {
     readonly property var fileWords: FileFacts.wordsOf(id => Words.of(id),
         (at, format) => Qt.formatDate(at, format))
     // What file-preview said of each file whose drawer was drawn, from the
-    // one kept, forgotten as the launcher closes, since a file open in
+    // one the programs daemon keeps, forgotten as the launcher closes, since a file open in
     // Neovim changes.
     readonly property var previews: previewing
     Previewer {
         id: previewing
 
-        command: provider.settings.preview ?? []
+        can: provider.settings.preview === true
     }
 
     Component.onCompleted: {

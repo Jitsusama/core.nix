@@ -9,9 +9,9 @@
 // renamed is made again with its new name, the same whole answer again
 // makes none, and a window closed goes. Capture lists every window but the
 // one Joel's in, and keeps a window's row the same way, and asks each
-// thing taken's drawer of one file-preview it keeps, the newest wanted
-// next. It exits 0 once every case holds, and otherwise 1, saying which
-// didn't.
+// thing taken's drawer of the real programs daemon, which keeps one
+// file-preview, the newest wanted next. It exits 0 once every case
+// holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -51,20 +51,22 @@ ShellRoot {
         settings: ({ name: "capture", camera: false })
     }
 
-    // One with a file-preview stood in, which answers each picture with its
-    // own sides and the process it was asked of.
+    // One that previews, through the programs daemon with a file-preview
+    // stood in, which answers each picture with its own sides and the
+    // process it was asked of.
     Launcher.Capture {
         id: previewer
 
         launcher: launcher
-        settings: ({ name: "previews", camera: false, preview: [Quickshell.env("PREVIEWER")] })
+        settings: ({ name: "previews", camera: false, preview: true })
     }
 
-    // One whose file-preview stops before it answers anything.
+    // One whose daemon's file-preview stops before it answers anything.
     Launcher.Previewer {
         id: mute
 
-        command: [Quickshell.env("PREVIEWER"), "silent"]
+        can: true
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/silent.sock`
         onSilentChanged: {
             Expect.expect("one that stops unanswered is said silent", silent,
                 `waiting for ${root.waiting}`);
@@ -74,8 +76,8 @@ ShellRoot {
         }
     }
 
-    // Which of file-preview's answers the case waits for, and the one
-    // file-preview it keeps (Previewer.qml).
+    // Which of file-preview's answers the case waits for, and what asks
+    // them of the daemon (Previewer.qml).
     property int previewing: 0
     readonly property var kept: previewer.previews
 
@@ -84,6 +86,10 @@ ShellRoot {
 
         function onPreviewsChanged() {
             root.previewed();
+        }
+
+        function onReadyChanged() {
+            root.askPreviews();
         }
     }
 
@@ -356,15 +362,27 @@ ShellRoot {
                 windows.tally.rows - madeShut, 1);
             theLauncher.open = false;
             used.wire = null;
+            root.waiting = "the programs daemon reached";
+            root.askPreviews();
+        } catch (error) {
+            Expect.fail(error.message);
+        }
+    }
 
-            // Only the newest wanted waits while file-preview starts, so one
-            // it replaces is asked again when its drawer is next shown.
+    // Once the cases are done and the daemon's reached: while one is
+    // asked, only the newest wanted waits, so one it replaces is asked
+    // again when its drawer is next shown.
+    function askPreviews() {
+        if (root.waiting !== "the programs daemon reached" || !kept.ready)
+            return;
+        try {
             kept.asked = { "/a.png": true, "/b.png": true, "/c.png": true };
             kept.preview("/a.png");
             kept.preview("/b.png");
             kept.preview("/c.png");
-            Expect.same("a picture replaced while file-preview starts is no longer asked",
-                Object.keys(kept.asked).join(", "), "/c.png");
+            Expect.same("a picture replaced while another is asked is no longer asked",
+                [Object.keys(kept.asked).join(", "), kept.asking, kept.next].join(" | "),
+                "/a.png, /c.png | /a.png | /c.png");
             root.previewing = 1;
             root.waiting = "file-preview's first answer";
         } catch (error) {
@@ -393,7 +411,7 @@ ShellRoot {
                     `asking ${kept.asking}, next ${kept.next}`);
             } else if (root.previewing === 2 && "/d.png" in said && "/f.png" in said) {
                 Expect.same("each wanted is asked in turn", Object.keys(said).join(", "),
-                    "/c.png, /d.png, /f.png");
+                    "/a.png, /c.png, /d.png, /f.png");
                 const by = Object.values(said).map(shown => shown.by);
                 Expect.expect("every picture is asked of one file-preview",
                     by.every(one => one === by[0]), by.join(", "));

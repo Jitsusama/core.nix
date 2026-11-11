@@ -3245,8 +3245,12 @@ onLinux {
   # taken and file-preview stood in.
   the-launcher-remakes-only-the-windows-that-changed =
     let
-      # file-preview stood in, saying which process answered.
+      # file-preview stood in, saying which process answered, and one that
+      # stops before answering, each kept by a programs daemon of its own.
       previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../tests/file-preview.sh);
+      silent = pkgs.writeShellScript "file-preview" "exec ${previewer} silent";
+      programs = pkgs.callPackage ../programs/package.nix { };
+      sources = pkgs.writeText "sources.json" "[]";
       # What a window's verbs read of niri as they're asked.
       niri = singleton "Niri.qml" ''
         property var windows: ({
@@ -3321,9 +3325,17 @@ onLinux {
       cp ${files} Files.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${noFonts} PREVIEWER=${previewer}
+      export FONTCONFIG_FILE=${noFonts}
+      mkdir $XDG_RUNTIME_DIR/daemons
+      PROGRAMS_PREVIEW=${previewer} \
+        ${programs}/bin/programs $XDG_RUNTIME_DIR/daemons/programs.sock ${sources} &
+      daemon=$!
+      PROGRAMS_PREVIEW=${silent} \
+        ${programs}/bin/programs $XDG_RUNTIME_DIR/daemons/silent.sock ${sources} &
+      mute=$!
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      kill $daemon $mute
       touch $out
     '';
 
@@ -5005,11 +5017,12 @@ onLinux {
           pkgs.gnugrep
         ]
       }:$PATH
-      export OPEN_NOW=${openNow} PREVIEWER=${previewer}
+      export OPEN_NOW=${openNow}
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
       mkdir $XDG_RUNTIME_DIR/daemons
       XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$TMPDIR/data PROGRAMS_GIT=${git} \
+        PROGRAMS_PREVIEW=${previewer} \
         ${programs}/bin/programs $XDG_RUNTIME_DIR/daemons/programs.sock ${sources} &
       daemon=$!
       ${shellFolderLint}

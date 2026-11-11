@@ -157,8 +157,8 @@ ShellRoot {
         })
     }
 
-    // Neovim given a file-preview, stood in, which says which process
-    // answered each file's drawer.
+    // Neovim previewing, through the programs daemon's file-preview, stood
+    // in, which says which process answered each file's drawer.
     Launcher.NeovimProgram {
         id: previewed
 
@@ -167,7 +167,7 @@ ShellRoot {
             folder: root.src,
             openNow: Quickshell.env("OPEN_NOW"),
             open: "listed:nvim:open",
-            preview: [Quickshell.env("PREVIEWER")]
+            preview: true
         })
     }
 

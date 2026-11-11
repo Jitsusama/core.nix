@@ -20,7 +20,8 @@
 //! a folder asked for by its path, as `folder`, as each ask names it and
 //! on each change in it while watched (folder.rs); and the repositories
 //! under a folder, or one's files, as each ask names them
-//! (repositories.rs). Each command runs on
+//! (repositories.rs); and what a file shows of itself, by one
+//! file-preview kept, as each ask names it (preview.rs). Each command runs on
 //! a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
@@ -38,6 +39,7 @@ use programs::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use programs::listen::listen;
 use programs::mime::Mime;
 use programs::notify::Notify;
+use programs::preview::{self, Previewer};
 use programs::source::{self, Source};
 use programs::{command, entry, now_ms, repositories, xdg};
 use serde_json::{Value, json};
@@ -103,6 +105,7 @@ struct Shared {
     daemon: Mutex<Daemon>,
     /// Where changes are heard, unless inotify isn't there.
     notify: Option<Notify>,
+    previewer: Mutex<Previewer>,
     sources: Vec<Source>,
     folders: Vec<PathBuf>,
     search: String,
@@ -152,6 +155,7 @@ fn main() {
             looked: Looked::default(),
         }),
         notify,
+        previewer: Mutex::new(Previewer::new(std::env::var("PROGRAMS_PREVIEW").ok())),
         sources,
         folders,
         search: std::env::var("PATH").unwrap_or_default(),
@@ -338,9 +342,10 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
         .collect()
 }
 
-/// Reads each folder or repository a key names, on this thread, and keeps
-/// its record, watching a folder from the first time it's asked for.
-fn read_folders(shared: &Shared, keys: &[String]) {
+/// Reads each folder, repository or preview a key names, on this thread,
+/// and keeps its record, watching a folder from the first time it's asked
+/// for, and asking a preview again only of a file changed since.
+fn read_named(shared: &Shared, keys: &[String]) {
     for key in keys {
         let record = if let Some(path) = folder::path_of(key) {
             lock(&shared.daemon)
@@ -348,6 +353,14 @@ fn read_folders(shared: &Shared, keys: &[String]) {
                 .watch(shared.notify.as_ref(), key, path);
             folder::record(key, path)
         } else if let Some(record) = repositories::record(key) {
+            record
+        } else if let Some(path) = preview::path_of(key) {
+            if preview::current(lock(&shared.daemon).held.get(key), path) {
+                continue;
+            }
+            let Some(record) = lock(&shared.previewer).record(key) else {
+                continue;
+            };
             record
         } else {
             continue;
@@ -485,7 +498,7 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
         for at in sources_of(shared, Run::Opened, kinds, Some(keys)) {
             start(shared, at, Run::Opened);
         }
-        read_folders(shared, keys);
+        read_named(shared, keys);
     }
 }
 
@@ -508,7 +521,7 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     for at in sources_of(shared, Run::Opened, kinds, keys) {
         read_source(shared, at, Run::Opened);
     }
-    read_folders(shared, keys.unwrap_or_default());
+    read_named(shared, keys.unwrap_or_default());
 }
 
 /// What a watched folder is to this daemon; one can be more than one.
@@ -599,7 +612,7 @@ fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
                 .collect();
             keys.into_iter().cloned().collect()
         };
-        read_folders(shared, &looked);
+        read_named(shared, &looked);
         let mut entries = false;
         let mut lists = HashSet::new();
         for (watch, name) in changes {
