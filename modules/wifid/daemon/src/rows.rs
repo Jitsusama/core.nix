@@ -593,8 +593,7 @@ mod tests {
         squeezed.extend(names.iter().map(String::as_str));
         squeezed.push("b");
         let said = placed(&mut orders, &squeezed);
-        assert_eq!(said[0], 1024);
-        assert_eq!(said[1], 2048);
-        assert!(said.windows(2).all(|pair| pair[0] < pair[1]));
+        let spaced: Vec<i64> = (1..=1102).map(|n| n * SPACING).collect();
+        assert_eq!(said, spaced);
     }
 }
