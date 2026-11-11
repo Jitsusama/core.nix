@@ -193,13 +193,14 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in(session.split("-")[1], selecting=title_of(session))
-    # Return goes to the session only once the launcher knows its window, as the kitty it's in
-    # says; until then the row offers Talk first.
+    # Return talks to a session that's listening, as this one is while it waits to move, so Go
+    # To is its first act within, offered once the launcher knows its window.
+    desktop.follow()
     try:
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "go to")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     except AssertionError as failed:
         msg = (
-            f"the launcher offers no Go To: {desktop.showing()['selected']},"
+            f"the launcher offers no Go To: {desktop.showing()['rows']},"
             f" while the node says {node_row(desktop, session)}"
             f" and niri {desktop.as_account('niri msg --json windows')}"
         )
