@@ -283,6 +283,39 @@ struct Session {
     process: Option<Started>,
 }
 
+/// A pi host's roster: the conversations it holds, each naming the quest
+/// it works on, if any.
+#[derive(Deserialize)]
+struct Roster {
+    #[serde(default)]
+    sessions: Vec<Hosted>,
+}
+
+/// One conversation a host holds.
+#[derive(Deserialize)]
+struct Hosted {
+    quest: Option<String>,
+}
+
+/// The quests the rosters in `rosters` hold a conversation of, from each
+/// host's JSON file there, leaving out its lock and any torn file.
+fn hosted(rosters: &Path) -> HashSet<String> {
+    let Ok(entries) = fs::read_dir(rosters) else {
+        return HashSet::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .filter_map(|path| serde_json::from_slice::<Roster>(&fs::read(path).ok()?).ok())
+        .flat_map(|roster| roster.sessions)
+        .filter_map(|hosted| hosted.quest)
+        .collect()
+}
+
 /// A session's process: its pid, the boot it ran in, and when it started,
 /// in clock ticks since boot, as `/proc/<pid>/stat` gives it. Records from
 /// before the harness kept the ticks have none.
@@ -303,18 +336,23 @@ struct Started {
 /// holders. A tree a quest with a live session lists too is kept. A
 /// session lives while its process runs in this boot, `boot`, as the one
 /// that started at its ticks, which `alive` says; one of this boot whose
-/// ticks weren't kept can't be ruled out, so lives. With no records to
-/// read, every quest may be worked on, so none is idle.
+/// ticks weren't kept can't be ruled out, so lives. A conversation a pi
+/// host's roster in `rosters` holds lives too, whether its host runs or
+/// not: its record names the host's process, which a crash or a restart
+/// ends for a moment, and the host resumes everything its roster holds
+/// when it starts. With no records to read, every quest may be worked on,
+/// so none is idle.
 pub fn idle_trees(
     quests: &Path,
     sessions: &Path,
+    rosters: Option<&Path>,
     boot: &str,
     alive: impl Fn(u32, u64) -> bool,
 ) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(sessions) else {
         return Vec::new();
     };
-    let live: HashSet<String> = entries
+    let mut live: HashSet<String> = entries
         .filter_map(Result::ok)
         .filter_map(|entry| serde_json::from_slice::<Session>(&fs::read(entry.path()).ok()?).ok())
         .filter(|session| {
@@ -325,6 +363,7 @@ pub fn idle_trees(
         })
         .filter_map(|session| session.quest)
         .collect();
+    live.extend(rosters.map(hosted).unwrap_or_default());
     let going: Vec<(bool, Vec<PathBuf>)> = quest_frontmatters(quests)
         .into_iter()
         .filter(|(_, _, over)| !over)

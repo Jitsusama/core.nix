@@ -322,11 +322,63 @@ fn a_quests_trees_are_over_once_none_of_its_sessions_lives() {
     listing("QEST-20261002-FFF666", "active", &["unworked"]);
     // 100 runs as the process that started at tick 500; 200 is gone.
     let alive = |pid: u32, ticks: u64| pid == 100 && ticks == 500;
-    let over = disk_guard::workspaces::idle_trees(&quests, &sessions, "this", alive);
+    let over = disk_guard::workspaces::idle_trees(&quests, &sessions, None, "this", alive);
     assert_eq!(
         over,
         ["/t/before", "/t/ended", "/t/reused", "/t/unworked"].map(PathBuf::from),
         "a quest keeps its trees while a session of this boot runs as it started"
+    );
+}
+
+#[test]
+fn a_quest_a_hosts_roster_holds_is_worked_on_while_its_host_is_down() {
+    // A hosted conversation's record names the host's process, which a crash
+    // or a restart ends for a moment; the host resumes what its roster holds,
+    // so the roster says the quest is still worked on.
+    let root = tempfile::tempdir().unwrap();
+    let (sessions, rosters, quests) = (
+        root.path().join("sessions"),
+        root.path().join("rosters"),
+        root.path().join("quests"),
+    );
+    fs::create_dir_all(&sessions).unwrap();
+    fs::create_dir_all(&rosters).unwrap();
+    let ended = r#""pid":200,"bootToken":"this","startTicks":500"#;
+    for (name, quest) in [("a", "QEST-20261002-AAA111"), ("b", "QEST-20261002-BBB222")] {
+        let body = format!(r#"{{"quest":"{quest}","process":{{{ended}}}}}"#);
+        fs::write(sessions.join(format!("{name}.json")), body).unwrap();
+    }
+    fs::write(
+        rosters.join("work-background.json"),
+        r#"{"v":1,"key":"work-background","sessions":[{"sessionId":"s","file":"f",
+            "cwd":"/c","attended":false,"quest":"QEST-20261002-AAA111","since":1},
+            {"sessionId":"t","file":"g","cwd":"/c","attended":true,"since":2}]}"#,
+    )
+    .unwrap();
+    fs::write(
+        rosters.join("work-background.json.lock"),
+        "QEST-20261002-BBB222",
+    )
+    .unwrap();
+    fs::write(rosters.join("torn.json"), "{\"sessions\":").unwrap();
+    quest(
+        &quests,
+        "QEST-20261002-AAA111",
+        "status: active\ntrees:\n  - path: /t/hosted\n",
+    );
+    quest(
+        &quests,
+        "QEST-20261002-BBB222",
+        "status: active\ntrees:\n  - path: /t/ended\n",
+    );
+    let over =
+        disk_guard::workspaces::idle_trees(&quests, &sessions, Some(&rosters), "this", |_, _| {
+            false
+        });
+    assert_eq!(
+        over,
+        [PathBuf::from("/t/ended")],
+        "a quest a roster holds keeps its trees, while one only an ended session named doesn't"
     );
 }
 
@@ -339,10 +391,13 @@ fn with_no_session_records_no_quest_is_idle() {
         "QEST-20261002-AAA111",
         "status: active\ntrees:\n  - path: /t/a\n",
     );
-    let over =
-        disk_guard::workspaces::idle_trees(&quests, &root.path().join("absent"), "this", |_, _| {
-            false
-        });
+    let over = disk_guard::workspaces::idle_trees(
+        &quests,
+        &root.path().join("absent"),
+        None,
+        "this",
+        |_, _| false,
+    );
     assert!(over.is_empty(), "{over:?}");
 }
 

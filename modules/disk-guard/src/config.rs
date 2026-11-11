@@ -188,7 +188,9 @@ pub enum Source {
     /// holds, and no quest going lists, has its builds spent. `sessions`,
     /// when given, is the harness's record of each coding session and the
     /// quest it works on: a quest none of them still works on has its
-    /// trees' builds spent.
+    /// trees' builds spent. `rosters`, when given, is pi's hosts' rosters,
+    /// one JSON file per host listing the conversations it holds: a quest
+    /// one of them names is worked on even while its host is down.
     Workspaces {
         path: PathBuf,
         quests: PathBuf,
@@ -196,6 +198,8 @@ pub enum Source {
         trees: Option<PathBuf>,
         #[serde(default)]
         sessions: Option<PathBuf>,
+        #[serde(default)]
+        rosters: Option<PathBuf>,
     },
     /// A temporary directory's per-run leftovers: the one named, or the
     /// account's own, which on a Mac is a folder of its own under
@@ -334,10 +338,12 @@ impl Source {
                 quests,
                 trees,
                 sessions,
+                rosters,
             } => [path, quests]
                 .into_iter()
                 .chain(trees)
                 .chain(sessions)
+                .chain(rosters)
                 .map(PathBuf::as_path)
                 .collect(),
             Source::Cache { path, .. }
