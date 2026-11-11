@@ -92,7 +92,7 @@ pub fn records(
     addresses: &[u8],
     sys: impl Fn(&str, &str) -> Option<String>,
 ) -> Vec<Value> {
-    let addressed: Vec<(u32, Value)> = messages(addresses)
+    let each_address: Vec<(u32, Value)> = messages(addresses)
         .into_iter()
         .filter(|(kind, _)| *kind == RTM_NEWADDR)
         .filter_map(|(_, body)| address(body))
@@ -103,7 +103,7 @@ pub fn records(
         .filter_map(|(_, body)| {
             let (index, mut record) = link(body)?;
             let name = record["ifname"].as_str()?.to_owned();
-            let held: Vec<Value> = addressed
+            let held: Vec<Value> = each_address
                 .iter()
                 .filter(|(of, _)| *of == index)
                 .map(|(_, each)| each.clone())
@@ -167,7 +167,7 @@ fn link(body: &[u8]) -> Option<(u32, Value)> {
         said.insert("permaddr".to_owned(), json!(permanent));
     }
     said.contains_key("ifname")
-        .then(|| (index, Value::Object(said)))
+        .then_some((index, Value::Object(said)))
 }
 
 /// An address's link index and entry in ip's `addr_info`, from an address
