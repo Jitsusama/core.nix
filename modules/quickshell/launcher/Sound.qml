@@ -281,12 +281,6 @@ Provider {
             Pipewire.preferredDefaultAudioSource = node;
     }
 
-    // What a device says as its parts stand, each part as text and its
-    // level as a share, so its parts are made again only once one moves.
-    function says(node) {
-        return [named(node), worn(node), chosen(node), audible(node), switches(node)];
-    }
-
     // The sound server's node a served row stands for, as the server has
     // it now, or undefined while it has none by that name.
     function nodeOf(row) {
@@ -578,38 +572,42 @@ Provider {
             : said(`joined-${how}`);
     }
 
-    // A device's right arrow, kept while the launcher is shut and nothing
-    // its parts say has moved, as its spots ask for it again a minute after
-    // each closing (Launcher.qml's spotsFreshened): it made Sound's 111
-    // parts again each time with nothing here changed (Y2YBTS,
-    // 2026-11-10). Shown, they're made as they're asked for, as they read.
-    // A sound daemon serving Sound's rows ready takes this over by
-    // 13 November.
+    // A device's right arrow, kept while the launcher is shut, as its
+    // spots ask for it again a minute after each closing (Launcher.qml's
+    // spotsFreshened): it made Sound's 111 parts again each time with
+    // nothing here changed (Y2YBTS, 2026-11-10). Each part made here is
+    // kept while what it says is as it was, so what moves makes only its
+    // own part again. Kept whole, a device's parts were all made again as
+    // it began or stopped running, which gives its node a period and a
+    // latency no part says and its card a fact: a call starting made 107
+    // of them (2026-11-11, 15:03). Those the daemon serves are made once
+    // as each of their records changes (ReadyRows.qml's rowAt). Shown,
+    // they're made as they're asked for, as they read.
     readonly property var partsKeeping: keeper()
     function verbs(node) {
         if (provider.wanted)
             return partsMade(node);
-        return keptAlike(partsKeeping, `sound:${node.name}`, [node, partsMadeOf(node)],
-            () => partsMade(node));
+        const parts = partsMade(node, (part, from, make) => keptAlike(partsKeeping,
+            `sound:${node.name}:${part}`, [node, JSON.stringify(from)], make));
+        return keptAlike(partsKeeping, `sound:${node.name}`, parts, () => parts);
     }
 
-    // What a device's parts are made of, every figure they say included:
-    // its row's words, its properties, channels and levels, its filters'
-    // levels, every row served inside it, its programs' included, and its
-    // facts.
-    function partsMadeOf(node) {
-        const filters = filtersOf(node).map(filter => [filter.name, filter.audio?.volume,
-            filter.audio?.muted, flowing(filter, node)]);
-        return JSON.stringify([says(node), switches(node), carried(node), node.properties,
-            Array.from(node.audio?.channels ?? []), Array.from(node.audio?.volumes ?? []),
-            node === metered ? heard : [], filters, servedOf(node),
-            facts[factKey(node)] ?? []]);
+    // What each part made here says, every figure included, by the part.
+    function filtersSaid(node) {
+        return [glyph(kind(node))].concat(filtersOf(node).map(filter => [filter.name,
+            named(filter), filter.audio?.volume, filter.audio?.muted, flowing(filter, node)]));
     }
 
-    // Every record the daemon serves inside a device's row, at any depth.
-    function servedOf(node) {
-        const inside = `row:sound:${node.name}:`;
-        return ready.keys.filter(key => key.startsWith(inside)).map(key => ready.served(key));
+    function channelsSaid(node) {
+        return [glyph(kind(node)), Array.from(node.audio?.channels ?? []),
+            Array.from(node.audio?.volumes ?? []), node.audio?.muted];
+    }
+
+    function hardwareSaid(node) {
+        const properties = node.properties;
+        return [glyph(kind(node)), nicknamed(node), factsOf(node).map(fact => fact.name)]
+            .concat(["alsa.components", "device.profile.description", "device.bus",
+                "alsa.card_name", "alsa.resolution_bits"].map(key => properties[key] ?? null));
     }
 
     // A part the daemon serves inside a device's row, by the last of its
@@ -653,13 +651,21 @@ Provider {
     // Using it, when it isn't the one chosen, then its parts, and what the
     // kernel says of its card. Using it, Muted, its Volume, its programs
     // and its Port are served; the rest are made here until the daemon
-    // serves them too.
-    function partsMade(node) {
+    // serves them too, each by `kept` (verbs) where it's given, from what
+    // that part says.
+    function partsMade(node, kept) {
+        const made = kept ?? ((part, from, make) => make());
         const programs = node.isSink ? "programs" : "recorders";
-        const parts = [servedPart(node, "use"), servedPart(node, "mute"), levelPart(node),
-            volumePart(node), servedPart(node, programs), filterPart(node), portPart(node),
-            channelsPart(node), profilePart(node), hardwarePart(node)];
-        return parts.filter(part => part !== null).concat(factRows(node));
+        const parts = [servedPart(node, "use"), servedPart(node, "mute"),
+            made("level", [switches(node), node === metered ? heard : []],
+                () => levelPart(node)),
+            volumePart(node), servedPart(node, programs),
+            made("filter", filtersSaid(node), () => filterPart(node)), portPart(node),
+            made("channels", channelsSaid(node), () => channelsPart(node)),
+            made("profile", [carried(node), switches(node)], () => profilePart(node)),
+            made("hardware", hardwareSaid(node), () => hardwarePart(node))];
+        return parts.filter(part => part !== null)
+            .concat(made("facts", factsOf(node), () => factRows(node)));
     }
 
     // Figures, as the theme draws them.
