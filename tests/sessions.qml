@@ -261,10 +261,11 @@ ShellRoot {
         const before = Niri.spawns.length;
         Sessions.goTo(hosted);
         const viewed = Niri.spawned.join(" ");
-        expect("a hosted one is viewed by its node's words, in a window named for it",
+        expect("a hosted one is viewed by its node's words, held, in a window named for it",
             viewed.includes("MYCELIUM_APP_ID=pi-hosted.s-hosted")
-            && viewed.includes("--class pi-hosted.s-hosted")
-            && viewed.endsWith("attach --host harbour-attended --session s-hosted"), viewed);
+            && viewed.includes("--class pi-hosted.s-hosted mycelium --realm harbour hold -- "
+                + "mycelium --realm harbour attach --host harbour-attended --session s-hosted")
+            && viewed.endsWith("--session s-hosted"), viewed);
         Sessions.goTo(hosted);
         expect("viewed only once while its window comes", Niri.spawns.length === before + 1,
             Niri.spawns.slice(before).join("\n"));

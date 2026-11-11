@@ -237,6 +237,14 @@ Singleton {
         return holds ? `exec mycelium --realm ${realm} hold -- ${command}`
             : `exec env -u MYCELIUM_APP_ID ${command}`;
     }
+    // What a hosted session's viewer runs: the node's words, kept by the
+    // realm's holder as a start is, so the node knows the window it's in
+    // and its host can let the conversation go into plain pi in the same
+    // window rather than closing it (OSPHT4, 2026-11-11 [56e0fd87]). On a
+    // machine in no realm they run as they are.
+    function viewing(words) {
+        return holds ? ["mycelium", "--realm", realm, "hold", "--"].concat(words) : words;
+    }
 
     // Reopens a session that closed, where it left off: pi told the
     // session, in the folder it ran in, which its file's first line says,
@@ -1775,7 +1783,7 @@ Singleton {
         if (Date.now() - (attaching[named] ?? 0) < attachPatience)
             return;
         attaching = Object.assign({}, attaching, { [named]: Date.now() });
-        root.inSessions("pi-hosted", words.map(String), into ?? null, named);
+        root.inSessions("pi-hosted", viewing(words.map(String)), into ?? null, named);
         Report.say(`viewing hosted session ${session.address}`);
     }
 
