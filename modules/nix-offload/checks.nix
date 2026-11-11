@@ -42,6 +42,8 @@ onLinux {
           project = "a-lab";
           prefix = "a-builder-";
           zones = [ "a-zone" ];
+          startupScript = pkgs.writeText "startup-script" "echo a builder\n";
+          images = [ "https://compute.example/images/a-" ];
           lent = [
             {
               uri = "ssh-ng://nix-offload?compress=true";
@@ -78,6 +80,9 @@ onLinux {
               token = "/run/nix-offload/cloud-token";
             }
           ]
+        && read.hookKey == "/etc/nix/offload_ed25519.pub"
+        && lib.hasSuffix "-startup-script" read.startupScript
+        && read.images == [ "https://compute.example/images/a-" ]
         && lib.elem "d /run/nix-offload-lines 0755 nix-offload-lines nix-offload-lines -" lined.config.systemd.tmpfiles.rules
         && failing lined.config == [ ]
         && bare.config.nix.settings.builders == "@/run/nix-offload/machines"

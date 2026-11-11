@@ -168,6 +168,7 @@ mod sleep;
 #[cfg(test)]
 mod testing;
 mod there;
+mod vet;
 
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Read};

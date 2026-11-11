@@ -64,7 +64,7 @@ def lending(
     machine = machines["machine"]
     machine.wait_for_unit("nix-offload-lines.service")
     token = f"{LENDER}/cloud-token"
-    write(machine, token, "a token")
+    write(machine, token, "ya29.a-token")
     # As the lender leaves it: its own, and read by the service's account through an ACL, since
     # the lender's account is in none of the service's groups.
     as_lender(machine, f"chmod 0600 {token} && setfacl -m u:nix-offload-lines:r {token}")
