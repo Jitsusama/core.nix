@@ -235,6 +235,9 @@
       cp ${../launcher/Asking.js} launcher/Asking.js
       cp ${../launcher/Numbers.js} launcher/Numbers.js
       cp ${../launcher/Applications.qml} launcher/Applications.qml
+      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
+      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
+      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
       cp ${../launcher/HeldWindows.js} launcher/HeldWindows.js
       cp ${../launcher/Media.js} launcher/Media.js
       cp ${../launcher/Program.js} launcher/Program.js

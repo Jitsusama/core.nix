@@ -85,7 +85,10 @@ Singleton {
             if (record === undefined)
                 return;
             // Asked again at each opening, it says a change only where
-            // there is one, since each act reading it is drawn again.
+            // there is one, since each act reading it is drawn again. A
+            // stopgap: the programs daemon serves each repository ready and
+            // tells only as one changes, and this compare goes, by Fri
+            // 2026-11-13 12:00.
             const said = `${record.dated.join("\n")}\0${root.remoting ?
                 record.configs.join("\n") : ""}`;
             if (root.read && said === root.said && (!root.remoting || root.remotesRead))

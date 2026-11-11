@@ -606,6 +606,38 @@ ShellRoot {
                 "windows not answering");
             applications.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             same("and no more once it answers", applications.noted(), "");
+            // A step into Programs reads the rows the programs daemon
+            // serves, placed, counted and worded there
+            // (modules/programs/src/program_rows.rs): the shell makes each
+            // the program's own row, going to the window the daemon says
+            // was last looked at, or starting it where none is open.
+            const open = applications.served({ key: "row:programs:tester",
+                thing: "program:tester", id: "tester", name: "Tester", what: "logbook",
+                count: "logbook \u00b7 2 windows", verb: "go to", window: 32 });
+            same("a served row is the program's", open.key, "program:tester");
+            // Its say counts the pages it has open, which says it's open
+            // already, so only what it is follows its name.
+            same("and says what's served, its windows left to its say",
+                `${open.verb}|${open.count}`, "go to|logbook");
+            // Ghost has no list of its own, so its say is nothing.
+            const ghost = applications.served({ key: "row:programs:ghost",
+                thing: "program:ghost", id: "ghost", name: "Ghost", what: "files",
+                count: "files \u00b7 1 window", verb: "go to", window: 33 });
+            same("one holding nothing counts its windows as served",
+                `${ghost.count}|${applications.holding(DesktopEntries.byId("ghost"))}`,
+                "files \u00b7 1 window|");
+            Niri.acted = [];
+            open.run();
+            same("its Return goes to the window served", acted(), '[{"FocusWindow":{"id":32}}]');
+            const closed = applications.served({ key: "row:programs:tester",
+                thing: "program:tester", id: "tester", name: "Tester", what: "logbook",
+                count: "logbook", verb: "start", window: null });
+            Niri.acted = [];
+            closed.run();
+            same("a closed one's starts it", `${closed.verb} ${acted()} ${Niri.spawned}`,
+                "start [] tester");
+            same("a row served for no program here is none",
+                applications.served({ key: "row:programs:gone", id: "gone" }), null);
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
             const tester = program("tester").verbs();

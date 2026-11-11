@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 11] = [
+pub const KINDS: [&str; 12] = [
     "program",
     "recent",
     "opened",
@@ -20,6 +20,7 @@ pub const KINDS: [&str; 11] = [
     "visited",
     "machines",
     "reached",
+    "row",
 ];
 
 /// The kind a key names: `program` for `program:kitty`.
@@ -45,10 +46,13 @@ pub enum Ask {
         kinds: Vec<String>,
     },
     /// Records of these kinds as they change, all of them or these keys.
+    /// `shown` names the hidden programs the watcher lists all the same,
+    /// as Programs' rows do those another provider gives acts.
     Watch {
         id: Value,
         kinds: Vec<String>,
         keys: Option<Vec<String>>,
+        shown: Vec<String>,
     },
     Unwatch {
         id: Value,
@@ -128,7 +132,22 @@ pub fn ask(line: &str) -> Ask {
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "watch" => match named() {
-            Ok(kinds) => Ask::Watch { id, kinds, keys },
+            Ok(kinds) => Ask::Watch {
+                id,
+                kinds,
+                keys,
+                shown: said
+                    .get("shown")
+                    .and_then(Value::as_array)
+                    .map(|shown| {
+                        shown
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "unwatch" => Ask::Unwatch { id },
@@ -158,7 +177,8 @@ mod tests {
             Ask::Watch {
                 id: json!(1),
                 kinds: KINDS.iter().map(|k| (*k).to_owned()).collect(),
-                keys: Some(vec!["program:kitty".into(), "recent:shared".into()])
+                keys: Some(vec!["program:kitty".into(), "recent:shared".into()]),
+                shown: Vec::new(),
             }
         );
     }

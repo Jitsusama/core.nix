@@ -48,6 +48,42 @@ pub fn spaced(was: &[Option<i64>]) -> Vec<i64> {
     order
 }
 
+/// A name broken into runs of digits and of the rest, lowered, as the
+/// launcher's Order.js reads names.
+fn pieces(name: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for c in name.to_lowercase().chars() {
+        match out.last_mut() {
+            Some(last) if last.starts_with(|d: char| d.is_ascii_digit()) == c.is_ascii_digit() => {
+                last.push(c);
+            }
+            _ => out.push(c.to_string()),
+        }
+    }
+    out
+}
+
+/// Two names A to Z as Order.js's `byName` reads them, so a daemon's
+/// rows stand as the shell's own lists do: case alike, and a run of
+/// digits by its worth, so "Tab 9" comes before "Tab 10".
+#[must_use]
+pub fn by_name(one: &str, other: &str) -> std::cmp::Ordering {
+    let (a, b) = (pieces(one), pieces(other));
+    for (x, y) in a.iter().zip(&b) {
+        let digits = |p: &str| p.starts_with(|c: char| c.is_ascii_digit());
+        let said = if digits(x) && digits(y) {
+            let worth = |p: &str| p.parse::<f64>().unwrap_or(0.0);
+            worth(x).total_cmp(&worth(y))
+        } else {
+            x.cmp(y)
+        };
+        if said.is_ne() {
+            return said;
+        }
+    }
+    a.len().cmp(&b.len())
+}
+
 /// The places of the longest run of orders still rising, among those
 /// that had one.
 fn rising(was: &[Option<i64>]) -> Vec<usize> {
@@ -90,6 +126,13 @@ mod tests {
             [1024, 2048, 3072],
             "no room between"
         );
+    }
+
+    #[test]
+    fn names_go_a_to_z_with_case_alike_and_numbers_by_their_worth() {
+        let mut names = ["tab 10", "Zathura", "Tab 9", "inkscape", "Tab"];
+        names.sort_by(|one, other| by_name(one, other));
+        assert_eq!(names, ["inkscape", "Tab", "Tab 9", "tab 10", "Zathura"]);
     }
 
     #[test]

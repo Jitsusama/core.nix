@@ -202,6 +202,10 @@ pub fn record(id: &str, path: &str, text: &str, mime: &mut Mime, search: &str) -
         "keywords": listed(entry, "Keywords"),
         "exec": exec,
         "terminal": said(entry, "Terminal").as_deref() == Some("true"),
+        "application": said(entry, "Type").as_deref() == Some("Application"),
+        // An entry with no window to open, listed only where another
+        // provider gives it acts (program_rows.rs).
+        "no_display": said(entry, "NoDisplay").as_deref() == Some("true"),
         "starts_in": said(entry, "Path"),
         "window_class": said(entry, "StartupWMClass"),
         "actions": actions,

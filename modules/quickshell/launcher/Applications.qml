@@ -65,9 +65,28 @@ Provider {
 
     // Open programs first, then the rest, each A to Z, so a program moves
     // only as it opens or closes, which Joel did himself
-    // (collection-order.md).
+    // (collection-order.md): as the programs daemon serves them, placed,
+    // counted and worded (modules/programs/src/program_rows.rs), each made
+    // here into its program's row by its id, once its record changes.
+    // A search ranks the programs here still, until the programs daemon
+    // ranks them on ask too, due Fri 13 Nov 12:00 (PLAN-20261110-XGN3ZV).
     function everything() {
-        return Order.sorted(programs, returned());
+        return ready.rows();
+    }
+    ReadyRows {
+        id: ready
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
+        place: "programs"
+        // The hidden programs other providers give acts to are listed too.
+        watching: ({ shown: provider.declared })
+        make: row => provider.served(row)
+        drawn: provider.launcher?.open ?? false
+    }
+    // A served row made into its program's, or nothing where Quickshell
+    // doesn't know the entry yet.
+    function served(row) {
+        const entry = DesktopEntries.byId(row.id);
+        return entry ? programRow(entry, row) : null;
     }
     function returned() {
         const open = row => (running[row.key.slice("program:".length)] ?? []).length > 0;
@@ -1609,85 +1628,115 @@ Provider {
     readonly property var programs: DesktopEntries.applications.values
         .concat(provider.declared.map(id => DesktopEntries.byId(id))
             .filter(entry => entry?.noDisplay))
-        .map(entry => {
-            const start = () => Niri.spawn(provider.command(entry));
-            const below = () => provider.launcher.grid.under(Niri.current, provider.command(entry));
-            const binds = provider.opening(provider.command(entry));
-            const row = thing({
-                thing: true,
-                key: `program:${entry.id}`,
-                is: `program:${entry.id}`,
-                // A program says more than any one of its windows.
-                rich: 1,
-                name: entry.name,
-                keywords: [entry.genericName, entry.comment]
-                    .concat(Array.from(entry.keywords), binds.map(bind => `${bind.does} ${bind.also}`))
-                    .join(" "),
-                glyph: programGlyph(entry.id),
-                hue: "program",
-                // What it is follows its name, in its words, on every row,
-                // in a place as at home, as the row fields rule has it: the
-                // far end keeps its chord (VKCF3Z, 2026-11-06).
-                count: entry.genericName.toLowerCase(),
-                chord: binds.length > 0 ? binds[0].chord : [],
-                stands: binds.map(bind => bind.does),
-                // Then the action's words are what it's called, and count as
-                // its name, as a collection's do (Launcher.qml).
-                named: binds.length > 0,
-                // Everything it is and does, under the row (Program.js).
-                drawer: () => provider.programDrawer(entry),
-                below: below,
-                verbs: () => provider.controls(entry, start, below),
-                under: () => provider.under(entry),
-                operands: () => provider.operands(entry)
+        .map(entry => programRow(entry, null))
+
+    // A program's row, from its entry, and what Programs serves of it
+    // (`served`, its ready row) where it's made for Programs: then what it
+    // is, its windows and the window Return goes to are the daemon's, and
+    // a search's row asks the windows held as it's read.
+    function programRow(entry, served) {
+        const start = () => Niri.spawn(provider.command(entry));
+        const below = () => provider.launcher.grid.under(Niri.current, provider.command(entry));
+        const binds = provider.opening(provider.command(entry));
+        const row = thing({
+            thing: true,
+            key: `program:${entry.id}`,
+            is: `program:${entry.id}`,
+            // A program says more than any one of its windows.
+            rich: 1,
+            name: entry.name,
+            keywords: [entry.genericName, entry.comment]
+                .concat(Array.from(entry.keywords), binds.map(bind => `${bind.does} ${bind.also}`))
+                .join(" "),
+            glyph: programGlyph(entry.id),
+            hue: "program",
+            // What it is follows its name, in its words, on every row,
+            // in a place as at home, as the row fields rule has it: the
+            // far end keeps its chord (VKCF3Z, 2026-11-06).
+            count: entry.genericName.toLowerCase(),
+            chord: binds.length > 0 ? binds[0].chord : [],
+            stands: binds.map(bind => bind.does),
+            // Then the action's words are what it's called, and count as
+            // its name, as a collection's do (Launcher.qml).
+            named: binds.length > 0,
+            // Everything it is and does, under the row (Program.js).
+            drawer: () => provider.programDrawer(entry),
+            below: below,
+            verbs: () => provider.controls(entry, start, below),
+            under: () => provider.under(entry),
+            operands: () => provider.operands(entry)
+        });
+        // What another provider says of it, read as the row is, so it's
+        // never kept past being true.
+        Object.defineProperty(row, "note", {
+            enumerable: true,
+            get: () => provider.givenNote(entry.id) || provider.holding(entry)
+        });
+        if (provider.stepsIn(entry))
+            return Object.assign(row, {
+                verb: "more",
+                stays: true,
+                nested: true,
+                run: () => provider.launcher?.enter(row),
+                targets: row.verbs
             });
-            // What another provider says of it, read as the row is, so it's
-            // never kept past being true.
-            Object.defineProperty(row, "note", {
+        if (served)
+            return provider.madeServed(row, served, entry, start);
+        // Whether it's running, and so what Return does, is asked as
+        // the row is read, never kept.
+        const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;
+        Object.defineProperties(row, {
+            verb: { enumerable: true, get: () => latest() ? "go to" : "start" },
+            // What it is, then how many windows it has open, after its
+            // name; only what it is while its say counts what it holds,
+            // which says it's open already, so the say isn't cut for
+            // saying it twice (VKCF3Z, 2026-11-07).
+            // A closed one has no windows to count, so it asks nothing
+            // of what it holds: a step into Programs reads every row it
+            // draws (2026-11-10).
+            count: {
                 enumerable: true,
-                get: () => provider.givenNote(entry.id) || provider.holding(entry)
-            });
-            if (provider.stepsIn(entry))
-                return Object.assign(row, {
-                    verb: "more",
-                    stays: true,
-                    nested: true,
-                    run: () => provider.launcher?.enter(row),
-                    targets: row.verbs
-                });
-            // Whether it's running, and so what Return does, is asked as
-            // the row is read, never kept.
-            const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;
-            Object.defineProperties(row, {
-                verb: { enumerable: true, get: () => latest() ? "go to" : "start" },
-                // What it is, then how many windows it has open, after its
-                // name; only what it is while its say counts what it holds,
-                // which says it's open already, so the say isn't cut for
-                // saying it twice (VKCF3Z, 2026-11-07).
-                // A closed one has no windows to count, so it asks nothing
-                // of what it holds: a step into Programs reads every row it
-                // draws (2026-11-10).
-                count: {
-                    enumerable: true,
-                    get: () => {
-                        const windows = provider.windowCount(entry);
-                        return [entry.genericName.toLowerCase(),
-                            windows !== "" && provider.holding(entry) === "" ? windows : ""]
-                            .filter(part => part !== "").join(" \u00b7 ");
-                    }
-                },
-                // The layer of its own keys it holds as Shortcuts, so the
-                // layer, named as the program is, isn't listed beside it
-                // (Rank.js's keysHeld).
-                ownLayer: { enumerable: true, get: () => provider.ownLayer(entry) },
-                run: {
-                    enumerable: true,
-                    get: () => {
-                        const window = latest();
-                        return window ? () => Niri.act({ FocusWindow: { id: window.id } }) : start;
-                    }
+                get: () => {
+                    const windows = provider.windowCount(entry);
+                    return [entry.genericName.toLowerCase(),
+                        windows !== "" && provider.holding(entry) === "" ? windows : ""]
+                        .filter(part => part !== "").join(" \u00b7 ");
                 }
-            });
-            return row;
-        })
+            },
+            // The layer of its own keys it holds as Shortcuts, so the
+            // layer, named as the program is, isn't listed beside it
+            // (Rank.js's keysHeld).
+            ownLayer: { enumerable: true, get: () => provider.ownLayer(entry) },
+            run: {
+                enumerable: true,
+                get: () => {
+                    const window = latest();
+                    return window ? () => Niri.act({ FocusWindow: { id: window.id } }) : start;
+                }
+            }
+        });
+        return row;
+    }
+
+    // A program's row for Programs, saying what the daemon served: what it
+    // is, then its windows unless another provider's say counts what it
+    // holds, which says it's open already (VKCF3Z, 2026-11-07).
+    function madeServed(row, served, entry, start) {
+        const window = served.window ?? null;
+        Object.defineProperties(row, {
+            verb: { enumerable: true, value: served.verb },
+            // A closed one asks nothing of what it holds.
+            count: {
+                enumerable: true,
+                get: () => served.count === served.what || provider.holding(entry) === ""
+                    ? served.count : served.what
+            },
+            ownLayer: { enumerable: true, get: () => provider.ownLayer(entry) },
+            run: {
+                enumerable: true,
+                value: window === null ? start : () => Niri.act({ FocusWindow: { id: window } })
+            }
+        });
+        return row;
+    }
 }

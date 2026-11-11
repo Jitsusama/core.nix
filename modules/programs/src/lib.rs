@@ -25,6 +25,7 @@ pub mod mime;
 pub mod notify;
 pub mod package;
 pub mod preview;
+pub mod program_rows;
 pub mod repositories;
 pub mod source;
 pub mod visited;

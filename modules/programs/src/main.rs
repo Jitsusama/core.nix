@@ -23,11 +23,15 @@
 //! under a folder, or one's files, as each ask names them
 //! (repositories.rs); what a file shows of itself, by one file-preview
 //! kept, as each ask names it (preview.rs); and what kitty's page reads
-//! of zoxide and ssh, as each ask names it (visited.rs, machines.rs).
+//! of zoxide and ssh, as each ask names it (visited.rs, machines.rs). The
+//! Programs collection's rows are made as a watch of them begins and again
+//! as the windows daemon says a window opened, closed or was looked at, or
+//! an entry changed (rows.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
 mod heard;
+mod rows;
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -46,6 +50,7 @@ use programs::notify::Notify;
 use programs::preview::{self, Previewer};
 use programs::source::{self, Source};
 use programs::{command, entry, machines, now_ms, repositories, visited, xdg};
+use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 
 use heard::{heard, notice};
@@ -66,6 +71,8 @@ struct Watch {
     keys: Option<Vec<String>>,
     told: SyncSender<String>,
     stream: Arc<UnixStream>,
+    /// The hidden programs it lists all the same (`program_rows.rs`).
+    shown: Vec<String>,
 }
 
 impl Watch {
@@ -110,6 +117,13 @@ struct Daemon {
     since: u64,
     /// The folders asked for by their paths, watched since first asked.
     looked: Looked,
+    /// What the windows daemon last said of each window, by its key.
+    windows: BTreeMap<String, Value>,
+    /// Every entry's `program` record, as Programs' rows were last made
+    /// from, until a folder of them changes.
+    catalogue: Option<Vec<Value>>,
+    /// Programs' rows as last told.
+    rows: Kept,
 }
 
 struct Shared {
@@ -166,6 +180,9 @@ fn main() {
             took: VecDeque::new(),
             since: now_ms(),
             looked: Looked::default(),
+            windows: BTreeMap::new(),
+            catalogue: None,
+            rows: Kept::default(),
         }),
         notify,
         previewer: Mutex::new(Previewer::new(std::env::var("PROGRAMS_PREVIEW").ok())),
@@ -179,6 +196,11 @@ fn main() {
         let folders = heard(&shared, notify);
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || notice(&shared, &folders));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let windows = rows::socket(&socket);
+        std::thread::spawn(move || rows::hear(&shared, &windows));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -304,6 +326,7 @@ fn entries_changed(shared: &Shared) {
     let mut daemon = lock(&shared.daemon);
     daemon.entries = None;
     daemon.mime.forget();
+    daemon.catalogue = None;
     let held: Vec<String> = daemon
         .held
         .keys()
@@ -327,6 +350,9 @@ fn entries_changed(shared: &Shared) {
         .cloned()
         .collect();
     keep(&mut daemon, records, &gone);
+    if rows::watched(&daemon) {
+        rows::make(shared, &mut daemon, &[]);
+    }
 }
 
 /// The sources whose `recent`, `listed` or `opened` key is one of these,
@@ -576,6 +602,17 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
         read_source(shared, at, Run::Opened);
     }
     read_named(shared, keys.unwrap_or_default());
+    if names_rows(kinds, keys) {
+        rows::make(shared, &mut lock(&shared.daemon), &[]);
+    }
+}
+
+/// Whether an ask names Programs' rows.
+fn names_rows(kinds: &[String], keys: Option<&[String]>) -> bool {
+    match keys {
+        Some(keys) => keys.iter().any(|key| kind_of(key) == Some("row")),
+        None => kinds.iter().any(|kind| kind == "row"),
+    }
 }
 
 fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
@@ -662,7 +699,12 @@ fn answer(
             fresh(shared, &kinds, None);
             json!({"id": id, "records": held(&lock(&shared.daemon), &kinds, None)})
         }
-        Ask::Watch { id, kinds, keys } => {
+        Ask::Watch {
+            id,
+            kinds,
+            keys,
+            shown,
+        } => {
             // An entry is read at once, a file or two, so the answer holds
             // it; a list's command may be slow, so it's told after.
             if names_programs(&kinds, keys.as_deref()) {
@@ -674,6 +716,11 @@ fn answer(
                 daemon
                     .watches
                     .retain(|watch| !(watch.connection == connection && watch.id == id));
+                // Programs' rows, made with what it shows, before it's held,
+                // so it's told them in its answer and not again as a change.
+                if names_rows(&kinds, keys.as_deref()) {
+                    rows::make(shared, &mut daemon, &shown);
+                }
                 // What it's told first is queued under the lock that holds
                 // the watch, so a change read since, as inotify's are, is
                 // told after it. Queued once the lock was let go, a change
@@ -690,6 +737,7 @@ fn answer(
                     id: id.clone(),
                     kinds: kinds.clone(),
                     keys: keys.clone(),
+                    shown,
                     told: told.clone(),
                     stream: Arc::clone(hangup),
                 });

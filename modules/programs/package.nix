@@ -1,7 +1,8 @@
 # The programs daemon, built from this directory, its tests run as it builds.
 # Its socket's tests ask it with a crate every daemon's tests share
-# (../daemon-client), so the source is cut from the modules folder holding
-# both, and built from this one.
+# (../daemon-client), and it keeps Programs' rows with the ready-rows
+# crate (../ready-rows), so the source is cut from the modules folder
+# holding them, and built from this one.
 {
   lib,
   rustPlatform,
@@ -18,6 +19,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
       ../daemon-client/Cargo.toml
       ../daemon-client/src
     ];

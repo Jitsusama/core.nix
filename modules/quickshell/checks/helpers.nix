@@ -291,6 +291,10 @@ let
           # screens' rows in the words the account's has too.
           "WINDOWS=${lib.getExe windows}"
           "WINDOWS_WORDS=${../launcher/words.json}"
+          # And Programs' rows from the programs daemon, over the entries
+          # here, given no program's lists, since none has any here.
+          "PROGRAMS=${lib.getExe programs}"
+          "PROGRAMS_SOURCES=${pkgs.writeText "no-sources.json" "[]"}"
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given

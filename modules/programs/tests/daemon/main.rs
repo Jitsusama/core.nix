@@ -10,7 +10,11 @@
 //! read as it's asked; the repositories under a folder and one's files
 //! are read as each is asked; what a file shows is asked of one
 //! file-preview kept; what kitty's page reads of zoxide's database, ssh's
-//! files and zsh's history is read as each is asked; and an ask or kind it doesn't know is refused.
+//! files and zsh's history is read as each is asked; and an ask or kind it
+//! doesn't know is refused. Each module beside this one tests one more of
+//! what it serves, over the same daemon: Programs' rows (rows.rs).
+
+mod rows;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -235,6 +239,8 @@ fn an_entry_is_said_whole_from_the_nearest_folder() {
     assert_eq!(viewer["starts_in"], "/srv");
     assert_eq!(viewer["window_class"], "viewer-window");
     assert_eq!(viewer["terminal"], false);
+    assert_eq!(viewer["application"], true);
+    assert_eq!(viewer["no_display"], false);
     assert_eq!(
         viewer["actions"],
         json!([{"id": "new", "name": "New Window", "exec": ["viewer", "--new"]}])

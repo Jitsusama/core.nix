@@ -109,7 +109,9 @@ Provider {
         // Each opening asks again, and only what changed since draws
         // kitty's step again: an answer the same as the last, remade, held
         // the step into kitty's page 150 ms past its frame in half the
-        // lab's rounds, against a third before it was asked here.
+        // lab's rounds, against a third before it was asked here. A stopgap:
+        // the programs daemon watches these files and tells only as one
+        // changes, and this compare goes, by Fri 2026-11-13 12:00.
         const said = JSON.stringify([visited, config, hosts, history]);
         if (said === provider.readSaid)
             return;
