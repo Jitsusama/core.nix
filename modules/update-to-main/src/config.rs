@@ -324,6 +324,12 @@ impl Config {
         self.state.join("building")
     }
 
+    /// The folder of links that keep the derivations the system needs
+    /// from being collected while it builds.
+    pub fn evaluated_folder(&self) -> PathBuf {
+        self.state.join("evaluated")
+    }
+
     /// The folder a hosted main's files are unpacked in, one commit at a
     /// time.
     pub fn source(&self) -> PathBuf {

@@ -104,7 +104,7 @@ impl World {
         // too; while big-fails is, the big one fails at once, and while
         // big-waits is, it waits up to five seconds for the heavy piece to
         // be sent beside it, failing if it never is. A batch built here is
-        // written in batched. A system's
+        // written in batched, and the pieces linked to be kept in kept. A system's
         // build starts a call while call-starts is there. Each input
         // overridden is written down, and a system made for a commit with
         // its input at a rev, as COMMIT+REV, is what they build.
@@ -135,6 +135,7 @@ impl World {
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
                  \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}\
                  '\"$secret$big\"'}}}}'; exit 0;;\n\
+                 *'/evaluated/drv '*) echo \"$*\" >> {kept}; exit 0;;\n\
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' build --no-link -L '*) echo \"$*\" >> {batched}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
@@ -179,6 +180,7 @@ impl World {
                 no_kept_builder = root.join("no-kept-builder").display(),
                 here = root.join("here").display(),
                 batched = root.join("batched").display(),
+                kept = root.join("kept").display(),
                 call_starts = root.join("call-starts").display(),
                 call = root.join("call").display(),
                 away = root.join("away").display(),
@@ -1944,6 +1946,39 @@ fn building_elsewhere_sends_only_the_heavy_pieces_away() {
     // What's left is built here, with no builders to send it to.
     let last = world.read("last-build");
     assert!(last.contains("--builders  "), "{last}");
+    assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn what_the_system_needs_is_kept_from_being_collected_while_it_builds() {
+    let mut world = World::new();
+    world.config.elsewhere = true;
+    let head = world.signed("one");
+    world.system(&head);
+    let evaluated = world.config.state.join("evaluated");
+    fs::create_dir_all(&evaluated).unwrap();
+    fs::write(evaluated.join("drv-9"), "").unwrap();
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(
+        world.read("kept").split_whitespace().collect::<Vec<_>>(),
+        [
+            "--extra-experimental-features",
+            "nix-command",
+            "flakes",
+            "build",
+            "--out-link",
+            &evaluated.join("drv").display().to_string(),
+            "/nix/store/a-light.drv",
+            "/nix/store/b-heavy.drv",
+            "/nix/store/c-wrapper.drv",
+            "/nix/store/t-secret-tool.drv",
+        ],
+        "each piece the dry run listed wasn't linked to be kept"
+    );
+    assert!(
+        !evaluated.join("drv-9").exists(),
+        "what the last build kept was kept still"
+    );
     assert_eq!(world.builds(), 1);
 }
 
