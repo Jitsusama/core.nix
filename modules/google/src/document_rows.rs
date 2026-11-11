@@ -10,9 +10,16 @@
 //! `{at, as}` for the shell to word against its clock (the quest's
 //! google-rows.md says each form), so no row changes each minute.
 
+use std::collections::BTreeMap;
+
 use serde_json::{Value, json};
 
 use crate::drive::{Document, Is};
+use crate::rows::fill;
+
+/// What a drawer's eyebrow joins its parts with, as every run of figures
+/// is joined (docs/design.md).
+const BETWEEN: &str = " \u{b7} ";
 
 /// Each kind's words: the vocabulary's thing it is, and its two acts.
 struct Kind {
@@ -55,23 +62,53 @@ fn kind(is: Is) -> Kind {
     }
 }
 
-/// Every thing whose words a document's row is said in.
-const THINGS: [&str; 4] = [
-    "docs:document",
-    "sheets:spreadsheet",
-    "slides:presentation",
-    "drive:file",
+/// Each kind of document's thing and state in the vocabulary, every one
+/// `kind` names, which `read` requires each of.
+const KINDS: [(&str, &str); 6] = [
+    ("docs:document", ""),
+    ("sheets:spreadsheet", ""),
+    ("slides:presentation", ""),
+    ("drive:file", ""),
+    ("drive:file", "folder"),
+    ("drive:file", "drive"),
 ];
 
-/// The words documents' rows are said in, from the launcher's vocabulary.
+/// Google's other kinds by Drive's word for their type, each a state of
+/// `drive:file`; a kind not here is said as a file.
+const GOOGLES_OTHERS: [&str; 6] = ["form", "drawing", "map", "site", "script", "vid"];
+
+/// Each fact a drawer names, `drive:fact:<fact>` in the vocabulary.
+const FACTS: [&str; 9] = [
+    "changed", "changer", "owner", "yours", "created", "shared", "sharer", "size", "id",
+];
+
+/// What `drive:file` says, each one this file says.
+const SAID: [&str; 9] = [
+    "in",
+    "onDrive",
+    "measured",
+    "lasts",
+    "lastsHours",
+    "bytes",
+    "kilobytes",
+    "megabytes",
+    "gigabytes",
+];
+
+/// The words documents' rows are said in, from the launcher's vocabulary,
+/// every one: nothing Joel reads is written here but what Drive says of a
+/// file, its figures and the mark that joins a run, which
+/// `every_word_a_document_shows_is_the_vocabularys` holds.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Words {
-    /// Each thing's name, glyph and untitled name, by its id and state.
-    named: Vec<Named>,
-    /// "in {place}".
-    within: String,
-    /// "{drive} (shared drive)".
-    on_drive: String,
+    /// Each kind's name, glyph and untitled name, by its thing and state.
+    named: BTreeMap<(String, String), Named>,
+    /// Google's other kinds' names, by Drive's word for their type.
+    others: BTreeMap<String, String>,
+    /// Each fact's name, by the fact.
+    facts: BTreeMap<String, String>,
+    /// What `drive:file` says, by its key.
+    said: BTreeMap<String, String>,
     /// Where a file is, by Drive's places' names.
     mine: String,
     shared_with_me: String,
@@ -80,15 +117,15 @@ pub struct Words {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Named {
-    thing: String,
-    state: String,
     name: String,
     glyph: String,
     untitled: String,
 }
 
 impl Words {
-    /// Documents' words from the whole vocabulary, or the first it lacks.
+    /// Documents' words from the whole vocabulary, or the first it lacks,
+    /// so a vocabulary that lost one is refused whole rather than shown
+    /// with blanks.
     pub fn read(vocabulary: &Value) -> Result<Words, String> {
         let things = vocabulary["things"]
             .as_array()
@@ -99,64 +136,78 @@ impl Words {
                 .find(|thing| thing["id"] == id)
                 .ok_or_else(|| format!("the vocabulary has no {id}"))
         };
-        let text = |within: &Value, at: &[&str], id: &str| -> Result<String, String> {
+        let text = |id: &str, at: &[&str]| -> Result<String, String> {
             at.iter()
-                .fold(within, |within, field| &within[field])
+                .fold(thing(id)?, |within, field| &within[field])
                 .as_str()
                 .map(str::to_owned)
                 .ok_or_else(|| format!("the vocabulary's {id} has no {}", at.join(".")))
         };
-        let mut named = Vec::new();
-        for id in THINGS {
-            let held = thing(id)?;
-            let name = text(held, &["name"], id)?;
-            let glyph = text(held, &["glyph"], id)?;
-            let untitled = text(held, &["states", "untitled", "name"], id)?;
-            named.push(Named {
-                thing: id.to_owned(),
-                state: String::new(),
-                name,
-                glyph: glyph.clone(),
-                untitled: untitled.clone(),
-            });
-            for (state, said) in held["states"].as_object().into_iter().flatten() {
-                if state == "untitled" {
-                    continue;
-                }
-                named.push(Named {
-                    thing: id.to_owned(),
-                    state: state.clone(),
-                    name: text(said, &["name"], id)?,
-                    glyph: said["glyph"].as_str().unwrap_or(&glyph).to_owned(),
-                    untitled: untitled.clone(),
-                });
-            }
+        let mut named = BTreeMap::new();
+        for (id, state) in KINDS {
+            let untitled = text(id, &["states", "untitled", "name"])?;
+            let glyph = text(id, &["glyph"])?;
+            let (name, glyph) = if state.is_empty() {
+                (text(id, &["name"])?, glyph)
+            } else {
+                let glyph = text(id, &["states", state, "glyph"]).unwrap_or(glyph);
+                (text(id, &["states", state, "name"])?, glyph)
+            };
+            let key = (id.to_owned(), state.to_owned());
+            named.insert(
+                key,
+                Named {
+                    name,
+                    glyph,
+                    untitled,
+                },
+            );
         }
-        let file = thing("drive:file")?;
+        let others = GOOGLES_OTHERS
+            .iter()
+            .map(|other| {
+                let name = text("drive:file", &["states", other, "name"])?;
+                Ok(((*other).to_owned(), name))
+            })
+            .collect::<Result<_, String>>()?;
+        let facts = FACTS
+            .iter()
+            .map(|fact| {
+                Ok((
+                    (*fact).to_owned(),
+                    text(&format!("drive:fact:{fact}"), &["name"])?,
+                ))
+            })
+            .collect::<Result<_, String>>()?;
+        let said = SAID
+            .iter()
+            .map(|key| Ok(((*key).to_owned(), text("drive:file", &["said", key])?)))
+            .collect::<Result<_, String>>()?;
         Ok(Words {
             named,
-            within: text(file, &["said", "in"], "drive:file")?,
-            on_drive: text(file, &["said", "onDrive"], "drive:file")?,
-            mine: text(thing("drive:mine")?, &["name"], "drive:mine")?,
-            shared_with_me: text(
-                thing("drive:place:shared")?,
-                &["name"],
-                "drive:place:shared",
-            )?,
-            drives: text(
-                thing("drive:place:drives")?,
-                &["name"],
-                "drive:place:drives",
-            )?,
+            others,
+            facts,
+            said,
+            mine: text("drive:mine", &["name"])?,
+            shared_with_me: text("drive:place:shared", &["name"])?,
+            drives: text("drive:place:drives", &["name"])?,
         })
     }
 
+    /// A kind's words, which `read` made sure of.
     fn of(&self, kind: &Kind) -> Named {
         self.named
-            .iter()
-            .find(|named| named.thing == kind.thing && named.state == kind.state)
+            .get(&(kind.thing.to_owned(), kind.state.to_owned()))
             .cloned()
             .unwrap_or_default()
+    }
+
+    fn fact(&self, fact: &str) -> &str {
+        self.facts.get(fact).map_or("", String::as_str)
+    }
+
+    fn word(&self, key: &str) -> &str {
+        self.said.get(key).map_or("", String::as_str)
     }
 }
 
@@ -201,7 +252,7 @@ fn row(document: &Document, place: &str, order: usize, words: &Words) -> Value {
     let named = words.of(&kind);
     let side: Vec<Value> = document
         .viewed
-        .map(|at| json!({"at": at, "as": "opened", "keep": 1, "stays": true}))
+        .map(|at| json!({"at": at, "as": "opened", "keep": 1}))
         .into_iter()
         .collect();
     json!({
@@ -225,31 +276,32 @@ fn row(document: &Document, place: &str, order: usize, words: &Words) -> Value {
 }
 
 /// Its drawer: what changes most first, then what describes it, then
-/// what identifies it, as every drawer's facts are (VKCF3Z, 2026-11-08);
-/// where it is and its kind as its eyebrow, giving way from its end; and
-/// what its owner wrote of it as its words.
+/// what identifies it, as every drawer's facts are (VKCF3Z, 2026-11-08),
+/// each ready-rows' `{name, said, identifies}` or `{name, at, as}`; where
+/// it is and its kind as its eyebrow; and what its owner wrote of it as
+/// its words.
 fn drawer(document: &Document, title: &str, drives: &[Document], words: &Words) -> Value {
-    let when = |label: &str, at: Option<i64>| {
-        at.map(|at| json!({"label": label, "at": at, "as": "moment"}))
+    let when = |fact: &str, at: Option<i64>| {
+        at.map(|at| json!({"name": words.fact(fact), "at": at, "as": "moment"}))
     };
-    let said = |label: &str, value: Option<&String>| {
+    let said = |fact: &str, value: Option<&String>| {
         value
             .filter(|value| !value.is_empty())
-            .map(|value| json!({"label": label, "value": value}))
+            .map(|value| json!({"name": words.fact(fact), "said": value}))
     };
     let facts: Vec<Value> = [
-        when("Changed", document.changed),
-        said("Changed By", document.changed_by.as_ref()),
-        said("Owner", document.owner.as_ref()),
-        when("You Changed", document.changed_by_me),
-        when("Created", document.created),
-        when("Shared", document.shared_with_me),
-        said("Shared By", document.shared_by.as_ref()),
+        when("changed", document.changed),
+        said("changer", document.changed_by.as_ref()),
+        said("owner", document.owner.as_ref()),
+        when("yours", document.changed_by_me),
+        when("created", document.created),
+        when("shared", document.shared_with_me),
+        said("sharer", document.shared_by.as_ref()),
         document
             .size
-            .map(|size| json!({"label": "Size", "value": weighed(size)})),
+            .map(|size| json!({"name": words.fact("size"), "said": weighed(size, words)})),
         (!document.id.is_empty())
-            .then(|| json!({"label": "ID", "value": document.id, "identifies": true})),
+            .then(|| json!({"name": words.fact("id"), "said": document.id, "identifies": true})),
     ]
     .into_iter()
     .flatten()
@@ -257,18 +309,10 @@ fn drawer(document: &Document, title: &str, drives: &[Document], words: &Words) 
     let mut eyebrow: Vec<String> = vec![place(document, drives, words)];
     eyebrow.extend(kind_of(document, words));
     eyebrow.retain(|part| !part.is_empty());
-    let count = eyebrow.len();
-    let items: Vec<Value> = eyebrow
-        .iter()
-        .enumerate()
-        .map(|(at, part)| json!({"said": part, "keep": count - at}))
-        .collect();
     json!({
+        "eyebrow": eyebrow.join(BETWEEN),
         "title": title,
         "facts": facts,
-        "eyebrow": eyebrow.join(" \u{b7} "),
-        "eyebrowItems": items,
-        "eyebrowNames": true,
         "body": document.about.clone().unwrap_or_default(),
     })
 }
@@ -282,18 +326,18 @@ fn place(document: &Document, drives: &[Document], words: &Words) -> String {
     let place = match &document.drive {
         Some(id) => drives.iter().find(|drive| &drive.id == id).map_or_else(
             || words.drives.clone(),
-            |drive| words.on_drive.replace("{drive}", &drive.title),
+            |drive| fill(words.word("onDrive"), &[("drive", &drive.title)]),
         ),
         None if document.shared_with_me.is_some() => words.shared_with_me.clone(),
         None => words.mine.clone(),
     };
-    words.within.replace("{place}", &place)
+    fill(words.word("in"), &[("place", &place)])
 }
 
 /// Its kind as the eyebrow says it after where it is: a file by its
 /// ending ("PDF"), with what a picture measures and how long a video
 /// runs; one of Google's other kinds by Drive's word for its type
-/// ("Form"); the rest by their name.
+/// ("Form"), or else as a file; the rest by their name.
 fn kind_of(document: &Document, words: &Words) -> Vec<String> {
     const GOOGLES: &str = "application/vnd.google-apps.";
     let named = words.of(&kind(document.kind)).name;
@@ -302,17 +346,22 @@ fn kind_of(document: &Document, words: &Words) -> Vec<String> {
         Is::Other => document
             .mime
             .strip_prefix(GOOGLES)
-            .filter(|other| !other.is_empty())
-            .map_or(named, capitalised),
+            .and_then(|other| words.others.get(other))
+            .cloned()
+            .unwrap_or(named),
         _ => named,
     };
     let measured = match (document.across, document.down) {
-        (Some(across), Some(down)) if across > 0 && down > 0 => {
-            format!("{across} \u{d7} {down}")
-        }
+        (Some(across), Some(down)) if across > 0 && down > 0 => fill(
+            words.word("measured"),
+            &[("across", &across.to_string()), ("down", &down.to_string())],
+        ),
         _ => String::new(),
     };
-    let lasts = document.lasts.map(lasting).unwrap_or_default();
+    let lasts = document
+        .lasts
+        .map(|lasts| lasting(lasts, words))
+        .unwrap_or_default();
     [kind, measured, lasts]
         .into_iter()
         .filter(|part| !part.is_empty())
@@ -325,41 +374,47 @@ fn ending(name: &str) -> Option<String> {
     (at > 0 && at < name.len() - 1).then(|| name[at + 1..].to_uppercase())
 }
 
-fn capitalised(word: &str) -> String {
-    let mut letters = word.chars();
-    letters.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(letters).collect()
-    })
-}
-
 /// A length in milliseconds as a player says one: 3:41, or 1:02:03.
-fn lasting(milliseconds: u64) -> String {
+fn lasting(milliseconds: u64, words: &Words) -> String {
     let seconds = (milliseconds + 500) / 1000;
     let (hours, minutes, rest) = (seconds / 3600, seconds % 3600 / 60, seconds % 60);
+    let rest = format!("{rest:02}");
     if hours > 0 {
-        format!("{hours}:{minutes:02}:{rest:02}")
+        let minutes = format!("{minutes:02}");
+        let hours = hours.to_string();
+        fill(
+            words.word("lastsHours"),
+            &[("hours", &hours), ("minutes", &minutes), ("seconds", &rest)],
+        )
     } else {
-        format!("{minutes}:{rest:02}")
+        fill(
+            words.word("lasts"),
+            &[("minutes", &minutes.to_string()), ("seconds", &rest)],
+        )
     }
 }
 
 /// A size in decimal units, as Mail.js's weighed says it, with a figure
-/// after the point only below ten.
-fn weighed(bytes: u64) -> String {
-    const UNITS: [(f64, &str); 3] = [(1e9, "GB"), (1e6, "MB"), (1e3, "kB")];
+/// after the point only below ten. Its units are the vocabulary's; how
+/// its figure is written becomes the ready-rows crate's number wording
+/// once that lands, from the account's number settings.
+fn weighed(bytes: u64, words: &Words) -> String {
+    const UNITS: [(f64, &str); 3] = [(1e9, "gigabytes"), (1e6, "megabytes"), (1e3, "kilobytes")];
     #[expect(clippy::cast_precision_loss, reason = "a size said to three figures")]
     let bytes = bytes as f64;
-    UNITS.iter().find(|(unit, _)| bytes >= *unit).map_or_else(
-        || format!("{bytes} B"),
+    let (count, unit) = UNITS.iter().find(|(unit, _)| bytes >= *unit).map_or_else(
+        || (bytes.to_string(), "bytes"),
         |(unit, name)| {
             let scaled = bytes / unit;
-            if scaled < 10.0 {
-                format!("{scaled:.1} {name}")
+            let count = if scaled < 10.0 {
+                format!("{scaled:.1}")
             } else {
-                format!("{scaled:.0} {name}")
-            }
+                format!("{scaled:.0}")
+            };
+            (count, *name)
         },
-    )
+    );
+    fill(words.word(unit), &[("count", &count)])
 }
 
 #[cfg(test)]

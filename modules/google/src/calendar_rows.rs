@@ -22,7 +22,7 @@ use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 
 use crate::calendar::{Answer, Every, Guest, Meeting, Person, Repeats};
-use crate::rows;
+use crate::rows::{self, fill};
 
 /// How soon before its start Return on a meeting joins its call rather
 /// than showing it: ten minutes (Calendar.js's `TAKES_OVER`).
@@ -226,13 +226,6 @@ impl Words {
             Answer::Waiting => "unanswered",
         })
     }
-}
-
-/// A form with each `{name}` in it filled.
-fn fill(form: &str, with: &[(&str, &str)]) -> String {
-    with.iter().fold(form.to_owned(), |said, (name, value)| {
-        said.replace(&format!("{{{name}}}"), value)
-    })
 }
 
 /// The places meetings are listed in: Calendar, its Recent, and Meet's.

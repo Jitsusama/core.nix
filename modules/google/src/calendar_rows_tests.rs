@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use super::{Words, drawers, meetings};
 use crate::calendar::{Answer, Attachment, Dial, Every, Guest, Meeting, Person, Repeats, Weekday};
+use crate::rows::marked::vocabulary;
 
 pub(super) const MINUTE: i64 = 60_000;
 pub(super) const HOUR: i64 = 60 * MINUTE;
@@ -15,14 +16,6 @@ pub(super) const MONDAY: i64 = 1_793_037_600_000;
 
 pub(super) fn zone() -> TimeZone {
     TimeZone::fixed(tz::offset(-4))
-}
-
-/// The launcher's vocabulary, as the account's words.json holds it.
-pub(super) fn vocabulary() -> Value {
-    let path = std::env::var("LAUNCHER_WORDS")
-        .expect("LAUNCHER_WORDS names no vocabulary; google-reads-the-calendar hands it one");
-    let read = std::fs::read_to_string(&path).expect("the launcher's words didn't read");
-    serde_json::from_str(&read).expect("the launcher's words aren't JSON")
 }
 
 fn words() -> Words {

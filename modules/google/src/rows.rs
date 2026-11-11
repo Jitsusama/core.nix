@@ -45,25 +45,62 @@ pub struct Words {
     pub to_more: String,
     /// "{count} people".
     pub to_people: String,
+    /// "{name} <{address}>", who sent it when mail gives both.
+    pub sender: String,
+    /// Its drawer's facts' names: From, To, Cc, Date, and Attachment and
+    /// Attachments.
+    pub from: String,
+    pub to_fact: String,
+    pub cc: String,
+    pub date: String,
+    pub attached: String,
+    pub attached_several: String,
 }
 
-/// Every place's words, from the launcher's vocabulary.
+/// Every place's words, from the launcher's vocabulary, each read apart,
+/// so one place's lost word costs the others nothing.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Vocabulary {
-    pub mail: Words,
-    pub documents: document_rows::Words,
-    pub calendar: calendar_rows::Words,
+    pub mail: Option<Words>,
+    pub documents: Option<document_rows::Words>,
+    pub calendar: Option<calendar_rows::Words>,
 }
 
 impl Vocabulary {
-    /// Each place's words, or the first word one lacks.
-    pub fn read(vocabulary: &Value) -> Result<Vocabulary, String> {
-        Ok(Vocabulary {
-            mail: Words::read(vocabulary)?,
-            documents: document_rows::Words::read(vocabulary)?,
-            calendar: calendar_rows::Words::read(vocabulary)?,
-        })
+    /// Each place's words, and for each place that lacks one, the place
+    /// and the first word it lacks, for the daemon to say once.
+    pub fn read(vocabulary: &Value) -> (Vocabulary, Vec<String>) {
+        fn kept<T>(place: &str, read: Result<T, String>, lacking: &mut Vec<String>) -> Option<T> {
+            read.map_err(|error| lacking.push(format!("{place}: {error}")))
+                .ok()
+        }
+        let mut lacking = Vec::new();
+        let read = Vocabulary {
+            mail: kept("mail", Words::read(vocabulary), &mut lacking),
+            documents: kept(
+                "documents",
+                document_rows::Words::read(vocabulary),
+                &mut lacking,
+            ),
+            calendar: kept(
+                "calendar",
+                calendar_rows::Words::read(vocabulary),
+                &mut lacking,
+            ),
+        };
+        (read, lacking)
     }
+}
+
+#[cfg(test)]
+#[path = "marked_words.rs"]
+pub(crate) mod marked;
+
+/// A form with each `{name}` in it filled.
+pub(crate) fn fill(form: &str, with: &[(&str, &str)]) -> String {
+    with.iter().fold(form.to_owned(), |said, (name, value)| {
+        said.replace(&format!("{{{name}}}"), value)
+    })
 }
 
 impl Words {
@@ -81,6 +118,18 @@ impl Words {
                 .map(str::to_owned)
                 .ok_or_else(|| format!("the vocabulary's mail:message has no {}", at.join(".")))
         };
+        let fact = |fact: &str, at: &[&str]| -> Result<String, String> {
+            let id = format!("mail:fact:{fact}");
+            let thing = vocabulary["things"]
+                .as_array()
+                .and_then(|things| things.iter().find(|thing| thing["id"] == id.as_str()))
+                .ok_or_else(|| format!("the vocabulary has no {id}"))?;
+            at.iter()
+                .fold(thing, |within, field| &within[field])
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| format!("the vocabulary's {id} has no {}", at.join(".")))
+        };
         Ok(Words {
             untitled: word(&["states", "untitled", "name"])?,
             glyph: word(&["glyph"])?,
@@ -88,6 +137,13 @@ impl Words {
             to_two: word(&["said", "toTwo"])?,
             to_more: word(&["said", "toMore"])?,
             to_people: word(&["said", "toPeople"])?,
+            sender: word(&["said", "sender"])?,
+            from: fact("from", &["name"])?,
+            to_fact: fact("to", &["name"])?,
+            cc: fact("cc", &["name"])?,
+            date: fact("date", &["name"])?,
+            attached: fact("attached", &["name"])?,
+            attached_several: fact("attached", &["states", "several", "name"])?,
         })
     }
 }
@@ -158,7 +214,7 @@ pub fn mail_drawers(held: &[Mail], had: &[Mail], words: &Words) -> Vec<(String, 
         .chain(recent)
         .map(|(place, mail)| {
             let key = format!("drawer:{place}:{}", mail.id);
-            (key, drawer(mail, titled(mail, words)))
+            (key, drawer(mail, titled(mail, words), words))
         })
         .collect()
 }
@@ -245,43 +301,46 @@ fn went_to(went: &[String], words: &Words, most: usize) -> String {
 
 /// Its drawer: its subject, who it's from and to, when it came, the files
 /// it carries by name, and what it says, each plain text.
-fn drawer(mail: &Mail, title: &str) -> Value {
+fn drawer(mail: &Mail, title: &str, words: &Words) -> Value {
     let files: Vec<&str> = mail
         .attachments
         .iter()
         .map(|file| file.name.as_str())
         .collect();
     let carried = if files.len() == 1 {
-        "Attachment"
+        &words.attached
     } else {
-        "Attachments"
+        &words.attached_several
     };
     let mut facts = Vec::new();
-    for (label, value) in [
-        ("From", sender(mail)),
-        ("To", mail.to.clone()),
-        ("Cc", mail.cc.clone()),
+    for (name, said) in [
+        (&words.from, sender(mail, words)),
+        (&words.to_fact, mail.to.clone()),
+        (&words.cc, mail.cc.clone()),
     ] {
-        if !value.is_empty() {
-            facts.push(json!({"label": label, "value": value}));
+        if !said.is_empty() {
+            facts.push(json!({"name": name, "said": said}));
         }
     }
-    facts.push(json!({"label": "Date", "at": mail.at, "as": "dated"}));
+    facts.push(json!({"name": words.date, "at": mail.at, "as": "dated"}));
     if !files.is_empty() {
-        facts.push(json!({"label": carried, "value": files.join(", ")}));
+        facts.push(json!({"name": carried, "said": files.join(", ")}));
     }
     json!({"title": title, "facts": facts, "body": mail.body})
 }
 
 /// Who sent it, by name and address as mail writes them, or whichever of
 /// the two it gives.
-fn sender(mail: &Mail) -> String {
+fn sender(mail: &Mail, words: &Words) -> String {
     if mail.address.is_empty() || mail.address == mail.from {
         mail.from.clone()
     } else if mail.from.is_empty() {
         mail.address.clone()
     } else {
-        format!("{} <{}>", mail.from, mail.address)
+        fill(
+            &words.sender,
+            &[("name", &mail.from), ("address", &mail.address)],
+        )
     }
 }
 
@@ -393,14 +452,7 @@ mod tests {
     use crate::mail::{Bytes, File};
 
     fn words() -> Words {
-        Words {
-            untitled: "Mail Without a Subject".into(),
-            glyph: "mail".into(),
-            to: "to {who}".into(),
-            to_two: "{one} and {other}".into(),
-            to_more: "{who} and {count} more".into(),
-            to_people: "{count} people".into(),
-        }
+        Words::read(&marked::vocabulary()).expect("mail's words didn't read")
     }
 
     fn one(id: &str, at: i64) -> Mail {
@@ -424,19 +476,28 @@ mod tests {
 
     #[test]
     fn mails_words_are_read_from_the_vocabulary_or_the_lack_is_said() {
-        let vocabulary = json!({"things": [
-            {"id": "agents", "name": "Agents"},
-            {"id": "mail:message", "glyph": "mail",
-             "states": {"untitled": {"name": "Mail Without a Subject"}},
-             "said": {"to": "to {who}", "toTwo": "{one} and {other}",
-                      "toMore": "{who} and {count} more", "toPeople": "{count} people"}}
-        ]});
-        assert_eq!(Words::read(&vocabulary), Ok(words()));
+        assert_eq!(words().untitled, "Mail Without a Subject");
         let lacking = json!({"things": [{"id": "mail:message", "glyph": "mail"}]});
         assert!(
             Words::read(&lacking).is_err_and(|lack| lack.contains("untitled")),
             "a vocabulary without mail's untitled word read as whole"
         );
+        let mut factless = marked::vocabulary();
+        factless["things"]
+            .as_array_mut()
+            .expect("the vocabulary has no things")
+            .retain(|thing| thing["id"] != "mail:fact:cc");
+        assert_eq!(
+            Words::read(&factless),
+            Err("the vocabulary has no mail:fact:cc".to_owned()),
+            "a vocabulary without the Cc fact read as whole"
+        );
+        let (read, lacking) = Vocabulary::read(&factless);
+        assert!(
+            read.mail.is_none() && read.documents.is_some() && read.calendar.is_some(),
+            "mail's lost word cost another place its rows"
+        );
+        assert_eq!(lacking, ["mail: the vocabulary has no mail:fact:cc"]);
     }
 
     #[test]
@@ -599,11 +660,11 @@ mod tests {
             json!({
                 "title": "Engines",
                 "facts": [
-                    {"label": "From", "value": "Ada Lovelace <ada@example.com>"},
-                    {"label": "To", "value": "Joel"},
-                    {"label": "Cc", "value": "Grace Hopper"},
-                    {"label": "Date", "at": 1_000, "as": "dated"},
-                    {"label": "Attachments", "value": "plan.pdf, notes.txt"}
+                    {"name": "From", "said": "Ada Lovelace <ada@example.com>"},
+                    {"name": "To", "said": "Joel"},
+                    {"name": "Cc", "said": "Grace Hopper"},
+                    {"name": "Date", "at": 1_000, "as": "dated"},
+                    {"name": "Attachments", "said": "plan.pdf, notes.txt"}
                 ],
                 "body": "On the engine."
             })
@@ -658,6 +719,100 @@ mod tests {
                 "verb:mail:link"
             ],
             "mail with no address to answer still offered a reply"
+        );
+    }
+
+    #[test]
+    fn every_word_a_mail_shows_is_the_vocabularys() {
+        let words =
+            Words::read(&marked::marked(&marked::vocabulary())).expect("marked words didn't read");
+        let mut untitled = one("u", 1_000);
+        untitled.subject = String::new();
+        untitled.from = String::new();
+        let mut carrying = one("c", 2_000);
+        carrying.cc = "Grace Hopper".into();
+        carrying.attachments = ["plan.pdf", "notes.txt"]
+            .map(|name| File {
+                name: name.into(),
+                kind: "application/pdf".into(),
+                size: 2_048,
+                runs: false,
+                bytes: Bytes::Asked("x".into()),
+            })
+            .to_vec();
+        let mut held = vec![untitled, carrying.clone()];
+        for (at, went) in [1, 2, 5].into_iter().enumerate() {
+            let mut sent = one(&format!("s{at}"), 3_000);
+            sent.sent = true;
+            sent.went = ["Ada", "Grace", "Alan", "Edsger", "Barbara"][..went]
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect();
+            held.push(sent);
+        }
+        carrying.attachments.truncate(1);
+        carrying.id = "one".into();
+        held.push(carrying);
+        let mut shown = Vec::new();
+        for row in mail(&held, &words) {
+            let key = row["key"].as_str().unwrap_or_default().to_owned();
+            shown.push((
+                format!("{key} name"),
+                row["name"].as_str().unwrap_or_default().to_owned(),
+            ));
+            for side in row["side"].as_array().into_iter().flatten() {
+                for way in side["ways"].as_array().into_iter().flatten() {
+                    shown.push((
+                        format!("{key} side"),
+                        way.as_str().unwrap_or_default().to_owned(),
+                    ));
+                }
+            }
+        }
+        for (key, drawer) in mail_drawers(&held, &[], &words) {
+            let title = drawer["title"].as_str().unwrap_or_default().to_owned();
+            shown.push((format!("{key} title"), title));
+            for fact in drawer["facts"].as_array().into_iter().flatten() {
+                for field in ["name", "said"] {
+                    if let Some(said) = fact[field].as_str() {
+                        shown.push((format!("{key} fact {field}"), said.to_owned()));
+                    }
+                }
+            }
+        }
+        assert!(
+            shown.len() > 30,
+            "only {} words were shown, so the spread reaches too little",
+            shown.len()
+        );
+        // What a mail says of itself, which no vocabulary words: who sent
+        // it and from where, whom it went and was copied to, its subject
+        // and the names of the files it carries.
+        let own: Vec<String> = held
+            .iter()
+            .flat_map(|each| {
+                [
+                    vec![
+                        each.from.clone(),
+                        each.address.clone(),
+                        each.to.clone(),
+                        each.cc.clone(),
+                        each.subject.clone(),
+                    ],
+                    each.went.clone(),
+                    each.attachments
+                        .iter()
+                        .map(|file| file.name.clone())
+                        .collect(),
+                ]
+            })
+            .flatten()
+            .collect();
+        let written = marked::written_in(&shown, &own);
+        assert!(
+            written.is_empty(),
+            "words written in rows.rs, not the vocabulary:\n{}",
+            written.join("\n")
         );
     }
 

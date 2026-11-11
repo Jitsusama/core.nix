@@ -4,57 +4,12 @@
 //! meetings say themselves and the clock's figures. A word written into
 //! `calendar_rows.rs` shows unmarked and fails here, naming where it shows.
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
-use super::tests::{HOUR, MINUTE, MONDAY, one, vocabulary, zone};
+use super::tests::{HOUR, MINUTE, MONDAY, one, zone};
 use super::{Words, drawers, meetings};
 use crate::calendar::{Answer, Attachment, Dial, Every, Guest, Meeting, Person, Repeats, Weekday};
-
-/// The mark each of the vocabulary's words starts with.
-const MARK: char = 'X';
-
-/// The whole vocabulary with every word in it marked, its ids aside, so
-/// each thing is still found by its own.
-fn marked(value: &Value) -> Value {
-    match value {
-        Value::String(said) => Value::String(mark(said)),
-        Value::Array(each) => Value::Array(each.iter().map(marked).collect()),
-        Value::Object(fields) => Value::Object(
-            fields
-                .iter()
-                .map(|(field, value)| {
-                    let kept = if field == "id" {
-                        value.clone()
-                    } else {
-                        marked(value)
-                    };
-                    (field.clone(), kept)
-                })
-                .collect::<Map<_, _>>(),
-        ),
-        other => other.clone(),
-    }
-}
-
-/// Each run of letters in a form marked, but a `{name}` it fills.
-fn mark(form: &str) -> String {
-    let mut said = String::new();
-    let mut filled = false;
-    let mut lettered = false;
-    for letter in form.chars() {
-        match letter {
-            '{' => filled = true,
-            '}' => filled = false,
-            _ => {}
-        }
-        if !filled && letter.is_alphabetic() && !lettered {
-            said.push(MARK);
-        }
-        lettered = letter.is_alphabetic();
-        said.push(letter);
-    }
-    said
-}
+use crate::rows::marked::{marked, vocabulary, written_in};
 
 fn guest(name: &str, answer: Answer) -> Guest {
     Guest {
@@ -212,7 +167,7 @@ fn held() -> Vec<Meeting> {
 
 /// What the meetings say themselves, which no vocabulary words.
 fn their_own(meetings: &[Meeting]) -> Vec<String> {
-    let mut said: Vec<String> = meetings
+    meetings
         .iter()
         .flat_map(|meeting| {
             let people = meeting
@@ -243,11 +198,7 @@ fn their_own(meetings: &[Meeting]) -> Vec<String> {
             .flatten()
             .collect::<Vec<_>>()
         })
-        .filter(|said| !said.is_empty())
-        .collect();
-    // The longest first, so a name within another's taken as part of it.
-    said.sort_by_key(|said| std::cmp::Reverse(said.len()));
-    said
+        .collect()
 }
 
 /// What a row or drawer shows Joel, each with where it shows.
@@ -284,18 +235,6 @@ fn shown(rows: &[Value], drawers: &[(String, Value)]) -> Vec<(String, String)> {
     shown
 }
 
-/// The runs of letters in what's shown that aren't the vocabulary's, once
-/// what the meetings say themselves is taken out.
-fn unmarked(said: &str, own: &[String]) -> Vec<String> {
-    let left = own
-        .iter()
-        .fold(said.to_owned(), |left, own| left.replace(own.as_str(), " "));
-    left.split(|letter: char| !letter.is_alphabetic())
-        .filter(|run| !run.is_empty() && !run.starts_with(MARK))
-        .map(str::to_owned)
-        .collect()
-}
-
 #[test]
 fn every_word_a_row_or_drawer_shows_is_the_vocabularys() {
     let words = Words::read(&marked(&vocabulary())).expect("the marked words didn't read");
@@ -309,31 +248,10 @@ fn every_word_a_row_or_drawer_shows_is_the_vocabularys() {
         "only {} words were shown, so the spread reaches too little",
         shown.len()
     );
-    let written: Vec<String> = shown
-        .iter()
-        .filter_map(|(at, said)| {
-            let unmarked = unmarked(said, &own);
-            (!unmarked.is_empty()).then(|| format!("{at}: {said:?} says {unmarked:?}"))
-        })
-        .collect();
+    let written = written_in(&shown, &own);
     assert!(
         written.is_empty(),
         "words written in calendar_rows.rs, not the vocabulary:\n{}",
         written.join("\n")
-    );
-}
-
-#[test]
-fn a_word_written_in_is_found() {
-    let own = vec!["Ada Lovelace".to_owned()];
-    assert_eq!(
-        unmarked("XTelling Ada Lovelace, PIN 4", &own),
-        ["PIN"],
-        "a word not the vocabulary's is found, but a meeting's own isn't"
-    );
-    assert_eq!(mark("{n}st"), "{n}Xst");
-    assert_eq!(
-        mark("on Calendar \u{b7} meeting"),
-        "Xon XCalendar \u{b7} Xmeeting"
     );
 }

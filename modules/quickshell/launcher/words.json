@@ -11599,7 +11599,38 @@
         "unimportant": "no longer important",
         "gone": "gone from Gmail",
         "readHere": "read here",
-        "archivedHere": "archived here"
+        "archivedHere": "archived here",
+        "sender": "{name} <{address}>"
+      }
+    },
+    {
+      "id": "mail:fact:from",
+      "in": "mail:message",
+      "name": "From"
+    },
+    {
+      "id": "mail:fact:to",
+      "in": "mail:message",
+      "name": "To"
+    },
+    {
+      "id": "mail:fact:cc",
+      "in": "mail:message",
+      "name": "Cc"
+    },
+    {
+      "id": "mail:fact:date",
+      "in": "mail:message",
+      "name": "Date"
+    },
+    {
+      "id": "mail:fact:attached",
+      "in": "mail:message",
+      "name": "Attachment",
+      "states": {
+        "several": {
+          "name": "Attachments"
+        }
       }
     },
     {
@@ -11892,13 +11923,83 @@
         "drive": {
           "name": "Shared Drive",
           "glyph": "folder"
+        },
+        "form": {
+          "name": "Form"
+        },
+        "drawing": {
+          "name": "Drawing"
+        },
+        "map": {
+          "name": "Map"
+        },
+        "site": {
+          "name": "Site"
+        },
+        "script": {
+          "name": "Script"
+        },
+        "vid": {
+          "name": "Video"
         }
       },
       "said": {
         "in": "in {place}",
         "onDrive": "{drive} (shared drive)",
-        "opened": "opened {when}"
+        "opened": "opened {when}",
+        "measured": "{across} \u00d7 {down}",
+        "lasts": "{minutes}:{seconds}",
+        "lastsHours": "{hours}:{minutes}:{seconds}",
+        "bytes": "{count} B",
+        "kilobytes": "{count} kB",
+        "megabytes": "{count} MB",
+        "gigabytes": "{count} GB"
       }
+    },
+    {
+      "id": "drive:fact:changed",
+      "in": "drive:file",
+      "name": "Changed"
+    },
+    {
+      "id": "drive:fact:changer",
+      "in": "drive:file",
+      "name": "Changed By"
+    },
+    {
+      "id": "drive:fact:owner",
+      "in": "drive:file",
+      "name": "Owner"
+    },
+    {
+      "id": "drive:fact:yours",
+      "in": "drive:file",
+      "name": "You Changed"
+    },
+    {
+      "id": "drive:fact:created",
+      "in": "drive:file",
+      "name": "Created"
+    },
+    {
+      "id": "drive:fact:shared",
+      "in": "drive:file",
+      "name": "Shared"
+    },
+    {
+      "id": "drive:fact:sharer",
+      "in": "drive:file",
+      "name": "Shared By"
+    },
+    {
+      "id": "drive:fact:size",
+      "in": "drive:file",
+      "name": "Size"
+    },
+    {
+      "id": "drive:fact:id",
+      "in": "drive:file",
+      "name": "ID"
     },
     {
       "id": "verb:drive:open",
@@ -13753,9 +13854,11 @@
       "word": "attachments",
       "things": [
         "verb:calendar:attachments",
-        "calendar:attached"
+        "calendar:attached",
+        "verb:mail:attachments",
+        "mail:fact:attached"
       ],
-      "why": "Attachments steps in to a meeting's files, and its drawer's fact naming several says so too; the fact is never a row."
+      "why": "Attachments steps in to a meeting's or a mail's files, and its drawer's fact naming several says so too; the fact is never a row."
     },
     {
       "word": "{manager}",
