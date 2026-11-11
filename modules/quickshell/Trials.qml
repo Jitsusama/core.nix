@@ -62,8 +62,7 @@ Scope {
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
                 + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each)},`
-                    + ` rows ${parts.rows}${matched(parts.rows, parts.within)}`
-                    + `${placed(parts.rows, parts.placed)},`
+                    + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
                         : ""})` : "")
@@ -110,12 +109,6 @@ Scope {
         return rows > 0 && within ? ` (matching ${within.matching} of ${within.looked},`
             + ` ordering ${within.ordering} of ${within.found}, making ${within.making},`
             + ` spots ${within.spots})` : "";
-    }
-
-    // A step's rows, where they took any: the place's own, as its search
-    // drew them, then the rest of stepping in after it, as the caret put.
-    function placed(rows, within) {
-        return rows > 0 && within ? ` (the place's ${within.rows}, then ${within.after})` : "";
     }
 
     // The time before the search, where it took any, by what was set: the

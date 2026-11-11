@@ -5471,12 +5471,23 @@ Scope {
             return;
         }
         if (category !== null) {
-            // What's typed searches only inside it, its answers first.
+            // What's typed searches only inside it, its answers first. Said
+            // as the top level's search is, before it, finding its rows and
+            // showing them, so a step into a category says where its time
+            // went: Machine's and Desktop's said it all as rows (2026-11-11).
+            const searchedAt = Date.now();
             gathered = [];
             root.found = words.length === 0 ? offered.slice() : inCategory(letters);
+            const foundAt = Date.now();
             compose(!steadying);
-            if (!steadying)
-                list.positionViewAtBeginning();
+            if (steadying)
+                return;
+            list.positionViewAtBeginning();
+            searchParts = { before: searchedAt - searchBegan, lists: foundAt - searchedAt,
+                rows: 0, answers: Date.now() - foundAt, each: {}, within: null,
+                composing: composeParts, beforeParts: { counting: countedAt - searchBegan,
+                    typed: typedOn - countedAt, words: wordedAt - typedOn,
+                    readying: searchedAt - wordedAt } };
             return;
         }
         if (held.length > 0) {
