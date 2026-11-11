@@ -35,8 +35,8 @@ function run(failures) {
     // counts each time it's read.
     asked++;
     let read = 0;
-    const worn = ColourCases.roles.accent;
-    const counted = { accent: { toString: () => { read++; return worn; } } };
+    const accent = ColourCases.roles.accent;
+    const counted = { accent: { toString: () => { read++; return accent; } } };
     for (const typed of ["c", "ca", "bat", "meet", "#", "#12345", "rgb", "colour"]) {
         Colours.answer(typed, ColourCases.palette, counted);
     }

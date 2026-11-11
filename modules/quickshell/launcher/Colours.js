@@ -278,7 +278,7 @@ function nearest(colour, known) {
 function answer(text, palette, roles) {
     let colour = read(text);
     const asked = ASKED.exec(text.trim());
-    if (!colour && !asked) {
+    if (!(colour || asked)) {
         return null;
     }
     const known = pigments(palette, roles);
