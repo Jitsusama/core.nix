@@ -5,7 +5,8 @@
 //! a program's list is read as its watch begins and again as its file
 //! changes, and not while nobody watches, and one whose command fails
 //! is heard empty, saying why; a page's own list is read only as its
-//! key is watched, its lines as printed; what a program has open is
+//! key is watched, its lines as printed, and a told one only once its
+//! program says it changed; what a program has open is
 //! read as it's asked; the repositories under a folder and one's files
 //! are read as each is asked; what a file shows is asked of one
 //! file-preview kept; what kitty's page reads of zoxide's database, ssh's
@@ -66,6 +67,7 @@ fn fixture(folder: &Path) -> PathBuf {
     write("shots/2026-11-10 09-00-00.png", "shot");
     write("shots/.hidden.png", "");
     write("lists/playing", "412\t/films/a.mkv\n");
+    write("lists/open", "one\n");
     let at = |path: &str| folder.join(path).to_string_lossy().into_owned();
     // Each list says it was read, so a test counts its reads.
     let folders = format!(
@@ -81,7 +83,20 @@ fn fixture(folder: &Path) -> PathBuf {
         "echo read >> {} && printf '/d/a.pdf\t12\t1793000000\thttps://a.example\n'",
         at("lists/download-reads")
     );
+    let open = format!(
+        "echo read >> {} && cat {}",
+        at("lists/open-reads"),
+        at("lists/open")
+    );
     let sources = json!([
+        // What a terminal has open, read again only once it says so.
+        {
+            "app": "terminal",
+            "name": "open",
+            "asked": true,
+            "told": true,
+            "list": ["sh", "-c", open],
+        },
         // What was taken lately, of a folder that's there and one that
         // isn't yet, read with no command.
         {"name": "taken", "folders": [at("shots"), at("recordings")]},
@@ -319,6 +334,45 @@ fn an_asked_list_is_read_only_as_its_program_is_watched() {
     assert_eq!(
         client.changed("recent:browser")["sites"],
         json!([{"address": "https://a.example", "title": "A", "used_at_s": 1_793_000_000}])
+    );
+}
+
+#[test]
+fn a_told_list_is_read_again_only_once_its_program_says_it_changed() {
+    let running = Running::new("told");
+    let reads = || {
+        std::fs::read_to_string(running.path("lists/open-reads"))
+            .map_or(0, |text| text.lines().count())
+    };
+    let key = "listed:terminal:open";
+    let mut client = running.client();
+    let get = |client: &mut Client, id: u64| {
+        client.ask(&json!({"id": id, "ask": "get", "keys": [key]}))["records"][0]["lines"].clone()
+    };
+    assert_eq!(get(&mut client, 1), json!(["one"]));
+    assert_eq!(get(&mut client, 2), json!(["one"]));
+    assert_eq!(reads(), 1, "a told list was read again with nothing said");
+    std::fs::write(running.path("lists/open"), "one\ntwo\n").unwrap();
+    let heard = client.ask(&json!({"id": 3, "ask": "changed", "keys": [key]}));
+    assert_eq!(heard["heard"], json!([key]));
+    assert_eq!(get(&mut client, 4), json!(["one", "two"]));
+    assert_eq!(
+        reads(),
+        2,
+        "a told list wasn't read once as it was asked after a change"
+    );
+    // Watched by its key, as a page open on it, a change is read at once
+    // and told; the watch beginning reads nothing nobody said changed.
+    client.ask(&json!({"id": 5, "ask": "watch", "keys": [key]}));
+    std::fs::write(running.path("lists/open"), "three\n").unwrap();
+    running
+        .client()
+        .ask(&json!({"id": 6, "ask": "changed", "keys": [key]}));
+    assert_eq!(client.changed(key)["lines"], json!(["three"]));
+    assert_eq!(
+        reads(),
+        3,
+        "a watch beginning read a told list nobody said changed"
     );
 }
 
