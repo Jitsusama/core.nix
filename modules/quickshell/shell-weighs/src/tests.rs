@@ -48,10 +48,14 @@ fn the_heap_and_the_jits_code_are_told_apart_from_other_anonymous_memory() {
 fn a_line_inside_a_mapping_never_opens_another() {
     // A VmFlags line starts with letters that are hex digits, but has no
     // range of addresses.
-    assert!(!is_header("VmFlags: rd wr mr mw me ac sd"));
-    assert!(is_header(
-        "7f0000000000-7f0010000000 rw-p 00000000 00:01 9 /x"
-    ));
+    assert!(
+        !is_header("VmFlags: rd wr mr mw me ac sd"),
+        "a VmFlags line was taken for a mapping's header"
+    );
+    assert!(
+        is_header("7f0000000000-7f0010000000 rw-p 00000000 00:01 9 /x"),
+        "a mapping's header was not taken for one"
+    );
 }
 
 const RENDER_NODE: &str = "\
@@ -105,8 +109,11 @@ fn a_process_is_read_from_its_status() {
             resident: 651_220,
         }
     );
-    assert!(is_shell(".quickshell-wra"));
-    assert!(!is_shell("pi"));
+    assert!(
+        is_shell(".quickshell-wra"),
+        "quickshell's wrapped name was not taken for the shell"
+    );
+    assert!(!is_shell("pi"), "pi was taken for the shell");
 }
 
 #[test]
