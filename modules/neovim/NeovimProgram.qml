@@ -74,11 +74,10 @@ Provider {
     foundActs: (repositories ? [{ program: program, key: "verb:nvim:find" }] : [])
         .concat(place !== null ? [{ program: program, key: "verb:nvim:copied" }] : [])
 
-    // What each Neovim holds, as open-now last said.
+    // What each Neovim holds, as open-now last said. Its daemon says it
+    // again only once it differs (Daemon.qml), so a reading the same as
+    // the last draws nothing again.
     property var neovims: []
-    // What open-now last said, word for word, so an answer the same as the
-    // last draws nothing again.
-    property string lastHeard: ""
 
     // What a file's drawer says of the file, as the file chooser says it,
     // in the launcher's words.
@@ -119,11 +118,7 @@ Provider {
         wanted: (provider.launcher?.open ?? false) || !listing.read
 
         onHeard: {
-            const text = listing.lines.join("\n");
-            if (text === provider.lastHeard)
-                return;
-            provider.lastHeard = text;
-            provider.neovims = Neovim.heard(text);
+            provider.neovims = Neovim.heard(listing.lines.join("\n"));
             provider.heard();
         }
     }
