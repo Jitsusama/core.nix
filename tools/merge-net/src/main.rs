@@ -515,10 +515,10 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     Ok(ExitCode::FAILURE)
 }
 
-/// What `changed-checks --name-only` says moved between `base` and the
-/// working copy, or nothing when it couldn't compare.
+/// What the changed-checks it was built with (the profile has none) says
+/// moved between `base` and the working copy, or nothing when it couldn't compare.
 fn moved_from(base: &str) -> Option<String> {
-    let ran = Command::new("changed-checks")
+    let ran = Command::new(option_env!("MERGE_NET_CHANGED_CHECKS").unwrap_or("changed-checks"))
         .args(["--base", base, "--name-only", "--system", SYSTEM])
         .stderr(Stdio::inherit())
         .output()
