@@ -14,6 +14,12 @@ the monotonic clock, or that it was discarded. Asking again on each
 answer follows every frame. With no wp_presentation global, available is
 false and every ask is answered as discarded.
 
+timesOf(frame) says when that frame's sync began and ended, its render
+began and ended and it was swapped, each read on the render thread as it
+happened. The GUI thread hears afterRendering and frameSwapped queued,
+once it's free, so a frame timed by them includes however long the GUI
+thread was busy after the sync.
+
 ---
 diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt
 index 7bd6c15..b8881e0 100644
@@ -62,7 +68,7 @@ new file mode 100644
 index 0000000..4b3f5c5
 --- /dev/null
 +++ b/src/wayland/presentation/qml.cpp
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,251 @@
 +#include "qml.hpp"
 +#include <cstdint>
 +#include <ctime>
@@ -156,6 +162,17 @@ index 0000000..4b3f5c5
 +
 +} // namespace impl
 +
++namespace {
++
++// The monotonic clock now, in milliseconds, as `presented` says its times.
++double monotonicNow() {
++	timespec now {};
++	clock_gettime(CLOCK_MONOTONIC, &now);
++	return impl::milliseconds(now);
++}
++
++} // namespace
++
 +FramePresentation* FramePresentation::qmlAttachedProperties(QObject* object) {
 +	auto* proxyWindow = qobject_cast<ProxyWindowBase*>(object);
 +
@@ -201,6 +218,22 @@ index 0000000..4b3f5c5
 +	this->mWindow = window;
 +	if (!window) return;
 +
++	// Each is heard on the render thread as it happens, never queued to the
++	// GUI thread, which hears a frame's swap only once it's free.
++	QObject::connect(
++	    window,
++	    &QQuickWindow::beforeSynchronizing,
++	    this,
++	    &FramePresentation::onBeforeSynchronizing,
++	    Qt::DirectConnection
++	);
++	QObject::connect(
++	    window,
++	    &QQuickWindow::afterSynchronizing,
++	    this,
++	    &FramePresentation::onAfterSynchronizing,
++	    Qt::DirectConnection
++	);
 +	QObject::connect(
 +	    window,
 +	    &QQuickWindow::beforeRendering,
@@ -208,10 +241,61 @@ index 0000000..4b3f5c5
 +	    &FramePresentation::onBeforeRendering,
 +	    Qt::DirectConnection
 +	);
++	QObject::connect(
++	    window,
++	    &QQuickWindow::afterRendering,
++	    this,
++	    &FramePresentation::onAfterRendering,
++	    Qt::DirectConnection
++	);
++	QObject::connect(
++	    window,
++	    &QQuickWindow::frameSwapped,
++	    this,
++	    &FramePresentation::onFrameSwapped,
++	    Qt::DirectConnection
++	);
++}
++
++QVariantMap FramePresentation::timesOf(int frame) const {
++	if (frame <= 0) return {};
++
++	auto at = static_cast<size_t>(frame) % this->drawn.size();
++	QMutexLocker lock(&this->drawnLock);
++	const auto& times = this->drawn.at(at);
++	if (times.frame != frame) return {};
++
++	return {
++	    {"synchronizing", times.synchronizing},
++	    {"synchronized", times.synchronized},
++	    {"rendering", times.rendering},
++	    {"rendered", times.rendered},
++	    {"swapped", times.swapped},
++	};
++}
++
++void FramePresentation::onBeforeSynchronizing() { this->drawing.synchronizing = monotonicNow(); }
++
++void FramePresentation::onAfterSynchronizing() { this->drawing.synchronized = monotonicNow(); }
++
++void FramePresentation::onAfterRendering() { this->drawing.rendered = monotonicNow(); }
++
++void FramePresentation::onFrameSwapped() {
++	this->drawing.swapped = monotonicNow();
++	if (this->drawing.frame > 0) {
++		auto at = static_cast<size_t>(this->drawing.frame) % this->drawn.size();
++		QMutexLocker lock(&this->drawnLock);
++		this->drawn.at(at) = this->drawing;
++	}
++	// A frame rendered without a sync, as one only exposed again is, says no
++	// sync rather than the last frame's.
++	this->drawing = Times();
 +}
 +
 +void FramePresentation::onBeforeRendering() {
 +	auto frame = ++this->begun;
++	this->drawing.frame = frame;
++	this->drawing.rendering = monotonicNow();
 +	if (!this->asked.exchange(false)) return;
 +
 +	auto* manager = impl::Presentation::instance();
@@ -241,19 +325,22 @@ new file mode 100644
 index 0000000..1e911f1
 --- /dev/null
 +++ b/src/wayland/presentation/qml.hpp
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,162 @@
 +#pragma once
 +
++#include <array>
 +#include <atomic>
 +#include <cstdint>
 +#include <ctime>
 +#include <functional>
 +
++#include <qmutex.h>
 +#include <qobject.h>
 +#include <qpointer.h>
 +#include <qqmlintegration.h>
 +#include <qquickwindow.h>
 +#include <qtmetamacros.h>
++#include <qvariant.h>
 +#include <qwayland-presentation-time.h>
 +#include <qwaylandclientextension.h>
 +
@@ -350,6 +437,14 @@ index 0000000..1e911f1
 +	/// for that frame.
 +	Q_INVOKABLE void ask();
 +
++	/// When the frame `frame`, counted as `framesBegun` counts, began its
++	/// sync, ended it, began rendering, ended it and was swapped, each read on
++	/// the render thread as it happened, in monotonic milliseconds, so a
++	/// frame's time is its own however late the GUI thread hears its swap.
++	/// Empty before it's swapped and once it's older than the last sixteen;
++	/// a time it had no such step for is 0.
++	Q_INVOKABLE QVariantMap timesOf(int frame) const;
++
 +	static FramePresentation* qmlAttachedProperties(QObject* object);
 +
 +signals:
@@ -366,11 +461,30 @@ index 0000000..1e911f1
 +	// Runs on the render thread, before the frame it draws is committed, so
 +	// the feedback is for that frame's commit.
 +	void onBeforeRendering();
++	// And these on the render thread too, timing each frame's steps.
++	void onBeforeSynchronizing();
++	void onAfterSynchronizing();
++	void onAfterRendering();
++	void onFrameSwapped();
++
++	struct Times {
++		int frame = 0;
++		double synchronizing = 0;
++		double synchronized = 0;
++		double rendering = 0;
++		double rendered = 0;
++		double swapped = 0;
++	};
 +
 +	QPointer<ProxyWindowBase> proxyWindow;
 +	QPointer<QQuickWindow> mWindow;
 +	std::atomic<bool> asked = false;
 +	std::atomic<int> begun = 0;
++	// The frame being drawn, touched only on the render thread.
++	Times drawing;
++	// The last frames swapped, by their number, read from the GUI thread.
++	std::array<Times, 16> drawn {};
++	mutable QMutex drawnLock;
 +};
 +
 +} // namespace qs::wayland::presentation
