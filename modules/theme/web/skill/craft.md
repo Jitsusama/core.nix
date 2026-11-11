@@ -480,6 +480,9 @@ Replays).
 - **Trimmed before it's shown**: idle gaps capped in the cast, not only in
   the player; output no reader needs cut; and every line read for a
   secret, a home path, a host name or an id before it's published.
+  Evidence is the exception (SKILL.md, Replays): its cast stays as
+  recorded, gaps shortened only by the player's `idleTimeLimit` with a note
+  on the frame, and a secret masked in place, as `[masked]`.
 - **It can be a part's figure.** The gate counts drawings and tables, so a
   part a replay carries says so on its section, as `data-figure="a replay
   of the deploy"`.
