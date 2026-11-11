@@ -1,11 +1,11 @@
 """network-revive followed in a virtual machine, on an account whose services need the network.
 
-tests/network-revive.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the test proves. Each test asks for the state it starts
-from as a fixture: the machine booted, the services let down with no network, the network
-back, a service following resolved's servers. A fixture's work is done once a run, however
-many tests ask for it, so any test runs alone with `-k`, and all of them run in the order
-they're written, each after what it needs.
+network-revive.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Each test asks for the
+state it starts from as a fixture: the machine booted, the services let down with no network, the
+network back, a service following resolved's servers. A fixture's work is done once a run, however
+many tests ask for it, so any test runs alone with `-k`, and all of them run in the order they're
+written, each after what it needs.
 """
 
 from __future__ import annotations

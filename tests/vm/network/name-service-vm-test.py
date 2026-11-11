@@ -1,10 +1,10 @@
 """A name whose IPv6 answer comes first still gives its IPv4 address through the name service.
 
-tests/name-service.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says how the asker holds IPv4 back. Each name is a .local one, which only
+name-service.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+and its opening comment says how the asker holds IPv4 back. Each name is a .local one, which only
 mDNS answers, so the test network's /etc/hosts entries, which name every machine bare, answer
-nothing. The neighbour with no IPv6 is timed first, before IPv4 is held back, so its lookups
-take what resolved takes and nothing the test adds.
+nothing. The neighbour with no IPv6 is timed first, before IPv4 is held back, so its lookups take
+what resolved takes and nothing the test adds.
 """
 
 from __future__ import annotations

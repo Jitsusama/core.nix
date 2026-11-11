@@ -39,4 +39,4 @@ ignore = [
 # The screens test's machine and steps assert what each step needs, as the desktop does.
 "tests/screens/screens_session.py" = ["S101"]
 # wifid as the Wi-Fi test's areas reach it asserts what a refusal says, as the desktop does.
-"tests/wifi/wifi_session.py" = ["S101"]
+"tests/vm/network/wifi/wifi_session.py" = ["S101"]

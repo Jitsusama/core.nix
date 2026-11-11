@@ -1,6 +1,6 @@
 """A machine's clock sets from its own time server past the network's, which never answers.
 
-tests/clock.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
+clock.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says how chrony hears of the network's server. The silent server the network
 names is a Nix value, given as the `values` fixture, so networkd's and chrony's answers are
 checked against the same address the machine was given.

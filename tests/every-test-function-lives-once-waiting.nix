@@ -138,5 +138,5 @@
   "tests/vm/guide/secure-boot-vm-test.py" = 1;
   "tests/waits.qml" = 1;
   "tests/weather.qml" = 2;
-  "tests/wifi-check-page.py" = 1;
+  "tests/vm/network/wifi-check-page.py" = 1;
 }

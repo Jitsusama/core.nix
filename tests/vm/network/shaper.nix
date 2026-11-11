@@ -18,7 +18,7 @@ let
   inherit (pkgs) lib;
   server = "192.168.2.3";
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper";
 
   nodes.client = {

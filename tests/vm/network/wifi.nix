@@ -155,7 +155,7 @@ let
     private_key=${certificates}/radius.key
   '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "wifi-${area}";
   extraPythonPackages = python: [
     (python.toPythonModule (

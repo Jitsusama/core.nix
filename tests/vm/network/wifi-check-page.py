@@ -1,6 +1,6 @@
 """Stand in for the pages the Wi-Fi test's networks are checked and signed in at.
 
-tests/wifi.nix runs this inside the access points' namespace, given the folder of its
+wifi.nix, beside this, runs this inside the access points' namespace, given the folder of its
 stand-in certificates. Lantern reaches beyond itself, so its check pages answer as Google's
 do, over HTTP and HTTPS, and its API gives a session a few seconds long. The Inn sends every
 guest to its front desk until they've signed in there, and answers nothing over HTTPS, as a

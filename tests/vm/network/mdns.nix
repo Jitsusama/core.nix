@@ -15,7 +15,7 @@ let
     systemd.network.networks."40-eth1".networkConfig.MulticastDNS = mdns;
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "mdns";
 
   nodes.home = machine "yes";

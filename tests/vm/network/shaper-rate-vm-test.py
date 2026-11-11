@@ -1,9 +1,9 @@
 """Whether the shaper finds a modem's connection and keeps an app's pings near it, under load.
 
-tests/shaper-rate.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. The router is the connection: a netem delay,
-then a tbf whose rate the test changes and whose backlog is the modem's queue. The test waits
-on that queue rather than on the clock, as it's what the pings would wait in.
+shaper-rate.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+and its opening comment says what the test proves. The router is the connection: a netem delay, then
+a tbf whose rate the test changes and whose backlog is the modem's queue. The test waits on that
+queue rather than on the clock, as it's what the pings would wait in.
 
 Each test asks for the state it starts from as a fixture: the connection found under the jobs'
 uploads, then halved, then back at its full rate. A fixture's work is done once a run, however

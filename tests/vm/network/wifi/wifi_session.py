@@ -1,8 +1,8 @@
 """wifid on the Wi-Fi test's machine, as the shell and the test reach it.
 
-Every area of the Wi-Fi test (tests/wifi/) imports this, a module of the driver's Python that
-tests/wifi.nix gives it. Each area boots a machine of its own, so what one area sets up the
-others never see.
+Every area of the Wi-Fi test (tests/vm/network/wifi/) imports this, a module of the driver's Python
+that tests/vm/network/wifi.nix gives it. Each area boots a machine of its own, so what one area sets
+up the others never see.
 """
 
 from __future__ import annotations

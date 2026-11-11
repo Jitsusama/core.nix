@@ -1,11 +1,11 @@
 """The Wi-Fi test's joins-when-asked area.
 
-Here the shell has wifid join, leave, sign in and save, the radios go off and on, a card stuck
-or unanswered moves on, and the card dozes only on battery. tests/wifi.nix runs this through
+Here the shell has wifid join, leave, sign in and save, the radios go off and on, a card stuck or
+unanswered moves on, and the card dozes only on battery. tests/vm/network/wifi.nix runs this through
 pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the test
-proves. The tests run in the order written, each taking the machine on from where the one
-before left it, so one run alone with -k starts from the boot and may not find what an earlier
-one set up. wifid as the tests reach it is wifi_session.py.
+proves. The tests run in the order written, each taking the machine on from where the one before
+left it, so one run alone with -k starts from the boot and may not find what an earlier one set up.
+wifid as the tests reach it is wifi_session.py.
 """
 
 from __future__ import annotations
