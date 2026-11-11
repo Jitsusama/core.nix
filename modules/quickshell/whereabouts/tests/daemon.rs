@@ -213,8 +213,13 @@ fn locations_rows_are_told_only_to_a_watch_of_their_place() {
         .iter()
         .find(|row| row["key"] == "row:location:town")
         .unwrap();
-    assert_eq!(town["side"][0]["said"], "Kelpwater, Highreach", "{town}");
-    assert_eq!(town["parent"], "row:on:location");
+    assert_eq!(
+        (&town["kind"], &town["row"]["side"][0]["said"]),
+        (&json!("row"), &json!("Kelpwater, Highreach")),
+        "wrapped as every daemon's rows are: {town}"
+    );
+    assert_eq!(town["row"]["parent"], "row:on:location");
+    assert!(town["row"]["order"].is_i64(), "placed: {town}");
 
     let said = client.ask(&json!({"id": "h", "ask": "watch", "kind": "here"}));
     assert_eq!(
@@ -224,7 +229,7 @@ fn locations_rows_are_told_only_to_a_watch_of_their_place() {
     );
 
     let said = client.ask(&json!({"id": 1, "ask": "get", "keys": ["row:on:location"]}));
-    assert_eq!(said["records"][0]["name"], "Location", "{said}");
+    assert_eq!(said["records"][0]["row"]["name"], "Location", "{said}");
 }
 
 #[test]

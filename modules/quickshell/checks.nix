@@ -369,6 +369,9 @@ let
       cp ${./launcher/PlaceRow.js} launcher/PlaceRow.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./launcher/Here.js} launcher/Here.js
+      cp ${./launcher/ReadyRows.qml} launcher/ReadyRows.qml
+      cp ${./launcher/ReadyRows.js} launcher/ReadyRows.js
+      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
       cp ${./When.js} When.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json

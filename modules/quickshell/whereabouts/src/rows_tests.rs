@@ -82,6 +82,19 @@ fn here_says_its_town_and_how_near_it_is() {
         by_key(&rows, "row:location:knows")["side"],
         json!([{"said": "found, within 26 km"}])
     );
+    let town = by_key(&rows, "row:location:town");
+    assert_eq!(
+        (&town["thing"], &town["acts"]),
+        (
+            &json!("location:town"),
+            &json!([{"key": "verb:copy", "copy": "Kelpwater, Westmark"}])
+        ),
+        "a figure copies what it says"
+    );
+    assert!(
+        rows.iter().all(|row| row.get("order").is_none()),
+        "Kept places them, in the order handed over: {rows:?}"
+    );
     assert_eq!(
         by_key(&rows, "row:location:located")["side"],
         json!([{"at": 1_790_000_000_000_u64, "as": "ago"}]),
@@ -89,18 +102,22 @@ fn here_says_its_town_and_how_near_it_is() {
     );
     let copy = by_key(&rows, "row:location:copy");
     assert_eq!(
-        (&copy["side"], &copy["acts"][0]["copy"]),
-        (&json!([{"said": "12.35, -98.77"}]), &json!("12.35, -98.77")),
+        (&copy["side"], &copy["acts"]),
+        (
+            &json!([{"said": "12.35, -98.77"}]),
+            &json!([{"key": "verb:location:copy", "copy": "12.35, -98.77"}])
+        ),
         "Copy, of its position"
     );
-    let set = &by_key(&rows, "row:location:set")["acts"][0];
+    let set = by_key(&rows, "row:location:set");
     assert_eq!(
-        (&set["ask"], &set["asks"]),
+        (&set["thing"], &set["name"], &set["acts"]),
         (
-            &json!({"ask": "act", "act": "set"}),
-            &json!("where are you?")
+            &json!("verb:location:set"),
+            &json!("Set It by Hand"),
+            &json!([{"key": "verb:location:set", "ask": {"ask": "act", "act": "set"}}])
         ),
-        "Set It by Hand asks this daemon"
+        "Set It by Hand asks this daemon, its verb and question the shell's by its key"
     );
 }
 
@@ -152,8 +169,8 @@ fn nowhere_known_is_said_plainly_and_set_by_hand_can_be_found_again() {
         "a place Joel set says so"
     );
     assert_eq!(
-        by_key(&rows_pinned, "row:location:again")["acts"][0]["ask"],
-        json!({"ask": "act", "act": "again"}),
+        by_key(&rows_pinned, "row:location:again")["acts"],
+        json!([{"key": "verb:location:again", "ask": {"ask": "act", "act": "again"}}]),
         "and can be found again"
     );
 }

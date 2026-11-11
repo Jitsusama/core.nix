@@ -23,20 +23,13 @@ Singleton {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/location.sock`
-        // Here, and Location's own rows, worded and ready to draw; the
-        // place narrows only the rows, so For You's row of it, which the
-        // agents daemon is to serve, isn't heard here.
-        kind: ["here", "row"]
-        watching: ({ place: "location" })
+        // Here. Location's own rows are Now's, held by its ReadyRows on a
+        // connection of their own (launcher/Now.qml).
+        kind: ["here"]
     }
 
     readonly property var record: daemon.revision >= 0 ? daemon.held["here:laptop"] ?? null
         : null
-
-    // Everything whereabouts holds for the shell, by key: here, and the
-    // rows inside Now's Location, which Now places by their order
-    // (launcher/Here.js's `placed`).
-    readonly property var held: daemon.revision >= 0 ? daemon.held : ({})
 
     // Here, as the daemon says it, in the shape the weather and Now read:
     // { latitude, longitude, accuracy in metres, when in seconds, place,
@@ -111,8 +104,13 @@ Singleton {
     }
 
     // How setting it by hand went, for the foot: "" until asked, then
-    // what's being found, what was, or why it wasn't.
+    // what's being found, what was, or why it wasn't; said no more once
+    // here moves another way, as when Joel finds it again.
     property string told: ""
+    onRecordChanged: {
+        if (!setting)
+            told = "";
+    }
 
     // Whether a town Joel named is still being found, so a second isn't
     // asked over it.
@@ -120,27 +118,24 @@ Singleton {
 
     // Sets where the laptop is to the town Joel names, asked of
     // whereabouts, which finds it by the web and pins it, then says it as
-    // here; nothing is run for it.
+    // here; nothing is run for it. A refusal is said as whereabouts words
+    // it for Joel, its `said` (ready-rows.md's acts), from the same
+    // vocabulary; only what's said while it's asked, and when it doesn't
+    // answer or says nothing he'd read, are worded here.
     function setByHand(words) {
         if (setting)
             return;
         setting = true;
-        told = `finding ${words}\u2026`;
+        told = phrase("finding", words);
         daemon.ask({ ask: "act", act: "set", words: words }, said => {
-            setting = false;
-            const code = said?.error?.code;
-            told = said?.done === true ? ""
-                : code === "nowhere" ? `no place is called ${words}`
-                : code === "unasked" ? `couldn't ask where ${words} is`
-                : `${words} couldn't be set`;
+            root.setting = false;
+            root.told = said?.done === true ? ""
+                : said?.error?.said ?? root.phrase("unkept", words);
         });
     }
 
-    // Takes Joel's place away, so GeoClue finds the laptop again, which
-    // whereabouts says at once.
-    function findAgain() {
-        told = "";
-        daemon.ask({ ask: "act", act: "again" }, () => {});
+    function phrase(id, words) {
+        return (Words.of("location").said?.[id] ?? id).replace("{words}", words);
     }
 
     // Puts the clock back in the zone it kept before it followed the

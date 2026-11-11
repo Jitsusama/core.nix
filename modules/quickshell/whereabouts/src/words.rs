@@ -28,13 +28,12 @@ pub const NAMES: [&str; 10] = [
 /// The acts on Location, by their ids.
 pub const ACTS: [&str; 3] = ["set", "again", "copy"];
 
-/// An act as the launcher names it, and what it asks Joel, where it asks.
+/// An act's row as the launcher names it. Its verb, and what it asks Joel,
+/// the shell reads by the act's key, as it does every served act's.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Act {
     pub name: String,
-    pub verb: String,
     pub glyph: String,
-    pub asks: Option<String>,
 }
 
 /// Location's words.
@@ -93,9 +92,7 @@ impl Words {
             let named = thing(&format!("verb:location:{id}"))?;
             let act = Act {
                 name: text(named, "name")?,
-                verb: text(named, "verb")?,
                 glyph: text(named, "glyph")?,
-                asks: named["ask"].as_str().map(str::to_owned),
             };
             words.acts.insert(id.to_owned(), act);
         }
@@ -173,9 +170,12 @@ mod tests {
             "a sentence"
         );
         assert_eq!(
-            words.act("set").asks.as_deref(),
-            Some("where are you?"),
-            "what an act asks"
+            words.act("set"),
+            Act {
+                name: "Set It by Hand".into(),
+                glyph: "location".into()
+            },
+            "an act's row"
         );
     }
 
