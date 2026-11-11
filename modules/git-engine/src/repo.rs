@@ -293,15 +293,32 @@ impl Repo {
         if let Some(answer) = self.walks.get(local, upstream) {
             return Ok(answer);
         }
-        let answer = ahead_behind(
+        let answer = match self.walks.newest_level(local) {
+            Some((before, behind)) => match self.walk(before, upstream)? {
+                // Nothing ahead of `before` means everything `local` has, it
+                // has, and nothing of `before`'s ahead of `upstream` means
+                // all of that `upstream` has: `local` is as far behind as it
+                // was, and by every commit `upstream` moved on by besides.
+                // Where a main carries old histories merged into it, a whole
+                // walk reads millions of commits each time main moves, and
+                // this reads about what it moved by.
+                (0, forward) => (0, behind + forward),
+                _ => self.walk(local, upstream)?,
+            },
+            None => self.walk(local, upstream)?,
+        };
+        self.walks.put(local, upstream, answer);
+        Ok(answer)
+    }
+
+    fn walk(&mut self, local: Oid, upstream: Oid) -> io::Result<(usize, usize)> {
+        ahead_behind(
             &self.graph,
             &mut self.known,
             &mut self.odb,
             &local,
             &upstream,
-        )?;
-        self.walks.put(local, upstream, answer);
-        Ok(answer)
+        )
     }
 
     fn action(&self) -> String {
