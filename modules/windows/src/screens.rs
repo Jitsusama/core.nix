@@ -10,8 +10,9 @@
 //! the shell's own acts need of it (`held`: its connector, how it stands
 //! and niri's whole record of it), since its settings and every act on it
 //! are the shell's until they move here, and the shell asks niri nothing
-//! of its own. The drawer's light joins it here next; until then the
-//! shell still lays its own. A change the shell makes to a screen says
+//! of its own. While a screen is looked at, the drawer of the one whose
+//! place holds the Brightness leads with the light (light.rs). A change
+//! the shell makes to a screen says
 //! nothing in niri's stream, so it asks this daemon to look again
 //! (main.rs's `look`).
 
@@ -23,6 +24,8 @@ use std::time::Duration;
 
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
+
+use crate::light::{self, Seen};
 
 /// The place the launcher shows them in.
 pub const PLACE: &str = "displays";
@@ -83,6 +86,7 @@ pub struct Words {
     scale_at: String,
     sleep: Sleep,
     told: Told,
+    pub(crate) light: light::Words,
     numbers: Numbers,
 }
 
@@ -203,6 +207,12 @@ impl Words {
                 primaries: PRIMARIES
                     .map(|colour| word("displays:primaries", &["said", colour], colour)),
             },
+            light: light::Words::read(
+                &word,
+                things
+                    .get("displays")
+                    .map_or(&Value::Null, |screens| &screens["said"]),
+            ),
             numbers: Numbers::default(),
         };
         (words, lacked.into_inner())
@@ -404,7 +414,8 @@ fn edid(facts: &Value, words: &Words) -> Vec<(String, Value)> {
 
 /// A screen's drawer, as Displays.qml laid it from niri: its connector and
 /// what it is over its name, both as written, since a connector is a name
-/// from the world (VKCF3Z, 2026-11-07); then what it runs past its row,
+/// from the world (VKCF3Z, 2026-11-07); then what moves most, its light
+/// (`lit`, light.rs's facts) where it holds it; then what it runs past its row,
 /// where it sits and what it offers and is; then what its EDID says, as
 /// desk-facts gives it (`desk`), its size from niri where that says none;
 /// and its serial last, niri's or the EDID's, since it identifies the
@@ -413,9 +424,10 @@ fn edid(facts: &Value, words: &Words) -> Vec<(String, Value)> {
 /// whole refresh, its size and its scale are its row's to say, so aren't
 /// said again, and variable refresh is its switch's, so only a screen
 /// without one says so.
-fn drawer(name: &str, output: &Value, desk: &Value, words: &Words) -> Value {
+fn drawer(name: &str, output: &Value, desk: &Value, lit: Vec<Value>, words: &Words) -> Value {
     let told = &words.told;
-    let mut facts = niris(output, words);
+    let mut facts = lit;
+    facts.extend(niris(output, words));
     let physical = |at: usize| output["physical_size"][at].as_f64().unwrap_or(0.0);
     let mut serials = vec![match &output["serial"] {
         Value::Null => String::new(),
@@ -550,24 +562,90 @@ fn described(output: &Value, words: &Words) -> String {
     )
 }
 
+/// Whether the room's light is heard on a screen: the built-in screen's
+/// lid holds the sensor, and so does the only screen there is, as in a
+/// virtual machine's.
+fn in_the_room(name: &str, screens: usize) -> bool {
+    built_in(name) || screens == 1
+}
+
+/// The screen whose place holds the Brightness: the one the backlight
+/// says it lights, else the built-in one while it's on or the only screen
+/// there is, else the first lit monitor that follows the panel, as
+/// desk-facts says by the brightness it read back from it. Only one holds
+/// it, since every screen shows the same level; none where none is on.
+fn backlit<'a>(
+    shown: &[(&'a String, &Value)],
+    desk: &BTreeMap<String, Value>,
+    lights: Option<&str>,
+) -> Option<&'a str> {
+    let on: Vec<&String> = shown
+        .iter()
+        .filter(|(_, output)| !output["logical"].is_null())
+        .map(|(name, _)| *name)
+        .collect();
+    let follows = |name: &str| {
+        desk.get(name)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|fact| {
+                fact["name"]
+                    .as_str()
+                    .is_some_and(|said| said.eq_ignore_ascii_case("brightness"))
+            })
+    };
+    on.iter()
+        .find(|name| Some(name.as_str()) == lights)
+        .or_else(|| on.iter().find(|name| in_the_room(name, shown.len())))
+        .or_else(|| on.iter().find(|name| follows(name)))
+        .map(|name| name.as_str())
+}
+
 /// A row's key in the place.
 pub fn key(id: &str) -> String {
     format!("row:{PLACE}:{id}")
+}
+
+/// Whether a watch's keys name a screen's row, as the shell's watch ahead
+/// does while a screen is selected or stepped into, so its light is read.
+#[must_use]
+pub fn looks_at(keys: Option<&[String]>) -> bool {
+    let screen = key("display:");
+    keys.into_iter()
+        .flatten()
+        .any(|key| key.starts_with(&screen))
 }
 
 /// The screens' rows, the built-in one first and the rest by connector,
 /// then Turn Every Screen Off while any is lit. `focused` is the
 /// connector of the workspace in front, said beside its screen only
 /// where more than one is lit. `desk` is what desk-facts says of each
-/// screen's EDID, by connector.
+/// screen's EDID, by connector, and `seen` the light while a screen is
+/// looked at, which the drawer of the one holding it says.
 pub fn rows(
     outputs: &BTreeMap<String, Value>,
     desk: &BTreeMap<String, Value>,
     focused: Option<&str>,
+    seen: Option<&Seen>,
     words: &Words,
 ) -> Vec<Value> {
     let mut shown: Vec<(&String, &Value)> = outputs.iter().collect();
     shown.sort_by_key(|(name, _)| (!built_in(name), name.as_str()));
+    let holds = seen.and_then(|seen| backlit(&shown, desk, seen.light.connector()));
+    let part = |id: &str| words.told.part(id);
+    let lit_by = |name: &str| match seen.filter(|_| holds == Some(name)) {
+        Some(seen) => light::facts(
+            seen,
+            &light::Screen {
+                in_the_room: in_the_room(name, shown.len()),
+                named: &part,
+                numbers: &words.numbers,
+            },
+            &words.light,
+        ),
+        None => Vec::new(),
+    };
     let lit = shown
         .iter()
         .filter(|(_, output)| standing(output) == "lit")
@@ -601,7 +679,7 @@ pub fn rows(
                 "side": side.into_iter().map(|said| json!({"said": said})).collect::<Vec<_>>(),
                 "note": note,
                 "drawer": drawer(name, output, desk.get(name.as_str()).unwrap_or(&Value::Null),
-                    words),
+                    lit_by(name), words),
                 "held": {"output": name, "standing": stands, "builtIn": built_in(name),
                     "niri": output},
             })

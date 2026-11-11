@@ -13,8 +13,9 @@
 let
   windows = pkgs.callPackage ./package.nix { };
   # The launcher's vocabulary and Screens' number settings, which Screens'
-  # ready rows are said in; none where the shell isn't imported, and then
-  # it makes no rows.
+  # ready rows are said in, and the machine daemon's socket (modules/machine),
+  # where a screen's drawer reads its light while it's looked at; none where
+  # the shell isn't imported, and then it makes no rows.
   launcher = config.jitsusama.quickshell.launcher or null;
   displays = if launcher == null then { } else launcher.providers.displays or { };
   worded = lib.optionals (launcher != null) [
@@ -27,6 +28,8 @@ let
         point = displays.point or "";
       }
     ))
+    "--machine"
+    "%t/daemons/machine.sock"
   ];
 in
 {

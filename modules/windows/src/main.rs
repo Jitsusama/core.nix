@@ -1,4 +1,4 @@
-//! windows SOCKET [--words FILE] [--numbers FILE]
+//! windows SOCKET [--words FILE] [--numbers FILE] [--machine SOCKET]
 //!
 //! niri's windows, held ready for the shell and anything else that asks,
 //! over SOCKET in the shell's daemon interface (interface.rs): each
@@ -24,16 +24,21 @@
 //! screen. Handed none, it makes no rows. Each screen's drawer says its
 //! figures in the account's number settings (`--numbers`, `{ group,
 //! point }`), or the comma and the full stop where it's handed none.
+//! Handed the machine daemon's socket too (`--machine`), it watches the
+//! screen's light there while a watch's keys name a screen's row, as the
+//! shell's watch ahead does once a screen is selected, and the drawer of
+//! the screen holding it says it (light.rs); the machine daemon reads the
+//! light each second while it's watched, so it isn't watched otherwise.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use programs::notify::Notify;
@@ -44,6 +49,7 @@ use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
 use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, placed, tells, trimmed};
+use windows::light::{Held, Seen};
 use windows::screens;
 
 /// How many of the last events' times health says.
@@ -55,6 +61,9 @@ const QUEUED: usize = 256;
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 /// How long to wait before asking niri again once it's gone.
 const NIRI_AGAIN: Duration = Duration::from_secs(2);
+/// How long to wait before asking the machine daemon again while a
+/// screen is looked at and it isn't answering.
+const MACHINE_AGAIN: Duration = Duration::from_secs(2);
 
 /// One watch a client holds.
 struct Watch {
@@ -95,6 +104,7 @@ struct Daemon {
     words: Option<screens::Words>,
     /// What desk-facts says of each screen's EDID, by connector.
     desk: BTreeMap<String, Value>,
+    light: Held,
     /// The rows as last told, so each keeps its order.
     rows: Kept,
     /// How niri's stream stands: "starting" until it first answers,
@@ -111,20 +121,23 @@ struct Shared {
     folders: Vec<PathBuf>,
     /// niri's socket, asked for its outputs when a client asks to look.
     niri: PathBuf,
+    /// Wakes the light's thread as a screen comes to be looked at.
+    looked: Condvar,
 }
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (mut named, mut words, mut numbers) = (Vec::new(), None, None);
+    let (mut named, mut words, mut numbers, mut machine) = (Vec::new(), None, None, None);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--words" => words = args.next(),
             "--numbers" => numbers = args.next(),
+            "--machine" => machine = args.next().map(PathBuf::from),
             _ => named.push(arg),
         }
     }
     let Some(socket) = named.into_iter().next() else {
-        eprintln!("usage: windows SOCKET [--words FILE] [--numbers FILE]");
+        eprintln!("usage: windows SOCKET [--words FILE] [--numbers FILE] [--machine SOCKET]");
         std::process::exit(64);
     };
     let numbers = numbered(numbers.as_deref().map(Path::new));
@@ -149,6 +162,9 @@ fn main() {
         .filter(|_| words.is_some())
         .map(|runtime| PathBuf::from(runtime).join("desk"));
     let said = desk.as_deref().map_or_else(BTreeMap::new, read_desk);
+    // The light is said only in a screen's drawer, so only where rows are
+    // made.
+    let machine = machine.filter(|_| words.is_some());
     let shared = Arc::new(Shared {
         daemon: Mutex::new(Daemon {
             held: BTreeMap::new(),
@@ -159,6 +175,7 @@ fn main() {
             outputs: BTreeMap::new(),
             words,
             desk: said,
+            light: Held::default(),
             rows: Kept::default(),
             niri: "starting",
             events: 0,
@@ -167,6 +184,7 @@ fn main() {
         }),
         folders,
         niri: niri.clone(),
+        looked: Condvar::new(),
     });
     // The entries' folders are watched before niri is heard, so no change
     // after the first reading goes unheard.
@@ -179,6 +197,10 @@ fn main() {
     if let Some(desk) = desk {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || follow_desk(&shared, &desk));
+    }
+    if let Some(machine) = machine {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || follow_light(&shared, &machine));
     }
     {
         let shared = Arc::clone(&shared);
@@ -348,13 +370,20 @@ fn refresh(daemon: &mut Daemon) {
         outputs,
         words,
         desk,
+        light,
         rows,
         ..
     } = &mut *daemon;
     let mut records = desktop.records(entries, names);
     if let Some(words) = words {
+        let held = light.light();
+        let seen = light.looking.then(|| Seen {
+            light: &held,
+            reading: light.reading,
+            now: now_ms(),
+        });
         rows.take(
-            screens::rows(outputs, desk, desktop.output(), words),
+            screens::rows(outputs, desk, desktop.output(), seen.as_ref(), words),
             Vec::new(),
         );
         records.extend(rows.all().cloned());
@@ -478,6 +507,109 @@ fn desk_changed(shared: &Shared, folder: &Path) {
     }
 }
 
+/// Whether a watch's keys name a screen's row, as the shell's watch ahead
+/// does while one is selected or stepped into.
+fn looks(watches: &[Watch]) -> bool {
+    watches
+        .iter()
+        .any(|watch| screens::looks_at(watch.keys.as_deref()))
+}
+
+/// The watches changed: where a screen has come to be looked at, the
+/// light's thread is woken and the drawer says what's held of it, not yet
+/// read; where none is any more, the drawer says no light. Asked before a
+/// new watch joins, so it isn't told a change before its whole answer.
+fn looks_changed(shared: &Shared, daemon: &mut Daemon, looking: bool) {
+    if daemon.light.look(looking) {
+        shared.looked.notify_all();
+        refresh(daemon);
+    }
+}
+
+/// Watches the screen's light on the machine daemon's socket for as long
+/// as a screen is looked at, and waits for the next look between.
+fn follow_light(shared: &Shared, socket: &Path) {
+    let mut warned = false;
+    loop {
+        let looked = shared
+            .looked
+            .wait_while(lock(&shared.daemon), |daemon| !daemon.light.looking);
+        drop(looked);
+        match UnixStream::connect(socket) {
+            Ok(stream) => {
+                warned = false;
+                watch_light(shared, stream);
+            }
+            Err(why) => {
+                if !warned {
+                    eprintln!(
+                        "<4>the machine daemon isn't answering on {}: {why}",
+                        socket.display()
+                    );
+                    warned = true;
+                }
+                std::thread::sleep(windows::light::WAITED);
+            }
+        }
+        // A look the machine daemon didn't answer, or stopped answering,
+        // says the light isn't read, and asks again in a moment.
+        let mut daemon = lock(&shared.daemon);
+        daemon.light.stream = None;
+        if daemon.light.looking {
+            daemon.light.lapsed(true);
+            refresh(&mut daemon);
+            drop(daemon);
+            std::thread::sleep(MACHINE_AGAIN);
+        }
+    }
+}
+
+/// Hears the light on one connection until it ends or nothing looks: its
+/// first second unread said as nothing, then as not read yet, and the
+/// drawer said again at the night light's sunset or sunrise, which the
+/// clock alone changes.
+fn watch_light(shared: &Shared, mut stream: UnixStream) {
+    let (Ok(reading), Ok(hangup)) = (stream.try_clone(), stream.try_clone()) else {
+        return;
+    };
+    {
+        let mut daemon = lock(&shared.daemon);
+        if !daemon.light.looking {
+            return;
+        }
+        daemon.light.stream = Some(hangup);
+    }
+    if writeln!(stream, "{}", Held::watch()).is_err() {
+        return;
+    }
+    let began = Instant::now();
+    let mut lines = BufReader::new(reading);
+    // Kept across a wait that ends mid-line, so no line is lost.
+    let mut line = String::new();
+    loop {
+        let wait = lock(&shared.daemon).light.wait(began.elapsed(), now_ms());
+        if lines.get_ref().set_read_timeout(wait).is_err() {
+            return;
+        }
+        match lines.read_line(&mut line) {
+            Ok(0) => return,
+            Ok(_) => {
+                let mut daemon = lock(&shared.daemon);
+                if daemon.light.heard(&line) {
+                    refresh(&mut daemon);
+                }
+                line.clear();
+            }
+            Err(why) if matches!(why.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                let mut daemon = lock(&shared.daemon);
+                daemon.light.lapsed(false);
+                refresh(&mut daemon);
+            }
+            Err(_) => return,
+        }
+    }
+}
+
 fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     let Ok(reading) = stream.try_clone() else {
         return;
@@ -503,9 +635,12 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             break;
         }
     }
-    lock(&shared.daemon)
+    let mut daemon = lock(&shared.daemon);
+    daemon
         .watches
         .retain(|watch| watch.connection != connection);
+    let looking = looks(&daemon.watches);
+    looks_changed(shared, &mut daemon, looking);
 }
 
 /// When a record's window was last looked at, for placing it; 0 for any
@@ -593,6 +728,8 @@ fn answer(
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            let looking = looks(&daemon.watches) || screens::looks_at(keys.as_deref());
+            looks_changed(shared, &mut daemon, looking);
             daemon.watches.push(Watch {
                 connection,
                 id: id.clone(),
@@ -620,6 +757,8 @@ fn answer(
             daemon
                 .watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            let looking = looks(&daemon.watches);
+            looks_changed(shared, &mut daemon, looking);
             json!({"id": id, "unwatched": true})
         }
         Ask::Health { id } => {

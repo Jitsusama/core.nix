@@ -9,7 +9,19 @@
         "off": "off",
         "focused": "focused",
         "hubOn": "hub on",
-        "scaleAt": "scale {scale}"
+        "scaleAt": "scale {scale}",
+        "steps": "{now} of {most} steps",
+        "stepping-linear": "linear",
+        "stepping-non-linear": "non-linear",
+        "driven-firmware": "the firmware",
+        "driven-platform": "a platform driver",
+        "driven-raw": "the graphics chip",
+        "perCount": "{n} lx",
+        "the-room": "the room",
+        "on-its-way": "on its way to {share}",
+        "no-light": "no light heard",
+        "at": "{share} at {lux}",
+        "unread": "not read yet"
       }
     },
     { "id": "displays:built-in", "name": "Built-in Screen" },
@@ -68,6 +80,29 @@
     { "id": "displays:model", "name": "Model" },
     { "id": "displays:made", "name": "Made" },
     { "id": "displays:input", "name": "Input" },
-    { "id": "displays:edid", "name": "EDID" }
+    { "id": "displays:edid", "name": "EDID" },
+    { "id": "displays:brightness", "name": "Brightness" },
+    {
+      "id": "displays:warmth",
+      "name": "Warmth",
+      "said": {
+        "until": "night light until {time}",
+        "from": "night light from {time}",
+        "waits": "night light waits for where you are",
+        "following": "following the room",
+        "own": "the screen's own white"
+      }
+    },
+    { "id": "displays:room", "name": "Room Light" },
+    { "id": "displays:reads", "name": "Reads" },
+    { "id": "displays:stepping", "name": "Stepping" },
+    { "id": "displays:driven-by", "name": "Driven By" },
+    { "id": "displays:raw", "name": "Raw" },
+    { "id": "displays:per-count", "name": "Per Count" },
+    { "id": "displays:offset", "name": "Offset" },
+    { "id": "displays:follows", "name": "Follows" },
+    { "id": "displays:curve", "name": "Curve" },
+    { "id": "displays:device", "name": "Device" },
+    { "id": "displays:sensor", "name": "Sensor" }
   ]
 }
