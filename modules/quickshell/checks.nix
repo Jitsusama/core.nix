@@ -287,6 +287,105 @@ let
         ]
       );
     };
+
+  # Now itself in Quickshell, offscreen, `test` its shell.qml, with the
+  # margin's pieces, the agents' waiting list, the weather and the calendar
+  # stood in, and Location.qml's own, reading whereabouts over its socket.
+  # `before` readies the home a case needs, before the shell starts.
+  nowShown =
+    {
+      name,
+      test,
+      before ? "",
+    }:
+    let
+      facts = singleton "Facts.qml" ''
+        property var all: []
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        property var items: []
+        property var now: []
+        property var later: []
+        property var foremost: null
+        function titled(each) { return each.title; }
+        function identity(each) { return each.title; }
+        function questOf(each) { return ""; }
+        function windowOf(each) { return null; }
+        function settle(each, how) {}
+        function go(each) {}
+        property var asked: []
+        property var settled: ({})
+        function session(each) { return null; }
+        function watched(each) { return true; }
+        function waitsFor(each) { return null; }
+      '';
+      # Where an item is done names its session, and For You lists
+      # the sessions wanting Joel and those to reopen.
+      sessions = ./tests/stand-ins/now-sessions.qml;
+      # A look For You opens is opened through niri, which nothing here does.
+      niri = singleton "Niri.qml" ''
+        function spawn(command) {}
+      '';
+      # For You's Desktop row holds the notices unread, as their own rows
+      # say them, and For You counts a critical one among what waits while
+      # no card says it.
+      notices = ./tests/stand-ins/now-notices.qml;
+      whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
+    in
+    pkgs.runCommandLocal name { } ''
+      mkdir launcher pieces
+      cp ${./ForYouHolds.qml} ForYouHolds.qml
+      cp ${./pieces/Holding.js} pieces/Holding.js
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./Marks.js} Marks.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Now.qml} launcher/Now.qml
+      cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
+      cp ${./launcher/Notice.js} launcher/Notice.js
+      cp ${./NoticeBody.js} NoticeBody.js
+      cp ${./launcher/NeedsYou.js} launcher/NeedsYou.js
+      cp ${./launcher/Moment.js} launcher/Moment.js
+      cp ${./launcher/NowGroups.js} launcher/NowGroups.js
+      cp ${./launcher/Showing.js} launcher/Showing.js
+      cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/ForYou.js} launcher/ForYou.js
+      cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
+      cp ${./launcher/Lately.js} launcher/Lately.js
+      cp ${./launcher/PlaceRow.js} launcher/PlaceRow.js
+      cp ${./launcher/Ago.js} launcher/Ago.js
+      cp ${./launcher/Here.js} launcher/Here.js
+      cp ${./When.js} When.js
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${test} shell.qml
+      cp ${facts} Facts.qml
+      cp ${waiting} WaitingOnYou.qml
+      cp ${sessions} Sessions.qml
+      cp ${niri} Niri.qml
+      cp ${notices} Notices.qml
+      cp ${./Location.qml} Location.qml
+      cp ${./Daemon.qml} Daemon.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir -p $XDG_RUNTIME_DIR/whereabouts root/etc
+      ln -s /etc/zoneinfo/America/Halifax root/etc/localtime
+      echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
+      '"when":1790000000,"place":"Kelpwater, Westmark","zone":"America/Toronto",'\
+      '"country":"Canada","source":"wifi"}' \
+        > $XDG_RUNTIME_DIR/whereabouts/here.json
+      ${lib.getExe whereabouts} $XDG_RUNTIME_DIR/daemons/location.sock root \
+        $XDG_RUNTIME_DIR/whereabouts/here.json $TMPDIR/pin.json $TMPDIR/moved.json \
+        --words ${./launcher/words.json} &
+      export FONTCONFIG_FILE=${noFonts}
+      ${before}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
 in
 # The shell runs only on Linux, so a Mac has none of its checks: most build
 # Quickshell or a program only Linux has, and the rest read a Linux machine,
@@ -2186,94 +2285,22 @@ onLinux {
   # kept while its notice is the same. Lately's rows are kept as well, so
   # a notice arriving makes only Desktop's row again, and a session's move
   # that leaves what For You reads of it the same makes none.
-  the-launcher-shows-the-moment-in-now =
-    let
-      facts = singleton "Facts.qml" ''
-        property var all: []
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        property var items: []
-        property var now: []
-        property var later: []
-        property var foremost: null
-        function titled(each) { return each.title; }
-        function identity(each) { return each.title; }
-        function questOf(each) { return ""; }
-        function windowOf(each) { return null; }
-        function settle(each, how) {}
-        function go(each) {}
-        property var asked: []
-        property var settled: ({})
-        function session(each) { return null; }
-        function watched(each) { return true; }
-        function waitsFor(each) { return null; }
-      '';
-      # Where an item is done names its session, and For You lists
-      # the sessions wanting Joel and those to reopen.
-      sessions = ./tests/stand-ins/now-sessions.qml;
-      # A look For You opens is opened through niri, which nothing here does.
-      niri = singleton "Niri.qml" ''
-        function spawn(command) {}
-      '';
-      # For You's Desktop row holds the notices unread, as their own rows
-      # say them, and For You counts a critical one among what waits while
-      # no card says it.
-      notices = ./tests/stand-ins/now-notices.qml;
-      whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
-    in
-    pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
-      mkdir launcher pieces
-      cp ${./ForYouHolds.qml} ForYouHolds.qml
-      cp ${./pieces/Holding.js} pieces/Holding.js
-      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${./Fuzzy.js} Fuzzy.js
-      cp ${./Marks.js} Marks.js
-      cp ${./launcher/Provider.qml} launcher/Provider.qml
-      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${./launcher/Asking.js} launcher/Asking.js
-      cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${./launcher/Now.qml} launcher/Now.qml
-      cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
-      cp ${./launcher/Notice.js} launcher/Notice.js
-      cp ${./NoticeBody.js} NoticeBody.js
-      cp ${./launcher/NeedsYou.js} launcher/NeedsYou.js
-      cp ${./launcher/Moment.js} launcher/Moment.js
-      cp ${./launcher/NowGroups.js} launcher/NowGroups.js
-      cp ${./launcher/Showing.js} launcher/Showing.js
-      cp ${./launcher/Order.js} launcher/Order.js
-      cp ${./launcher/ForYou.js} launcher/ForYou.js
-      cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
-      cp ${./launcher/Lately.js} launcher/Lately.js
-      cp ${./launcher/PlaceRow.js} launcher/PlaceRow.js
-      cp ${./launcher/Ago.js} launcher/Ago.js
-      cp ${./launcher/Here.js} launcher/Here.js
-      cp ${./When.js} When.js
-      cp ${./Words.qml} Words.qml
-      cp ${./launcher/words.json} launcher/words.json
-      cp ${../../tests/now-moment.qml} shell.qml
-      cp ${facts} Facts.qml
-      cp ${waiting} WaitingOnYou.qml
-      cp ${sessions} Sessions.qml
-      cp ${niri} Niri.qml
-      cp ${notices} Notices.qml
-      cp ${./Location.qml} Location.qml
-      cp ${./Daemon.qml} Daemon.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR
-      mkdir -p $XDG_RUNTIME_DIR/whereabouts root/etc
-      ln -s /etc/zoneinfo/America/Halifax root/etc/localtime
-      echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
-      '"when":1790000000,"place":"Kelpwater, Westmark","zone":"America/Toronto",'\
-      '"country":"Canada","source":"wifi"}' \
-        > $XDG_RUNTIME_DIR/whereabouts/here.json
-      ${lib.getExe whereabouts} $XDG_RUNTIME_DIR/daemons/location.sock root \
-        $XDG_RUNTIME_DIR/whereabouts/here.json $TMPDIR/pin.json $TMPDIR/moved.json \
-        --words ${./launcher/words.json} &
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
-      touch $out
+  the-launcher-shows-the-moment-in-now = nowShown {
+    name = "the-launcher-shows-the-moment-in-now";
+    test = ../../tests/now-moment.qml;
+  };
+
+  # A look Joel acts on whose file can't be written, its folder a file
+  # here, is put back as it read and said in the journal, rather than shown
+  # done until it comes back at the next read (tests/now-look-unwritten.qml).
+  the-launcher-puts-back-a-look-it-couldnt-write = nowShown {
+    name = "the-launcher-puts-back-a-look-it-couldnt-write";
+    test = ../../tests/now-look-unwritten.qml;
+    before = ''
+      mkdir -p $HOME/.local/state/pi/agentic-harness.pi
+      touch $HOME/.local/state/pi/agentic-harness.pi/looks
     '';
+  };
 
   # The launcher's weather answers now, its parts and the rain by the hour
   # from one forecast, and the rain's own words answer the next rain
