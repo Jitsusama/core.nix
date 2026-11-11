@@ -390,15 +390,18 @@ def test_a_kept_opening_tells_only_its_own_rows_where_they_stand(shell: Shell) -
 
 
 def test_a_kept_opening_says_it_is_open_from_its_first_frame(shell: Shell) -> None:
-    """A kept opening's mark reads open from its first frame, before it's filled in.
+    """A kept opening's mark reads open from its first frame, written without holding it.
 
     The mark said open only at the fill, which waits for niri to present the first frame or
     half a second, so for that long a switch waiting on it read closed with the card on the
-    screen and could restart the shell under it (Y2YBTS, 2026-11-11).
+    screen and could restart the shell under it (Y2YBTS, 2026-11-11). Written blocking at the
+    first frame, it held the fill 3 to 121 ms on a loaded builder instead.
     """
     opening = opened_from_kept(shell)
     marked = cast("int", opening.get("marked", -1))
     assert 0 <= marked <= cast("int", opening["took"]), f"not marked open by its frame: {opening}"
+    blocked = cast("int", opening.get("blocked", -1))
+    assert blocked == 0, f"the opening waited on {blocked} writes of its mark: {opening}"
 
 
 def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:

@@ -7783,15 +7783,19 @@ Scope {
         id: openMark
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/quickshell-launcher`
         printErrors: false
-        // A word into memory, so it's said by the time the shell says it
-        // opened or closed.
-        blockWrites: true
         Component.onCompleted: root.markOpen(root.open)
+        onSaved: root.markWritten()
+        onSaveFailed: root.markWritten()
     }
     // What the mark says now, so each word is written once as it changes,
     // and when it last said open, on the clock keys are timed by.
     property string markSays: ""
     property real markedOpenAt: -1
+    // The word a write off the shell's thread is still putting down, or
+    // none, and how many writes have held the shell while they were done,
+    // for the check that an opening makes none.
+    property string markWriting: ""
+    property int markBlocked: 0
     function markOpen(shown) {
         const word = shown ? "open" : "closed";
         if (word === markSays)
@@ -7799,7 +7803,28 @@ Scope {
         markSays = word;
         if (shown)
             markedOpenAt = KeyTimes.now();
-        openMark.setText(`${word}\n`);
+        if (markWriting === "")
+            markWrite();
+    }
+    // Open is written off the shell's thread, since written blocking it
+    // held a kept opening's fill 3 to 121 ms on a loaded builder (ZINAWZ,
+    // 2026-11-11), and a switch reading it a moment late only waits.
+    // Closed blocks, so it's said by the time the shell says it closed. A
+    // word wanted while another is still being written follows once that
+    // one is saved, so the last said is always the last written.
+    function markWrite() {
+        const blocking = markSays !== "open";
+        openMark.blockWrites = blocking;
+        markWriting = blocking ? "" : markSays;
+        if (blocking)
+            markBlocked += 1;
+        openMark.setText(`${markSays}\n`);
+    }
+    function markWritten() {
+        const written = markWriting;
+        markWriting = "";
+        if (written !== "" && written !== markSays)
+            markWrite();
     }
 
     Connections {
@@ -8087,7 +8112,8 @@ Scope {
     property var openAskedRedone: ({})
     property var openFirstRedone: null
     function redone() {
-        return { measured: prompt.crumbsMade + prompt.stepsMade, toldEarly: rowsToldEarly };
+        return { measured: prompt.crumbsMade + prompt.stepsMade, toldEarly: rowsToldEarly,
+            blocked: markBlocked };
     }
     property real openBegun: -1
     function askDone() {
@@ -8262,9 +8288,11 @@ Scope {
         // Asked once opening, as the card's size follows what it shows.
         openSizedAtAsk = drawnAsAsked();
         keysHeld = false;
-        // The mark says open once its first frame is drawn (openShown):
-        // written here, its blocking write held that frame 3 to 8 ms, once
-        // 54 (ZINAWZ, 2026-11-11).
+        // Said open from the ask, written off the shell's thread, so a
+        // switch waiting on the mark never restarts the shell under the
+        // card, which is on the screen before it's filled in (Y2YBTS,
+        // 2026-11-11).
+        markOpen(true);
         prompt.take();
         if (openAsked >= 0) {
             openWorked = KeyTimes.now() - openAsked;
@@ -8322,11 +8350,6 @@ Scope {
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
             openFirstRedone = redone();
-            // On the screen from this frame, though it's filled in only once
-            // niri presents it or half a second on (fillUnpresented), so a
-            // switch waiting on the mark never restarts the shell under it
-            // (Y2YBTS, 2026-11-11).
-            markOpen(true);
         }
         if (openFramesSized < (openSizedAtAsk ? 1 : 2) && openFramesWaited < 20) {
             afterFrame(openShown);
@@ -8632,6 +8655,7 @@ Scope {
         const redoneBy = openFirstRedone ?? redone();
         const measured = redoneBy.measured - (openAskedRedone.measured ?? 0);
         const toldEarly = redoneBy.toldEarly - (openAskedRedone.toldEarly ?? 0);
+        const blocked = redone().blocked - (openAskedRedone.blocked ?? 0);
         openFirstRedone = null;
         // How long after the ask the mark said open, or -1 while it hasn't.
         const marked = markSays === "open" && markedOpenAt >= asked
@@ -8639,7 +8663,7 @@ Scope {
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows, weighings,
-            marked, measured, toldEarly, made: most, verbs: kept ? 0 : openVerbsWeighed, first,
+            marked, measured, toldEarly, blocked, made: most, verbs: kept ? 0 : openVerbsWeighed, first,
             kept, felt,
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
             into: openChord };
