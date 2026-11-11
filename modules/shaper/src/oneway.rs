@@ -326,7 +326,14 @@ impl Way {
     /// data waits, so a plateau gone stale either way is soon set right.
     pub fn from_learned(learned: Learned) -> Way {
         let mut way = Way::new(learned.base);
-        if let Some(plateau) = learned.plateau {
+        // A plateau under half the base would hold the stay where the
+        // guard lets go of it a minute in, and a stay shorter than that,
+        // as a proof's are, saves it again: proof 7 on 11 November left
+        // 2,620 on a base of 11,148. So a start lets go of it at once.
+        let plateau = learned
+            .plateau
+            .filter(|&plateau| learned.base.is_none_or(|base| plateau >= base * 0.5));
+        if let Some(plateau) = plateau {
             way.plateau = Some(plateau);
             way.rate = way.rate.min((plateau * HOLD).max(LEAST_KBIT));
         }
@@ -1467,6 +1474,21 @@ mod tests {
         assert!(early.down < Some(10_000), "cut to the least: {early:?}");
         let limits = run(&mut c, 29.0, 30.2, queued(40.0, 150_000.0));
         assert_eq!(limits.down, Some(200_000));
+    }
+
+    #[test]
+    fn a_start_lets_go_of_a_plateau_under_half_its_base() {
+        let way = Way::from_learned(Learned {
+            base: Some(11_148.0),
+            plateau: Some(2_620.0),
+        });
+        assert_eq!(way.plateau, None, "kept a plateau the guard lets go of");
+        assert_eq!(way.limit(), Some(11_148));
+        let way = Way::from_learned(Learned {
+            base: Some(16_373.0),
+            plateau: Some(10_020.0),
+        });
+        assert_eq!(way.limit(), Some(9_519), "a plateau over half is kept");
     }
 
     #[test]
