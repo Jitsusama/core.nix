@@ -157,7 +157,7 @@ onLinux {
       export TEMPLATE=$HOME/default.svg TEMPLATE_KEPT=${settings.template}
       install -m 644 ${settings.template} $TEMPLATE
       export INKSCAPE=${inkscape} PASTE=${paste} RECENT_FILES=${recent-files}
-      ${pkgs.bash}/bin/bash ${./tests/drawings-lately.sh} ${../../tests/inkscape-recent.xbel} \
+      ${pkgs.bash}/bin/bash ${./tests/drawings-lately.sh} ${./tests/inkscape-recent.xbel} \
         ${recent-files}
       # The programs daemon runs the list programs share, given the source
       # shell.qml's Applications is, as recents.nix gives it, and Inkscape's
