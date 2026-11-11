@@ -18,15 +18,20 @@
 //! - [`words`]: the launcher's vocabulary, which rows are said in.
 //! - [`sender`]: who sent a notice, as its row and card sign it.
 //! - [`row`]: each notice's rows, in the launcher's one form.
+//! - [`fuzzy`]: matching what's typed as the launcher matches it, so a
+//!   search the daemon answers ranks as the launcher's own would.
+//! - [`search`]: the launcher's search of every notice, answered here.
 
 pub mod body;
 pub mod bus;
 pub mod daemon;
+pub mod fuzzy;
 pub mod held;
 pub mod judged;
 pub mod notice;
 pub mod picture;
 pub mod row;
+pub mod search;
 pub mod sender;
 pub mod store;
 pub mod words;

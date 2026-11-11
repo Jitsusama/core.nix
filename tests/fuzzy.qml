@@ -8,6 +8,7 @@
 // held to, each scored and marked as it says.
 import QtQuick
 import "Fuzzy.js" as Fuzzy
+import "scores.js" as Scores
 
 QtObject {
     readonly property var names: [
@@ -256,6 +257,16 @@ QtObject {
         if (Fuzzy.match(once, Fuzzy.words("open term"), false).score
             !== Fuzzy.match(Fuzzy.prepare("Open a terminal"), Fuzzy.words("open term"), false).score)
             failures.push("a text kept ready matched otherwise than one made afresh");
+
+        // Each shared case scores as the notices daemon's Rust is held to
+        // score it too (modules/quickshell/fuzzy-scores.json), so a search
+        // it answers ranks as one here would.
+        for (const one of Scores.said.cases) {
+            const score = Fuzzy.match(Fuzzy.prepare(one.text), one.typed, false).score;
+            if (score !== one.score)
+                failures.push(`"${one.typed}" scored ${score} in ${quoted(one.text)}, `
+                    + `not the ${one.score} the daemon is held to`);
+        }
 
         // How long a query takes, against the least any search could: one
         // look for its first word in each thing. A machine busy with other

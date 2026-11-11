@@ -6,6 +6,7 @@
 # client every daemon's tests share (../daemon-client), so the source is
 # cut from the modules folder holding them all, and built from this one.
 # Its tests read the launcher's words.json, which its rows are said in,
+# and fuzzy-scores.json, which its matching scores as the launcher's does,
 # and start a session bus of their own, so dbus-daemon is there.
 {
   dbus,
@@ -31,6 +32,7 @@ rustPlatform.buildRustPackage rec {
       ../daemon-serve/src
       ../programs/Cargo.toml
       ../programs/src
+      ../quickshell/fuzzy-scores.json
       ../quickshell/launcher/words.json
       ../ready-rows/Cargo.toml
       ../ready-rows/src
