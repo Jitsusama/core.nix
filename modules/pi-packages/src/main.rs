@@ -7,18 +7,25 @@
 //!                                      swapping at most once an hour unless
 //!                                      told --now
 //!   pi-packages sweep --config FILE    remove the versions no pi runs
-//!   pi-packages status --config FILE   where each package's current is
+//!   pi-packages status --config FILE   where each package's current is,
+//!                                      and any hold
+//!   pi-packages hold --config FILE [--for 90m|2h] WHY...
+//!                                      swap nothing, however an update
+//!                                      runs, until released or for a time
+//!   pi-packages release --config FILE  end the hold
 
 use std::path::Path;
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime};
 
 use pi_packages::config::Config;
+use pi_packages::hold::{self, Hold};
 use pi_packages::run::{self, Done, Pace};
 use pi_packages::version::Place;
 
-const USAGE: &str =
-    "usage: pi-packages update --config FILE [--now] | sweep --config FILE | status --config FILE";
+const USAGE: &str = "usage: pi-packages update --config FILE [--now] | sweep --config FILE | \
+                     status --config FILE | hold --config FILE [--for 90m|2h] WHY... | \
+                     release --config FILE";
 
 /// Characters of a commit worth showing.
 const SHORT: usize = 8;
@@ -31,6 +38,17 @@ fn main() -> ExitCode {
         ["update", "--config", file, "--now"] => update(Path::new(file), Pace::Now),
         ["sweep", "--config", file] => sweep(Path::new(file)),
         ["status", "--config", file] => status(Path::new(file)),
+        ["hold", "--config", file, "--for", length, why @ ..] if !why.is_empty() => {
+            hold::lasting(length)
+                .ok_or_else(|| format!("{length} is no length; say 90m or 2h"))
+                .and_then(|length| put_hold(Path::new(file), why, Some(length)))
+        }
+        ["hold", "--config", file, why @ ..]
+            if why.first().is_some_and(|word| *word != "--for") =>
+        {
+            put_hold(Path::new(file), why, None)
+        }
+        ["release", "--config", file] => release(Path::new(file)),
         _ => Err(USAGE.into()),
     };
     match done {
@@ -40,6 +58,36 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// How long a hold lasts, as a person reads it.
+fn how_long(now: SystemTime, hold: &Hold) -> String {
+    hold.until.map_or_else(
+        || "until released".to_owned(),
+        |until| format!("for {} more minutes", minutes_until(now, until)),
+    )
+}
+
+fn put_hold(file: &Path, why: &[&str], length: Option<Duration>) -> Result<(), String> {
+    let config = Config::read(file)?;
+    let now = SystemTime::now();
+    let hold = Hold {
+        why: why.join(" "),
+        until: length.map(|length| now + length),
+    };
+    hold::put(&config, &hold)?;
+    println!("swaps are held {}: {}", how_long(now, &hold), hold.why);
+    Ok(())
+}
+
+fn release(file: &Path) -> Result<(), String> {
+    let config = Config::read(file)?;
+    if hold::release(&config)? {
+        println!("the hold is over; the next update swaps in what waited");
+    } else {
+        println!("no hold stood");
+    }
+    Ok(())
 }
 
 fn short(commit: &str) -> &str {
@@ -82,6 +130,13 @@ fn update(file: &Path, pace: Pace) -> Result<(), String> {
                         println!("{name}: installed at {}", short(to));
                     }
                     Done::Busy => println!("{name}: another update holds it, so this one left it"),
+                    Done::OnHold { commit, hold } => println!(
+                        "{name}: {} waits, since swaps are held {}: {}; \
+                         `pi-packages release` ends the hold",
+                        short(commit),
+                        how_long(now, hold),
+                        hold.why
+                    ),
                     Done::Held { commit, until } => println!(
                         "{name}: {} waits {} more minutes, since installs swap in at most \
                          once an hour; `pi-packages update --now` swaps it in now",
@@ -139,6 +194,10 @@ fn sweep(file: &Path) -> Result<(), String> {
 
 fn status(file: &Path) -> Result<(), String> {
     let config = Config::read(file)?;
+    let now = SystemTime::now();
+    if let Some(hold) = hold::standing(&config, now) {
+        println!("swaps are held {}: {}", how_long(now, &hold), hold.why);
+    }
     for package in &config.packages {
         let place = Place::of(&config, package);
         match place.current_commit() {

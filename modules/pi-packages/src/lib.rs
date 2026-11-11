@@ -31,7 +31,8 @@
 //! when it follows. An update inside the hour builds nothing and says how
 //! long is left; the first one past it swaps in whatever merged meanwhile,
 //! every package together. `--now` swaps at once, and a package with no
-//! version yet is never held.
+//! version yet is never held. `hold` stops every swap until `release`,
+//! or for a time it is given, whichever way an update runs (hold.rs).
 //!
 //! A version `current` has left stays as it was, for the sessions still
 //! running it, until no process on the machine runs it, holds a file in it
@@ -52,6 +53,7 @@
 
 pub mod check;
 pub mod config;
+pub mod hold;
 pub mod inuse;
 pub mod loaded;
 pub mod run;

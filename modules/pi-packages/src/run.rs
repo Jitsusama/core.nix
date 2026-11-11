@@ -1,11 +1,12 @@
 //! One update of every package, each under its own lock, swapping at
-//! most once an hour.
+//! most once an hour, and never while a hold stands (hold.rs).
 
 use std::fs::{self, File, TryLockError};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use crate::config::{Config, Package};
+use crate::hold::{self, Hold};
 use crate::loaded;
 use crate::version::{self, Place};
 
@@ -29,6 +30,15 @@ pub enum Pace {
     Now,
 }
 
+/// Why an update builds nothing for a package that has a version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Wait {
+    /// The last swap was within [`SPACING`]; the next may come at this time.
+    Spacing(SystemTime),
+    /// Somebody holds swaps.
+    Hold(Hold),
+}
+
 /// What an update did for one package.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Done {
@@ -41,6 +51,9 @@ pub enum Done {
     /// The branch has moved, but the last swap was within [`SPACING`], so
     /// `current` stays and nothing is built until `until`.
     Held { commit: String, until: SystemTime },
+    /// The branch has moved, but a hold stands, so `current` stays and
+    /// nothing is built until it ends.
+    OnHold { commit: String, hold: Hold },
     /// The new commit's build failed, so `current` was left where it was.
     Failed { commit: String, why: String },
 }
@@ -61,21 +74,26 @@ pub struct Outcome {
 ///
 /// Whether the hour is up is decided once, before the first package, so
 /// every package that moved swaps in the same run, and one swapping
-/// doesn't hold the next.
+/// doesn't hold the next. A hold stands whatever the pace, `--now`
+/// included.
 #[must_use]
 pub fn update(
     config: &Config,
     now: SystemTime,
     pace: Pace,
 ) -> Vec<(Package, Result<Outcome, String>)> {
-    let held = match pace {
-        Pace::Spaced => held_until(config, now),
-        Pace::Now => None,
+    let wait = match (hold::standing(config, now), pace) {
+        (Some(hold), _) => Some(Wait::Hold(hold)),
+        (None, Pace::Spaced) => held_until(config, now).map(Wait::Spacing),
+        (None, Pace::Now) => None,
     };
     config
         .packages
         .iter()
-        .map(|package| (package.clone(), update_one(config, package, now, held)))
+        .map(|package| {
+            let outcome = update_one(config, package, now, wait.as_ref());
+            (package.clone(), outcome)
+        })
         .collect()
 }
 
@@ -105,7 +123,7 @@ fn mark_swap(config: &Config, now: SystemTime) -> Result<(), String> {
 }
 
 /// Update one package: fetch, build the branch's head when `current` is
-/// elsewhere, swap it in, and remove what nothing uses. Given `held`, a
+/// elsewhere, swap it in, and remove what nothing uses. Given a `wait`, a
 /// package that already has a version keeps it and builds nothing; one
 /// with none is installed anyway, since pi can't load it at all until it
 /// is.
@@ -118,7 +136,7 @@ pub fn update_one(
     config: &Config,
     package: &Package,
     now: SystemTime,
-    held: Option<SystemTime>,
+    wait: Option<&Wait>,
 ) -> Result<Outcome, String> {
     let place = Place::of(config, package);
     let Some(_held) = hold(&place)? else {
@@ -133,8 +151,17 @@ pub fn update_one(
     let from = place.current_commit();
     let done = if from.as_deref() == Some(commit.as_str()) {
         Done::Current { commit }
-    } else if let (Some(_), Some(until)) = (&from, held) {
-        Done::Held { commit, until }
+    } else if let (Some(_), Some(wait)) = (&from, wait) {
+        match wait {
+            Wait::Spacing(until) => Done::Held {
+                commit,
+                until: *until,
+            },
+            Wait::Hold(hold) => Done::OnHold {
+                commit,
+                hold: hold.clone(),
+            },
+        }
     } else {
         match version::build(config, package, &place, &commit, &env) {
             Ok(_) => {
