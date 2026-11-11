@@ -1049,12 +1049,11 @@ QtObject {
             "machine:uptime");
         machine("a served row copying nothing", Machine.served({ row: { name: "Using It",
             side: [{ said: "\u2026" }] } }, 0, timed).copy, "");
-        machine("a disk's warnings", Machine.warnings(["spare", "readonly", "novel"]),
-            ["spare", "read-only", "novel"]);
-        machine("a disk warning of nothing", Machine.warnings([]), []);
-        machine("the machine's disk, the biggest", Machine.biggest([{ key: "disk:sda", size_b: 1 },
-            { key: "disk:nvme0n1", size_b: 10 }]).key, "disk:nvme0n1");
-        machine("no disk", Machine.biggest([]), null);
+        // A note that's a time, as a disk's health says when its controller
+        // said it, is worded as a side's time is.
+        machine("a served row's note as a time", Machine.served({ row: { name: "Health",
+            side: [], note: { at: 5, as: "moment", said: "its controller said {when}" } }
+        }, 9, timed).note, "its controller said at 5 of 9");
         machine("the whole processor's sensor", ["Package id 0", "Tctl", "Core 3"]
             .map(label => Machine.namesWhole(label)), [true, true, false]);
         machine("a spark against its most", Machine.spark([1, 2, 4], 1), [0.25, 0.5, 1]);
@@ -1144,7 +1143,6 @@ QtObject {
         machine("bytes, each converted", [873 * 1048576, 6.4 * 1048576, 1.52e9, 873, 0, 999.7e3,
             4096].map(Machine.bytes), ["915 MB", "6.71 MB", "1.52 GB", "873 B", "0 B",
             "1.00 MB", "4.10 kB"]);
-        machine("a rate", Machine.rate(12000), "12.0 kB/s");
         // Every measure takes the one rule: three significant digits, zeros
         // kept, a carry into the next digit, grouped past three whole
         // digits, and the real minus under nothing.
@@ -1154,11 +1152,6 @@ QtObject {
         machine("three significant digits, grouped and pointed as set",
             Numbers.significant(1234.5, ".", ",") + " " + Numbers.significant(5.2, ".", ","),
             "1.230 5,20");
-        // Two rates say which is which, and none while both are still.
-        machine("rates both ways", Machine.both(12000, 0), "12.0 kB/s in \u00b7 0 B/s out");
-        machine("rates both still", Machine.both(0, 0), "none");
-        machine("a note's items, the empty given way", Machine.items(["btrfs", "", null, "dm-0"]),
-            "btrfs \u00b7 dm-0");
         machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
             .length, 5);
         machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps

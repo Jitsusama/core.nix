@@ -41,14 +41,16 @@
 // Every figure is the machine daemon's (modules/machine), held over one
 // connection to its socket (Daemon.qml), so nothing is read or spawned
 // here: the daemon reads the kernel and asks UDisks, and says each
-// record as it changes. The processor, the memory and the uptime come
-// from it as rows ready to draw, worded and in their words' order, so
-// nothing here makes them. It reads only while watched, so those are
-// watched while one of Machine's answers is shown, the disks while a
-// Disk answer or row is, and the programs using the machine, which cost
-// it the most to read, only while a Using row can be seen: the
-// processor's or the
-// memory's parts stepped into, or Using asked for alone. Its
+// record as it changes. The processor, the memory, the uptime and the
+// disk come from it as rows ready to draw, worded and in their words'
+// order, so nothing here makes them; only what a disk guard says, the
+// Space it watches and What's Filling It, is still made here, until the
+// guards' status is served as rows too. It reads only while watched, so
+// those are watched while one of Machine's answers is shown, the disk's
+// own place while a Disk answer or row is, and the programs using the
+// machine, which cost it the most to read, only while a Using row can be
+// seen: the processor's or the memory's parts stepped into, or Using
+// asked for alone. Its
 // records come at most once a second, and once more a moment after the
 // first, whose rates are since the machine started, so a rate stands for
 // now as soon as it can; each answer here is asked again as they come.
@@ -57,7 +59,6 @@
 import qs
 import Quickshell
 import QtQuick
-import "Heat.js" as Heat
 import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
 import "Placed.js" as Placed
@@ -65,7 +66,6 @@ import "../When.js" as When
 // Bytes as decimal to three digits, "12.3 GB", as what's told to a session
 // says them; it's the launcher's one such reading, kept there for networks.
 import "HomeNetwork.js" as HomeNetwork
-import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Holders.js" as Holders
 import "SessionRow.js" as SessionRow
@@ -239,126 +239,16 @@ Provider {
         return said;
     }
 
-    // How rows are drawn. A figure says something and Return closes; a leaf
-    // worth having, such as a model, copies what it says; a part holding
-    // more (Provider's holderRow) copies its value too, the right arrow
+    // How rows are drawn. A figure says something and Return closes; a part
+    // holding more (Provider's holderRow) copies its value, the right arrow
     // stepping into what it holds, and wears its thing's glyph.
     function figure(fields) {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
 
-    function leaf(fields) {
-        return copyRow(Object.assign({
-            copy: fields.side,
-            copied: fields.side,
-            hue: "machine",
-            glyph: "",
-            note: ""
-        }, fields));
-    }
-
-    // A graph a row draws (Choice.qml): a bar has one value, a strip one a
-    // member and a spark one a read, the newest last, each 0 to 1.
-    readonly property int graphed: 20
-
+    // A graph a row draws (Choice.qml): a bar has one value, 0 to 1.
     function bar(value, warn) {
         return { shape: "bar", values: [Math.max(0, Math.min(1, value))], warn: warn === true };
-    }
-
-    function spark(values, least) {
-        const drawn = Machine.spark(values.slice(-graphed), least);
-        return { shape: "spark", values: drawn, warn: false };
-    }
-
-    // Figures, written with the machine's own grouping and point.
-    function number(value, places) {
-        return Numbers.format(value, places, settings.group, settings.point);
-    }
-
-    // A measure as Machine.js writes it, with the machine's own point.
-    function pointed(said) {
-        return settings.point ? said.split(".").join(settings.point) : said;
-    }
-
-    function percent(part) {
-        return `${Math.round(part * 100)}%`;
-    }
-
-    // Bytes, memory's and a disk's alike, in decimal units to three
-    // significant digits (Machine.js's bytes).
-    function bytes(count) {
-        return pointed(Machine.bytes(count));
-    }
-
-    function rate(count) {
-        return pointed(Machine.rate(count));
-    }
-
-    // Two rates running opposite ways, each named, or none.
-    function both(inward, outward) {
-        return pointed(Machine.both(inward, outward));
-    }
-
-    // A count a second, whole once it's past ten.
-    function often(count) {
-        return `${number(count, count < 10 ? 1 : 0)}/s`;
-    }
-
-    function degrees(value) {
-        return `${number(value, 0)} \u00b0C`;
-    }
-
-    function ms(value) {
-        return `${Numbers.significant(value, settings.group, settings.point)} ms`;
-    }
-
-    // A long time, as Interfaces says one: "3 days, 2 hours".
-    function lasted(seconds) {
-        return Interfaces.lasted(seconds);
-    }
-
-    // A temperature part: the processor's or the disk's whole reading,
-    // drawn as Heat draws it, against the most it's meant to reach and
-    // warning near it (Heat.js's level). It's one figure here, since its
-    // detail, each sensor, its history and how often it's slowed, is
-    // Heat's alone.
-    function heated(id, heat, part) {
-        const said = Heat.level(heat.temperature_c, heat.high_c, heat.critical_c, part);
-        return figure({
-            name: named(id),
-            side: degrees(heat.temperature_c),
-            graph: bar(said.value, said.warn),
-            note: heat.critical_c ? `at most ${degrees(heat.critical_c)}`
-                : heat.high_c ? `at most ${degrees(heat.high_c)}` : ""
-        });
-    }
-
-    // A pressure part, from the kernel's pressure stall information: the
-    // share of the last ten seconds something waited, warning past a
-    // tenth, and a step in, the last minute's and five minutes', each with
-    // the share in which everything waited where the kernel keeps that.
-    function pressured(id, pressure, full) {
-        const some = pressure.some;
-        const warn = some.avg10_pct >= 10;
-        // Each window says which share is which, everything's giving way
-        // where it's none.
-        const shares = window => full && pressure.full
-            ? says("memory:pressure", "pair", { some: number(some[window], 0),
-                full: number(pressure.full[window], 0) })
-            : says("memory:pressure", "some", { some: number(some[window], 0) });
-        const each = (window, name) => figure({
-            name: named(`${id}-${name}`),
-            side: full && pressure.full && pressure.full[window] > 0 ? shares(window)
-                : says("memory:pressure", "some", { some: number(some[window], 0) }),
-            graph: bar(some[window] / 100, some[window] >= 10)
-        });
-        return holderRow({
-            name: named(id),
-            side: says(id, "side", { pct: number(some.avg10_pct, 0) }),
-            graph: bar(some.avg10_pct / 100, warn),
-            glyph: Words.glyph(`machine:${id.split(":")[0]}`),
-            note: says(id, "note")
-        }, () => [each("avg10_pct", "10"), each("avg60_pct", "60"), each("avg300_pct", "300")]);
     }
 
     // A thing's parts in the order its words list them (VKCF3Z, 2026-11-07:
@@ -373,24 +263,6 @@ Provider {
         return rows.map((row, at) => ({ row: row, at: at }))
             .sort((a, b) => place(a.row) - place(b.row) || a.at - b.at)
             .map(each => each.row);
-    }
-
-    // What a record's rates are measured over, as a note says it.
-    function since(record) {
-        return record.since === "boot" ? "since the machine started"
-            : record.since === "asked" ? "since you last asked" : "just now";
-    }
-
-    // The daemon's records.
-
-    // The disk records, the machine's own first.
-    function diskRecords() {
-        const held = diskWatch.revision >= 0 ? diskWatch.held : {};
-        return Object.keys(held).filter(key => key.startsWith("disk:")).map(key => held[key]);
-    }
-
-    function machineDisk() {
-        return Machine.biggest(diskRecords());
     }
 
     // The processors.
@@ -415,12 +287,20 @@ Provider {
     // the crate's wrapped form): the keys under each row's, placed as
     // they come (Placed.js), so nothing here words, weighs or sorts them.
     // Drawing them is this file's only until the launcher reads served
-    // rows itself (ReadyRows.qml); the disks' rows come next, the same
-    // way.
+    // rows itself (ReadyRows.qml). The Disk's are a place of their own
+    // (`disk`), watched only while a Disk answer or row is, since each
+    // read asks an NVMe disk its temperature.
     property var nested: ({})
+    property var diskNested: ({})
 
     function take(changed, gone) {
         nested = Placed.nested(nested, served.held, changed, gone);
+        if (shown)
+            answered();
+    }
+
+    function takeDisk(changed, gone) {
+        diskNested = Placed.nested(diskNested, diskRows.held, changed, gone);
         if (shown)
             answered();
     }
@@ -443,6 +323,11 @@ Provider {
         const top = served.revision >= 0 ? served.held[`row:machine:${id}`] ?? null : null;
         if (!top)
             return unheld(id);
+        return servedFresh(top, kind, () => servedRows(served, nested, top.key));
+    }
+
+    // A served top row as an answer, `parts` its rows a step in.
+    function servedFresh(top, kind, parts) {
         const said = Machine.served(top, Date.now(), timed);
         return fresh({
             headline: said.side,
@@ -451,44 +336,48 @@ Provider {
             title: said.name,
             about: kind,
             note: said.note
-        }, () => servedRows(top.key));
+        }, parts);
     }
 
-    // The rows served inside one, each a figure or, holding more, a step
-    // in that wears its thing's glyph.
-    function servedRows(parent) {
-        return (nested[parent] ?? []).filter(key => served.held[key]).map(key => {
-            const said = Machine.served(served.held[key], Date.now(), timed);
+    // The rows a watch serves inside one, each a figure or, holding more,
+    // a step in that wears its thing's glyph.
+    function servedRows(watch, nesting, parent) {
+        return (nesting[parent] ?? []).filter(key => watch.held[key]).map(key => {
+            const said = Machine.served(watch.held[key], Date.now(), timed);
             const fields = Object.assign({}, said, { glyph: Theme.glyph[said.glyph] ?? "" });
-            return (nested[key] ?? []).length > 0
-                ? holderRow(fields, () => servedRows(key)) : figure(fields);
+            return (nesting[key] ?? []).length > 0
+                ? holderRow(fields, () => servedRows(watch, nesting, key)) : figure(fields);
         });
     }
 
     // The disk.
 
-    // Each disk read's rates, for their sparks, the newest last: added once
-    // for each read the daemon says of now.
-    property var series: ({})
-
-    function sparked(disk) {
-        if (disk.since !== "now")
-            return;
-        const add = (name, value) => {
-            series[name] = (series[name] ?? []).concat([value]).slice(-graphed);
-        };
-        add("read", disk.read_b_per_s ?? 0);
-        add("write", disk.written_b_per_s ?? 0);
-        add("moved", (disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0));
+    // The disk guards, as the disk piece reads their status: what they
+    // say of the room and of what fills it is still this file's, until
+    // the guards' status is served as the Disk's rows too.
+    readonly property var guard: {
+        const fact = Facts.all.find(fact => fact.entry.name === "disk");
+        return fact && fact.piece && fact.piece.present ? fact.piece : null;
     }
 
+    // A guard's new word, its stopping as its heartbeat's deadline passes
+    // and what an act on a holder told are said at once while shown, as
+    // nothing the daemon serves moves with them.
     Connections {
-        target: diskWatch
+        target: provider.guard
+        ignoreUnknownSignals: true
 
-        function onHeard(changed) {
-            const own = provider.machineDisk();
-            if (own && changed.includes(own.key))
-                provider.sparked(own);
+        function onSaidChanged() {
+            if (provider.shown)
+                provider.answered();
+        }
+
+        function onSilentChanged() {
+            if (provider.shown)
+                provider.answered();
+        }
+
+        function onToldChanged() {
             if (provider.shown)
                 provider.answered();
         }
@@ -503,36 +392,29 @@ Provider {
         }
     }
 
-    // The root file system's room, from the daemon, where no guard says it.
-    function rootRoom(disk) {
-        const all = disk ? disk.file_systems ?? [] : [];
-        const root = all.find(fs => fs.mount === "/") ?? all[0] ?? null;
-        return root && root.size_b > 0 ? root : null;
-    }
-
+    // The Disk, as the daemon serves it ready, its room on / beside it;
+    // where a guard watches the disks, the room it says beside it and its
+    // Space and What's Filling It among the served parts, in their words'
+    // order, in place of the served Space.
     function disks() {
-        const fact = Facts.all.find(fact => fact.entry.name === "disk");
-        const guard = fact && fact.piece && fact.piece.present ? fact.piece : null;
-        const disk = machineDisk();
-        const room = guard === null ? rootRoom(disk) : null;
-        const worst = guard ? guard.worst : null;
-        const watching = worst === null ? "nothing watched"
-            : `${guard.shown(worst.free)} free on ${worst.path}`;
-        const headline = guard ? watching
-            : room ? `${bytes(room.available_b)} free on ${room.mount}`
-            : disk ? rate((disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0)) : "";
-        if (headline === "")
-            return unheld("disks");
+        const top = diskRows.revision >= 0 ? diskRows.held["row:disk:disk"] ?? null : null;
+        const served = () => top ? servedRows(diskRows, diskNested, top.key) : [];
+        const guard = provider.guard;
+        if (guard === null)
+            return top ? servedFresh(top, kinds.disks, served) : unheld("disks");
+        const worst = guard.worst;
+        const watched = guard.disks.length > 0;
         return fresh({
-            headline: headline,
-            graph: worst ? bar(1 - worst.free / worst.total, worst.band !== "healthy")
-                : room ? bar(1 - room.available_b / room.size_b) : undefined,
+            headline: worst === null ? says("disk", "unwatched")
+                : says("disk", "head", { free: guard.shown(worst.free), mount: worst.path }),
+            graph: worst ? bar(1 - worst.free / worst.total, worst.band !== "healthy") : undefined,
             glyph: Words.glyph(kinds.disks),
             title: Words.name(kinds.disks),
             about: kinds.disks,
             // The guard's own words are each disk's, in its drawer (disked).
-            note: guard ? guardSays(guard, worst) : disk ? since(disk) : ""
-        }, () => diskParts(guard, disk, room));
+            note: guardSays(guard, worst)
+        }, () => ordered(kinds.disks, guardParts(guard).concat(served()
+            .filter(row => !watched || row.key !== "machine:disk:space"))));
     }
 
     // How the guard stands, in a phrase: the band the worst file system is
@@ -729,273 +611,40 @@ Provider {
         }, fields));
     }
 
-    function diskParts(guard, disk, room) {
+    // What the guards say among the Disk's parts: the room on each disk
+    // they watch, the least first, and what's filling them. The served
+    // parts say the rest. A stopgap until the guards' status is served as
+    // the Disk's rows, with keep, unkeep and clear as its acts.
+    function guardParts(guard) {
+        if (guard.disks.length === 0)
+            return [];
         const chip = Words.glyph(kinds.disks);
-        const rows = [];
-        if (guard && guard.disks.length > 0) {
-            // Disks are amounts: the worst band first, as the disk piece
-            // judges it, so the first is the headline's, and within a band
-            // the least room, then A to Z.
-            const watched = Order.sorted(guard.disks, Order.amounts({
-                worse: (a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free,
-                name: one => one.path
-            }));
-            const each = one => disked(guard, one, {
-                name: one.path,
-                graph: bar(1 - one.free / one.total, one.band !== "healthy")
-            });
-            const worst = watched[0];
-            const space = {
-                name: named("disk:space"),
-                graph: bar(1 - worst.free / worst.total, worst.band !== "healthy"),
-                note: watched.length > 1 ? `on ${worst.path}, the least of ${watched.length}`
-                    : `on ${worst.path}`
-            };
-            rows.push(watched.length > 1
-                ? holderRow(Object.assign(space, {
-                    glyph: chip,
-                    side: `${guard.shown(worst.free)} free`
-                }), () => watched.map(each))
-                : disked(guard, worst, space));
-            if (guard.holders.length > 0)
-                rows.push(filling(guard, chip));
-        } else if (room) {
-            rows.push(figure({
-                name: named("disk:space"),
-                side: `${bytes(room.available_b)} free`,
-                graph: bar(1 - room.available_b / room.size_b),
-                note: `on ${room.mount}, of ${bytes(room.size_b)}`
-            }));
-        }
-        if (!disk)
-            return rows;
-        const when = since(disk);
-        const floor = 1e6;
-        // Each kind's requests and those merged into others, each a
-        // second, a part at zero giving way (VKCF3Z, 2026-11-07).
-        const count = n => number(n, n < 10 ? 1 : 0);
-        const iops = (requests, merged) => Machine.items([requests > 0
-            ? says("disk:speed", "iops", { n: count(requests) }) : "",
-            merged > 0 ? says("disk:speed", "merged", { n: count(merged) }) : ""]);
-        rows.push(holderRow({
-            name: named("disk:speed"),
-            side: rate((disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0)),
-            graph: spark(series.moved ?? [], floor),
-            glyph: chip,
-            note: when
-        }, () => [figure({
-            name: named("disk:reading"),
-            side: rate(disk.read_b_per_s ?? 0),
-            graph: spark(series.read ?? [], floor),
-            note: iops(disk.reads_per_s, disk.read_merges_per_s)
-        }), figure({
-            name: named("disk:writing"),
-            side: rate(disk.written_b_per_s ?? 0),
-            graph: spark(series.write ?? [], floor),
-            note: iops(disk.writes_per_s, disk.write_merges_per_s)
-        }), figure({
-            name: named("disk:discarding"),
-            side: rate(disk.discarded_b_per_s ?? 0),
-            note: iops(disk.discards_per_s, 0)
-        }), figure({
-            name: named("disk:flushing"),
-            side: often(disk.flushes_per_s ?? 0),
-            note: says("disk:flushing", "note")
-        })]));
-        if (typeof disk.busy_ratio === "number")
-            rows.push(figure({
-                name: named("disk:busy"),
-                side: percent(disk.busy_ratio),
-                graph: bar(disk.busy_ratio),
-                note: when
-            }));
-        const latencies = [["reading", disk.read_latency_ms], ["writing", disk.write_latency_ms],
-            ["discarding", disk.discard_latency_ms], ["flushing", disk.flush_latency_ms]];
-        rows.push(holderRow({
-            name: named("disk:latency"),
-            side: typeof disk.latency_ms === "number" ? ms(disk.latency_ms) : "idle",
-            glyph: chip,
-            note: typeof disk.latency_ms === "number" ? "each request, on average" : ""
-        }, () => latencies.map(([id, value]) => figure({
-            name: named(`disk:latency-${id}`),
-            side: typeof value === "number" ? ms(value) : "idle",
-            note: typeof value === "number" ? when : says("disk:latency", "idle")
-        }))));
-        if (typeof disk.in_flight === "number")
-            rows.push(figure({
-                name: named("disk:queue"),
-                side: `${disk.in_flight}`,
-                note: Machine.items([disk.queued > 0 ? says("disk:queue", "queued", {
-                    queued: Numbers.significant(disk.queued, settings.group,
-                        settings.point) }) : "",
-                    disk.queue_depth > 0 ? says("disk:queue", "depth", {
-                        depth: disk.queue_depth }) : ""])
-            }));
-        if (disk.pressure?.some)
-            rows.push(pressured("disk:pressure", disk.pressure, true));
-        const sensors = disk.temperatures ?? [];
-        const composite = sensors.find(sensor => sensor.label === "Composite") ?? sensors[0];
-        if (composite && typeof composite.temperature_c === "number")
-            rows.push(heated("disk:temperature", composite, "disk"));
-        const smart = disk.health;
-        if (smart && typeof smart.percent_used === "number")
-            rows.push(healthRow(smart, chip));
-        // Each file system on it, by where it's mounted, with its room
-        // and its files, as the kernel says them.
-        const systems = disk.file_systems ?? [];
-        if (systems.length > 0)
-            rows.push(holderRow({
-                name: named("disk:file-systems"),
-                side: `${systems.length}`,
-                glyph: chip,
-                note: Machine.items(systems.map(fs => fs.mount))
-            }, () => systems.map(fs => figure({
-                key: `machine:disk:file-system:${fs.mount}`,
-                name: fs.mount,
-                side: fs.size_b > 0 ? says("disk:file-systems", "room", {
-                    free: bytes(fs.available_b), size: bytes(fs.size_b) }) : fs.type,
-                graph: fs.size_b > 0 ? bar(1 - fs.available_b / fs.size_b) : undefined,
-                note: Machine.items([fs.type, fs.free_b > fs.available_b
-                    ? says("disk:file-systems", "reserved", {
-                        reserved: bytes(fs.free_b - fs.available_b) }) : "",
-                    fs.files > 0 ? says("disk:file-systems", "files", {
-                        free: number(fs.files_free, 0), files: number(fs.files, 0) }) : "",
-                    fs.device])
-            }))));
-        if (disk.model)
-            rows.push(holderRow({
-                name: named("disk:model"),
-                side: disk.model,
-                copy: disk.model,
-                glyph: chip
-            }, () => diskModelParts(disk)));
-        return ordered(kinds.disks, rows);
-    }
-
-    // The disk's health, as its controller tells UDisks.
-    function healthRow(smart, chip) {
-        const worn = smart.percent_used / 100;
-        const warned = Machine.warnings(smart.critical_warning);
-        const failing = smart.avail_spare < smart.spare_thresh || smart.media_errors > 0
-            || warned.length > 0;
-        return holderRow({
-            name: named("disk:health"),
-            side: `${smart.percent_used}% worn`,
-            graph: bar(worn, failing),
-            glyph: chip,
-            note: failing ? "its controller says it's failing"
-                : typeof smart.updated_s === "number" ? says("disk:health", "asked", {
-                    at: Qt.formatTime(new Date(smart.updated_s * 1000), "HH:mm") })
-                : "as its controller says"
-        }, () => {
-            const rows = [figure({
-                name: named("disk:spare"),
-                side: `${smart.avail_spare}%`,
-                graph: bar(smart.avail_spare / 100, smart.avail_spare < smart.spare_thresh),
-                note: `it warns below ${smart.spare_thresh}%`
-            }), figure({
-                name: named("disk:written"),
-                side: bytes(smart.total_data_written)
-            }), figure({
-                name: named("disk:read"),
-                side: bytes(smart.total_data_read)
-            })];
-            if (typeof smart.power_on_hours === "number")
-                rows.push(figure({
-                    name: named("disk:powered"),
-                    side: lasted(smart.power_on_hours * 3600),
-                    note: says("disk:powered", "note", { cycles: smart.power_cycles ?? 0 })
-                }));
-            if (typeof smart.ctrl_busy_time === "number")
-                rows.push(figure({
-                    name: named("disk:busy-for"),
-                    side: lasted(smart.ctrl_busy_time * 60),
-                    note: says("disk:busy-for", "note")
-                }));
-            rows.push(figure({
-                name: named("disk:errors"),
-                side: `${smart.media_errors}`,
-                note: "the disk couldn't read or write"
-            }));
-            if (typeof smart.num_err_log_entries === "number")
-                rows.push(figure({
-                    name: named("disk:error-log"),
-                    side: `${smart.num_err_log_entries}`,
-                    note: says("disk:error-log", "note")
-                }));
-            rows.push(figure({
-                name: named("disk:shutdowns"),
-                side: `${smart.unsafe_shutdowns}`,
-                note: `of ${smart.power_cycles} times it was powered`
-            }));
-            if (typeof smart.warning_temp_time === "number")
-                rows.push(figure({
-                    name: named("disk:too-hot"),
-                    side: lasted((smart.warning_temp_time + (smart.critical_temp_time ?? 0)) * 60),
-                    // Its thresholds are in kelvin, as NVMe counts them.
-                    note: Machine.items([smart.wctemp ? says("disk:too-hot", "warning", {
-                        warning: degrees(smart.wctemp - 273.15) }) : "",
-                        smart.cctemp && smart.critical_temp_time > 0
-                            ? says("disk:too-hot", "critical", {
-                                critical: degrees(smart.cctemp - 273.15),
-                                lasted: lasted(smart.critical_temp_time * 60) }) : ""])
-                }));
-            rows.push(figure({
-                name: named("disk:warnings"),
-                side: warned.length > 0
-                    ? Machine.items(warned.map(id => says("disk:warnings", id) || id))
-                    : says("disk:warnings", "none"),
-                note: says("disk:warnings", "note")
-            }));
-            return rows;
+        // Disks are amounts: the worst band first, as the disk piece
+        // judges it, so the first is the headline's, and within a band
+        // the least room, then A to Z.
+        const watched = Order.sorted(guard.disks, Order.amounts({
+            worse: (a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free,
+            name: one => one.path
+        }));
+        const each = one => disked(guard, one, {
+            name: one.path,
+            graph: bar(1 - one.free / one.total, one.band !== "healthy")
         });
-    }
-
-    // What the disk is: its firmware, the link it's on, its size, its
-    // blocks and how its requests are ordered.
-    function diskModelParts(disk) {
-        const rows = [leaf({ name: named("disk:model-name"), side: disk.model })];
-        if (disk.firmware)
-            rows.push(leaf({
-                name: named("disk:firmware"),
-                side: disk.firmware,
-                note: disk.health?.nvme_revision ? says("disk:firmware", "nvme", {
-                    revision: disk.health.nvme_revision }) : ""
-            }));
-        if (typeof disk.rotational === "boolean")
-            rows.push(figure({
-                name: named("disk:kind"),
-                side: says("disk:kind", disk.rotational ? "spinning" : "solid"),
-                note: Machine.items([disk.transport ?? "", disk.removable
-                    ? says("disk:kind", "removable") : says("disk:kind", "fixed")])
-            }));
-        if (disk.link)
-            rows.push(figure({
-                name: named("disk:link"),
-                side: `${disk.link.speed} \u00d7${disk.link.width}`,
-                note: disk.link.max_speed && (disk.link.max_speed !== disk.link.speed
-                    || disk.link.max_width !== disk.link.width)
-                    ? says("disk:link", "slower", { most: `${disk.link.max_speed} \u00d7${
-                        disk.link.max_width}` }) : says("disk:link", "full")
-            }));
-        if (disk.size_b)
-            rows.push(figure({ name: named("disk:capacity"), side: bytes(disk.size_b) }));
-        if (disk.logical_block_b)
-            rows.push(figure({
-                name: named("disk:block"),
-                side: disk.physical_block_b && disk.physical_block_b !== disk.logical_block_b
-                    ? says("disk:block", "both", { logical: disk.logical_block_b,
-                        physical: disk.physical_block_b })
-                    : `${disk.logical_block_b} B`
-            }));
-        if (disk.scheduler)
-            rows.push(figure({
-                name: named("disk:scheduler"),
-                side: disk.scheduler,
-                note: (disk.schedulers ?? []).length > 1
-                    ? says("disk:scheduler", "also", { all: Machine.items(disk.schedulers
-                        .filter(one => one !== disk.scheduler)) }) : ""
-            }));
+        const worst = watched[0];
+        const space = {
+            name: named("disk:space"),
+            graph: bar(1 - worst.free / worst.total, worst.band !== "healthy"),
+            note: watched.length > 1 ? `on ${worst.path}, the least of ${watched.length}`
+                : `on ${worst.path}`
+        };
+        const rows = [watched.length > 1
+            ? holderRow(Object.assign(space, {
+                glyph: chip,
+                side: `${guard.shown(worst.free)} free`
+            }), () => watched.map(each))
+            : disked(guard, worst, space)];
+        if (guard.holders.length > 0)
+            rows.push(filling(guard, chip));
         return rows;
     }
 
@@ -1032,7 +681,7 @@ Provider {
     // Whether a daemon it watches hasn't yet answered this watch whole, so
     // what it shows is the placeholder, or what an earlier watch left,
     // still being read (Provider.stillReading).
-    stillReading: [served, diskWatch, users].some(watch => watch.live
+    stillReading: [served, diskRows, users].some(watch => watch.live
         && !watch.answeredThisWatch && watch.state !== "not answering")
 
     // What the open launcher holds, answers and lists is left as it was
@@ -1120,15 +769,20 @@ Provider {
         answersWhole: true
     }
 
+    // The Disk's rows, a place of their own, served ready while a Disk
+    // answer or row is seen, since each read asks an NVMe disk its
+    // temperature; their things are still Machine's.
     Daemon {
-        id: diskWatch
+        id: diskRows
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: "disk"
+        kind: "row"
+        watching: ({ place: "disk" })
         live: provider.disksWanted
         paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
+        onHeard: (changed, gone) => provider.takeDisk(changed, gone)
     }
 
     Daemon {

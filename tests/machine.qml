@@ -6,7 +6,10 @@
 // make none of their parts, each from the rows it serves ready; the
 // programs using the machine aren't asked for until the processor's
 // parts are stepped into, and then are, the processor's and the
-// memory's served Using It naming them once they're read. It exits 0
+// memory's served Using It naming them once they're read; a place
+// holding Disk asks for the disk's own place, and nothing else does (its
+// rows are proven in modules/machine/tests/daemon.rs, since the sandbox
+// has no disk to read). It exits 0
 // once every case holds, and otherwise 1, saying which case didn't.
 import Quickshell
 import QtQuick
@@ -63,16 +66,6 @@ ShellRoot {
             // naming a daemon (VKCF3Z's words, Y2YBTS's ruling).
             expect("a daemon that's down is said plainly",
                 machine.says("cpu", "down") === "not answering", machine.says("cpu", "down"));
-            // A time is a measure, by the launcher's one rule: three
-            // significant digits, zeros kept, grouped past three whole
-            // digits, in the machine's own grouping and point.
-            const times = [1234, 0.25, 12.34].map(value => machine.ms(value));
-            expect("a time in milliseconds", times.join("; ") === "1,230 ms; 0.250 ms; 12.3 ms",
-                times.join("; "));
-            machine.settings = { group: ".", point: "," };
-            expect("a time as the settings group and point it", machine.ms(1234.5) === "1.230 ms"
-                && machine.ms(5.2) === "5,20 ms", `${machine.ms(1234.5)} ${machine.ms(5.2)}`);
-            machine.settings = {};
             // A short disk's drawer doesn't say its room again, since it's
             // beside it, and says its size and how long it has; a healthy
             // one, its room beside it alone, has no drawer.
@@ -90,6 +83,9 @@ ShellRoot {
                 healthy.side === "7 B free" && !healthy.drawer, JSON.stringify(healthy.drawer));
             theLauncher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
             expect("Machine's place asks the daemon", machine.shown, "it didn't");
+            expect("Machine's place asks nothing of the disks", !machine.disksWanted, "it did");
+            theLauncher.placed = theLauncher.placed.concat(["machine:disk"]);
+            expect("a place holding Disk asks for the disks", machine.disksWanted, "it didn't");
             waiting.start();
         } catch (error) {
             fail(error);

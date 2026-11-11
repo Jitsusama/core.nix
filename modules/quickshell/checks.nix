@@ -2559,7 +2559,6 @@ onLinux {
         cp ${./ProgramGlyphs.js} ProgramGlyphs.js
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
-        cp ${./launcher/Heat.js} launcher/Heat.js
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
         cp ${./launcher/Machine.js} launcher/Machine.js
         cp ${./launcher/Machine.qml} launcher/Machine.qml

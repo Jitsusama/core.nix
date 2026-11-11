@@ -1,11 +1,10 @@
 // What the launcher's machine answers make of the machine daemon's records
 // (modules/machine), in plain JavaScript so a check can run it in Qt's own
-// engine, as the shell does: what a disk's controller warns of, which
-// disk is the machine's, the processor's own sensor among its chip's,
-// and a row the daemon serves ready, as Machine.qml draws it. The
-// processor's own rows, what held it back and what kept it from resting
-// among them, are the daemon's (modules/machine/src/processor_rows.rs and
-// telemetry_rows.rs). Machine.qml says the figures.
+// engine, as the shell does: bytes as the launcher says them, the
+// processor's own sensor among its chip's, and a row the daemon serves
+// ready, as Machine.qml draws it. The processor's and the disk's own
+// rows are the daemon's (modules/machine/src/processor_rows.rs,
+// telemetry_rows.rs and disk_rows.rs), worded there.
 .pragma library
 .import "Numbers.js" as Numbers
 
@@ -41,25 +40,6 @@ function bytes(count) {
     return measure(count, BYTES);
 }
 
-function rate(count) {
-    return `${bytes(count)}/s`;
-}
-
-// Two rates that run opposite ways, each saying which it is, or "none"
-// while both are still (VKCF3Z, 2026-11-07).
-function both(inward, outward) {
-    if (!inward && !outward) {
-        return "none";
-    }
-    return `${rate(inward ?? 0)} in \u00b7 ${rate(outward ?? 0)} out`;
-}
-
-// A note's items, joined with dots, those empty or at zero given way.
-function items(parts) {
-    return parts.filter(part => part !== "" && part !== null && part !== undefined)
-        .join(" \u00b7 ");
-}
-
 // A served row's side as the launcher says it (ready-rows.md's Times),
 // since nothing that reads the clock is worded by a daemon: each item's
 // words, and a time by its form, `lasted` as `told.lasted` says the
@@ -90,37 +70,14 @@ function served(record, now, told) {
         name: row.name ?? "",
         side: sideSaid(row.side, now, told),
         graph: row.graph,
-        note: row.note ?? "",
+        // A note may be a time, as a disk's health says when its
+        // controller said it, worded here as a side's are.
+        note: typeof row.note === "object" && row.note !== null ? sideSaid([row.note], now, told)
+            : row.note ?? "",
         copy: copy ?? "",
         glyph: row.glyph ?? "",
         hue: row.hue ?? "machine"
     };
-}
-
-// What an NVMe disk's controller warns of, by the bits of its critical
-// warning (NVMe base specification, SMART / Health Information): each
-// warning's id, which the vocabulary words. UDisks says them by name.
-const WARNINGS = {
-    spare: "spare",
-    temperature: "temperature",
-    degraded: "degraded",
-    readonly: "read-only",
-    volatile_mem: "volatile-memory",
-    pmr_readonly: "persistent-memory-read-only"
-};
-
-function warnings(critical) {
-    if (!Array.isArray(critical)) {
-        return [];
-    }
-    return critical.map(bit => WARNINGS[bit] ?? String(bit));
-}
-
-// The machine's disk, of the disk records: the biggest, as a laptop's one
-// disk is.
-function biggest(disks) {
-    return disks.reduce((most, disk) => ((disk.size_b ?? 0) > (most?.size_b ?? -1) ? disk : most),
-        null);
 }
 
 // A spark's values, from 0 to 1 against the most of them or `least`,

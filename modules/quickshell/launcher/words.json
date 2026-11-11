@@ -1570,6 +1570,11 @@
         "space"
       ],
       "said": {
+        "head": "{free} free on {mount}",
+        "unwatched": "nothing watched",
+        "since-boot": "since the machine started",
+        "since-asked": "since you last asked",
+        "since-now": "just now",
         "filling": "filling",
         "nearly-full": "nearly full",
         "critically-full": "critically full"
@@ -1593,6 +1598,8 @@
       "in": "machine:disk",
       "name": "Space",
       "said": {
+        "free": "{free} free",
+        "on": "on {mount}, of {size}",
         "clearing": "clearing old builds",
         "clearingAll": "clearing all it can",
         "cleared": "nothing left to clear"
@@ -1741,6 +1748,9 @@
         "disk latency"
       ],
       "said": {
+        "ms": "{n} ms",
+        "note": "each request, on average",
+        "side-idle": "idle",
         "idle": "none asked of it"
       }
     },
@@ -1804,7 +1814,11 @@
       "name": "Temperature",
       "answers": [
         "disk temperature"
-      ]
+      ],
+      "said": {
+        "degrees": "{n} \u00b0C",
+        "most": "at most {degrees}"
+      }
     },
     {
       "id": "machine:disk:health",
@@ -1814,7 +1828,10 @@
         "disk health"
       ],
       "said": {
-        "asked": "as its controller said at {at}"
+        "side": "{n}% worn",
+        "asked": "as its controller said at {when}",
+        "told": "as its controller says",
+        "failing": "its controller says it's failing"
       }
     },
     {
@@ -1831,7 +1848,11 @@
       "id": "machine:disk:spare",
       "in": "machine:disk:health",
       "name": "Spare",
-      "term": "Disk/spare"
+      "term": "Disk/spare",
+      "said": {
+        "side": "{n}%",
+        "note": "it warns below {n}%"
+      }
     },
     {
       "id": "machine:disk:written",
@@ -1862,7 +1883,10 @@
     {
       "id": "machine:disk:errors",
       "in": "machine:disk:health",
-      "name": "Errors"
+      "name": "Errors",
+      "said": {
+        "note": "the disk couldn't read or write"
+      }
     },
     {
       "id": "machine:disk:error-log",
@@ -1875,7 +1899,10 @@
     {
       "id": "machine:disk:shutdowns",
       "in": "machine:disk:health",
-      "name": "Unsafe Shutdowns"
+      "name": "Unsafe Shutdowns",
+      "said": {
+        "note": "of {cycles} times it was powered"
+      }
     },
     {
       "id": "machine:disk:too-hot",
@@ -1940,6 +1967,7 @@
       "in": "machine:disk:model",
       "name": "PCIe",
       "said": {
+        "side": "{speed} \u00d7{width}",
         "full": "as fast as it goes",
         "slower": "of {most} at most"
       }
@@ -1954,6 +1982,7 @@
       "in": "machine:disk:model",
       "name": "Block Size",
       "said": {
+        "one": "{n} B",
         "both": "{logical} B logical \u00b7 {physical} B physical"
       }
     },
