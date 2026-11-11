@@ -583,7 +583,10 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
         { "id": "machine:memory", "name": "Memory", "glyph": "memory",
             "said": { "head": "{used} used, {share}" } },
         { "id": "machine:memory:using", "name": "Using It" },
-        { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {when}" } }
+        { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {when}" } },
+        { "id": "machine:cpu", "name": "Processor", "glyph": "processor",
+            "said": { "head": "{busy} busy", "since-boot": "since the machine started" } },
+        { "id": "machine:cpu:load", "name": "Load" }
     ] });
     let running = Running::worded("machine-rows", &words);
     let mut client = running.client();
@@ -596,6 +599,24 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
         record(records, "row:machine:uptime")["row"]["side"][0],
         json!({ "at": 1_700_000_000_000_i64, "as": "lasted", "said": "up {when}" }),
         "how long it's been up is a time the shell words"
+    );
+    let processor = &record(records, "row:machine:cpu")["row"];
+    assert_eq!(
+        processor["side"][0]["said"], "10% busy",
+        "the processor's headline"
+    );
+    assert_eq!(
+        processor["note"], "since the machine started",
+        "a first read's rates"
+    );
+    let load = &record(records, "row:machine:cpu:load")["row"];
+    assert_eq!(
+        load["side"][0]["said"], "1.5 \u{b7} 1.25 \u{b7} 1",
+        "a part, a step in, to two places, trailing zeros let go"
+    );
+    assert_eq!(
+        load["parent"], "row:machine:cpu",
+        "under the processor's row"
     );
     // Watching Machine's rows reads no process, so Using It holds its
     // place until something asks for the programs.

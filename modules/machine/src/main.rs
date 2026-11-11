@@ -48,10 +48,10 @@
 //! `{ group, point }`): a watch of kind `row` or `head` with `place`
 //! `heat` has the sensors, zones, cooling and processor read as their
 //! own watch would, one with `place` `power` the supplies, and one with
-//! `place` `firmware` fwupd, and one with `place` `machine` the memory and
-//! the boot (`machine_rows.rs`), and each read makes that place's rows
-//! again and tells only those that changed.
-//! Machine's are made again as the programs using the memory are read
+//! `place` `firmware` fwupd, and one with `place` `machine` the processor,
+//! the memory and the boot (`machine_rows.rs`, `processor_rows.rs`), and
+//! each read makes that place's rows again and tells only those that
+//! changed. Machine's are made again as the programs using them are read
 //! too, though watching its rows doesn't read them, since that reads
 //! every process's files: the shell watches `using` while it's looked at.
 //! The processor's own telemetry is asked only while Heat's are watched.
@@ -174,7 +174,7 @@ const FIRMWARE: Place = Place {
 };
 const MACHINE: Place = Place {
     name: "machine",
-    sources: &["memory", "boot"],
+    sources: &["processor", "memory", "boot"],
     heard: &["using"],
 };
 const PLACES: [Place; 4] = [HEAT, POWER, FIRMWARE, MACHINE];
@@ -825,6 +825,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
         let memory = held.get("memory:main");
         let boot = held_of(held, "boot").into_iter().next();
         let said = machine_rows::Held {
+            processor: held.get("processor:0"),
             memory,
             boot: boot.as_ref(),
             using: fresh.then_some(using.as_slice()),

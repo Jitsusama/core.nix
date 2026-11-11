@@ -1,11 +1,11 @@
 // What the launcher's machine answers make of the machine daemon's records
 // (modules/machine), in plain JavaScript so a check can run it in Qt's own
-// engine, as the shell does: which cores are maxed, where the processor's
-// time went, what a disk's controller warns of, which disk is the
-// machine's, what held the processor back and what kept it from resting
-// as its own telemetry says, the processor's own sensor among its chip's,
-// and a row the daemon serves ready, as Machine.qml draws it. Machine.qml
-// says the figures.
+// engine, as the shell does: what a disk's controller warns of, which
+// disk is the machine's, what held the processor back and what kept it
+// from resting as its own telemetry says, the processor's own sensor
+// among its chip's, and a row the daemon serves ready, as Machine.qml
+// draws it. The processor's own rows are the daemon's
+// (modules/machine/src/processor_rows.rs). Machine.qml says the figures.
 .pragma library
 .import "Numbers.js" as Numbers
 
@@ -45,11 +45,6 @@ function rate(count) {
     return `${bytes(count)}/s`;
 }
 
-// A clock, from the kilohertz the kernel counts it in.
-function hertz(khz) {
-    return measure(khz * STEP, ["Hz", "kHz", "MHz", "GHz"]);
-}
-
 // Two rates that run opposite ways, each saying which it is, or "none"
 // while both are still (VKCF3Z, 2026-11-07).
 function both(inward, outward) {
@@ -68,28 +63,8 @@ function items(parts) {
 // The ranges a CPU list is written in: "0-3,8".
 const RANGE = /^(\d+)(?:-(\d+))?$/;
 
-// A core this busy or busier is maxed.
-const MAXED = 0.95;
-// Past this many maxed cores they're counted, not named.
-const NAMED = 4;
-
-// The maxed cores, as a row says them: none, by number while they're few,
-// or how many of how many. Each core is { n, load }.
-function maxed(loads) {
-    const flat = loads.filter(core => core.load >= MAXED).map(core => core.n);
-    if (flat.length === 0) {
-        return "none";
-    }
-    if (flat.length > NAMED) {
-        return `${flat.length} of ${loads.length}`;
-    }
-    if (flat.length === 1) {
-        return `core ${flat[0]}`;
-    }
-    return `cores ${flat.slice(0, -1).join(", ")} and ${flat.slice(-1)[0]}`;
-}
-
-// The CPU numbers a list such as /sys/devices/cpu_core/cpus names.
+// The CPU numbers a list such as /sys/devices/cpu_core/cpus names, as
+// the telemetry names a cluster's.
 function cpus(text) {
     const listed = [];
     const ranges = text.trim().split(",").map(part => RANGE.exec(part.trim()))
@@ -101,51 +76,6 @@ function cpus(text) {
         }
     }
     return listed;
-}
-
-// CPU numbers as a note says them: "core 4", "cores 0 to 3", or each
-// named where they don't run unbroken, "cores 0, 2 and 5".
-function cores(numbers) {
-    if (numbers.length === 0) {
-        return "";
-    }
-    if (numbers.length === 1) {
-        return `core ${numbers[0]}`;
-    }
-    const last = numbers[numbers.length - 1];
-    if (last - numbers[0] === numbers.length - 1) {
-        return `cores ${numbers[0]} to ${last}`;
-    }
-    return `cores ${numbers.slice(0, -1).join(", ")} and ${last}`;
-}
-
-// Where the processor's time went, as Time Spent's parts are listed, each
-// by its part's id and the kernel's fields it sums: { id, share }, for
-// each field the kernel keeps. Guests' time is in the user's already, and
-// said beside it as what of it ran a virtual machine. Time stolen is only
-// ever taken by a machine this one runs inside, so on one that runs on
-// its own hardware (`guest` false) it's always none, and left out
-// (modules/machine/README.md says so).
-const SPENT = [
-    ["user", ["user"]],
-    ["system", ["system"]],
-    ["iowait", ["iowait"]],
-    ["interrupts", ["irq", "softirq"]],
-    ["niced", ["nice"]],
-    ["stolen", ["steal"]],
-    ["guests", ["guest", "guest_nice"]]
-];
-
-function spent(time, guest) {
-    if (!time) {
-        return [];
-    }
-    return SPENT.filter(([id]) => guest || id !== "stolen")
-        .filter(([, fields]) => fields.some(field => typeof time[field] === "number"))
-        .map(([id, fields]) => ({
-            id,
-            share: fields.reduce((sum, field) => sum + (time[field] ?? 0), 0)
-        }));
 }
 
 // A served row's side as the launcher says it (ready-rows.md's Times),
@@ -202,16 +132,6 @@ function warnings(critical) {
         return [];
     }
     return critical.map(bit => WARNINGS[bit] ?? String(bit));
-}
-
-// The NPU's clock, as its driver counts it in megahertz: "at 1.40 GHz of
-// 2.05 GHz", or "resting" while it's powered down.
-const MEGAHERTZ = 1000;
-
-function npuClock(npu) {
-    return npu.clock_mhz > 0
-        ? `at ${hertz(npu.clock_mhz * MEGAHERTZ)} of ${hertz(npu.max_mhz * MEGAHERTZ)}`
-        : "resting";
 }
 
 // The machine's disk, of the disk records: the biggest, as a laptop's one
