@@ -547,6 +547,7 @@ def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
         time.sleep(SETTLING.total_seconds())
         resized, span = shell.wakes() - before, time.monotonic() - began
         before = shell.wakes()
+        # The quiet span measured, as long as the resizes took, not a wait for something to happen.
         time.sleep(span)
         quiet = shell.wakes() - before
     finally:

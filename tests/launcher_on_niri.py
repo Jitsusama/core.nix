@@ -445,7 +445,9 @@ class Shell:
         assert self.process is not None, "the shell isn't started"
         status = Path(f"/proc/{self.process.pid}/status").read_text()
         switches = re.findall(r"^(?:non)?voluntary_ctxt_switches:\s+(\d+)$", status, re.MULTILINE)
-        assert len(switches) == 2, f"/proc says no wakes of the shell: {status}"
+        assert len(switches) == len(("voluntary", "nonvoluntary")), (
+            f"/proc says no wakes of the shell: {status}"
+        )
         return sum(int(count) for count in switches)
 
     def frames(self) -> int:

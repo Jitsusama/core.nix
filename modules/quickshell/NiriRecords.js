@@ -32,11 +32,14 @@ function stampOf(ms) {
 }
 
 // A record without its envelope, as niri says a cast or a tile.
+const ENVELOPE = ["key", "order", "id"];
 function bare(record) {
-    const said = Object.assign({}, record);
-    delete said.key;
-    delete said.order;
-    delete said.id;
+    const said = {};
+    for (const name of Object.keys(record)) {
+        if (!ENVELOPE.includes(name)) {
+            said[name] = record[name];
+        }
+    }
     return said;
 }
 
