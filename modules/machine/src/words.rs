@@ -91,6 +91,15 @@ impl Words {
         sure.map_or_else(String::new, |sure| filled(sure, fill))
     }
 
+    /// The ids of a thing's parts, in the order its words list them.
+    pub fn parts(&self, id: &str) -> Vec<&str> {
+        self.things
+            .get(id)
+            .and_then(|thing| thing["parts"].as_array())
+            .map(|parts| parts.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default()
+    }
+
     /// The glyph role a thing shows, or "".
     pub fn glyph(&self, id: &str) -> String {
         let role = self

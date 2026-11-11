@@ -284,8 +284,9 @@ fn state_of(battery: &Value) -> String {
 
 /// How long something's lasted, the largest two of days, hours and
 /// minutes, leaving out the smaller when it's none, as the shell's
-/// `Interfaces.lasted` says it.
-fn lasted(seconds: f64) -> String {
+/// `Interfaces.lasted` says it. Machine's rows say how long it slept by
+/// it too.
+pub fn lasted(seconds: f64) -> String {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
