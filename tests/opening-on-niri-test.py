@@ -508,7 +508,9 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
     (2026-11-11): each opening placed the time anew, and Location's row was made anew as Now
     was wanted again. Each is kept now while it says the same, so a kept opening makes none of
     them, and a notice heard while it's open makes the one row of the source it came to:
-    Desktop's, which holds the notices unread (Y2YBTS, 2026-11-11).
+    Desktop's, which holds the notices unread (Y2YBTS, 2026-11-11). Each reopening comes once
+    the closing before it has made its spots, as Joel's do: reopened within half a second, one
+    made Desktop's two rows inside once, as they're first listed.
     """
 
     def made() -> dict[str, int]:
@@ -532,9 +534,18 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
         shell.launcher_until(lambda shown: shown["held"][-1:] == ["For You"])
         settled(shell)
 
-    def within_a_minute(act: Callable[[], None]) -> dict[str, int]:
+    def shut() -> None:
+        """Close, and wait for what the closing makes half a second on (spotsLater)."""
+        since_closing = shell.mark()
+        shell.close_launcher()
+        shell.reported("spots made while closed ", lambda _: True, since_closing)
+
+    def within_a_minute(
+        act: Callable[[], None], ready: Callable[[], None] = lambda: None
+    ) -> dict[str, int]:
         """Give the rows the act made, done again once if a minute turned, which remakes some."""
         for _ in range(2):
+            ready()
             minute, before = int(time.time() // 60), made()
             act()
             made_by_it = since(before)
@@ -547,12 +558,8 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
             shell.as_account("notify-send --expire-time=1000 'Whimbrel' 'a notice heard open'")
         settled(shell)
 
-    def reopened() -> None:
-        shell.close_launcher()
-        in_for_you()
-
     in_for_you()
-    again = within_a_minute(reopened)
+    again = within_a_minute(in_for_you, ready=shut)
     heard = within_a_minute(notified)
     shell.close_launcher()
     assert again == {}, f"opened into For You again with nothing come, it made {again}"
