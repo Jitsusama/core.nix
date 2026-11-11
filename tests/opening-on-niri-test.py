@@ -296,6 +296,26 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     assert not made, f"first into Windows after a restart, other sources made rows: {made}"
 
 
+def test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go(shell: Shell) -> None:
+    """The first letter after a restart, listing home afresh, builds no row, as home's are let go.
+
+    A view lets go of the rows a change removed only after it has made those the change put
+    in, so a letter listing everything afresh, with no row yet let go, as on a shell's first
+    key, built every row it drew: Joel's "m" built 8 in 15 ms of laying (2026-11-11). Home
+    draws a card of rows and so does the letter, so the letter can draw on home's.
+    """
+    shell.restart()
+    opened_from_kept(shell)
+    before = json.loads(shell.as_account(shell.ipc("made")))
+    shell.send_chars("c")
+    shell.launcher_until(lambda shown: shown["typed"] == "c")
+    settled(shell)
+    after = json.loads(shell.as_account(shell.ipc("made")))
+    built = int(after["built"]) - int(before["built"])
+    drawn = int(after["drawn"]) - int(before["drawn"])
+    assert built == 0, f"the letter built {built} of the {drawn} rows it drew"
+
+
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
     """Open into the place by its chord, and give the rows each other source made meanwhile.
 

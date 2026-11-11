@@ -10174,6 +10174,19 @@ Scope {
                                 for (const step of steps.filter(one => one.remove !== undefined))
                                     rowsKept.remove(step.remove, step.count);
                                 list.rows = rows;
+                                // Listed afresh, the rows let go are laid
+                                // aside before the new ones are put in, so
+                                // those are given them: a view lets go of
+                                // the rows a change removed only after it
+                                // has made the rows it put in, so with none
+                                // aside yet, as on a shell's first key, it
+                                // built every row anew, Joel's "m" 8 of
+                                // them in 15 ms (2026-11-11).
+                                // Its laying is said with the rest.
+                                const asideFrom = Date.now();
+                                if (list.afresh)
+                                    list.forceLayout();
+                                const aside = Date.now() - asideFrom;
                                 for (const step of steps.filter(one => one.remove === undefined)) {
                                     if (step.move !== undefined)
                                         rowsKept.move(step.move, step.to, 1);
@@ -10198,7 +10211,7 @@ Scope {
                                 list.keptLast = {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
-                                    laying: Date.now() - laying,
+                                    laying: Date.now() - laying + aside,
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };
