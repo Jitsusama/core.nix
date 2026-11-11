@@ -580,7 +580,24 @@ Provider {
             done: () => !Sessions.parked.some(one => String(one.presence?.session ?? "") === id),
             within: Sessions.startsWithin
         });
-        Sessions.wake(session);
+        provider.actOn(session, "wake");
+    }
+
+    // Does one of a session's acts as the daemon serves it: its row's ask
+    // for it, sent back as it is with what the act says, which the daemon
+    // does by steering the session through the node (modules/agents/src/
+    // acts.rs), so the shell steers none itself. The answer is said as a
+    // steer's is, a refusal by Sessions' unsteered.
+    function actOn(session, id, fields) {
+        const acts = rowsKind?.held?.[`row:agents:${session.address}`]?.row?.acts ?? [];
+        const ask = acts.find(one => one.key === `verb:agent:${id}`)?.ask
+            ?? { ask: id, address: session.address };
+        const said = Object.assign({}, ask, fields ?? {});
+        if (!rowsKind) {
+            Sessions.steered(session.address, null);
+            return;
+        }
+        rowsKind.ask(said, answer => Sessions.steered(session.address, answer));
     }
 
     // Reopens a closed orchestrator, its row reading as listening until its
@@ -623,7 +640,7 @@ Provider {
             glyph: Words.glyph(`verb:agent:${id}`),
             hue: "action"
         }, fields));
-        const steered = what => () => Sessions.steer(session.address, { act: what });
+        const steered = what => () => provider.actOn(current(), what);
         const made = {
             switch: () => act("switch", { later: true, run: () => Sessions.goTo(current()) }),
             talk: () => act("talk", {
@@ -631,9 +648,12 @@ Provider {
                 chip: session.title,
                 state: () => provider.told,
                 given: words => {
-                    if (Sessions.talk(session.address, words))
-                        provider.told = (Words.of("orchestrators").said ?? {}).sent
-                            ?.replace("{name}", session.title) ?? "";
+                    const text = words.trim();
+                    if (text === "")
+                        return;
+                    provider.actOn(session, "talk", { text });
+                    provider.told = (Words.of("orchestrators").said ?? {}).sent
+                        ?.replace("{name}", session.title) ?? "";
                 }
             }),
             // Wake keeps the launcher, its row reading as it will be at once,
