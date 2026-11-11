@@ -4,7 +4,7 @@
 // loaded is gone or still there. Unpatched, a reload resolves the helpers
 // through the first copy, failing with ENOENT once it's gone and mixing the
 // new entry with the old helpers while it stays.
-// Run as: node THIS PI_ROOT, the built package's pi-monorepo folder.
+// Run as: node THIS PI_ROOT
 import assert from "node:assert/strict";
 import {
   existsSync,
