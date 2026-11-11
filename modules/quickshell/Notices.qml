@@ -1,9 +1,17 @@
 pragma Singleton
 // Every notification, newest first, for the launcher's collection of them
-// (launcher/PastNotices.qml), kept on disk in the shell's state so a restart
-// loses none: an unread one until it's read, and the rest for good, the
-// oldest read going once more than `keep` are kept (launcher/Lately.js's
-// kept).
+// (launcher/PastNotices.qml), as the notices daemon (modules/notices) holds
+// them over $XDG_RUNTIME_DIR/daemons/notices.sock: it serves the session
+// bus's notifications name, judges each as it arrives, and keeps them on
+// disk, so a restart of the shell loses none, and one sent while the shell
+// is down is still shown once it's up. Each is one record, read here into
+// the history and, while it's open, into a live notice the cards and the
+// launcher's acts read as Quickshell's own (LiveNotice.js); every change
+// is an ask of the daemon, whose answer is the record changed.
+//
+// Its words are styled and its sender's mark is found here, and the
+// history is put in order here, until the daemon serves the notices'
+// ready rows whole, as the machine daemon serves its own (Daemon.qml).
 //
 // One leaves the screen in one of three ways: clicked away; withdrawn by its
 // program, as a chat app does once the message is read there; or by itself
@@ -25,20 +33,27 @@ pragma Singleton
 // launcher holds it the screen's step aside (`gathered`), still there to
 // be answered from the launcher, and come back if it closes before they go.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Forward.js" as Forward
+import "LiveNotice.js" as LiveNotice
 import "NoticeBody.js" as NoticeBody
 import "ProgramGlyphs.js" as ProgramGlyphs
-import "launcher/Lately.js" as Lately
 
 Singleton {
     id: root
 
-    // How many are kept: far past what Joel would scroll, so History keeps
-    // what's read for good, and its file stays small, about 300 KB (VKCF3Z,
-    // 2026-11-09). One unread stays until it's read or forgotten.
-    readonly property int keep: 1000
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/notices.sock`
+        kind: "notice"
+        // The watch is every notice the daemon holds, so one held here
+        // that it no longer says went while the shell wasn't hearing.
+        answersWhole: true
+    }
+
+    // Whether the daemon is there to ask.
+    readonly property bool answering: daemon.wire !== null
 
     // { id, at, app, entry, summary, body, styled, links, picture, glyph,
     // hue, urgency, category, low, urgent, held, missed, read, readHow,
@@ -47,7 +62,8 @@ Singleton {
     // its sender asked (low, normal or critical) and `urgent` whether it
     // stays, `readHow` how it was read where that wasn't here (markRead),
     // and `left` how it left the screen once it has (expired, dismissed or
-    // withdrawn), and when.
+    // withdrawn), and when. Each is made again only as the daemon says its
+    // record changed, so the launcher's rows of the rest are kept.
     property var history: []
     readonly property int missed: history.filter(notice => notice.missed).length
     readonly property int unread: history.filter(notice => !notice.read).length
@@ -57,10 +73,14 @@ Singleton {
 
     // The notifications still open, by id, on screen or resting, whose own
     // actions (Reply, Mark as read) can be done from the launcher's keys
-    // while they last.
+    // while they last, each as LiveNotice.js hands it.
     property var live: ({})
     // Those of them resting off the screen, by id.
     property var resting: ({})
+    // Said once a notice arrives, as it's first heard open: not for those
+    // open as the shell starts, which the stack (Notifications.qml) puts
+    // at the back as it finds them, as Quickshell's kept across a reload.
+    signal came(var notification, var notice)
     // Whether the launcher's collection of them is open.
     property bool gathered: false
 
@@ -69,9 +89,10 @@ Singleton {
     // signs it with, never its program's. A program's notice wears its
     // program's own mark, the one its row in the launcher does
     // (ProgramGlyphs.js), named by its desktop entry's id as `program`;
-    // the rest are the desktop's own, each its theme mark. One that only
-    // answers what Joel just did, as the recorder's saying where a file
-    // went, is never missed.
+    // the rest are the desktop's own, each its theme mark. Which only
+    // answer what Joel just did, as the recorder's saying where a file
+    // went, and so are never missed, the daemon knows
+    // (modules/notices/senders.json).
     readonly property var senders: ({
         "slack": { program: "slack", hue: "person", name: "Slack" },
         "tuple": { glyph: Theme.glyph.call.codePointAt(0), hue: "person", name: "Tuple" },
@@ -88,7 +109,7 @@ Singleton {
         // never missed, since For You's tray in the margin says the want
         // while it holds (Joel's pick, 2026-11-09).
         "pi": {
-            glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true,
+            glyph: Theme.glyph.agent.codePointAt(0), hue: "program",
             name: Words.name("agents")
         },
         // Something an agent has ready for Joel to do (WaitingOnYou.qml),
@@ -99,13 +120,13 @@ Singleton {
             name: Words.name("on:waiting")
         },
         "recorder": {
-            glyph: Theme.glyph.recording.codePointAt(0), hue: "machine", answers: true,
+            glyph: Theme.glyph.recording.codePointAt(0), hue: "machine",
             name: "Capture"
         },
         // What arrives by itself (Arrivals.qml), in its margin mark, which
         // says it while it holds, so it's never missed either.
         "camera": {
-            glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true,
+            glyph: Theme.glyph.camera.codePointAt(0), hue: "machine",
             name: "Camera"
         },
         // A call being written down, or written (call-transcripts'
@@ -118,7 +139,7 @@ Singleton {
         },
         // A meeting about to start (Starting.qml), with others in it.
         "calendar": {
-            glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true,
+            glyph: Theme.glyph.meeting.codePointAt(0), hue: "person",
             name: "Calendar"
         },
         // A timer ringing (timers/src/main.rs), in a timer's mark, the
@@ -129,12 +150,12 @@ Singleton {
             name: Words.name("timers")
         },
         "battery": {
-            glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true,
+            glyph: Theme.glyph.low.codePointAt(0), hue: "machine",
             name: Words.name("power")
         },
         // The AI tokens running out (pieces/Tokens.qml), the agents' own.
         "tokens": {
-            glyph: Theme.glyph.tokens.codePointAt(0), hue: "program", answers: true,
+            glyph: Theme.glyph.tokens.codePointAt(0), hue: "program",
             name: Words.name("spend")
         },
         // A firmware update fwupd offers (modules/firmware-notice), said
@@ -178,101 +199,125 @@ Singleton {
     }
 
     // A notice's own picture, as an avatar or a thumbnail: the image it was
-    // sent with, never its program's icon, which its mark says. One given as
-    // an icon's name, or the same as its program's icon, is an icon, so its
-    // mark stays (VKCF3Z, 2026-11-07). Quickshell serves one sent as data
-    // only while the notice is open, so the history keeps a picture only
-    // when it's a file.
-    // Quickshell hands an image-path hint that isn't a file: URL to its
-    // icon provider, so a plain path arrives as image://icon/ and the path,
-    // which is a file, and a name there is an icon's.
+    // sent with, never its program's icon, which its mark says, as a file
+    // the daemon names, one sent as pixels written to one it keeps
+    // (modules/notices' picture.rs), or "" where it has none.
     function picture(notification) {
-        const image = notification?.image ?? "";
-        const iconed = image.startsWith("image://icon/") ? image.slice("image://icon/".length)
-            : null;
-        if (iconed !== null)
-            return iconed.startsWith("/") && iconed !== notification.appIcon
-                ? `file://${iconed}` : "";
-        if (image === "" || image === notification.appIcon)
-            return "";
-        return image.startsWith("/") ? `file://${image}` : image;
+        return notification?.image ?? "";
     }
 
-    // A notice's picture as the history has it: its own while it's open,
-    // else the file it was kept as, if any.
+    // A notice's picture as the history has it.
     function pictureOf(notice) {
-        const still = live[notice.id] ?? null;
-        return still ? picture(still) : notice.picture ?? "";
+        return notice.picture ?? "";
     }
 
-    // Those kept: every one unread, and at most `keep` in all, the oldest
-    // read going first (Lately.js's kept).
-    function fresh(notices) {
-        return Lately.kept(notices, keep);
-    }
+    // Each notice as the history has it, by id, made again only as its
+    // record changes, so a reader keeping its rows by the notice keeps
+    // those of the rest.
+    property var made: ({})
+    // The ids heard open, so one first heard open is known to have come.
+    property var heardOpen: ({})
 
-    // Keeps a notification as it arrives, missed until it's seen unless
-    // it's never counted, and held when it's never shown. One sent at low
-    // urgency is never missed, since its sender says it can pass unseen.
-    function arrived(notification, urgent, held, counted, urgency) {
-        const low = urgency === "low";
-        const from = sender(notification.appName, notification.desktopEntry);
-        const said = NoticeBody.read(notification.body);
-        const pictured = picture(notification);
-        const notice = {
-            id: notification.id,
-            at: Date.now(),
-            app: notification.appName,
-            entry: notification.desktopEntry ?? "",
-            summary: notification.summary,
-            // Its words plain for the launcher's rows, the find and a copy,
-            // and styled for a card and a drawer, with its links.
-            body: said.plain,
-            styled: said.styled,
-            links: said.links,
-            picture: pictured.startsWith("file://") ? pictured : "",
-            glyph: from.glyph,
-            hue: from.hue,
-            urgency: urgency,
-            // What kind of notice its sender says it is, in the spec's
-            // words, as im.received.
-            category: String(notification.hints?.category ?? ""),
-            low: low,
-            urgent: urgent,
-            held: held,
-            // A sender whose every notice is missed can still send one that
-            // only answers what Joel just did, saying so with the x-answers
-            // hint, as a save Drive took does.
-            missed: counted && !low && !from.answers
-                && notification.hints?.["x-answers"] === undefined,
-            read: false,
-            // The to-do it says, if it's one (WaitingOnYou.qml), so
-            // it's settled with the item even once gone from the screen.
-            waits: String((notification.hints ?? {})["x-waiting"] ?? "")
+    // A record as the history has it: its words plain for the launcher's
+    // rows, the find and a copy, and styled for a card and a drawer, with
+    // its links, and its sender's mark.
+    function madeOf(notice) {
+        const from = sender(notice.app, notice.entry);
+        const said = NoticeBody.read(notice.body);
+        return {
+            id: notice.id, at: notice.at, app: notice.app, entry: notice.entry,
+            summary: notice.summary, body: said.plain, styled: said.styled,
+            links: said.links, picture: notice.picture, glyph: from.glyph, hue: from.hue,
+            urgency: notice.urgency, category: notice.category, low: notice.low,
+            urgent: notice.urgent, held: notice.held, missed: notice.missed,
+            read: notice.read, readHow: notice.readHow, readAt: notice.readAt,
+            withdrawn: notice.withdrawn, waits: notice.waits,
+            left: notice.left ?? undefined, leftAt: notice.leftAt ?? undefined,
+            raisedAt: notice.raisedAt
         };
-        // Live before it's kept, so it never reads as missed and gone from
-        // the screen for the moment between, which would flash the margin.
-        // One held rests from the start; one its program sends again with
-        // the same id comes back to the screen.
-        live = Object.assign({}, live, { [notice.id]: notification });
-        const still = Object.assign({}, resting);
-        if (held)
-            still[notice.id] = true;
-        else
-            delete still[notice.id];
-        resting = still;
-        history = fresh([notice].concat(history.filter(kept => kept.id !== notice.id)));
     }
 
-    // One said again in place, as an arrival is while its words follow the
-    // minutes (Arrivals.qml), keeps its place and whether it's read, with
-    // its new words.
-    function reword(id, summary, body) {
-        const said = NoticeBody.read(body);
-        history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, {
-                summary: summary, body: said.plain, styled: said.styled, links: said.links
-            }));
+    // Takes what the daemon said changed and let go: each changed notice
+    // made again, its live notice too while it's open, and the history
+    // put in order once, newest first. One first heard open after the
+    // daemon's first whole answer came while the shell was hearing.
+    function took(changed, gone) {
+        const arriving = daemon.answered;
+        const nowLive = Object.assign({}, live);
+        const nowResting = Object.assign({}, resting);
+        const arrivals = [];
+        for (const key of gone) {
+            const id = Number(key.slice("notice:".length));
+            delete made[id];
+            delete nowLive[id];
+            delete nowResting[id];
+            delete heardOpen[id];
+        }
+        for (const key of changed) {
+            const notice = daemon.held[key]?.notice;
+            if (!notice)
+                continue;
+            const id = notice.id;
+            const was = made[id];
+            made[id] = madeOf(notice);
+            if (notice.live) {
+                nowLive[id] = LiveNotice.of(notice, said => daemon.ask(said),
+                    then => Quickshell.activationToken(then));
+                if (!(id in heardOpen)) {
+                    heardOpen[id] = true;
+                    if (arriving)
+                        arrivals.push(id);
+                }
+            } else {
+                delete nowLive[id];
+                delete heardOpen[id];
+            }
+            if (notice.live && notice.resting)
+                nowResting[id] = true;
+            else
+                delete nowResting[id];
+            // Raised since it was last heard, not as the shell first
+            // hears it, so a restart raises none.
+            if (was && notice.raisedAt && notice.raisedAt !== was.raisedAt)
+                raised = { id: id, at: notice.raisedAt };
+        }
+        // Open before it's in the history, so it never reads as missed and
+        // gone from the screen for the moment between, which would flash
+        // the margin.
+        live = nowLive;
+        resting = nowResting;
+        history = Object.values(made).sort((a, b) => b.at - a.at || b.id - a.id);
+        for (const id of arrivals)
+            came(live[id], made[id]);
+    }
+
+    Connections {
+        target: daemon
+
+        function onHeard(changed, gone) {
+            root.took(changed, gone);
+        }
+    }
+
+    // Whether the daemon holds notices back while the screen is shared,
+    // which only the shell knows (Quiet.qml), said again each time it
+    // connects; what Quiet keeps by Joel's asking, the daemon reads from
+    // Quiet's own file.
+    function tellQuiet() {
+        daemon.ask({ ask: "quiet", sharing: Quiet.shared });
+    }
+
+    Connections {
+        target: Quiet
+
+        function onSharedChanged() {
+            root.tellQuiet();
+        }
+    }
+
+    onAnsweringChanged: {
+        if (answering)
+            tellQuiet();
     }
 
     // The last one said again in place that tells something new, so the
@@ -281,46 +326,22 @@ Singleton {
 
     // One said again in place that tells something new, as an arrival is
     // as it steps down (Arrivals.qml), comes back to the screen unread,
-    // the same card rather than another.
+    // the same card rather than another. Its new words came with it, as
+    // the daemon took it in place of the one before.
     function raise(id) {
-        history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: false, readHow: null }));
-        raised = { id: id, at: Date.now() };
+        daemon.ask({ ask: "raise", notice: id });
     }
 
     // One resting comes back to the screen.
     function wake(id) {
-        if (id in resting) {
-            const others = Object.assign({}, resting);
-            delete others[id];
-            resting = others;
-        }
+        if (id in resting)
+            daemon.ask({ ask: "wake", notice: id });
     }
 
     // One whose time on screen is up rests off it, still open.
     function rest(id) {
-        if (id in live)
-            resting = Object.assign({}, resting, { [id]: true });
-    }
-
-    // How one left, as "expired", "dismissed" or "withdrawn": only one that
-    // went by itself was missed, and one its program withdrew was read there.
-    // It's no longer missed before it leaves the screen, for the same reason.
-    // How and when each left is kept, for its drawer.
-    function left(id, how) {
-        const at = Date.now();
-        history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { left: how, leftAt: at },
-                how === "expired" ? {} : { missed: false },
-                how === "withdrawn" ? { read: true, readHow: null } : {}));
-        const still = Object.assign({}, live);
-        delete still[id];
-        live = still;
-        if (id in resting) {
-            const others = Object.assign({}, resting);
-            delete others[id];
-            resting = others;
-        }
+        if (id in live && !(id in resting))
+            daemon.ask({ ask: "rest", notice: id });
     }
 
     // Opens what a notice is about, by its sender's own action, and brings
@@ -364,10 +385,7 @@ Singleton {
     // once what it said no longer stands, an arrival gone or a want
     // answered, so History never says Joel read what he never saw.
     function mark(id, read, how) {
-        const now = read ? { missed: false, readAt: Date.now() } : { readAt: null };
-        history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: read, withdrawn: read && how === "withdrawn",
-                readHow: null }, now));
+        daemon.ask({ ask: "mark", notices: [id], read: read, how: how ?? null });
     }
 
     // Marks read every notice of `ids` at once, as For You's Desktop row's
@@ -377,9 +395,7 @@ Singleton {
     // where rather than "read here"; one already read keeps how it was.
     function markRead(ids, how) {
         if (history.some(notice => ids.includes(notice.id) && !notice.read))
-            history = history.map(notice => !ids.includes(notice.id) ? notice
-                : Object.assign({}, notice, notice.read ? { missed: false }
-                    : { read: true, missed: false, readAt: Date.now(), readHow: how ?? null }));
+            daemon.ask({ ask: "mark", notices: ids, read: true, how: how ?? null });
     }
 
     // Marks read every notice of a to-do that no longer stands, so
@@ -389,9 +405,9 @@ Singleton {
         const stale = notice => notice.waits && !standing[notice.waits]
             && (notice.missed || !notice.read);
         if (history.some(stale))
-            history = history.map(notice => stale(notice)
-                ? Object.assign({}, notice, { read: true, missed: false, readHow: null })
-                : notice);
+            daemon.ask({
+                ask: "settle", standing: Object.keys(standing).filter(item => standing[item])
+            });
     }
 
     // Everything kept has been seen, though not necessarily read. Only one
@@ -401,43 +417,6 @@ Singleton {
     // (2026-11-10).
     function seen() {
         if (missed > 0)
-            history = history.map(notice => notice.missed
-                ? Object.assign({}, notice, { missed: false }) : notice);
-    }
-
-    // The history on disk. What's read back joins anything that arrived
-    // first; its ids are made its own, since the server's start again from
-    // one each time the shell starts. Nothing is written until it's read, so
-    // an early arrival never overwrites what was kept.
-    property bool restored: false
-
-    FileView {
-        id: kept
-        path: Quickshell.statePath("notices.json")
-        printErrors: false
-        onLoaded: {
-            let saved = [];
-            try {
-                saved = JSON.parse(text());
-            } catch (error) {
-                console.warn(`Notices: ${path} doesn't read as JSON, so it starts over`);
-            }
-            root.history = root.fresh(root.history.concat(saved.map((notice, index) =>
-                Object.assign({}, notice, { id: `kept:${notice.at}:${index}` }))));
-            root.restored = true;
-        }
-        onLoadFailed: root.restored = true
-    }
-
-    onHistoryChanged: {
-        if (restored)
-            saving.restart();
-    }
-
-    // A burst of changes is written once.
-    Timer {
-        id: saving
-        interval: 1000
-        onTriggered: kept.setText(JSON.stringify(root.history))
+            daemon.ask({ ask: "seen" });
     }
 }

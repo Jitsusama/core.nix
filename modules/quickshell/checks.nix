@@ -113,7 +113,9 @@ let
   # (tests/nested-niri.sh): a command run against it, which starts the
   # shell from the folder its root is in, as quickshell, and logs to logs.
   # The account says what its shell does, as the desktop test's does, and
-  # counts as away after so many seconds of nothing typed or moved.
+  # counts as away after so many seconds of nothing typed or moved. Its
+  # notices daemon serves the bus beside it, started as its unit would be
+  # (tests/notices-beside.sh), logging to logs.
   shellOnNiri =
     {
       name,
@@ -189,14 +191,18 @@ let
         # (modules/niri's on-demand-when-asked.patch), set here since the
         # shell starts beside this niri rather than under it.
         NIRI_ON_DEMAND_WHEN_ASKED = 1;
+        NOTICES_DAEMON = home.systemd.user.services.notices.Service.ExecStart;
+        NOTICES_LOG = "logs/notices.log";
       }
       ''
         export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_STATE_HOME=$PWD/state
+        export XDG_RUNTIME_DIR=$(mktemp -d)
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") given
         )}
         ${lib.optionalString (root != null) "install -m 644 ${root} quickshell/shell.qml"}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs ${command}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          ${lib.getExe pkgs.bash} ${../../tests/notices-beside.sh} ${command}
         touch $out
       '';
 
@@ -227,7 +233,10 @@ let
     shellOnNiri {
       inherit name away;
       root = ../../tests/notices.qml;
-      inputs = [ pkgs.libnotify ];
+      inputs = [
+        pkgs.jq
+        pkgs.libnotify
+      ];
       command = "${lib.getExe pkgs.bash} ${script} quickshell logs ${lib.escapeShellArgs given}";
     };
 
@@ -4481,10 +4490,8 @@ onLinux {
         property var live: ({})
         property var history: []
         property var marked: []
-        property var reworded: []
         property var raisedIds: []
         function mark(id, read) { marked = marked.concat([id]); }
-        function reword(id, summary, body) { reworded = reworded.concat([id]); }
         function raise(id) { raisedIds = raisedIds.concat([id]); }
       '';
       options = singleton "Options.qml" "property bool reports: false";
@@ -4690,6 +4697,23 @@ onLinux {
       touch $out
     '';
 
+  # A notice the notices daemon serves reads as Quickshell's own did, and
+  # each act on it is an ask of the daemon, as tests/live-notice.qml holds
+  # LiveNotice.js to.
+  a-live-notice-asks-the-daemon =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-live-notice-asks-the-daemon" { } ''
+      cp ${../../tests/live-notice.qml} live-notice.qml
+      cp ${./LiveNotice.js} LiveNotice.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml live-notice.qml
+      touch $out
+    '';
+
   # The held notices take Vim's keys in each mode from one table, as
   # tests/notice-keys.qml holds NoticeKeys.js to: motions, operators and
   # objects with their counts, visual's operator taken with a second press,
@@ -4860,22 +4884,6 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml devices.qml
-      touch $out
-    '';
-
-  # A sender kept to a level reaches no further, however urgent it says it
-  # is, and each level shows, counts and stays as tests/levels.qml holds.
-  a-sender-keeps-to-its-level =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "a-sender-keeps-to-its-level" { } ''
-      cp ${../../tests/levels.qml} levels.qml
-      cp ${./Levels.js} Levels.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml levels.qml
       touch $out
     '';
 

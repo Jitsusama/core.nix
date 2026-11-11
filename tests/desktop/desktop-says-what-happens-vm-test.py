@@ -82,11 +82,7 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     machine = desktop.machine
     # The notice the first notification's subtest left to go by itself,
     # sent and let go here when that one hasn't run.
-    kept = desktop.as_account(
-        "find ~/.local/state/quickshell -name notices.json"
-        ' -exec grep -l \'"summary":"Build finished"\' {} + 2>/dev/null; true'
-    )
-    if not kept.strip():
+    if machine.execute(desktop.notice_kept('.summary == "Build finished"'))[0] != 0:
         with desktop.told("drawn notifications"):
             desktop.as_account("notify-send 'Build finished' 'the laptop is ready'")
         machine.wait_until_fails(
@@ -898,12 +894,11 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     )
     # The history is kept on disk, the one acted on read and the one
     # only let go still unread.
-    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     machine.wait_until_succeeds(
-        desktop.in_session(kept + ' | grep -q \'"summary":"Recording saved"[^}]*"read":true\''),
+        desktop.notice_kept('.summary == "Recording saved" and .read'),
         timeout=timedelta(seconds=10),
     )
-    desktop.as_account(kept + ' | grep -q \'"summary":"Lunch"[^}]*"read":false\'')
+    machine.succeed(desktop.notice_kept('.summary == "Lunch" and (.read | not)'))
 
 
 def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
@@ -970,10 +965,9 @@ def found_chosen_and_undone(desktop: Desktop, scale: str) -> None:
     with desktop.told("notice done 3"):
         machine.send_chars("dd", delay=KEY_PACE)
     desktop.shoot(f"notice-done-at-{named}")
-    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     for summary in ["Build log", "Test log", "Deploy log"]:
         machine.wait_until_succeeds(
-            desktop.in_session(kept + f' | grep -q \'"summary":"{summary}"[^}}]*"read":true\''),
+            desktop.notice_kept(f'.summary == "{summary}" and .read'),
             timeout=timedelta(seconds=10),
         )
     with desktop.told("notice brought back 3"):
@@ -1806,9 +1800,8 @@ def test_super_shift_n_puts_the_notices_away(desktop: Desktop) -> None:
         desktop.as_account("notify-send --urgency=critical 'Standup' 'in five minutes'")
     with desktop.told("gone notifications"):
         machine.send_key("meta_l-shift-n")
-    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     machine.wait_until_succeeds(
-        desktop.in_session(kept + ' | grep -q \'"summary":"Standup"[^}]*"read":false\''),
+        desktop.notice_kept('.summary == "Standup" and (.read | not)'),
         timeout=timedelta(seconds=10),
     )
 

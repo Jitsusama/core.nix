@@ -1,4 +1,5 @@
-// The notification server: the notices on screen are one stack in the top
+// The notices on screen, as the notices daemon serves them (Notices.qml):
+// one stack in the top
 // right corner, the oldest not yet dealt with in front and up to three
 // newer behind it as edges, a critical one going to the front. A click on
 // the front one opens what it's about, or puts it away when it's about
@@ -17,8 +18,8 @@
 // clear of the margin's marks, which stand at the top centre in the gap
 // above the windows.
 //
-// Each is kept in the session's history as it arrives (Notices.qml), for
-// the launcher to find later, where the ones still here can be answered
+// Each is kept in the history as it arrives, by the daemon, for the
+// launcher to find later, where the ones still here can be answered
 // or forgotten, and while it's open the corner leaves them to it. What a
 // notice offers to do (Reply, Play it) leads its verbs, reached by keys.
 //
@@ -42,7 +43,7 @@ import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import QtQuick
 import "Columns.js" as Columns
-import "Levels.js" as Levels
+import "LiveNotice.js" as LiveNotice
 import "NoticeBody.js" as NoticeBody
 import "Stack.js" as Stack
 
@@ -108,8 +109,15 @@ Scope {
         title: "", artist: "", art: "", from: "", mark: "", where: ""
     }
 
-    // When each notification arrived, by its id, for the footer's time.
-    property var arrived: ({})
+    // The notices open, as Notices.qml hands them, in the order they
+    // arrived: by id, which the daemon never gives twice, as an object's
+    // whole-number keys are listed in rising order.
+    readonly property var tracked: Object.values(Notices.live)
+
+    // When one arrived, for the footer's time and for which rests longest.
+    function arrivedAt(id) {
+        return Notices.made[id]?.at ?? 0;
+    }
 
     // Where the notices sit: inside the window nearest the top right
     // corner of all those wholly on screen, the rightmost and then the
@@ -181,15 +189,14 @@ Scope {
     // still open, but not here.
     property var order: []
     readonly property var shown: Stack.shown(order,
-        server.trackedNotifications.values.map(notification => notification.id)
+        tracked.map(notification => notification.id)
             .filter(id => !(id in Notices.resting) && !held.awayIds.includes(id)))
     // How many may rest at once before the oldest is closed, so no program
     // is asked to hold its notices for ever.
     readonly property int rests: 30
     readonly property var front: {
         const id = shown[0];
-        return server.trackedNotifications.values.find(notification => notification.id === id)
-            ?? null;
+        return tracked.find(notification => notification.id === id) ?? null;
     }
     // How many behind the front show their edge, lower and narrower each
     // on both sides, and by how much: eight hairlines, a stroke that
@@ -223,7 +230,7 @@ Scope {
     readonly property bool away: idle.isIdle
     // The notices on screen, as their notifications, which the held list
     // lists: every one live but those resting.
-    readonly property var live: server.trackedNotifications.values
+    readonly property var live: tracked
         .filter(notification => !(notification.id in Notices.resting))
     onHoldingChanged: {
         // Taken, the cursor starts on the card in front, the one Joel was
@@ -294,7 +301,7 @@ Scope {
     }
 
     function dismiss(ids) {
-        for (const notification of server.trackedNotifications.values
+        for (const notification of tracked
             .filter(notification => ids.includes(notification.id)))
             notification.dismiss();
     }
@@ -306,10 +313,10 @@ Scope {
         if (root.holding)
             return found.concat([held]);
         const front = root.shown.slice(0, root.behind + 1);
-        const tracked = server.trackedNotifications.values;
-        for (let i = 0; i < tracked.length; i++) {
-            if (front.includes(tracked[i].id))
-                found.push(cards.itemAt(i));
+        for (let i = 0; i < cards.count; i++) {
+            const card = cards.itemAt(i);
+            if (card && front.includes(card.noticeId))
+                found.push(card);
         }
         return found;
     }
@@ -325,9 +332,10 @@ Scope {
         }
         Notices.rest(notification.id);
         Report.say(`rests ${notification.summary}`);
-        const resting = server.trackedNotifications.values
-            .filter(one => one.id in Notices.resting)
-            .sort((a, b) => (root.arrived[a.id] ?? 0) - (root.arrived[b.id] ?? 0));
+        // Counting this one, which the daemon has yet to say rests.
+        const resting = tracked
+            .filter(one => one.id in Notices.resting || one.id === notification.id)
+            .sort((a, b) => root.arrivedAt(a.id) - root.arrivedAt(b.id));
         for (const oldest of resting.slice(0, Math.max(0, resting.length - root.rests)))
             oldest.expire();
     }
@@ -387,8 +395,11 @@ Scope {
         // wears and that glyph's hue; whether a picture of its own stands
         // in its mark column; and where its links go.
         function front(): string {
-            const card = cards.itemAt(server.trackedNotifications.values
-                .findIndex(one => one.id === root.shown[0])) as Card;
+            let card = null;
+            for (let i = 0; i < cards.count && card === null; i++) {
+                if (cards.itemAt(i)?.noticeId === root.shown[0])
+                    card = cards.itemAt(i) as Card;
+            }
             const screen = window.screen;
             if (!card || !screen || !root.front)
                 return "{}";
@@ -440,49 +451,43 @@ Scope {
         }
     }
 
-    NotificationServer {
-        id: server
-        bodySupported: true
-        // Said to every sender, which otherwise sends its words plain, its
-        // links taken out, and no picture of its own: the markup a card
-        // draws (NoticeBody.js lets only the spec's through), its links,
-        // and an image, as an avatar or a thumbnail. Pictures in the words
-        // aren't, since a card fetches nothing it isn't handed.
-        bodyMarkupSupported: true
-        bodyHyperlinksSupported: true
-        imageSupported: true
-        actionsSupported: true
-        // A reply typed on the card, as the held list's :reply writes one.
-        inlineReplySupported: true
-        keepOnReload: true
-        onNotification: notification => {
-            root.arrived[notification.id] = Date.now();
-            // How far it reaches is its sender's level at most (Levels.js):
-            // one never shown is held, as one is while notices are.
-            const level = Levels.reached(Options.notices.senders[notification.appName
-                .toLowerCase()], notification.urgency === NotificationUrgency.Critical);
-            const reach = Levels.reach(level);
-            const urgent = reach.urgent;
-            const held = !reach.shown || (Quiet.on && !urgent);
-            // One its sender marks transient asks not to be kept, as niri's
-            // screenshot notice does.
-            if (!notification.transient)
-                Notices.arrived(notification, urgent, held, reach.counted,
-                    notification.urgency === NotificationUrgency.Low ? "low"
-                    : notification.urgency === NotificationUrgency.Critical ? "critical"
-                    : "normal");
-            if (held)
+    // One arriving goes on the stack where Stack.js puts it, unless the
+    // daemon held it, as one is while notices are (Quiet.qml) or when its
+    // sender's level never shows it; then it rests from the start, never
+    // shown but keeping its actions. One open as the shell starts was
+    // there before, so it isn't said to arrive, and the stack puts it
+    // behind those it orders (Stack.js's shown).
+    // The cards, one a notice open, by id: a card stays as long as its
+    // notice does, so its count isn't started over by another's change.
+    ListModel {
+        id: carded
+    }
+
+    function card() {
+        const open = root.tracked.map(notification => notification.id);
+        for (let i = carded.count - 1; i >= 0; i--) {
+            if (!open.includes(carded.get(i).noticeId))
+                carded.remove(i);
+        }
+        const had = [];
+        for (let i = 0; i < carded.count; i++)
+            had.push(carded.get(i).noticeId);
+        // Each new one has a higher id than those before, so it goes last.
+        for (const id of open.filter(id => !had.includes(id)))
+            carded.append({ noticeId: id });
+    }
+
+    onTrackedChanged: card()
+
+    Connections {
+        target: Notices
+
+        function onCame(notification, notice) {
+            if (notice.held) {
                 Report.say(`held ${notification.summary}`);
-            const id = notification.id;
-            if (!held)
-                root.order = Stack.arrived(root.order, id, urgent);
-            notification.closed.connect(reason => Notices.left(id,
-                reason === NotificationCloseReason.Expired ? "expired"
-                : reason === NotificationCloseReason.CloseRequested ? "withdrawn"
-                : "dismissed"));
-            // One held rests from the start, so it never shows but keeps
-            // its actions, unless its sender asked not to keep it.
-            notification.tracked = !held || !notification.transient;
+                return;
+            }
+            root.order = Stack.arrived(root.order, notification.id, notice.urgent);
         }
     }
 
@@ -497,15 +502,14 @@ Scope {
 
     // One said again in place that tells something new comes back to the
     // front, as one arriving would, unless notices are held and it isn't
-    // urgent, when it keeps resting. The server tells nothing of a notice
-    // replaced by its id, so Arrivals says it through Notices.
+    // urgent, when it keeps resting. Arrivals asks for it through Notices,
+    // and the daemon says it was raised.
     Connections {
         target: Notices
 
         function onRaisedChanged() {
             const id = Notices.raised?.id;
-            const notification = server.trackedNotifications.values
-                .find(one => one.id === id);
+            const notification = root.tracked.find(one => one.id === id);
             if (!notification
                 || Quiet.on && notification.urgency !== NotificationUrgency.Critical)
                 return;
@@ -779,14 +783,18 @@ Scope {
 
             Repeater {
                 id: cards
-                model: server.trackedNotifications
+                model: carded
                 onItemAdded: Qt.callLater(window.gather)
                 onItemRemoved: Qt.callLater(window.gather)
 
                 delegate: Card {
                     id: card
 
-                    required property Notification modelData
+                    required property int noticeId
+                    // Its notice, or none for the moment between its
+                    // notice going and the card with it, so nothing
+                    // reads a notice no longer there.
+                    readonly property var modelData: Notices.live[noticeId] ?? LiveNotice.none
                     readonly property var from: Notices.sender(modelData.appName,
                         modelData.desktopEntry)
                     // Where it stands in the stack, 0 at the front.
@@ -863,7 +871,7 @@ Scope {
                         onLinked: href => root.follow(href)
                         from: card.from.name
                         when: (more > 0 ? `${more} more \u00b7 ` : "")
-                            + root.since(root.arrived[card.modelData.id] ?? now, now)
+                            + root.since(root.arrivedAt(card.modelData.id) || now, now)
                     }
 
                     // Five seconds when the sender doesn't say, and ten for

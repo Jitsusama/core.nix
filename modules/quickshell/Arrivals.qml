@@ -207,12 +207,10 @@ Scope {
             id: was === null ? 0 : was.id,
             asking
         };
-        if (was !== null) {
-            // Gone already when its notify-send has exited.
-            if (was.asking)
-                was.asking.running = false;
-            Notices.reword(was.id, piece.hint, root.message(piece));
-        }
+        // Gone already when its notify-send has exited. Its new words
+        // reach the history as the daemon takes them in its place.
+        if (was !== null && was.asking)
+            was.asking.running = false;
         if (Options.reports)
             Report.say(`${was === null ? "arrives" : "rewords"} ${piece.title}`);
     }

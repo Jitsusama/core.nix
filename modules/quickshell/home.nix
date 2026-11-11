@@ -151,7 +151,6 @@ let
     "Margin.qml"
     "Marks.js"
     "Arrivals.qml"
-    "Levels.js"
     "Crossing.js"
     "Devices.js"
     "Facts.js"
@@ -163,6 +162,7 @@ let
     "Ex.js"
     "HeldNotices.qml"
     "HeldTimers.qml"
+    "LiveNotice.js"
     "Notifications.qml"
     "Music.qml"
     "Music.js"
@@ -2042,12 +2042,11 @@ in
                   player = lib.getExe' pkgs.pipewire "pw-play";
                 }
               }
+              // Each sender's level the notices daemon keeps it to, from its
+              // own file (modules/notices), not from here.
               readonly property var notices: ${
                 object {
                   inherit (config.jitsusama.quickshell.notices) away;
-                  senders = lib.mapAttrs' (
-                    name: sender: lib.nameValuePair (lib.toLower name) sender.level
-                  ) config.jitsusama.quickshell.notices.senders;
                 }
               }
               // Other modules' surfaces, by file, from jitsusama.quickshell.surfaces.

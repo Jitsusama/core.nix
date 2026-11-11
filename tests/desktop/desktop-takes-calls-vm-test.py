@@ -223,8 +223,10 @@ def test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed(
     # The caller gives up: the ring's notice goes, and a missed call stays.
     desktop.tuple_said("Caller.cpp:985|invalidating call")
     machine.wait_until_fails(offered, timeout=timedelta(seconds=10))
-    kept = "grep -q 'Missed a call from someone' ~/.local/state/quickshell/by-shell/*/notices.json"
-    machine.wait_until_succeeds(desktop.in_session(kept), timeout=timedelta(seconds=10))
+    machine.wait_until_succeeds(
+        desktop.notice_kept('.summary | contains("Missed a call from someone")'),
+        timeout=timedelta(seconds=10),
+    )
     # Once it goes by itself it waits among what came lately, and lights no
     # mark: a missed call is an ordinary notice, and For You's tray is the
     # one mark, lit only by what needs Joel.
