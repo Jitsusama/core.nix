@@ -43,6 +43,10 @@ SPOTS_DUE = timedelta(milliseconds=700)
 # nothing of the race.
 SPOTS_LATER = timedelta(milliseconds=500)
 
+# What the shell says as it makes a closing's spots while shut, or makes them again a minute
+# after (Launcher.qml's spotsMadeClosed and spotsFreshened).
+SPOTS_MADE_SHUT = ("spots made while closed ", "spots freshened while closed ")
+
 # How many closings and reopenings a case tries before a builder too busy to ask the reopening
 # within SPOTS_LATER fails it.
 REOPENINGS_TRIED = 3
@@ -62,6 +66,13 @@ SETTLING_S = 2
 # How long a closing's spots are given to be freshened: a minute after they're made
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
 FRESHENING = timedelta(seconds=75)
+
+# What fills a kept opening in (Launcher.qml's filled): its frame drawn where niri can't say it
+# was presented, niri saying it was or not saying in time, or a key before any of them.
+FILLERS = frozenset({"frame", "presented", "unpresented", "key"})
+
+# How many kept openings a case times its fill against niri's presenting in.
+PRESENTED_OPENINGS = 5
 
 # How long the closed launcher's frame count must hold to count as having drawn what it kept:
 # keeping home says so before the pixel left on the screen draws it, which a loaded builder
@@ -121,6 +132,18 @@ def filled_after(shell: Shell, timed: int) -> Json:
     opening = each[-1]
     assert opening.get("kept"), f"the opening wasn't drawn from what was kept: {opening}"
     return opening
+
+
+def presented_after(shell: Shell, nth: int) -> Json:
+    """Give the opening numbered once niri has said it presented it, or that it closed first."""
+    each: list[Json] = []
+
+    def presented(_: Json) -> bool:
+        each[:] = [one for one in openings(shell) if one.get("nth") == nth]
+        return bool(each) and "presented" in each[0]
+
+    shell.launcher_until(presented)
+    return each[0]
 
 
 @contextlib.contextmanager
@@ -246,12 +269,26 @@ def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
     home and every source home names made its rows, put away at once: each Super+Tab reopening
     made 35, of Capture, Today, Time and Agents (3TXW9E's measure, 2026-11-10). Now, Agents and
     Capture also made theirs as any opening began, by handlers of their own, until #3111, #3112
-    and #3083 put each off until it's read or changed.
+    and #3083 put each off until it's read or changed. The last case's closing makes its spots
+    half a second after it, only while the launcher is shut, so they can land between reading
+    the rows made and the ask, as Displays' 19 did in a gate of #3148 (RO9YDD, 2026-11-11):
+    such a try counts nothing of the opening's, so it's closed, its own spots waited for, and
+    made again.
     """
-    before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
-    shell.as_account(shell.ipc("collection", "windows"))
-    shell.launcher_ready()
-    after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+    for _ in range(REOPENINGS_TRIED):
+        began = shell.mark()
+        before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+        shell.as_account(shell.ipc("collection", "windows"))
+        shell.launcher_ready()
+        after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+        said, _ = shell.said_since(began)
+        if not any(line.startswith(SPOTS_MADE_SHUT) for line in said):
+            break
+        closing = shell.mark()
+        shell.close_launcher()
+        shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
+    else:
+        pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
     made = {
         name: rows - before.get(name, 0)
         for name, rows in after.items()
@@ -421,7 +458,7 @@ def test_keys_typed_as_it_opens_land_and_are_found(shell: Shell) -> None:
     assert latest(each) > timed, f"the opening was never timed: {each}"
     opening = each[-1]
     assert opening.get("kept"), f"the opening wasn't drawn from what was kept: {opening}"
-    assert opening.get("filledBy") in {"frame", "key"}, f"nothing filled it in: {opening}"
+    assert opening.get("filledBy") in FILLERS, f"nothing filled it in: {opening}"
 
 
 def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:
@@ -435,6 +472,30 @@ def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:
     opening = opened_from_kept(shell)
     assert opening["frames"] == 1, f"the kept opening waited on niri's size: {opening}"
     assert opening["took"] < UNANSWERED_MS, f"the opening waited on a frame unanswered: {opening}"
+
+
+def test_a_kept_opening_fills_in_once_niri_has_presented_its_frame(shell: Shell) -> None:
+    """A kept opening fills in only once niri has presented the frame it was drawn in.
+
+    Filled as soon as that frame was swapped, the fill's work held the frame back from the
+    screen: niri presented it a median 132 ms after it was drawn, against 33 ms for a letter's,
+    and 20 ms once the fill waited (24 kept openings a side, 2026-11-11). Each of a few openings
+    begins its fill no sooner than niri presented it, but one niri never said it presented
+    within the launcher's wait, filled anyway.
+    """
+    waited: list[Json] = []
+    seen: list[Json] = []
+    for _ in range(PRESENTED_OPENINGS):
+        opening = presented_after(shell, opened_from_kept(shell)["nth"])
+        seen.append(opening)
+        assert opening["presented"] >= 0, f"niri never presented the opening: {opening}"
+        if opening["filledBy"] != "unpresented":
+            assert opening["fillFrom"] >= opening["presented"], (
+                f"the opening filled in before niri presented its frame: {opening}"
+            )
+            waited.append(opening)
+        shell.launcher_left_closed()
+    assert waited, f"niri presented no opening within the launcher's wait: {seen}"
 
 
 def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:

@@ -8151,6 +8151,8 @@ Scope {
         openKept = true;
         openFilledBy = "";
         fillEarly = -1;
+        fillPresented = false;
+        fillUnpresented.stop();
         openFramesSized = 0;
         openFramesWaited = 0;
         openFirstDrawn = -1;
@@ -8234,7 +8236,39 @@ Scope {
         if (openFramesSized === 0)
             Report.say(`filled an opening not at its size, after ${openFramesWaited} frames`);
         openDrawn();
-        filled("frame");
+        // Filled once niri has presented that frame, not as it's swapped:
+        // filled at once, niri presented the kept frame a median 132 ms
+        // after it was drawn, against 33 ms for a letter's, since the
+        // fill's work held it back, and 20 ms once the fill waited (a lab
+        // of 24 kept openings a side on nested niri, 2026-11-11). Joel's
+        // wait runs to the frame he sees. A frame niri hasn't said it
+        // presented within `fillUnpresented` is filled anyway, and one
+        // already presented, or on a surface niri can't say of, at once.
+        // Niri always says a frame was presented or discarded, so that
+        // wait only guards one that never answers; a key fills at once.
+        if (presentedFrom >= 0) {
+            fillPresented = true;
+            fillUnpresented.restart();
+        } else {
+            filled("frame");
+        }
+    }
+    property bool fillPresented: false
+    function presentedFill(by) {
+        if (!fillPresented)
+            return;
+        fillPresented = false;
+        fillUnpresented.stop();
+        filled(by);
+    }
+    Timer {
+        id: fillUnpresented
+
+        // Past 100 ms, every one of five openings on a builder running
+        // the gate's other nested niris beside it filled unpresented,
+        // niri slow to present there, though each was presented alone.
+        interval: 500
+        onTriggered: root.presentedFill("unpresented")
     }
 
     // Brings a card shown from what it kept up to now: open, every source
@@ -8246,6 +8280,7 @@ Scope {
             return;
         openFilledBy = by;
         const began = KeyTimes.now();
+        fillFrom = feltFrom < 0 ? -1 : began - feltFrom;
         // Its sources wake a few a frame from the next (wakeNext), so home,
         // or the place a chord opened, is found again here from what each
         // made last.
@@ -8420,13 +8455,15 @@ Scope {
     // first keys says which held them.
     property var fillParts: ({})
     property real fillWorked: 0
+    // When the fill began, from the chord or the ask, as `presented` is.
+    property real fillFrom: -1
     function filledSaid(took) {
         const last = openingsTimed[openingsTimed.length - 1];
         if (!last || !last.kept || last.filling !== undefined)
             return;
         const worked = Math.round(fillWorked);
         const filled = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
-            verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy, woke: openWoke,
+            fillFrom: Math.round(fillFrom), verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy, woke: openWoke,
             madeBy: madeBy() };
         openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);
         const made = Object.values(filled.madeBy).reduce((sum, rows) => sum + rows, 0);
@@ -8606,6 +8643,7 @@ Scope {
         console.info(ms >= 0
             ? `launcher: opening presented ${ms} ms from ${from}`
             : "launcher: opening closed before niri presented it");
+        presentedFill("presented");
     }
 
     // What a key changed, timed as the opening is, from its press (or,
@@ -8731,7 +8769,7 @@ Scope {
     function feltTicked() {
         const now = KeyTimes.now();
         feltTicks = Pacing.feltTicked(feltTicks, now, feltPace);
-        if (feltTicks.usable >= 0 || !open || now - feltFrom > feltGiveUp)
+        if (feltTicks.usable >= 0 || !cardUp || now - feltFrom > feltGiveUp)
             feltSaid();
     }
     readonly property int feltGiveUp: 15000
@@ -8748,7 +8786,7 @@ Scope {
         console.info(usable >= 0
             ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
             : `launcher: opening not usable ${waited} ms from ${from}, its longest stall`
-                + ` ${stalled} ms` + (open ? "" : ", closed first"));
+                + ` ${stalled} ms` + (cardUp ? "" : ", closed first"));
     }
     Timer {
         id: feltTicking
