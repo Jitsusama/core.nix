@@ -1,5 +1,5 @@
 // What the clipboard holds, as the acts that take a copy read it
-// (Copied.qml): the line its one watcher says of each copy, whether it's
+// (Copied.qml): the line the clipboard's history says of it, whether it's
 // a picture and of what type, one web address alone, or a file's path
 // with the line and column to open it at, and whether that file is
 // markdown. Kept apart from Quickshell's types, so the
@@ -7,9 +7,10 @@
 // engine (tests/quick-acts.qml).
 .pragma library
 
-// The unit separator the watcher writes for each line break, since it
-// says each copy as one line; nothing typed holds one.
-const BREAK = "\u001f";
+// How the clipboard's history opens the line saying what the clipboard
+// holds now, told apart from its copies' lines by that alone, so the
+// copies it sends as the shell connects aren't parsed here.
+const NOW = "{\"now\":";
 
 // A picture's type, as the clipboard's history says it too
 // (launcher/Copies.qml), in the fewest words, and the extension a file of
@@ -60,18 +61,28 @@ const MARKDOWN = /\.(md|markdown)$/i;
 // MuPDF reads too are the picture viewer's.
 const DOCUMENT = /\.(pdf|xps|oxps|epub|fb2|mobi|djvu|djv|ps|eps)$/i;
 
-// What the watcher says of one copy, its types, a space between each,
-// then a tab and its text, each line break written as BREAK, or an
-// empty line for a copy with nothing to read, as one cleared or a
-// password manager's: { types, text }.
+// What the clipboard's history says the clipboard holds now,
+// {"now":{"types":[...],"text":"..."}}, as { types, text }: the types it's
+// offered as, and its text, "" for one with none to read, as one cleared
+// or a password manager's. Null for any other line it sends, a copy kept
+// or let go, which the launcher's Copies reads (clipboard/src/main.rs).
 function heard(line) {
-    const tab = line.indexOf("\t");
-    if (tab < 0) {
-        return { types: [], text: "" };
+    if (!line.startsWith(NOW)) {
+        return null;
+    }
+    let said;
+    try {
+        said = JSON.parse(line).now;
+    } catch (_error) {
+        return null;
+    }
+    if (said === null || typeof said !== "object") {
+        return null;
     }
     return {
-        types: line.slice(0, tab).split(" ").filter(type => type !== ""),
-        text: line.slice(tab + 1).split(BREAK).join("\n")
+        types: Array.isArray(said.types)
+            ? said.types.filter(type => typeof type === "string") : [],
+        text: typeof said.text === "string" ? said.text : ""
     };
 }
 

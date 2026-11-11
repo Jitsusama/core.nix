@@ -219,7 +219,6 @@
           echo 1
         '';
       };
-      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
     in
     pkgs.runCommandLocal "the-desktop-hears-tuples-call" { } ''
       cp ${../../tuple/Tuple.qml} Tuple.qml
@@ -240,7 +239,7 @@
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data
       export XDG_STATE_HOME=$TMPDIR/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PATH=${notify}/bin:${paste}/bin:$PATH
+      export PATH=${notify}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/daemons
       mkdir -p $XDG_DATA_HOME/tuple/0
       touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told

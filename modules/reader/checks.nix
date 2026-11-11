@@ -74,7 +74,7 @@ onLinux {
   # The reader's step in the launcher, its provider's as Applications.qml
   # holds it (../../tests/reader-program.qml), over the reader's desktop
   # entry, with niri, the shortcuts and what's playing stood in, the
-  # shell's own watch of the clipboard over a wl-paste that says nothing,
+  # shell's own watch of the clipboard with no history to hear,
   # and reader --places by a script that counts its runs: its Recent merges
   # each file the reader left by when, newest first, with the shared list's,
   # each once, none open now; one left part way says "Installing · 40% · 12
@@ -144,8 +144,6 @@ onLinux {
         Comment=Read a markdown file as a page
         Exec=reader %f
       '';
-      # The clipboard's watcher, which hears nothing.
-      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
     in
     # Kept in Nix because each line copies, or names in a variable, a file
     # Nix gives it, and the places it reads are printed by a script of
@@ -177,7 +175,6 @@ onLinux {
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
       cp ${../quickshell/Copied.qml} Copied.qml
       cp ${../quickshell/Copied.js} Copied.js
-      export PATH=${paste}/bin:$PATH
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
       mkdir -m 700 $XDG_RUNTIME_DIR
