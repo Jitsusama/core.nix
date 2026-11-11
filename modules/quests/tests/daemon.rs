@@ -133,7 +133,8 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
         .expect("the node is told");
     // The first change told is the title's: the list written again, only
     // when it was heard moving, told nothing. A line saying how the
-    // sources stand, as the first making's, is passed over.
+    // sources stand, as the first making's, is passed over. B is told
+    // too, since a subquest's row says its parent's name, and E is not.
     let said = loop {
         let said = client.heard();
         if said.get("changed").is_some() {
@@ -146,6 +147,11 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
         .flatten()
         .map(|record| &record["key"])
         .collect();
-    assert_eq!(keys, ["row:quests:QEST-A"], "one row told: {said}");
+    assert_eq!(
+        keys,
+        ["row:quests:QEST-A", "row:quests:QEST-B"],
+        "the renamed row and its subquest told: {said}"
+    );
     assert_eq!(said["changed"][0]["row"]["name"], "Again");
+    assert_eq!(said["changed"][1]["row"]["held"]["parent"]["name"], "Again");
 }
