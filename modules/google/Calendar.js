@@ -241,17 +241,22 @@ function guestEmails(meeting) {
         .concat((meeting.guests ?? []).map(guest => guest.email));
 }
 
-// How many of those on a meeting People knows, each person once however
-// many of their addresses are on it, asking `people` (People.qml) who
-// each address is, so no one's row is made to count them: counting by
-// their rows made each guest's whole row every time a meeting's acts were
-// read (2026-11-10). None without People.
-function knownGuests(meeting, people) {
+// How many are on a meeting besides Joel, each person People knows once
+// however many of their addresses are on it, and anyone it doesn't know
+// yet by their address, asking `people` (People.qml) who each address
+// is, so no one's row is made to count them: counting by their rows made
+// each guest's whole row every time a meeting's acts were read
+// (2026-11-10). One People names only once the people daemon answers, as
+// a guest of a meeting still to come, is counted from the first, so the
+// Guests row is drawn with the meeting's other rows rather than pushing
+// those under it down once People answers (VKCF3Z, 2026-11-11). None
+// without People.
+function guestsCounted(meeting, people) {
     if (!people) {
         return 0;
     }
-    return new Set(guestEmails(meeting).map(email => people.whoIs(email)?.key)
-        .filter(key => key !== undefined)).size;
+    return new Set(guestEmails(meeting).filter(Boolean)
+        .map(email => people.whoIs(email)?.key ?? String(email).toLowerCase())).size;
 }
 
 // How those asked answered, counted, as a calendar heads its list of
