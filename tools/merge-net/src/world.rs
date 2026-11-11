@@ -10,6 +10,7 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -104,6 +105,13 @@ pub struct Real {
     /// The branch it follows and lands its changes on: main, or a
     /// throwaway branch to prove the net on.
     pub branch: String,
+    /// Held by whatever moves the checkout's head, as a change landing and
+    /// a comparison do, so the two can't take turns in it. They run on
+    /// two threads, the settler's and the round's, and at 06:01 on 11
+    /// November a comparison checked out main's head under a quarantine
+    /// being cut. Its commit went on the detached head, the tree was left
+    /// changed, and its checks refused to run.
+    pub moving: Mutex<()>,
 }
 
 impl Real {
@@ -114,6 +122,11 @@ impl Real {
 
     fn checkout(&self) -> PathBuf {
         self.state.join("core")
+    }
+
+    /// The checkout to itself, until what's given back is dropped.
+    fn moving(&self) -> MutexGuard<'_, ()> {
+        self.moving.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The repository's `owner/name` on GitHub.
@@ -223,6 +236,7 @@ impl Real {
         still: &dyn Fn(&str, &str) -> Result<bool, String>,
         change: &dyn Fn() -> Result<(), String>,
     ) -> Result<Merged, String> {
+        let _moving = self.moving();
         let followed = self.followed();
         self.git(&["fetch", "--quiet", "origin", &self.branch])?;
         let cut_from = self.git(&["rev-parse", &followed])?;
@@ -601,6 +615,7 @@ impl World for Real {
         if let Ok(said) = fs::read_to_string(&kept) {
             return Ok(Changed::parse(&said));
         }
+        let _moving = self.moving();
         self.git(&["checkout", "--quiet", "--force", "--detach", head])?;
         let log = self
             .state
@@ -1021,6 +1036,7 @@ fn run(command: &mut Command) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::git_in;
 
     #[test]
     fn a_pr_left_open_for_the_branch_is_taken_up_rather_than_failing() {
@@ -1390,33 +1406,15 @@ mod tests {
         );
     }
 
-    /// Runs git in `repo` as someone, with no user's or system's config.
-    fn git_at(repo: &Path, arguments: &[&str]) -> String {
-        let ran = Command::new("git")
-            .arg("-C")
-            .arg(repo)
-            .args(arguments)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_AUTHOR_NAME", "t")
-            .env("GIT_AUTHOR_EMAIL", "t@t")
-            .env("GIT_COMMITTER_NAME", "t")
-            .env("GIT_COMMITTER_EMAIL", "t@t")
-            .output()
-            .unwrap();
-        assert!(ran.status.success(), "git {arguments:?}: {ran:?}");
-        String::from_utf8_lossy(&ran.stdout).trim().to_owned()
-    }
-
     /// Writes `list` as the quarantine list in `repo` and commits it there
     /// as someone, giving the commit.
     fn listed(repo: &Path, list: &Value) -> String {
         let path = repo.join(QUARANTINE);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, serde_json::to_string_pretty(list).unwrap() + "\n").unwrap();
-        git_at(repo, &["add", QUARANTINE]);
-        git_at(repo, &["commit", "-qm", "listed"]);
-        git_at(repo, &["rev-parse", "HEAD"])
+        git_in(repo, &["add", QUARANTINE]);
+        git_in(repo, &["commit", "-qm", "listed"]);
+        git_in(repo, &["rev-parse", "HEAD"])
     }
 
     /// A net whose checkout is cloned from a repository of its own, with
@@ -1427,22 +1425,46 @@ mod tests {
         let origin = root.join("origin.git");
         let main = root.join("main");
         fs::create_dir_all(&origin).unwrap();
-        git_at(&origin, &["init", "-q", "--bare", "-b", "main"]);
-        git_at(&root, &["clone", "-q", "origin.git", "main"]);
+        git_in(&origin, &["init", "-q", "--bare", "-b", "main"]);
+        git_in(&root, &["clone", "-q", "origin.git", "main"]);
         listed(&main, held);
-        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
         let net = Real {
             state: root.join("net"),
             url: origin.display().to_string(),
             system: "x86_64-linux".to_owned(),
             booted: 0,
             branch: "main".to_owned(),
+            moving: Mutex::new(()),
         };
         fs::create_dir_all(&net.state).unwrap();
         net.cloned().unwrap();
-        git_at(&net.checkout(), &["config", "user.name", "net"]);
-        git_at(&net.checkout(), &["config", "user.email", "net@t"]);
+        git_in(&net.checkout(), &["config", "user.name", "net"]);
+        git_in(&net.checkout(), &["config", "user.email", "net@t"]);
         (net, root)
+    }
+
+    #[test]
+    fn a_comparison_waits_while_a_change_is_landing_in_the_checkout() {
+        let (net, root) = a_net("moving", &json!([]));
+        let head = git_in(&root.join("main"), &["rev-parse", "HEAD"]);
+        let (tell, told) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let landing = net.moving();
+            scope.spawn(|| tell.send(net.changed(&head, &head).is_ok()));
+            // A comparison that took no turn moves the head at once, so a
+            // third of a second is time enough to have seen it go.
+            assert!(
+                told.recv_timeout(Duration::from_millis(300)).is_err(),
+                "a comparison moved the checkout while a change was landing"
+            );
+            drop(landing);
+            assert!(
+                told.recv_timeout(Duration::from_secs(30)).is_ok(),
+                "a comparison never took its turn once the landing ended"
+            );
+        });
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -1461,7 +1483,7 @@ mod tests {
         let branch = "merge-net/quarantine-broken";
         let sha = net.cut(branch, &cut_from, "quarantine", &change).unwrap();
         let newest = listed(&main, &json!([{"test": "kept"}]));
-        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
         let landed = net.onto_newest(branch, &cut_from, sha, "quarantine", &change);
         let (on, at) = landed.expect("a quarantine meeting another on main didn't land");
         assert_eq!(on, newest, "it wasn't put on main's newest head");
@@ -1477,7 +1499,7 @@ mod tests {
             "the list cut again lost main's change or its own"
         );
         assert_eq!(
-            git_at(&root.join("origin.git"), &["rev-parse", branch]),
+            git_in(&root.join("origin.git"), &["rev-parse", branch]),
             at,
             "what was cut again wasn't pushed"
         );
@@ -1499,7 +1521,7 @@ mod tests {
         let branch = "merge-net/revert-x";
         let sha = net.cut(branch, &cut_from, "revert", &change).unwrap();
         listed(&main, &json!([{"test": "kept"}, {"test": "new"}]));
-        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
         let landed = net.onto_newest(branch, &cut_from, sha.clone(), "revert", &change);
         assert!(
             landed.as_ref().is_err_and(|why| why.contains("CONFLICT")),

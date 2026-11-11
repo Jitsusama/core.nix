@@ -167,8 +167,6 @@
   "tests/waits.qml" = 1;
   "tests/weather.qml" = 2;
   "tests/vm/network/wifi-check-page.py" = 1;
-  "tools/merge-net/src/main.rs" = 1;
-  "tools/merge-net/src/world.rs" = 1;
   "tools/shell-preview/src/layout.rs" = 1;
   "tools/shell-preview/tests/shell_preview.rs" = 1;
 }

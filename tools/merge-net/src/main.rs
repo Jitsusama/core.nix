@@ -131,6 +131,7 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
         system: SYSTEM.to_owned(),
         booted: holds::booted().unwrap_or(0),
         branch,
+        moving: std::sync::Mutex::new(()),
     };
     // With nothing passed yet, the first round starts where it's told, or
     // at main's head as it is now, which it takes as passing. It's written
@@ -737,8 +738,9 @@ mod tests {
     }
 
     /// Runs git in `repo` with no user's or system's config, so the test
-    /// reads the same wherever it runs, and gives what it printed.
-    fn git_in(repo: &Path, arguments: &[&str]) -> String {
+    /// reads the same wherever it runs, and gives what it printed. The
+    /// other modules' tests run their git through it too.
+    pub(crate) fn git_in(repo: &Path, arguments: &[&str]) -> String {
         let ran = Command::new("git")
             .arg("-C")
             .arg(repo)
