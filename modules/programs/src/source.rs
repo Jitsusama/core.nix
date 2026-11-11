@@ -32,6 +32,15 @@ pub struct Source {
     /// Read only as a watch of its program begins.
     #[serde(default)]
     pub asked: bool,
+    /// With `asked`, read again only once something tells this daemon its
+    /// list changed (the `changed` ask), as kitty's watcher and Neovim do
+    /// of what they hold, rather than each time its key is asked: what's
+    /// held answers at once until then. A line opening with a process's
+    /// id and a tab is of that process, and the list is read as each ask
+    /// comes, as an untold one is, while one it names hasn't told yet, as
+    /// a kitty started before its watcher never does (`listers`).
+    #[serde(default)]
+    pub told: bool,
     /// The command printing its paths, newest first.
     #[serde(default)]
     pub list: Vec<String>,
@@ -83,6 +92,16 @@ impl Source {
     fn site(&self) -> bool {
         self.kind.as_deref() == Some("site")
     }
+}
+
+/// The processes a told list's lines are of, each line's first field
+/// where it's a process's id; a line opening with anything else names none.
+#[must_use]
+pub fn listers(printed: &str) -> Vec<u64> {
+    printed
+        .lines()
+        .filter_map(|line| line.split_once('\t')?.0.parse().ok())
+        .collect()
 }
 
 /// A line apart from when it says it was last used, in seconds, or none
@@ -349,5 +368,14 @@ mod tests {
         );
         let shared = source(json!({"list": ["x"]}));
         assert!(opened(&shared, "").is_none(), "no name opens nothing");
+    }
+
+    #[test]
+    fn a_told_lists_lines_name_the_processes_they_are_of() {
+        assert_eq!(
+            listers("2684\t{\"tabs\": 3}\n41\t{}\none\nx\ty\n"),
+            [2684, 41],
+            "only a line opening with an id and a tab names a process"
+        );
     }
 }

@@ -926,6 +926,11 @@
     kitty draws !=, >= and -> as the mono face's ligatures with the account's fontconfig features,
     and |> and 1..=2 plain
   '';
+  kitty-tells-what-it-has-open = ''
+    kitty's watcher, run in kitty's own Python, tells the programs daemon each change to its tabs,
+    its windows and the variables a program in one says, and that it's loaded, as one ask naming
+    kitty's list and its own process, passes over a resize, and with no daemon there says so once and holds kitty up for nothing
+  '';
   kitty-lists-its-tabs = ''
     Programs › kitty matches each kitty OS window to niri's window by order or a title only one
     has, lists every tab niri shows, the window used last first and its tabs and panes as kitty
@@ -1713,8 +1718,10 @@
     hidden one, with their remotes and one's files as git lists them, hidden ones but not what
     it ignores, as each is asked, reads when zoxide's database saw each folder, ssh's config
     and known hosts, and the ssh lines of zsh's history as each is asked, reads what a program
-    has open as it's asked, asks what a file shows of one file-preview it keeps, again only once the file changed, follows a data folder through each
-    link a switch replaces, and refuses an ask or a kind it doesn't know
+    has open as it's asked, and a list its program tells of again only once told it changed, or as
+    each ask comes while it names a process that never told, asks
+    what a file shows of one file-preview it keeps, again only once the file changed, follows a
+    data folder through each link a switch replaces, and refuses an ask or a kind it doesn't know
   '';
   programs-passes-clippy = ''
     clippy finds nothing in the programs daemon or its tests
