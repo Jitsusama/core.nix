@@ -68,5 +68,12 @@
     "owner_pr": 3176,
     "reason": "failed, then passed, at 6e396fae765b",
     "test": "vm-desktop-looks-plates"
+  },
+  {
+    "at": 1794421209,
+    "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
+    "owner_pr": 3304,
+    "reason": "failed, then passed, at 042387bc604a",
+    "test": "vm-desktop-launcher-answers"
   }
 ]
