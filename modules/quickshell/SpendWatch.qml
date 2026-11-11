@@ -2,9 +2,8 @@ pragma Singleton
 // What spend-watch (modules/spend-watch) tells the launcher: its
 // collection, the collection on Super+U and its answers (the launcher's
 // Spend) and what each pi session spent today (its Agents); and its
-// budgets.json, how each budget stands, every fact of it in words for a
-// budget's drawer (SpendDrawer.js), and which budget each session drew on
-// last. Every figure and word is the daemon's, so this only holds them.
+// budgets.json, how each budget stands, and which budget each session
+// drew on last (SpendDrawer.js). Every figure and word is the daemon's, so this only holds them.
 //
 // The collection comes over the daemon's socket as records
 // (SpendWatch.js), each kind watched only while it's drawn, and after
@@ -19,8 +18,8 @@ pragma Singleton
 // was read again each pass too, about 9 KB, while nothing drew it.
 //
 // spend-watch ranks the rows, placing each in the lists it's shown in, so
-// none is ranked here. Spend still makes its rows from these records, and
-// its drawers in SpendDrawer.js, until spend-watch serves them ready,
+// none is ranked here, and each row brings its drawer ready. Spend still
+// makes its rows from these records until spend-watch serves them ready,
 // planned for 2026-11-12.
 //
 // While the socket isn't there, as before the daemon starts or in a check

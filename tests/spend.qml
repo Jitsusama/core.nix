@@ -13,9 +13,8 @@
 // report by its words,
 // leaves alone what isn't one, steps from a period into its cuts and from a
 // cut into its rows, each with its footer, shows no amount while the screen
-// is shared, draws nothing from a file of another version, opens a drawer
-// of every fact budgets.json holds of a budget's row and a window's, and
-// puts a
+// is shared, draws nothing from a file of another version, opens the
+// drawer each row brings as it's given, and puts a
 // finding that wants a look first, whose going to its session and
 // marking it expected run nothing and say so with no socket to ask; read
 // from the file, its figures are said to be the
@@ -476,9 +475,11 @@ ShellRoot {
             + "Most by Model=claude-opus-5-5 \u00b7 all", week ? factsOf(week) : "none");
     }
 
-    // A budget's row and a window's each open a drawer of every fact
-    // budgets.json holds of it, in the vocabulary's names, and the
-    // Budgets row, which only gathers them, has none of its own.
+    // A budget's row and a window's each open the drawer the daemon brings
+    // with it, drawn as given: a window's fact by its own name, the rest by
+    // the vocabulary's, each meter beside its figure. A row that brings
+    // none opens none, and the Budgets row, which only gathers them, has
+    // none of its own.
     function drawers(budgets) {
         SpendWatch.standing = root.standing;
         const rows = budgets.verbs();
@@ -492,54 +493,20 @@ ShellRoot {
             const drawer = drawn(key);
             return drawer ? factsOf(drawer) : "none";
         };
-        // A share window's row says how much, so its drawer has neither a
-        // Standing nor a meter that would say it again.
         const five = drawn("budget:claude:five-hours");
-        expect("a share window's drawer", five?.eyebrow === "in Claude Pro \u00b7 window"
-            && five.eyebrowNames && five.title === "Five Hours"
-            && factsOf(five) === "Resets=16:20; Read By=Claude at 14:20; Warns=at 80%",
+        expect("a window's drawer, as the daemon brings it",
+            five?.eyebrow === "in Claude Pro \u00b7 window" && five.eyebrowNames
+            && five.title === "Five Hours"
+            && factsOf(five) === "Resets=16:20; Read By=Claude at 14:20",
             said("budget:claude:five-hours"));
-        expect("a window not read yet", said("budget:claude:week") === "Warns=at 80%",
-            said("budget:claude:week"));
-        // A dollar window says its standing with its meter, and what its
-        // feed says comes first, while it says anything.
-        expect("a dollar window past where it warns", said("budget:proxy:weekly")
-            === "Standing=$37,000 of $40,000:stroke!; Override Ends=Wed 2 Dec \u00b7 a guess; "
-            + "Last Changed=raised $30,000 to $40,000 \u00b7 Thursday 11:31; "
-            + "Read By=the AI proxy at 21:35; Warns=at $36,000", said("budget:proxy:weekly"));
-        expect("a window its feed refuses", said("budget:proxy:premium")
-            === "Feed Says=refusing requests; Standing=$0 of $300:stroke; "
-            + "Resets=05:00 tomorrow; Read By=the AI proxy at 21:35; Warns=at $150",
-            said("budget:proxy:premium"));
         const plan = drawn("budget:claude");
-        // Whose and what kind, our own words, so in Label's capitals; each
-        // window its figure and when it resets, since the row's side is its
-        // standing in full; its providers as each names itself.
-        expect("a plan's drawer", plan?.eyebrow === "your own \u00b7 plan" && !plan.eyebrowNames
+        expect("a budget's drawer, its windows by their own names",
+            plan?.eyebrow === "your own \u00b7 plan" && !plan.eyebrowNames
             && plan.title === "Claude Pro"
             && factsOf(plan) === "Five Hours=85% \u00b7 resets 16:20:stroke!; "
-            + "Week=not read yet; Worth at List=$84 today; Feed=reading fine; "
-            + "Providers=Claude Code", plan ? factsOf(plan) : "none");
-        expect("the employer's money's drawer", said("budget:proxy")
-            === "Week=$37,000 of $40,000:stroke!; Premium Day=$0 of $300:stroke; "
-            + "Spent=$3,075 today; Feed=signed out", said("budget:proxy"));
-        // A window in dollars has no brief, so its one window's reset is
-        // among its facts.
-        expect("a budget of one window says its facts", said("budget:delta")
-            === "Day=$40 of $50:stroke; Resets=05:00 tomorrow; Read By=the AI proxy at 21:35; "
-            + "Warns=at $45; Spent=$40 today", said("budget:delta"));
-        // While sharing, no drawer holds a dollar figure, as no row does,
-        // and a dollar window's meter goes with its Standing.
-        Quiet.sharing = true;
-        const quiet = ["budget:claude:five-hours", "budget:proxy:weekly", "budget:claude",
-            "budget:proxy", "budget:delta"].map(said);
-        Quiet.sharing = false;
-        expect("quiet drawers", quiet.join(" | ") === "Resets=16:20; "
-            + "Read By=Claude at 14:20; Warns=at 80% | Override Ends=Wed 2 Dec \u00b7 a guess; "
-            + "Read By=the AI proxy at 21:35 | "
-            + "Five Hours=85% \u00b7 resets 16:20:stroke!; Week=not read yet; "
-            + "Feed=reading fine; Providers=Claude Code | Feed=signed out | "
-            + "Resets=05:00 tomorrow; Read By=the AI proxy at 21:35", quiet.join(" | "));
+            + "Worth at List=$84 today", said("budget:claude"));
+        expect("a row that brings no drawer opens none", said("budget:delta") === "none",
+            said("budget:delta"));
         expect("the Budgets row's own drawer", !budgets.drawer, "drawn");
         expect("a session's budget", SpendDrawer.sessionBudget(SpendWatch.budgets,
             SpendWatch.budgetOf, "s-running")
@@ -649,6 +616,23 @@ ShellRoot {
             // rest and the warning's colour past it, drawn on a figure row
             // too; a window is named and copied as its feed names it.
             const budgeted = JSON.parse(root.collected);
+            // A dollar window's drawer, as the daemon brings it on its row
+            // and on its cap's.
+            const weekly = { eyebrow: "in Your AI proxy token \u00b7 window", names: true,
+                title: "Week", facts: [{ id: "standing", value: "$37,000 of $40,000",
+                    figure: { shape: "stroke", values: [0.925], warn: true } },
+                { id: "read", value: "the AI proxy at 21:35" }] };
+            const drawers = {
+                "budget:claude:five-hours": { eyebrow: "in Claude Pro \u00b7 window",
+                    names: true, title: "Five Hours", facts: [
+                        { id: "resets", value: "16:20" },
+                        { id: "read", value: "Claude at 14:20" }] },
+                "budget:claude": { eyebrow: "your own \u00b7 plan", title: "Claude Pro", facts: [
+                    { id: "", label: "Five Hours", value: "85% \u00b7 resets 16:20",
+                        figure: { shape: "stroke", values: [0.85], warn: true } },
+                    { id: "worth", value: "$84 today" }] },
+                "budget:proxy:weekly": weekly
+            };
             budgeted.now = [{
                 key: "budgets", name: "Budgets", side: "$100 this month",
                 copy: "Budgets: $100 this month", role: "warning", mark: "agent",
@@ -673,10 +657,12 @@ ShellRoot {
                 }, {
                     key: "budget:delta", name: "Delta team token", side: "$40 of $50",
                     copy: "Delta team token: $40 of $50", role: "text", mark: "agent"
-                }].map(row => Object.assign({ budget: row.key }, row))
+                }].map(row => Object.assign({ budget: row.key }, row,
+                    drawers[row.key] ? { drawn: drawers[row.key] } : {}))
             }, {
                 key: "cap:weekly", name: "Week", side: "93%",
-                copy: "Week: 93% of $40,000", mark: "clock", role: "warning", budget: "budget:proxy:weekly"
+                copy: "Week: 93% of $40,000", mark: "clock", role: "warning",
+                budget: "budget:proxy:weekly", drawn: weekly
             }, {
                 key: "period:this-week", name: "This week", side: "$4,100",
                 copy: "This week: $4,100", role: "text",

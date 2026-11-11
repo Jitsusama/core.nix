@@ -1,15 +1,10 @@
 .pragma library
-// What the drawer says of AI spend's rows (Spend.qml): a budget's, a
-// window's and a cap's, from how spend-watch says each budget stands
-// (SpendWatch.budgets, its budgets.json), and a period's, from the facts
-// its row carries in collection.json; and of the budget a session draws
-// on, in its drawer (Agents.qml). The daemon words every fact, so this
-// only chooses which to show and in what order, and leaves out what it
-// didn't say rather than guessing. By the drawer's rules
-// (VKCF3Z, 2026-11-07): no state in an eyebrow, nothing the row's side
-// or the title already says, what moves most first and identifiers
-// last; and no dollar figure while the screen is shared, as the rows
-// show none.
+// What the drawer says of AI spend's rows (Spend.qml), each as the row
+// brings it from spend-watch, a period's, a budget's, a window's and a
+// cap's alike (its src/drawers.rs); and of the budget a session draws on,
+// in its drawer (Agents.qml). The daemon chooses, orders and words every
+// fact, leaving out what has an amount while the screen is shared, so
+// this only names each fact by the vocabulary and draws it.
 
 const DOT = " \u00b7 ";
 
@@ -18,150 +13,30 @@ function said(words) {
     return (words ?? "") !== "";
 }
 
-// A budget's row is keyed "budget:<name>", and each of its windows'
-// "budget:<name>:<window>" (spend-watch's collection.rs). The budget is
-// found by its whole name rather than by splitting at a colon, so a name
-// holding one still finds it. Null for any other row.
-function keyed(key, budgets) {
-    const prefix = "budget:";
-    if (!String(key ?? "").startsWith(prefix)) {
+// The drawer for a row of AI spend, or null for one without: its eyebrow,
+// set as it's written where it names something from the world; its title,
+// the row's name unless it says one; and its facts, each named by its
+// label where it carries one from the world, a window's, else by the
+// vocabulary's name for its id, its meter beside it, in the words face
+// where it says words rather than a name or a figure. `name` names a
+// fact by its id.
+function drawer(row, name) {
+    const drawn = row.drawn;
+    if (!drawn) {
         return null;
     }
-    const rest = key.slice(prefix.length);
-    if (budgets[rest]) {
-        return { budget: budgets[rest], allowance: null };
-    }
-    const found = Object.keys(budgets)
-        .filter(name => rest.startsWith(`${name}:`))
-        .map(name => ({
-            budget: budgets[name],
-            allowance: (budgets[name].allowances ?? [])
-                .find(one => one.name === rest.slice(name.length + 1)) ?? null
-        }))
-        .find(one => one.allowance !== null);
-    return found ?? null;
-}
-
-// How near an allowance is, as Meter's stroke: in the warning's ink only
-// from where it warns, as Context's is from 80%. None for one not read
-// yet.
-function stroke(allowance) {
-    const near = allowance.nearest;
-    if (typeof near !== "number") {
-        return null;
-    }
-    return { shape: "stroke", values: [Math.min(1, Math.max(0, near))],
-        warn: near >= allowance.warn };
-}
-
-function fact(label, value, figure) {
-    return Object.assign({ label, value }, figure ? { figure } : {});
-}
-
-// Whether an allowance counts dollars, which go while the screen is
-// shared.
-function hidden(allowance, words) {
-    return allowance.unit !== "share" && words.sharing === true;
-}
-
-// A window's facts beyond its name, in the order they move: what its feed
-// says, which is the one thing to act on, while it says anything; its
-// standing, where `standing` asks for it; when it resets; when an
-// override of it ends and how it last changed; whose reading it is and
-// when; and where it warns. A share's row already says how much, so it
-// has no Standing and no meter at all: one beside Resets would only say
-// the row's share again (VKCF3Z, 2026-11-08). Dollars go while the
-// screen is shared, their meter with them. Its reset is left to its
-// caller where `resets` is false, as a budget's drawer says it beside
-// the window's name.
-function windowFacts(allowance, words, standing, resets) {
-    const told = allowance.said ?? {};
-    const quiet = hidden(allowance, words);
-    const stands = standing && allowance.unit !== "share" && !quiet
-        && said(allowance.standing);
-    return [
-        ["state", told.state, null, true],
-        ["standing", allowance.standing, stands ? stroke(allowance) : null, stands],
-        ["resets", told.resets, null, resets],
-        ["override", told.ends, null, true],
-        ["changed", told.changed, null, !quiet],
-        ["read", told.read, null, true],
-        ["warns", told.warns, null, !quiet]
-    ].filter(([, value, , shows]) => shows && said(value))
-        .map(([id, value, shape]) => fact(words.name(id), value, shape));
-}
-
-// A budget's drawer: whose and what kind of money it is over its name,
-// "your own \u00b7 plan", in Label's capitals as our own words are, Note
-// being only for an eyebrow that carries a name from the world (VKCF3Z,
-// 2026-11-09), and which the row no longer says; then each window by its feed's name, its figure and when
-// it resets with how near it is, since its standing in full is the row's
-// side; a budget of one window says that window's other facts too, since
-// it has no row of its own to step into; then what it spent and what a
-// plan's turns were worth at list, how its feeds read, and the providers
-// it always draws for, each as it names itself (VKCF3Z, 2026-11-09), by
-// its id only from a daemon that doesn't say.
-function budgetDrawer(budget, words) {
-    const allowances = budget.allowances ?? [];
-    const shown = allowances.filter(one => !hidden(one, words));
-    const windows = shown.map(one => fact(one.label,
-        said(one.said?.brief) ? one.said.brief
-            : said(one.standing) ? one.standing : words.unread, stroke(one)));
-    // One window's reset is said once: beside its name while it's shown,
-    // among its facts while its dollars are hidden.
-    const briefed = one => shown.includes(one) && said(one.said?.brief);
-    const only = allowances.length === 1
-        ? windowFacts(allowances[0], words, false, !briefed(allowances[0])) : [];
-    const told = budget.said ?? {};
-    const amounts = words.sharing !== true;
-    const more = [
-        ["spent", amounts ? told.spent : ""],
-        ["worth", amounts ? told.worth : ""],
-        ["reading", told.reading],
-        ["providers", said(told.providers) ? told.providers : (budget.providers ?? []).join(DOT)]
-    ].filter(([, value]) => said(value))
-        .map(([id, value]) => fact(words.name(id), value));
-    return { eyebrow: said(told.what) ? told.what : budget.words ?? "",
-        title: budget.label, facts: windows.concat(only, more), body: "" };
-}
-
-// A window's drawer: where it is and what it is over its name, "in Your
-// AI proxy token \u00b7 window", the vocabulary's sentence with its
-// preposition as every where takes one, set as it's written since it
-// names something (Drawer.qml); then its facts, its standing among them.
-function windowDrawer(budget, allowance, words) {
-    return { eyebrow: said(budget.label) ? words.window.split("{budget}").join(budget.label) : "",
-        eyebrowNames: true, title: allowance.label,
-        facts: windowFacts(allowance, words, true, true), body: "" };
-}
-
-// A period's drawer: its days over its name, then its facts as the
-// daemon gave them, each named by the vocabulary, in the words face where
-// it says words rather than a name or a figure. The daemon leaves out
-// what has an amount while the screen is shared.
-function periodDrawer(title, drawn, words) {
     const facts = (drawn.facts ?? []).filter(one => said(one.value))
-        .map(one => Object.assign(fact(words.name(one.id), one.value),
-            one.words === true ? { words: true } : {}));
-    return { eyebrow: drawn.eyebrow ?? "", title, facts, body: "" };
-}
-
-// The drawer for a row of AI spend, or null for one with none: a
-// period's from its own facts, and a budget's, a window's or a cap's from
-// the budget or window its `budget` names in budgets.json, null where it
-// doesn't hold it. `words` holds the vocabulary's: `name` names each fact
-// by its id, `unread` is what a window not read yet says, `window` what a
-// window is; and `sharing` whether the screen is shared.
-function drawer(row, budgets, words) {
-    if (row.drawn) {
-        return periodDrawer(row.name, row.drawn, words);
-    }
-    const found = keyed(row.budget, budgets ?? {});
-    if (found === null) {
-        return null;
-    }
-    return found.allowance === null ? budgetDrawer(found.budget, words)
-        : windowDrawer(found.budget, found.allowance, words);
+        .map(one => Object.assign({
+            label: said(one.label) ? one.label : name(one.id),
+            value: one.value
+        }, one.figure ? { figure: one.figure } : {},
+        one.words === true ? { words: true } : {}));
+    return Object.assign({
+        eyebrow: drawn.eyebrow ?? "",
+        title: said(drawn.title) ? drawn.title : row.name,
+        facts,
+        body: ""
+    }, drawn.names === true ? { eyebrowNames: true } : {});
 }
 
 // The budget a session drew on last and how it stands, as its drawer's

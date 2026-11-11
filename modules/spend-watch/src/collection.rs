@@ -74,40 +74,63 @@ pub struct Line {
     /// What else the right arrow steps into.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rows: Vec<Line>,
-    /// The budget or window whose drawer tells it whole, by its key in
-    /// budgets.json, so a cap's row and its window's open one drawer.
+    /// The budget or window it stands for, by its key in budgets.json, so
+    /// a cap's row and its window's open one drawer.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub budget: String,
     /// What its drawer says that its row and footer can't: a period's days
-    /// and facts.
+    /// and facts, a budget's windows, a window's facts (drawers.rs).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drawn: Option<Drawn>,
 }
 
 /// A drawer's words, every one ready to draw: what it's of, above its
-/// title, and its facts in order.
+/// title, and its facts in order. Its title is its row's name unless it
+/// says one; `names` is whether the eyebrow names something from the
+/// world, so it's set as it's written rather than in Label's capitals.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Drawn {
     pub eyebrow: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub names: bool,
     pub facts: Vec<Fact>,
 }
 
 /// One of a drawer's facts: the vocabulary's id for its name (`spend:` and
-/// it, in the launcher's words), what it says, and whether that's words
-/// rather than a name or a figure, so it's set in the words face.
+/// it, in the launcher's words), or a name from the world, a window's, as
+/// its `label`; what it says, its meter where it has one, and whether
+/// that's words rather than a name or a figure, so it's set in the words
+/// face.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Fact {
     pub id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub label: String,
     pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub figure: Option<Figure>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub words: bool,
 }
 
+/// A fact's meter, as the launcher's Meter draws it: its shape, its
+/// values from nothing to full, and whether it's past where it warns.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Figure {
+    pub shape: &'static str,
+    pub values: Vec<f64>,
+    pub warn: bool,
+}
+
 impl Fact {
-    fn of(id: impl Into<String>, value: impl Into<String>, words: bool) -> Fact {
+    pub(crate) fn of(id: impl Into<String>, value: impl Into<String>, words: bool) -> Fact {
         Fact {
             id: id.into(),
+            label: String::new(),
             value: value.into(),
+            figure: None,
             words,
         }
     }
@@ -437,6 +460,8 @@ fn period_drawn(
     // every drawer's is (VKCF3Z, 2026-11-08).
     Drawn {
         eyebrow: joined(&[&days_of(picture, period), period.kind()]),
+        title: String::new(),
+        names: false,
         facts,
     }
 }
@@ -749,11 +774,18 @@ fn widest_first(caps: &[CapView]) -> Vec<&CapView> {
     caps
 }
 
-/// How the budgets stand, where there's more than one: one budget is the
-/// whole, which the periods already say.
-fn budgets(picture: &Picture, config: &crate::config::Config) -> Option<Standing> {
-    Some(crate::standing::standing(picture, config, None))
-        .filter(|standing| standing.budgets.len() > 1)
+/// The drawer of the window a cap is, as its row under Budgets draws it,
+/// so either row opens the same one. Quiet, it says no dollars.
+fn cap_drawn(standing: &Standing, view: &CapView, quiet: bool) -> Option<Drawn> {
+    let budget = standing
+        .budgets
+        .iter()
+        .find(|budget| budget.name == view.budget)?;
+    let allowance = budget
+        .allowances
+        .iter()
+        .find(|one| one.name == view.cap.name)?;
+    Some(crate::drawers::window(budget, allowance, quiet))
 }
 
 /// The theme's marks the budgets' rows wear: AI spend's, for a budget and
@@ -805,6 +837,7 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
         budget.standing.clone(),
     );
     made.key.clone_into(&mut made.budget);
+    made.drawn = Some(crate::drawers::budget(budget));
     let default = if budget.default { "the default" } else { "" };
     let resets = match budget.allowances.as_slice() {
         [one] => allowance_reset(picture, one),
@@ -849,6 +882,7 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
                 // is its drawer's, so no fact there repeats the row
                 // (VKCF3Z, 2026-11-08).
                 row.key.clone_into(&mut row.budget);
+                row.drawn = Some(crate::drawers::window(budget, allowance, false));
                 row.role = allowance_role(Some(allowance)).into();
                 CLOCK.clone_into(&mut row.mark);
                 opens_record(picture, &budget.name, allowance, &mut row);
@@ -924,7 +958,7 @@ fn allowance_role(allowance: Option<&crate::standing::Allowance>) -> &'static st
 fn now(
     picture: &Picture,
     reports: &BTreeMap<String, (Report, Shown)>,
-    standing: Option<&Standing>,
+    standing: &Standing,
 ) -> Vec<Line> {
     let word = picture.standing.word.as_str();
     let mut now = Vec::new();
@@ -967,7 +1001,8 @@ fn now(
             offered.push(feed);
             sign_ins(picture, feed)
         };
-        let made = cap_line(picture, view, doors);
+        let mut made = cap_line(picture, view, doors);
+        made.drawn = cap_drawn(standing, view, false);
         if view.cap.window_hours <= 24 {
             daily.push(made);
         } else {
@@ -984,7 +1019,10 @@ fn now(
             None => now.push(made),
         }
     }
-    now.extend(standing.map(|standing| budgets_line(picture, standing)));
+    // One budget is the whole, which the periods already say.
+    if standing.budgets.len() > 1 {
+        now.push(budgets_line(picture, standing));
+    }
     let earlier: Vec<Line> = EARLIER
         .iter()
         .map(|period| {
@@ -1019,7 +1057,8 @@ pub fn collection(
     config: &crate::config::Config,
 ) -> Collection {
     let reports = reports(picture, config);
-    let now = now(picture, &reports, budgets(picture, config).as_ref());
+    let standing = crate::standing::standing(picture, config, None);
+    let now = now(picture, &reports, &standing);
     let mut more = Vec::new();
     let waste_found = findings.iter().any(|finding| finding.detector == "waste");
     if let Some((report, _)) = reports.get("waste")
@@ -1056,7 +1095,7 @@ pub fn collection(
         made.report = "outliers".into();
         more.push(made);
     }
-    let quiet = asking_first(quiet(picture, &reports, findings));
+    let quiet = asking_first(quiet(picture, &reports, findings, &standing));
     let findings: Vec<Line> = findings.iter().map(finding_line).collect();
     let (shown, summary_rows) = ranked(&now, &findings, &more);
     Collection {
@@ -1119,6 +1158,7 @@ fn quiet(
     picture: &Picture,
     reports: &BTreeMap<String, (Report, Shown)>,
     findings: &[Finding],
+    standing: &Standing,
 ) -> Vec<Line> {
     let mut today = line(
         "quiet:today",
@@ -1146,6 +1186,7 @@ fn quiet(
                 percent(share),
             );
             made.budget = window_key(view);
+            made.drawn = cap_drawn(standing, view, true);
             quiet.push(made);
         }
     }
@@ -1904,6 +1945,10 @@ mod tests {
         assert_eq!(windows, [("Five Hours", "85%"), ("Week", "not read yet")]);
         assert!(plan.rows[1].copy.contains("nothing to copy"));
         assert_eq!(plan.rows[0].note, "");
+        // The budget's drawer and each window's come with their rows.
+        let titled = |row: &Line| row.drawn.as_ref().map(|drawn| drawn.title.clone());
+        assert_eq!(titled(plan).as_deref(), Some("Claude Pro"));
+        assert_eq!(titled(&plan.rows[0]).as_deref(), Some("Five Hours"));
         assert!(depth(&collected.now) <= 3);
     }
 
@@ -2007,6 +2052,27 @@ mod tests {
             .find(|line| line.key.starts_with("cap:"))
             .unwrap();
         assert!(cap.budget.starts_with("budget:"), "{}", cap.budget);
+        // The cap's row carries its window's drawer, and its quiet row the
+        // same, its dollars left out.
+        let drawn = cap.drawn.as_ref().expect("a cap's drawer");
+        assert!(
+            drawn.names && drawn.eyebrow.ends_with("window"),
+            "{drawn:?}"
+        );
+        // A cap longer than a day has a quiet row, which draws the same
+        // window; a day's is behind today and has none.
+        let (loud, quiet) = collected
+            .quiet
+            .iter()
+            .find_map(|line| {
+                let key = line.key.strip_prefix("quiet:")?;
+                let loud = every(&collected.now)
+                    .into_iter()
+                    .find(|one| one.key == key)?;
+                Some((loud.drawn.as_ref()?, line.drawn.as_ref()?))
+            })
+            .expect("a cap longer than a day, quiet and not");
+        assert_eq!(quiet.title, loud.title);
     }
 
     // A finding that wants a look is listed first and in the summary,
