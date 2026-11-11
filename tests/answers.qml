@@ -877,6 +877,23 @@ QtObject {
                 { ago: (at, now) => `${(now - at) / 60_000} min ago` }), "12 min ago"],
             ["located days ago", Here.located(1000, 1000 * 1000 + 3 * 86_400_000,
                 { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"],
+            ["a served time within the day says how long ago", Here.sideSaid(
+                [{ at: 1_000_000, as: "ago" }], 1_720_000,
+                { ago: (at, now) => `${(now - at) / 60_000} min ago` }), "12 min ago"],
+            ["and a moment its day and time", Here.sideSaid([{ at: 1_000_000, as: "moment" }],
+                0, { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"],
+            ["a served side's words join as a run",
+                Here.sideSaid([{ said: "Kelpwater" }, { said: "" }, { said: "Westmark" }], 0, {}),
+                "Kelpwater \u00b7 Westmark"],
+            ["served rows go in their order's places, another place's left out",
+                JSON.stringify(Here.placed({
+                    "row:location:copy": { place: "location", order: 7168, row: "copy" },
+                    "row:location:town": { place: "location", order: 1024, row: "town" },
+                    "row:on:location": { place: "on", row: "on" },
+                    "here:laptop": { key: "here:laptop" },
+                    "row:location:set": { place: "location", order: 5120, row: "set" }
+                }, "location").map(row => row.row)),
+                JSON.stringify(["town", "set", "copy"])],
             ["how near goes from the plate while the note says it",
                 JSON.stringify(Here.besideNote(nearAndWhen, true).map(fact => fact.id)),
                 JSON.stringify(["located"])],

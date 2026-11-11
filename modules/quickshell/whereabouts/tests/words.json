@@ -1,0 +1,130 @@
+{
+  "things": [
+    {
+      "id": "location",
+      "in": "on",
+      "name": "Location",
+      "term": "Desktop/location",
+      "said": {
+        "via": "found · location",
+        "viaHand": "set by hand · location",
+        "via-wifi": "via Wi-Fi · location",
+        "via-cell": "via cell towers · location",
+        "via-wifi-and-cell": "via Wi-Fi and cell towers · location",
+        "via-cdma": "via CDMA · location",
+        "via-ip": "via a network's address · location",
+        "via-gps": "via GPS · location",
+        "via-file": "via a fixed file · location",
+        "altitude": "{n} m",
+        "speed": "{n} km/h",
+        "heading": "{n}°",
+        "no-altitude": "altitude",
+        "no-speed": "speed",
+        "no-heading": "heading",
+        "or": "or",
+        "hand": "set by hand",
+        "metres": "within {n} m",
+        "kilometres": "within {n} km",
+        "yesterday": "yesterday",
+        "north": "N",
+        "south": "S",
+        "east": "E",
+        "west": "W",
+        "unknown": "unknown",
+        "unnamed": "not named yet",
+        "notFound": "not found yet",
+        "knows": "found, {within}",
+        "elsewhere": "keeps {zone} · not following",
+        "nearEdge": "near a time zone's edge",
+        "foundWithin": "found {within}"
+      },
+      "tells": {
+        "leftOut": "Its source gives no {missing}.",
+        "leftOut-wifi": "Wi-Fi gives no {missing}.",
+        "leftOut-cell": "Cell towers give no {missing}.",
+        "leftOut-wifi-and-cell": "Wi-Fi and cell towers give no {missing}.",
+        "leftOut-cdma": "CDMA gives no {missing}.",
+        "leftOut-ip": "A network's address gives no {missing}.",
+        "leftOut-gps": "GPS gave no {missing}.",
+        "leftOut-file": "A fixed file gives no {missing}."
+      }
+    },
+    {
+      "id": "location:town",
+      "in": "location",
+      "name": "Town"
+    },
+    {
+      "id": "location:country",
+      "in": "location",
+      "name": "Country"
+    },
+    {
+      "id": "location:knows",
+      "in": "location",
+      "name": "How It Knows"
+    },
+    {
+      "id": "location:located",
+      "in": "location",
+      "name": "Located"
+    },
+    {
+      "id": "location:accuracy",
+      "in": "location",
+      "name": "Accuracy"
+    },
+    {
+      "id": "location:coordinates",
+      "in": "location",
+      "name": "Coordinates"
+    },
+    {
+      "id": "location:altitude",
+      "in": "location",
+      "name": "Altitude"
+    },
+    {
+      "id": "location:speed",
+      "in": "location",
+      "name": "Speed"
+    },
+    {
+      "id": "location:heading",
+      "in": "location",
+      "name": "Heading"
+    },
+    {
+      "id": "location:zone",
+      "in": "location",
+      "name": "Zone"
+    },
+    {
+      "id": "verb:location:copy",
+      "command": "yank",
+      "in": "location",
+      "name": "Copy",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:location:set",
+      "command": "set",
+      "argument": "location=",
+      "in": "location",
+      "name": "Set It by Hand",
+      "verb": "set",
+      "ask": "where are you?",
+      "glyph": "location"
+    },
+    {
+      "id": "verb:location:again",
+      "command": "set",
+      "argument": "location&",
+      "in": "location",
+      "name": "Find It Again",
+      "verb": "find",
+      "glyph": "location"
+    }
+  ]
+}

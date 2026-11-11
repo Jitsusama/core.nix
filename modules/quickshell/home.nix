@@ -2337,9 +2337,10 @@ in
     # Every machine runs it for the clock's zone; one that follows the
     # laptop has it ask GeoClue too, keeping its last here in its runtime
     # folder through a restart and Joel's pin in its state folder, which
-    # Now's Location sets and takes away through the same program, on the
-    # shell's path. A GeoClue that refuses or goes is asked again a minute
-    # on, while the socket goes on answering.
+    # Now's Location sets and takes away by asking it on the socket. Given
+    # the launcher's words it serves Location's rows too, worded and ready
+    # to draw. A GeoClue that refuses or goes is asked again a minute on,
+    # while the socket goes on answering.
     systemd.user.services.whereabouts = {
       Unit = {
         Description = "Holds where the laptop is and the clock's zone ready for the shell";
@@ -2365,6 +2366,10 @@ in
             "%t/whereabouts/here.json"
             "%S/whereabouts/pin.json"
             "%S/clock-follows/moved.json"
+          ]
+          ++ [
+            "--words"
+            "${pkgs.writeText "words.json" (builtins.toJSON launcher.words)}"
           ]
         );
         Restart = "on-failure";
