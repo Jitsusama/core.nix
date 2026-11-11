@@ -93,7 +93,7 @@ fn a_document_is_a_row_keyed_as_the_launcher_keys_it_in_the_order_held() {
     assert_eq!(
         row["acts"],
         json!([
-            {"key": "verb:sheets:open", "open": link},
+            {"key": "verb:sheets:open", "open": link, "in": "google-opens"},
             {"key": "verb:sheets:link", "copy": link}
         ])
     );
@@ -122,6 +122,11 @@ fn its_drawer_says_what_changes_most_first_and_where_it_is() {
         drawers[0].1,
         json!({
             "eyebrow": "in Shared with Me \u{b7} Document",
+            "eyebrowItems": [
+                {"said": "in Shared with Me", "keep": 2},
+                {"said": "Document", "keep": 1}
+            ],
+            "eyebrowNames": true,
             "title": "Plan",
             "facts": [
                 {"name": "Changed", "at": 4_000, "as": "moment"},
