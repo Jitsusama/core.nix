@@ -7907,6 +7907,14 @@ Scope {
         openFirstDrawn = -1;
         openFirstMade = null;
         openAskedMade = tallies();
+        // What the last closing left for later is put off, as the opening's
+        // own work puts it off once open: its spots made half a second after
+        // it, or a minute after that, came between a quick reopening's ask
+        // and its first frame, making Network's rows before it (a gate of
+        // #2971, 2026-11-10). Shut again unfilled, they're due again.
+        spotsLater.stop();
+        spotsFreshened.stop();
+        leavingLater.stop();
         opening = true;
         keysHeld = false;
         openMark.setText("open\n");
@@ -7983,6 +7991,7 @@ Scope {
     // does: nothing woke for it, so nothing has to settle.
     function unopened() {
         opening = false;
+        spotsLater.restart();
         openAsked = -1;
         openMark.setText("closed\n");
         afterFramesDue();

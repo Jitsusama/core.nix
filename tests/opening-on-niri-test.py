@@ -12,7 +12,13 @@ flashes in (Y2YBTS, 2026-11-10). Every test starts with the launcher closed, and
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import signal
+import time
+from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import launcher_on_niri
@@ -25,6 +31,10 @@ if TYPE_CHECKING:
 
 # What a row being read says at its right (launcher/PlaceRow.js's unfilled).
 READING = "\u2026"
+
+# Past when a closing makes its places' spots, half a second after it (Launcher.qml's
+# spotsLater).
+SPOTS_DUE = timedelta(milliseconds=700)
 
 
 @pytest.fixture(scope="module")
@@ -65,6 +75,11 @@ def opened_from_kept(shell: Shell) -> Json:
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
     shell.as_account(shell.ipc("toggle"))
+    return filled_after(shell, timed)
+
+
+def filled_after(shell: Shell, timed: int) -> Json:
+    """Give the opening after the one numbered, once it's ready and filled in, kept."""
     shell.launcher_ready()
     each: list[Json] = []
 
@@ -76,6 +91,24 @@ def opened_from_kept(shell: Shell) -> Json:
     opening = each[-1]
     assert opening.get("kept"), f"the opening wasn't drawn from what was kept: {opening}"
     return opening
+
+
+@contextlib.contextmanager
+def niri_held() -> Iterator[None]:
+    """Hold the nested niri stopped while what's done inside it runs, so it answers no frame."""
+    held = [
+        int(process.name)
+        for process in Path("/proc").iterdir()
+        if process.name.isdigit()
+        and (process / "cmdline").read_bytes().split(b"\0")[1:2] == [b"-c"]
+        and (process / "comm").read_text().strip() == "niri"
+    ]
+    assert len(held) == 1, f"there should be one niri to hold, not {held}"
+    os.kill(held[0], signal.SIGSTOP)
+    try:
+        yield
+    finally:
+        os.kill(held[0], signal.SIGCONT)
 
 
 def settled(shell: Shell) -> Json:
@@ -94,6 +127,31 @@ def test_home_kept_is_drawn_as_it_stood(shell: Shell) -> None:
     shown = opening["shown"]
     assert shown["keys"] == left["keys"], f"kept, the rows moved: {left} to {shown}"
     assert shown["sides"] == left["sides"], f"kept, a row's side changed: {left} to {shown}"
+    assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
+
+
+def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
+    """Reopened as the closing's spots come due, the kept opening makes none before its frame.
+
+    A closing makes its places' spots half a second after it, and one reopened then made
+    Network's rows between its ask and its first frame (a gate of #2971, 2026-11-10). Niri is
+    held from the closing until past that half second, so the reopening's first frame can't
+    come before the spots are due, however quickly the shell turns. Rows follow only from a
+    place changed while shut, so the spots being made at all is what fails.
+    """
+    first = opened_from_kept(shell)
+    began = shell.mark()
+    with niri_held():
+        closed = time.monotonic()
+        shell.as_account(shell.ipc("toggle"))
+        # Home is kept a turn after the closing, before the next call can land.
+        shell.as_account(shell.ipc("toggle"))
+        # Held until the spots are due, so they come due between the ask and its first frame.
+        time.sleep(max(0, closed + SPOTS_DUE.total_seconds() - time.monotonic()))
+    opening = filled_after(shell, cast("int", first["nth"]))
+    said, _ = shell.said_since(began)
+    spots = [one for one in said if one.startswith("spots made while closed ")]
+    assert not spots, f"the closing's spots were made as the launcher reopened: {spots}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
 
 
