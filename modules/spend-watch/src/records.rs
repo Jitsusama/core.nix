@@ -13,8 +13,9 @@
 //!   open, which places each row by them and ranks none;
 //! - `row:spend:<id>` and `row:spend-quiet:<id>`, the same rows ready to
 //!   draw in the form every daemon serves its rows in, and
-//!   `summary:spend`, the summary's among them, made by `ready.rs` as
-//!   the daemon serves them, for the launcher once it reads them;
+//!   `summary:spend` and `summary:spend-quiet`, how Spend stands as each
+//!   says it, the first naming the summary's rows, made by `ready.rs`
+//!   as the daemon serves them, for the launcher once it reads them;
 //! - `report:<id>`, one report, and `words:periods`, `words:cuts` and
 //!   `words:examples`, for Spend's answers while it's wanted;
 //! - `budget:<name>`, how one budget stands, and `drew:<id>`, the budget a
