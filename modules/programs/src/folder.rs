@@ -31,12 +31,13 @@ pub fn record(key: &str, path: &str) -> Value {
     json!({"key": key, "kind": "folder", "path": path, "lines": lines})
 }
 
-/// The folders watched for their keys, by inotify's number for each. A
-/// key can be heard by many folders, as the repositories under one are by
-/// each `.git` (repositories.rs), and a folder can be heard for many keys.
+/// The folders watched for their keys, by inotify's number for each, with
+/// the one file in it a key hears, where it hears only one. A key can be
+/// heard by many folders, as the repositories under one are by each `.git`
+/// (repositories.rs), and a folder can be heard for many keys.
 #[derive(Debug, Default)]
 pub struct Looked {
-    keys: HashMap<i32, Vec<String>>,
+    keys: HashMap<i32, Vec<(String, Option<String>)>>,
     watching: HashSet<(String, PathBuf)>,
 }
 
@@ -44,24 +45,53 @@ impl Looked {
     /// Watches a folder for a key, if it isn't yet and can be, as one that
     /// isn't there yet can't: it's tried again as the key is next read.
     pub fn watch(&mut self, notify: Option<&Notify>, key: &str, path: &Path) {
-        let pair = (key.to_owned(), path.to_path_buf());
+        self.hear(notify, key, path, None);
+    }
+
+    /// Watches the folder a file is in for a key, hearing only that file,
+    /// as zsh's history sits in a home folder that changes for many other
+    /// reasons.
+    pub fn watch_file(&mut self, notify: Option<&Notify>, key: &str, file: &Path) {
+        let (Some(folder), Some(name)) = (file.parent(), file.file_name()) else {
+            return;
+        };
+        self.hear(
+            notify,
+            key,
+            folder,
+            Some(name.to_string_lossy().into_owned()),
+        );
+    }
+
+    fn hear(&mut self, notify: Option<&Notify>, key: &str, folder: &Path, name: Option<String>) {
+        let heard = name
+            .as_ref()
+            .map_or_else(|| folder.to_path_buf(), |name| folder.join(name));
+        let pair = (key.to_owned(), heard);
         if self.watching.contains(&pair) {
             return;
         }
-        let Some(watch) = notify.and_then(|notify| notify.watch(path)) else {
+        let Some(watch) = notify.and_then(|notify| notify.watch(folder)) else {
             return;
         };
         let keys = self.keys.entry(watch).or_default();
-        if !keys.iter().any(|held| held == key) {
-            keys.push(key.to_owned());
+        let held = (key.to_owned(), name);
+        if !keys.contains(&held) {
+            keys.push(held);
         }
         self.watching.insert(pair);
     }
 
-    /// The keys whose folder this watch is.
-    #[must_use]
-    pub fn keys_of(&self, watch: i32) -> &[String] {
-        self.keys.get(&watch).map_or(&[], Vec::as_slice)
+    /// The keys a change of this name in this watch's folder is heard for:
+    /// each hearing the folder whole, and each hearing only the file so
+    /// named.
+    pub fn keys_of<'a>(&'a self, watch: i32, name: &'a str) -> impl Iterator<Item = &'a String> {
+        self.keys
+            .get(&watch)
+            .into_iter()
+            .flatten()
+            .filter(move |(_, only)| only.as_deref().is_none_or(|only| only == name))
+            .map(|(key, _)| key)
     }
 }
 
@@ -100,7 +130,8 @@ mod tests {
         looked.watch(Some(&notify), &key, &folder);
         looked.watch(Some(&notify), &key, &folder);
         let watch = notify.watch(&folder).expect("the folder is watched");
-        assert_eq!(looked.keys_of(watch), [key], "the folder's key, once");
+        let keys: Vec<&String> = looked.keys_of(watch, "any").collect();
+        assert_eq!(keys, [&key], "the folder's key, once");
     }
 
     #[test]
@@ -117,16 +148,32 @@ mod tests {
         let first = notify.watch(&one).expect("the first folder is watched");
         let second = notify.watch(&two).expect("the second folder is watched");
         assert_eq!(
-            looked.keys_of(first),
+            of(&looked, first, "any"),
             ["repositories:/src"],
             "the first folder's key"
         );
         assert_eq!(
-            looked.keys_of(second),
+            of(&looked, second, "any"),
             ["repositories:/src", "folder:/two"],
             "the second folder's two keys"
         );
+        looked.watch_file(Some(&notify), "reached:/two/history", &two.join("history"));
+        assert_eq!(
+            of(&looked, second, "history"),
+            ["repositories:/src", "folder:/two", "reached:/two/history"],
+            "its file's key too as the file changes"
+        );
+        assert_eq!(
+            of(&looked, second, "elsewhere"),
+            ["repositories:/src", "folder:/two"],
+            "not the file's key as another changes"
+        );
         std::fs::remove_dir_all(&one).unwrap();
         std::fs::remove_dir_all(&two).unwrap();
+    }
+
+    /// The keys a change of this name in this watch's folder is heard for.
+    fn of(looked: &Looked, watch: i32, name: &str) -> Vec<String> {
+        looked.keys_of(watch, name).cloned().collect()
     }
 }

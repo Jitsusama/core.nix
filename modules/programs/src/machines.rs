@@ -1,11 +1,12 @@
 //! What kitty's SSH to a Machine reads (modules/kitty/Kitty.qml), asked
-//! for by key as the shell starts and each time the launcher opens:
+//! for by key as the shell starts, and watched:
 //! `machines:<folder>` says the folder's `config` and `known_hosts` as
 //! written, each empty where it isn't there; `reached:<history>` says the
 //! lines of zsh's extended history that ran ssh, each `: <start>:
 //! <elapsed>;` then ssh, `kitten ssh` or `kitty +kitten ssh` and a space,
-//! of however many it keeps. Each is read as a get names it, never
-//! otherwise, so nothing is read at rest. The page still reads machines
+//! of however many it keeps. Each is read as an ask names it, and again
+//! as one of its files is written while its key is watched, so nothing is
+//! read at rest. The page still reads machines
 //! from the text, a stopgap until Programs serves its own ready rows.
 
 use std::fs;

@@ -111,7 +111,7 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
             let daemon = lock(&shared.daemon);
             let keys: HashSet<&String> = changes
                 .iter()
-                .flat_map(|(watch, _)| daemon.looked.keys_of(*watch))
+                .flat_map(|(watch, name)| daemon.looked.keys_of(*watch, name))
                 .filter(|key| watched(&daemon, key))
                 .collect();
             keys.into_iter().cloned().collect()

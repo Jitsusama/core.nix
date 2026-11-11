@@ -1819,8 +1819,9 @@
     there holding nothing, serves the repositories under a folder four folders deep, past no
     hidden one, each with its page on GitHub, and one's files as git lists them, hidden ones but
     not what it ignores, each within its folder, as each is asked, and the repositories again as
-    one is cloned or its git writes while watched, reads when zoxide's database saw each folder, ssh's config
-    and known hosts, and the ssh lines of zsh's history as each is asked, reads what a program
+    one is cloned or its git writes while watched, reads when zoxide's database saw each
+    folder, ssh's config and known hosts, and the ssh lines of zsh's history as each is asked and
+    again as its file is written while watched, no other file beside it, reads what a program
     has open as it's asked, and a list its program tells of again only once told it changed, or as
     each ask comes while it names a process that never told, asks what a file shows of one
     file-preview it keeps, again only once the file changed, says a file that file-preview doesn't

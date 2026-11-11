@@ -23,10 +23,12 @@
 //! one of them changed since, and on each change in them while watched;
 //! a folder asked for by its path, as `folder`, as each ask names it and
 //! on each change in it while watched (folder.rs); and the repositories
-//! under a folder, or one's files, as each ask names them
+//! under a folder, or one's files, as each ask names them, and the
+//! repositories again as one is cloned or its git writes while watched
 //! (repositories.rs); what a file shows of itself, by one file-preview
 //! kept, as each ask names it (preview.rs); and what kitty's page reads
-//! of zoxide and ssh, as each ask names it (visited.rs, machines.rs). The
+//! of zoxide, ssh and zsh's history, as each ask names it and on each
+//! change of its file while watched (visited.rs, machines.rs). The
 //! Programs collection's rows are made as a watch of them begins and again
 //! as the windows daemon says a window opened, closed or was looked at, or
 //! an entry changed (rows.rs), and searched as each `search` names what's
@@ -387,10 +389,10 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
 }
 
 /// Reads each folder, repository, preview or file of kitty's a key names,
-/// on this thread,
-/// and keeps its record, watching a folder from the first time it's asked
-/// for, and the repositories' folders each time they're read, as one is
-/// cloned, and asking a preview again only of a file changed since.
+/// on this thread, and keeps its record, watching a folder from the first
+/// time it's asked for, the repositories' folders each time they're read,
+/// as one is cloned, and each file of kitty's as it's read, and asking a
+/// preview again only of a file changed since.
 fn read_named(shared: &Shared, keys: &[String]) {
     for key in keys {
         let record = if let Some(path) = folder::path_of(key) {
@@ -405,6 +407,10 @@ fn read_named(shared: &Shared, keys: &[String]) {
             }
             read.record
         } else if let Some(record) = visited::record(key).or_else(|| machines::record(key)) {
+            let mut daemon = lock(&shared.daemon);
+            for file in files_of(&record) {
+                daemon.looked.watch_file(shared.notify.as_ref(), key, &file);
+            }
             record
         } else if let Some(path) = preview::path_of(key) {
             if preview::current(lock(&shared.daemon).held.get(key), path) {
@@ -419,6 +425,19 @@ fn read_named(shared: &Shared, keys: &[String]) {
         };
         keep(&mut lock(&shared.daemon), vec![record], &[]);
     }
+}
+
+/// The files a record of kitty's page was read from, each heard alone in
+/// its folder: zoxide's database, ssh's config and `known_hosts`, and
+/// zsh's history.
+fn files_of(record: &Value) -> Vec<PathBuf> {
+    let field = |name: &str| record[name].as_str().map(PathBuf::from);
+    let ssh = field("folder").map(|folder| [folder.join("config"), folder.join("known_hosts")]);
+    [field("database"), field("history")]
+        .into_iter()
+        .flatten()
+        .chain(ssh.into_iter().flatten())
+        .collect()
 }
 
 /// Runs a source's command now, on this thread, and keeps its record. A

@@ -7,8 +7,9 @@
 //! each its path's length and bytes, its score, eight bytes, and when it
 //! was last visited, in seconds since 1970; each number little-endian, a
 //! count in eight bytes. A database of another version says none, and
-//! one cut short says the folders before the cut. It's read as a get
-//! names it, never otherwise, so nothing is read at rest.
+//! one cut short says the folders before the cut. It's read as an ask
+//! names it, and again as zoxide writes it while its key is watched, so
+//! nothing is read at rest.
 
 use std::fs;
 use std::path::Path;
