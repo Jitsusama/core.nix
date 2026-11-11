@@ -7484,7 +7484,10 @@ Scope {
     // typed; - steps out to the search. A name no collection
     // has opens the search.
     function into(name) {
+        // Opened by it, the place is shown rather than home (openingInto).
+        openingInto = !open;
         open = true;
+        openingInto = false;
         // A name a source leads somewhere deeper, as Now leads "notices"
         // to For You's Desktop (`leadsTo`), opens on its place and steps
         // through those rows as Joel would, so - climbs back out the same
@@ -7721,10 +7724,17 @@ Scope {
             lap("counting");
             spotsLater.stop();
             spotsFreshened.stop();
-            restart("");
             // Home as it's found now, kept for the next opening to draw at
-            // once (keepHome).
-            homeKept = matches;
+            // once (keepHome). One opening into a place (into) shows the
+            // place, so home isn't found only to be put away: Super+V's
+            // openings made home's 51 and 60 rows first, in 124 and 138 ms
+            // of settling (Joel's journal, 2026-11-10, 20:40). With no home
+            // kept yet it's found, since the card's height is home's.
+            const homeFound = !openingInto || homeKept.length === 0;
+            if (homeFound) {
+                restart("");
+                homeKept = matches;
+            }
             homeHeld = false;
             lap("finding");
             // Nothing to rest from as it opens, so the drawer is out at once
@@ -7735,7 +7745,8 @@ Scope {
             // Always the same height, eight rows, kept until it closes, so
             // the card is the same shape however much home holds and its
             // rows fill it to the foot, none held under the last.
-            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
+            const sized = homeFound ? matches : homeKept;
+            tall = rows * rowTall + (sized.slice(0, rows).some(row => row.gap)
                 ? apart : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
@@ -7902,6 +7913,8 @@ Scope {
     // Home as the last opening found it, and whether the closed card holds
     // it, kept (keepHome), so the next opening can draw it at once.
     property var homeKept: []
+    // Whether the opening under way is into a place, by its chord (into).
+    property bool openingInto: false
     property bool homeHeld: false
     // Whether the card is being put back to home, which searches nothing.
     property bool keeping: false
