@@ -48,6 +48,9 @@ pub struct Inputs {
     pub boot: String,
     /// What Joel said of the sessions to reopen.
     pub kept: Kept,
+    /// The sessions the boot being restored kept a place of, by pi's id,
+    /// as the shell keeps its arrangement and says it.
+    pub arranged: HashSet<String>,
 }
 
 impl Inputs {
@@ -139,18 +142,16 @@ impl Inputs {
     }
 
     /// Every session there is to reopen, by the sessions running or
-    /// parked here now. One pi's host runs is back only once its viewer
-    /// is open, or at once when the boot being restored kept no place of
-    /// its window, as Viewers.js's backHere says; until the shell's
-    /// arrangement is kept here (Fri 13 Nov), none is known kept, so each
-    /// is back at once, as the shell offered none before.
+    /// parked here now. One pi's host runs
+    /// is back only once its viewer is open, or at once when the boot
+    /// being restored kept no place of its window (`arranged`), since it
+    /// had none to bring back.
     fn reopens(&self) -> Vec<Value> {
         let viewing: HashSet<&str> = self
             .windows
             .records()
             .filter_map(|(_, window)| window["opened"].as_str()?.strip_prefix("pi-hosted."))
             .collect();
-        let arranged: HashSet<&str> = HashSet::new();
         let here: Vec<reopen::Here> = self
             .sessions
             .records()
@@ -161,7 +162,7 @@ impl Inputs {
                     !one["presence"]["hosted"].is_null() && one["presence"]["hosted"] != false;
                 one["here"] == true
                     && matches!(standing, Some("running" | "parked"))
-                    && (!hosted || viewing.contains(id) || !arranged.contains(id))
+                    && (!hosted || viewing.contains(id) || !self.arranged.contains(id))
             })
             .filter_map(|(_, one)| {
                 let presence = &one["presence"];
@@ -232,7 +233,10 @@ impl Inputs {
             windowed: &windowed,
             sharing: self.sharing,
         };
-        let reopens = self.reopens();
+        let mut reopens = self.reopens();
+        let recent = self.recent(&reopens);
+        // With them, the boot they're of, which the shell keeps places by.
+        reopens.push(reopen::restoring(self.restore.as_ref()));
         let used = self.used();
         let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
         let sessions = session::in_order(
@@ -276,7 +280,7 @@ impl Inputs {
             &summary::summary(&states, today_spent, &self.words.agents),
         )
         .with_drawers(drawers)
-        .with_recent(self.recent(&reopens))
+        .with_recent(recent)
         .with_reopens(reopens)
     }
 }
@@ -365,6 +369,11 @@ mod tests {
         let mut served = served::Served::default();
         served.take(inputs.made());
         served
+    }
+
+    /// The same, where a test's own `served` hides it.
+    fn served_of(inputs: &Inputs) -> served::Served {
+        served(inputs)
     }
 
     /// What a session's row says at its right, its items joined.
@@ -471,6 +480,25 @@ mod tests {
         assert!(
             served.get("reopen:agents:s-viewed").is_none(),
             "one pi's host runs is back while no place of its window is kept"
+        );
+        assert_eq!(
+            served
+                .get("restoring:agents")
+                .map(|one| one["restoring"].clone()),
+            Some(json!({"boot": "the-last"})),
+            "the boot being restored, for its places"
+        );
+        inputs.arranged = HashSet::from(["s-viewed".to_owned()]);
+        assert!(
+            served_of(&inputs).get("reopen:agents:s-viewed").is_some(),
+            "one pi's host runs, with a place kept, waits for its viewer"
+        );
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:4", "id": 4, "opened": "pi-hosted.s-viewed", "order": 1}
+        ]}));
+        assert!(
+            served_of(&inputs).get("reopen:agents:s-viewed").is_none(),
+            "and is back once its viewer is open"
         );
     }
 

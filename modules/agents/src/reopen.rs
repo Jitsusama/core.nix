@@ -17,8 +17,9 @@
 //!   command line, a folder to open in, or for one held on another
 //!   machine, the words that join it again. One that ran hosted is
 //!   offered for its viewer alone, since its host brings the conversation
-//!   back, and counts as back once its viewer is open (inputs.rs, as
-//!   Viewers.js's backHere says it).
+//!   back, and counts as back once its viewer is open where the boot
+//!   being restored kept a place of its window, as the shell says it
+//!   (inputs.rs).
 //!
 //! What Joel put off and forgot is kept by the daemon, in a file of its
 //! own (`Kept`), since restore.json is the harness's to write.
@@ -157,6 +158,15 @@ fn whole(one: &Value) -> bool {
         Some(machine) => machine.as_str().is_some_and(|name| !name.is_empty()) && held_elsewhere(),
     };
     safe && placed
+}
+
+/// The boot restore.json names, served as `restoring:agents`, so the shell
+/// keeps each place by the boot its sessions ran in without reading the
+/// harness's file itself; empty when the file names none.
+pub fn restoring(restore: Option<&Value>) -> Value {
+    let boot = restore.and_then(|said| said["boot"].as_str()).unwrap_or("");
+    json!({"key": format!("restoring:{PLACE}"), "kind": "restoring",
+           "restoring": {"boot": boot}})
 }
 
 /// Every session there is to reopen, each a record keyed

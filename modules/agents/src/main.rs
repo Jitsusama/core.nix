@@ -6,15 +6,17 @@
 //! sessions there are to reopen, keeping what Joel says of them
 //! (reopen.rs).
 //!
-//! Usage: `agents --vocabulary WORDS --node NODE --to-do TODO --windows
+//! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
 //! --kept KEPT --socket SOCKET`, where WORDS is the launcher's
 //! words.json, NODE the mycelium node's socket, TODO the to-do daemon's,
 //! WINDOWS the windows daemon's, SPEND spend-watch's collection (its
 //! budgets.json read from beside it), ORCHESTRATORS the harness's list of
 //! them, RESTORE its list of sessions to reopen, and KEPT the daemon's own
-//! file of what Joel said of those.
+//! file of what Joel said of those. A machine with no realm runs no node,
+//! so it's started with none, and serves the sessions to reopen alone.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::{Arc, mpsc};
@@ -28,17 +30,17 @@ use agents::served::Served;
 use agents::sources::{self, Heard, Paths};
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// The daemon as the launcher knows it: Agents' ready rows, how its
 /// sessions stand together, each session's drawer, and the sessions
 /// there are to reopen.
 const DOMAIN: Domain = Domain {
     name: "agents",
-    kinds: &["row", "summary", "drawer", "reopen", "recent"],
+    kinds: &["row", "summary", "drawer", "reopen", "restoring", "recent"],
 };
 
-const USAGE: &str = "usage: agents --vocabulary WORDS --node NODE --to-do TODO \
+const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \
                      --windows WINDOWS --spend SPEND --orchestrators ORCHESTRATORS \
                      --restore RESTORE --kept KEPT --socket SOCKET";
 
@@ -49,7 +51,7 @@ const BOOT_ID: &str = "/proc/sys/kernel/random/boot_id";
 /// Where everything it reads and serves is.
 struct Args {
     vocabulary: PathBuf,
-    node: PathBuf,
+    node: Option<PathBuf>,
     to_do: PathBuf,
     windows: PathBuf,
     spend: PathBuf,
@@ -68,7 +70,7 @@ fn args() -> Option<Args> {
     };
     Some(Args {
         vocabulary: named("--vocabulary")?,
-        node: named("--node")?,
+        node: named("--node"),
         to_do: named("--to-do")?,
         windows: named("--windows")?,
         spend: named("--spend")?,
@@ -81,8 +83,8 @@ fn args() -> Option<Args> {
 
 /// What the daemon answers of its own, beside its records: what the shell
 /// says, handed `told` to the daemon's loop, and a row's act, done by
-/// asking the node at `node`.
-fn own(told: mpsc::Sender<Heard>, node: PathBuf) -> Own {
+/// asking the node at `node`, refused where there's none.
+fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>) -> Own {
     Box::new(move |said| {
         // The shell says whether the screen is shared, as Quiet.qml knows
         // it from niri's casts, so no amount is served while it is.
@@ -97,18 +99,41 @@ fn own(told: mpsc::Sender<Heard>, node: PathBuf) -> Own {
             let _ = told.send(Heard::PutOff);
             return Some(json!({"put-off": true}));
         }
+        // The session is named by pi's id for it as `session`, since `id`
+        // is the ask's own.
         if said["ask"] == "forget" {
-            let Some(id) = said["id"].as_str().filter(|id| !id.is_empty()) else {
+            let Some(id) = said["session"].as_str().filter(|id| !id.is_empty()) else {
                 return Some(json!({"error": {"code": "not-an-ask",
-                    "message": "a forget names no `id`"}}));
+                    "message": "a forget names no `session`"}}));
             };
             let _ = told.send(Heard::Forget(id.to_owned()));
             return Some(json!({"forgot": id}));
         }
+        // Which sessions the boot being restored kept a place of, as the
+        // shell keeps its arrangement, so one pi's host runs is back only
+        // once its viewer is (reopen.rs).
+        if said["ask"] == "arranged" {
+            let Some(ids) = said["ids"].as_array() else {
+                return Some(json!({"error": {"code": "not-an-ask",
+                    "message": "an arranged names no `ids`"}}));
+            };
+            let ids: HashSet<String> = ids
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect();
+            let count = ids.len();
+            let _ = told.send(Heard::Arranged(ids));
+            return Some(json!({"arranged": count}));
+        }
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_millis());
-        acts::steer_of(said, now).map(|steer| acts::done(steer, &node))
+        acts::steer_of(said, now).map(|steer| match &node {
+            Some(node) => acts::done(steer, node),
+            None => json!({"error": {"code": "unsteered",
+                "message": "this machine runs no node to steer it through"}}),
+        })
     })
 }
 
@@ -139,8 +164,10 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
-    sources::follow(args.node.clone(), "session", Heard::Sessions, to.clone());
-    sources::follow(args.node, "job", Heard::Jobs, to.clone());
+    if let Some(node) = args.node {
+        sources::follow(node.clone(), "session", Heard::Sessions, to.clone());
+        sources::follow(node, "job", Heard::Jobs, to.clone());
+    }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
     sources::follow(args.windows, "window", Heard::Windows, to.clone());
     let paths = Paths {

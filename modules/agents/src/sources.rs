@@ -5,6 +5,7 @@
 //! followed as every daemon of the shell follows one (daemon-serve's
 //! `watch`).
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -34,6 +35,9 @@ pub enum Heard {
     PutOff,
     /// Joel forgets one of the sessions to reopen, by pi's id for it.
     Forget(String),
+    /// The sessions the boot being restored kept a place of, by pi's id,
+    /// as the shell says.
+    Arranged(HashSet<String>),
 }
 
 /// Where the files the rows are made from are kept.
@@ -111,6 +115,7 @@ impl Inputs {
                 self.kept.forget(&id, self.restore.as_ref());
                 self.keep(paths);
             }
+            Heard::Arranged(ids) => self.arranged = ids,
         }
     }
 
