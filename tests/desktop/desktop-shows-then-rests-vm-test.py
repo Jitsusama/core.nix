@@ -121,6 +121,26 @@ def test_a_notice_sent_while_the_notices_daemon_is_down_is_shown_once_it_is_up(
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=SAYING)
 
 
+def test_a_notices_history_that_doesnt_read_is_set_aside_and_notices_still_come(
+    desktop: Desktop,
+) -> None:
+    """A history left empty, as a battery running out mid-write can, keeps no notice out.
+
+    The daemon sets it aside and starts with none, rather than stopping at each start over
+    it, which would leave nothing to take a notice.
+    """
+    machine = desktop.machine
+    desktop.as_account("systemctl --user stop notices.socket notices.service")
+    desktop.as_account(f": > {desktop.NOTICES_KEPT}")
+    with desktop.told("shows card Begun again"):
+        desktop.as_account("notify-send 'Begun again' 'the history was torn'")
+    machine.wait_until_succeeds(
+        desktop.notice_kept('.summary == "Begun again"'), timeout=timedelta(seconds=10)
+    )
+    machine.succeed(desktop.in_session(f"test -e {desktop.NOTICES_KEPT}.unread-*"))
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=SAYING)
+
+
 # Whether the unit named holds the notifications name on the session bus, as busctl says.
 NAME_HELD_BY = "busctl --user status org.freedesktop.Notifications | grep -qx UserUnit={}"
 

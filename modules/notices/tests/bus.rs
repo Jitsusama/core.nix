@@ -138,6 +138,20 @@ fn got(client: &mut Client, id: u64, key: &str) -> Value {
     answer["records"][0].clone()
 }
 
+/// The record held under this key once there is one: the bus answers a
+/// notice as it's taken, and the socket tells it a moment after, as the
+/// daemon's loop hands it over.
+fn held(client: &mut Client, key: &str) -> Value {
+    let (client, found) = (RefCell::new(client), RefCell::new(Value::Null));
+    until(&format!("{key} was never held"), || {
+        let record = got(&mut client.borrow_mut(), 1, key);
+        let there = !record.is_null();
+        *found.borrow_mut() = record;
+        there
+    });
+    found.into_inner()
+}
+
 #[test]
 fn a_notice_is_one_record_and_its_acts_are_said_on_the_bus() {
     let folder = folder("acts");
@@ -305,7 +319,7 @@ fn the_history_and_its_ids_outlive_a_restart() {
     );
     let key = format!("notice:{first}");
     let mut client = Client::connect(&socket);
-    let picture = got(&mut client, 1, &key)["notice"]["picture"]
+    let picture = held(&mut client, &key)["notice"]["picture"]
         .as_str()
         .unwrap_or("")
         .to_owned();
@@ -322,7 +336,7 @@ fn the_history_and_its_ids_outlive_a_restart() {
 
     let mut daemon = start();
     let mut client = Client::connect(&socket);
-    let kept = got(&mut client, 1, &key);
+    let kept = held(&mut client, &key);
     assert_eq!(
         kept["notice"]["summary"], "First",
         "kept over the restart: {kept}"

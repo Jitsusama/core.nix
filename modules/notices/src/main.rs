@@ -20,7 +20,7 @@ use notices::bus::{self, Server, now_ms};
 use notices::daemon::State;
 use notices::held::Holding;
 use notices::judged::Judge;
-use notices::store;
+use notices::store::{self, Kept};
 use serde_json::json;
 
 /// The daemon as the shell knows it: a record for each notice.
@@ -68,10 +68,21 @@ fn judge(args: &Args) -> Result<Judge, String> {
 }
 
 /// The history kept, or the shell's taken where none is yet; or why what
-/// was kept can't be read, so nothing writes over it.
+/// was kept can't be opened, so nothing writes over it. One that doesn't
+/// read was set aside, and none is kept, rather than the shell's taken
+/// again, which it was the first time.
 fn holding(args: &Args, file: &Path) -> Result<Holding, String> {
-    if let Some(saved) = store::read(file)? {
-        return Ok(Holding::new(saved.notices, saved.next));
+    match store::read(file, now_ms())? {
+        Kept::Saved(saved) => return Ok(Holding::new(saved.notices, saved.next)),
+        Kept::SetAside(aside, why) => {
+            eprintln!(
+                "notices: {} didn't read ({why}), so it's set aside as {} and none is kept",
+                file.display(),
+                aside.display()
+            );
+            return Ok(Holding::default());
+        }
+        Kept::None => {}
     }
     let Some(shells) = args.shells.as_deref().and_then(store::shells) else {
         return Ok(Holding::default());
@@ -154,7 +165,8 @@ fn main() -> ExitCode {
     shared.change(records, json!({}));
     // Everything changed meanwhile is taken at once, so a burst is told
     // and written once; each burst is written as it's told, so a notice
-    // that's arrived is never lost to a stop.
+    // that's arrived is never lost to a stop. It's written first, so a
+    // notice the shell has been told of is already kept.
     while let Ok(()) = heard.recv() {
         let _ = heard.try_iter().count();
         let (records, owed) = {
