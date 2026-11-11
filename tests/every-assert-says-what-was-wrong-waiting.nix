@@ -346,7 +346,7 @@
   "tests/vm/admin/niri-off-cpu-vm-test.py" = 1;
   "tests/vm/sound/noise-cancelled-vm-test.py" = 2;
   "tests/vm/sound/pebble-x-plus-vm-test.py" = 3;
-  "tests/plymouth-restore-vm-test.py" = 1;
+  "tests/vm/boot/plymouth-restore-vm-test.py" = 1;
   "tests/vm/network/shaper-vm-test.py" = 3;
   "tests/vm/admin/update-to-main-vm-test.py" = 1;
   "tests/vm/devices/usb-wake-vm-test.py" = 3;

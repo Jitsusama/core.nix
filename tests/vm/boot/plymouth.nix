@@ -14,7 +14,7 @@ let
   passphrase = "4815";
   password = "a console's password";
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "plymouth";
   enableOCR = true;
   # The base role sets nixpkgs' own settings.

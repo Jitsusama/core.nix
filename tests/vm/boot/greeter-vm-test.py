@@ -1,11 +1,11 @@
 """The greeter signing an account in and out, in a virtual machine that doesn't sign in by itself.
 
-tests/greeter.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Each test asks for the state it starts from as a
-fixture: the account's setup held, then let go, the greeter asking, the account signed in,
-and the greeter asking again after the session ends. A fixture's work is done once a run,
-however many tests ask for it, so any test runs alone with `-k`. The account's name and
-password are greeter.nix's, given as the `values` fixture.
+greeter.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Each test asks for the state it starts from as a
+fixture: the account's setup held, then let go, the greeter asking, the account signed in, and the
+greeter asking again after the session ends. A fixture's work is done once a run, however many tests
+ask for it, so any test runs alone with `-k`. The account's name and password are greeter.nix's,
+given as the `values` fixture.
 """
 
 from __future__ import annotations

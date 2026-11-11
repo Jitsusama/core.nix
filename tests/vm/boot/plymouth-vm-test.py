@@ -1,12 +1,12 @@
 """The splash asking for the disk in the theme, its consoles, and a restart's screen to its end.
 
-tests/plymouth.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Each test asks for the state it starts from as a
-fixture: the machine installed onto its encrypted disk and booted to the splash's ask, then
-the disk opened, then kmscon's console in front. A fixture's work is done once a run, however
-many tests ask for it, so any test runs alone with `-k`. What the tests need from Nix, the
-secrets, the systems to boot, the theme's colours, face and padding, and the programs named
-by their paths in the store, is plymouth.nix's, given as the `values` fixture.
+plymouth.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Each test asks for the state it starts from as a
+fixture: the machine installed onto its encrypted disk and booted to the splash's ask, then the disk
+opened, then kmscon's console in front. A fixture's work is done once a run, however many tests ask
+for it, so any test runs alone with `-k`. What the tests need from Nix, the secrets, the systems to
+boot, the theme's colours, face and padding, and the programs named by their paths in the store, is
+plymouth.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations

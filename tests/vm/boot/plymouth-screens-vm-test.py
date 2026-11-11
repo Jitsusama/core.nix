@@ -1,12 +1,12 @@
 """The splash's ask, shown whole on two screens of different sizes, and opening the disk.
 
-tests/plymouth-screens.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says why the bottom left's line is the one read. Each test asks for
-the state it starts from as a fixture: the machine installed onto its encrypted disk and
-booted to the splash asking for the passphrase. A fixture's work is done once a run, however
-many tests ask for it, so any test runs alone with `-k`. The passphrase, the screens' sizes,
-the encrypted system and the programs that read the pictures are plymouth-screens.nix's,
-given as the `values` fixture.
+plymouth-screens.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says why the bottom left's line is the one read.
+Each test asks for the state it starts from as a fixture: the machine installed onto its encrypted
+disk and booted to the splash asking for the passphrase. A fixture's work is done once a run,
+however many tests ask for it, so any test runs alone with `-k`. The passphrase, the screens' sizes,
+the encrypted system and the programs that read the pictures are plymouth-screens.nix's, given as
+the `values` fixture.
 """
 
 from __future__ import annotations

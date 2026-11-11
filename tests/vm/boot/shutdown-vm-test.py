@@ -1,6 +1,6 @@
 """A reboot whose shutdown would hang goes on anyway, and says what it told Plymouth.
 
-tests/shutdown.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+shutdown.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. The machine exits on any reset, so each test's
 reboot ends with the machine down, and the next test starts it again. The programs the stuck
 service and the leftover run are named by their paths in the store, given as the `values`

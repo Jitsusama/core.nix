@@ -26,7 +26,7 @@
   "tests/desktop/desktop_session.py" = 1;
   "tests/launcher_on_niri.py" = 1;
   "tests/lib/qemu-after-its-sockets-test.py" = 1;
-  "tests/plymouth-vm-test.py" = 1;
+  "tests/vm/boot/plymouth-vm-test.py" = 1;
   "tests/vm/guide/secure-boot-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
 }

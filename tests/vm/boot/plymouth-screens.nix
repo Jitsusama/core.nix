@@ -25,7 +25,7 @@ let
     height = 1200;
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "plymouth-screens";
   enableOCR = true;
   # The base role sets nixpkgs' own settings.
@@ -35,7 +35,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   # carries little, since useBootLoader copies its whole closure into the
   # boot disk's image; the graphical system booted from the encrypted disk is
   # evaluated from it as a specialisation would be but kept out of that
-  # closure, as tests/plymouth.nix does.
+  # closure, as plymouth.nix does.
   nodes.machine =
     {
       extendModules,
