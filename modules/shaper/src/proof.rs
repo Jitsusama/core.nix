@@ -219,6 +219,17 @@ fn kbit(bytes: f64, seconds: f64) -> f64 {
     bytes * 8.0 / 1_000.0 / seconds
 }
 
+/// A shell loop asking `request` again until `seconds` have passed, and
+/// waiting `every` after each. A server that refused one, its status 400
+/// or more, is given a second before the next: asked again at once, it
+/// went on refusing for most of an hour.
+fn repeated(seconds: &str, request: &str, every: &str) -> String {
+    format!(
+        "end=$((SECONDS + {seconds})); while [ $SECONDS -lt $end ]; do a=$({request}); \
+         echo \"$a\"; case $a in [45]*) sleep 1;; esac; {every} done"
+    )
+}
+
 /// Measures one block: Joel's four probes for `seconds`, while the load
 /// runs, reading CAKE's queue each second.
 fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block> {
@@ -230,21 +241,33 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     // Each probe says each answer's status beside what it measured, so a
     // server refusing Joel's requests is told from a shaper slowing them,
     // and the upload is repeated as the download is, since a server may
-    // end one early.
-    let up = format!(
-        "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do head -c 4000000000 /dev/zero \
-         | curl -s -o /dev/null -X POST -T - --max-time $((end - SECONDS + 1)) \
-         -w '%{{http_code}} %{{size_upload}}\\n' '{server}/__up'; done"
+    // end one early. The download comes in pieces of 5 MB, since the
+    // server refuses one of 10 MB or more once it has sent many.
+    let up = repeated(
+        &s,
+        &format!(
+            "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
+             --max-time $((end - SECONDS + 1)) -w '%{{http_code}} %{{size_upload}}\\n' \
+             '{server}/__up'"
+        ),
+        "",
     );
-    let down = format!(
-        "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do curl -s -o /dev/null \
-         --max-time $((end - SECONDS + 1)) -w '%{{http_code}} %{{size_download}}\\n' \
-         '{server}/__down?bytes=25000000'; done"
+    let down = repeated(
+        &s,
+        &format!(
+            "curl -s -o /dev/null --max-time $((end - SECONDS + 1)) \
+             -w '%{{http_code}} %{{size_download}}\\n' '{server}/__down?bytes=5000000'"
+        ),
+        "",
     );
-    let first = format!(
-        "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do curl -s -o /dev/null \
-         -w '%{{http_code}} %{{time_starttransfer}}\\n' '{server}/__down?bytes=0'; \
-         sleep 1; done"
+    let first = repeated(
+        &s,
+        &format!(
+            "curl -s -o /dev/null -w '%{{http_code}} %{{time_starttransfer}}\\n' \
+             '{server}/__down?bytes=0'"
+        ),
+        // A fresh connection a second, as a page's would be.
+        "sleep 1;",
     );
     let probes: Vec<Child> = [
         scoped("app.slice", "up", &["sh", "-c", &up]),
@@ -569,6 +592,31 @@ mod tests {
     fn the_shaper_goes_first_in_every_other_pair() {
         assert_eq!(arms(0), [Arm::On, Arm::Off]);
         assert_eq!(arms(1), [Arm::Off, Arm::On]);
+    }
+
+    #[test]
+    fn a_refused_request_waits_before_it_is_asked_again() {
+        let refused = repeated("2", "echo '429 0'", "");
+        let out = Command::new("sh")
+            .args(["-c", &refused])
+            .output()
+            .expect("a shell");
+        let asked = String::from_utf8_lossy(&out.stdout).lines().count();
+        assert!(
+            (1..=3).contains(&asked),
+            "asked {asked} times in two seconds a server refused"
+        );
+        // Answered, a probe waits only what it asks to between requests.
+        let answered = repeated("2", "echo '200 5'", "sleep 0.4;");
+        let out = Command::new("sh")
+            .args(["-c", &answered])
+            .output()
+            .expect("a shell");
+        let asked = String::from_utf8_lossy(&out.stdout).lines().count();
+        assert!(
+            (2..=6).contains(&asked),
+            "asked {asked} times, not every 0.4 s"
+        );
     }
 
     #[test]
