@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime};
 
 use common::Fixture;
 use pi_packages::config::{Config, Package};
+use pi_packages::hold::{self, Hold};
 use pi_packages::run::{self, Done, Pace, SPACING};
 
 impl Fixture {
@@ -279,6 +280,124 @@ fn an_update_told_now_swaps_inside_the_hour() {
             from: Some(first),
             to: fixture.head()
         }]
+    );
+}
+
+#[test]
+fn a_hold_keeps_current_even_told_now() {
+    let fixture = Fixture::new();
+    let config = fixture.alone();
+    let start = SystemTime::now();
+    let first = fixture.head();
+    Fixture::update_all(&config, start, Pace::Spaced);
+    fixture.change("second");
+    let held = Hold {
+        why: "a switch is under way".to_owned(),
+        until: None,
+    };
+    hold::put(&config, &held).expect("a hold");
+
+    let later = start + PAST_THE_HOUR;
+    for pace in [Pace::Spaced, Pace::Now] {
+        assert_eq!(
+            Fixture::update_all(&config, later, pace),
+            [Done::OnHold {
+                commit: fixture.head(),
+                hold: held.clone()
+            }],
+            "an update at {pace:?} under a hold"
+        );
+    }
+    assert_eq!(
+        fixture.place().current_commit(),
+        Some(first.clone()),
+        "a held update moved current"
+    );
+    assert_eq!(
+        fixture.versions(),
+        std::slice::from_ref(&first),
+        "a held update built a version"
+    );
+
+    assert!(
+        hold::release(&config).expect("a release"),
+        "no hold stood to release"
+    );
+    assert_eq!(
+        Fixture::update_all(&config, later, Pace::Spaced),
+        [Done::Moved {
+            from: Some(first),
+            to: fixture.head()
+        }],
+        "the update after the release"
+    );
+}
+
+#[test]
+fn a_hold_for_a_time_ends_by_itself() {
+    let fixture = Fixture::new();
+    let config = fixture.alone();
+    let start = SystemTime::now();
+    let first = fixture.head();
+    Fixture::update_all(&config, start, Pace::Spaced);
+    fixture.change("second");
+    let held = Hold {
+        why: "for an hour and a half".to_owned(),
+        until: Some(start + Duration::from_mins(90)),
+    };
+    hold::put(&config, &held).expect("a hold");
+
+    let inside = Fixture::update_all(&config, start + Duration::from_mins(89), Pace::Now);
+    let after = Fixture::update_all(&config, start + Duration::from_mins(91), Pace::Now);
+
+    assert!(
+        matches!(inside.as_slice(), [Done::OnHold { .. }]),
+        "an update inside the hold went ahead: {inside:?}"
+    );
+    assert_eq!(
+        after,
+        [Done::Moved {
+            from: Some(first),
+            to: fixture.head()
+        }],
+        "the update after the hold ran out"
+    );
+}
+
+#[test]
+fn a_package_with_no_version_is_installed_under_a_hold() {
+    let fixture = Fixture::new();
+    let config = fixture.alone();
+    let hold = Hold {
+        why: "a switch is under way".to_owned(),
+        until: None,
+    };
+    hold::put(&config, &hold).expect("a hold");
+
+    let installed = Fixture::update_all(&config, SystemTime::now(), Pace::Spaced);
+
+    assert_eq!(
+        installed,
+        [Done::Moved {
+            from: None,
+            to: fixture.head()
+        }],
+        "a hold kept a package with no version from being installed"
+    );
+}
+
+#[test]
+fn a_hold_file_that_cant_be_read_holds() {
+    let fixture = Fixture::new();
+    let config = fixture.alone();
+    fs::create_dir_all(&config.root).expect("the root");
+    fs::write(hold::file(&config), "garbled").expect("a garbled hold");
+
+    let hold = hold::standing(&config, SystemTime::now());
+
+    assert!(
+        hold.is_some_and(|hold| hold.until.is_none() && hold.why.contains("garbled")),
+        "a garbled hold file let swaps through"
     );
 }
 
