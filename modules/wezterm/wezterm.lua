@@ -3,6 +3,7 @@ local wezterm = require('wezterm')
 local theme = require('theme')
 local config = wezterm.config_builder()
 
+config.font_dirs = theme.font_dirs
 config.font = wezterm.font(theme.font)
 config.font_size = theme.font_size
 config.colors = theme.colors

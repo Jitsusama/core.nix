@@ -40,6 +40,12 @@ in
   xdg.configFile."wezterm/theme.lua".text = "return ${
     lib.generators.toLua { } {
       font = font.mono.family;
+      # The face's own files, which WezTerm reads before the system's fonts:
+      # a Mac's switch swaps the system's font folder while WezTerm reloads
+      # this file, and a face missing for that moment raises a window on the
+      # screen. The theme's monospaced face is Monaspace's, as
+      # modules/fonts/system.nix installs it for every program.
+      font_dirs = [ "${pkgs.nerd-fonts.monaspace}/share/fonts" ];
       font_size = macSize;
       padding = {
         left = space.xl;
