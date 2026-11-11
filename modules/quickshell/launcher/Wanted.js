@@ -35,6 +35,21 @@ function wanted(stands, source) {
     return stands.typed !== "" || !(source.saysAtHome || source.asleep);
 }
 
+// Whether rows home shows, or a few places read (`readers`), are read now:
+// walked from outside, open at home, or with one of those places wanted.
+// Opened by a chord straight into another place, as Super+V opens Copies,
+// they aren't, where Agents made its own rows (Sessions to Reopen, Landed,
+// Recent, Start and Budgets) as any opening began (H6EDLC, 2026-11-11).
+function readAt(stands, readers) {
+    if (stands.cataloguing) {
+        return true;
+    }
+    if (!stands.open) {
+        return false;
+    }
+    return stands.held.length === 0 || readers.some(one => one !== null && wanted(stands, one));
+}
+
 // The order a kept opening's sources wake in, a few a frame, rather than
 // all at once as it opened, which held Joel's shell 195 to 220 ms past
 // its first frame (2026-11-10 20:39): those home's rows read, in home's

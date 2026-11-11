@@ -50,6 +50,7 @@ import "Recent.js" as Recent
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
+import "Wanted.js" as Wanted
 
 Provider {
     id: provider
@@ -76,9 +77,23 @@ Provider {
         return !!launcher && (launcher.open || launcher.cataloguing);
     }
 
+    // Whether its own rows after its sessions' are read now: at home, which
+    // shows them, walked from outside, or held in Agents or Now, which reads
+    // Sessions to Reopen. A stopgap until the agents daemon makes them
+    // ready (Fri 13 Nov), so a chord into another place makes none.
+    function readable() {
+        const launcher = provider.launcher;
+        if (!launcher || typeof launcher.wants !== "function")
+            return opened();
+        return Wanted.readAt({ cataloguing: launcher.cataloguing, open: launcher.open,
+            held: launcher.held, becoming: Object.values(launcher.becoming ?? {}),
+            typed: launcher.typed }, [provider, source("now")]);
+    }
+
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
-    // and budgets), as each was last made while anything could read it:
-    // the launcher open, or its catalogue walked. Shut, nothing does, so
+    // and budgets), as each was last made while anything could read it
+    // (readable): at home, in Agents or Now, or its catalogue walked. Shut,
+    // or opened into another place, nothing does, so
     // each gives what it last made and reads nothing else, and a change
     // nobody sees makes none of them; each is made again as the launcher
     // opens, three or four rows (keeps-pace). Joel's shut launcher made 312
@@ -710,7 +725,7 @@ Provider {
     }
 
     readonly property var start: {
-        if (!opened())
+        if (!readable())
             return madeBefore("start", null);
         const quests = () => (source("quests")?.everything() ?? [])
             .filter(row => row.unfinished && row.verb !== "go to");
@@ -739,7 +754,7 @@ Provider {
     // name, which would change as he reopens them, and its note says where
     // they came from.
     readonly property var toReopen: {
-        if (!opened())
+        if (!readable())
             return madeBefore("toReopen", null);
         const lost = Sessions.toReopen;
         if (lost.length === 0)
@@ -985,7 +1000,7 @@ Provider {
         };
     }
     readonly property var landed: {
-        if (!opened())
+        if (!readable())
             return madeBefore("landed", null);
         const read = one => provider.readLanding(one.key);
         const act = (id, fields) => thing(Object.assign({
@@ -1143,7 +1158,7 @@ Provider {
     // text, about 30,000 characters, started a garbage collection every
     // second change with the launcher open (2026-11-10).
     readonly property int recentFrom: {
-        if (!opened())
+        if (!readable())
             return recentListed.made;
         const closed = Sessions.closed;
         const live = Sessions.running.concat(Sessions.parked);
@@ -1165,7 +1180,7 @@ Provider {
     }
     readonly property var recentListed: ({ rows: [], said: [], day: "", made: 0 })
     readonly property var recent: {
-        if (!opened())
+        if (!readable())
             return madeBefore("recent", null);
         const listed = recentFrom === 0 ? [] : recentListed.rows;
         const words = Words.of("agents:recent");
@@ -1228,7 +1243,7 @@ Provider {
     // with no spend-watch, or while the screen is shared, when AI spend
     // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
     readonly property var budgets: {
-        if (!opened())
+        if (!readable())
             return madeBefore("budgets", null);
         // AI spend's row as it reads now, since AI spend makes its rows
         // only while it's wanted, which it isn't while Agents is held;
