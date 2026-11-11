@@ -36,7 +36,7 @@
 //! start or end, and then only the persons that changed, so the shell
 //! remakes nothing for everyone else.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
@@ -125,7 +125,7 @@ fn main() {
         eprintln!("usage: people SOCKET SOURCES [WORDS]");
         std::process::exit(64);
     };
-    let said = args.next().map_or_else(Default::default, |words| {
+    let said = args.next().map_or_else(BTreeMap::default, |words| {
         match std::fs::read_to_string(&words)
             .map_err(|error| error.to_string())
             .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|e| e.to_string()))
@@ -133,7 +133,7 @@ fn main() {
             Ok(vocabulary) => listing::words(&vocabulary),
             Err(why) => {
                 eprintln!("<4>couldn't read the launcher's words, so each is said by name: {why}");
-                Default::default()
+                BTreeMap::default()
             }
         }
     });
