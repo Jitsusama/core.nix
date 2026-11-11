@@ -11,14 +11,10 @@
 import Quickshell
 import QtQuick
 import "launcher" as Launcher
+import "Expect.js" as Expect
 
 ShellRoot {
     id: root
-
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
-    }
 
     // The launcher as Now reads it, shut, with no other source.
     QtObject {
@@ -54,15 +50,15 @@ ShellRoot {
             now.lookTexts = { "a.json": JSON.stringify({ v: 1, id: "a", kind: "page",
                 at: "2026-11-09T12:00:00Z", target: "https://example.com", title: "Read A",
                 why: "Because.", state: "waiting", session: "" }) };
-            expect("the look waits on Joel", waitingFiles() === "[\"a.json\"]", waitingFiles());
+            Expect.expect("the look waits on Joel", waitingFiles() === "[\"a.json\"]", waitingFiles());
             const row = now.waiting.verbs().find(each => each.key
                 === "on:waitingOnYou:kind:look")?.verbs()?.[0];
             const clearing = (row?.verbs?.() ?? []).find(each => each.key
                 === "verb:on:look:clear:a");
-            expect("its row offers to clear it", clearing !== undefined,
+            Expect.expect("its row offers to clear it", clearing !== undefined,
                 JSON.stringify((row?.verbs?.() ?? []).map(each => each.key)));
             clearing.run();
-            expect("cleared, it shows so in the act's own frame", waitingFiles() === "[]",
+            Expect.expect("cleared, it shows so in the act's own frame", waitingFiles() === "[]",
                 waitingFiles());
         }))
             putBack.start();
@@ -80,12 +76,12 @@ ShellRoot {
             tries += 1;
             if (now.looks.waiting.length === 1 && Object.keys(now.lookWriters).length === 0) {
                 stop();
-                root.tried(() => root.expect("put back, it reads as it did",
+                root.tried(() => Expect.expect("put back, it reads as it did",
                     now.looks.waiting[0].title === "Read A", root.waitingFiles()));
                 Qt.exit(0);
             } else if (tries > 200) {
                 stop();
-                root.tried(() => root.expect("a write that failed put the look back", false,
+                root.tried(() => Expect.expect("a write that failed put the look back", false,
                     `${root.waitingFiles()} with ${Object.keys(now.lookWriters)} writing`));
             }
         }
@@ -97,8 +93,7 @@ ShellRoot {
             cases();
             return true;
         } catch (error) {
-            console.warn(`FAIL ${error.message ?? error}`);
-            Qt.callLater(() => Qt.exit(1));
+            Expect.fail(error.message ?? error);
             return false;
         }
     }

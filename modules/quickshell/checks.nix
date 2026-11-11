@@ -362,6 +362,7 @@ let
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${test} shell.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
