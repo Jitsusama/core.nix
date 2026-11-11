@@ -667,12 +667,14 @@ ShellRoot {
             ForYouHolds.count === 2 && now.homeSays() === "Session C needs you \u00b7 1 more",
             JSON.stringify([ForYouHolds.count, now.homeSays()]));
         const placedShut = theLauncher.placed;
+        const minuteShut = now.timedMinute;
         theLauncher.wanting = true;
         now.retimeIfStale();
-        // Placing the time makes Time's and Today's rows, and an opening
-        // retimes already, so with no minute turned, wanted again doesn't.
-        expect("wanted again with no minute turned, the time isn't placed again",
-            theLauncher.placed === placedShut, theLauncher.placed - placedShut);
+        // An opening retimes already, unless the real clock turned a minute.
+        const turned = now.timedMinute !== minuteShut;
+        expect("wanted again, the time is placed again only if a minute turned",
+            theLauncher.placed - placedShut === (turned ? 2 : 0),
+            `${theLauncher.placed - placedShut} placed, a minute turned: ${turned}`);
         const made = now.tally.rows;
         expect("wanted again, they're made as they stand",
             made > before && castRow()?.side === "to the speaker"
