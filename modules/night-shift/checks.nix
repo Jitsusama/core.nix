@@ -23,8 +23,9 @@ onLinux {
   );
 
   # A declared job is tried only at night, never caught up on by day, runs
-  # behind everything the account runs, with the limits it names, and stops
-  # by the slices' bars; an account declaring none gets nothing.
+  # behind everything the account runs, with the limits it names on its own
+  # cgroup rather than its watcher's, and stops by the slices' bars; an
+  # account declaring none gets nothing.
   night-shift-runs-only-at-night =
     let
       declared = account (bareNixos [
@@ -50,7 +51,7 @@ onLinux {
       says = text: pkgs.lib.hasInfix text (toString service.ExecStart);
     in
     holds "night-shift-runs-only-at-night"
-      "A night job is tried by day or caught up on after a night slept through, runs outside background.slice or ahead of the account's work, drops a limit it names, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, or an account declaring no job gets one."
+      "A night job is tried by day or caught up on after a night slept through, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, or an account declaring no job gets one."
       (
         timer.OnCalendar == [
           "*-*-* 01:30/15"
@@ -61,8 +62,11 @@ onLinux {
         && service.Slice == "background.slice"
         && service.CPUWeight == 1
         && service.IOWeight == 1
-        && service.MemoryHigh == "12G"
-        && service.IOReadBandwidthMax == [ "/dev/nvme0n1 50M" ]
+        && service.Delegate == "memory io"
+        && !(service ? MemoryHigh)
+        && !(service ? IOReadBandwidthMax)
+        && says "--memory-high 12G"
+        && says "--reads-at-most /dev/nvme0n1=50M"
         && unit.X-RestartIfChanged == false
         && says "--start-under 3"
         && says "--stop app.slice=1"
