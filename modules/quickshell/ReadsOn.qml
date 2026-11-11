@@ -11,6 +11,7 @@
 // ruling, 2026-10-30: a long value slides exactly as a long name does).
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Measures.js" as Measures
 import "Reading.js" as Reading
 
 Item {
@@ -82,8 +83,9 @@ Item {
         if (!wholeWords || over <= 0)
             return width;
         void face.font;
-        const cut = Reading.wholeWords(plain, width, said => face.advanceWidth(said));
-        return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)));
+        const wide = Measures.measurer(face);
+        const cut = Reading.wholeWords(plain, width, wide);
+        return cut === "" ? width : Math.min(width, Math.ceil(wide(cut)));
     }
 
     // Whether the words end at the room's right edge, as what a row says at

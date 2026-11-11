@@ -11,6 +11,13 @@
 // goes before the ellipsis does.
 const DANGLING = /[\s\u00b7,;:]+$/u;
 
+// Words as `fitting` fits them, kept by `key` where `width` is a
+// measurer's (Measures.js), whose face is all else the fit depends on;
+// fitted anew by any other.
+function fitted(width, key, fitting) {
+    return width.kept === undefined ? fitting() : width.kept(key, fitting);
+}
+
 // The longest each ramp lasts, in seconds. A slide the pace alone would
 // take less than two ramps for ramps for half that time, so the pace
 // still holds between them.
@@ -350,6 +357,10 @@ function crumbsLeast(steps, width, between) {
 // a\u2026"). `width` measures a text in the face it's drawn in. Where not
 // even the first word fits, nothing is said, rather than a piece of one.
 function wholeWords(words, room, width) {
+    return fitted(width, `whole\u241f${room}\u241f${words}`,
+        () => wholeWordsFitted(words, room, width));
+}
+function wholeWordsFitted(words, room, width) {
     if (width(words) <= room) {
         return words;
     }
@@ -371,6 +382,10 @@ function wholeWords(words, room, width) {
 // items, the dot unless a run of names is given way by its commas.
 function wholeItemsFromEnd(words, room, width, apart) {
     const between = apart ?? ITEMS_APART;
+    return fitted(width, `items${between}\u241f${room}\u241f${words}`,
+        () => wholeItemsFitted(words, room, width, between));
+}
+function wholeItemsFitted(words, room, width, between) {
     const items = words.split(between);
     if (items.length === 1) {
         return wholeWords(words, room, width);
@@ -417,6 +432,10 @@ function wholeNamesFromEnd(words, room, width) {
 // "line 7 of the de" (VKCF3Z, 2026-11-08). Where not even its first
 // word fits, nothing is said.
 function wordsFromEnd(words, room, width) {
+    return fitted(width, `ends\u241f${room}\u241f${words}`,
+        () => wordsFromEndFitted(words, room, width));
+}
+function wordsFromEndFitted(words, room, width) {
     if (width(words) <= room) {
         return words;
     }

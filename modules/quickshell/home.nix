@@ -144,6 +144,7 @@ let
     "ReadsOn.qml"
     "Wash.qml"
     "Reading.js"
+    "Measures.js"
     "Graph.qml"
     "Chord.qml"
     "Margin.qml"

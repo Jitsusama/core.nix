@@ -27,6 +27,7 @@
 // Not Row, which is QtQuick's own and would silently win.
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Measures.js" as Measures
 import "Reading.js" as Reading
 import "Columns.js" as Columns
 
@@ -133,7 +134,7 @@ Rectangle {
             return count;
         }
         void wordsFace.font;
-        const width = words => Math.ceil(wordsFace.advanceWidth(words)) + 1;
+        const width = Measures.measurer(wordsFace, true);
         const around = [row.also !== "" ? `\u201c${row.also}\u201d \u00b7 ` : "",
             row.kind !== "" && row.side !== "" ? ` \u00b7 ${row.side}` : ""]
             .reduce((sum, words) => sum + (words === "" ? 0 : width(words)), 0);
@@ -169,7 +170,7 @@ Rectangle {
     // changed measures it again.
     readonly property real detailWide: {
         void wordsFace.font;
-        return detailed ? Math.ceil(wordsFace.advanceWidth(detailUncut)) + 1 : 0;
+        return detailed ? Measures.measurer(wordsFace, true)(detailUncut) : 0;
     }
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
@@ -284,12 +285,6 @@ Rectangle {
     // How far its words stand from its name.
     readonly property real detailGap: countText.x - nameBox.x - nameBox.width
     readonly property string detailFace: countText.font.family
-    // How wide words are drawn in the detail's face, as detailWide
-    // measures them, so the room kept for it and the fit agree to the pixel.
-    function heldWidth(words) {
-        void wordsFace.font;
-        return Math.ceil(wordsFace.advanceWidth(words)) + 1;
-    }
     readonly property bool nameCut: nameBox.over > 0
     readonly property bool sideCut: atRight.sided && sideText.over > 0
     property bool sidesTurn: false
@@ -364,10 +359,12 @@ Rectangle {
         // names nothing after its name (dae7fb67); any other row's words
         // give way by whole items, so a side such as "370 Mb/s down, 20 up"
         // is never cut at its comma.
-        // The elision below is only a last guard.
+        // The elision below is only a last guard. Its words are measured
+        // as detailWide measures them, so the room kept for it and the fit
+        // agree to the pixel.
         readonly property string whole: row.names
-            ? Reading.wholeNamesFromEnd(row.detail, room, words => row.heldWidth(words))
-            : Reading.wholeItemsFromEnd(row.detail, room, words => row.heldWidth(words))
+            ? Reading.wholeNamesFromEnd(row.detail, room, Measures.measurer(wordsFace, true))
+            : Reading.wholeItemsFromEnd(row.detail, room, Measures.measurer(wordsFace, true))
         width: Math.min(implicitWidth, room)
         elide: Text.ElideRight
         anchors.baseline: monoLine.baseline
@@ -400,9 +397,9 @@ Rectangle {
         if (row.note === "" || row.nameCut || row.detailCut)
             return "";
         void wordsFace.font;
-        const width = words => Math.ceil(wordsFace.advanceWidth(words)) + 1;
+        const width = Measures.measurer(wordsFace, true);
         const room = row.noteEnd - row.noteFrom
-            - (row.noteApart === "" ? 0 : wordsFace.advanceWidth(row.noteApart));
+            - (row.noteApart === "" ? 0 : Measures.measurer(wordsFace)(row.noteApart));
         return Reading.noteFitted(row.note, room, width);
     }
 
@@ -474,7 +471,7 @@ Rectangle {
         // The items a side of them keeps in its room, the least needed
         // given way first (Reading.js's keptItems).
         readonly property var kept: itemised ? Reading.keptItems(row.sideItems, room,
-            words => Math.ceil(sideFace.advanceWidth(words)) + 1) : []
+            Measures.measurer(sideFace, true)) : []
         // The colour each kept item is drawn in where it names a role of
         // its own (`hue`), as a count of what failed wears the alert's,
         // or "" for the side's.
@@ -499,7 +496,7 @@ Rectangle {
         // room whole: the name is cut, so where it's cut holds still as
         // that item changes, by the column, as any side's does.
         readonly property bool squeezed: itemised
-            && Math.ceil(sideFace.advanceWidth(said)) + 1 > room
+            && Measures.measurer(sideFace, true)(said) > room
         // How a row stands never gives way: the name is cut first, at a
         // whole word, and "256 \u00d7 256 px" stays whole (docs/design.md,
         // A row says what it is; VKCF3Z, 6918348b, and of Inkscape's
@@ -665,7 +662,7 @@ Rectangle {
     readonly property string sayWhole: {
         void sayFace.font;
         const cut = Reading.wholeItemsFromEnd(row.say, row.sayEnd - row.sayFrom,
-            words => Math.ceil(sayFace.advanceWidth(words)) + 1);
+            Measures.measurer(sayFace, true));
         return !cut.endsWith("\u2026") || cut.includes(" ") ? cut : "";
     }
 
