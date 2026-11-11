@@ -432,11 +432,14 @@ ShellRoot {
         // Held as every start is, by the realm's node where there is one.
         const opened = command => kitties.some(one => one.startsWith(command[0])
             && one.endsWith(command[1]));
-        expect("reopened in its own window and folder",
+        // A start its record says that isn't the fence, or isn't a word,
+        // is never passed on.
+        expect("reopened in its own window and folder, started with nothing it can't be",
             opened([`${kitty} /tmp zsh -lic `, " pi --session s-before"]), kitties.join("\n"));
-        expect("one pi never saved started under its own id, its quest loaded", opened([
-            `${kitty} /tmp env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-FRESH zsh -lic `,
-            " pi --session-id s-fresh"]), kitties.join("\n"));
+        // Started again with its fence, so it never comes back unfenced.
+        expect("one pi never saved started under its own id, its quest loaded, fenced", opened([
+            `${kitty} /tmp env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-FRESH PI_SANDBOX=fence `
+                + "PI_SPAWNER=on zsh -lic ", " pi --session-id s-fresh"]), kitties.join("\n"));
         expect("reopened though niri never said its screens",
             opened([`${kitty} /tmp zsh -lic `, " pi --session s-patient"]), kitties.join("\n"));
         expect("resumed in the folder its record says",
