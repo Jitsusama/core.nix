@@ -51,6 +51,20 @@ function day(time, now, said) {
     return said.date(at, at.getFullYear() === today.getFullYear() ? "d MMM" : "d MMM yyyy");
 }
 
+// A day alone, as a note says when something was: "today", "yesterday",
+// "on Thursday" within six days, then "on 28 Oct" and "on 13 Nov 2025",
+// as `day` names them. `said` gives `today` and `on`, "on {day}", besides
+// what `day` takes; yesterday and tomorrow stand alone, since nobody says
+// "on yesterday".
+function onDay(time, now, said) {
+    const named = day(time, now, said);
+    if (named === "") {
+        return said.today;
+    }
+    return named === said.yesterday || named === said.tomorrow ? named
+        : String(said.on).replace("{day}", named);
+}
+
 // Its time on a clock, "09:05".
 function clock(time) {
     const at = new Date(time);

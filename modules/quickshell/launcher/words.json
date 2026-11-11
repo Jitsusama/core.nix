@@ -14053,7 +14053,8 @@
       "happening": "now",
       "soon": "in {minutes} min",
       "at": "at {time}",
-      "opened": "opened {when}"
+      "opened": "opened {when}",
+      "on": "on {day}"
     },
     "hints": {
       "up": "up",

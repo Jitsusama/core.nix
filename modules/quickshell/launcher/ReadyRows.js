@@ -116,6 +116,7 @@ const FORMS = {
     lasted: (time, now) => Interfaces.lasted(Math.max(0, now - time.at) / SECOND),
     day: (time, now, said) => said.date(new Date(time.at),
         sameYear(time.at, now) ? "d MMM" : "d MMM yyyy"),
+    on: (time, now, said) => When.onDay(time.at, now, said),
     zone: (time, now, said) => said.zone(time.zone, now)
 };
 
@@ -144,10 +145,10 @@ function itemSaid(item, now, said) {
         : time;
 }
 
-// A row's note as the shell says it: words of the daemon's, or one time
-// item, as a side's are.
+// A row's note as the shell says it: words of the daemon's, or one item or
+// a list of them, said as a side is.
 function noteSaid(note, now, said) {
-    return typeof note === "string" ? note : itemSaid(note, now, said);
+    return typeof note === "string" ? note : sideSaid([].concat(note), now, said);
 }
 
 // A side's items as one line, each said and joined by a dot, those saying
@@ -230,13 +231,13 @@ function drawerOf(drawer, now, said) {
 
 // The forms that read differently only once the day turns: a moment, a
 // date and a day. Every other one can as the minute does.
-const DAILY = new Set(["moment", "dated", "day"]);
+const DAILY = new Set(["moment", "dated", "day", "on"]);
 
 // How often a row says something new of the clock, at its side or in its
 // drawer, so it's said again only then while it's drawn: "minute", "day",
 // or "" for a row that says no time.
 function ticks(row) {
-    const note = row?.note && typeof row.note === "object" ? [row.note] : [];
+    const note = row?.note && typeof row.note === "object" ? [].concat(row.note) : [];
     const times = (row?.side ?? []).concat(row?.drawer?.facts ?? [], note).filter(timed);
     if (times.length === 0) {
         return "";
