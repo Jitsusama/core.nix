@@ -13,10 +13,19 @@
 // The compositor's time is 32 bits of milliseconds, which wrap every 49.7
 // days, so it's widened against the clock now: a press is always handled
 // within 49 days of its making.
+//
+// A held key is repeated by Qt's Wayland plugin itself, which stamps each
+// repeat with the first press's time, so an arrow held across a list read
+// every step as made seconds before: Joel's 187 keys, a median 375 ms, had
+// steps of 9 to 23 ms to their frames (FEH1HE, 2026-11-11). A repeat is
+// timed from when the shell is given it instead. When it was due is Qt's
+// alone, as the compositor's repeat delay and rate are, so a repeat late
+// for a busy shell is counted from when it came, not when it was due.
 #include "keytimes.h"
 
 #include <QCoreApplication>
 #include <QInputEvent>
+#include <QKeyEvent>
 #include <QMetaObject>
 #include <cstdint>
 #include <ctime>
@@ -42,8 +51,12 @@ double KeyTimes::now() const { return monotonicNow(); }
 bool KeyTimes::eventFilter(QObject *watched, QEvent *event) {
     const auto type = event->type();
     if (type == QEvent::KeyPress || type == QEvent::MouseButtonPress) {
-        const auto stamp = static_cast<std::uint32_t>(static_cast<QInputEvent *>(event)->timestamp());
         const double now = monotonicNow();
+        const bool repeat =
+            type == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->isAutoRepeat();
+        const auto stamp = repeat ? static_cast<std::uint32_t>(static_cast<std::uint64_t>(now))
+                                  : static_cast<std::uint32_t>(
+                                        static_cast<QInputEvent *>(event)->timestamp());
         const auto since = static_cast<std::uint32_t>(static_cast<std::uint64_t>(now)) - stamp;
         // A key a program typed can come with no time, as wtype's do in the
         // test machine, which widened would read as pressed a moment after

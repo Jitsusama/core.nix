@@ -24,6 +24,14 @@ qt_add_qml_module(keytimes
 target_compile_options(keytimes PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(keytimes PRIVATE Qt6::Gui Qt6::Qml)
 
+# What it says of a press and of a held key's repeat, run offscreen as the
+# package builds (keytimes_test.cpp).
+enable_testing()
+qt_add_executable(keytimes_test keytimes_test.cpp keytimes.cpp keytimes.h)
+target_compile_options(keytimes_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_link_libraries(keytimes_test PRIVATE Qt6::Gui Qt6::Qml)
+add_test(NAME keytimes COMMAND keytimes_test)
+
 install(TARGETS keytimes LIBRARY DESTINATION ${QML_INSTALL_DIR}/KeyTimes)
 install(FILES
     ${CMAKE_BINARY_DIR}/KeyTimes/qmldir

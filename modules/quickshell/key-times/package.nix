@@ -17,6 +17,7 @@ stdenv.mkDerivation {
       ./CMakeLists.txt
       ./keytimes.h
       ./keytimes.cpp
+      ./keytimes_test.cpp
     ];
   };
   nativeBuildInputs = [
@@ -29,6 +30,8 @@ stdenv.mkDerivation {
   ];
   # A library, not a program, so there's nothing for Qt to wrap.
   dontWrapQtApps = true;
+  # keytimes_test.cpp, offscreen, so a repeat timed from its first press fails the build.
+  doCheck = true;
   cmakeFlags = [ (lib.cmakeFeature "QML_INSTALL_DIR" qt6.qtbase.qtQmlPrefix) ];
   meta = {
     description = "When each key was pressed, as a QML module, for the launcher's key timing";
