@@ -16,11 +16,18 @@ const urgencies = { low: 0, normal: 1, critical: 2 };
 // activation token, calling back with it, or "" for none, so the program
 // an action is chosen for can bring its window forward
 // (Quickshell.activationToken). It's asked as the action is chosen, since
-// niri gives one only for the input just made.
-function of(notice, ask, token) {
+// niri gives one only for the input just made. `card` is what the daemon
+// made of it for its card, on the record beside it: `from`, its sender's
+// mark, hue and name, and `words`, its body plain and styled with its
+// links (modules/notices' row.rs), so a card works none of it out.
+const unsigned = { glyph: "", hue: "muted", name: "" };
+const unsaid = { plain: "", styled: "", links: [] };
+function of(notice, ask, token, card) {
     const { id } = notice;
     return {
         id,
+        from: card?.from ?? unsigned,
+        words: card?.words ?? unsaid,
         appName: notice.app,
         appIcon: notice.icon,
         // Its own picture, a file the daemon keeps where one was sent as

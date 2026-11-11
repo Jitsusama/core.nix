@@ -188,10 +188,12 @@ function drawerOf(drawer, now, said) {
         body: drawer.body ?? ""
     };
     // What a drawer shows and the eyebrow's parts each pass through only
-    // where served: a picture's path and size, never its bytes, and parts
-    // that, where given, are drawn over the eyebrow's one text.
-    for (const field of ["eyebrow", "preview", "eyebrowItems"]) {
-        if (drawer[field] !== undefined) {
+    // where served: a preview's path and size, never its bytes; parts
+    // that, where given, are drawn over the eyebrow's one text; and, as
+    // Drawer.qml reads a notice's, a body styled where it carries markup
+    // or links, and its picture.
+    for (const field of ["eyebrow", "preview", "eyebrowItems", "styled", "picture"]) {
+        if (drawer[field] !== undefined && drawer[field] !== null) {
             drawn[field] = drawer[field];
         }
     }

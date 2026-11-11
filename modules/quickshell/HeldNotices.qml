@@ -34,7 +34,6 @@ import "Commands.js" as Commands
 import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
-import "NoticeBody.js" as NoticeBody
 import "Search.js" as Search
 import "launcher/Notice.js" as Notice
 
@@ -368,7 +367,7 @@ Card {
 
     function senderOf(id) {
         const one = notice(id);
-        return one ? Notices.sender(one.appName).name : "";
+        return one ? one.from.name : "";
     }
 
     // Whether what a card says, or the name it's signed with, holds what's
@@ -376,7 +375,7 @@ Card {
     function holds(id, sought) {
         const one = notice(id);
         return one !== null && Search.found(sought,
-            `${stack.said(one)}\n${Notices.sender(one.appName).name}`).length > 0;
+            `${stack.said(one)}\n${one.from.name}`).length > 0;
     }
 
     // The sender's own Read, where it offers one, which done sends at once,
@@ -522,7 +521,7 @@ Card {
     // it, and the keys go back so the page opening takes them.
     function followLink(count) {
         const one = current;
-        const links = one ? NoticeBody.read(one.body).links : [];
+        const links = one ? one.words.links : [];
         const link = links[Math.max(count, 1) - 1] ?? null;
         if (!link) {
             const words = Words.of("notices").said ?? {};
@@ -1769,8 +1768,7 @@ Card {
                 readonly property bool atCursor: at === held.cursor
                 readonly property bool chosenLine: held.selected.includes(modelData)
                     || atCursor && (held.mode === "normal" || held.pending)
-                readonly property var from: one
-                    ? Notices.sender(one.appName, one.desktopEntry) : null
+                readonly property var from: one ? one.from : null
                 // Sent at low urgency, it's quieter by two cues, as its
                 // pop-up is (NoticeRow.qml).
                 readonly property bool quiet: one !== null
@@ -1801,7 +1799,7 @@ Card {
                     id: mark
                     x: held.columns.mark
                     line: held.rowBase
-                    text: noticeLine.from ? String.fromCodePoint(noticeLine.from.glyph) : ""
+                    text: noticeLine.from ? noticeLine.from.glyph : ""
                     color: noticeLine.from && !noticeLine.quiet
                         ? Theme[noticeLine.from.hue] : Theme.muted
                 }
@@ -1846,10 +1844,10 @@ Card {
                         visible: text !== ""
                         text: !noticeLine.one || noticeLine.atCursor ? ""
                             : noticeLine.washed
-                                ? Search.washed(held.stack.plain(noticeLine.one.body)
+                                ? Search.washed(noticeLine.one.words.plain
                                     .split("\n")[0], held.pattern,
                                     held.wash(noticeLine.chosenLine))
-                            : held.stack.plain(noticeLine.one.body).split("\n")[0]
+                            : noticeLine.one.words.plain.split("\n")[0]
                         textFormat: noticeLine.washed ? Text.RichText : Text.PlainText
                         elide: Text.ElideRight
                         maximumLineCount: 1
@@ -1921,7 +1919,7 @@ Card {
                     // Its words as plain text, and where they're too many,
                     // the whole words that fit.
                     readonly property string plainWords: noticeLine.one && noticeLine.atCursor
-                        ? held.stack.plain(noticeLine.one.body) : ""
+                        ? noticeLine.one.words.plain : ""
                     readonly property var shortened: plainWords === "" ? null
                         : NoticeList.wholeWords(plainWords, wordsFit, width,
                             run => held.wordsWide(run))
@@ -1958,7 +1956,7 @@ Card {
                         text: !noticeLine.one || !noticeLine.atCursor ? "" : noticeLine.washed
                             ? Search.washed(card.shortened ?? card.plainWords, held.pattern,
                                 held.wash(noticeLine.chosenLine && held.mode === "visual"))
-                            : card.shortened ?? NoticeBody.read(noticeLine.one.body).styled
+                            : card.shortened ?? noticeLine.one.words.styled
                         textFormat: noticeLine.washed ? Text.RichText
                             : card.shortened !== null ? Text.PlainText : Text.StyledText
                         // A link underlined in the words' own colour, as

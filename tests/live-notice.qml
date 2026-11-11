@@ -21,7 +21,11 @@ QtObject {
                 resident: false, reply: "Reply to Ana",
                 actions: [{ id: "default", text: "Open" }, { id: "read", text: "Mark as read" }]
             };
-            const slack = LiveNotice.of(record, ask, given("tok"));
+            const card = { from: { glyph: "S", hue: "person", name: "Slack" },
+                words: { plain: "hi", styled: "<b>hi</b>", links: [] } };
+            const slack = LiveNotice.of(record, ask, given("tok"), card);
+            Expect.same("its card's sender and words are the daemon's", [slack.from,
+                slack.words], [card.from, card.words]);
 
             Expect.same("it reads as Quickshell's did", [slack.id, slack.appName,
                 slack.appIcon, slack.desktopEntry, slack.summary, slack.body, slack.image,
@@ -57,7 +61,8 @@ QtObject {
             Expect.same("with no token, the action is still asked", asked,
                 [{ ask: "invoke", notice: 9, action: "read", token: "" }]);
             Expect.same("no notice says nothing and offers nothing", [LiveNotice.none.summary,
-                LiveNotice.none.actions.length, LiveNotice.none.urgency], ["", 0, 1]);
+                LiveNotice.none.actions.length, LiveNotice.none.urgency,
+                LiveNotice.none.from.name, LiveNotice.none.words.styled], ["", 0, 1, "", ""]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

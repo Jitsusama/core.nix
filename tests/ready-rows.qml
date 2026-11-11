@@ -221,6 +221,11 @@ QtObject {
         });
         Expect.same("nothing served of them is none",
             Object.keys(Ready.drawerOf({ title: "plain" }, now, said)), ["title", "facts", "body"]);
+        Expect.same("a notice's drawer keeps how its words are drawn", Ready.drawerOf({
+            eyebrow: "Slack", eyebrowNames: true, title: "Ana", body: "<b>hi</b>",
+            styled: true, prose: true, picture: "file:///p.png", facts: []
+        }, now, said), { title: "Ana", facts: [], body: "<b>hi</b>", eyebrow: "Slack",
+            styled: true, picture: "file:///p.png", eyebrowNames: true, prose: true });
     }
 
     function insides() {
