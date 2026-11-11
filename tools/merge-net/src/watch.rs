@@ -915,6 +915,10 @@ pub fn round_beside(
     settler: &Settler,
 ) -> Result<Round, String> {
     settler.take_up();
+    let aged = state.age_out_logs(std::time::SystemTime::now());
+    if aged > 0 {
+        state.say(&format!("removed {aged} logs of runs over three days old"));
+    }
     if let Some(why) = world.held() {
         state.say(&format!("held, starting nothing: {why}"));
         return Ok(Round::Idle);
