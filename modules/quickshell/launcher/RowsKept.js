@@ -100,13 +100,13 @@ function steps(was, now) {
     for (let at = 0; at < into.length; at += 1) {
         // A run of rows the list didn't hold goes in as one.
         if (!holds.has(into[at])) {
-            let end = at + 1;
-            while (end < into.length && !holds.has(into[end])) {
-                end += 1;
+            let past = at + 1;
+            while (past < into.length && !holds.has(into[past])) {
+                past += 1;
             }
-            done.push({ insert: at, keys: now.slice(at, end) });
-            held.splice(at, 0, ...into.slice(at, end));
-            at = end - 1;
+            done.push({ insert: at, keys: now.slice(at, past) });
+            held.splice(at, 0, ...into.slice(at, past));
+            at = past - 1;
             continue;
         }
         // Rows before a staying row's place that aren't yet in theirs
