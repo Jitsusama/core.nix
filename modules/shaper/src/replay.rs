@@ -59,6 +59,9 @@ pub struct Second {
     /// Whose the upload's queue was, as only the live shaper sees it; the
     /// recorder's lines don't say, so a replay leaves it None.
     pub up_ours: Option<crate::oneway::Ours>,
+    /// A call's round trip through the VPN riding the link, in ms, as only
+    /// the live shaper hears it (src/vpndelay.rs); a replay leaves it None.
+    pub vpn_ms: Option<f64>,
 }
 
 /// The rates a controller sets each way, in kbit/s; None holds no limit.
@@ -197,7 +200,7 @@ struct Tick {
 }
 
 /// The middle of some values, or the mean of the middle two.
-fn median(values: impl Iterator<Item = f64>) -> Option<f64> {
+pub fn median(values: impl Iterator<Item = f64>) -> Option<f64> {
     let mut all: Vec<f64> = values.collect();
     all.sort_by(f64::total_cmp);
     let half = all.len() / 2;
@@ -354,6 +357,7 @@ impl Reading {
                 down_delay_ms: median(tick.down.values().copied()),
                 gateway_ms: median(tick.gateway.iter().copied()),
                 up_ours: None,
+                vpn_ms: None,
             });
         }
         self.done = self.done.max(second);

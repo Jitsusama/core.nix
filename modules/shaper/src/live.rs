@@ -9,11 +9,12 @@
 use crate::oneway::{self, Learned, Ours};
 use crate::record::day_file;
 use crate::replay::{Controller as _, Rates, Reading, Sample, parse};
+use crate::vpndelay::Probe;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 /// How long the recorder may write nothing, in ms, before its link is let
 /// go unlimited: with no signal, the controller has nothing to hold a rate
@@ -39,6 +40,8 @@ pub struct Follow {
     last_ms: u64,
     /// Whose each link's upload queue was, as the shaper last saw it.
     ours: BTreeMap<String, Ours>,
+    /// A call's round trip through the VPN riding the link, as last heard.
+    vpn_ms: Option<f64>,
     /// The network of the stay, and what each network met learned.
     network: String,
     known: Known,
@@ -53,6 +56,7 @@ impl Follow {
             rates: Rates::default(),
             last_ms: 0,
             ours: BTreeMap::new(),
+            vpn_ms: None,
             network: UNKNOWN.into(),
             known,
         }
@@ -74,6 +78,11 @@ impl Follow {
     /// Takes whose a link's upload queue is now, for the seconds to come.
     pub fn see(&mut self, link: &str, ours: Ours) {
         self.ours.insert(link.to_string(), ours);
+    }
+
+    /// Takes a call's round trip through the VPN, for the seconds to come.
+    pub fn hear_vpn(&mut self, ms: Option<f64>) {
+        self.vpn_ms = ms;
     }
 
     /// Takes one line's sample. A recording begun anew is a new stay,
@@ -102,6 +111,7 @@ impl Follow {
             .copied();
         for mut second in self.reading.drain() {
             second.up_ours = ours;
+            second.vpn_ms = self.vpn_ms;
             self.rates = self.controller.second(&second);
         }
     }
@@ -128,6 +138,8 @@ pub struct Live {
     /// Where what each network learned is kept, and what was last written.
     kept: PathBuf,
     written: Known,
+    /// A call's round trip through the VPN riding the link.
+    vpn: Probe,
 }
 
 impl Live {
@@ -147,6 +159,7 @@ impl Live {
             follow: Follow::new(written.clone()),
             kept: kept.to_path_buf(),
             written,
+            vpn: Probe::default(),
         }
     }
 
@@ -175,6 +188,13 @@ impl Live {
     /// Takes whose a link's upload queue is now.
     pub fn see(&mut self, link: &str, ours: Ours) {
         self.follow.see(link, ours);
+    }
+
+    /// Probes through the VPN riding the link, or none, and takes what it
+    /// heard over the last second.
+    pub fn hear_vpn(&mut self, device: Option<&str>) {
+        self.vpn.follow(device);
+        self.follow.hear_vpn(self.vpn.heard(Instant::now()));
     }
 
     /// Reads what the recorder wrote since, and answers the link it
