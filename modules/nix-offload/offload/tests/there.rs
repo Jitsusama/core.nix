@@ -4718,6 +4718,76 @@ fn a_run_refuses_a_tree_that_borrows_objects_and_reads_only_its_own() {
     );
 }
 
+// A gitlink a session commits names another repository's commit, and the
+// run carries that name alone: the hidden commit and what it holds stay
+// behind, since the builder never fetches a submodule.
+#[test]
+fn a_run_carries_a_committed_gitlink_as_its_hash_alone() {
+    let run = RunTree::new();
+    let (hidden, hidden_head) = run.hidden();
+    // The builder's ssh keeps what it's sent, which is the bundle.
+    fs::rename(run.bin.join("ssh"), run.bin.join("ssh-builder")).unwrap();
+    executable(
+        &run.bin.join("ssh"),
+        "#!/bin/sh\nhere=$(dirname \"$0\")\n\
+         tee -a \"$here/received\" | \"$here/ssh-builder\" \"$@\"\n",
+    );
+    fs::create_dir(run.tree.join("vendored")).unwrap();
+    fs::write(
+        run.tree.join("vendored/.git"),
+        format!("gitdir: {}\n", hidden.join(".git").display()),
+    )
+    .unwrap();
+    run.git(&[
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        &format!("160000,{hidden_head},vendored"),
+    ]);
+    run.git(&["commit", "-q", "-m", "vendored"]);
+    let head = run.git(&["rev-parse", "HEAD"]);
+
+    let ran = run.run(&[]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(run.sent().as_deref(), Some(head.as_str()), "HEAD went");
+    let unpacked = run.folder.path().join("unpacked");
+    fs::create_dir(&unpacked).unwrap();
+    git(&unpacked, &run.config, &["init", "-q"]);
+    // What GitHub holds, which the bundle builds on, as the builder has.
+    git(
+        &unpacked,
+        &run.config,
+        &[
+            "fetch",
+            "-q",
+            &run.tree.to_string_lossy(),
+            "refs/remotes/origin/main:refs/heads/pushed",
+        ],
+    );
+    git(
+        &unpacked,
+        &run.config,
+        &[
+            "bundle",
+            "unbundle",
+            &run.bin.join("received").to_string_lossy(),
+        ],
+    );
+    let has = |object: &str| {
+        Command::new("git")
+            .args(["cat-file", "-e", object])
+            .current_dir(&unpacked)
+            .status()
+            .unwrap()
+            .success()
+    };
+    assert!(has(&head), "the bundle carries HEAD");
+    assert!(
+        !has(&hidden_head),
+        "the hidden commit stays behind, only named"
+    );
+}
+
 // A fenced session's changed-checks goes out as the person, and an
 // evaluator, a machine nearby or this one would evaluate as them, so with
 // `--lent-only` it goes to a lent builder, from HEAD alone, or nowhere.

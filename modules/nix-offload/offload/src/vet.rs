@@ -514,7 +514,19 @@ mod tests {
             Ok(()),
             "a first boot at the end of a slow insert was refused"
         );
+        assert_eq!(
+            started_once(&made(
+                "2026-11-11T08:08:34.000-08:00",
+                "2026-11-11T08:18:34.000-08:00"
+            )),
+            Ok(()),
+            "a first boot ten minutes after its making was refused"
+        );
         for (was, is) in [
+            (
+                "2026-11-11T08:08:34.000-08:00",
+                "2026-11-11T08:18:35.000-08:00",
+            ),
             (
                 "2026-11-10T19:32:04.119-08:00",
                 "2026-11-10T19:52:10.212-08:00",
