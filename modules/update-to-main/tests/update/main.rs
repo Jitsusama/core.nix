@@ -1010,13 +1010,10 @@ fn a_pause_taken_while_the_followers_switch_waits_refuses_it() {
     world.update();
     let two = world.signed("two");
     world.system(&two);
-    let asked = std::cell::Cell::new(0);
+    // Who asked is looked at first while the switch waits, since nothing
+    // is paused before it builds.
     let (_, ending) = world.asked_by(&|| {
-        // The first look is before anything builds; the pause comes after.
-        asked.set(asked.get() + 1);
-        if asked.get() > 1 {
-            held::ask(&world.config, held::PAUSE, Some(1000));
-        }
+        held::ask(&world.config, held::PAUSE, Some(1000));
         true
     });
     let Line::Refused { why, .. } = &ending else {

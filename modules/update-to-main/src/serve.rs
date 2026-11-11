@@ -253,7 +253,6 @@ fn hear(heard: &Answer, out: &mut impl Write) -> io::Result<()> {
     }
 }
 
-/// The update running now, or a new one started for this ask.
 /// Which updates a stop ends: any, or only one the follower alone asked
 /// for, as a pause does.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -293,6 +292,7 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>, asked: Asked) -> String {
     }
 }
 
+/// The update running now, or a new one started for this ask.
 fn join(
     config: &Arc<Config>,
     current: &Arc<Mutex<Option<Arc<Answer>>>>,
