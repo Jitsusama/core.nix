@@ -225,13 +225,22 @@ Scope {
         // A Return that steps into rows or asks leaves the launcher open, so
         // Joel sees what it became, as a setting's choice always has; one
         // that copies or opens closes it, as a value's row always has.
+        // A row whose Return asks is that act's for the key language, so its
+        // command is read from the act's words (CommandBinding.wordsFor), as
+        // Firmware's Install Now ends something and writes `install!` on
+        // the line rather than running at the first Return (RCTRF8,
+        // 2026-11-11).
+        const asking = Ready.actForm(first) === "ask" ? { wordsId: first.key } : {};
         const acting = acts.length === 0 ? {} : {
             verb: verbOf(first),
             stays: first.step === "rows" || Ready.actForm(first) === "ask",
-            run: () => act(key, first),
-            verbs: verbs,
-            targets: verbs
+            run: () => act(key, first)
         };
+        // A row asking Joel to be sure holds its one act alone, as the
+        // shell's own sure rows did, so the key language reads that act's
+        // command (Catalogue.endsSomething) rather than a row of verbs.
+        if (acts.length > 0 && row.sure !== true)
+            Object.assign(acting, { verbs: verbs, targets: verbs });
         // A row whose Return copies is a value, drawn as Provider.qml's
         // copyRow draws one, and what it copies is what y joins.
         const copying = Ready.actForm(first) !== "copy" ? {} : {
@@ -258,8 +267,11 @@ Scope {
             // A row a step in that asks Joel to be sure, so its Return does
             // its act (Launcher.lands), as an act that can't be taken back is.
             sure: row.sure === true,
+            // An act done with, drawn dimmed, its acts none, so Return asks
+            // nothing (RCTRF8's Firmware, 2026-11-11).
+            gone: row.gone === true,
             drawer: () => drawerOf(row)
-        }, acting, copying, fields ?? {}));
+        }, acting, asking, copying, fields ?? {}));
     }
 
     // The acts of a row the launcher can do here: a step into the drawer

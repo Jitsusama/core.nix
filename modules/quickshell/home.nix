@@ -267,7 +267,6 @@ let
     "launcher/HomeNetworkDrawers.js"
     "launcher/HomeNetworkHistory.js"
     "launcher/Cameras.js"
-    "launcher/Firmware.js"
     "launcher/Warp.js"
     "launcher/RealmMachines.js"
     "launcher/WarpSeen.js"
