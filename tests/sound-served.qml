@@ -9,8 +9,10 @@
 // device's row served anew remakes it alone; and what its spots are made
 // of moves only once a device comes or goes; and a device's Port, served
 // inside its row, steps into its choices, a choice's Return asking the
-// daemon to move it, as its option does. (tests/sound.qml holds the
-// parts and drawers.) It exits 0 once every case holds, and otherwise 1,
+// daemon to move it, as its option does; and its Use, Muted and Volume,
+// served, lead its parts in Sound's order, Muted saying unmute once it's
+// muted, the Volume its drawer's, and each Return asking the daemon.
+// (tests/sound.qml holds the parts and drawers made here.) It exits 0 once every case holds, and otherwise 1,
 // saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
@@ -216,7 +218,7 @@ ShellRoot {
             && rows[0].name === "Desk Speakers" && rows[0].note === "volume 50%", names(rows));
         const parts = rows[0].targets().map(part => part.key);
         expect("a served row steps into its device's parts",
-            parts.includes("sound:usb-desk-speakers:volume"), parts.join(", "));
+            parts.includes("sound:usb-desk-speakers:level"), parts.join(", "));
         expect("and home's count says them", sound.counted() === "1 out \u00b7 1 in",
             sound.counted());
         root.stamp = sound.spotsStamp;
@@ -336,6 +338,120 @@ ShellRoot {
             expect("a choice's Return asks the daemon to move it", ask.act === "port"
                 && ask.key === `device:${deskSpeakers.name}` && ask.index === 1,
                 JSON.stringify(ask));
+            tell(usePart());
+            tell(mutePart(false));
+            tell(volumePart());
+            tell(louderChoice());
+            when("the parts served", () => partOf("volume")?.targets().length === 1,
+                levelled);
+        });
+    }
+
+    // One of the speakers' parts, as Sound lists it now.
+    function partOf(last) {
+        return sound.everything()[0].targets()
+            .find(part => part.key === `sound:${deskSpeakers.name}:${last}`);
+    }
+
+    // A part as parts.rs serves it inside the speakers' row.
+    function part(last, fields) {
+        const parent = `row:sound:${deskSpeakers.name}`;
+        const key = `${parent}:${last}`;
+        return {
+            key: key, kind: "row",
+            row: Object.assign({
+                key: key, place: "sound", parent: parent, depth: 1, glyph: "speaker",
+                hue: "action", side: [], note: "", held: { node: deskSpeakers.name }
+            }, fields)
+        };
+    }
+
+    function asks(act, more) {
+        return Object.assign({ ask: "act", act: act, key: `device:${deskSpeakers.name}` },
+            more);
+    }
+
+    function usePart() {
+        return part("use", {
+            thing: "verb:sound-use", kind: "act", order: 1100,
+            name: "Play Sound Through It",
+            acts: [{ key: "verb:sound-use", ask: asks("use", {}) }],
+            held: { node: deskSpeakers.name, fill: { name: "Desk Speakers" }, state: "" }
+        });
+    }
+
+    function mutePart(muted) {
+        return part("mute", {
+            thing: `sound:${deskSpeakers.name}:mute`, kind: "switch", order: 1200,
+            name: "Muted", glyph: muted ? "silent" : "speaker",
+            side: [{ said: muted ? "yes" : "no" }],
+            acts: [{
+                key: "sound:mute", state: muted ? "muted" : "",
+                ask: asks("mute", { muted: !muted })
+            }]
+        });
+    }
+
+    function volumePart() {
+        return part("volume", {
+            thing: `sound:${deskSpeakers.name}:volume`, kind: "setting", order: 1300,
+            name: "Volume", hue: "machine", side: [{ said: "50%" }],
+            graph: { shape: "bar", values: [0.5], warn: false }, note: "-18.1 dB",
+            acts: [{ key: "verb:more", step: "rows" }]
+        });
+    }
+
+    function louderChoice() {
+        return part("volume:louder", {
+            parent: `row:sound:${deskSpeakers.name}:volume`, depth: 2,
+            thing: "verb:sound-louder", kind: "act", order: 1301, name: "Louder",
+            glyph: "volume",
+            acts: [{ key: "verb:sound-louder", ask: asks("volume", { volume: 0.55,
+                muted: false }) }]
+        });
+    }
+
+    function levelled() {
+        const speakers = deskSpeakers.name;
+        const parts = sound.everything()[0].targets();
+        expect("its Use, Muted and Volume lead its parts, in Sound's order",
+            names(parts).startsWith(`verb:sound-use, sound:${speakers}:mute, `
+                + `sound:${speakers}:level, sound:${speakers}:volume`), names(parts));
+        const using = parts[0];
+        expect("using it names it on its line", using.fill?.name === "Desk Speakers"
+            && using.wordState === "", JSON.stringify(using.fill));
+        const muting = partOf("mute");
+        expect("unmuted, its switch says no and mutes",
+            muting.side === "no" && muting.verb === "mute", `${muting.side}, ${muting.verb}`);
+        const volume = partOf("volume");
+        expect("its Volume is a setting saying how it's set", volume.offers === true
+            && volume.side === "50%" && names(volume.targets()) === "verb:sound-louder",
+            `${volume.offers}, ${volume.side}, ${names(volume.targets())}`);
+        const drawn = sound.drawerOf(deskSpeakers).facts
+            .find(fact => fact.label === "Volume");
+        expect("its drawer says its decibels, drawing its share as a stroke",
+            drawn?.value === "-18.1 dB" && drawn?.figure?.shape === "stroke"
+            && drawn.figure.values[0] === 0.5, JSON.stringify(drawn));
+        volume.targets()[0].run();
+        when("the volume asked", () => root.acted.length === 2, louder);
+    }
+
+    function louder() {
+        const ask = root.acted[1];
+        expect("Louder asks the daemon, unmuting it", ask.act === "volume"
+            && ask.volume === 0.55 && ask.muted === false, JSON.stringify(ask));
+        tell(mutePart(true));
+        when("the mute heard", () => partOf("mute")?.side === "yes", muted);
+    }
+
+    function muted() {
+        const muting = partOf("mute");
+        expect("muted, it says unmute", muting.verb === "unmute", muting.verb);
+        muting.run();
+        when("the mute asked", () => root.acted.length === 3, () => {
+            const ask = root.acted[2];
+            expect("its Return asks the daemon to unmute it", ask.act === "mute"
+                && ask.muted === false, JSON.stringify(ask));
             Qt.exit(0);
         });
     }
