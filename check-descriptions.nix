@@ -2729,8 +2729,10 @@
     anew is made again alone, the processor's row kept as the fan's changes, and a chip let go goes
   '';
   power-remakes-only-what-moved = ''
-    Power's answer asked again with nothing read since makes no row, the battery told anew keeps the
-    Charger's row, and its USB-C port told anew keeps the battery's
+    Power answers its rows and headline as the machine daemon serves them ready, in its order, and
+    lends a row by its key; asked again with nothing told it makes no row, the charge told anew is
+    made again alone, and a charge limit's stop draws the limit as it becomes until the daemon
+    refuses it
   '';
   the-machine-answers-from-its-daemon = ''
     Machine answers the processors, the memory, the disk and the uptime from the machine daemon

@@ -2558,15 +2558,6 @@ QtObject {
         machine("the laptop's eyebrow", Keyboards.drawer({ device: keyboardsLaptop, name: "",
             layer: null }, keyNamed, boardSaid).eyebrow, "built in \u00b7 keyboard");
 
-        // The battery's and the room's figures, from their files as the
-        // kernel writes them.
-        machine("the charge type in use", Power.chosen("Trickle Fast Standard Adaptive [Custom]"),
-            { now: "Custom", all: ["Trickle", "Fast", "Standard", "Adaptive", "Custom"] });
-        machine("an older kernel's one charge type", Power.chosen("Fast").now, "Fast");
-        machine("no charge type", Power.chosen(""), { now: "", all: [] });
-        machine("power delivery", Power.protocol("C [PD] PD_PPS"), "USB PD");
-        machine("programmable power", Power.protocol("C PD [PD_PPS]"), "USB PD PPS");
-
         // The power profile's drawer: its holds one fact parted by dots,
         // why it's slowed in words, the firmware's and the processor's
         // settings as written, and the drivers last.
@@ -2609,117 +2600,7 @@ QtObject {
             Power.profileRefusal("balanced", "power-saver",
                 profileTold([{ profile: "performance", app: "Steam" }])),
             "Power Saver kept");
-        machine("Type-C's own current", Power.protocol("[C] PD PD_PPS"), "USB-C");
-        machine("a plain USB port", Power.protocol("[SDP] DCP CDP"), "USB");
-        const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };
-        const portStates = { charging: "charging", giving: "powering what's plugged in",
-            plugged: "plugged in, giving nothing", empty: "empty" };
-        const measured = value => Numbers.significant(value);
-        machine("a port charging", Power.port(powerPort, measured, portStates),
-            "100 W \u00b7 20.0 V \u00b7 5.00 A \u00b7 USB PD");
-        machine("a port charging slowly, to three figures", Power.port({ online: true,
-            volts: 15, amps: 3, protocol: "" }, measured, portStates),
-            "45.0 W \u00b7 15.0 V \u00b7 3.00 A");
-        machine("a port's half an amp, to three figures", Power.port({ online: true,
-            volts: 5, amps: 0.5, protocol: "" }, measured, portStates),
-            "2.50 W \u00b7 5.00 V \u00b7 0.500 A");
-        machine("a port charging, its figures unsaid", Power.port({ online: true, volts: null,
-            amps: null, protocol: "" }, measured, portStates), "charging");
-        machine("a port charging, its protocol said", Power.port({ online: true, volts: null,
-            amps: null, protocol: "USB-C" }, measured, portStates), "charging \u00b7 USB-C");
-
-        // A USB-C port's drawer: its roles as the kernel marks them, how it
-        // negotiates in words, what the charger offers, and its revisions
-        // last, a partner's that says none left out.
-        const portWords = { eyebrow: "on port {n} \u00b7 charger", accessory: "{mode} accessory",
-            "mode:usb_power_delivery": "USB Power Delivery", "mode:default": "USB default",
-            range: "{from} to {to} V", at: "{offers} at {amps} A" };
-        const portNamed = id => `[${id.slice("power:port:".length)}]`;
-        // A name's figures as Numbers.format writes them, no zeros added,
-        // in a mark of the machine's own.
-        const offeredAs = (value, places) => String(Number(value.toFixed(places)))
-            .replace(".", ",");
-        const portDrawn = Power.portDrawer({
-            n: 1, power: "source [sink]", data: "[host] device", mode: "usb_power_delivery",
-            accessory: "none", revision: "3.0", partnerRevision: "0.0",
-            capabilities: [{ volts: 5, amps: 3 }, { volts: 9, amps: 3 }, { volts: 15, amps: 3 },
-                { volts: 20, amps: 3 }],
-            usbType: "C [PD] PD_PPS PD_DRP", supply: "ucsi-source-psy-USBC000:001"
-        }, portNamed, portWords, offeredAs);
-        machine("a port's drawer", [portDrawn.eyebrow].concat(portDrawn.facts
-            .map(fact => `${fact.label} ${fact.value}`)), ["on port 1 \u00b7 charger",
-            "[power-role] sink", "[data-role] host", "[mode] USB Power Delivery",
-            "[offers] 5 V \u00b7 9 V \u00b7 15 V \u00b7 20 V at 3 A",
-            "[protocols] USB-C \u00b7 USB PD \u00b7 USB PD PPS", "[revision] 3.0",
-            "[supply] ucsi-source-psy-USBC000:001"]);
-        machine("a port's supply in the Name face",
-            portDrawn.facts[portDrawn.facts.length - 1].identifies, true);
-        machine("a charger's offers at their own currents, named as it names them",
-            Power.offers([{ volts: 5, amps: 3 }, { volts: 20, amps: 4.5 },
-                { volts: 3.3, to: 21, amps: 2.25 }], portWords, offeredAs),
-            "5 V at 3 A \u00b7 20 V at 4,5 A \u00b7 3,3 to 21 V at 2,25 A");
-        machine("an audio accessory in an empty port", Power.portDrawer({ n: 2,
-            accessory: "audio", partnerRevision: "2.0" }, portNamed, portWords, offeredAs).facts
-            .map(fact => fact.value), ["audio accessory", "2.0"]);
-        machine("a port powering a phone", Power.port({ online: false, giving: true }, measured,
-            portStates), "powering what's plugged in");
-        machine("a port with something in", Power.port({ online: false, partner: true },
-            measured, portStates), "plugged in, giving nothing");
-        machine("an empty port", Power.port({ online: false }, measured, portStates), "empty");
-        machine("a kernel's list written again", Power.listed(["C", "PD", "PD_PPS"], "PD"),
-            "C [PD] PD_PPS");
-        // The supplies as the machine daemon holds the laptop's: its
-        // battery, a mouse's, the charger's and two USB-C ports.
-        const powerHeld = [
-            { key: "supply:hidpp_battery_0", name: "hidpp_battery_0", type: "Battery",
-                scope: "Device" },
-            { key: "supply:BAT0", name: "BAT0", type: "Battery", scope: null, capacity_pct: 36,
-                status: "Discharging", charge_ah: 1.5, charge_full_ah: 3.6,
-                charge_design_ah: 4, energy_wh: null, energy_full_wh: null,
-                energy_design_wh: null, min_design_volts: 15,
-                upower: { state: "discharging", time_to_empty_s: 11400, time_to_full_s: null } },
-            { key: "supply:AC", name: "AC", type: "Mains", online: false },
-            { key: "supply:ucsi-source-psy-USBC000:002", name: "ucsi-source-psy-USBC000:002",
-                type: "USB", online: false, typec: { power_role: "source", partner: {} } },
-            { key: "supply:ucsi-source-psy-USBC000:001", name: "ucsi-source-psy-USBC000:001",
-                type: "USB", online: true, volts: 20, amps: 1.2, max_volts: 20, max_amps: 2.25,
-                usb_type: "PD", typec: { power_role: "sink", partner: null } }
-        ];
-        machine("the machine's battery, not a mouse's", Power.batteryOf(powerHeld).name, "BAT0");
-        machine("no battery", Power.batteryOf([powerHeld[2]]), null);
-        machine("the USB-C ports, by their number",
-            Power.portsOf(powerHeld).map(port => port.n), [1, 2]);
-        machine("a port charging, as its record says, at what it's offered",
-            Power.portOf(powerHeld[4]), { online: true, volts: 20, amps: 2.25,
-                protocol: "USB PD", partner: false, giving: false });
-        machine("a port powering what's plugged in", [Power.portOf(powerHeld[3]).giving,
-            Power.portOf(powerHeld[3]).partner], [true, true]);
-        machine("a charger plugged in elsewhere", [Power.pluggedElsewhere(powerHeld),
-            Power.pluggedElsewhere([{ name: "AC", type: "Mains", online: true }])],
-            [false, true]);
-        const powerWords = { full: "{time} to full", charging: "charging",
-            empty: "{time} to empty", battery: "on battery", whole: "full",
-            holding: "on power, holding" };
-        machine("the battery's time, as UPower works it out",
-            Power.doing(powerHeld[1], Interfaces.lasted, powerWords),
-            "36% \u00b7 3 h 10 min to empty");
-        machine("the battery charging with no time said", Power.doing({ capacity_pct: 80,
-            status: "Charging", upower: null }, Interfaces.lasted, powerWords),
-            "80% \u00b7 charging");
-        machine("the battery full", Power.doing({ capacity_pct: 100, status: "Full" },
-            Interfaces.lasted, powerWords), "100% \u00b7 full");
-        machine("a charge nobody knows, left out rather than none",
-            Power.doing({ status: "Discharging" }, Interfaces.lasted, powerWords), "on battery");
-        machine("the energy a battery counting charge holds", Power.energyOf(powerHeld[1]),
-            { now: 22.5, full: 54, design: 60 });
-        machine("the energy a battery counts itself", Power.energyOf({ energy_wh: 30,
-            energy_full_wh: 50, energy_design_wh: null, charge_design_ah: null }),
-            { now: 30, full: 50, design: null });
-        machine("made, as the daemon says it", [Power.madeOf("2026-07-20"), Power.madeOf(null),
-            Power.madeOf("0000-00-00")], ["2026-07-20", "", ""]);
-        machine("made on a day", Power.made(2026, 7, 20), "2026-07-20");
-        machine("made in a month", Power.made(2026, 7, 0), "2026-07");
-        machine("a date that isn't", Power.made(0, 13, 40), "");
+        // How bright a room is, from the light sensor's lux.
         machine("a dark room", Power.roomLevel(0), 0);
         machine("daylight", Power.roomLevel(10000), 1);
         machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,
