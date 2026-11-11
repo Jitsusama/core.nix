@@ -34,27 +34,29 @@
   # The words each daemon's tests are given are the vocabulary's own, as the
   # account writes it (tests/daemon-words.py), so no daemon passes its tests
   # on words Joel never reads. A daemon whose tests hold a slice of the
-  # vocabulary adds it here.
+  # vocabulary adds it to `slices`, by the name the check says it by, so
+  # the script stays as short however many daemons join.
   the-daemons-test-the-launchers-words =
     let
       words =
         pkgs.writeText "words.json"
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+      slices = {
+        "agents.json" = ../../agents/tests/words.json;
+        "machine.json" = ../../machine/tests/words.json;
+        "people.json" = ../../people/tests/words.json;
+        "slack.json" = ../../slack/tests/words.json;
+        "to-do.json" = ../../to-do/tests/words.json;
+        "whereabouts.json" = ../whereabouts/tests/words.json;
+        "wifid.json" = ../../wifid/daemon/tests/words.json;
+        "windows-screens.json" = ../../windows/tests/screen-words.json;
+      };
+      copies = lib.concatStrings (lib.mapAttrsToList (name: file: "cp ${file} ${name}\n") slices);
     in
-    # Kept in Nix because each line copies a fixture Nix gives it, under the
-    # name the test is told, or runs the test on them.
     pkgs.runCommandLocal "the-daemons-test-the-launchers-words" { } ''
-      cp ${../../to-do/tests/words.json} to-do.json
-      cp ${../whereabouts/tests/words.json} whereabouts.json
-      cp ${../../windows/tests/screen-words.json} windows-screens.json
-      cp ${../../machine/tests/words.json} machine.json
-      cp ${../../slack/tests/words.json} slack.json
-      cp ${../../wifid/daemon/tests/words.json} wifid.json
-      cp ${../../people/tests/words.json} people.json
-      cp ${../../agents/tests/words.json} agents.json
+      ${copies}
       ${lib.getExe pkgs.python3} ${../../../tests/daemon-words.py} ${words} \
-        to-do.json whereabouts.json windows-screens.json machine.json slack.json wifid.json \
-        people.json agents.json
+        ${lib.concatStringsSep " " (lib.attrNames slices)}
       touch $out
     '';
 
