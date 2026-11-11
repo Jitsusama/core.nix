@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 
 use crate::capture::Captures;
 use crate::entries::{Entries, tidy};
+use crate::order::Order;
 
 /// What hearing one event did.
 #[derive(Debug, PartialEq, Eq)]
@@ -39,6 +40,10 @@ pub struct Desktop {
     focused: Option<u64>,
     overview: bool,
     settings_failed: bool,
+    /// The workspaces' order as Joel keeps it, and the order they're to
+    /// be put back in, once a screen came or went.
+    order: Order,
+    put: Option<Vec<u64>>,
     /// What's cast and shot of the screen.
     captures: Captures,
 }
@@ -146,6 +151,8 @@ impl Desktop {
                 }
             }
             "WorkspacesChanged" => {
+                let listed = said["workspaces"].as_array().map_or(&[][..], Vec::as_slice);
+                self.put = self.order.heard(listed, std::time::Instant::now());
                 self.workspaces = said["workspaces"]
                     .as_array()
                     .into_iter()
@@ -205,6 +212,12 @@ impl Desktop {
     pub fn current(&self) -> Option<u64> {
         self.focused
             .or_else(|| self.here().and_then(|w| id_of(&w["active_window_id"])))
+    }
+
+    /// The order the workspaces are to be put back in, once a screen came
+    /// or went, taken so it's put back once.
+    pub fn put_back(&mut self) -> Option<Vec<u64>> {
+        self.put.take()
     }
 
     /// Every record, keyed, as it stands now. Each window's program is

@@ -1574,10 +1574,10 @@ Singleton {
         awayFrom = next;
         const back = Niri.current;
         const moving = going.moves.filter(move => move.there !== true);
+        // Their order is the windows daemon's to put back, as Joel last had
+        // it, since the numbers kept here are from before he moved any while
+        // the screen was away (2026-11-11, modules/windows/src/order.rs).
         moving.forEach(move => Niri.act({ MoveWorkspaceToMonitor: { output: move.output,
-            reference: { Id: move.id } } }));
-        // Then each to its index, lowest first, so each set stays put.
-        going.moves.forEach(move => Niri.act({ MoveWorkspaceToIndex: { index: move.index,
             reference: { Id: move.id } } }));
         // A screen just connected keeps its empty workspace while it's the
         // active one there, so the first moved is focused, which lets niri

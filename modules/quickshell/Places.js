@@ -104,16 +104,10 @@ function placed(places, screens, inUse) {
 // it's connected again. `away` holds, by each such screen's description (or
 // its connector, for a place kept before screens were named so), the
 // workspaces given in its place, by niri's id, each with the number it was
-// kept at there. Each move carries the index it takes there (`index`, from
-// 1), its rank by kept number among them, lowest first, to be set in that
-// order once all are moved: niri puts a moved workspace after the screen's
-// active one, and makes it the active one when it held the focus, so where
-// each lands can't be foretold. One gone already isn't moved, and one on the
-// screen already (`there`) is only set to its index, since niri gives a
-// screen coming back its workspaces after those it holds: one the other
-// screen had made its own goes after the rest when that screen goes too, as
-// a laptop shut on its dock does. `home` names the screens connected again,
-// which are done with.
+// kept at there. The moves go lowest kept number first; their order there
+// is the windows daemon's to put back, as Joel last had it. One gone already
+// isn't moved, and one on the screen already is marked (`there`) and left.
+// `home` names the screens connected again, which are done with.
 function homeward(away, screens, workspaces) {
     const moves = [];
     const home = [];
@@ -125,11 +119,11 @@ function homeward(away, screens, workspaces) {
             const ranked = away[screen]
                 .filter(one => workspaces.some(each => each.id === one.id))
                 .sort((a, b) => a.workspace - b.workspace);
-            ranked.forEach((one, at) => {
+            for (const one of ranked) {
                 const now = workspaces.find(each => each.id === one.id);
-                moves.push(now.output === output ? { output, id: one.id, index: at + 1, there: true }
-                    : { output, id: one.id, index: at + 1 });
-            });
+                moves.push(now.output === output ? { output, id: one.id, there: true }
+                    : { output, id: one.id });
+            }
         }
     }
     return { moves, home };
