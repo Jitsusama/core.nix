@@ -47,5 +47,12 @@
     "owner_pr": 3102,
     "reason": "failed, then passed, at 44f5cb3df2f1",
     "test": "vm-desktop-launcher-reads-mail"
+  },
+  {
+    "at": 1794393735,
+    "commit": "405fff7e09e75f5f21857d710e1f02306a80664b",
+    "owner_pr": 3064,
+    "reason": "has been broken since #3064, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "vm-desktop-looks"
   }
 ]
