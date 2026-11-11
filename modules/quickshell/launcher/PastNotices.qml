@@ -87,6 +87,7 @@ Provider {
         const said = String(held.said ?? "");
         const cut = said.indexOf("\n");
         let whole = null;
+        let made = null;
         const one = ready.thing(row, key, {
             notice: held.id,
             count: typeof row.note === "string" ? row.note : "",
@@ -120,18 +121,19 @@ Provider {
             && typeof provider.launcher?.intoDrawer !== "function") {
             Object.assign(one, { verb: "more", now: false, later: false, stays: true,
                 targets: one.verbs, wordsId: undefined,
-                run: () => provider.launcher?.enter(one) });
+                run: () => provider.launcher?.enter(made) });
         }
-        Object.defineProperty(one, "also", {
-            enumerable: true,
-            get: () => whole ?? (whole = Fuzzy.kept(said.replace(/\s+/g, " ")))
-        });
         // Where Ctrl+] goes from it, as Vim follows a tag: its sender's own
         // row, among Programs (Applications.qml), or nowhere for a sender
         // no program is, as the daemon found its entry.
         one.follows = typeof held.entry === "string" && held.entry !== ""
             ? `program:${held.entry}` : "";
-        return one;
+        // What it said, made ready to match only once a search asks, as a
+        // row made afresh with its getter (Provider.gotten).
+        made = provider.gotten(one, {
+            also: () => whole ?? (whole = Fuzzy.kept(said.replace(/\s+/g, " ")))
+        });
+        return made;
     }
 
     // What d and y take of a notice: done with it while it's live, and
