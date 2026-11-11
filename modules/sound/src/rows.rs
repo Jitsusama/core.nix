@@ -318,13 +318,27 @@ pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
 }
 
 /// What a device is called, saying the thing itself (Sound.qml's `named`).
+/// A microphone with the noise around it taken out is the one it hears,
+/// named for it (docs/glossary.md's noise cancelled), so it never reads
+/// as that microphone.
 fn named(device: &Device, devices: &[Device], words: &Words) -> String {
     let own = device.nicknamed();
     let shared = !device.sink
         && devices
             .iter()
             .any(|other| other.sink && other.nicknamed() == own);
-    match called(device.name, shared) {
+    let Some(heard) = device.name.strip_prefix("noise-cancelled.") else {
+        return called_as(device.name, own, shared, words);
+    };
+    let heard = called_as(heard, own, shared, words);
+    let name = words.name("sound:called:noise-cancelled", &[("device", &heard)]);
+    if name.is_empty() { heard } else { name }
+}
+
+/// What the device of node `name` is called, by the vocabulary's word
+/// for it, or `own` where it has none.
+fn called_as(name: &str, own: &str, shared: bool, words: &Words) -> String {
+    match called(name, shared) {
         "" => own.to_owned(),
         word => {
             let name = words.name(&format!("sound:called:{word}"), &[("device", own)]);
@@ -446,7 +460,10 @@ mod tests {
         ];
         assert_eq!(
             names(&rows(&records, &words())),
-            ["Built-In Microphones", "Built-In Microphones, Noise Cancelled"],
+            [
+                "Built-In Microphones",
+                "Built-In Microphones, Noise Cancelled"
+            ],
             "the noise-cancelled microphone should be named for the one it hears"
         );
     }
