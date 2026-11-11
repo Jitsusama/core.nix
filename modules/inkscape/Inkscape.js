@@ -1,8 +1,8 @@
 // What Inkscape's provider in the launcher works out (InkscapeProgram.qml),
 // kept apart from Quickshell's types so tests/inkscape-program.qml runs it
-// in Qt's own engine: the drawings Inkscape opened lately, read from the
-// desktop's list of files opened lately, which Inkscape adds to itself;
-// what inkscape-drawings (drawings.sh) says of each still there; each
+// in Qt's own engine: the drawings Inkscape opened lately, as
+// inkscape-drawings (drawings.sh) says each still there, which the
+// programs daemon runs and holds for it; each
 // drawing's size as its SVG says it, its row's side and its drawer's
 // plate; what Inkscape's drawer in Programs says of them; what the
 // clipboard holds that a new drawing can be made from; and the commands
@@ -11,21 +11,8 @@
 .pragma library
 .import "../FileFacts.js" as FileFacts
 
-// The names Inkscape adds what it opens under, as its own Open Recent
-// reads them back (src/ui/desktop/menubar.cpp): its application id, which
-// it sets as GLib's program name, and its command.
-const INKSCAPE = ["org.inkscape.Inkscape", "inkscape"];
-
-// GLib writes each file on the list as one bookmark element, its kind
-// and each program that opened it inside, the program's own last time as
-// its `modified`, or, as GLib wrote it before 2.66, its `timestamp`.
-const BOOKMARK = "<bookmark ";
-const BOOKMARK_END = "</bookmark>";
-const APPLICATION = "<bookmark:application ";
-const KIND = "<mime:mime-type ";
-
 // An element's attributes, each a name and its value in double quotes,
-// as GLib writes them, and the entities it escapes a value with.
+// as an SVG's root is written, and the entities a value is escaped with.
 const ATTRIBUTE = /[\w:-]+="[^"]*"/g;
 const ENTITY = /&(amp|lt|gt|quot|apos|#x[\da-f]+|#\d+);/gi;
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
@@ -34,19 +21,9 @@ const DECIMAL = 10;
 // Where a value starts after its name, past the equals sign and the quote.
 const OPENING = 2;
 
-// A local file's link, its host empty or this machine's.
-const LOCAL = /^file:\/\/(?:localhost)?(\/[^?#]*)$/i;
-// What a path may not hold, since inkscape-drawings says each on a line.
-const BREAKS = /[\t\n\r]/;
-
-// A drawing: an SVG, plain or compressed, by its name or its kind.
-const DRAWING = /\.svgz?$/i;
-const DRAWINGS = ["image/svg+xml", "image/svg+xml-compressed"];
-
-// A moment as GLib writes one, in UTC, its fraction of a second to the
-// microsecond where it has one.
-const MOMENT = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.(\d+))?Z$/;
-const MILLISECONDS = 1000;
+// The microseconds in a millisecond, as inkscape-drawings says when to
+// the microsecond and the launcher counts in milliseconds.
+const MICROSECONDS = 1000;
 
 // A length as an SVG's width or height says it, a figure and its unit,
 // none being the user's unit, a pixel; a share of something else, as
@@ -72,7 +49,7 @@ const VECTORS = ["image/x-inkscape-svg", "image/svg+xml"];
 const FRESH_NAME = "Drawing";
 const COPIED_NAME = "Copied";
 
-// A value as it was before GLib escaped it.
+// A value as it was before it was escaped.
 function unescaped(value) {
     return value.replace(ENTITY, (whole, name) => {
         if (!name.startsWith("#")) {
@@ -92,91 +69,6 @@ function attributes(tag) {
         read[pair.slice(0, at)] = unescaped(pair.slice(at + OPENING, -1));
     }
     return read;
-}
-
-// The start tag at `at` in `text`, or "" where there's none.
-function tagAt(text, at) {
-    if (at < 0) {
-        return "";
-    }
-    const end = text.indexOf(">", at);
-    return end < 0 ? "" : text.slice(at, end);
-}
-
-// When GLib says a program last opened a file, in milliseconds since 1970,
-// to the microsecond, or NaN where it doesn't say.
-function moment(stamp) {
-    const parts = MOMENT.exec(String(stamp ?? ""));
-    if (!parts) {
-        return Number.NaN;
-    }
-    const [, year, month, day, hours, minutes, seconds, fraction] = parts;
-    const whole = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hours),
-        Number(minutes), Number(seconds));
-    return whole + Number(`0.${fraction ?? "0"}`) * MILLISECONDS;
-}
-
-// A program's time on a file, by whichever way GLib wrote it.
-function stamped(application) {
-    if (application.modified !== undefined) {
-        return moment(application.modified);
-    }
-    const seconds = Number(application.timestamp ?? Number.NaN);
-    return seconds * MILLISECONDS;
-}
-
-// A link's local path, or "" for anything else, or one that can't be
-// said on a line.
-function localPath(link) {
-    const parts = LOCAL.exec(String(link ?? ""));
-    if (!parts) {
-        return "";
-    }
-    try {
-        const path = decodeURIComponent(parts[1]);
-        return BREAKS.test(path) ? "" : path;
-    } catch (_malformed) {
-        return "";
-    }
-}
-
-// One bookmark's drawing, as { path, at }, or null where it isn't a drawing
-// Inkscape opened.
-function drawn(chunk) {
-    const start = chunk.indexOf(BOOKMARK);
-    if (start < 0) {
-        return null;
-    }
-    const path = localPath(attributes(tagAt(chunk, start)).href);
-    const kind = attributes(tagAt(chunk, chunk.indexOf(KIND))).type ?? "";
-    if (path === "" || !(DRAWING.test(path) || DRAWINGS.includes(kind))) {
-        return null;
-    }
-    const times = chunk.split(APPLICATION).slice(1)
-        .map(rest => attributes(tagAt(rest, 0)))
-        .filter(application => INKSCAPE.includes(application.name))
-        .map(stamped)
-        .filter(Number.isFinite);
-    return times.length === 0 ? null : { path, at: Math.max(...times) };
-}
-
-// The drawings Inkscape opened lately, as the desktop's list of files
-// opened lately holds them (recently-used.xbel, which GTK writes for
-// Inkscape as it opens and saves each), newest first, each once, by when
-// Inkscape last opened it: { path, at }, `at` in milliseconds to the
-// microsecond, as GLib keeps it. The list programs share
-// (recent-files list) says when to the second, so Inkscape's own row of a
-// drawing is the newer by that part of a second, and the one Recent keeps
-// (Recent.js's listed). Whether each is still there is the lister's to say.
-function opened(list) {
-    const newest = new Map();
-    for (const chunk of String(list ?? "").split(BOOKMARK_END)) {
-        const one = drawn(chunk);
-        if (one !== null && !(newest.get(one.path)?.at >= one.at)) {
-            newest.set(one.path, one);
-        }
-    }
-    return Array.from(newest.values()).sort((one, other) => other.at - one.at);
 }
 
 // A length as an SVG's root says it, { figure, unit }, or null for none, a
@@ -231,22 +123,27 @@ function dimensions(size) {
         + `${figure(height.figure)}${KEPT}${height.unit}`;
 }
 
+// Whether a field inkscape-drawings printed is a number.
+function figured(field) {
+    return (field ?? "") !== "" && Number.isFinite(Number(field));
+}
+
 // The drawings still there, as inkscape-drawings prints them, a line each:
-// its whole path, its weight in bytes and its root element's start tag, a
-// tab between each; each { path, at, size, extent }, newest first, when
-// from what Inkscape's list said (`opened`), at most `most`. A line for a
-// path the list didn't name, or without a weight, is passed over.
-function drawings(lines, lately, most) {
-    const at = new Map((lately ?? []).map(one => [one.path, one.at]));
-    const read = [];
-    for (const line of lines) {
-        const [path, weight, ...tag] = line.split("\t");
-        if (at.has(path) && (weight ?? "") !== "" && Number.isFinite(Number(weight))) {
-            read.push({ path, at: at.get(path), size: Number(weight),
+// its whole path, when Inkscape last opened it in microseconds since 1970,
+// its weight in bytes and its root element's start tag, a tab between
+// each; each { path, at, size, extent }, `at` in milliseconds to the
+// microsecond, newest first, each once, at most `most`. A line without a
+// time or a weight is passed over.
+function drawings(lines, most) {
+    const read = new Map();
+    for (const line of lines ?? []) {
+        const [path, at, weight, ...tag] = String(line).split("\t");
+        if (path !== "" && figured(at) && figured(weight) && !read.has(path)) {
+            read.set(path, { path, at: Number(at) / MICROSECONDS, size: Number(weight),
                 extent: extent(tag.join(" ")) });
         }
     }
-    return read.sort((one, other) => other.at - one.at).slice(0, most);
+    return Array.from(read.values()).sort((one, other) => other.at - one.at).slice(0, most);
 }
 
 // The words its rows and drawers say, each thing's as `of` gives it, as

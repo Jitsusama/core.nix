@@ -56,6 +56,15 @@ pub struct Opened {
     pub at: i64,
 }
 
+/// A file some programs opened, when the last of them did, in
+/// microseconds, and its kind as the list says it, as `image/svg+xml`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Had {
+    pub path: PathBuf,
+    pub at: i64,
+    pub kind: String,
+}
+
 /// The list at `list`, or an empty one where there's none yet.
 fn read(list: &Path) -> Result<BookmarkFile, glib::Error> {
     let mut bookmarks = BookmarkFile::new();
@@ -144,6 +153,43 @@ pub fn list(list: &Path) -> Result<Vec<Opened>, Failed> {
             .then_with(|| one.path.cmp(&other.path))
     });
     Ok(opened)
+}
+
+/// Every local file on the list one of `programs` opened, each once, by
+/// when the last of them did, the newest first, as a program's own Open
+/// Recent reads it back: Inkscape's names itself both by its application
+/// id and by its command. When the others opened it doesn't count.
+pub fn by(list: &Path, programs: &[String]) -> Result<Vec<Had>, Failed> {
+    let bookmarks = read(list)?;
+    let mut had = Vec::new();
+    for uri in bookmarks.uris() {
+        let Ok((path, None)) = glib::filename_from_uri(&uri) else {
+            continue;
+        };
+        let mut newest = None;
+        for program in bookmarks.applications(&uri)? {
+            if !programs.iter().any(|one| *one == program.as_str()) {
+                continue;
+            }
+            let stamp = bookmarks.application_info(&uri, &program)?.2;
+            let at = stamp.to_unix() * 1_000_000 + i64::from(stamp.microsecond());
+            newest = newest.max(Some(at));
+        }
+        if let Some(at) = newest {
+            let kind = bookmarks
+                .mime_type(&uri)
+                .map(|kind| kind.to_string())
+                .unwrap_or_default();
+            had.push(Had { path, at, kind });
+        }
+    }
+    had.sort_by(|one, other| {
+        other
+            .at
+            .cmp(&one.at)
+            .then_with(|| one.path.cmp(&other.path))
+    });
+    Ok(had)
 }
 
 #[cfg(test)]
@@ -402,6 +448,51 @@ mod tests {
             files(&given, &here),
             vec![here.join("one.pdf"), here.join("two words.pdf")]
         );
+    }
+
+    #[test]
+    fn what_some_programs_had_is_each_file_once_by_the_last_of_them() {
+        let here = folder();
+        let list = here.join("recently-used.xbel");
+        let logo = here.join("logo.svg");
+        let notes = here.join("notes.txt");
+        let once = |program: &str, path: &PathBuf, seconds| {
+            add(
+                &list,
+                program,
+                &format!("{program} %u"),
+                std::slice::from_ref(path),
+                Some(&at(seconds)),
+            )
+            .unwrap();
+        };
+        once("org.inkscape.Inkscape", &logo, 1_000_000);
+        once("inkscape", &logo, 1_000_020);
+        once("nvim", &logo, 1_000_090);
+        once("inkscape", &notes, 1_000_010);
+        once("nvim", &here.join("other.md"), 1_000_050);
+        let mut bookmarks = read(&list).unwrap();
+        let uri = glib::filename_to_uri(&logo, None).unwrap();
+        bookmarks.set_mime_type(&uri, "image/svg+xml");
+        bookmarks.to_file(&list).unwrap();
+        let programs = ["org.inkscape.Inkscape".to_owned(), "inkscape".to_owned()];
+        let had: Vec<_> = by(&list, &programs)
+            .unwrap()
+            .into_iter()
+            .map(|each| (each.path, each.at))
+            .collect();
+        assert_eq!(
+            had,
+            [(logo, 1_000_020_000_000), (notes, 1_000_010_000_000)],
+            "each file once, by when Inkscape last opened it, nvim's times passed over"
+        );
+        let kinds: Vec<_> = by(&list, &programs)
+            .unwrap()
+            .into_iter()
+            .map(|each| each.kind)
+            .collect();
+        assert_eq!(kinds[0], "image/svg+xml", "its kind as the list says it");
+        assert_eq!(by(&list, &["gimp".to_owned()]).unwrap(), []);
     }
 
     #[test]
