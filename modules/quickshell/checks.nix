@@ -3258,6 +3258,8 @@ onLinux {
     # cases, or sets what Quickshell runs them with.
     pkgs.runCommandLocal "niri-moving-the-keys-makes-no-list-again" { } ''
       cp ${./Niri.qml} Niri.qml
+      cp ${./NiriRecords.js} NiriRecords.js
+      cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/niri-focus.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -4172,6 +4174,25 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml placed.qml
+      touch $out
+    '';
+
+  # The shell's niri holds what the windows daemon tells in niri's own
+  # shape, each window told made again in place, and says to its readers
+  # what niri's events said, a window used or a tile moving making no list
+  # again (tests/niri-records.qml over NiriRecords.js).
+  niri-is-held-as-the-windows-daemon-tells-it =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "niri-is-held-as-the-windows-daemon-tells-it" { } ''
+      cp ${../../tests/niri-records.qml} niri-records.qml
+      cp ${./NiriRecords.js} NiriRecords.js
+      cp ${../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml niri-records.qml
       touch $out
     '';
 

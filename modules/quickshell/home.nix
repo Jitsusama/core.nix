@@ -184,6 +184,7 @@ let
     "Lifted.qml"
     "OpenBelow.qml"
     "Niri.qml"
+    "NiriRecords.js"
     "Wifi.qml"
     "ProcessorTelemetry.qml"
     "Timekeeping.qml"

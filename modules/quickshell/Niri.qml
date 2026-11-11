@@ -1,8 +1,13 @@
 // The shell's connection to niri, over niri's own socket, so asking costs
-// no process: one socket for telling niri what to do, and one that hears
-// its events, for what the whole shell follows: the overview, and every
-// window and workspace, which niri describes whole as the stream begins
-// and then change by change.
+// no process, and what the whole shell follows of it: the overview, and
+// every window and workspace, held as the windows daemon (modules/windows)
+// tells them, in niri's own shape (NiriRecords.js), rather than heard from
+// niri's own event stream. niri says every tile moving at each resize and
+// scroll, and each window's every retitle and use, and the shell woke for
+// each, launcher shut or open; the daemon tells only the fields read here,
+// and tiles only while something draws them (wantTiles), so the shell
+// wakes for less than niri says. While the daemon isn't answering, niri's
+// own stream stands in for it, so nothing here stops for a daemon down.
 //
 // Programs the shell opens are spawned by niri rather than by the shell.
 // niri gives each one a systemd scope of its own; one the shell started
@@ -15,6 +20,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import "NiriRecords.js" as NiriRecords
 
 Singleton {
     id: root
@@ -43,8 +49,8 @@ Singleton {
     // whenever it changes.
     property bool overview: false
 
-    // Every window and workspace by id, as niri's events describe them,
-    // changed in place. `revision` counts the changes a list of them would
+    // Every window and workspace by id, as the windows daemon tells them,
+    // in niri's shape, changed in place. `revision` counts the changes a list of them would
     // show, a window opening, closing, retitled or used, so what's drawn
     // from them follows it; a window only moving or resizing says so through
     // layoutsChanged instead, since that happens many times a second. The
@@ -111,7 +117,9 @@ Singleton {
         ].join("\n")]);
     }
 
-    // A window opened, or changed what it shows; one closed; some moved.
+    // A window opened, changed what it shows, or given the keys; one
+    // closed; some moved in their layout, or, while tiles are wanted, any
+    // tile did.
     signal windowOpenedOrChanged(var window)
     signal windowClosed(var id)
     signal layoutsChanged
@@ -146,6 +154,127 @@ Singleton {
         return window;
     }
 
+    // The windows daemon's socket, and what it tells, as NiriRecords
+    // holds it: Niri.qml's windows, workspaces and casts are the ones held
+    // there, published here as they change.
+    readonly property string daemonSocket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
+    property var kept: NiriRecords.held()
+
+    // What draws tiles, by name, as notices do while they're up, beside
+    // the window under them; the daemon tells tiles only while one does.
+    property var tilesFor: ({})
+    readonly property bool tilesWanted: Object.keys(tilesFor).length > 0
+    // Whether the tiles held are current: once the daemon's watch of them
+    // has answered, or while niri's own stream, which says them, stands in.
+    readonly property bool tilesReady: standIn || tilesHeard.answeredThisWatch
+    function wantTiles(who: string, wanted: bool): void {
+        if ((who in tilesFor) === wanted)
+            return;
+        const now = Object.assign({}, tilesFor);
+        if (wanted)
+            now[who] = true;
+        else
+            delete now[who];
+        tilesFor = now;
+    }
+
+    // Whether niri's own stream stands in for the daemon, since it isn't
+    // answering, so what it held is made again from the daemon's whole
+    // answer once it is.
+    readonly property bool standIn: windowsHeard.state === "not answering"
+    property bool stoodIn: false
+    onStandInChanged: {
+        if (!standIn)
+            return;
+        stoodIn = true;
+        console.warn("niri: the windows daemon isn't answering; niri's own events stand in");
+    }
+
+    // What the daemon told, the keys changed and those gone, taken in and
+    // said as niri's events said it.
+    function took(daemon: var, changed: var, gone: var): void {
+        if (standIn)
+            return;
+        const records = changed.map(key => daemon.held[key]).filter(record => record);
+        root.publish(NiriRecords.take(kept, records, gone));
+    }
+
+    // Everything the daemon holds, taken anew, as once it answers again
+    // after niri's stream stood in.
+    function retake(): void {
+        stoodIn = false;
+        kept = NiriRecords.held();
+        const records = [windowsHeard, placesHeard, tilesHeard]
+            .reduce((all, daemon) => all.concat(Object.values(daemon.held)), []);
+        const told = NiriRecords.take(kept, records, []);
+        told.listed = true;
+        root.publish(told);
+    }
+
+    function publish(told: var): void {
+        if (windows !== kept.windows)
+            windows = kept.windows;
+        if (workspaces !== kept.workspaces)
+            workspaces = kept.workspaces;
+        if (told.casts)
+            casts = kept.casts;
+        overview = kept.overview;
+        settingsFailed = kept.settingsFailed;
+        if (focused !== kept.focused)
+            focused = kept.focused;
+        if (told.listed)
+            revision++;
+        follow();
+        for (const window of told.opened)
+            windowOpenedOrChanged(window);
+        for (const id of told.closed)
+            windowClosed(id);
+        if (told.layouts)
+            layoutsChanged();
+        if (told.shot)
+            screenshotCaptured(told.path);
+    }
+
+    // Each window's fields read here, told only as one changes.
+    Daemon {
+        id: windowsHeard
+
+        socket: root.daemonSocket
+        kind: "window"
+        watching: ({ fields: NiriRecords.WINDOW_FIELDS })
+        answersWhole: true
+        onHeard: (changed, gone) => root.took(windowsHeard, changed, gone)
+        onAnsweredThisWatchChanged: {
+            if (answeredThisWatch && root.stoodIn)
+                root.retake();
+        }
+    }
+
+    // The workspaces, the window niri says has the keys, the desktop's
+    // overview and settings, the casts and the last screenshot, few and
+    // seldom changed, so each is told whole.
+    Daemon {
+        id: placesHeard
+
+        socket: root.daemonSocket
+        kind: ["workspace", "focus", "desktop", "cast", "screenshot"]
+        answersWhole: true
+        onHeard: (changed, gone) => root.took(placesHeard, changed, gone)
+    }
+
+    // Each window's tile, only while something draws tiles.
+    Daemon {
+        id: tilesHeard
+
+        socket: root.daemonSocket
+        kind: "layout"
+        live: root.tilesWanted
+        answersWhole: true
+        onHeard: (changed, gone) => root.took(tilesHeard, changed, gone)
+    }
+
+    // niri's own events, as its stream says them, while the daemon isn't
+    // answering.
     function hear(event: var): void {
         if (event.OverviewOpenedOrClosed) {
             overview = event.OverviewOpenedOrClosed.is_open;
@@ -312,7 +441,7 @@ Singleton {
     Socket {
         id: events
         path: Quickshell.env("NIRI_SOCKET")
-        connected: true
+        connected: root.standIn
         onConnectionStateChanged: {
             if (connected) {
                 write('"EventStream"\n');

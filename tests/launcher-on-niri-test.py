@@ -524,6 +524,38 @@ def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) 
     assert "capture:window" in taking, f"a pick made shut knows no window to take: {taking}"
 
 
+RESIZES = 20
+
+
+def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
+    """With the launcher shut, a window resized over and over wakes the shell no more than quiet.
+
+    The shell's niri heard every event niri sent, each tile resized or scrolled among them, and
+    Joel's shut shell woke for each (2026-11-10), though only a notice drawn beside its window
+    reads a tile. It now hears the windows daemon, told only the fields it reads, and asks for
+    tiles only while a notice is drawn. Wakes are counted over the resizes and over as long left
+    quiet; niri's own events, heard, would wake the shell at least once a resize.
+    """
+    window = shell.opened("Dunlin Notes")
+    try:
+        shell.as_account(f"niri msg action focus-window --id {window['id']}")
+        # The span measured, for the window's opening to reach the shell, not a wait for it.
+        time.sleep(SETTLING.total_seconds())
+        began, before = time.monotonic(), shell.wakes()
+        for one in range(RESIZES):
+            shell.as_account(f"niri msg action set-column-width {'+' if one % 2 else '-'}10%")
+        time.sleep(SETTLING.total_seconds())
+        resized, span = shell.wakes() - before, time.monotonic() - began
+        before = shell.wakes()
+        time.sleep(span)
+        quiet = shell.wakes() - before
+    finally:
+        shell.close(window)
+    assert resized - quiet < RESIZES // 2, (
+        f"the shut shell woke {resized} times over {RESIZES} resizes, {quiet} left quiet as long"
+    )
+
+
 RETITLES = 10
 
 
