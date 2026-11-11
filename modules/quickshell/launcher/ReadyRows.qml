@@ -125,6 +125,7 @@ Scope {
         eachMinute = 0;
         keys = [];
         placings += 1;
+        ended();
     }
 
     // Each key a change names let go of what was made of it, and the rows
@@ -180,7 +181,7 @@ Scope {
         // What was found was found among the rows before, so it's asked
         // again of these.
         if (found.words !== null)
-            found = { words: null, keys: null, marks: {} };
+            ended();
         heard(said, dropped);
     }
 
@@ -242,9 +243,12 @@ Scope {
     // rows it found, best first, and the letters of each one's name to
     // bring forward. Each key's words are asked at once, never waiting on
     // the answer before, and only an answer to what's typed now is taken,
-    // so a key costs no round trip behind another. Its words and keys are
-    // null until an answer comes, and again once the rows change.
-    property var found: ({ words: null, keys: null, marks: ({}) })
+    // so a key costs no round trip behind another. Its words are null
+    // until an answer comes, and again once the rows change. The rows it
+    // found that the watch never served come with it, each made as the
+    // place makes a row (`foundMade`) and let go with the answer.
+    property var found: Ready.foundOf(null, null)
+    readonly property var foundMade: ({})
     property string asking: ""
     // Whether the daemon said it can't search, so the place matches its
     // rows itself, as it did before, said once in the journal.
@@ -254,16 +258,26 @@ Scope {
     // The keys found before their rows were served, each said once.
     readonly property var unserved: ({})
 
-    // The daemon's answer to `words` if it's held, else null, asking it.
-    function search(words) {
+    // The daemon's answer to `words` if it's held, else null, asking it,
+    // for at most `most` rows where the place shows no more.
+    function search(words, most) {
         if (found.words === words)
             return found;
         if (asking !== words && !searchless && link) {
             asking = words;
-            link.find({ ask: "search", place: ready.place, words: words },
+            const ask = { ask: "search", place: ready.place, words: words };
+            link.find(most > 0 ? Object.assign(ask, { most: most }) : ask,
                 answer => ready.answered(words, answer));
         }
         return null;
+    }
+
+    // The search over, as the launcher closing ends it, so what it found
+    // is let go.
+    function ended() {
+        found = Ready.foundOf(null, null);
+        for (const key of Object.keys(foundMade))
+            delete foundMade[key];
     }
 
     // An answer taken, unless it's to words typed over since. One that
@@ -281,16 +295,26 @@ Scope {
             searched(words);
             return;
         }
-        found = { words: words, keys: answer.keys ?? [], marks: answer.marks ?? {} };
+        ended();
+        found = Ready.foundOf(words, answer);
         searched(words);
     }
 
     // The rows an answer found, in its order, each as the place made it.
-    // A key whose row isn't served yet is passed over, said once.
+    // A key whose row is served by neither the watch nor the answer is
+    // passed over, said once.
     function foundRows(answer) {
         const out = [];
         for (const key of answer.keys) {
-            const row = key in held ? rowAt(key) : null;
+            const record = Ready.foundRecord(answer, held, key);
+            let row = null;
+            if (record !== null && record === held[key]) {
+                row = rowAt(key);
+            } else if (record !== null) {
+                if (!(key in foundMade))
+                    foundMade[key] = ready.make(Ready.rowOf(record), key);
+                row = foundMade[key];
+            }
             if (row !== null) {
                 out.push(row);
             } else if (!(key in unserved)) {

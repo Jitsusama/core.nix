@@ -40,6 +40,7 @@ QtObject {
             acting();
             moving();
             keywording();
+            searching();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error}`);
@@ -482,6 +483,33 @@ QtObject {
             Ready.keywordsOf(null, { text: "eDP-1", mask: 3 }), "eDP-1");
         Expect.same("a list's other values say nothing",
             Ready.keywordsOf(["fan", 3, null], ""), "fan");
+    }
+
+    // A search's answer, its found rows the watch never served among them
+    // (ready-rows.md's search, RTOIMQ, d482d399).
+    function searching() {
+        const none = Ready.foundOf("shot", null);
+        Expect.same("no answer yet finds nothing, for no words", [none.words, none.keys],
+            [null, []]);
+        const found = Ready.foundOf("shot", {
+            keys: ["b", "far", "lost"],
+            marks: { far: [[0, 4]] },
+            rows: { far: { thing: "quest:far", name: "Shot far" } }
+        });
+        Expect.same("an answer holds its words, its order and its marks",
+            [found.words, found.keys, found.marks], ["shot", ["b", "far", "lost"],
+                { far: [[0, 4]] }]);
+        const held = { b: record("b", 2048) };
+        Expect.same("a row it found that the watch serves is the watch's",
+            Ready.foundRecord(found, held, "b"), held.b);
+        Expect.same("one the watch never served is the answer's, read as any record",
+            Ready.rowOf(Ready.foundRecord(found, held, "far")),
+            { thing: "quest:far", name: "Shot far" });
+        held.far = record("far", 1024);
+        Expect.same("and a change naming it since replaces the answer's",
+            Ready.foundRecord(found, held, "far"), held.far);
+        Expect.same("a key served by neither is none", Ready.foundRecord(found, held, "lost"),
+            null);
     }
 
     function ticking() {

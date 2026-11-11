@@ -496,3 +496,29 @@ function refusal(answer, said) {
     const own = answer.error.said;
     return typeof own === "string" && own !== "" ? own : said.couldNot ?? "";
 }
+
+// What a daemon's answer to a search of `words` found (ready-rows.md's
+// search): its keys best first, the letters of each name it matched, and
+// the rows it found that the watch never served, as Capture's taken files
+// are, a few thousand of which Recent serves nine. Those come wrapped as
+// the stream wraps a row, so they're read as any record is. No answer yet
+// is `words` null, with nothing found.
+function foundOf(words, answer) {
+    const rows = {};
+    for (const [key, row] of Object.entries(answer?.rows ?? {})) {
+        rows[key] = { key: key, kind: "row", row: row };
+    }
+    return {
+        words: answer ? words : null,
+        keys: answer?.keys ?? [],
+        marks: answer?.marks ?? {},
+        rows: rows
+    };
+}
+
+// The record of a row a search found: the watch's where it serves one, so
+// a change naming it replaces the answer's, else the answer's own, else
+// null for a key served by neither.
+function foundRecord(found, held, key) {
+    return held[key] ?? found.rows[key] ?? null;
+}
