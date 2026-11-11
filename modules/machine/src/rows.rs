@@ -117,7 +117,7 @@ pub fn placed(
         let key = format!("row:{place}:{}", row.id);
         let mut record = Map::new();
         record.insert("key".to_owned(), Value::String(key.clone()));
-        record.insert("row".to_owned(), json!(format!("{place}:{}", row.id)));
+        record.insert("thing".to_owned(), json!(format!("{place}:{}", row.id)));
         record.insert("place".to_owned(), json!(place));
         record.insert("kind".to_owned(), json!(row.kind));
         if let Some(parent) = parent {
