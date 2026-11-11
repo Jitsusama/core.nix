@@ -377,10 +377,10 @@ figures more than most changes do: one run on main gave a median 56 ms for
 Windows on a quiet builder and 126 ms on one waiting on its processors 59%
 of the time (2026-11-11). So the sides run one at a time, never at once,
 alternating, before, after, before, after, two runs a side, 20 openings a
-place. A pair is compared only when both ran on the builder its
-`building on` line names. The lab gives the change between sides; what
-Joel feels is read from optimus's journal, `launcher: opening presented N ms
-from the chord`, after the switch that carries it.
+place. A pair is compared only when both ran on the same builder, as each
+run's `building on` line names it. The lab gives the change between sides;
+what Joel feels is read from his machine's journal, `launcher: opening
+presented N ms from the chord`, after the switch that carries it.
 
 ### Virtual Machines
 
