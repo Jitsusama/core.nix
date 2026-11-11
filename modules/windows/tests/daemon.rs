@@ -9,7 +9,9 @@
 //! windows' program; niri gone and back describes the desktop again;
 //! an ask or kind it doesn't know is refused; and, handed the launcher's
 //! words, a watch of Screens is served each screen's row and Turn Every
-//! Screen Off, told only the rows a screen turned off changed.
+//! Screen Off, told only the rows a screen turned off changed; and a
+//! screen looked at reads its light from a stand-in for the machine
+//! daemon, which is hung up on once nothing looks.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
@@ -105,9 +107,57 @@ impl Niri {
     }
 }
 
+/// A stand-in for the machine daemon's socket, which answers a watch with
+/// a backlight lighting eDP-1 at half and holds each connection until the
+/// daemon hangs up, keeping what it was asked and how many stay open.
+struct Machine {
+    asked: Arc<Mutex<Vec<Value>>>,
+    open: Arc<Mutex<usize>>,
+}
+
+impl Machine {
+    fn new(socket: &Path) -> Machine {
+        let listener = UnixListener::bind(socket).expect("the stand-in listens");
+        let (asked, open) = (Arc::new(Mutex::new(Vec::new())), Arc::new(Mutex::new(0)));
+        let (kept, counted) = (Arc::clone(&asked), Arc::clone(&open));
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.expect("the stand-in takes each connection");
+                let (kept, counted) = (Arc::clone(&kept), Arc::clone(&counted));
+                std::thread::spawn(move || {
+                    let mut lines = BufReader::new(stream.try_clone().unwrap());
+                    let mut line = String::new();
+                    lines.read_line(&mut line).unwrap();
+                    let watch: Value = serde_json::from_str(&line).unwrap_or_default();
+                    let backlight = json!({"key": "backlight:intel_backlight",
+                        "kind": "backlight", "device": "intel_backlight", "brightness": 48,
+                        "max_brightness": 96, "connector": "eDP-1"});
+                    writeln!(
+                        stream,
+                        "{}",
+                        json!({"id": watch["id"], "records": [backlight]})
+                    )
+                    .unwrap();
+                    kept.lock().unwrap().push(watch);
+                    *counted.lock().unwrap() += 1;
+                    // Until the daemon hangs up.
+                    while lines.read_line(&mut line).is_ok_and(|read| read > 0) {}
+                    *counted.lock().unwrap() -= 1;
+                });
+            }
+        });
+        Machine { asked, open }
+    }
+
+    fn open(&self) -> usize {
+        *self.open.lock().unwrap()
+    }
+}
+
 struct Running {
     daemon: Daemon,
     niri: Niri,
+    machine: Machine,
 }
 
 impl Running {
@@ -146,6 +196,7 @@ impl Running {
         std::fs::create_dir_all(folder.join("near/applications")).unwrap();
         std::fs::create_dir_all(folder.join("daemons")).unwrap();
         let niri = Niri::new(&folder.join("niri.sock"));
+        let machine = Machine::new(&folder.join("machine.sock"));
         let socket = folder.join("daemons").join("windows.sock");
         let words = folder.join("words.json");
         if let Some(outputs) = outputs {
@@ -167,6 +218,7 @@ impl Running {
         command.arg(&socket);
         if outputs.is_some() {
             command.arg("--words").arg(&words);
+            command.arg("--machine").arg(folder.join("machine.sock"));
         }
         command
             .env("NIRI_SOCKET", folder.join("niri.sock"))
@@ -176,6 +228,7 @@ impl Running {
         let running = Running {
             daemon: Daemon::start(&mut command, socket, folder),
             niri,
+            machine,
         };
         // One systemd starts begins only as it's first asked.
         if launcher.is_empty() {
@@ -533,6 +586,82 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
     assert_eq!(
         row["held"]["niri"]["logical"]["scale"], 1.5,
         "the shell's acts read niri's record as it is now: {said}"
+    );
+}
+
+/// The first fact of the built-in screen's drawer, among a watch's
+/// records or its changes, with what it says.
+fn leading(records: &Value) -> Option<(String, String)> {
+    let fact = records
+        .as_array()?
+        .iter()
+        .find(|record| record["key"] == "row:displays:display:eDP-1")?["row"]["drawer"]["facts"][0]
+        .clone();
+    Some((
+        fact["name"].as_str()?.to_owned(),
+        fact["said"].as_str().unwrap_or("").to_owned(),
+    ))
+}
+
+#[test]
+fn a_screen_looked_at_reads_its_light_from_the_machine_daemon_until_it_isnt() {
+    let running = Running::worded("light", &json!({"eDP-1": screen("BOE", Some(2.0))}));
+    let mut client = running.daemon.client();
+    let records = loop {
+        let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
+            "place": "displays"}));
+        if said["records"]
+            .as_array()
+            .is_some_and(|records| records.len() == 2)
+        {
+            break said["records"].clone();
+        }
+        client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    };
+    assert_ne!(
+        leading(&records).map(|(name, _)| name).as_deref(),
+        Some("Brightness"),
+        "a screen nothing looks at says its light: {records}"
+    );
+    assert_eq!(
+        running.machine.open(),
+        0,
+        "the light is watched while nothing looks"
+    );
+    // The shell's watch ahead, as a screen is selected.
+    let mut ahead = running.daemon.client();
+    ahead.ask(&json!({"id": "ahead", "ask": "watch", "kind": "row",
+        "keys": ["row:displays:display:eDP-1"]}));
+    until("the light was never watched", || {
+        running.machine.open() == 1
+    });
+    let asked = running.machine.asked.lock().unwrap()[0].clone();
+    assert_eq!(
+        asked["kind"],
+        json!(["backlight", "light", "brightness", "warmth"]),
+        "the light's kinds aren't what's watched: {asked}"
+    );
+    loop {
+        let said = client.heard();
+        if let Some((name, told)) = leading(&said["changed"]).filter(|(_, told)| !told.is_empty()) {
+            assert_eq!(
+                (name.as_str(), told.as_str()),
+                ("Brightness", "50% \u{b7} 48 of 96 steps"),
+                "the light read isn't said first: {said}"
+            );
+            break;
+        }
+    }
+    // Unselected, the machine daemon is hung up on, and the light goes.
+    ahead.ask(&json!({"id": "ahead", "ask": "unwatch"}));
+    until("the light was watched after the look", || {
+        running.machine.open() == 0
+    });
+    let said = client.heard();
+    assert_ne!(
+        leading(&said["changed"]).map(|(name, _)| name).as_deref(),
+        Some("Brightness"),
+        "a screen no longer looked at still says its light: {said}"
     );
 }
 

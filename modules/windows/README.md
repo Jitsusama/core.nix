@@ -62,8 +62,19 @@ over its name, then what niri says of it past its row, then what its
 EDID says as desk-facts writes it (`$XDG_RUNTIME_DIR/desk/displays.json`,
 heard with inotify as it's written again), niri's size where the EDID
 gives none, and its serial last, which identifies it. Figures are said
-in the account's number settings (`--numbers`, `{ group, point }`). Its
-light joins it next. niri says nothing as a screen comes,
+in the account's number settings (`--numbers`, `{ group, point }`).
+
+The screen holding the Brightness, the one its backlight lights or the
+monitor following the panel, leads its drawer with its light, read from
+the machine daemon (`--machine`, its machine.sock) only while a watch's
+`keys` name a screen's row, as the shell's watch ahead does while one is
+selected or stepped into. The machine daemon reads the light every
+second it's watched, so nothing watches it while no screen is looked at.
+Its first second unread says nothing, then "not read yet"; the night
+light's sunset or sunrise travels as a time for the shell to word, and
+the drawer is said again as either passes.
+
+niri says nothing as a screen comes,
 goes or turns off, so the daemon asks niri for its outputs as the stream
 begins and at each workspace change, which each of those makes, and
 tells a watch only the rows that moved. A change the shell makes to a
@@ -90,6 +101,5 @@ whose own page it opened deeper in (BrowserWindows.js said it so).
 - **Acting on a window or a screen.** The shell asks niri itself, on
   niri's own socket, so an act never waits on this daemon. A screen's row
   holds its connector, how it stands and niri's whole record of it
-  (`held`) for those acts, its settings and its drawer's light until
-  they move here, so the shell asks niri nothing of a screen
-  itself.
+  (`held`) for those acts and its settings until they move here, so the
+  shell asks niri nothing of a screen itself.

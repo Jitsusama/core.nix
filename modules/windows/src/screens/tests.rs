@@ -84,7 +84,7 @@ fn a_screen_says_how_it_stands_and_the_focused_one_only_beside_another_lit() {
     assert_eq!(rows[1]["note"], "off", "an unlaid screen runs nothing");
     assert_eq!(rows[2]["side"], json!([]));
     let alone = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
-    let rows = super::rows(&alone, &BTreeMap::new(), Some("eDP-1"), &words());
+    let rows = super::rows(&alone, &BTreeMap::new(), Some("eDP-1"), None, &words());
     assert_eq!(
         rows[0]["side"],
         json!([]),
@@ -119,14 +119,64 @@ fn a_rate_keeps_every_digit_and_a_scale_two_places() {
     assert_eq!(scale(1.333_333), "1.33\u{d7}");
 }
 
-/// The rows where desk-facts says nothing of any screen.
+/// The rows where desk-facts says nothing of any screen, and none is
+/// looked at, so no light is said.
 fn rows(outputs: &BTreeMap<String, Value>, focused: Option<&str>, words: &Words) -> Vec<Value> {
-    super::rows(outputs, &BTreeMap::new(), focused, words)
+    super::rows(outputs, &BTreeMap::new(), focused, None, words)
 }
 
-/// A screen's drawer where desk-facts says nothing of it.
+/// A screen's drawer where desk-facts says nothing of it, and no light.
 fn drawer(name: &str, output: &Value, words: &Words) -> Value {
-    super::drawer(name, output, &Value::Null, words)
+    super::drawer(name, output, &Value::Null, Vec::new(), words)
+}
+
+/// The screens whose drawer leads with the Brightness, by connector.
+fn holding(rows: &[Value]) -> Vec<&str> {
+    rows.iter()
+        .filter(|row| row["drawer"]["facts"][0]["name"] == "Brightness")
+        .filter_map(|row| row["held"]["output"].as_str())
+        .collect()
+}
+
+#[test]
+fn only_the_screen_holding_the_brightness_says_the_light_and_only_while_looked_at() {
+    let light = crate::light::Light::of(&[json!({"key": "backlight:intel_backlight",
+        "kind": "backlight", "device": "intel_backlight", "brightness": 48,
+        "max_brightness": 96, "connector": "eDP-1"})]);
+    let seen = Seen {
+        light: &light,
+        reading: crate::light::Reading::Read,
+        now: 0,
+    };
+    let looked = |outputs: &BTreeMap<String, Value>, desk: &BTreeMap<String, Value>| {
+        super::rows(outputs, desk, None, Some(&seen), &words())
+    };
+    let none = BTreeMap::new();
+    assert_eq!(
+        holding(&looked(&desk(), &none)),
+        vec!["eDP-1"],
+        "the screen the backlight lights doesn't hold it alone"
+    );
+    let mut away = desk();
+    away.insert("eDP-1".to_owned(), output("BOE", "0x0BCA", &Value::Null));
+    away.insert("DP-3".to_owned(), output("LG", "27GL850", &lit(1.0)));
+    let follows = BTreeMap::from([(
+        "DP-3".to_owned(),
+        json!([{"name": "Brightness", "value": "95%"}]),
+    )]);
+    assert_eq!(
+        holding(&looked(&away, &follows)),
+        vec!["DP-3"],
+        "with the built-in screen off, the monitor following the panel doesn't hold it"
+    );
+    assert!(
+        holding(&looked(&away, &none)).is_empty(),
+        "a monitor that doesn't follow the panel holds it"
+    );
+    assert!(
+        holding(&rows(&desk(), None, &words())).is_empty(),
+        "a drawer says the light while no screen is looked at"
+    );
 }
 
 /// What desk-facts says of a monitor, as it says the desk's own.
@@ -152,7 +202,7 @@ fn monitor() -> Value {
 fn a_monitors_edid_follows_what_niri_says_the_asked_first_leading() {
     let mut hp = panel();
     hp["physical_size"] = json!([600, 340]);
-    let drawn = super::drawer("DP-4", &hp, &monitor(), &words());
+    let drawn = super::drawer("DP-4", &hp, &monitor(), Vec::new(), &words());
     let edid = said(&drawn)
         .split_once("Density=")
         .map(|(_, after)| after.to_owned())
@@ -179,7 +229,13 @@ fn niris_size_stands_only_where_the_edid_says_none_and_niris_serial_leads() {
         .filter(|fact| fact["name"] != "size")
         .cloned()
         .collect();
-    let drawn = said(&super::drawer("DP-4", &hp, &json!(sizeless), &words()));
+    let drawn = said(&super::drawer(
+        "DP-4",
+        &hp,
+        &json!(sizeless),
+        Vec::new(),
+        &words(),
+    ));
     assert!(
         drawn.contains("Size=300 \u{d7} 190 mm") && drawn.ends_with("Serial=from niri"),
         "niri's size or serial isn't said: {drawn}"
@@ -198,7 +254,7 @@ fn a_white_point_or_primaries_not_whole_say_nothing_and_figures_take_the_account
         {"name": "primaries", "value": "0.6 0.3 0.3 0.6 0.15 0.3125"},
     ]);
     let words = words().numbered(Numbers::new(".", ","));
-    let drawn = said(&super::drawer("DP-4", &panel(), &facts, &words));
+    let drawn = said(&super::drawer("DP-4", &panel(), &facts, Vec::new(), &words));
     assert!(
         !drawn.contains("White Point")
             && drawn.contains(
@@ -372,7 +428,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        38,
+        50,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);
