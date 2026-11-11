@@ -534,7 +534,10 @@ impl Say<'_> {
                 fact
             })
             .collect();
-        json!({ "eyebrow": drawer("eyebrow", &[]), "title": title, "facts": facts })
+        // Its eyebrow names where it is, so it's drawn as a name is, as
+        // Power.qml drew it (Drawer.qml's eyebrowNames).
+        json!({ "eyebrow": drawer("eyebrow", &[]), "eyebrowNames": true, "title": title,
+            "facts": facts })
     }
 
     /// What a charger offers: "5 V · 9 V · 20 V at 3 A" when every one
@@ -697,7 +700,7 @@ impl Say<'_> {
         row.note = self.says("energy", if now.is_some() { "note" } else { "full" }, &[]);
         if !facts.is_empty() {
             row.drawer = Some(json!({ "eyebrow": self.says("energy", "eyebrow", &[]),
-                "title": self.name("energy", &[]), "facts": facts }));
+                "eyebrowNames": true, "title": self.name("energy", &[]), "facts": facts }));
         }
         Some(row)
     }
@@ -885,7 +888,7 @@ impl Say<'_> {
                 String::new()
             };
             row.drawer = Some(
-                json!({ "eyebrow": eyebrow, "title": self.name("model", &[]),
+                json!({ "eyebrow": eyebrow, "eyebrowNames": true, "title": self.name("model", &[]),
                 "facts": [{ "name": self.name("serial", &[]), "said": text(&battery["serial"]),
                     "identifies": true }] }),
             );
@@ -912,10 +915,13 @@ mod tests {
                 "empty": "empty" } },
             { "id": "power:port:drawer", "said": { "eyebrow": "on this machine \u{b7} charger",
                 "range": "{from} to {to} V", "at": "{offers} at {amps} A",
-                "mode:usb_power_delivery": "USB Power Delivery" } },
+                "mode:usb_power_delivery": "USB Power Delivery",
+                "accessory": "{mode} accessory" } },
             { "id": "power:port:offers", "name": "Offers" },
             { "id": "power:port:supply", "name": "Supply" },
             { "id": "power:charge", "name": "Charge", "said": { "level": "its level {level}" } },
+            { "id": "power:energy", "name": "Energy", "said": { "of": "{now} of {full} Wh",
+                "eyebrow": "on this machine \u{b7} battery" } },
             { "id": "power:rate", "name": "Drawing", "states": { "charging":
                 { "name": "Charging" } }, "said": { "into": "into the battery",
                 "from": "from the battery" } },
@@ -1062,6 +1068,177 @@ mod tests {
         assert_eq!(
             row(&again, "row:power:rate")["graph"]["values"],
             json!([1.0])
+        );
+    }
+
+    /// What a made row says at its right, its items joined.
+    fn side_of(made: &Made) -> String {
+        made.side
+            .iter()
+            .map(|item| text(&item["said"]))
+            .collect::<Vec<_>>()
+            .join(DOT)
+    }
+
+    #[test]
+    fn a_port_says_its_protocol_and_what_it_gives() {
+        assert_eq!(
+            ["PD", "PD_PPS", "C", "SDP", ""].map(protocol),
+            ["USB PD", "USB PD PPS", "USB-C", "USB", ""]
+        );
+        let words = words();
+        let say = Say { words: &words };
+        let side = |record: Value| side_of(&say.port_row(1, &record, &port_of(&record)));
+        assert_eq!(
+            side(json!({ "online": true, "volts": 5.0, "amps": 0.5 })),
+            "2.50 W \u{b7} 5.00 V \u{b7} 0.500 A",
+            "half an amp, to three figures"
+        );
+        assert_eq!(side(json!({ "online": true })), "charging");
+        assert_eq!(
+            side(json!({ "online": true, "usb_type": "C" })),
+            "charging \u{b7} USB-C"
+        );
+        assert_eq!(
+            side(json!({ "online": false, "typec": { "power_role": "source" } })),
+            "powering what's plugged in"
+        );
+        assert_eq!(side(json!({ "online": false })), "empty");
+    }
+
+    #[test]
+    fn a_ports_drawer_says_its_roles_its_offers_and_its_revisions() {
+        let words = words();
+        let say = Say { words: &words };
+        assert_eq!(
+            say.offers(&json!([
+                { "volts": 5.0, "to_volts": null, "amps": 3.0 },
+                { "volts": 20.0, "to_volts": null, "amps": 4.5 },
+                { "volts": 3.3, "to_volts": 21.0, "amps": 2.25 }])),
+            "5 V at 3 A \u{b7} 20 V at 4.5 A \u{b7} 3.3 to 21 V at 2.25 A",
+            "each offer at its own current, as it names them"
+        );
+        let record = json!({ "name": "ucsi-source-psy-USBC000:001",
+            "usb_types": ["C", "PD", "PD_PPS", "PD_DRP"],
+            "typec": { "power_role": "sink", "data_role": "host",
+                "operation_mode": "usb_power_delivery", "power_delivery_revision": "3.0",
+                "partner": { "accessory": "none", "power_delivery_revision": "0.0" } } });
+        let drawer = say.port_drawer(&record, "Port 1");
+        let said: Vec<&str> = drawer["facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|fact| text(&fact["said"]))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                "sink",
+                "host",
+                "USB Power Delivery",
+                "USB-C \u{b7} USB PD \u{b7} USB PD PPS",
+                "3.0",
+                "ucsi-source-psy-USBC000:001"
+            ],
+            "its roles, its mode in words, its protocols once each, a partner saying none left out"
+        );
+        assert_eq!(
+            drawer["eyebrowNames"], true,
+            "its eyebrow is drawn as a name"
+        );
+        let audio = say.port_drawer(
+            &json!({ "typec": { "partner": { "accessory": "audio",
+                "power_delivery_revision": "2.0" } } }),
+            "Port 2",
+        );
+        assert_eq!(
+            audio["facts"],
+            json!([{ "name": "power:port:partner", "said": "audio accessory" },
+                { "name": "power:port:partner-revision", "said": "2.0" }])
+        );
+    }
+
+    #[test]
+    fn the_battery_is_the_machines_and_its_ports_go_by_number() {
+        let supplies = [
+            json!({ "key": "supply:hidpp_battery_0", "type": "Battery", "scope": "Device" }),
+            json!({ "key": "supply:BAT0", "name": "BAT0", "type": "Battery", "scope": null }),
+            json!({ "key": "supply:AC", "name": "AC", "type": "Mains", "online": false }),
+            json!({ "name": "ucsi-source-psy-USBC000:002", "type": "USB" }),
+            json!({ "name": "ucsi-source-psy-USBC000:001", "type": "USB" }),
+        ];
+        assert_eq!(
+            battery_of(&supplies).map(|battery| text(&battery["name"])),
+            Some("BAT0"),
+            "the machine's battery, not a mouse's"
+        );
+        assert!(battery_of(&supplies[2..]).is_none(), "no battery");
+        let ports: Vec<u64> = ports_of(&supplies).into_iter().map(|(n, _)| n).collect();
+        assert_eq!(ports, [1, 2]);
+        assert!(!plugged_elsewhere(&supplies), "the charger's off");
+        assert!(
+            plugged_elsewhere(&[json!({ "name": "AC", "type": "Mains", "online": true })]),
+            "a charger on a barrel"
+        );
+    }
+
+    #[test]
+    fn the_headline_says_what_the_battery_is_doing() {
+        let words = words();
+        let say = Say { words: &words };
+        assert_eq!(
+            say.doing(&json!({ "capacity_pct": 36, "status": "Discharging",
+                "upower": { "state": "discharging", "time_to_empty_s": 11_400 } })),
+            "36% \u{b7} 3 h 10 min to empty"
+        );
+        assert_eq!(
+            say.doing(&json!({ "capacity_pct": 80, "status": "Charging", "upower": null })),
+            "80% \u{b7} charging"
+        );
+        assert_eq!(
+            say.doing(&json!({ "capacity_pct": 100, "status": "Full" })),
+            "100% \u{b7} full"
+        );
+        assert_eq!(
+            say.doing(&json!({ "status": "Discharging" })),
+            "on battery",
+            "a charge nobody knows is left out, never said as none"
+        );
+    }
+
+    #[test]
+    fn the_energy_is_as_the_battery_counts_it_or_from_its_charge() {
+        let words = words();
+        let say = Say { words: &words };
+        let counted = say
+            .energy(&json!({ "name": "BAT0", "energy_wh": 30.0, "energy_full_wh": 50.0 }))
+            .unwrap();
+        assert_eq!(
+            side_of(&counted),
+            "30.0 of 50.0 Wh",
+            "as the battery counts it"
+        );
+        let charged = say
+            .energy(
+                &json!({ "name": "BAT0", "charge_ah": 1.5, "charge_full_ah": 3.6,
+                "charge_design_ah": 4.0, "min_design_volts": 15.0 }),
+            )
+            .unwrap();
+        let drawer = charged.drawer.unwrap();
+        let facts: Vec<&str> = drawer["facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|fact| text(&fact["said"]))
+            .collect();
+        assert_eq!(
+            facts,
+            ["1.50 Ah", "3.60 Ah", "4.00 Ah", "60.0 Wh", "BAT0"],
+            "the charge behind it, then what it was made to hold, then the battery by name"
+        );
+        assert_eq!(
+            drawer["eyebrowNames"], true,
+            "its eyebrow is drawn as a name"
         );
     }
 

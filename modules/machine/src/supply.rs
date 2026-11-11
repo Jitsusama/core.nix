@@ -11,7 +11,8 @@ use crate::{Root, rounded};
 const SUPPLIES: &str = "/sys/class/power_supply";
 
 /// The choice a kernel list marks, as `[sink]` in `source [sink]`, and
-/// every choice it lists.
+/// every choice it lists. A file saying one thing alone, as an older
+/// kernel's does, has that one in use.
 pub fn chosen(text: Option<String>) -> (Option<String>, Vec<String>) {
     let Some(text) = text else {
         return (None, vec![]);
@@ -26,7 +27,10 @@ pub fn chosen(text: Option<String>) -> (Option<String>, Vec<String>) {
             }
             plain.to_owned()
         })
-        .collect();
+        .collect::<Vec<String>>();
+    if chosen.is_none() && all.len() == 1 {
+        chosen = all.first().cloned();
+    }
     (chosen, all)
 }
 
@@ -361,6 +365,11 @@ mod tests {
         assert_eq!(
             chosen(Some("C [PD] PD_PPS".into())).0.as_deref(),
             Some("PD")
+        );
+        assert_eq!(
+            chosen(Some("Fast".into())).0.as_deref(),
+            Some("Fast"),
+            "an older kernel's one word is the one in use"
         );
         assert_eq!(chosen(None), (None, vec![]));
     }
