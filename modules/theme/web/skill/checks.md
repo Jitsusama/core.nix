@@ -140,7 +140,10 @@ fault "stretched and grotesque" names.
   its speed shown; each speed step and < and > change it without a jump;
   the bar seeks by pointer and by keys, and [ and ] land on each named
   chapter; scrolled up mid-play, the reader stays put while output arrives,
-  and every line printed so far can be scrolled back to.
+  and every line printed so far can be scrolled back to. At 0.25× new lines
+  fade in and the scroll glides; with reduced motion each step shows whole,
+  with nothing fading or gliding; in step mode it stops after each command
+  until n.
 
 ## Keys and Access
 

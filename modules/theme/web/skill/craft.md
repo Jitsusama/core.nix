@@ -478,7 +478,7 @@ Replays).
   keeps no scrollback, showing only its terminal's rows, so the site draws
   both.
 - **Speed is a control of the site's own**, a button in the player's band
-  showing "1×", stepping through 0.5×, 1×, 2× and 4× and back, and < and >
+  showing "1×", stepping through 0.25×, 0.5×, 1×, 2× and 4×, and < and >
   step it too. Changing it remakes the player at the same time with
   `startAt` and the new `speed`, so nothing jumps.
 - **Scrollback is a terminal that keeps it, or a log beside one.** Either
@@ -488,13 +488,22 @@ Replays).
   the kit's mono, appended with each line the cast prints, scrollable and
   holding its place while the reader is scrolled up. Either way k and j
   scroll it and G returns to the latest.
+- **Gentle arrival is the log's.** A terminal's canvas draws text at once
+  and can't fade it, so text that fades in is a log of lines in the page:
+  each new line enters with `opacity` from 0 on `--arrive` and `--ease`,
+  and the log follows it with `scrollTo({ behavior: "smooth" })`, only
+  while the reader is at the latest. xterm.js's `smoothScrollDuration`
+  glides its own scroll but fades nothing. Under reduced motion, drop both
+  and write each step's output whole.
+- **Step mode pauses on a marker per step**: a marker at each command's
+  start, from its input event or its prompt, and `pauseOnMarkers: true`.
+  n resumes to the next one; the band says "step 3 of 12" while it's on.
 - **Chapters are named in the cast**, as its `m` events, so the bar's
   markers, the Keys list and the twin's headings come from one list.
 - **Its band is text too**: play state, the speed, the time played and the
   whole and the chapter it's in, at `--step-small` and 4.5:1, off the
   terminal, covering none of it.
-- **Under reduced motion it never plays by itself**, and its twin is the
-  whole transcript, chapter by chapter.
+- **Its twin is the whole transcript**, chapter by chapter, step by step.
 
 ## Live Data, Still
 
