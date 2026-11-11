@@ -14,12 +14,15 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import NoReturn
+from typing import IO, NoReturn
 
 WAIT = 30
 runtime = Path(os.environ["XDG_RUNTIME_DIR"])
 path = runtime / "dictation.sock"
 said: queue.Queue[str] = queue.Queue()
+# Set once the shell says it found no socket to connect to, its one try
+# done, so nothing listens again before that try has come.
+tried = threading.Event()
 
 
 def fail(message: str) -> NoReturn:
@@ -61,6 +64,14 @@ def heard(state: str, case: str) -> None:
             return
 
 
+def errors(stream: IO[str]) -> None:
+    """Pass on what the shell says, noting each socket it found nobody at."""
+    for line in stream:
+        sys.stderr.write(line)
+        if "ServerNotFoundError" in line:
+            tried.set()
+
+
 def read(told: socket.socket) -> None:
     """Keep each state the shell says over its report socket."""
     for line in told.makefile("r"):
@@ -69,7 +80,13 @@ def read(told: socket.socket) -> None:
 
 reports = listening(runtime / "report.sock")
 server = listening()
-shell = subprocess.Popen([sys.argv[1], "-p", "shell.qml"])  # noqa: S603
+shell = subprocess.Popen(  # noqa: S603
+    [sys.argv[1], "-p", "shell.qml"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+)
+# Quickshell says its log on its output, its errors among it.
+if shell.stdout is None:
+    fail("the shell's log wasn't heard")
+threading.Thread(target=errors, args=(shell.stdout,), daemon=True).start()
 # Nothing's said until the report is open, so nothing said goes unheard.
 try:
     told, _ = reports.accept()
@@ -95,11 +112,16 @@ client.sendall(b"listening\n")
 heard("listening", "watching again")
 
 # Now nothing listens at all: the shell goes back to idle, tries once, and
-# doesn't come back on its own.
-client.close()
+# doesn't come back on its own. The socket goes before the service, so the
+# shell's one try finds nothing there, and nothing listens again until it
+# has said so: listening sooner, on a busy builder, took that one try.
+tried.clear()
 server.close()
 path.unlink()
+client.close()
 heard("idle", "the socket going")
+if not tried.wait(WAIT):
+    fail("the socket going: the shell never tried it again")
 server = listening()
 server.settimeout(3)
 try:
