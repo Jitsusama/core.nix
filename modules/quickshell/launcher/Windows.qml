@@ -246,8 +246,9 @@ Provider {
         return daemon.linesHeard + used.linesHeard;
     }
 
-    // While the launcher is shut, when each window was used, and only
-    // that: told a line only as the focus moves to a window, never as one
+    // While the launcher is shut, when each window was used and which has
+    // the focus, and only that: told a line only as the focus moves, of the
+    // window it went to and the one it left, never as one
     // is retitled, resized or scrolled past, so the shut shell wakes once
     // a focus move and makes no row, and the next opening's first frame
     // lists the windows in the order used now. On Joel's shell, held from
@@ -261,7 +262,7 @@ Provider {
 
         socket: daemon.socket
         kind: "window"
-        watching: ({ fields: ["order"] })
+        watching: ({ fields: ["order", "focused"] })
         live: !provider.wanted
         answersWhole: true
         onHeard: (changed, gone) => provider.heardUsed(changed, gone)
@@ -282,11 +283,15 @@ Provider {
         const windowsOnly = keys => keys.filter(key => key.startsWith("window:"));
         const records = windowsOnly(changed).map(key => used.held[key])
             .filter(record => record);
-        const unknown = HeldWindows.used(provider.held, records);
-        provider.reordered = provider.reordered || records.length > unknown.length;
+        const told = HeldWindows.used(provider.held, records);
+        provider.reordered = provider.reordered || records.length > told.unknown.length;
+        // A row says whether its window has the focus, so one whose focus
+        // turned is made again, but only once the rows are wanted.
+        for (const key of told.turned)
+            provider.unmade[key] = true;
         letGo(windowsOnly(gone));
-        if (unknown.length > 0)
-            provider.askWhole(unknown);
+        if (told.unknown.length > 0)
+            provider.askWhole(told.unknown);
     }
 
     // A whole answer says every window there is, so one held that it
@@ -328,8 +333,8 @@ Provider {
                 provider.unmade[key] = true;
         });
     }
-    // The windows held whole while the rows weren't wanted, whose rows
-    // are made once they are, by key.
+    // The windows held whole, or whose focus turned, while the rows
+    // weren't wanted, whose rows are made once they are, by key.
     property var unmade: ({})
     function madeAtLast() {
         const keys = Object.keys(provider.unmade).filter(key => key in provider.held.records);

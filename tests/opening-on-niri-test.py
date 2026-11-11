@@ -475,9 +475,6 @@ def test_a_kept_place_shown_again_weighs_only_the_row_that_changed(shell: Shell)
         settled(shell)
         shell.close_launcher()
         shell.launcher_until(lambda shown: shown.get("kept"))
-        # The first reopening after the shell starts makes Windows' rows
-        # again, whole, so it's the next that's shown as it was.
-        weighed_reopening(shell, lambda shown: "Gannet" in shown["rows"])
         again = weighed_reopening(shell, lambda shown: "Gannet" in shown["rows"])
         go.touch()
         changed = weighed_reopening(shell, lambda shown: RETITLED in shown["rows"])
