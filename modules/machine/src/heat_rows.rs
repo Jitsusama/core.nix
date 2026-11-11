@@ -617,14 +617,33 @@ impl Say<'_> {
             |v| self.degrees(v),
             &parts::heat_spark(&values),
         )];
-        if let Some(core) = hottest(&part.cores, |core| core.value) {
+        rows.extend(self.cores_row(part, &key));
+        for sensor in &part.sensors {
+            let said = self.degrees(sensor.value);
+            let name = self.sensor_name(&sensor.label);
+            rows.push(figure(
+                at(&format!("sensor/{}", sensor.n)),
+                name,
+                said,
+                Some(level(sensor.value, part)),
+                String::new(),
+            ));
+        }
+        rows.extend(self.limits(part, &key));
+        rows
+    }
+
+    /// A processor's cores, a step in from it, each a step in again.
+    fn cores_row(&self, part: &Part, key: &str) -> Option<Made> {
+        let at = |what: &str| format!("{key}/{what}");
+        hottest(&part.cores, |core| core.value).map(|core| {
             let levels: Vec<parts::Level> = part
                 .cores
                 .iter()
                 .map(|each| parts::level(each.value, part.high, part.crit, &part.id))
                 .collect();
             let count = part.cores.len().to_string();
-            rows.push(Made {
+            Made {
                 id: at("cores"),
                 kind: "holder",
                 name: self.name("cores", &[]),
@@ -659,19 +678,14 @@ impl Say<'_> {
                     })
                     .collect(),
                 ..Made::default()
-            });
-        }
-        for sensor in &part.sensors {
-            let said = self.degrees(sensor.value);
-            let name = self.sensor_name(&sensor.label);
-            rows.push(figure(
-                at(&format!("sensor/{}", sensor.n)),
-                name,
-                said,
-                Some(level(sensor.value, part)),
-                String::new(),
-            ));
-        }
+            }
+        })
+    }
+
+    /// A part's limits and its chip's warning, each a step in from it.
+    fn limits(&self, part: &Part, key: &str) -> Vec<Made> {
+        let at = |what: &str| format!("{key}/{what}");
+        let mut rows = Vec::new();
         let point = |id: &str, value: f64| {
             figure(
                 at(id),
@@ -1092,30 +1106,30 @@ mod tests {
         assert_eq!(
             ids(&ready, None),
             [
-                "processor:1",
+                "processor:0",
                 "throttled",
-                "disk:1",
+                "disk:0",
                 "fan:fan:1",
                 "fan:fan:2"
             ]
         );
-        let inside = ids(&ready, Some("processor:1"));
+        let inside = ids(&ready, Some("processor:0"));
         assert_eq!(
             inside,
             [
-                "processor:1/lately",
-                "processor:1/cores",
-                "processor:1/high",
-                "processor:1/critical"
+                "processor:0/lately",
+                "processor:0/cores",
+                "processor:0/high",
+                "processor:0/critical"
             ]
         );
-        let core = row(&ready, "processor:1/cores/0");
+        let core = row(&ready, "processor:0/cores/0");
         assert_eq!(
             (core["depth"].clone(), core["name"].clone()),
             (json!(2), json!("Core 0"))
         );
-        assert_eq!(row(&ready, "disk:1")["order"], json!(3 * SPACED));
-        assert_eq!(row(&ready, "processor:1/cores")["order"], json!(2 * SPACED));
+        assert_eq!(row(&ready, "disk:0")["order"], json!(3 * SPACED));
+        assert_eq!(row(&ready, "processor:0/cores")["order"], json!(2 * SPACED));
     }
 
     /// What's left to its limit beside it, a hotter core in its note, and
@@ -1123,7 +1137,7 @@ mod tests {
     #[test]
     fn a_part_says_its_heat_and_its_limits() {
         let ready = read(&mut Heat::default(), 71.0, 79.0, 1000);
-        let part = row(&ready, "processor:1");
+        let part = row(&ready, "processor:0");
         assert_eq!(
             part["side"],
             json!([{ "said": "71.0 \u{b0}C", "keep": 3 },
@@ -1146,7 +1160,7 @@ mod tests {
         );
         assert_eq!(part["drawer"]["eyebrow"], "on this machine \u{b7} sensor");
         assert_eq!(
-            row(&ready, "disk:1")["note"],
+            row(&ready, "disk:0")["note"],
             "sensor 2 hotter at 68.9 \u{b0}C"
         );
         let acts = &part["acts"];
@@ -1191,7 +1205,7 @@ mod tests {
         let mut heat = Heat::default();
         let before = read(&mut heat, 71.0, 79.0, 1000);
         let after = read(&mut heat, 71.6, 79.4, 2000);
-        for id in ["processor:1", "processor:1/cores", "processor:1/cores/0"] {
+        for id in ["processor:0", "processor:0/cores", "processor:0/cores/0"] {
             assert_eq!(
                 row(&before, id)["graph"],
                 row(&after, id)["graph"],
@@ -1209,14 +1223,14 @@ mod tests {
     #[test]
     fn the_last_reads_are_kept_only_while_watched() {
         let mut heat = Heat::default();
-        let lately = |ready: &Ready| row(ready, "processor:1/lately")["note"].clone();
+        let lately = |ready: &Ready| row(ready, "processor:0/lately")["note"].clone();
         let first = read(&mut heat, 71.0, 79.0, 1000);
         assert_eq!(lately(&first), "one read so far");
         read(&mut heat, 72.0, 79.0, 2000);
         let third = read(&mut heat, 75.0, 79.0, 3000);
         assert_eq!(lately(&third), "the last 3 reads");
         assert_eq!(
-            row(&third, "processor:1/lately")["side"],
+            row(&third, "processor:0/lately")["side"],
             json!([{ "said": "71.0 to 75.0 \u{b0}C" }])
         );
         let stale = read(&mut heat, 75.0, 79.0, 3000 + STALE_MS + 1);
