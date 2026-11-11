@@ -2,7 +2,9 @@
 # The stand-in hinge of lid-hinge.nix, made only once lid-hinge has looked
 # for one, as the sensor hub's devices come at a real boot; then its pipe
 # held open for the test's samples.
-until journalctl -b -u lid-hinge -o cat | grep -qF 'following'; do
+while true; do
+  log=$(journalctl -b -u lid-hinge -o cat) || true
+  [[ $log == *following* ]] && break
   sleep 0.2
 done
 hinge=/run/stand-in-iio/iio:device0

@@ -36,5 +36,7 @@ post)
   "$busctl" set-property "${manager[@]}" RuntimeWatchdogUSec t "$timeout" ||
     echo "couldn't start the runtime watchdog again after the sleep" >&2
   ;;
+# systemd-sleep says only pre or post, so there's nothing else to do.
+*) ;;
 esac
 exit 0

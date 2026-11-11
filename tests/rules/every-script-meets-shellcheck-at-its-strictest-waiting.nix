@@ -3,10 +3,6 @@
 # waiting while each is fixed. The check fails on a file holding more, and on
 # one holding fewer until its count here is lowered, so the list only shrinks.
 {
-  "hardware/dell-xps-14-da14260/camera/ir-camera-pipeline.sh" = 3;
-  "hardware/microsoft-surface-laptop-4-1958/firmware/capsule-is-for.sh" = 14;
-  "hardware/microsoft-surface-laptop-4-1958/firmware/tests/offers-its-firmware.sh" = 1;
-  "hardware/microsoft-surface-laptop-4-1958/watchdog-wakes-again.sh" = 1;
   "modules/asahi-firmware/unpack.sh" = 1;
   "modules/backlight/saves-while-open-test.sh" = 4;
   "modules/bat/tests/bat-reads-its-theme.sh" = 2;
@@ -82,9 +78,7 @@
   "tests/desktop/op-stand-in.sh" = 3;
   "tests/desktop/stand-in-virsh.sh" = 1;
   "tests/desktop/tuple-stand-in.sh" = 2;
-  "tests/vm/devices/lid-hinge-stand-in-hinge.sh" = 1;
   "tests/nested-niri.sh" = 1;
-  "tests/vm/network/network-revive-stand-in.sh" = 4;
   "tests/notices-on-niri.sh" = 1;
   "tests/spotify-recent-stand-in.sh" = 1;
   "tests/vm/guide/asahi-shaped-disk.sh" = 2;

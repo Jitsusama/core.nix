@@ -6,6 +6,7 @@
 # newer package's file under an old version, never builds.
 # usage: capsule-is-for.sh <capsule> <GUID> <version, as one number>
 set -euo pipefail
+shopt -s inherit_errexit
 
 capsule=$1
 guid=$2
@@ -34,18 +35,22 @@ guid_bytes() {
 }
 
 # EFI_FIRMWARE_MANAGEMENT_CAPSULE_ID_GUID, which every FMP capsule opens with.
-[ "$(bytes 0 16)" = "$(guid_bytes 6dcbd5ed-e82d-4c44-bda1-7194199ad92a)" ] ||
-  fail "isn't an FMP capsule"
+opening=$(bytes 0 16)
+fmp=$(guid_bytes 6dcbd5ed-e82d-4c44-bda1-7194199ad92a)
+[ "$opening" = "$fmp" ] || fail "isn't an FMP capsule"
 
 # The capsule's header, then the FMP header with no drivers and one image,
 # whose offset from the FMP header is the list's only entry.
 header=$(number 16 4)
-[ "$(number $((header + 4)) 2)" = 0 ] || fail "carries drivers, which this doesn't read"
-[ "$(number $((header + 6)) 2)" = 1 ] || fail "carries more than one image"
+drivers=$(number $((header + 4)) 2)
+[ "$drivers" = 0 ] || fail "carries drivers, which this doesn't read"
+images=$(number $((header + 6)) 2)
+[ "$images" = 1 ] || fail "carries more than one image"
 image=$((header + $(number $((header + 8)) 8)))
 
-[ "$(bytes $((image + 4)) 16)" = "$(guid_bytes "$guid")" ] ||
-  fail "updates another firmware than $guid"
+updates=$(bytes $((image + 4)) 16)
+named=$(guid_bytes "$guid")
+[ "$updates" = "$named" ] || fail "updates another firmware than $guid"
 
 # The image's header is 32 bytes at version 1; version 2 adds the hardware
 # instance and 3 the capsule support, 8 bytes each. The payload opens with
@@ -60,6 +65,7 @@ esac
 signed=$((payload + 8 + $(number $((payload + 8)) 4)))
 
 # FMP_PAYLOAD_HEADER: "MSS1", its own size, then the version.
-[ "$(bytes "$signed" 4)" = "4d535331" ] || fail "has no payload header after its signature"
+magic=$(bytes "$signed" 4)
+[ "$magic" = "4d535331" ] || fail "has no payload header after its signature"
 found=$(number $((signed + 8)) 4)
 [ "$found" = "$version" ] || fail "is version $found, not $version"
