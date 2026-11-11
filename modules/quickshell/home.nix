@@ -272,7 +272,6 @@ let
     "launcher/WarpSwitch.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
-    "launcher/WifiLink.js"
     "launcher/Links.js"
     "launcher/Nearby.js"
     "launcher/Sounds.js"

@@ -2140,7 +2140,7 @@ def wifi_drawer(desktop: Desktop, shot: str) -> None:
     """Open Wi-Fi on Lantern, connected, and shoot its drawer.
 
     Its band says where it is, what moves leads, and its access point's hardware address is
-    last (WifiLink.drawer).
+    last, as wifid serves it (modules/wifid/daemon/src/parts.rs).
     """
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
