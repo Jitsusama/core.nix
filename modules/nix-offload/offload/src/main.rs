@@ -8,7 +8,7 @@
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
 //! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
-//! (FLAKE ATTR... | DRV...)` to build a flake, or derivations, on the
+//! (FLAKE ATTR... | FLAKE#ATTR... | DRV...)` to build a flake, or derivations, on the
 //! builder, or on a machine nearby for systems this one can't build, as
 //! src/there.rs says. A build waiting for a builder
 //! says so in /run/nix-offload/wanted, which counts as queued work.
@@ -30,7 +30,9 @@
 //! the successor while the old one finishes what it has. The old one is
 //! given back once its helper ends, which it does once nothing reaches it,
 //! or once its time is up, and a run outliving its caller holds it until
-//! then.
+//! then. Told to hand over now (SIGUSR2, as `systemctl --user kill -s USR2
+//! --kill-whom=main` sends it), as when the builders' shapes changed, it
+//! does the same at once, however long the builder has left.
 //!
 //! Every 20 seconds it reads the machine queue. The moment a build or a VM
 //! check is queued or running, it asks the helper for a builder, names it
@@ -250,7 +252,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
                     [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
                     [--bulk] [--first] \
-                    (FLAKE ATTR... | DRV...) \
+                    (FLAKE ATTR... | FLAKE#ATTR... | DRV...) \
                     | nix-offload there [--never-ask] [--first] --changed \
                     [CHANGED-CHECKS ARGUMENT...] \
                     | nix-offload there [--never-ask] --run [--copy PATH]... \
@@ -271,6 +273,25 @@ static SUPERSEDED: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn superseded(_: libc::c_int) {
     SUPERSEDED.store(true, Ordering::SeqCst);
+}
+
+/// Set when the lender is told to hand its builder over now (SIGUSR2),
+/// as when the builders' shapes changed: a successor in the first shape
+/// stands, then the old builder finishes what it has, as at its end.
+static TOLD_TO_HAND_OVER: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn told_to_hand_over_now(_: libc::c_int) {
+    TOLD_TO_HAND_OVER.store(true, Ordering::SeqCst);
+}
+
+/// Hear a lender told to hand over now: `serve` alone, since every other
+/// command would end on SIGUSR2.
+fn hear_hand_overs() {
+    // SAFETY: the handler only stores to an atomic.
+    unsafe {
+        let handler = told_to_hand_over_now as *const () as libc::sighandler_t;
+        libc::signal(libc::SIGUSR2, handler);
+    }
 }
 
 /// Set when a relay is told to leave (SIGUSR1), since its builder hands
@@ -2145,6 +2166,7 @@ fn ends_superseded(reached: bool, finishing: bool, said: &mut bool) -> Option<Re
 /// ended superseded.
 fn serve(settings: &Settings) -> bool {
     hear_stops();
+    hear_hand_overs();
     let dir = &settings.dir;
     let mut machines = machines_of(settings);
     machines.show(None);
@@ -2181,6 +2203,8 @@ fn serve(settings: &Settings) -> bool {
         let mut reached = false;
         lent = match lent.take() {
             None => decide::lend(settings.hours, tick, hold, unreturned).and_then(|seconds| {
+                // Told to hand over with nothing lent, there's nothing to hand over.
+                TOLD_TO_HAND_OVER.store(false, Ordering::SeqCst);
                 let lent = lend(settings, &mut machines, tick.now, seconds);
                 if lent.is_none() {
                     hold = after_failing(tick);
@@ -2308,8 +2332,9 @@ fn outliving(builder: &Lent) -> bool {
 }
 
 /// The builder lent from this tick on: a successor once `builder`, given
-/// whether a build `reached` it this `tick`, hands over, or `builder`
-/// itself. The one handed over joins `leaving`.
+/// whether a build `reached` it this `tick`, hands over, as its time is
+/// nearly up or it's told to, or `builder` itself. The one handed over
+/// joins `leaving`.
 fn handed_over(
     settings: &Settings,
     machines: &mut Machines,
@@ -2319,13 +2344,33 @@ fn handed_over(
     hand_over_after: &mut u64,
     leaving: &mut Vec<Leaving>,
 ) -> Lent {
-    let Some(seconds) = decide::hands_over(
-        settings.hours,
-        tick,
-        builder.ends,
-        reached,
-        *hand_over_after,
-    ) else {
+    let (name, left) = (&builder.name, builder.ends.saturating_sub(tick.now) / 60);
+    let seconds = if TOLD_TO_HAND_OVER.swap(false, Ordering::SeqCst) {
+        let seconds = decide::hands_over_told(settings.hours, tick, builder.ends, *hand_over_after);
+        match seconds {
+            Some(_) => eprintln!("nix-offload: {name} is told to hand over, {left} minutes early"),
+            None => eprintln!(
+                "nix-offload: {name} is told to hand over, but can't: it lives to the deadline, \
+                 its time is up, or a successor failed to stand within the hour"
+            ),
+        }
+        seconds
+    } else {
+        let seconds = decide::hands_over(
+            settings.hours,
+            tick,
+            builder.ends,
+            reached,
+            *hand_over_after,
+        );
+        if seconds.is_some() {
+            eprintln!(
+                "nix-offload: {name} ends within {left} minutes and a build uses or wants it"
+            );
+        }
+        seconds
+    };
+    let Some(seconds) = seconds else {
         return builder;
     };
     let (kept, outgoing) = hand_over(settings, machines, builder, tick.now, seconds);
@@ -2346,8 +2391,7 @@ fn runs(helper: &mut Child) -> bool {
     helper.try_wait().ok().flatten().is_none()
 }
 
-/// Ask for a successor to `builder`, whose time is nearly up while a build
-/// uses or wants it, to live `seconds`. Once it stands, Nix is given its
+/// Ask for a successor to `builder`, to live `seconds`. Once it stands, Nix is given its
 /// line alone, and the old builder's helper is told to hand over, taking
 /// no new connection. It gives the builder lent from then on, and the one
 /// leaving, if any: without a successor, the old builder is kept as it was.
@@ -2360,10 +2404,8 @@ fn hand_over(
 ) -> (Lent, Option<Leaving>) {
     let name = format!("{}{now}", settings.prefix);
     eprintln!(
-        "nix-offload: {} ends within {} minutes and a build uses or wants it, so {name} is \
-         asked for to take over",
-        builder.name,
-        builder.ends.saturating_sub(now) / 60
+        "nix-offload: so {name} is asked for to take over from {}",
+        builder.name
     );
     let outliving = outliving(&builder);
     let Some(successor) = ask(settings, machines, name, now, seconds) else {

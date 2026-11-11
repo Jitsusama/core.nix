@@ -120,6 +120,18 @@ pub fn hands_over(
         .then_some(u64::from(longest))
 }
 
+/// With one lent asked to live until `ends`, told to hand over now
+/// (SIGUSR2), as when the builders' shapes changed and the ones lent
+/// should take the new one at once rather than at their end: the seconds
+/// its successor should live, whatever is left of its own time. As
+/// [`hands_over`], only one that lives `longest`, while its time isn't
+/// up, and not while waiting out a successor that failed.
+pub fn hands_over_told(hours: Hours, tick: Tick, ends: u64, not_before: u64) -> Option<u64> {
+    let longest = hours.longest?;
+    let within = (hours.first..hours.last).contains(&tick.into_day);
+    (tick.now < ends && within && tick.now >= not_before).then_some(u64::from(longest))
+}
+
 /// With one handed over and asked to live until `ends`: whether it's given
 /// back now, once its helper is `gone`, which it is once nothing reaches
 /// it, or once its time is up. One holding a run that outlives its caller
@@ -282,6 +294,25 @@ mod tests {
             None,
             "its time is up"
         );
+    }
+
+    #[test]
+    fn a_builder_told_to_hand_over_does_so_however_long_it_has_left() {
+        let tick = at(12 * 3600, false);
+        let ends = tick.now + 11 * 3600;
+        assert_eq!(hands_over_told(ANY_HOUR, tick, ends, 0), Some(12 * 3600));
+        assert_eq!(
+            hands_over_told(HOURS, tick, ends, 0),
+            None,
+            "it lives to the deadline"
+        );
+        assert_eq!(
+            hands_over_told(ANY_HOUR, tick, tick.now, 0),
+            None,
+            "its time is up"
+        );
+        let failed = hands_over_told(ANY_HOUR, tick, ends, tick.now + 1);
+        assert_eq!(failed, None, "a successor failed just now");
     }
 
     #[test]
