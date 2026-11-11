@@ -255,22 +255,35 @@ QtObject {
         // reopens until Joel asks: what restore.json kept, the parked among
         // it, until each is back here.
         const ids = list => list.sessions.map(one => one.id);
-        const restored = { boot: "the-last", sessions: [{ id: "01-kept", cwd: "/tmp" },
-            { id: "01-asleep", cwd: "/tmp", parked: true },
+        const restored = { boot: "the-last", sessions: [
+            { id: "01-kept", cwd: "/tmp", quest: "QEST-KEEL" },
+            { id: "01-asleep", cwd: "/tmp", parked: true, quest: "QEST-REEF" },
             { id: "01-ferried", cwd: "/tmp", carried: { from: "far", at: "" } },
             { id: "01-freed", cwd: "/tmp", released: { from: "attended", at: "" } }] };
-        const offered = (putOff, back) => {
-            const last = Places.lastBoot(restored, { boot: "this-one", putOff, back });
+        const offered = (putOff, here) => {
+            const last = Places.lastBoot(restored, { boot: "this-one", putOff, here });
             return [last.boot, ids(last)];
         };
         expect("what restore.json kept, the parked too, but the carried and given back",
             offered("", []), ["the-last", ["01-kept", "01-asleep"]]);
         expect("each until it's back here",
-            offered("", ["01-kept"]), ["the-last", ["01-asleep"]]);
+            offered("", [{ id: "01-kept", quest: "QEST-KEEL" }]), ["the-last", ["01-asleep"]]);
+        // A quest begun again since, in a session restore.json doesn't
+        // list, has its old one left, so it doesn't run twice; another of
+        // the last boot's back, or one with no quest, takes none's place.
+        expect("none whose quest a session begun since took over",
+            offered("", [{ id: "02-fresh", quest: "QEST-REEF" }])[1], ["01-kept"]);
+        expect("one of the last boot's back takes no other's place",
+            ids(Places.lastBoot({ boot: "the-last", sessions: restored.sessions.concat(
+                [{ id: "01-twin", cwd: "/tmp", quest: "QEST-KEEL" }]) },
+            { boot: "this-one", putOff: "", here: [{ id: "01-twin", quest: "QEST-KEEL" }] })),
+            ["01-kept", "01-asleep"]);
+        expect("one begun since with no quest takes none's place",
+            offered("", [{ id: "02-loose", quest: "" }])[1], ["01-kept", "01-asleep"]);
         expect("nothing of a boot Joel put off", offered("the-last", [])[1], []);
         expect("nothing of this boot's own", ids(Places.lastBoot(
             { boot: "this-one", sessions: restored.sessions },
-            { boot: "this-one", putOff: "", back: [] })), []);
+            { boot: "this-one", putOff: "", here: [] })), []);
 
         // Those offered apart from the last boot, whatever the boot: one
         // another machine carried here, and one pi's host gave back,

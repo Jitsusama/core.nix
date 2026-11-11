@@ -322,23 +322,32 @@ function mayBegin(text, now) {
 
 // The last boot's sessions Sessions to Reopen offers, and that boot: what
 // restore.json (`restored`, {boot, sessions}) kept, the parked among them,
-// but those offered apart (apartOf), and those `back` here already
-// (running or parked, by id) before the harness has written it again.
+// but those offered apart (apartOf), and those back here already
+// (`here`, running or parked, as { id, quest }) before the harness has
+// written it again. One whose quest has a session here that restore.json
+// doesn't list, begun since the boot ended, is left out too, since that
+// one took its place: reopened beside it, the quest ran twice under one
+// title (OSPHT4, 2026-11-11 11:27, when a quest's fresh session and its
+// old one both ran after a reboot).
 // None from this boot, `now.boot`, or from the boot Joel put off,
 // `now.putOff`. restore.json alone says it, as the harness writes it
 // whatever ends a boot: until 2026-11-09 a list taken by hand before a
 // planned reboot was read first, so a reboot nobody listed, as at 08:05
 // that day, went another way.
 function lastBoot(restored, now) {
-    const { boot, putOff, back } = now;
+    const { boot, putOff, here } = now;
     const from = restored.boot;
     if (boot === "" || from === "" || from === boot || from === putOff) {
         return { boot: from, sessions: [] };
     }
+    const listed = new Set(restored.sessions.map(one => one.id));
+    const back = new Set(here.map(one => one.id));
+    const replaced = new Set(here.filter(one => !listed.has(one.id) && one.quest)
+        .map(one => one.quest));
     return {
         boot: from,
         sessions: restored.sessions.filter(one => apartOf(one) === null
-            && !back.includes(one.id))
+            && !back.has(one.id) && !(one.quest && replaced.has(one.quest)))
     };
 }
 

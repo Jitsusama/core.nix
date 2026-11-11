@@ -481,8 +481,9 @@ Singleton {
     readonly property var lastBootOffered: Places.lastBoot(restoring, {
         boot: bootId,
         putOff: putOff,
-        back: running.concat(parked).filter(session => session.here)
-            .map(session => session.presence.session)
+        here: running.concat(parked).filter(session => session.here)
+            .map(session => ({ id: session.presence.session,
+                quest: session.presence.questInfo?.id ?? session.presence.quest ?? "" }))
     })
     readonly property string lastBootIs: lastBootOffered.boot
     readonly property var lastBoot: lastBootOffered.sessions
