@@ -304,19 +304,48 @@ fn built_from_big(
 }
 
 /// Builds pieces on builders, the daemon's when none are given, with no
-/// build here allowed.
+/// build here allowed, trying once more when the first try lost its
+/// builder. On 11 November two switches fell to building here, one of
+/// them compiling for minutes, each after a single corrupted stream on the
+/// tunnel to the one builder root's list names: Nix then drops that
+/// builder and, with none left, says local builds are disabled.
 fn away(
     config: &Config,
     pieces: &[String],
     builders: Option<&str>,
     what: &str,
 ) -> Result<(), Failure> {
-    let mut away = nix(config);
-    away.args(["build", "--no-link", "--max-jobs", "0"]);
-    if let Some(builders) = builders {
-        away.args(["--builders", builders]);
+    let once = || {
+        let mut away = nix(config);
+        away.args(["build", "--no-link", "--max-jobs", "0"]);
+        if let Some(builders) = builders {
+            away.args(["--builders", builders]);
+        }
+        told(config, away, what, pieces)
+    };
+    match once() {
+        Err(failed) if lost_its_builder(&failed) && !run::stopping() => {
+            eprintln!("{what} lost its builder, so it's tried once more");
+            once()
+        }
+        ran => ran,
     }
-    told(config, away, what, pieces)
+}
+
+/// Whether a build on the builders failed because its builder went away
+/// rather than because a piece did: what Nix says when a builder's
+/// connection breaks, and when none is left to take a piece. A piece no
+/// builder takes says the last too, and is only tried once more.
+fn lost_its_builder(failed: &Failure) -> bool {
+    const SAID: [&str; 3] = [
+        "connection corrupted",
+        "cannot build on",
+        "local builds are disabled",
+    ];
+    std::iter::once(&failed.why)
+        .chain(&failed.lines)
+        .map(|line| line.to_lowercase())
+        .any(|line| SAID.iter().any(|said| line.contains(said)))
 }
 
 /// Builds pieces with `build`, saying in the journal how long it took and
@@ -1105,6 +1134,26 @@ mod tests {
             "building the small pieces beside the big failed; they're built after the big \
              pieces instead\n  error: unable to download 'https://x': TLS",
             "a failure beside the big didn't say why, or dropped its lines"
+        );
+    }
+
+    #[test]
+    fn only_a_build_whose_builder_went_away_is_tried_again() {
+        let failed = |line: &str| Failure {
+            why: "building the system on the machine's builders failed".to_owned(),
+            lines: vec![line.to_owned()],
+        };
+        for lost in [
+            "Connection to ::1 port 31122: Connection corrupted",
+            "error: cannot build on 'ssh-ng://hook@nix-offload': error: ...",
+            "       Reason: local builds are disabled (max-jobs = 0)",
+        ] {
+            assert!(lost_its_builder(&failed(lost)), "not seen as lost: {lost}");
+        }
+        let broke = "error: builder for '/nix/store/x-a.drv' failed with exit code 1";
+        assert!(
+            !lost_its_builder(&failed(broke)),
+            "a piece that broke was taken for a lost builder"
         );
     }
 

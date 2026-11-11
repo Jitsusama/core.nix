@@ -4,9 +4,10 @@
 //! browser's window of its own belongs to when that names none, as the
 //! shell's BrowserWindows.js found it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
+use programs::notify::Notify;
 use programs::{entry, xdg};
 
 /// What a window's row needs of a desktop entry.
@@ -176,6 +177,60 @@ pub fn tidy<'a>(title: &'a str, program: &str) -> &'a str {
         }
     }
     title
+}
+
+/// What a watched folder is to whoever follows the entries.
+#[derive(Default)]
+struct Watched {
+    /// Whether it's a folder of entries, whose every change counts.
+    entries: bool,
+    /// The links in it that a data folder resolves through, by name, as
+    /// `current-system` in `/run`: replaced, the entries changed.
+    links: Vec<String>,
+}
+
+/// Calls `changed` on a thread of its own each time the entries in the
+/// data folders `folders` change, for as long as the program runs: each
+/// folder of entries `looked`, as [`Entries::read`] answers it, and each
+/// link a data folder is reached through. Every daemon naming programs
+/// by their entries follows them this way, so each hears a switch alike.
+/// Answers why it can't, where inotify isn't there.
+pub fn follow(
+    folders: &[PathBuf],
+    looked: Vec<PathBuf>,
+    mut changed: impl FnMut() + Send + 'static,
+) -> std::io::Result<()> {
+    let notify = Notify::new()?;
+    let mut watched: HashMap<i32, Watched> = HashMap::new();
+    for folder in looked {
+        if let Some(watch) = notify.watch(&folder) {
+            watched.entry(watch).or_default().entries = true;
+        }
+    }
+    // On NixOS each data folder is a store path reached through a
+    // profile's links, so a switch says nothing in the folder itself: the
+    // link it replaces is heard instead.
+    for (folder, name) in folders.iter().flat_map(|folder| xdg::links_toward(folder)) {
+        if let Some(watch) = notify.watch(&folder) {
+            let links = &mut watched.entry(watch).or_default().links;
+            if !links.contains(&name) {
+                links.push(name);
+            }
+        }
+    }
+    std::thread::spawn(move || {
+        while let Ok(changes) = notify.changes() {
+            let entries = changes.iter().any(|(watch, name)| {
+                watched
+                    .get(watch)
+                    .is_some_and(|one| one.entries || one.links.contains(name))
+            });
+            if entries {
+                changed();
+            }
+        }
+    });
+    Ok(())
 }
 
 #[cfg(test)]

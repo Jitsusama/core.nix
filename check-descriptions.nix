@@ -247,8 +247,8 @@
     bat colours code in the account's theme from a cache built once, saying nothing, delta finds
     the theme through it too, and a switch builds no cache of its own
   '';
-  batteries-leave-time-to-power-off = ''
-    UPower powers a laptop off at 5%, before it goes flat
+  batteries-leave-time-to-hibernate = ''
+    UPower hibernates a laptop at 5%, before it goes flat, keeping its work
   '';
   bluetooth-firmware-reaches-the-disk-prompt-dell-xps-14-da14260 = ''
     the XPS 14's Bluetooth firmware for the disk prompt is in the machine's firmware
@@ -1403,7 +1403,8 @@
     the notices daemon judges each notice arriving by its sender's level and Quiet, keeps a thousand
     with none waiting dropped, tells a watch each as one record, says an act on the bus with the
     token first, never takes the name from another server, and keeps its history and ids over a
-    restart
+    restart; each notice's rows list its card's acts in its order, in three places each worded for
+    its list, signed as the desktop knows its sender
   '';
   notices-passes-clippy = ''
     clippy finds nothing in the notices daemon or its tests
@@ -1416,7 +1417,8 @@
   notices-starts-in-each-account = ''
     each graphical account's session starts the notices daemon from its socket, the bus starts it
     for a notice sent while it's down, it restarts with no start limit, and no QML of the shell
-    serves the notifications name besides; it reads the shell's levels, Quiet's file and its socket
+    serves the notifications name besides; it reads the shell's levels, Quiet's file, its socket,
+    the launcher's words and each program's mark
   '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes
@@ -1719,9 +1721,11 @@
     it ignores, as each is asked, reads when zoxide's database saw each folder, ssh's config
     and known hosts, and the ssh lines of zsh's history as each is asked, reads what a program
     has open as it's asked, and a list its program tells of again only once told it changed, or as
-    each ask comes while it names a process that never told, asks
-    what a file shows of one file-preview it keeps, again only once the file changed, follows a
-    data folder through each link a switch replaces, and refuses an ask or a kind it doesn't know
+    each ask comes while it names a process that never told, asks what a file shows of one
+    file-preview it keeps, again only once the file changed, says a file that file-preview doesn't
+    answer within its deadline as not answering, stopping it and what it waits on, and goes on to
+    the next, follows a data folder through each link a switch replaces, and refuses an ask or a
+    kind it doesn't know
   '';
   programs-passes-clippy = ''
     clippy finds nothing in the programs daemon or its tests
@@ -2018,15 +2022,16 @@
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
   '';
   sound-hears-only-what-can-be-heard = ''
-    the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
-    display, and never listens to a headset's microphone while it plays music; a device's drawer
+    the launcher's Sound lists the rows the sound daemon serves, in its order, each stepping into
+    its device's parts, made once as wanted and again only as its record changes, and never
+    listens to a headset's microphone while it plays music; a device's drawer
     says where it is and which way it goes, its state, its volume in decibels, its parts, how it
     keeps time while it runs (dropouts warned past none, load to three significant digits from
     its busy time over the cycle or warned as over 100% where it didn't finish, a follower in
     its driver's cycle), its format, the kernel's facts, and its priority and identifiers last,
     never whether it's muted nor its level; and channels at one level are balanced, a stereo
-    pair's otherwise named without front; and a device's volume moving remakes only its own
-    device's row
+    pair's otherwise named without front; and a device's row served anew remakes only its own
+    row
   '';
   sound-hears-pipewires-devices = ''
     the sound daemon makes each output and input PipeWire says a device and leaves out a program's

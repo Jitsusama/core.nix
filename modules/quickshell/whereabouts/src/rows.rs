@@ -15,9 +15,12 @@
 //! "Location. Inside: Town, How It Knows, Set It by Hand, Find It Again,
 //! Copy"): its town and its country, how it knows and when it was
 //! located, setting it by hand and finding it again, each an ask on this
-//! socket, and Copy, of its position, last. Each holds its place by a
-//! number spaced by 1024 that never moves, so a row that comes or goes
-//! moves no other.
+//! socket, and Copy, of its position, last. They're handed over in that
+//! order and placed by the ready-rows crate's Kept, which keeps each
+//! row's order where it can, so a row that comes or goes moves no other.
+//! A figure copies what it says, and an act is `{key, ask}` or `{key,
+//! copy}`: the shell reads its verb, and what it asks Joel, by its key
+//! (ready-rows.md's acts).
 //!
 //! Nothing that reads the clock is worded: when it was found is a time,
 //! said by the shell, and only turns from how long ago to its day and
@@ -35,8 +38,6 @@ pub const ON: &str = "row:on:location";
 const ROW: &str = "on:location";
 /// What marks Location, a glyph role in the theme.
 const GLYPH: &str = "location";
-/// The gap between one row's order and the next's.
-const SPACED: u64 = 1024;
 
 /// Every row of Location's, for where the laptop is, the zone the clock
 /// keeps, and the time now in milliseconds.
@@ -102,7 +103,7 @@ fn on(
     };
     let mut row = json!({
         "key": ON,
-        "row": ROW,
+        "thing": ROW,
         "place": "on",
         "kind": "location",
         "name": words.name,
@@ -130,44 +131,45 @@ fn on(
     row
 }
 
-/// One of Location's own rows, the `at`th in its order.
-fn row(id: &str, at: u64, name: &str, side: &Value) -> Value {
+/// One of Location's own rows, saying `side`, drawn as a figure is.
+fn row(id: &str, name: &str, side: &Value) -> Value {
     json!({
         "key": format!("row:location:{id}"),
-        "row": format!("location:{id}"),
+        "thing": format!("location:{id}"),
         "place": "location",
         "kind": "location",
         "parent": ON,
         "depth": 1,
-        "order": at * SPACED,
         "name": name,
+        "hue": "voice",
         "side": side,
     })
 }
 
-/// One of Location's acts, as a row of its own, asking this daemon `act`.
-fn act(id: &str, at: u64, words: &Words, side: &Value, ask: Option<Value>) -> Value {
+/// One of Location's own rows saying a figure, which it copies in the
+/// words it says, as every figure does.
+fn figure(id: &str, name: &str, said: &str) -> Value {
+    let mut row = row(id, name, &json!([{"said": said}]));
+    row["acts"] = json!([{"key": "verb:copy", "copy": said}]);
+    row
+}
+
+/// One of Location's acts, as a row of its own: what it does, `done`, an
+/// ask of this daemon or words to copy, keyed by the act.
+fn act(id: &str, words: &Words, side: &Value, done: (&str, Value)) -> Value {
     let named = words.act(id);
-    let mut done = json!({
-        "key": format!("verb:location:{id}"),
-        "name": named.name,
-        "verb": named.verb,
-        "glyph": named.glyph,
-    });
-    if let Some(ask) = ask {
-        done["ask"] = ask;
-    }
-    let mut row = row(id, at, &named.name, side);
-    row["row"] = json!(format!("verb:location:{id}"));
+    let key = format!("verb:location:{id}");
+    let (form, what) = done;
+    let mut row = row(id, &named.name, side);
+    row["thing"] = json!(key);
     row["glyph"] = json!(named.glyph);
     row["hue"] = json!("action");
-    row["acts"] = json!([done]);
+    row["acts"] = json!([{"key": key, form: what}]);
     row
 }
 
 /// The rows inside Location's.
 fn inside(here: Option<&Fix>, words: &Words, now: u64, side: &str, how_near: &str) -> Vec<Value> {
-    let said = |said: &str| json!([{"said": said}]);
     let town = here.map_or_else(
         || side.to_owned(),
         |fix| {
@@ -176,53 +178,39 @@ fn inside(here: Option<&Fix>, words: &Words, now: u64, side: &str, how_near: &st
                 .unwrap_or_else(|| words.said("unnamed", &[]))
         },
     );
-    let mut rows = vec![row("town", 1, words.name("town"), &said(&town))];
+    let mut rows = vec![figure("town", words.name("town"), &town)];
     if let Some(country) = here.and_then(|fix| fix.country.as_deref()) {
-        rows.push(row("country", 2, words.name("country"), &said(country)));
+        rows.push(figure("country", words.name("country"), country));
     }
     let knows = match here {
         None => words.said("notFound", &[]),
         Some(fix) if fix.hand => words.said("hand", &[]),
         Some(_) => words.said("knows", &[("within", how_near)]),
     };
-    rows.push(row("knows", 3, words.name("knows"), &said(&knows)));
+    rows.push(figure("knows", words.name("knows"), &knows));
+    // When it was found is a time the shell words, so it copies only as
+    // the shell says it (Now.qml).
     if let Some(fix) = here {
         rows.push(row(
             "located",
-            4,
             words.name("located"),
             &json!([located(fix, now)]),
         ));
     }
     // Where GeoClue can't find the laptop, or finds it wrong, Joel names
-    // its town, and asks GeoClue again once he's moved on.
-    let mut set = act(
-        "set",
-        5,
-        words,
-        &json!([]),
-        Some(json!({"ask": "act", "act": "set"})),
-    );
-    set["acts"][0]["asks"] = json!(words.act("set").asks);
-    set["acts"][0]["chip"] = json!(words.name);
-    rows.push(set);
+    // its town, the words the shell asks him for handed over with the ask;
+    // and asks GeoClue again once he's moved on.
+    let ask = |act: &str| ("ask", json!({"ask": "act", "act": act}));
+    rows.push(act("set", words, &json!([]), ask("set")));
     if here.is_some_and(|fix| fix.hand) {
-        let again = act(
-            "again",
-            6,
-            words,
-            &json!([]),
-            Some(json!({"ask": "act", "act": "again"})),
-        );
-        rows.push(again);
+        rows.push(act("again", words, &json!([]), ask("again")));
     }
     // An act to copy, last as Copy always is, of what the town alone
     // can't say: where on a map it is.
     if let Some(fix) = here {
         let where_on_a_map = position(fix);
-        let mut copy = act("copy", 7, words, &said(&where_on_a_map), None);
-        copy["acts"][0]["copy"] = json!(where_on_a_map);
-        rows.push(copy);
+        let side = json!([{"said": where_on_a_map}]);
+        rows.push(act("copy", words, &side, ("copy", json!(where_on_a_map))));
     }
     rows
 }

@@ -14,11 +14,19 @@
 //! - [`store`]: the history on disk, the shell's taken once.
 //! - [`daemon`]: all of it behind one lock, an arrival and the shell's asks.
 //! - [`bus`]: the server on the session bus.
+//! - [`body`]: what a notice said, plain and styled, and its links.
+//! - [`words`]: the launcher's vocabulary, which rows are said in.
+//! - [`sender`]: who sent a notice, as its row and card sign it.
+//! - [`row`]: each notice's rows, in the launcher's one form.
 
+pub mod body;
 pub mod bus;
 pub mod daemon;
 pub mod held;
 pub mod judged;
 pub mod notice;
 pub mod picture;
+pub mod row;
+pub mod sender;
 pub mod store;
+pub mod words;

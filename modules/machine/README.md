@@ -108,6 +108,9 @@ ends.
 | `firmware-fix`     | `attribute`, `patience_s`  | fwupd fixes the security attribute fwupd names so    |
 | `firmware-undo`    | `attribute`, `patience_s`  | fwupd puts that fix back                             |
 | `firmware-setup`   | `patience_s`               | logind restarts into the firmware's own setup        |
+| `brightness`       | `share`, `device`          | sets a backlight to that share of its most           |
+| `night-light`      | `on`                       | the backlight program warms the screen after sunset  |
+| `follow-the-room`  | `follows`                  | the backlight program steers the screen by the room  |
 | `restart-unit`     | `unit`                     | restarts a user unit the shell may, once queued      |
 | `disk-keep`        | `path`, `reason`           | the account's guard keeps the folder from clearing   |
 | `disk-unkeep`      | `path`                     | the guard lets the folder go again                   |
@@ -123,6 +126,14 @@ its rules say to.
 
 A charge limit's files are written in the order the kernel takes them,
 which refuses a start at or above the stop.
+
+A brightness goes through logind's session, as `brightnessctl` does,
+to the backlight named, or the first the kernel lists, never below one
+step, and the backlight is read again before it's answered. The night
+light and following the room are the backlight program's own properties
+(modules/backlight), set on the session's bus as `busctl --user
+set-property` would; it writes its files as they change, so a watch of
+`brightness` or `warmth` hears of it. Screens spawns neither.
 
 A restart goes through systemd's user bus, never a spawned `systemctl`,
 and is answered once systemd has queued it. Only the units in

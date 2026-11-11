@@ -11,14 +11,15 @@
 }:
 {
   # UPower waits 20 s before its action, and under load 1% of a laptop's
-  # battery lasts about a minute, so acting at 2% acts after it's flat.
-  batteries-leave-time-to-power-off =
+  # battery lasts about a minute, so acting at 2% acts after it's flat. A
+  # sleep keeps nothing once the battery's gone, so it hibernates.
+  batteries-leave-time-to-hibernate =
     let
       inherit ((bareNixos [ self.nixosModules.power-profiles-daemon ]).config.services) upower;
     in
-    holds "batteries-leave-time-to-power-off"
-      "UPower acts below 5% or by sleeping, so a laptop under load goes flat first."
-      (upower.enable && upower.percentageAction >= 5 && upower.criticalPowerAction == "PowerOff");
+    holds "batteries-leave-time-to-hibernate"
+      "UPower acts below 5% or doesn't hibernate, so a laptop goes flat first or loses its work."
+      (upower.enable && upower.percentageAction >= 5 && upower.criticalPowerAction == "Hibernate");
 }
 # The daemon's package and the XPS 14's are Linux's alone, so a Mac can't
 # read their units.

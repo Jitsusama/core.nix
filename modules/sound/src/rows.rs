@@ -318,13 +318,27 @@ pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
 }
 
 /// What a device is called, saying the thing itself (Sound.qml's `named`).
+/// A microphone with the noise around it taken out is the one it hears,
+/// named for it (docs/glossary.md's noise cancelled), so it never reads
+/// as that microphone.
 fn named(device: &Device, devices: &[Device], words: &Words) -> String {
     let own = device.nicknamed();
     let shared = !device.sink
         && devices
             .iter()
             .any(|other| other.sink && other.nicknamed() == own);
-    match called(device.name, shared) {
+    let Some(heard) = device.name.strip_prefix("noise-cancelled.") else {
+        return called_as(device.name, own, shared, words);
+    };
+    let heard = called_as(heard, own, shared, words);
+    let name = words.name("sound:called:noise-cancelled", &[("device", &heard)]);
+    if name.is_empty() { heard } else { name }
+}
+
+/// What the device of node `name` is called, by the vocabulary's word
+/// for it, or `own` where it has none.
+fn called_as(name: &str, own: &str, shared: bool, words: &Words) -> String {
+    match called(name, shared) {
         "" => own.to_owned(),
         word => {
             let name = words.name(&format!("sound:called:{word}"), &[("device", own)]);
@@ -413,6 +427,7 @@ mod tests {
                 {"id": "sound:called:speakers", "name": "Built-In Speakers"},
                 {"id": "sound:called:microphones", "name": "Built-In Microphones"},
                 {"id": "sound:called:its-microphone", "name": "{device} Microphone"},
+                {"id": "sound:called:noise-cancelled", "name": "{device}, Noise Cancelled"},
             ]})
             .to_string(),
         )
@@ -431,6 +446,26 @@ mod tests {
         rows.iter()
             .map(|row| row["name"].as_str().unwrap_or(""))
             .collect()
+    }
+
+    // A microphone with the noise around it taken out is the one it hears,
+    // named for it, so it never reads as the microphone itself.
+    #[test]
+    fn a_noise_cancelled_microphone_is_named_for_the_one_it_hears() {
+        let none = json!({});
+        let heard = "alsa_input.pci.HiFi__Mic__source";
+        let records = [
+            device(heard, false, "Mic", &none),
+            device(&format!("noise-cancelled.{heard}"), false, "Mic", &none),
+        ];
+        assert_eq!(
+            names(&rows(&records, &words())),
+            [
+                "Built-In Microphones",
+                "Built-In Microphones, Noise Cancelled"
+            ],
+            "the noise-cancelled microphone should be named for the one it hears"
+        );
     }
 
     // The machine's own are named for the thing itself, a microphone

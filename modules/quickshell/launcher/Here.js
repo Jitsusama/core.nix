@@ -204,38 +204,3 @@ function facts(here, now, said, told) {
 function besideNote(plate, noteSaysHowNear) {
     return noteSaysHowNear ? plate.filter(fact => fact.id !== "accuracy") : plate;
 }
-
-// Location's own rows as whereabouts serves them (whereabouts/src/rows.rs),
-// out of what it holds by key, each in the place its order gives it.
-// Their orders are fixed, spaced by SPACED, so each is a slot and none is
-// sorted; the ready-rows plumbing, once it lands, places them for every
-// daemon alike.
-const SPACED = 1024;
-function placed(records, place) {
-    const slots = [];
-    for (const key of Object.keys(records ?? {})) {
-        const row = records[key];
-        if (row?.place === place && Number.isFinite(row.order)) {
-            slots[Math.round(row.order / SPACED)] = row;
-        }
-    }
-    return slots.filter(row => row !== undefined);
-}
-
-// What a served row's side says: each item's words, a time worded as the
-// launcher words it, `ago` how long ago and `moment` its day and time, so
-// the daemon never words what reads the clock. Items join as a side's run
-// does.
-function sideSaid(side, now, told) {
-    const said = item => {
-        if (item?.at === undefined) {
-            return item?.said ?? "";
-        }
-        if (item.as === "ago") {
-            return told.ago(item.at, now);
-        }
-        return [told.day(item.at, now), told.clock(item.at)].filter(part => part !== "")
-            .join(" ");
-    };
-    return (side ?? []).map(said).filter(part => part !== "").join(" \u00b7 ");
-}

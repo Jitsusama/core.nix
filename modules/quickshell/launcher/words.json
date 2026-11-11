@@ -5458,7 +5458,11 @@
         "knows": "found, {within}",
         "elsewhere": "keeps {zone} \u00b7 not following",
         "nearEdge": "near a time zone's edge",
-        "foundWithin": "found {within}"
+        "foundWithin": "found {within}",
+        "finding": "finding {words}\u2026",
+        "nowhere": "no place is called {words}",
+        "unasked": "couldn't ask where {words} is",
+        "unkept": "{words} couldn't be set"
       },
       "tells": {
         "leftOut": "Its source gives no {missing}.",
@@ -5996,7 +6000,8 @@
         "joined-usb": "USB",
         "joined-display": "display",
         "paused-at": "paused at {level}",
-        "balanced": "balanced"
+        "balanced": "balanced",
+        "down": "not answering"
       }
     },
     {
@@ -6116,6 +6121,16 @@
       "id": "sound:called:its-microphone",
       "in": "sound",
       "name": "{device} Microphone"
+    },
+    {
+      "id": "sound:called:noise-cancelled",
+      "in": "sound",
+      "name": "{device}, Noise Cancelled"
+    },
+    {
+      "id": "sound:down",
+      "in": "sound",
+      "name": "The Sound Daemon"
     },
     {
       "id": "sound:resolution",

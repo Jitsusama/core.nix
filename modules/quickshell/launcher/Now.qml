@@ -311,46 +311,8 @@ Provider {
         const placed = differs ? elsewhere : within;
         const note = here ? placed : unfound;
         const now = clock.date.getTime();
-        // Its rows inside, as whereabouts serves them worded and in order
-        // (whereabouts/src/rows.rs), so only drawn here: a figure copies
-        // what it shows, and an act asks whereabouts. When it was found is
-        // a time, worded here as the clock turns.
-        const inside = () => Here.placed(Location.held, "location").map(served => {
-            const act = served.acts?.[0];
-            const shown = Here.sideSaid(served.side, now, hereTold);
-            if (!act)
-                return copyRow({ key: served.row, name: served.name, side: shown, copy: "" });
-            if (act.copy !== undefined)
-                return copyRow({
-                    key: served.row,
-                    name: served.name,
-                    verb: act.verb,
-                    glyph: Theme.glyph[act.glyph] ?? "",
-                    side: shown,
-                    copy: act.copy,
-                    figure: false,
-                    plain: false
-                });
-            const asked = act.ask?.act;
-            return thing(Object.assign({
-                key: served.row,
-                verb: act.verb,
-                name: served.name,
-                glyph: Theme.glyph[act.glyph] ?? "",
-                hue: served.hue
-            }, asked === "set" ? {
-                // Where GeoClue can't find the laptop, or finds it wrong,
-                // Joel names its town.
-                ask: act.asks ?? "",
-                chip: act.chip ?? "",
-                state: () => Location.told,
-                given: words => Location.setByHand(words)
-            } : {
-                // And asks GeoClue again once he's moved on.
-                stays: true,
-                run: () => Location.findAgain()
-            }));
-        });
+        // Its rows inside, as whereabouts serves them (`whereabouts`).
+        const inside = () => whereabouts.inside("row:on:location");
         // Its plate: how it was found, then its kind, as an eyebrow says
         // where then what, and what of it the side doesn't say; with
         // nothing found, none. It reads here as it's drawn, since the
@@ -370,6 +332,58 @@ Provider {
                 glyph: Theme.glyph.location
             }, plate ? { thing: true, drawer: plate } : {}), inside));
     })
+
+    // Location's own rows, inside its row, as whereabouts serves them
+    // worded and placed (whereabouts/src/rows.rs), held over a connection
+    // of their own whether or not the launcher's open, so stepping in finds
+    // them held. Each is made as every place's are, a figure copying what
+    // it says and an act asked back on the same socket (ReadyRows.qml).
+    ReadyRows {
+        id: whereabouts
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/location.sock`
+        place: "location"
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+        make: (row, key) => whereabouts.thing(row, key, provider.locationsOwn(row))
+    }
+    // What whereabouts serves, for a reader told of each change it hears.
+    readonly property alias whereaboutsRows: whereabouts
+
+    // What a row of Location's own takes of the launcher's past what's
+    // served: Set It by Hand asks Joel for a town first, in the words its
+    // key has, and says how it went at the foot; Copy reads as an act
+    // rather than a figure; and when it was found, a time the shell words,
+    // copies it as said.
+    function locationsOwn(row) {
+        switch (row.thing) {
+        case "verb:location:set":
+            return {
+                ask: Words.of(row.thing).ask ?? "",
+                chip: Words.name("location"),
+                state: () => Location.told,
+                given: words => Location.setByHand(words),
+                stays: false,
+                run: undefined
+            };
+        case "verb:location:copy":
+            return { figure: false, plain: false };
+        case "location:located": {
+            const said = () => whereabouts.sideOf(row);
+            return {
+                verb: "copy",
+                figure: true,
+                plain: true,
+                now: true,
+                copies: said,
+                run: () => {
+                    if (said() !== "")
+                        Quickshell.clipboardText = said();
+                }
+            };
+        }
+        }
+        return {};
+    }
 
     // Location's plate for here, as `location` says it.
     function plateOf(here, now, differs) {

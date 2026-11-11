@@ -7,17 +7,27 @@
 //! started again for the next ask, but not within a minute of the last
 //! that did, so one that can't start isn't started again and again, and
 //! each record says whether it answered (`answering`), so a drawer says
-//! it isn't rather than leaving its facts unsaid.
+//! it isn't rather than leaving its facts unsaid. One that says nothing
+//! of a file within `ANSWERS_WITHIN` is stopped, as stuck on it, and that
+//! file is said as not answering, unasked, until it changes, so one file
+//! never holds up every read behind it (Y2YBTS, 2026-11-11).
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
 /// How long after a file-preview stops unanswered none is started.
 const RESTING: Duration = Duration::from_secs(60);
+
+/// How long file-preview has to say what a file shows before it's taken
+/// as stuck on it: a picture, a page or a frame is said within a second.
+const ANSWERS_WITHIN: Duration = Duration::from_secs(3);
 
 /// The path a key names, whole and on one line, or none.
 #[must_use]
@@ -56,11 +66,20 @@ fn facts(said: Option<&Value>) -> Value {
 struct Serving {
     child: Child,
     input: ChildStdin,
-    output: BufReader<ChildStdout>,
+    /// Each line it says, read on a thread of its own, so an answer is
+    /// waited on only so long.
+    said: Receiver<String>,
 }
 
+// Its whole group is stopped, so a pdftoppm or ffmpeg it waits on, stuck
+// on the same file, goes with it rather than running on.
 impl Drop for Serving {
     fn drop(&mut self) {
+        if let Ok(group) = i32::try_from(self.child.id()) {
+            // SAFETY: kill takes no pointers; the group is the child's own,
+            // made as it started, and not yet waited on, so not reused.
+            unsafe { libc::kill(-group, libc::SIGKILL) };
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -73,6 +92,8 @@ pub struct Previewer {
     serving: Option<Serving>,
     /// When the last one stopped before answering anything.
     stopped: Option<Instant>,
+    /// Each file one was stuck on, with when it had last changed then.
+    stuck: HashMap<String, Option<u64>>,
 }
 
 impl Previewer {
@@ -100,22 +121,39 @@ impl Previewer {
     /// What file-preview says of a path, starting one where none runs, or
     /// none where none answers.
     fn show(&mut self, path: &str) -> Option<Value> {
+        if let Some(changed) = self.stuck.get(path) {
+            if *changed == changed_ms(path) {
+                return None;
+            }
+            self.stuck.remove(path);
+        }
         if self.serving.is_none() {
             self.serving = self.start();
         }
         let serving = self.serving.as_mut()?;
-        let mut line = String::new();
-        let answered = writeln!(serving.input, "show {path}")
-            .and_then(|()| serving.input.flush())
-            .and_then(|()| serving.output.read_line(&mut line))
-            .is_ok_and(|read| read > 0);
-        if !answered {
-            self.serving = None;
-            self.stopped = Some(Instant::now());
-            eprintln!("programs: file-preview stopped before answering; drawers say so");
-            return None;
+        let asked = writeln!(serving.input, "show {path}").and_then(|()| serving.input.flush());
+        let said = match asked {
+            Ok(()) => serving.said.recv_timeout(ANSWERS_WITHIN),
+            Err(_) => Err(RecvTimeoutError::Disconnected),
+        };
+        match said {
+            Ok(line) => Some(serde_json::from_str(&line).unwrap_or(Value::Null)),
+            Err(RecvTimeoutError::Timeout) => {
+                self.serving = None;
+                self.stuck.insert(path.to_owned(), changed_ms(path));
+                eprintln!(
+                    "programs: file-preview said nothing of {path} within {ANSWERS_WITHIN:?}, \
+                     so it was stopped, and the file says it isn't answered until it changes"
+                );
+                None
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                self.serving = None;
+                self.stopped = Some(Instant::now());
+                eprintln!("programs: file-preview stopped before answering; drawers say so");
+                None
+            }
         }
-        Some(serde_json::from_str(&line).unwrap_or(Value::Null))
     }
 
     fn start(&self) -> Option<Serving> {
@@ -128,16 +166,23 @@ impl Previewer {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
+            .process_group(0)
             .spawn()
             .inspect_err(|error| eprintln!("programs: file-preview didn't start: {error}"))
             .ok()?;
         let input = child.stdin.take()?;
         let output = BufReader::new(child.stdout.take()?);
-        Some(Serving {
-            child,
-            input,
-            output,
-        })
+        let (tell, said) = mpsc::channel();
+        // It ends as the output does, once the child is stopped.
+        std::thread::spawn(move || {
+            for line in output.lines() {
+                let Ok(line) = line else { return };
+                if tell.send(line).is_err() {
+                    return;
+                }
+            }
+        });
+        Some(Serving { child, input, said })
     }
 }
 

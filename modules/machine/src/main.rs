@@ -91,8 +91,8 @@ use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
     heat, heat_rows, kept, keyboards, light, links, machine_rows, memory, now_ms, power_rows,
-    processor, rounded, rows, sleep, status, steered, supply, telemetry, tree, units, using,
-    written::Written,
+    processor, rounded, rows, screen_acts, sleep, status, steered, supply, telemetry, tree, units,
+    using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -2249,6 +2249,24 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
             read(shared, &HashSet::from(["supply".to_owned()]), &[]);
             json!({"id": id, "done": true})
         }
+        "brightness" => {
+            let aimed = screen_acts::aimed(&lock(&shared.reader).root, said);
+            if let Err(unlit) =
+                aimed.and_then(|(device, steps)| screen_acts::brighten(&device, steps))
+            {
+                return error(id, unlit.code, &unlit.message);
+            }
+            read(shared, &HashSet::from(["backlight".to_owned()]), &[]);
+            json!({"id": id, "done": true})
+        }
+        // The backlight program writes its warmth, or steers the screen
+        // again, as a switch moves, which is heard as its files are.
+        "night-light" | "follow-the-room" => match screen_acts::switched(act, said)
+            .and_then(|(property, on)| screen_acts::switch(property, on))
+        {
+            Ok(()) => json!({"id": id, "done": true}),
+            Err(unswitched) => error(id, unswitched.code, &unswitched.message),
+        },
         "restart-unit" => match units::restart(said["unit"].as_str().unwrap_or("")) {
             Ok(()) => json!({"id": id, "done": true}),
             Err(unrestarted) => error(id, unrestarted.code, &unrestarted.message),

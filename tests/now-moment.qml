@@ -178,9 +178,9 @@ ShellRoot {
         settings: ({ name: "notices" })
     }
 
-    // The cases run once whereabouts has answered, with here and the
-    // clock's zone, which it does apart from the shell's start.
+    // Run once whereabouts answered: here, the clock's zone and Location's rows.
     readonly property bool ready: Location.read && Location.clockZone !== ""
+        && now.whereaboutsRows.keys.length > 0
     property bool started: false
     onReadyChanged: begin()
     Component.onCompleted: Qt.callLater(root.begin)

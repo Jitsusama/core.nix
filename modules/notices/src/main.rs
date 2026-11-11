@@ -1,17 +1,21 @@
 //! The notices daemon: the session bus's notifications server, holding
 //! every notice and its history, and serving each to the shell over the
-//! socket systemd holds for it, each watch told only the notices that
-//! changed.
+//! socket systemd holds for it as one record and its rows, each watch
+//! told only those that changed.
 //!
 //! Usage: `notices --socket SOCKET --state FOLDER --levels LEVELS
-//! --senders SENDERS --quiet QUIET [--shells SHELLS]`, where FOLDER keeps
-//! the history and the pictures sent as pixels, LEVELS is each sender's
-//! level as home.nix writes it, SENDERS is senders.json, QUIET is
-//! Quiet.qml's file, and SHELLS is Quickshell's `by-shell` state folder,
-//! whose history is taken the first time it starts.
+//! --senders SENDERS --quiet QUIET --vocabulary WORDS --marks MARKS
+//! [--shells SHELLS]`, where FOLDER keeps the history and the pictures
+//! sent as pixels, LEVELS is each sender's level as home.nix writes it,
+//! SENDERS is senders.json, QUIET is Quiet.qml's file, WORDS is the
+//! launcher's words.json, MARKS each program's mark as home.nix writes
+//! them, and SHELLS is Quickshell's `by-shell` state folder, whose history
+//! is taken the first time it starts.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 
 use daemon_serve::asks::Domain;
@@ -20,17 +24,24 @@ use notices::bus::{self, Server, now_ms};
 use notices::daemon::State;
 use notices::held::Holding;
 use notices::judged::Judge;
-use notices::store::{self, Kept};
-use serde_json::json;
+use notices::row::{self, Rows};
+use notices::sender::{Marks, Senders, Signs};
+use notices::store;
+use notices::words::Words;
+use ready_rows::kept::Kept;
+use serde_json::{Value, json};
+use windows::entries::{self, Entries};
 
-/// The daemon as the shell knows it: a record for each notice.
+/// The daemon as the shell knows it: a record for each notice, and its
+/// rows.
 const DOMAIN: Domain = Domain {
     name: "notices",
-    kinds: &["notice"],
+    kinds: &["notice", "row"],
 };
 
 const USAGE: &str = "usage: notices --socket SOCKET --state FOLDER --levels LEVELS \
-                     --senders SENDERS --quiet QUIET [--shells SHELLS]";
+                     --senders SENDERS --quiet QUIET --vocabulary WORDS --marks MARKS \
+                     [--shells SHELLS]";
 
 /// Where it serves, keeps and reads.
 struct Args {
@@ -39,6 +50,8 @@ struct Args {
     levels: PathBuf,
     senders: PathBuf,
     quiet: PathBuf,
+    vocabulary: PathBuf,
+    marks: PathBuf,
     shells: Option<PathBuf>,
 }
 
@@ -54,17 +67,84 @@ fn args() -> Option<Args> {
         levels: named("--levels")?,
         senders: named("--senders")?,
         quiet: named("--quiet")?,
+        vocabulary: named("--vocabulary")?,
+        marks: named("--marks")?,
         shells: named("--shells"),
     })
+}
+
+fn read(file: &Path) -> Result<String, String> {
+    std::fs::read_to_string(file).map_err(|why| format!("{}: {why}", file.display()))
 }
 
 /// Each sender's level and the senders' own words, or why they can't be
 /// read.
 fn judge(args: &Args) -> Result<Judge, String> {
-    let read = |file: &PathBuf| {
-        std::fs::read_to_string(file).map_err(|why| format!("{}: {why}", file.display()))
-    };
     Judge::read(&read(&args.levels)?, &read(&args.senders)?).map_err(|why| why.to_string())
+}
+
+/// What a notice's rows are said and signed in: the desktop's own
+/// senders, each program's mark and the launcher's words. One that can't
+/// be read is said and none is used, so the rows say less, rather than
+/// the daemon stopping, which would leave nothing to take a notice.
+fn signing(args: &Args) -> (Senders, Marks, Words) {
+    fn or_none<T: Default>(file: &Path, made: impl FnOnce(&str) -> serde_json::Result<T>) -> T {
+        let made = read(file).and_then(|text| made(&text).map_err(|why| why.to_string()));
+        made.unwrap_or_else(|why| {
+            eprintln!(
+                "notices: {} can't be read, so none is used: {why}",
+                file.display()
+            );
+            T::default()
+        })
+    }
+    (
+        or_none(&args.senders, |text| serde_json::from_str(text)),
+        or_none(&args.marks, |text| serde_json::from_str(text)),
+        or_none(&args.vocabulary, Words::from_vocabulary),
+    )
+}
+
+/// The rows as served: one place's kept, so each row keeps its order.
+#[derive(Default)]
+struct Served {
+    rows: Rows,
+    places: [Kept; 3],
+    /// The notices Desktop showed when its rows were last made, kept there
+    /// once read for as long as it's watched.
+    looked: BTreeSet<u32>,
+}
+
+impl Served {
+    /// Every record, its notices' and their rows, as they stand: each
+    /// notice's with its card's sender and words beside it.
+    fn records(&mut self, holding: &Holding, signs: &Signs, desktop_watched: bool) -> Vec<Value> {
+        let looked = if desktop_watched {
+            std::mem::take(&mut self.looked)
+        } else {
+            BTreeSet::new()
+        };
+        let made = self.rows.make(holding.notices().iter(), signs, &looked);
+        self.looked = row::shown(&made[1]);
+        for (kept, rows) in self.places.iter_mut().zip(made) {
+            kept.take(rows, Vec::new());
+        }
+        let mut records: Vec<Value> = holding
+            .notices()
+            .iter()
+            .map(|notice| {
+                let mut record = notice.record();
+                if let Some(card) = self.rows.card(notice.id).and_then(Value::as_object) {
+                    for (field, value) in card {
+                        record[field] = value.clone();
+                    }
+                }
+                record
+            })
+            .collect();
+        records.extend(self.places.iter().flat_map(Kept::all).cloned());
+        records
+    }
 }
 
 /// The history kept, or the shell's taken where none is yet; or why what
@@ -73,8 +153,8 @@ fn judge(args: &Args) -> Result<Judge, String> {
 /// again, which it was the first time.
 fn holding(args: &Args, file: &Path) -> Result<Holding, String> {
     match store::read(file, now_ms())? {
-        Kept::Saved(saved) => return Ok(Holding::new(saved.notices, saved.next)),
-        Kept::SetAside(aside, why) => {
+        store::Kept::Saved(saved) => return Ok(Holding::new(saved.notices, saved.next)),
+        store::Kept::SetAside(aside, why) => {
             eprintln!(
                 "notices: {} didn't read ({why}), so it's set aside as {} and none is kept",
                 file.display(),
@@ -82,7 +162,7 @@ fn holding(args: &Args, file: &Path) -> Result<Holding, String> {
             );
             return Ok(Holding::default());
         }
-        Kept::None => {}
+        store::Kept::None => {}
     }
     let Some(shells) = args.shells.as_deref().and_then(store::shells) else {
         return Ok(Holding::default());
@@ -105,6 +185,26 @@ fn holding(args: &Args, file: &Path) -> Result<Holding, String> {
     }
 }
 
+/// The desktop entries, read again as they change, which may sign any
+/// notice anew; and whether they have since the rows were last made.
+fn followed(changed: mpsc::Sender<()>) -> (Arc<Mutex<Entries>>, Arc<AtomicBool>) {
+    let folders = programs::xdg::folders_here();
+    let (read_entries, looked) = Entries::read(&folders);
+    let entries = Arc::new(Mutex::new(read_entries));
+    let resigned = Arc::new(AtomicBool::new(false));
+    let (reading, rereading, told) = (folders.clone(), Arc::clone(&entries), Arc::clone(&resigned));
+    let following = entries::follow(&folders, looked, move || {
+        let (read_entries, _) = Entries::read(&reading);
+        *rereading.lock().unwrap_or_else(PoisonError::into_inner) = read_entries;
+        told.store(true, Ordering::Release);
+        let _ = changed.send(());
+    });
+    if let Err(why) = following {
+        eprintln!("notices: inotify isn't there, so entries changing aren't heard: {why}");
+    }
+    (entries, resigned)
+}
+
 fn main() -> ExitCode {
     let Some(args) = args() else {
         eprintln!("{USAGE}");
@@ -119,6 +219,12 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // Written at once, so the shell's history, where it was taken, is
+    // read only the once.
+    if let Err(why) = store::write(&kept, &holding) {
+        eprintln!("notices: can't write {}: {why}", kept.display());
+    }
+    let (senders, marks, words) = signing(&args);
     // Those still open when it last stopped stay open: their senders may
     // still hear what's done with them.
     let state = Arc::new(Mutex::new(State::new(
@@ -140,6 +246,27 @@ fn main() -> ExitCode {
         })
     };
     let shared = Shared::new(DOMAIN, own);
+    {
+        let changed = changed.clone();
+        shared.on_watches(Box::new(move || {
+            let _ = changed.send(());
+        }));
+    }
+    let (entries, resigned) = followed(changed.clone());
+    let mut served = Served::default();
+    let mut records = |holding: &Holding| {
+        if resigned.swap(false, Ordering::Acquire) {
+            served.rows.forget();
+        }
+        let entries = entries.lock().unwrap_or_else(PoisonError::into_inner);
+        let signs = Signs {
+            senders: &senders,
+            marks: &marks,
+            entries: &entries,
+            words: &words,
+        };
+        served.records(holding, &signs, shared.watches("row", row::DESKTOP))
+    };
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
@@ -157,26 +284,22 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let records = state
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .holding
-        .records();
-    shared.change(records, json!({}));
+    let first = records(&state.lock().unwrap_or_else(PoisonError::into_inner).holding);
+    shared.change(first, json!({}));
     // Everything changed meanwhile is taken at once, so a burst is told
     // and written once; each burst is written as it's told, so a notice
     // that's arrived is never lost to a stop. It's written first, so a
     // notice the shell has been told of is already kept.
     while let Ok(()) = heard.recv() {
         let _ = heard.try_iter().count();
-        let (records, owed) = {
+        let (told, owed) = {
             let mut held = state.lock().unwrap_or_else(PoisonError::into_inner);
             if let Err(why) = store::write(&kept, &held.holding) {
                 eprintln!("notices: can't write {}: {why}", kept.display());
             }
-            (held.holding.records(), std::mem::take(&mut held.owed))
+            (records(&held.holding), std::mem::take(&mut held.owed))
         };
-        shared.change(records, json!({}));
+        shared.change(told, json!({}));
         for signal in &owed {
             if let Err(why) = bus::send(&connection, signal) {
                 eprintln!("notices: can't send {signal:?}: {why}");

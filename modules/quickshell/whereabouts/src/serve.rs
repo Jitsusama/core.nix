@@ -4,7 +4,9 @@
 //! position GeoClue last found or Joel set, what it's called and the zone
 //! it keeps, and beside it the zone the clock keeps and its last move.
 //! Given the launcher's words, Location's rows are held beside it, made
-//! again from what's known as it changes (rows.rs). Each change is told to
+//! again from what's known as it changes (rows.rs), each place's kept as
+//! the ready-rows crate keeps every daemon's, wrapped and placed in their
+//! order (ready-rows.md). Each change is told to
 //! every watch at once, in one line, only the records it changed and those
 //! it let go, and nothing is read for an ask: everything said is already
 //! held. Joel's word on where the laptop is, `set` or `again`, is an act
@@ -15,7 +17,6 @@
 //! another, so a client that stops reading holds no other back; one with
 //! more than a few hundred lines unread is hung up on.
 
-use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::fd::FromRawFd;
@@ -26,10 +27,11 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ready_rows::kept::{Kept, Moved};
 use serde_json::{Value, json};
 
 use crate::fix::Fix;
-use crate::interface::{Ask, HERE, Narrowed, VERSION, ask, error};
+use crate::interface::{Ask, HERE, Narrowed, VERSION, ask, error, refused};
 use crate::pin::{self, Unpinned};
 use crate::rows;
 use crate::words::Words;
@@ -77,16 +79,48 @@ impl Watch {
     }
 }
 
-/// Every record by its key, in the order its keys sort.
-type Records = BTreeMap<String, Value>;
-
 struct Held {
     known: Known,
-    /// Each record as every watch was last told it.
-    said: Records,
+    /// Each record as every watch was last told it: For You's row with
+    /// here beside it, and Location's own rows, a Kept for each place,
+    /// since an order is only weighed against its own place's.
+    on: Kept,
+    location: Kept,
     watches: Vec<Watch>,
     /// When it started, in milliseconds since the epoch.
     since: u64,
+}
+
+impl Held {
+    /// Every record as last told.
+    fn records(&self) -> impl Iterator<Item = &Value> {
+        self.on.all().chain(self.location.all())
+    }
+
+    /// The record told for a key, if any.
+    fn get(&self, key: &str) -> Option<&Value> {
+        self.on.get(key).or_else(|| self.location.get(key))
+    }
+
+    /// Makes every record again from what's known, answering what a watch
+    /// must be told: here, and Location's rows where there are words to
+    /// say them in.
+    fn make(&mut self, words: Option<&Words>, now: u64) -> Moved {
+        let (on, own): (Vec<Value>, Vec<Value>) = words
+            .map(|words| {
+                let known = &self.known;
+                rows::rows(known.here.as_ref(), known.clock_zone.as_deref(), words, now)
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .partition(|row| row["key"] == rows::ON);
+        let here = record(&self.known);
+        let mut moved = self.on.take(on, vec![here]);
+        let Moved { changed, gone } = self.location.take(own, Vec::new());
+        moved.changed.extend(changed);
+        moved.gone.extend(gone);
+        moved
+    }
 }
 
 /// What every connection shares.
@@ -105,6 +139,11 @@ pub struct Shared {
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
     shared.held.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A record's key, or "" where it has none.
+fn key_of(record: &Value) -> &str {
+    record["key"].as_str().unwrap_or("")
 }
 
 fn now_ms() -> u64 {
@@ -140,28 +179,18 @@ pub fn record(known: &Known) -> Value {
     })
 }
 
-/// Every record made from what's known: here, and Location's rows where
-/// there are words to say them in.
-fn records(known: &Known, words: Option<&Words>, now: u64) -> Records {
-    let rows = words
-        .map(|words| rows::rows(known.here.as_ref(), known.clock_zone.as_deref(), words, now))
-        .unwrap_or_default();
-    std::iter::once(record(known))
-        .chain(rows)
-        .filter_map(|record| Some((record["key"].as_str()?.to_owned(), record)))
-        .collect()
-}
-
 impl Shared {
     pub fn new(known: Known, words: Option<Words>, pin: Option<PathBuf>) -> Arc<Shared> {
-        let said = records(&known, words.as_ref(), now_ms());
+        let mut held = Held {
+            known,
+            on: Kept::default(),
+            location: Kept::default(),
+            watches: Vec::new(),
+            since: now_ms(),
+        };
+        held.make(words.as_ref(), now_ms());
         Arc::new(Shared {
-            held: Mutex::new(Held {
-                known,
-                said,
-                watches: Vec::new(),
-                since: now_ms(),
-            }),
+            held: Mutex::new(held),
             words,
             pin,
             turned: Condvar::new(),
@@ -175,27 +204,17 @@ impl Shared {
     pub fn change(&self, how: impl FnOnce(&mut Known)) {
         let mut held = lock(self);
         how(&mut held.known);
-        let now = records(&held.known, self.words.as_ref(), now_ms());
-        let changed: Vec<&Value> = now
-            .iter()
-            .filter(|(key, record)| held.said.get(*key) != Some(*record))
-            .map(|(_, record)| record)
-            .collect();
-        let gone: Vec<&String> = held
-            .said
-            .keys()
-            .filter(|key| !now.contains_key(*key))
-            .collect();
+        let Moved { changed, gone } = held.make(self.words.as_ref(), now_ms());
         if changed.is_empty() && gone.is_empty() {
             return;
         }
         let mut stuck = Vec::new();
         for watch in &held.watches {
-            let told: Vec<&&Value> = changed
+            let told: Vec<&Value> = changed
                 .iter()
                 .filter(|record| record["key"].as_str().is_some_and(|key| watch.wants(key)))
                 .collect();
-            let let_go: Vec<&&String> = gone.iter().filter(|key| watch.wants(key)).collect();
+            let let_go: Vec<&String> = gone.iter().filter(|key| watch.wants(key)).collect();
             if told.is_empty() && let_go.is_empty() {
                 continue;
             }
@@ -208,7 +227,6 @@ impl Shared {
                 let _ = watch.stream.shutdown(Shutdown::Both);
             }
         }
-        held.said = now;
         held.watches
             .retain(|watch| !stuck.contains(&watch.connection));
         self.turned.notify_all();
@@ -223,19 +241,43 @@ impl Shared {
             return error(id, "not-following", "the laptop isn't followed here");
         };
         let done = match act {
-            "again" => pin::again(pin).map_err(|why| ("refused", why.to_string())),
-            "set" if words.trim().is_empty() => Err(("bad-act", "set names no place".into())),
-            "set" => pin::set(pin, words.trim()).map_err(|unpinned| match unpinned {
-                Unpinned::Nowhere => ("nowhere", format!("no place is called {words}")),
-                Unpinned::Unasked => ("unasked", format!("couldn't ask where {words} is")),
-                Unpinned::Unkept(why) => ("refused", why),
-            }),
-            _ => Err(("unknown-act", format!("no act {act:?} here"))),
+            "again" => pin::again(pin).map_err(|why| error(id, "refused", &why.to_string())),
+            "set" if words.trim().is_empty() => Err(error(id, "bad-act", "set names no place")),
+            "set" => {
+                pin::set(pin, words.trim()).map_err(|unpinned| self.unpinned(id, &unpinned, words))
+            }
+            _ => Err(error(id, "unknown-act", &format!("no act {act:?} here"))),
         };
         match done {
             Ok(()) => json!({"id": id, "done": true}),
-            Err((code, message)) => error(id, code, &message),
+            Err(refusal) => refusal,
         }
+    }
+
+    /// Why the town Joel named wasn't pinned: what went wrong, and as the
+    /// launcher's foot says it, in Location's words (the phrase's id where
+    /// none were handed over). A pin that couldn't be kept says why on the
+    /// journal too, which isn't his to read.
+    fn unpinned(&self, id: &Value, unpinned: &Unpinned, words: &str) -> Value {
+        let words = words.trim();
+        let (code, message, phrase) = match unpinned {
+            Unpinned::Nowhere => ("nowhere", format!("nothing is called {words:?}"), "nowhere"),
+            Unpinned::Unasked => (
+                "unasked",
+                format!("{words:?} couldn't be looked up"),
+                "unasked",
+            ),
+            Unpinned::Unkept(why) => {
+                let message = format!("the place found for {words:?} wasn't kept: {why}");
+                eprintln!("<4>{message}");
+                ("refused", message, "unkept")
+            }
+        };
+        let said = self.words.as_ref().map_or_else(
+            || phrase.to_owned(),
+            |said| said.said(phrase, &[("words", words)]),
+        );
+        refused(id, code, &message, &said)
     }
 }
 
@@ -376,10 +418,9 @@ fn answer(
     hangup: &Arc<UnixStream>,
 ) -> Value {
     let narrowed = |held: &Held, narrowed: &Narrowed| -> Vec<Value> {
-        held.said
-            .iter()
-            .filter(|(key, _)| narrowed.holds(key))
-            .map(|(_, record)| record.clone())
+        held.records()
+            .filter(|record| narrowed.holds(key_of(record)))
+            .cloned()
             .collect()
     };
     match asked {
@@ -388,7 +429,7 @@ fn answer(
             "since": held.since, "sources": sources(&held.known),
         }),
         Ask::Get { id, keys } => {
-            let records: Vec<&Value> = keys.iter().filter_map(|key| held.said.get(key)).collect();
+            let records: Vec<&Value> = keys.iter().filter_map(|key| held.get(key)).collect();
             json!({"id": id, "records": records})
         }
         Ask::List { id, narrowed: by } => json!({"id": id, "records": narrowed(held, &by)}),
@@ -409,10 +450,8 @@ fn answer(
                 stream: Arc::clone(hangup),
             };
             let records: Vec<&Value> = held
-                .said
-                .iter()
-                .filter(|(key, _)| watch.wants(key))
-                .map(|(_, record)| record)
+                .records()
+                .filter(|record| watch.wants(key_of(record)))
                 .collect();
             let records = json!(records);
             held.watches.push(watch);
@@ -607,5 +646,45 @@ mod tests {
             "no pin to take away is done too"
         );
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_town_not_pinned_is_refused_in_locations_words() {
+        let worded = Shared::new(Known::default(), Some(crate::words::fixture()), None);
+        let id = json!(6);
+        let refusal = |code: &str, message: &str, said: &str| {
+            let error = json!({"code": code, "message": message, "said": said});
+            json!({"id": 6, "error": error})
+        };
+        assert_eq!(
+            worded.unpinned(&id, &Unpinned::Nowhere, " Kelpwater "),
+            refusal(
+                "nowhere",
+                "nothing is called \"Kelpwater\"",
+                "no place is called Kelpwater"
+            )
+        );
+        assert_eq!(
+            worded.unpinned(&id, &Unpinned::Unasked, "Kelpwater"),
+            refusal(
+                "unasked",
+                "\"Kelpwater\" couldn't be looked up",
+                "couldn't ask where Kelpwater is"
+            )
+        );
+        assert_eq!(
+            worded.unpinned(&id, &Unpinned::Unkept("read-only".into()), "Kelpwater"),
+            refusal(
+                "refused",
+                "the place found for \"Kelpwater\" wasn't kept: read-only",
+                "Kelpwater couldn't be set"
+            )
+        );
+        let unworded = Shared::new(Known::default(), None, None);
+        assert_eq!(
+            unworded.unpinned(&id, &Unpinned::Nowhere, "Kelpwater")["error"]["said"],
+            "nowhere",
+            "with no words handed over, the phrase's id"
+        );
     }
 }

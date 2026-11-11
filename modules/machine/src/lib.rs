@@ -56,6 +56,7 @@ pub mod pressure;
 pub mod processor;
 pub mod processor_rows;
 pub mod rows;
+pub mod screen_acts;
 pub mod sleep;
 pub mod status;
 pub mod steered;
