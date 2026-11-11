@@ -237,17 +237,17 @@ QtObject {
                 "busy \u00b7 short of memory and processors", "this machine", ""]),
             JSON.stringify(offered));
 
-        // How an update ended, from what `mycelium update` printed.
+        // How an update ended, from its node's answer to the ask.
         const ended = [
-            '{"Ok":{"Updated":{"step":"done","commit":"c0ffee1234","restarted":[]}}}',
-            '{"Ok":{"Updated":{"step":"done"}}}',
-            '{"Ok":{"Updated":{"step":"unchanged","commit":"c0ffee1234"}}}',
-            '{"Ok":{"Updated":{"step":"failed"}}}',
-            '{"Ok":{"Updated":{"step":"refused"}}}',
-            '{"Ok":{"Updated":{"step":"switching"}}}',
-            '{"Err":"skiff is out of reach"}',
-            ""
-        ].map(text => Machines.updateEnded("skiff", text, said));
+            { id: "find-1", updated: { step: "done", commit: "c0ffee1234", restarted: [] } },
+            { id: "find-1", updated: { step: "done" } },
+            { id: "find-1", updated: { step: "unchanged", commit: "c0ffee1234" } },
+            { id: "find-1", updated: { step: "failed" } },
+            { id: "find-1", updated: { step: "refused" } },
+            { id: "find-1", updated: { step: "switching" } },
+            { id: "find-1", error: { code: "refused", message: "skiff is out of reach" } },
+            null
+        ].map(answer => Machines.updateEnded("skiff", answer, said));
         expect("an update says how it ended, its commit short, and why one couldn't be asked",
             JSON.stringify(ended) === JSON.stringify(["skiff updated to c0ffee1",
                 "skiff updated", "skiff was on main already", "skiff didn't update",
