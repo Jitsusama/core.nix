@@ -217,6 +217,7 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
         if not spans:
             for line in said:
                 print(f"lab-profile said: {line}", flush=True)
+            # The trace this run wrote, as the others are.
             whole = ET.parse(trace).getroot() if trace.exists() else None  # noqa: S314
             ranges = len(list(whole.iter("range"))) if whole is not None else 0
             print(f"lab-profile: no search profiled, of {ranges} ranges", flush=True)
