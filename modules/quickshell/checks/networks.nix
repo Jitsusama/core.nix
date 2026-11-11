@@ -2,13 +2,32 @@
 # folder's checks.nix gathers with every other place's; its opening comment says
 # why each place keeps its own.
 {
+  account,
+  bareNixos,
   copied,
+  holds,
   noFonts,
   pkgs,
+  self,
   shellFolderLint,
   ...
 }:
 {
+  # The Home Network is offered wherever eero's module brings its daemon,
+  # and nowhere else. The provider asks for the daemon's unit by name, so
+  # a unit renamed without it would take the place off every machine
+  # while the VM test, which turns the provider on itself, still passed.
+  the-home-network-is-offered-where-eero-runs =
+    let
+      offers =
+        modules:
+        (account (bareNixos ([ self.nixosModules.graphical ] ++ modules)))
+        .jitsusama.quickshell.launcher.providers.eero.enable;
+    in
+    holds "the-home-network-is-offered-where-eero-runs"
+      "the launcher's Home Network should be offered where eero's module runs its daemon, and only there"
+      (offers [ { home-manager.sharedModules = [ self.homeModules.eero ]; } ] && !offers [ ]);
+
   # The launcher's Home Network place says the home network as the eero
   # daemon's record has it: the rows' order, what each row says, and every
   # figure the eero contract places in the internet's, a node's and a

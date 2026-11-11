@@ -2291,6 +2291,10 @@
     the guide's development shell holds the QEMU with canokey its VM tests boot under, so the
     shell's root keeps it from being collected and compiled again
   '';
+  the-home-network-is-offered-where-eero-runs = ''
+    the launcher offers the Home Network place on a machine whose home imports eero's module, which
+    runs its daemon, and not on one without it
+  '';
   the-home-network-says-each-figure = ''
     the Home Network place lists the gateway node first and each node after the one it hangs
     from, its devices under it, and says every figure the eero contract places in the internet's,
