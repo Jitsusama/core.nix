@@ -325,6 +325,23 @@ QtObject {
             + "launcher: 2 changes in windows presented a median 30 ms from the line, "
             + "the slowest 90 ms, 1 within 50 ms");
         check(failures, "none presented says nothing", Presented.changesSaid([]).length, 0);
+        // Joel's 20 changes in machine took a median 36 ms, 6 past 50, and
+        // nothing said whether they waited in the shell or after their
+        // frame began (2026-11-11). Each part is said over the changes
+        // stamped with it, as a key's is.
+        const parted = Presented.changesSaid([
+            { place: "machine", from: 0, heard: 5, begun: 15, at: 40 },
+            { place: "machine", from: 100, heard: 102, begun: 130, at: 190 },
+            { place: "machine", from: 200, at: 230 },
+            { place: "quests", from: 0, at: 70 }
+        ]);
+        check(failures, "a change says where its time went, each part's median apart",
+            parted.join("\n"),
+            "launcher: 3 changes in machine presented a median 40 ms from the line, "
+            + "the slowest 90 ms, 2 within 50 ms: a median 2 ms before the shell heard it, "
+            + "10 in the shell and 25 from its frame's start\n"
+            + "launcher: 1 change in quests presented a median 70 ms from the line, "
+            + "the slowest 70 ms, 0 within 50 ms");
 
         // Joel's 12:06 keys each came to their frame in 10 to 53 ms but
         // were presented a median 101 ms from the key, and nothing said
