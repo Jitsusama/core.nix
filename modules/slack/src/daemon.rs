@@ -20,6 +20,13 @@
 //! anything: the connection says the daemon is there, and its watchdog
 //! restarts one that hangs, so nothing need be said to show it's alive.
 //!
+//! Handed the launcher's vocabulary (`Daemon::words`), each conversation
+//! unread and each read last is also a `row:<place>:<id>` record, the
+//! row Slack's Unread or Recent shows for it (rows.rs), so the shell
+//! makes no rows of its own; a `list` or `watch` of rows names its
+//! `place`, one or a list, to hear only those. Without a vocabulary, no
+//! rows are made.
+//!
 //! Each ask is answered on a thread of its own, so a search waiting on
 //! Slack holds up no other ask.
 
@@ -35,6 +42,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use serde_json::{Map, Value, json};
 
 use crate::messages::People;
+use crate::rows::{self, Words};
 use crate::search::{self, Failed};
 use crate::unreads::{Conversation, Said, State};
 use crate::{Account, Slack};
@@ -46,12 +54,13 @@ pub const VERSION: u64 = 1;
 /// is asked of Slack each time and never held; those held are the
 /// messages wanting Joel, which Search Slack's watch, kept for how Slack
 /// stands (SlackSearch.qml), passes over.
-const KINDS: [&str; 5] = [
+const KINDS: [&str; 6] = [
     "slack-unread",
     "slack-recent",
     "slack-account",
     "slack-message",
     "slack-read",
+    "row",
 ];
 
 /// Every record what Slack last said makes, in its order: what's unread,
@@ -119,6 +128,19 @@ pub fn records(said: Option<&Said>) -> Vec<(String, Value)> {
     made
 }
 
+/// Every ready row what Slack last said makes, in each place's order, as
+/// records keyed as rows.rs keys them, each its row under `row`, as
+/// Google's daemon's are.
+fn row_records(said: &Said, words: &Words) -> Vec<(String, Value)> {
+    rows::rows(said, words)
+        .into_iter()
+        .map(|row| {
+            let key = row["key"].as_str().unwrap_or_default().to_owned();
+            (key.clone(), json!({"key": key, "kind": "row", "row": row}))
+        })
+        .collect()
+}
+
 /// What the account's `messages` says once every message wanting Joel is
 /// held.
 pub const WHOLE: &str = "whole";
@@ -165,15 +187,25 @@ struct Watch {
     kinds: Option<HashSet<String>>,
     /// The keys watched, or none for every key of its kinds.
     keys: Option<HashSet<String>>,
+    /// The places whose rows are watched, or none for every place's.
+    places: Option<HashSet<String>>,
     told: Sender<String>,
 }
 
 impl Watch {
     fn sees(&self, key: &str) -> bool {
-        let kind = key.split_once(':').map_or(key, |(kind, _)| kind);
-        self.kinds.as_ref().is_none_or(|kinds| kinds.contains(kind))
+        seen(self.kinds.as_ref(), self.places.as_ref(), key)
             && self.keys.as_ref().is_none_or(|keys| keys.contains(key))
     }
+}
+
+/// Whether a key is of the kinds asked, none for every kind, and a row's
+/// of the places asked, none for every place.
+fn seen(kinds: Option<&HashSet<String>>, places: Option<&HashSet<String>>, key: &str) -> bool {
+    let (kind, rest) = key.split_once(':').unwrap_or((key, ""));
+    let place = rest.split_once(':').map_or(rest, |(place, _)| place);
+    kinds.is_none_or(|kinds| kinds.contains(kind))
+        && (kind != "row" || places.is_none_or(|places| places.contains(place)))
 }
 
 #[derive(Default)]
@@ -184,6 +216,8 @@ struct Held {
     order: Vec<String>,
     /// How asking Slack last stood.
     stands: Stands,
+    /// The words rows are said in, none to make no rows.
+    words: Option<Words>,
     watches: Vec<Watch>,
     connections: u64,
 }
@@ -280,6 +314,11 @@ impl Daemon {
         self.people.clone()
     }
 
+    /// Makes ready rows from Slack's next answer on, said in these words.
+    pub fn words(&self, words: Words) {
+        self.lock().words = Some(words);
+    }
+
     fn lock(&self) -> MutexGuard<'_, Held> {
         self.held.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -294,7 +333,11 @@ impl Daemon {
         let mut changed = Vec::new();
         let mut order = Vec::new();
         let mut kept = BTreeMap::new();
-        for (key, mut record) in records(said) {
+        let mut made = records(said);
+        if let (Some(words), Some(said)) = (held.words.as_ref(), said) {
+            made.extend(row_records(said, words));
+        }
+        for (key, mut record) in made {
             let heard = match held.records.get(&key) {
                 Some(was) if same(was, &record) => was["heard"].as_u64().unwrap_or(now),
                 _ => now,
@@ -391,6 +434,7 @@ impl Daemon {
             id: id.clone(),
             kinds,
             keys: strings(said, "keys").map(|keys| keys.into_iter().collect()),
+            places: places(said),
             told: told.clone(),
         };
         let mut held = self.lock();
@@ -442,15 +486,12 @@ impl Daemon {
                     .and_then(Value::as_u64)
                     .and_then(|limit| usize::try_from(limit).ok())
                     .unwrap_or(usize::MAX);
+                let places = places(said);
                 let held = self.lock();
-                let seen = |key: &&String| {
-                    let kind = key.split_once(':').map_or(key.as_str(), |(kind, _)| kind);
-                    kinds.as_ref().is_none_or(|kinds| kinds.contains(kind))
-                };
                 let records: Vec<&Value> = held
                     .order
                     .iter()
-                    .filter(seen)
+                    .filter(|key| seen(kinds.as_ref(), places.as_ref(), key))
                     .filter_map(|key| held.records.get(key))
                     .take(limit)
                     .collect();
@@ -551,6 +592,15 @@ fn kinds(said: &Value) -> Result<Option<HashSet<String>>, String> {
     }
 }
 
+/// The places an ask's rows are narrowed to, as one or a list, none for
+/// every place.
+fn places(said: &Value) -> Option<HashSet<String>> {
+    match said.get("place")? {
+        Value::String(place) => Some(HashSet::from([place.clone()])),
+        _ => strings(said, "place").map(|places| places.into_iter().collect()),
+    }
+}
+
 /// An ask's list of words, as `keys` is.
 fn strings(said: &Value, field: &str) -> Option<Vec<String>> {
     said.get(field).and_then(Value::as_array).map(|each| {
@@ -580,8 +630,8 @@ fn unknown(id: &Value, kind: &str) -> Value {
         id,
         "unknown-kind",
         &format!(
-            "this daemon keeps slack-unread, slack-recent, slack-account, slack-message and \
-             slack-read, not {kind}"
+            "this daemon keeps slack-unread, slack-recent, slack-account, slack-message, \
+             slack-read and row, not {kind}"
         ),
     )
 }
@@ -841,6 +891,59 @@ mod tests {
             count(last, "records")
         };
         assert_eq!(latest, json!(2), "{lines:?}");
+    }
+
+    #[test]
+    fn rows_are_heard_by_a_watch_of_their_place_once_words_are_given() {
+        let daemon = Daemon::new(PathBuf::new(), String::new());
+        let said = ok(
+            vec![one("D1", Kind::Dm, 2, "1")],
+            vec![one("C1", Kind::Channel, 0, "1")],
+        );
+        daemon.say(Some(&said), 10);
+        let (told, heard) = mpsc::channel();
+        let listed = daemon.asked(&json!({"id": 1, "ask": "list", "kind": "row"}), 1);
+        assert_eq!(listed["records"], json!([]), "rows made without words");
+        daemon.words(Words {
+            glyph: "chat".to_owned(),
+            count: "{count} to read".to_owned(),
+            ..Words::default()
+        });
+        let watch = |asked: Value| {
+            daemon.answer(&asked.to_string(), 1, &told);
+            serde_json::from_str::<Value>(&heard.recv().unwrap()).unwrap()
+        };
+        let unread = watch(json!({"id": 2, "ask": "watch", "kind": "row", "place": "slack-unread"}));
+        let recent = watch(json!({"id": 3, "ask": "watch", "kind": "row", "place": ["slack-recent"]}));
+        assert_eq!(unread["records"], json!([]), "rows said before Slack answered again");
+        assert_eq!(recent["records"], json!([]));
+        daemon.say(Some(&said), 20);
+        let lines: Vec<Value> = heard
+            .try_iter()
+            .map(|line: String| serde_json::from_str(&line).unwrap())
+            .collect();
+        let keys: Vec<(Value, Value)> = lines
+            .iter()
+            .map(|line| (line["id"].clone(), line["changed"][0]["key"].clone()))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                (json!(2), json!("row:slack-unread:D1")),
+                (json!(3), json!("row:slack-recent:C1"))
+            ],
+            "{lines:?}"
+        );
+        assert_eq!(lines[0]["changed"][0]["row"]["side"], json!([{"said": "2 to read"}]));
+        // Asked again with nothing new, Slack's answer tells no watch.
+        daemon.say(Some(&said), 30);
+        assert!(heard.try_recv().is_err(), "a row unchanged was said again");
+        let listed = daemon.asked(
+            &json!({"id": 4, "ask": "list", "kind": "row", "place": "slack-recent"}),
+            1,
+        );
+        assert_eq!(listed["records"][0]["key"], "row:slack-recent:C1");
+        assert_eq!(listed["records"].as_array().map(Vec::len), Some(1));
     }
 
     #[test]

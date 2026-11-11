@@ -1850,8 +1850,8 @@
   '';
   slack-unreads-go-with-the-service = ''
     slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
-    is restarted when its watchdog hears nothing, and takes its ask in For You with it however
-    it stops,
+    is restarted when its watchdog hears nothing, is handed the launcher's vocabulary for its
+    rows, and takes its ask in For You with it however it stops,
     while its socket, systemd's and held only once pi has signed in, stays
   '';
   slack-waits-in-its-place = ''

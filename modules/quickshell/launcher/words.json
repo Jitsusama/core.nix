@@ -9266,7 +9266,15 @@
       "of": "program:slack",
       "name": "Conversation",
       "glyph": "chat",
-      "verb": "open"
+      "verb": "open",
+      "said": {
+        "count": "{count} to read",
+        "dm": "a direct message",
+        "mention": "mentions you",
+        "thread": "replies in threads",
+        "unread": "a channel",
+        "channel": "a channel"
+      }
     },
     {
       "id": "slack:unread",

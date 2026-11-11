@@ -28,6 +28,7 @@ use ureq::Agent;
 
 pub mod daemon;
 pub mod messages;
+pub mod rows;
 pub mod search;
 pub mod unreads;
 

@@ -158,6 +158,11 @@ in
         "%t/daemons/slack.sock"
         (lib.escapeShellArg waiting)
       ];
+      # The launcher's vocabulary, by its store path, which the rows it
+      # serves Slack's Unread and Recent are said in (src/rows.rs).
+      Environment = "LAUNCHER_WORDS=${
+        pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words)
+      }";
       Restart = "on-failure";
       RestartSec = 30;
       # It tells the watchdog after each ask, half a minute apart, so one

@@ -30,12 +30,19 @@
 //! it, since the shell lets what it held go once the socket stops
 //! answering. It searches Slack when Joel asks too, so nothing is started
 //! to search.
+//!
+//! Given the launcher's vocabulary, its store path in `LAUNCHER_WORDS`
+//! as the shell's own is, it serves each conversation as the row Slack's
+//! Unread and Recent show (lib's `rows`); without it, or with one it
+//! can't read, it says so and serves no rows, and the shell makes its
+//! own.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use slack_people::messages::Messages;
+use slack_people::rows::Words;
 use slack_people::unreads::{
     Conversation, Counted, Counts, Kind, Said, State, link, sign_in_waits,
 };
@@ -62,6 +69,12 @@ fn main() {
         PathBuf::from(&credentials),
         origin.clone(),
     );
+    if let Some(path) = std::env::var_os("LAUNCHER_WORDS") {
+        match vocabulary(Path::new(&path)) {
+            Ok(words) => daemon.words(words),
+            Err(why) => eprintln!("<3>serving no rows, {}: {why}", path.display()),
+        }
+    }
     let slack = Slack::new(origin);
     let every = args
         .next()
@@ -246,6 +259,13 @@ fn whole(file: &Path, text: &str) -> std::io::Result<()> {
 }
 
 /// Now, in milliseconds since the epoch.
+/// The words rows are said in, read once from the launcher's vocabulary.
+fn vocabulary(path: &Path) -> Result<Words, String> {
+    let text = std::fs::read_to_string(path).map_err(|why| why.to_string())?;
+    let whole = serde_json::from_str(&text).map_err(|why| why.to_string())?;
+    Words::read(&whole)
+}
+
 fn millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

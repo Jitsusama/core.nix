@@ -50,7 +50,7 @@ onLinux {
       waiting = "${home.xdg.stateHome}/mission/waiting/slack.json";
     in
     holds "slack-unreads-go-with-the-service"
-      "slack-unreads lacks its sign-in start, switch restart, watchdog, ask cleanup or socket."
+      "slack-unreads lacks its sign-in start, switch restart, watchdog, ask cleanup, socket or words."
       (
         # Each start is listed, as home-manager takes ExecStart.
         lib.any (lib.hasInfix waiting) (lib.toList unit.Service.ExecStart)
@@ -63,6 +63,8 @@ onLinux {
         && socket.Socket.ListenStream == "%t/daemons/slack.sock"
         && socket.Unit.ConditionPathExists == credentials
         && lib.elem "slack-unreads.socket" unit.Unit.Requires
+        # Handed the launcher's vocabulary, its rows are said in it.
+        && lib.any (lib.hasPrefix "LAUNCHER_WORDS=/nix/store/") (lib.toList unit.Service.Environment)
       );
   # Who the source asks about and when, what stands in Write in Slack's
   # place before Slack answers, how answers that come together are taken,
