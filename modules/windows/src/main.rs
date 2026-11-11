@@ -1,4 +1,4 @@
-//! windows SOCKET
+//! windows SOCKET [--words FILE]
 //!
 //! niri's windows, held ready for the shell and anything else that asks,
 //! over SOCKET in the shell's daemon interface (interface.rs): each
@@ -15,6 +15,12 @@
 //! by its app id, and again only once inotify says the desktop entries
 //! changed. Nothing runs on a timer: with niri gone, it tries niri again
 //! every two seconds until it's back.
+//!
+//! Handed the launcher's words (`--words`, its words.json), it serves
+//! the launcher's Screens too, as rows of kind `row` in place `displays`
+//! (screens.rs), asking niri for its outputs as the stream begins and at
+//! each workspace change, since niri says nothing of a screen itself.
+//! Handed none, it makes no rows.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -29,10 +35,12 @@ use std::time::{Duration, Instant};
 
 use programs::notify::Notify;
 use programs::{now_ms, xdg};
+use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::Entries;
-use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, tells, trimmed};
+use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, placed, tells, trimmed};
+use windows::screens;
 
 /// How many of the last events' times health says.
 const TIMES: usize = 32;
@@ -52,6 +60,8 @@ struct Watch {
     keys: Option<Vec<String>>,
     /// The fields it's told of each record, or all of them.
     fields: Option<Vec<String>>,
+    /// The places whose rows it's told, or every place's.
+    places: Option<Vec<String>>,
     told: SyncSender<String>,
     stream: Arc<UnixStream>,
 }
@@ -60,7 +70,10 @@ impl Watch {
     fn wants(&self, key: &str) -> bool {
         match &self.keys {
             Some(keys) => keys.iter().any(|k| k == key),
-            None => kind_of(key).is_some_and(|kind| self.kinds.iter().any(|k| k == kind)),
+            None => {
+                kind_of(key).is_some_and(|kind| self.kinds.iter().any(|k| k == kind))
+                    && placed(key, self.places.as_deref())
+            }
         }
     }
 }
@@ -72,6 +85,12 @@ struct Daemon {
     desktop: Desktop,
     entries: Entries,
     names: Names,
+    /// niri's outputs as it last said them, by connector.
+    outputs: BTreeMap<String, Value>,
+    /// The words the launcher's rows are said in, or none, so no rows.
+    words: Option<screens::Words>,
+    /// The rows as last told, so each keeps its order.
+    rows: Kept,
     /// How niri's stream stands: "starting" until it first answers,
     /// "answering", or "not answering" while it's gone.
     niri: &'static str,
@@ -88,10 +107,24 @@ struct Shared {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let Some(socket) = args.next() else {
-        eprintln!("usage: windows SOCKET");
+    let (mut named, mut words) = (Vec::new(), None);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--words" => words = args.next(),
+            _ => named.push(arg),
+        }
+    }
+    let Some(socket) = named.into_iter().next() else {
+        eprintln!("usage: windows SOCKET [--words FILE]");
         std::process::exit(64);
     };
+    let words = words.and_then(|path| match worded(Path::new(&path)) {
+        Ok(words) => Some(words),
+        Err(why) => {
+            eprintln!("<3>the launcher's words in {path} won't do, so no rows: {why}");
+            None
+        }
+    });
     let Some(niri) = std::env::var_os("NIRI_SOCKET").map(PathBuf::from) else {
         eprintln!("<3>NIRI_SOCKET isn't set, so there's no niri to hear");
         std::process::exit(78);
@@ -113,6 +146,9 @@ fn main() {
             desktop: Desktop::default(),
             entries,
             names: Names::default(),
+            outputs: BTreeMap::new(),
+            words,
+            rows: Kept::default(),
             niri: "starting",
             events: 0,
             took: VecDeque::new(),
@@ -142,6 +178,13 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
+}
+
+/// The words a screen's row is said in, from the launcher's words.json.
+fn worded(path: &Path) -> Result<screens::Words, String> {
+    let read = std::fs::read_to_string(path).map_err(|why| why.to_string())?;
+    let vocabulary = serde_json::from_str(&read).map_err(|why| why.to_string())?;
+    screens::Words::read(&vocabulary)
 }
 
 /// The socket systemd holds for it (windows.socket), or, run by hand,
@@ -182,7 +225,7 @@ fn follow(shared: &Shared, niri: &Path) {
     loop {
         match UnixStream::connect(niri) {
             Ok(stream) => {
-                hear(shared, stream);
+                hear(shared, stream, niri);
                 eprintln!("<4>niri's event stream ended; asking again");
             }
             Err(why) => {
@@ -199,7 +242,7 @@ fn follow(shared: &Shared, niri: &Path) {
 /// Hears each event of one stream until it ends. niri describes the
 /// whole desktop as the stream begins, so what's held from a stream
 /// before is replaced by it.
-fn hear(shared: &Shared, mut stream: UnixStream) {
+fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     let Ok(reading) = stream.try_clone() else {
         return;
     };
@@ -217,13 +260,26 @@ fn hear(shared: &Shared, mut stream: UnixStream) {
             return;
         }
         let began = Instant::now();
+        // A screen coming or going changes the workspaces, so its outputs
+        // are asked again then, before the lock is taken, so no ask waits
+        // on niri; only where rows are made, since nothing else reads
+        // them.
+        let rowed = lock(&shared.daemon).words.is_some();
+        let outputs = (rowed && event.get("WorkspacesChanged").is_some())
+            .then(|| screens::asked(niri))
+            .flatten();
         let mut daemon = lock(&shared.daemon);
         daemon.niri = "answering";
         if event.get("Ok").is_some() {
             continue;
         }
         daemon.events += 1;
-        if daemon.desktop.hear(&event) == Heard::Changed {
+        let moved = outputs.is_some_and(|outputs| {
+            let moved = daemon.outputs != outputs;
+            daemon.outputs = outputs;
+            moved
+        });
+        if daemon.desktop.hear(&event) == Heard::Changed || moved {
             refresh(&mut daemon);
         }
         let took = u64::try_from(began.elapsed().as_micros()).unwrap_or(u64::MAX);
@@ -241,9 +297,16 @@ fn refresh(daemon: &mut Daemon) {
         desktop,
         entries,
         names,
+        outputs,
+        words,
+        rows,
         ..
     } = &mut *daemon;
-    let records = desktop.records(entries, names);
+    let mut records = desktop.records(entries, names);
+    if let Some(words) = words {
+        rows.take(screens::rows(outputs, desktop.output(), words), Vec::new());
+        records.extend(rows.all().cloned());
+    }
     let said: HashSet<String> = records
         .iter()
         .filter_map(|record| record["key"].as_str().map(str::to_owned))
@@ -409,7 +472,12 @@ fn order(record: &Value) -> (u64, u64) {
 /// The records held of these kinds or keys: by kind, the windows the one
 /// used last first, so a whole answer is in the order the shell lists
 /// it, and the rest by key.
-fn held(daemon: &Daemon, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
+fn held(
+    daemon: &Daemon,
+    kinds: &[String],
+    keys: Option<&[String]>,
+    places: Option<&[String]>,
+) -> Vec<Value> {
     match keys {
         Some(keys) => keys
             .iter()
@@ -423,7 +491,7 @@ fn held(daemon: &Daemon, kinds: &[String], keys: Option<&[String]>) -> Vec<Value
                 let mut records: Vec<Value> = daemon
                     .held
                     .iter()
-                    .filter(|(key, _)| kind_of(key) == Some(kind))
+                    .filter(|(key, _)| kind_of(key) == Some(kind) && placed(key, places))
                     .map(|(_, record)| record.clone())
                     .collect();
                 if *kind == "window" {
@@ -459,16 +527,18 @@ fn answer(
             })
         }
         Ask::Get { id, keys } => {
-            json!({"id": id, "records": held(&lock(&shared.daemon), &[], Some(&keys))})
+            json!({"id": id, "records": held(&lock(&shared.daemon), &[], Some(&keys), None)})
         }
-        Ask::List { id, kinds } => {
-            json!({"id": id, "records": held(&lock(&shared.daemon), &kinds, None)})
+        Ask::List { id, kinds, places } => {
+            let daemon = lock(&shared.daemon);
+            json!({"id": id, "records": held(&daemon, &kinds, None, places.as_deref())})
         }
         Ask::Watch {
             id,
             kinds,
             keys,
             fields,
+            places,
         } => {
             let mut daemon = lock(&shared.daemon);
             // A watch asked again by its id replaces the one before.
@@ -481,12 +551,13 @@ fn answer(
                 kinds: kinds.clone(),
                 keys: keys.clone(),
                 fields: fields.clone(),
+                places: places.clone(),
                 told: told.clone(),
                 stream: Arc::clone(hangup),
             });
             // Told under the same lock a change is told under, so no
             // change comes before the answer it changes.
-            let records: Vec<Value> = held(&daemon, &kinds, keys.as_deref())
+            let records: Vec<Value> = held(&daemon, &kinds, keys.as_deref(), places.as_deref())
                 .iter()
                 .map(|record| trimmed(record, fields.as_deref()))
                 .collect();

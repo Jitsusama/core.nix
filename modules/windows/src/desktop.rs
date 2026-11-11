@@ -193,6 +193,12 @@ impl Desktop {
         self.workspaces.values().find(|w| w["is_focused"] == true)
     }
 
+    /// The connector of the screen in front of Joel, which holds the
+    /// focused workspace.
+    pub fn output(&self) -> Option<&str> {
+        self.here().and_then(|w| w["output"].as_str())
+    }
+
     /// The window the keys were in: the one niri says has them, else the
     /// focused workspace's active window, as while the launcher has them;
     /// none on an empty workspace.

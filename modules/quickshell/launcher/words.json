@@ -8540,6 +8540,11 @@
       }
     },
     {
+      "id": "displays:built-in",
+      "in": "displays",
+      "name": "Built-in Screen"
+    },
+    {
       "id": "displays:brightness",
       "in": "displays",
       "name": "Brightness",

@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 7] = [
+pub const KINDS: [&str; 8] = [
     "window",
     "workspace",
     "desktop",
@@ -16,6 +16,7 @@ pub const KINDS: [&str; 7] = [
     "cast",
     "layout",
     "screenshot",
+    "row",
 ];
 
 /// The kinds of which there's one record, keyed by its kind alone.
@@ -25,8 +26,16 @@ const SOLE: [&str; 3] = ["desktop", "focus", "screenshot"];
 /// every resize and scroll, and the window niri says has the keys moves
 /// to none at every opening of the launcher, which would wake every watch
 /// that names no kind, where only the few that draw tiles, or follow the
-/// keys as niri does, want them.
-const NAMED_ONLY: [&str; 2] = ["focus", "layout"];
+/// keys as niri does, want them. A row is the launcher's alone, ready to
+/// show, so only a watch of its place wants it.
+const NAMED_ONLY: [&str; 3] = ["focus", "layout", "row"];
+
+/// The place a row's key names: `displays` for
+/// `row:displays:display:eDP-1`.
+pub fn place_of(key: &str) -> Option<&str> {
+    let rest = key.strip_prefix("row:")?;
+    rest.split_once(':').map(|(place, _)| place)
+}
 
 /// The kind a key names: `window` for `window:12`, and `desktop` for the
 /// one record of its kind, keyed by its kind alone.
@@ -58,18 +67,21 @@ pub enum Ask {
         id: Value,
         keys: Vec<String>,
     },
-    /// Every record of these kinds.
+    /// Every record of these kinds, and of rows those of these places.
     List {
         id: Value,
         kinds: Vec<String>,
+        places: Option<Vec<String>>,
     },
     /// Records of these kinds as they change, all of them or these keys,
-    /// whole or only these fields of them.
+    /// whole or only these fields of them, and of rows those of these
+    /// places.
     Watch {
         id: Value,
         kinds: Vec<String>,
         keys: Option<Vec<String>>,
         fields: Option<Vec<String>>,
+        places: Option<Vec<String>>,
     },
     Unwatch {
         id: Value,
@@ -136,6 +148,18 @@ pub fn ask(line: &str) -> Ask {
             .map(str::to_owned)
             .collect::<Vec<_>>()
     });
+    // A place, as one or a list, as machine's are named.
+    let places = match said.get("place") {
+        Some(Value::String(place)) => Some(vec![place.clone()]),
+        Some(Value::Array(places)) => Some(
+            places
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect(),
+        ),
+        _ => None,
+    };
     let named = || kinds(&said);
     match asked.as_str() {
         "hello" => Ask::Hello { id },
@@ -144,7 +168,7 @@ pub fn ask(line: &str) -> Ask {
             keys: keys.unwrap_or_default(),
         },
         "list" => match named() {
-            Ok(kinds) => Ask::List { id, kinds },
+            Ok(kinds) => Ask::List { id, kinds, places },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "watch" => match named() {
@@ -153,12 +177,23 @@ pub fn ask(line: &str) -> Ask {
                 kinds,
                 keys,
                 fields,
+                places,
             },
             Err(kind) => Ask::UnknownKind { id, kind },
         },
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
         _ => Ask::Unknown { id, ask: asked },
+    }
+}
+
+/// Whether an ask of these places takes this record: any record but a
+/// row, and a row only of a place it names, or of any where it names
+/// none.
+pub fn placed(key: &str, places: Option<&[String]>) -> bool {
+    match (place_of(key), places) {
+        (Some(place), Some(places)) => places.iter().any(|named| named == place),
+        _ => true,
     }
 }
 
@@ -211,7 +246,8 @@ mod tests {
                     "screenshot".into()
                 ],
                 keys: Some(vec!["window:12".into(), "desktop".into()]),
-                fields: None
+                fields: None,
+                places: None
             }
         );
     }
@@ -224,7 +260,8 @@ mod tests {
                 id: json!(4),
                 kinds: vec!["window".into(), "layout".into()],
                 keys: None,
-                fields: None
+                fields: None,
+                places: None
             }
         );
         assert!(
@@ -256,7 +293,8 @@ mod tests {
                 id: json!(4),
                 kinds: vec!["window".into()],
                 keys: None,
-                fields: Some(vec!["order".into()])
+                fields: Some(vec!["order".into()]),
+                places: None
             }
         );
         let fields = ["order".to_owned()];
@@ -284,6 +322,41 @@ mod tests {
             json!({"key": "window:12", "order": 200})
         );
         assert_eq!(trimmed(&used, None), used);
+    }
+
+    #[test]
+    fn a_watch_of_a_place_takes_its_rows_alone() {
+        assert_eq!(
+            ask(r#"{"id":5,"ask":"watch","kind":"row","place":"displays"}"#),
+            Ask::Watch {
+                id: json!(5),
+                kinds: vec!["row".into()],
+                keys: None,
+                fields: None,
+                places: Some(vec!["displays".into()])
+            }
+        );
+        assert_eq!(kind_of("row:displays:display:eDP-1"), Some("row"));
+        assert_eq!(place_of("row:displays:display:eDP-1"), Some("displays"));
+        assert_eq!(place_of("window:12"), None);
+        let displays = ["displays".to_owned()];
+        assert!(
+            placed("row:displays:sleep", Some(&displays)),
+            "a row of the place named is taken"
+        );
+        assert!(
+            !placed("row:windows:12", Some(&displays)),
+            "a row of another place isn't"
+        );
+        assert!(
+            placed("window:12", Some(&displays)),
+            "a window has no place"
+        );
+        assert!(
+            !unnamed().contains(&"row".to_owned()),
+            "a watch naming no kind takes the launcher's rows: {:?}",
+            unnamed()
+        );
     }
 
     #[test]

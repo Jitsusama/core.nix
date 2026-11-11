@@ -1,15 +1,19 @@
-# The windows daemon, built from this directory, its tests run as it builds.
-# It reads the desktop entries through the programs daemon's crate
-# (../programs), and its socket's tests ask it with a crate every daemon's
-# tests share (../daemon-client), so the source is cut from the modules
-# folder holding all three, and built from this one.
+# The windows daemon, built from this directory, its tests run as it builds,
+# and given the launcher's words, they read Screens' from them too. It reads
+# the desktop entries through the programs daemon's crate (../programs),
+# serves its rows in the form every daemon's take (../ready-rows), and its
+# socket's tests ask it with a crate every daemon's tests share
+# (../daemon-client), so the source is cut from the modules folder holding
+# them all, and built from this one.
 {
   lib,
   rustPlatform,
   systemd,
+  words ? null,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "windows";
+  env = lib.optionalAttrs (words != null) { WINDOWS_TEST_WORDS = "${words}"; };
   version = "0.1.0";
   src = lib.fileset.toSource {
     root = ../.;
@@ -20,6 +24,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../programs/Cargo.toml
       ../programs/src
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
       ../daemon-client/Cargo.toml
       ../daemon-client/src
     ];

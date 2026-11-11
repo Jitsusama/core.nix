@@ -25,10 +25,18 @@ onLinux {
   # gone and back describing the desktop again, and an ask or kind it
   # doesn't know refused.
   windows-hears-niris-windows = daemon;
+  # The daemon words the launcher's Screens from the vocabulary the shell
+  # hands it, so its tests read the launcher's own here: a word renamed or
+  # gone there fails this rather than blanking a row. The daemon itself
+  # isn't built with it, or every change to the words would start it again.
+  windows-reads-the-launchers-words = pkgs.callPackage ./package.nix {
+    words = ../quickshell/launcher/words.json;
+  };
   # clippy finds nothing in the windows daemon, its tests included.
   windows-passes-clippy = passesClippy "windows-passes-clippy" daemon;
   # The shell brings the daemon, on the socket the shell's daemons share,
-  # held by systemd whether or not the daemon runs.
+  # held by systemd whether or not the daemon runs, handed the launcher's
+  # words, which its Screens are said in.
   windows-runs-beside-the-shell =
     let
       shell = {
@@ -42,6 +50,7 @@ onLinux {
       "The windows daemon doesn't run beside the shell on its socket."
       (
         lib.hasInfix "%t/daemons/windows.sock" started
+        && lib.hasInfix "--words /nix/store/" started
         && service.Unit.X-SwitchMethod == "restart"
         && builtins.elem "windows.socket" service.Unit.Requires
         && home.systemd.user.sockets.windows.Socket.ListenStream == "%t/daemons/windows.sock"

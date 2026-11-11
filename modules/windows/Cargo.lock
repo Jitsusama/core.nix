@@ -55,6 +55,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ready-rows"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -120,6 +127,7 @@ version = "0.1.0"
 dependencies = [
  "daemon-client",
  "programs",
+ "ready-rows",
  "serde_json",
 ]
 

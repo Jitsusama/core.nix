@@ -1,0 +1,21 @@
+{
+  "things": [
+    {
+      "id": "displays",
+      "said": {
+        "dark": "dark",
+        "off": "off",
+        "focused": "focused",
+        "hubOn": "hub on",
+        "scaleAt": "scale {scale}"
+      }
+    },
+    { "id": "displays:built-in", "name": "Built-in Screen" },
+    {
+      "id": "displays:sleep",
+      "name": "Turn Every Screen Off",
+      "glyph": "displayOff",
+      "said": { "note": "a key wakes them" }
+    }
+  ]
+}

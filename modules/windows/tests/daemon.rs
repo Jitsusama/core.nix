@@ -7,7 +7,9 @@
 //! hears no retitle, and only that of each window; a window closed is
 //! told gone; an entry added names its
 //! windows' program; niri gone and back describes the desktop again;
-//! and an ask or kind it doesn't know is refused.
+//! an ask or kind it doesn't know is refused; and, handed the launcher's
+//! words, a watch of Screens is served each screen's row and Turn Every
+//! Screen Off, told only the rows a screen turned off changed.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
@@ -29,18 +31,22 @@ const BEGINNING: [&str; 3] = [
 
 /// A stand-in for niri's socket, which answers an event stream with
 /// `BEGINNING` and then whatever the test sends it, and hangs up when the
-/// test says to.
+/// test says to, and answers an ask for its outputs with those the test
+/// set, each connection on its own, as niri does.
 struct Niri {
     send: Sender<Option<String>>,
     streams: Arc<Mutex<usize>>,
+    outputs: Arc<Mutex<Value>>,
 }
 
 impl Niri {
     fn new(socket: &Path) -> Niri {
         let listener = UnixListener::bind(socket).expect("the stand-in listens");
         let (send, lines): (Sender<Option<String>>, Receiver<Option<String>>) = mpsc::channel();
+        let lines = Arc::new(Mutex::new(lines));
         let streams = Arc::new(Mutex::new(0));
-        let counted = Arc::clone(&streams);
+        let outputs = Arc::new(Mutex::new(json!({})));
+        let (counted, shown) = (Arc::clone(&streams), Arc::clone(&outputs));
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let mut stream = stream.expect("the stand-in takes each connection");
@@ -48,24 +54,42 @@ impl Niri {
                 BufReader::new(stream.try_clone().unwrap())
                     .read_line(&mut asked)
                     .unwrap();
+                if asked.trim() == "\"Outputs\"" {
+                    let outputs = shown.lock().unwrap().clone();
+                    writeln!(stream, "{}", json!({"Ok": {"Outputs": outputs}})).unwrap();
+                    continue;
+                }
                 assert_eq!(
                     asked.trim(),
                     "\"EventStream\"",
-                    "it asks niri for its events"
+                    "it asks niri for its events or its outputs"
                 );
-                writeln!(stream, "{{\"Ok\":\"Handled\"}}").unwrap();
-                for event in BEGINNING {
-                    writeln!(stream, "{event}").unwrap();
-                }
-                *counted.lock().unwrap() += 1;
-                // Until the test says to hang up.
-                while let Ok(Some(line)) = lines.recv() {
-                    writeln!(stream, "{line}").unwrap();
-                }
-                let _ = stream.shutdown(std::net::Shutdown::Both);
+                let (counted, lines) = (Arc::clone(&counted), Arc::clone(&lines));
+                std::thread::spawn(move || {
+                    writeln!(stream, "{{\"Ok\":\"Handled\"}}").unwrap();
+                    for event in BEGINNING {
+                        writeln!(stream, "{event}").unwrap();
+                    }
+                    *counted.lock().unwrap() += 1;
+                    // Until the test says to hang up.
+                    let lines = lines.lock().unwrap();
+                    while let Ok(Some(line)) = lines.recv() {
+                        writeln!(stream, "{line}").unwrap();
+                    }
+                    let _ = stream.shutdown(std::net::Shutdown::Both);
+                });
             }
         });
-        Niri { send, streams }
+        Niri {
+            send,
+            streams,
+            outputs,
+        }
+    }
+
+    /// The outputs it answers with from now on.
+    fn shows(&self, outputs: &Value) {
+        outputs.clone_into(&mut self.outputs.lock().unwrap());
     }
 
     fn says(&self, event: &Value) {
@@ -94,6 +118,15 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, launcher: &[&str]) -> Running {
+        Running::started(test, launcher, None)
+    }
+
+    /// Handed the launcher's words, niri showing these outputs.
+    fn worded(test: &str, outputs: &Value) -> Running {
+        Running::started(test, &[], Some(outputs))
+    }
+
+    fn started(test: &str, launcher: &[&str], outputs: Option<&Value>) -> Running {
         let folder = std::env::temp_dir().join(format!("windows-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         for (path, text) in [
@@ -114,6 +147,11 @@ impl Running {
         std::fs::create_dir_all(folder.join("daemons")).unwrap();
         let niri = Niri::new(&folder.join("niri.sock"));
         let socket = folder.join("daemons").join("windows.sock");
+        let words = folder.join("words.json");
+        if let Some(outputs) = outputs {
+            niri.shows(outputs);
+            std::fs::write(&words, SCREEN_WORDS).unwrap();
+        }
         let program = env!("CARGO_BIN_EXE_windows");
         let mut command = match launcher.split_first() {
             Some((first, arguments)) => {
@@ -126,8 +164,11 @@ impl Running {
             }
             None => Command::new(program),
         };
+        command.arg(&socket);
+        if outputs.is_some() {
+            command.arg("--words").arg(&words);
+        }
         command
-            .arg(&socket)
             .env("NIRI_SOCKET", folder.join("niri.sock"))
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
@@ -163,6 +204,18 @@ impl Running {
             client.ask(&json!({"id": 1, "ask": "unwatch"}));
         }
     }
+}
+
+/// The launcher's words for its Screens, as words.json says them, which
+/// screens.rs's own tests read too.
+const SCREEN_WORDS: &str = include_str!("screen-words.json");
+
+/// A screen niri lays out at this scale, or, with none, one it lays
+/// nothing out on.
+fn screen(make: &str, scale: Option<f64>) -> Value {
+    json!({"make": make, "model": "0x1234", "current_mode": 0,
+        "modes": [{"width": 2880, "height": 1920, "refresh_rate": 120_000}],
+        "logical": scale.map(|scale| json!({"scale": scale})), "powered_off": false})
 }
 
 fn keys(said: &Value) -> Vec<String> {
@@ -367,6 +420,79 @@ fn niri_gone_and_back_describes_the_desktop_again() {
         .client()
         .ask(&json!({"id": 2, "ask": "health"}));
     assert_eq!(health["sources"]["niri"]["state"], "answering");
+}
+
+#[test]
+fn a_watch_of_screens_is_told_each_screens_row_and_only_those_a_change_moved() {
+    let running = Running::worded(
+        "screens",
+        &json!({"eDP-1": screen("BOE", Some(2.0)), "DP-2": screen("Dell", Some(1.0))}),
+    );
+    let mut client = running.daemon.client();
+    let records = loop {
+        let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
+            "place": "displays"}));
+        let records = said["records"].as_array().cloned().unwrap_or_default();
+        if records.len() == 3 {
+            break records;
+        }
+        client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    };
+    let mut shown: Vec<(i64, String)> = records
+        .iter()
+        .map(|record| {
+            let row = &record["row"];
+            (row["order"].as_i64().unwrap_or(0), row["name"].to_string())
+        })
+        .collect();
+    shown.sort();
+    let names: Vec<&str> = shown.iter().map(|(_, name)| name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "\"Built-in Screen\"",
+            "\"Dell\"",
+            "\"Turn Every Screen Off\""
+        ],
+        "the built-in screen leads, then each by its connector: {records:?}"
+    );
+    // A watch naming no kind is a window's, and takes no row.
+    let said = running
+        .daemon
+        .client()
+        .ask(&json!({"id": 2, "ask": "watch"}));
+    let rowed: Vec<&Value> = said["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|record| record["kind"] == "row")
+        .collect();
+    assert!(rowed.is_empty(), "a watch of no kind took rows: {rowed:?}");
+    // The other screen turned off, a workspace change asks again; the
+    // built-in one is no longer said focused beside another lit.
+    running
+        .niri
+        .shows(&json!({"eDP-1": screen("BOE", Some(2.0)), "DP-2": screen("Dell", None)}));
+    running
+        .niri
+        .says(&serde_json::from_str::<Value>(BEGINNING[0]).unwrap());
+    let said = client.heard();
+    let mut told = keys(&said);
+    told.sort();
+    assert_eq!(
+        told,
+        ["row:displays:display:DP-2", "row:displays:display:eDP-1"]
+    );
+    let off = said["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|record| record["key"] == "row:displays:display:DP-2");
+    assert_eq!(
+        off.map(|record| &record["row"]["side"]),
+        Some(&json!([{"said": "off"}])),
+        "the screen turned off says so: {said}"
+    );
 }
 
 #[test]
