@@ -1,7 +1,8 @@
 // Wi-Fi, as wifid tells it over varlink on the socket systemd holds for it:
 // every card, the saved networks and those in the air, sent whole whenever
-// any of it changes, so the shell asks nothing to keep up. Telling wifid
-// what to do goes over a second connection, answered in order, and a join
+// any of it changes, so the shell asks nothing to keep up. The launcher
+// asks wifid's other acts on its rows socket (launcher/Wireless.qml); a
+// check goes over a second connection, answered in order, and a join
 // over one of its own, since it answers step by step until the card is done
 // and would hold up everything asked after it. One network's detail comes
 // over another, answered again as it changes for as long as it's asked
@@ -74,30 +75,8 @@ Singleton {
             calls.connected = true;
     }
 
-    function scan(): void {
-        call("Scan", {});
-    }
-
     function check(): void {
         call("Check", {});
-    }
-
-    // Each hands `answer`, where given, what wifid said, as `call` does, so
-    // a row drawn as it would be is put back if wifid wouldn't.
-    function leave(name: string, answer: var): void {
-        call("Leave", { name: name }, answer);
-    }
-
-    function forget(name: string, answer: var): void {
-        call("Forget", { name: name }, answer);
-    }
-
-    function trust(name: string, trusted: bool, answer: var): void {
-        call("Trust", { name: name, trusted: trusted }, answer);
-    }
-
-    function turn(on: bool, answer: var): void {
-        call("Radio", { on: on }, answer);
     }
 
     // A join already under way gives way to a new one, as wifid gives it

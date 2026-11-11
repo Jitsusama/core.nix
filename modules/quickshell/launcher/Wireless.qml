@@ -83,7 +83,7 @@ Provider {
         if (!Wifi.isSaved(to))
             return ((Words.field.command ?? {}).asksPassword ?? "").replace("{network}", to);
         if (!on)
-            Wifi.turn(true);
+            provider.turn(true);
         Wifi.join(to, null, null);
         return "";
     }
@@ -105,7 +105,7 @@ Provider {
         onTriggered: {
             if (provider.terminalLooks && !provider.launcher.open)
                 provider.lookedFrom = Wifi.looks;
-            Wifi.scan();
+            served.ask({ ask: "act", act: "scan" }, null);
         }
     }
     readonly property bool terminalLooks: (launcher?.terminalSees.walked ?? [])
@@ -164,11 +164,13 @@ Provider {
     readonly property var radio: radioRow(on)
 
     // Wi-Fi Off while the radio's on, as it is, or as it will be once
-    // turned: as wifid words it, or the vocabulary does where the act
-    // turns it before wifid says so.
+    // turned, both as wifid words them: the row it serves, or the row its
+    // act says it becomes. The vocabulary words it only until wifid has
+    // served a row at all.
     function radioRow(lit) {
         const row = servedOf("radio");
-        const said = row && row.held.on === lit ? row : null;
+        const said = !row ? null : row.held.on === lit ? row
+            : actOf(row, "wifi:radio")?.becomes ?? null;
         return thing({
             key: "wifi:radio",
             // An act, not a network, so it says no kind (docs/design.md).
@@ -184,44 +186,71 @@ Provider {
         });
     }
 
-    // What wifid is asked, each row it changes drawn as it will be until
-    // wifid says so, and put back if it won't (launcher/Becoming.js).
+    // A row's act as wifid serves it, by its key: what to ask, and the row
+    // it becomes once done. Null where wifid says the row has no such act.
+    function actOf(row, key) {
+        return (row?.acts ?? []).find(act => act.key === key) ?? null;
+    }
+
+    // What wifid is asked to do to a network: as its row's act says, or,
+    // where the row has none, the same ask, so wifid says why it won't.
+    function askOf(network, key, act) {
+        return actOf(network.served, key)?.ask
+            ?? { ask: "act", act: act, network: network.name };
+    }
+
+    // Asks an act of wifid, on its rows' own connection, and puts each row
+    // it held as it will be back if wifid won't, or isn't there.
+    function actOn(ask, keys) {
+        served.ask(ask, answer => {
+            const refused = answer === null ? "Failed"
+                : answer.error ? answer.error.refused ?? "Failed" : "";
+            for (const key of keys)
+                provider.refused(key, why(refused));
+        });
+    }
+
+    // What wifid is asked, each row it changes drawn at once as wifid says
+    // it becomes, until wifid serves it so, and put back if it won't
+    // (launcher/Becoming.js).
+    // The radio is asked to turn as said, whatever its row says.
     function turn(lit) {
         becomes("wifi:radio", radioRow(lit), provider.what, lit ? "on" : "off");
-        Wifi.turn(lit, (_, refused) => provider.refused("wifi:radio", why(refused)));
+        actOn({ ask: "act", act: "radio", on: lit }, ["wifi:radio"]);
     }
 
     function leave(network) {
         const key = `wifi:${network.name}`;
-        becomes(key, made(Object.assign({}, network, { connected: false })), network.name,
-            "disconnect");
+        const left = actOf(network.served, "verb:wifi-leave")?.becomes;
+        if (left)
+            becomes(key, made(networkOf(left)), network.name, "disconnect");
         // Inside the network, Disconnect It goes, as it will once it's left.
         becomes("verb:wifi-leave", null, network.name, "disconnect");
-        Wifi.leave(network.name, (_, refused) => {
-            for (const each of [key, "verb:wifi-leave"])
-                provider.refused(each, why(refused));
-        });
+        actOn(askOf(network, "verb:wifi-leave", "leave"), [key, "verb:wifi-leave"]);
     }
 
+    // Trusted as said, as :setl sets it; wifid's row says how it reads
+    // turned, and one already so reads as it is.
     function trust(network, trusted) {
-        becomes("verb:wifi-trust", trustRow(Object.assign({}, network, { trusted: trusted })),
-            network.name, trusted ? "trust" : "distrust");
-        Wifi.trust(network.name, trusted,
-            (_, refused) => provider.refused("verb:wifi-trust", why(refused)));
+        const act = actOf(network.served, "verb:wifi-trust");
+        const turned = act?.ask.trusted === trusted ? networkOf(act.becomes) : network;
+        becomes("verb:wifi-trust", trustRow(turned), network.name,
+            trusted ? "trust" : "distrust");
+        actOn(Object.assign({}, askOf(network, "verb:wifi-trust", "trust"), { trusted: trusted }),
+            ["verb:wifi-trust"]);
     }
 
     // Forgotten, the network is one never met, and what only a network saved
     // can have done to it goes.
     function forget(network) {
         const key = `wifi:${network.name}`;
-        becomes(key, made(Object.assign({}, network, { known: false, trusted: false })),
-            network.name, "forget");
+        const forgotten = actOf(network.served, "verb:wifi-forget")?.becomes;
+        if (forgotten)
+            becomes(key, made(networkOf(forgotten)), network.name, "forget");
         becomes("verb:wifi-trust", null, network.name, "forget");
         becomes("verb:wifi-forget", null, network.name, "forget");
-        Wifi.forget(network.name, (_, refused) => {
-            for (const each of [key, "verb:wifi-trust", "verb:wifi-forget"])
-                provider.refused(each, why(refused));
-        });
+        actOn(askOf(network, "verb:wifi-forget", "forget"),
+            [key, "verb:wifi-trust", "verb:wifi-forget"]);
     }
 
     // Why wifid wouldn't, in the foot's words, or "" where it did.
@@ -275,18 +304,10 @@ Provider {
     readonly property var networks: !on ? [] : rows.filter(row => row.kind === "network")
         .map(row => networkOf(row))
 
-    // The side as wifid serves it; or, for a row drawn as an act will leave
-    // it before wifid says so (Becoming.js), in the vocabulary's words for
-    // it, until the acts are asks of wifid's own.
+    // The side as wifid serves it, and as it says an act leaves it. A
+    // network it hasn't served, as one a join refused may be, says none.
     function sideOf(network) {
-        const row = network.served;
-        if (row && row.held.connected === network.connected && row.held.known === network.known)
-            return row.side.map(item => item.said).join(" \u00b7 ");
-        const said = Words.of("wifi:network")?.said ?? {};
-        const standing = network.connected ? said.connected : network.known ? said.saved : "";
-        const bars = network.strength > 0 ? (said.bars ?? "").replace("{n}", network.strength)
-            : "";
-        return [standing ?? "", bars].filter(part => part !== "").join(" \u00b7 ");
+        return (network.served?.side ?? []).map(item => item.said).join(" \u00b7 ");
     }
 
     // A network wifid hasn't served, as one a join refused may be, with
