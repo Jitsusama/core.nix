@@ -17,19 +17,23 @@
 //!
 //! It answers the shell over varlink, as io.jitsusama.Wifi (service.rs),
 //! with what it knows of each card, every saved network and the networks in
-//! the air, which wpa_supplicant says as it hears them.
+//! the air, which wpa_supplicant says as it hears them. It serves the
+//! launcher its Wi-Fi rows ready, worded in the launcher's own vocabulary,
+//! on a second socket (face.rs, rows.rs), so the shell only draws them.
 
 mod address;
 mod air;
 mod card;
 mod check;
 mod detail;
+mod face;
 mod link;
 mod lookup;
 mod network;
 mod page;
 mod radio;
 mod rfkill;
+mod rows;
 mod secret;
 mod seen;
 mod service;
@@ -66,6 +70,7 @@ use air::AccessPoint;
 use card::Card;
 use check::{Checker, Settings, Verdict};
 use detail::Polled;
+use face::Face;
 use link::Link;
 use network::{Account, Address, Inner, Method, Network, Security};
 use secret::{Credentials, Secrets};
@@ -380,17 +385,31 @@ async fn follow(
     }
 }
 
-/// Answers on the socket systemd holds, for as long as wifid runs. Run by
-/// hand, with no socket, it answers nobody.
+/// Answers on the sockets systemd holds, for as long as wifid runs: varlink
+/// on one, the launcher's rows on the other. Run by hand, with no socket,
+/// it answers nobody.
 async fn answer(wifi: Wifi) -> Result<(), Box<dyn Error>> {
-    let Some(listener) = service::listener()? else {
+    let service::Handed { varlink, rows } = service::handed()?;
+    let face = Face::new(wifi.state.clone());
+    let rows = async move {
+        let Some(listener) = rows else {
+            eprintln!("<4>systemd passed no rows socket, so the launcher draws no Wi-Fi");
+            return future::pending().await;
+        };
+        face.serve(listener).await
+    };
+    let Some(listener) = varlink else {
         eprintln!("<4>systemd passed no socket, so nobody can ask wifid anything");
-        return future::pending().await;
+        rows.await?;
+        return Err("stopped serving rows on the socket".into());
     };
     // Ending wifid has systemd start it again, which leaves every card on
     // its network and gives the shell its answers back.
-    Server::new(listener, wifi).run().await?;
-    Err("stopped answering on the socket".into())
+    tokio::select! {
+        served = Server::new(listener, wifi).run() => served?,
+        served = rows => served?,
+    }
+    Err("stopped answering on a socket".into())
 }
 
 /// The pages wifid.conf names; Google's, said in the journal, when it

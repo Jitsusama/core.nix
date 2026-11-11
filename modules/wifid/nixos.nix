@@ -5,9 +5,12 @@
 # and networkd's runtime files.
 #
 # It answers over varlink, as io.jitsusama.Wifi, on a socket systemd holds
-# for it, which the shell and varlinkctl talk to. Every account home-manager
-# keeps is in its group, wifi, and nobody else can reach it, since through
-# it a network can be joined, trusted or forgotten.
+# for it, which the shell and varlinkctl talk to, and serves the launcher's
+# Wi-Fi rows ready on a second, /run/wifid/rows, in the daemon interface
+# every daemon of the shell's speaks (daemon/src/face.rs). Every account
+# home-manager keeps is in its group, wifi, and nobody else can reach
+# either, since through them a network can be joined, trusted or forgotten.
+# The rows name the networks in reach, so they're kept to the group too.
 {
   config,
   lib,
@@ -48,14 +51,33 @@ in
     };
   };
 
+  # The launcher's rows, which wifid tells apart from varlink by the name
+  # systemd hands it each socket under.
+  systemd.sockets.wifid-rows = {
+    description = "Where the launcher reads Wi-Fi's rows";
+    wantedBy = [ "sockets.target" ];
+    listenStreams = [ "/run/wifid/rows" ];
+    socketConfig = {
+      Service = "wifid.service";
+      FileDescriptorName = "rows";
+      SocketGroup = "wifi";
+      SocketMode = "0660";
+      DirectoryMode = "0755";
+    };
+  };
+
   systemd.services.wifid = {
     description = "Wi-Fi networks, joined and checked for a sign-in";
     # It reads wifid.conf once, as it starts.
     restartTriggers = [ config.environment.etc."wifid/wifid.conf".source ];
     wants = [ "wpa_supplicant.service" ];
-    requires = [ "wifid.socket" ];
+    requires = [
+      "wifid.socket"
+      "wifid-rows.socket"
+    ];
     after = [
       "wifid.socket"
+      "wifid-rows.socket"
       "wpa_supplicant.service"
       "systemd-networkd.service"
     ];
@@ -67,6 +89,11 @@ in
     startLimitIntervalSec = 0;
     serviceConfig = {
       ExecStart = lib.getExe wifid;
+      # Both sockets, varlink's first, each by its name.
+      Sockets = [
+        "wifid.socket"
+        "wifid-rows.socket"
+      ];
       Restart = "always";
       RestartSec = "1s";
       RestartSteps = 6;

@@ -20,11 +20,17 @@
 // Access points, each a step into its own parts, with the one wifid would
 // pick and why, and how long it's been Connected for. A network wanting a
 // sign-in offers to sign in to it first. Turning Wi-Fi off and on is an
-// action in the main search. Everything else comes from wifid over its
-// socket (Wifi.qml), and the cards look for networks only while the
-// launcher is open. What wifid doesn't say of a link (each antenna,
-// transmit power, retries, how long it's been on, each way's width, Wi-Fi
-// 7's coding, the beacons' timing, the preamble, slot time and WMM) iw reads, every few seconds while the network joined is
+// action in the main search. wifid serves the list's rows ready, the
+// radio's, the sign-in's and each network's, worded in this account's
+// vocabulary, which it's handed by its path, and each in its place
+// (modules/wifid/daemon/src/rows.rs), so they're drawn as they come and
+// nothing here sorts, weighs or words them. What's done to them still asks
+// wifid over varlink (Wifi.qml), as does each network's detail, until both
+// are asks of the rows' own socket, by 13 November. The cards look for
+// networks only while the launcher is open. What wifid doesn't say of a
+// link (each antenna, transmit power, retries, how long it's been on, each
+// way's width, Wi-Fi 7's coding, the beacons' timing, the preamble, slot
+// time and WMM) iw reads, every few seconds while the network joined is
 // shown, by one spawn of the `iw` setting's script, and never for a key.
 // What the card carries a second is Traffic's, so it isn't said here too.
 import qs
@@ -36,6 +42,7 @@ import "Interfaces.js" as Interfaces
 import "WifiLink.js" as WifiLink
 import "Numbers.js" as Numbers
 import "Order.js" as Order
+import "Placed.js" as Placed
 
 Provider {
     id: provider
@@ -114,18 +121,61 @@ Provider {
             lookedFrom = -1;
     }
 
+    // The rows wifid serves, by key as it last said each, and the keys in
+    // the order its rows say, placed as each change comes (Placed.js).
+    Daemon {
+        id: served
+
+        socket: "/run/wifid/rows"
+        kind: "row"
+        watching: ({ place: "wifi", words: provider.settings.words ?? "" })
+        answersWhole: true
+        onHeard: (changed, gone) => provider.take(changed, gone)
+    }
+    property var placed: []
+    readonly property var rows: placed.map(key => served.held[key])
+    // Each network's row as made from what wifid last served of it, by
+    // key, so a change remakes only the networks it names.
+    property var madeOf: ({})
+
+    function take(changed, gone) {
+        const kept = Object.assign({}, madeOf);
+        for (const key of gone)
+            delete kept[key];
+        for (const key of changed) {
+            const row = served.held[key];
+            if (row?.kind === "network")
+                kept[key] = made(networkOf(row));
+        }
+        madeOf = kept;
+        placed = Placed.placed(placed, served.held, changed, gone);
+    }
+
+    // A network as its row's held fields say it, for its acts.
+    function networkOf(row) {
+        return Object.assign({}, row.held, { name: row.held.network, served: row });
+    }
+
+    // The row wifid serves of a kind, the radio's or the sign-in's.
+    function servedOf(kind) {
+        return rows.find(row => row.kind === kind) ?? null;
+    }
+
     readonly property var radio: radioRow(on)
 
     // Wi-Fi Off while the radio's on, as it is, or as it will be once
-    // turned.
+    // turned: as wifid words it, or the vocabulary does where the act
+    // turns it before wifid says so.
     function radioRow(lit) {
+        const row = servedOf("radio");
+        const said = row && row.held.on === lit ? row : null;
         return thing({
             key: "wifi:radio",
             // An act, not a network, so it says no kind (docs/design.md).
             what: "",
             verb: Words.verb("wifi:radio", lit ? "" : "off"),
-            name: Words.name("wifi:radio", lit ? "" : "off"),
-            glyph: Words.glyph("wifi:radio", lit ? "" : "off"),
+            name: said ? said.name : Words.name("wifi:radio", lit ? "" : "off"),
+            glyph: said ? Theme.glyph[said.glyph] : Words.glyph("wifi:radio", lit ? "" : "off"),
             // Its words' state, so the : line names the command for it.
             wordState: lit ? "" : "off",
             hue: "machine",
@@ -185,57 +235,62 @@ Provider {
         }[refused] ?? "wifid couldn't";
     }
 
-    things: !present ? [] : SignIn.network !== "" ? [signIn, radio] : [radio]
+    things: !present ? [] : signIn ? [signIn, radio] : [radio]
 
     // While a network wants a sign-in, it's what's next.
-    readonly property var signIn: thing({
-        key: "wifi:sign-in",
-        what: "",
-        verb: Words.verb("wifi:sign-in"),
-        name: Words.name("wifi:sign-in", "", { network: SignIn.network }),
-        glyph: Words.glyph("wifi:sign-in"),
-        hue: "machine",
-        run: () => SignIn.open()
-    })
+    readonly property var signIn: {
+        const row = servedOf("sign-in");
+        return !row ? null : thing({
+            key: "wifi:sign-in",
+            what: "",
+            verb: Words.verb("wifi:sign-in"),
+            name: row.name,
+            glyph: Theme.glyph[row.glyph],
+            hue: row.hue,
+            run: () => SignIn.open()
+        });
+    }
 
-    // How a network is joined, in words, and what's typed here to open it:
-    // a password, or an account with its server and password.
+    // What's typed here to open a network: a password, or an account with
+    // its server and password, and how wifid words it.
     function security(network) {
-        switch (network.security) {
-        case "open":
-            return { words: "open", locked: false };
-        case "personal":
-            return { words: "a password", locked: true, password: true };
-        default:
-            return { words: "an account", locked: true, password: true, account: true };
-        }
+        return {
+            words: network.served?.note ?? "",
+            locked: network.security !== "open",
+            password: network.security !== "open",
+            account: network.security === "enterprise"
+        };
     }
 
     // Signal in four bars, as the theme's marks draw it: with and without a
-    // lock, and an outline for none heard.
+    // lock, and an outline for none heard, for an access point's row and
+    // a network wifid hasn't served.
     function strengthGlyph(bars, locked) {
         const kind = locked ? "lockedSignal" : "signal";
         return Theme.glyph[`${kind}${Math.max(0, Math.min(4, bars))}`];
     }
 
     // Every network in the air, and the one joined even when it hides its
-    // name, each with what the rows need to know of it.
-    readonly property var networks: {
-        if (!on)
-            return [];
-        const heard = Wifi.nearby.map(network => described(network.name, network.security,
-            network.strength));
-        for (const card of Wifi.cards) {
-            const kept = Wifi.isSaved(card.network ?? "");
-            if (card.network && !heard.some(network => network.name === card.network))
-                heard.push(described(card.network, kept ? kept.security : "open", 0));
-        }
-        const rank = network => network.connected ? 0 : network.known ? 1 : 2;
-        return Order.sorted(heard, Order.live({ stands: rank,
-            then: (a, b) => b.strength - a.strength,
-            name: network => network.name }));
+    // name, in wifid's order, each with what its row is served with.
+    readonly property var networks: !on ? [] : rows.filter(row => row.kind === "network")
+        .map(row => networkOf(row))
+
+    // The side as wifid serves it; or, for a row drawn as an act will leave
+    // it before wifid says so (Becoming.js), in the vocabulary's words for
+    // it, until the acts are asks of wifid's own.
+    function sideOf(network) {
+        const row = network.served;
+        if (row && row.held.connected === network.connected && row.held.known === network.known)
+            return row.side.map(item => item.said).join(" \u00b7 ");
+        const said = Words.of("wifi:network")?.said ?? {};
+        const standing = network.connected ? said.connected : network.known ? said.saved : "";
+        const bars = network.strength > 0 ? (said.bars ?? "").replace("{n}", network.strength)
+            : "";
+        return [standing ?? "", bars].filter(part => part !== "").join(" \u00b7 ");
     }
 
+    // A network wifid hasn't served, as one a join refused may be, with
+    // what its acts need to know of it.
     function described(name, security, strength) {
         const kept = Wifi.isSaved(name);
         return {
@@ -350,23 +405,22 @@ Provider {
         // How it stands, then its bars, are the side's; what guards it
         // follows its name (VKCF3Z, 2026-11-09: "connected · 4 of 4 bars"
         // at the right of "Lantern  a password").
-        const standing = joined ? "connected" : network.known ? "saved" : "";
-        const bars = network.strength > 0 ? `${network.strength} of 4 bars` : "";
         const note = locked.words;
         const opening = met && locked.account ? provider.accountFor(network, "peap") : null;
         // Joined but wanting a sign-in, Return signs in, as it's all that's
         // left to do there; otherwise it leaves a network joined or joins one.
-        const signing = joined && SignIn.network === network.name;
+        const signing = network.signing === true;
         return member({
             thing: true,
             key: `wifi:${network.name}`,
             verb: signing ? Words.verb("verb:wifi-sign-in") : joined ? "disconnect" : "connect",
-            name: network.name,
-            glyph: strengthGlyph(network.strength, locked.locked),
-            hue: "machine",
+            name: network.served?.name ?? network.name,
+            glyph: network.served ? Theme.glyph[network.served.glyph]
+                : strengthGlyph(network.strength, locked.locked),
+            hue: network.served?.hue ?? "machine",
             // Connected, as Return connects it and its access point says it
             // is; join is a call's word (docs/glossary.md).
-            side: [standing, bars].filter(part => part !== "").join(" \u00b7 "),
+            side: sideOf(network),
             note: note,
             network: network.name,
             // Its own option, which :setl sets as Vim's :setlocal sets a
@@ -403,19 +457,17 @@ Provider {
         });
     }
 
-    readonly property var all: networks.map(network => made(network))
+    readonly property var all: !on ? [] : placed.filter(key => key in madeOf)
+        .map(key => madeOf[key])
     onAllChanged: changed()
 
-    // What its spots are made of (Launcher.qml's spotsFrom): the radio, the
-    // networks in reach by name, with what each can have done to it, and
-    // the parts of the one looked at; never a signal, which moves at
-    // every look. wifid takes this over, serving Wi-Fi's rows ready, by 11
-    // November.
+    // What its spots are made of (Launcher.qml's spotsFrom): the rows wifid
+    // served, which change only as one of them does, and the parts of the
+    // one looked at. The stamp goes once the network in detail is a record
+    // wifid serves too, by 12 November.
     property string spotsStamp: {
         const detail = Wifi.detail;
-        return JSON.stringify([present, on, SignIn.network, looking,
-            networks.map(network => [network.name, network.security, network.known,
-                network.declared, network.trusted, network.connected]).sort(),
+        return JSON.stringify([present, on, looking, served.revision,
             !detail ? null : [detail.name, detail.points.length > 0,
                 detail.joined.map(link => link.card)],
             !linkRead ? null : [linkRead.card, Object.keys(linkRead.said)

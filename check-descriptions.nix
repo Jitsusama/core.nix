@@ -2371,6 +2371,11 @@
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed
   '';
+  the-launcher-places-each-row-it-is-served = ''
+    the rows a daemon serves ready are kept in the order each says, each a change names placed
+    between its neighbours without sorting the rest, a row gone let go, and the list before left
+    as it was
+  '';
   the-launcher-places-each-window-it-hears = ''
     the windows the windows daemon tells of are kept the one used last first, each a change names
     placed where its order puts it without sorting the rest, the same record again changing
@@ -3683,6 +3688,10 @@
   wifid-reads-the-air = ''
     wifid's tests pass: what it hears and offers, how each network is joined, the addresses it
     shows, what it keeps, and sign-ins
+  '';
+  wifid-reads-the-launchers-words = ''
+    the launcher's vocabulary has every word wifid words its Wi-Fi rows with: the radio's, the
+    sign-in's and each network's
   '';
   wifid-sign-in-reads-its-network = ''
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card

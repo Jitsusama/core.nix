@@ -326,6 +326,7 @@ let
     "launcher/ForYouFilter.js"
     "launcher/Program.js"
     "launcher/HeldWindows.js"
+    "launcher/Placed.js"
     "launcher/Captured.js"
     "launcher/NeedsYou.js"
     "launcher/Here.js"
@@ -853,6 +854,12 @@ let
   timeZones = import ./launcher/zones.nix { inherit lib pkgs; };
   characterNames = import ./launcher/names.nix { inherit lib pkgs; };
 
+  # The launcher's vocabulary in a file of its own in the store, for what
+  # can read no home: the terminal's launcher, and wifid, a system service
+  # handed it by its path as the launcher watches its rows, which words
+  # them in it.
+  launcherWords = pkgs.writeText "words.json" (builtins.toJSON launcher.words);
+
   # A Wi-Fi card's link as iw reads it, for a network's detail in the
   # launcher: the link, the access point as the card hears it, and what
   # the card sends at, each headed so the launcher reads them apart, in one
@@ -979,7 +986,7 @@ let
         makeWrapper ${program} $out/bin/launcher \
           --set LAUNCHER_QS ${lib.getExe' pkgs.quickshell "qs"} \
           --set LAUNCHER_LOOK ${terminalLook} \
-          --set LAUNCHER_WORDS ${pkgs.writeText "words.json" (builtins.toJSON launcher.words)}
+          --set LAUNCHER_WORDS ${launcherWords}
         mkdir -p $out/share/zsh/site-functions
         $out/bin/launcher completion zsh > $out/share/zsh/site-functions/_launcher
         grep -q '^#compdef launcher$' $out/share/zsh/site-functions/_launcher
@@ -1960,13 +1967,15 @@ in
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";
                     }
-                    # What each connection is, from ip, and a Wi-Fi link
-                    # in detail, from iw.
+                    # What each connection is, from ip, a Wi-Fi link in
+                    # detail, from iw, and the words wifid says Wi-Fi's
+                    # rows in.
                     // lib.optionalAttrs (provider.source == "networks") {
                       ip = lib.getExe' pkgs.iproute2 "ip";
                     }
                     // lib.optionalAttrs (provider.source == "wifi") {
                       iw = "${wifiLink}";
+                      words = "${launcherWords}";
                     }
                     # A colour is told against the theme's own pigments.
                     // lib.optionalAttrs (provider.source == "colours") {
