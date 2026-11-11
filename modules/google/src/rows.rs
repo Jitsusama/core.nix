@@ -93,6 +93,16 @@ impl Vocabulary {
 #[path = "marked_words.rs"]
 pub(crate) mod marked;
 
+/// The desktop entry every Google page opens through (`google-opens`,
+/// opens.sh), in a window of Google's own rather than a browser tab, so
+/// the launcher opens a link only where it is (ready-rows.md's `in`).
+const OPENS_IN: &str = "google-opens";
+
+/// An act opening `link` in Google's own window, its words `key`'s.
+pub(crate) fn opens(key: &str, link: &str) -> Value {
+    json!({"key": key, "open": link, "in": OPENS_IN})
+}
+
 /// A form with each `{name}` in it filled.
 pub(crate) fn fill(form: &str, with: &[(&str, &str)]) -> String {
     with.iter().fold(form.to_owned(), |said, (name, value)| {
@@ -348,7 +358,6 @@ fn sender(mail: &Mail, words: &Words) -> String {
 /// attachments`), which `held.attachments` gives until they're rows of
 /// their own.
 fn acts(mail: &Mail) -> Vec<Value> {
-    let opens = |key: &str, link: &str| json!({"key": key, "open": link});
     let mut listed = vec![opens("verb:mail:open", &mail.page)];
     let subject = answering(&mail.subject);
     let reply = writing(&[&mail.address], &subject, &[]);
@@ -622,9 +631,9 @@ mod tests {
         assert_eq!(
             rows[0]["acts"],
             json!([
-                {"key": "verb:mail:open", "open": page},
-                {"key": "verb:mail:reply", "open": reply},
-                {"key": "verb:mail:replyAll", "open": reply_all},
+                {"key": "verb:mail:open", "open": page, "in": "google-opens"},
+                {"key": "verb:mail:reply", "open": reply, "in": "google-opens"},
+                {"key": "verb:mail:replyAll", "open": reply_all, "in": "google-opens"},
                 {"key": "verb:mail:archive", "ask": {"archive": {"id": "a"}}},
                 {"key": "verb:mail:read", "ask": {"read": {"id": "a"}}},
                 {"key": "mail:sender", "step": "person", "address": "ada@example.com"},
