@@ -103,7 +103,9 @@ impl World {
         // big is there, a big piece and modules built from it are needed
         // too; while big-fails is, the big one fails at once, and while
         // big-waits is, it waits up to five seconds for the heavy piece to
-        // be sent beside it, failing if it never is. A batch built here is
+        // be sent beside it, failing if it never is. While drops-once is
+        // there, the next build on the builders loses its builder, as a
+        // corrupted tunnel did on 11 November. A batch built here is
         // written in batched, and the pieces linked to be kept in kept. A system's
         // build starts a call while call-starts is there. Each input
         // overridden is written down, and a system made for a commit with
@@ -147,6 +149,9 @@ impl World {
                  if [ $n -gt 50 ]; then echo 'nothing was built beside it' >&2; exit 1; fi; \
                  sleep 0.1; done; fi;; esac\n\
                  if [ -e {hung} ]; then sleep 30; fi\n\
+                 if [ -e {drops_once} ]; then rm {drops_once}; \
+                 echo 'Connection corrupted' >&2; \
+                 echo 'Reason: local builds are disabled (max-jobs = 0)' >&2; exit 1; fi\n\
                  if [ -e {no_builder} ] || {{ [ -e {no_small_builder} ] \
                  && [ \"${{*#*e-big}}\" = \"$*\" ]; }}; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
@@ -173,6 +178,7 @@ impl World {
                 overridden = root.join("overridden").display(),
                 no_builder = root.join("no-builder").display(),
                 hung = root.join("hung").display(),
+                drops_once = root.join("drops-once").display(),
                 no_small_builder = root.join("no-small-builder").display(),
                 big = root.join("big").display(),
                 big_fails = root.join("big-fails").display(),
@@ -2303,6 +2309,26 @@ fn a_build_on_a_builder_that_goes_quiet_is_stopped_and_built_here() {
     );
     let here = world.read("here");
     assert!(here.contains("/nix/store/b-heavy.drv^*"), "{here}");
+}
+
+#[test]
+fn a_build_that_loses_its_builder_once_is_tried_there_again_not_built_here() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    fs::write(world.root.join("drops-once"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    assert!(
+        away.contains("/nix/store/b-heavy.drv^*"),
+        "the second try didn't go to the builders: {away}"
+    );
+    assert_eq!(
+        world.read("here"),
+        "",
+        "a builder lost once sent the pieces here"
+    );
 }
 
 #[test]
