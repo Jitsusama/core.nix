@@ -48,6 +48,9 @@ pub struct Made {
     /// can't be taken back, so its Return does the act (Y2YBTS,
     /// 2026-11-11).
     pub sure: bool,
+    /// Whether it's an act done with, drawn dimmed and asking nothing,
+    /// such as an install that's gone in (Y2YBTS, 2026-11-11).
+    pub gone: bool,
 }
 
 /// A row that says a figure and copies it.
@@ -169,6 +172,9 @@ pub fn placed_as(
         }
         if row.sure {
             set("sure", json!(true));
+        }
+        if row.gone {
+            set("gone", json!(true));
         }
         let mut acts = Vec::new();
         if !row.copies.is_empty() {

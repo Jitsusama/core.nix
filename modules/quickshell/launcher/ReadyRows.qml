@@ -258,6 +258,9 @@ Scope {
             // A row a step in that asks Joel to be sure, so its Return does
             // its act (Launcher.lands), as an act that can't be taken back is.
             sure: row.sure === true,
+            // An act done with, drawn dimmed, its acts none, so Return asks
+            // nothing (RCTRF8's Firmware, 2026-11-11).
+            gone: row.gone === true,
             drawer: () => drawerOf(row)
         }, acting, copying, fields ?? {}));
     }

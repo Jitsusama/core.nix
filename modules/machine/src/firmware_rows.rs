@@ -533,12 +533,16 @@ impl Say<'_> {
         let id = format!("{}:install", device.id);
         let name = self.name(VERB, &[("version", version)]);
         let held = self.held(device);
+        let done = |note: String| Made {
+            gone: true,
+            ..self.act(id.clone(), VERB, name.clone(), note)
+        };
         let note = if self.acting.going.as_deref() == Some(key) {
             said("installing")
         } else if device.waits.is_some() {
-            said("waits")
+            return done(said("waits"));
         } else if device.offered.is_none() || ended == Some(&Ended::Done) {
-            said("installed")
+            return done(said("installed"));
         } else if !held.is_empty() {
             held
         } else {
@@ -902,7 +906,10 @@ impl Say<'_> {
             return self.act(id, &verb, name, self.said(&verb, "changing", &[]));
         }
         if ended == Some(&Ended::Done) {
-            return self.act(id, &verb, name, self.said(&verb, "changed", &[]));
+            return Made {
+                gone: true,
+                ..self.act(id, &verb, name, self.said(&verb, "changed", &[]))
+            };
         }
         let failed = self.failed(&verb, ended);
         let note = if failed.is_empty() {
@@ -1003,7 +1010,11 @@ mod tests {
             { "id": "verb:firmware:fix", "name": "Secure It", "glyph": "firmware",
                 "sure": "Secure {attribute} Now", "said": { "what": "fwupd changes the setting",
                 "final": "it may need a restart", "changing": "securing",
-                "changed": "secured", "failed": "didn't secure" } },
+                "changed": "secured", "failed": "didn't secure",
+                "stopped": "stopped waiting after {count} min" } },
+            { "id": "verb:firmware:undo", "name": "Undo It", "glyph": "firmware",
+                "sure": "Undo {attribute} Now", "said": { "what": "fwupd puts it back",
+                "final": "it may need a restart" } },
             { "id": "verb:firmware:setup", "name": "Reboot Into Firmware Setup",
                 "glyph": "firmware", "sure": "Reboot Into Firmware Setup Now", "said": {
                 "set": "set {setting} to {target} there", "find": "set it there",
@@ -1262,5 +1273,411 @@ mod tests {
             ("HSI:INVALID".to_owned(), None, false)
         );
         assert_eq!(words_of("a<br/>b &lt;c&gt;"), "a\nb <c>");
+        assert_eq!(
+            reason("Decompressing\u{2026}\nSystem Firmware cannot be updated: on battery\n\n"),
+            "system Firmware cannot be updated: on battery",
+            "the last line, its first letter lowered"
+        );
+        let setup = "Cannot indicate to EFI to boot into setup mode: \
+            Firmware does not support it.\n";
+        assert_eq!(
+            reason(setup),
+            "cannot indicate to EFI to boot into setup mode: Firmware does not support it",
+            "without its full stop"
+        );
+        assert_eq!(
+            reason("UEFI capsule updates not available"),
+            "UEFI capsule updates not available",
+            "a word in capitals kept"
+        );
+        assert_eq!(reason(""), "");
+        assert_eq!(rating_of("HSI:4"), ("HSI:4".to_owned(), Some(4), false));
+        assert_eq!(
+            rating_of("HSI:INVALID:missing-data"),
+            ("HSI:INVALID:missing-data".to_owned(), None, false)
+        );
+    }
+
+    /// The machine's SSD, whose last install failed and which fwupd
+    /// offers nothing, saying why.
+    fn ssd() -> Value {
+        json!({ "key": "firmware:ssd", "kind": "firmware", "id": "ssd",
+            "name": "PVC10 SK hynix 1024GB", "vendor": "SK hynix", "version": "61001171",
+            "flags": ["internal", "updatable", "needs-reboot"],
+            "no_update": "current version is 61001171: 61001171=same",
+            "last_update": { "state": "failed", "version": "61001172",
+                "error": "device was not in supported mode", "updated_at_s": null } })
+    }
+
+    #[test]
+    fn a_device_without_a_name_or_a_version_is_left_out_and_its_history_says_why() {
+        let spi = json!({ "key": "firmware:spi", "kind": "firmware", "id": "spi",
+            "name": "Internal SPI Controller", "version": null });
+        let nameless = json!({ "key": "firmware:n", "kind": "firmware", "id": "n",
+            "name": null, "version": "1" });
+        let pk = json!({ "key": "firmware:pk", "kind": "firmware", "id": "pk",
+            "name": "Platform Key", "vendor": "Unknown", "version": "2026" });
+        let ready = read_of(&[ssd(), spi, bios(), nameless, pk.clone()]);
+        let names: Vec<&Value> = ready
+            .rows
+            .iter()
+            .filter(|row| row["depth"] == 0)
+            .map(|row| &row["name"])
+            .collect();
+        assert_eq!(
+            names,
+            ["System Firmware", "PVC10 SK hynix 1024GB", "Platform Key"],
+            "the one offered first, then as fwupd lists them"
+        );
+        let drive = row(&ready, "row:firmware:ssd");
+        assert_eq!(
+            drive["side"],
+            json!([{ "said": "61001171" }]),
+            "its version alone"
+        );
+        assert_eq!(
+            drive["drawer"]["facts"],
+            json!([
+                { "name": "firmware:none", "said": "current version is 61001171: 61001171=same" },
+                { "name": "firmware:failed", "said": "device was not in supported mode" }]),
+            "why nothing's offered and why its last install failed, and no day it never had"
+        );
+        assert_eq!(
+            row(&ready, "row:firmware:pk")["drawer"]["eyebrow"],
+            "firmware",
+            "a vendor fwupd doesn't know is none"
+        );
+        let head = |records: &[Value]| read_of(records).head.unwrap();
+        let current = head(&[ssd(), pk]);
+        assert_eq!(
+            (current["said"].clone(), current.get("hue").cloned()),
+            (json!("up to date"), None)
+        );
+        let mut other = bios();
+        other["id"] = json!("b11");
+        other["key"] = json!("firmware:b11");
+        assert_eq!(head(&[bios(), other])["said"], "2 updates ready");
+        assert!(
+            ready
+                .rows
+                .iter()
+                .all(|row| row["key"] != "row:firmware:security"),
+            "no rating before fwupd gives one"
+        );
+    }
+
+    #[test]
+    fn a_devices_drawer_says_how_it_is_flashed_and_how_urgent_its_update_is() {
+        let facts = |record: Value| {
+            row(&read_of(&[record]), "row:firmware:b10")["drawer"]["facts"]
+                .as_array()
+                .unwrap()
+                .clone()
+        };
+        let mut flashed = bios();
+        flashed["version_lowest"] = json!("1.2.0");
+        flashed["plugin"] = json!("uefi_capsule");
+        flashed["protocols"] = json!(["org.uefi.capsule", "com.dell.dock"]);
+        flashed["update"]["urgency"] = json!("high");
+        let said = facts(flashed);
+        let fact = |name: &str, said: &str| json!({ "name": name, "said": said });
+        assert_eq!(said[0], fact("firmware:lowest", "1.2.0"), "the lowest it takes first");
+        assert!(
+            said.contains(&fact("firmware:urgency", "high")),
+            "how urgent fwupd says it is"
+        );
+        assert!(
+            said.contains(&fact(
+                "firmware:protocols",
+                "org.uefi.capsule \u{b7} com.dell.dock"
+            )),
+            "each way it's flashed"
+        );
+        assert!(
+            said.contains(&json!({ "name": "firmware:plugin", "said": "uefi_capsule",
+                "identifies": true })),
+            "the plugin, as a name"
+        );
+        assert!(
+            facts(bios())
+                .iter()
+                .all(|fact| fact["name"] != "firmware:urgency"),
+            "an urgency fwupd doesn't know is none"
+        );
+    }
+
+    #[test]
+    fn an_update_waits_for_the_restart_until_it_is_flashed() {
+        let waiting = |state: &str, version: &str| {
+            let mut record = bios();
+            record["version"] = json!(version);
+            record["update"] = Value::Null;
+            record["problems"] = json!(["update-pending"]);
+            record["last_update"] = json!({ "state": state, "version": "1.13.0" });
+            read_of(&[record])
+        };
+        let side = |ready: &Ready| row(ready, "row:firmware:b10")["side"].clone();
+        assert_eq!(
+            side(&waiting("pending", "1.12.0")),
+            json!([{ "said": "1.13.0 at the restart \u{b7} from 1.12.0" }]),
+            "pending, and held back by nothing"
+        );
+        let install = row(&waiting("pending", "1.12.0"), "row:firmware:b10:install");
+        assert_eq!(
+            (install["gone"].clone(), install["acts"].clone()),
+            (json!(true), json!([])),
+            "an install waiting for the restart is done with, asking nothing"
+        );
+        assert_eq!(
+            side(&waiting("failed", "1.12.0")),
+            json!([{ "said": "1.12.0" }]),
+            "one that failed doesn't wait"
+        );
+        assert_eq!(
+            side(&waiting("pending", "1.13.0")),
+            json!([{ "said": "1.13.0" }]),
+            "flashed at the restart, it waits no more"
+        );
+        let locked = json!({ "key": "firmware:pk", "kind": "firmware", "id": "pk",
+            "name": "Platform Key", "version": "1", "problems": ["firmware-locked"] });
+        assert_eq!(
+            row(&read_of(&[locked]), "row:firmware:pk")["side"],
+            json!([{ "said": "1" }]),
+            "nothing held back with nothing offered"
+        );
+    }
+
+    /// An attribute named for its id, passing or not, with `fields` over
+    /// what fwupd says of one.
+    fn attribute(id: &str, level: Option<u64>, passed: bool, fields: Value) -> Value {
+        let mut one = json!({ "id": id, "summary": format!("{id} summary"), "level": level,
+            "result": if passed { "enabled" } else { "not-enabled" },
+            "passes_as": "enabled", "passed": passed,
+            "flags": if passed { json!(["success"]) } else { json!([]) } });
+        if let Value::Object(fields) = fields {
+            for (field, value) in fields {
+                one[field] = value;
+            }
+        }
+        one
+    }
+
+    fn rated(security: &str, attributes: Vec<Value>) -> Value {
+        json!({ "key": "firmware:host", "kind": "firmware", "security": security,
+            "attributes": Value::Array(attributes) })
+    }
+
+    /// A machine at level 1, lowered, with an attribute of each kind.
+    fn counted() -> Value {
+        rated(
+            "HSI:1! (v2.1.9)",
+            vec![
+                attribute("tpm", Some(1), true, json!({})),
+                attribute(
+                    "lockdown",
+                    None,
+                    false,
+                    json!({ "flags": ["runtime-issue", "action-config-os"] }),
+                ),
+                attribute(
+                    "rollback",
+                    Some(2),
+                    false,
+                    json!({ "flags": ["action-config-fw"],
+                "bios_setting": { "id": "AllowBiosDowngrade", "current": "Enabled" } }),
+                ),
+                attribute(
+                    "mtd",
+                    Some(2),
+                    false,
+                    json!({ "result": "not-supported", "flags": ["missing-data"] }),
+                ),
+                attribute("iommu", Some(2), true, json!({})),
+                attribute(
+                    "cet",
+                    None,
+                    true,
+                    json!({ "flags": ["success", "runtime-issue"] }),
+                ),
+                attribute("smap", Some(4), false, json!({ "summary": "" })),
+                attribute(
+                    "swap",
+                    None,
+                    false,
+                    json!({
+                "flags": ["runtime-issue", "can-fix", "can-undo"],
+                "kernel": { "current": "none", "target": "integrity" } }),
+                ),
+                attribute(
+                    "hidden",
+                    Some(1),
+                    true,
+                    json!({ "flags": ["success", "can-undo"] }),
+                ),
+            ],
+        )
+    }
+
+    #[test]
+    fn security_lists_each_failing_attribute_first_and_what_lowers_it() {
+        let ready = read_of(&[bios(), counted()]);
+        let inside: Vec<&Value> = ready
+            .rows
+            .iter()
+            .filter(|row| row["parent"] == "row:firmware:security")
+            .map(|row| &row["name"])
+            .collect();
+        assert_eq!(
+            inside,
+            [
+                "rollback summary",
+                "mtd summary",
+                "smap",
+                "lockdown summary",
+                "swap summary",
+                "tpm summary",
+                "hidden summary",
+                "iommu summary",
+                "cet summary",
+                "Security Level"
+            ],
+            "failing first, each part by level, what's running last, a name without a summary"
+        );
+        let facts = &row(&ready, "row:firmware:security")["drawer"]["facts"];
+        let needed = "rollback summary not enabled \u{b7} mtd summary not-supported \u{b7} unread";
+        assert_eq!(
+            facts[0],
+            json!({ "name": "Needed for Level 2", "said": needed }),
+            "the next level's failing attributes, one fwupd couldn't read included"
+        );
+        assert_eq!(
+            facts[1],
+            json!({ "name": "Lowered By",
+                "said": "lockdown summary not enabled \u{b7} swap summary not enabled" }),
+            "what's running that fails, and not what passes"
+        );
+    }
+
+    #[test]
+    fn an_attributes_drawer_and_steps_say_what_changes_it() {
+        let ready = read_of(&[bios(), counted()]);
+        let drawer = |id: &str| {
+            row(&ready, &format!("row:firmware:security:{id}"))["drawer"]["facts"].clone()
+        };
+        assert_eq!(
+            drawer("rollback")[2],
+            json!({ "name": "Firmware Setting", "said": "AllowBiosDowngrade", "identifies": true }),
+            "its firmware setting, after what passing finds and where it's fixed"
+        );
+        let kernel = json!({ "name": "firmware:kernel-should-be", "said": "integrity" });
+        assert!(
+            drawer("swap").as_array().unwrap().contains(&kernel),
+            "the kernel's setting to pass"
+        );
+        let keys: Vec<&str> = ready
+            .rows
+            .iter()
+            .filter_map(|row| row["key"].as_str())
+            .collect();
+        assert!(
+            keys.contains(&"row:firmware:security:swap:fix")
+                && !keys.contains(&"row:firmware:security:swap:undo"),
+            "a failing attribute fwupd can change is secured, not undone"
+        );
+        assert!(
+            keys.contains(&"row:firmware:security:hidden:undo"),
+            "a passing one fwupd can put back is undone"
+        );
+    }
+
+    #[test]
+    fn only_a_runtime_issue_lowers_and_nothing_is_needed_past_the_top() {
+        let quiet = read_of(&[
+            bios(),
+            rated(
+                "HSI:2! (v2.1.9)",
+                vec![
+                    attribute(
+                        "updates",
+                        None,
+                        false,
+                        json!({ "flags": ["runtime-updates"] }),
+                    ),
+                    attribute(
+                        "attestation",
+                        None,
+                        false,
+                        json!({ "flags": ["runtime-attestation"] }),
+                    ),
+                ],
+            ),
+        ]);
+        assert_eq!(
+            row(&quiet, "row:firmware:security")["drawer"]["facts"],
+            json!([]),
+            "only a runtime issue lowers the level"
+        );
+        let top = read_of(&[
+            bios(),
+            rated("HSI:5", vec![attribute("later", Some(6), false, json!({}))]),
+        ]);
+        assert_eq!(
+            row(&top, "row:firmware:security")["drawer"]["facts"],
+            json!([]),
+            "nothing is needed past the top level"
+        );
+    }
+
+    #[test]
+    fn an_act_waited_for_too_long_says_how_long() {
+        let device = |minutes: Value| {
+            let mut record = bios();
+            record["update"]["install_minutes"] = minutes;
+            install_patience(&device_of(&record))
+        };
+        assert_eq!(device(json!(25)), 50, "twice what fwupd says it takes");
+        assert_eq!(device(json!(3)), 30, "never under the least");
+        assert_eq!(
+            device(Value::Null),
+            30,
+            "the least, where fwupd gives no length"
+        );
+        let mut acting = Acting::default();
+        acting
+            .ended
+            .insert("install:b10".to_owned(), Ended::Stopped(50));
+        let stopped = read(&[bios()], &acting, &words());
+        assert_eq!(
+            row(&stopped, "row:firmware:b10:install")["note"],
+            "didn't install \u{b7} stopped waiting after 50 min",
+            "how long it was waited for, not fwupdmgr's words"
+        );
+        let failing = json!({ "key": "firmware:host", "kind": "firmware",
+            "security": "HSI:1", "attributes": [{ "id": "a", "summary": "A", "level": 2,
+                "result": "not-enabled", "passed": false, "flags": ["can-fix"] }] });
+        acting.ended.clear();
+        acting.ended.insert("fix:a".to_owned(), Ended::Stopped(2));
+        let fix = read(&[bios(), failing.clone()], &acting, &words());
+        assert_eq!(
+            row(&fix, "row:firmware:security:a:fix")["note"],
+            "didn't secure \u{b7} stopped waiting after 2 min"
+        );
+        acting.ended.insert("fix:a".to_owned(), Ended::Done);
+        let done = read(&[bios(), failing], &acting, &words());
+        let secured = row(&done, "row:firmware:security:a:fix");
+        assert_eq!(
+            (
+                secured["note"].clone(),
+                secured["gone"].clone(),
+                secured["acts"].clone()
+            ),
+            (json!("secured"), json!(true), json!([])),
+            "a change that's done is done with, asking nothing"
+        );
+        assert_eq!(
+            row(&fix, "row:firmware:security:a:fix").get("gone"),
+            None,
+            "one that stopped may be tried again"
+        );
     }
 }
