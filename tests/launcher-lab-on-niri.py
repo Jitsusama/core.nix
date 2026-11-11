@@ -7,7 +7,11 @@ and 173 to 225 ms presented (2026-11-11), for they opened different places, kept
 one shell or two sharing a builder, so neither said where chords stood. This one opens every
 chord's place in turn, a round at a time, each from shut as its chord does, and prints each
 opening's presented time from the ask with whether it was kept, so a run's places and rounds are
-the same on both sides. It fails only when an opening never says it was presented.
+the same on both sides. Each place's line also splits its time at the shell's swap: what the
+shell took to its frame, and what niri took after it to present it, since the VM's niri draws on
+the CPU and once held about half its frames some 150 ms past the swap, which read as the
+launcher's when only the whole was said (RTOIMQ, 2026-11-11). It fails only when an opening
+never says it was presented.
 """
 
 from __future__ import annotations
@@ -89,6 +93,17 @@ def p90(spans: list[int]) -> int:
     return ordered[min(len(ordered) - 1, round(0.9 * (len(ordered) - 1)))]
 
 
+def said_of(place: str, presented: list[int], took: list[int]) -> str:
+    """Say a place's openings: presented, and that split at the shell's swap of its frame."""
+    niri = [whole - shell for whole, shell in zip(presented, took, strict=True)]
+    return (
+        f"lab-place {place}: {len(presented)} presented a median "
+        f"{round(statistics.median(presented))} ms, p90 {p90(presented)}; the shell's frame a "
+        f"median {round(statistics.median(took))} ms, niri's after it a median "
+        f"{round(statistics.median(niri))} ms, p90 {p90(niri)}"
+    )
+
+
 def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
     """Open each chord's place from shut, round after round, and print each one's times.
 
@@ -104,6 +119,9 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
     opened(shell, "home")
     shell.close_launcher()
     timed: dict[str, list[int]] = {place: [] for place in places}
+    # From the ask to the shell's swap of the frame at the card's size, which `presented` runs
+    # on from to niri's presented frame.
+    took: dict[str, list[int]] = {place: [] for place in places}
     for round_ in range(rounds):
         # Each round starts one place further on, so no place always follows the same one.
         for place in places[round_ % len(places) :] + places[: round_ % len(places)]:
@@ -114,6 +132,7 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
                 "presented": opening["presented"],
                 "kept": bool(opening.get("kept")),
                 "took": opening.get("took"),
+                "niri": opening["presented"] - cast("int", opening["took"]),
                 "rows": opening.get("rows"),
             }
             with capsys.disabled():
@@ -121,12 +140,11 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
             if opening["presented"] < 0:
                 pytest.fail(f"{place}'s opening closed unpresented: {opening}")
             timed[place].append(opening["presented"])
+            took[place].append(cast("int", opening["took"]))
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
     for window in windows:
         shell.close(window)
     for place, spans in timed.items():
-        median = round(statistics.median(spans))
-        line = f"{len(spans)} presented a median {median} ms, p90 {p90(spans)}"
         with capsys.disabled():
-            print(f"lab-place {place}: {line}", flush=True)
+            print(said_of(place, spans, took[place]), flush=True)

@@ -372,7 +372,14 @@ the frame niri presents, the same way on both sides. The lab is the `lab` of
 fresh niri's first blur as his never does, it opens home and every chord's
 place in turn from shut, once home is kept, round after round, and prints each
 opening's presented time, whether it was kept, and the rows it made, then
-each place's median and p90.
+each place's median and p90. Each place's line splits that time at the
+shell's swap of its frame: the shell's part, from the ask to the swap, and
+niri's, from the swap to the presented frame. The test niri draws on the
+processor, and once held about half its frames some 150 ms past the swap.
+On a loaded builder home's own part stayed at 6 to 9 ms while niri's ran 30
+to 160, moving 40 ms or more between runs with nothing changed
+(2026-11-11). So a change that moves only niri's part didn't move the
+launcher, and a change to the launcher is read in the shell's part.
 
 A side is one run, its round count and a tag naming the run, so each run
 builds anew:
