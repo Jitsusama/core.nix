@@ -554,7 +554,15 @@ fn doer(config: &Config, wake: Sender<Wake>) -> Doer {
 
 fn hub(config: &Config) -> Result<Arc<Hub>, String> {
     let since = u64::try_from(jiff::Timestamp::now().as_millisecond()).unwrap_or_default();
-    let hub = Arc::new(Hub::new(since));
+    // A vocabulary that can't be read leaves each word its id, as the
+    // launcher says one it doesn't hold, rather than serving no rows.
+    let words = config
+        .vocabulary
+        .as_ref()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| crate::ready::Words::from_vocabulary(&text).ok())
+        .unwrap_or_default();
+    let hub = Arc::new(Hub::new(since).worded(words));
     let runtime = config.runtime()?;
     if let Ok(written) = std::fs::read_to_string(runtime.join("collection.json")) {
         hub.seed(&written);

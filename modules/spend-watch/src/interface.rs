@@ -16,7 +16,8 @@
 
 use crate::acts::{self, Doer};
 use crate::collection::Collection;
-use crate::records::{BUDGETS, KINDS, budget_records, cut, cut_budgets, kind_of, records};
+use crate::ready::{Served, Words};
+use crate::records::{BUDGETS, budget_records, cut, cut_budgets, kind_of, kinds};
 use crate::standing::Standing;
 use crate::status::ShellAction;
 use serde_json::{Value, json};
@@ -78,25 +79,6 @@ pub enum Ask {
         id: Value,
         ask: String,
     },
-}
-
-/// The kinds an ask names, as one or a list, or every kind when it names
-/// none; or the first that isn't one.
-fn kinds(said: &Value) -> Result<Vec<String>, String> {
-    let named: Vec<String> = match said.get("kind") {
-        None | Some(Value::Null) => return Ok(KINDS.iter().map(|k| (*k).to_owned()).collect()),
-        Some(Value::String(kind)) => vec![kind.clone()],
-        Some(Value::Array(kinds)) => kinds
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_owned)
-            .collect(),
-        Some(other) => return Err(other.to_string()),
-    };
-    match named.iter().find(|kind| !KINDS.contains(&kind.as_str())) {
-        Some(unknown) => Err(unknown.clone()),
-        None => Ok(named),
-    }
 }
 
 /// What a line from a client asks.
@@ -175,6 +157,8 @@ struct Held {
     /// What the bar's piece offers, as the last pass wrote `status.json`,
     /// by each action's key.
     offered: BTreeMap<String, Value>,
+    /// The launcher's rows as they were last served ready (`ready.rs`).
+    served: Served,
     /// Whether a pass has said the collection yet: until it has, the
     /// state is "starting".
     passed: bool,
@@ -190,6 +174,8 @@ pub struct Hub {
     since: u64,
     /// What does an act, given once the daemon can.
     doer: OnceLock<Doer>,
+    /// The launcher's words the rows served ready say.
+    words: Words,
 }
 
 impl Hub {
@@ -198,7 +184,14 @@ impl Hub {
             held: Mutex::new(Held::default()),
             since,
             doer: OnceLock::new(),
+            words: Words::default(),
         }
+    }
+
+    /// The hub, its ready rows saying the launcher's words.
+    #[must_use]
+    pub fn worded(self, words: Words) -> Hub {
+        Hub { words, ..self }
     }
 
     /// Gives the hub what does its acts; only the first is kept.
@@ -260,7 +253,9 @@ impl Hub {
                 .into_iter()
                 .filter(|(key, _)| kind_of(key).is_some_and(|kind| BUDGETS.contains(&kind)))
                 .collect();
-            held.records = cut(whole);
+            let served = held.served.take(&whole, &self.words);
+            held.records = served;
+            held.records.extend(cut(whole));
             held.records.extend(budgets);
         }
     }
@@ -285,11 +280,13 @@ impl Hub {
     /// that the daemon is answering now, as hello would, since what it
     /// was told before was the last run's and said as such.
     pub fn publish(&self, collection: &Collection, budgets: Option<&Standing>) {
-        let mut now = records(collection);
+        let whole = serde_json::to_value(collection).unwrap_or_default();
+        let mut held = self.lock();
+        let mut now = held.served.take(&whole, &self.words);
+        now.extend(cut(whole));
         if let Some(budgets) = budgets {
             now.extend(budget_records(budgets));
         }
-        let mut held = self.lock();
         let first = !held.passed;
         held.passed = true;
         let was = std::mem::take(&mut held.records);
@@ -444,6 +441,7 @@ fn of<'a>(held: &'a Held, kinds: &[String]) -> Vec<&'a Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::records::records;
     use crate::report::{Family, Helper};
     use std::io::{BufReader, Read};
     use std::time::Duration;

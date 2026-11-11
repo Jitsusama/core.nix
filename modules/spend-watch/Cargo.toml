@@ -13,6 +13,9 @@ augurs-changepoint = "0.10"
 # Local days and hours, in the machine's zone, the database built in so the
 # build and its tests need no zoneinfo.
 jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
+# The one form every daemon serves the launcher's rows in, so Spend's are
+# kept and spaced as every other place's (../ready-rows).
+ready-rows = { path = "../ready-rows" }
 # The history, with SQLite built in.
 rusqlite = { version = "0.37", features = ["bundled"] }
 rustix = { version = "1.1", features = ["fs", "process"] }

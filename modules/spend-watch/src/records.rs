@@ -11,6 +11,10 @@
 //!   its `place` in the list the launcher shows and `summed` in the
 //!   summary's rows where it's in them, for the launcher while it's
 //!   open, which places each row by them and ranks none;
+//! - `row:spend:<id>` and `row:spend-quiet:<id>`, the same rows ready to
+//!   draw in the form every daemon serves its rows in, and
+//!   `summary:spend`, the summary's among them, made by `ready.rs` as
+//!   the daemon serves them, for the launcher once it reads them;
 //! - `report:<id>`, one report, and `words:periods`, `words:cuts` and
 //!   `words:examples`, for Spend's answers while it's wanted;
 //! - `budget:<name>`, how one budget stands, and `drew:<id>`, the budget a
@@ -27,8 +31,8 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 /// The kinds of record the collection and the budgets are told as.
-pub const KINDS: [&str; 8] = [
-    "session", "quest", "day", "row", "report", "words", "budget", "drew",
+pub const KINDS: [&str; 9] = [
+    "session", "quest", "day", "row", "report", "words", "budget", "drew", "summary",
 ];
 
 /// The kinds cut from budgets.json rather than the collection.
@@ -38,6 +42,25 @@ pub const BUDGETS: [&str; 2] = ["budget", "drew"];
 pub fn kind_of(key: &str) -> Option<&str> {
     let (kind, rest) = key.split_once(':')?;
     (KINDS.contains(&kind) && !rest.is_empty()).then_some(kind)
+}
+
+/// The kinds an ask names, as one or a list, or every kind when it names
+/// none; or the first that isn't one.
+pub fn kinds(said: &Value) -> Result<Vec<String>, String> {
+    let named: Vec<String> = match said.get("kind") {
+        None | Some(Value::Null) => return Ok(KINDS.iter().map(|k| (*k).to_owned()).collect()),
+        Some(Value::String(kind)) => vec![kind.clone()],
+        Some(Value::Array(kinds)) => kinds
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect(),
+        Some(other) => return Err(other.to_string()),
+    };
+    match named.iter().find(|kind| !KINDS.contains(&kind.as_str())) {
+        Some(unknown) => Err(unknown.clone()),
+        None => Ok(named),
+    }
 }
 
 /// The collection as records, by key.

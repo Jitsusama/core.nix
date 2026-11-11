@@ -67,6 +67,12 @@ pub struct Config {
     /// matched without case against the errors in pi's logs.
     #[serde(default = "default_refusals")]
     pub refusals: Vec<String>,
+    /// The launcher's vocabulary, its words.json, which words what the
+    /// rows served ready say beyond the collection's own words: their
+    /// drawers' fact names and their acts (`ready.rs`). With none, each
+    /// says its id, as the launcher says a word it doesn't hold.
+    #[serde(default)]
+    pub vocabulary: Option<PathBuf>,
 }
 
 fn default_lead() -> Vec<u32> {
