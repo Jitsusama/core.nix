@@ -279,8 +279,9 @@ pub struct Batch {
 }
 
 /// Reads `nix path-info --json`: an object of store paths, each with its
-/// size, registration time and references, or null for one no longer
-/// valid, which is left out since it's already gone. Anything else is
+/// size, registration time and references, or null for one not valid,
+/// which is left out: it's gone, or Nix never registered it, which `list`
+/// looks at on the disk. Anything else is
 /// refused rather than guessed at, since a misread reference could delete
 /// what a young path still needs.
 pub fn parse(json: &str) -> Result<Vec<Dead>, String> {
@@ -397,8 +398,16 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
             });
         }
     }
-    // What Nix no longer knows is gone already, so the rest close up
-    // around it, and a reference to it holds nothing back.
+    // What Nix doesn't know but is still there, it never registered: the
+    // output of a build killed before it finished. Nothing registered can
+    // refer to it, and `nix store delete` takes it, so it's garbage.
+    for (at, path) in paths.iter().enumerate() {
+        if described[at].is_none() {
+            described[at] = crate::unregistered::listed(path);
+        }
+    }
+    // What Nix no longer knows and isn't there is gone already, so the
+    // rest close up around it, and a reference to it holds nothing back.
     let mut placed: Vec<Option<u32>> = Vec::with_capacity(described.len());
     let mut next = 0;
     for path in &described {
