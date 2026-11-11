@@ -13,9 +13,15 @@
 //! So the pi window with the focus, and those that had it within [`FOR`],
 //! [`MOST`] in all, run at [`WEIGHT`], keep a floor of [`FLOOR`], which
 //! holds inside agents.slice's own floor against its ceiling, and are the
-//! last systemd-oomd ends. They have no disk latency target: on 10
-//! November a target anywhere under the account held Joel's own reads in
-//! the kernel's throttle, at up to 141 ms against 9.8 ms with none. Each
+//! last systemd-oomd ends. What of them is paged out stays compressed
+//! in memory, never written to the disk: on 10 November the zswap pool
+//! counted against agents.slice's ceiling, so the slice's reclaim wrote
+//! a window's cold pages to disk long before the pool filled, and 97% of
+//! the held windows' swap-ins read the disk, a 4 KiB page a fault on pi's
+//! own thread, where a window Joel came back to stalled for up to 2 s.
+//! They have no disk latency target: on 10 November a target anywhere
+//! under the account held Joel's own reads in the kernel's throttle, at
+//! up to 141 ms against 9.8 ms with none. Each
 //! gives all of it back once it ages out. A window he only passed over,
 //! for less than [`STAY`], wasn't one he was at. Focus comes before a
 //! mark saying nobody is at a window, as `src/low.rs` says.
@@ -237,14 +243,14 @@ pub fn app_id(environ: &[u8]) -> Option<String> {
         .map(|id| String::from_utf8_lossy(id).into_owned())
 }
 
-/// What busctl is given to hold a window's unit with [`FLOOR`] and
-/// systemd-oomd's avoid preference, or to give both back, as runtime
-/// properties gone at the next boot.
+/// What busctl is given to hold a window's unit with [`FLOOR`], no zswap
+/// writeback and systemd-oomd's avoid preference, or to give all three
+/// back, as runtime properties gone at the next boot.
 pub fn hold_call(unit: &str, hold: bool) -> Vec<String> {
-    let (floor, preference) = if hold {
-        (FLOOR.to_string(), "avoid")
+    let (floor, writeback, preference) = if hold {
+        (FLOOR.to_string(), "false", "avoid")
     } else {
-        ("0".to_owned(), "none")
+        ("0".to_owned(), "true", "none")
     };
     [
         "--user",
@@ -257,10 +263,13 @@ pub fn hold_call(unit: &str, hold: bool) -> Vec<String> {
         "sba(sv)",
         unit,
         "true",
-        "2",
+        "3",
         "MemoryLow",
         "t",
         &floor,
+        "MemoryZSwapWriteback",
+        "b",
+        writeback,
         "ManagedOOMPreference",
         "s",
         preference,
@@ -641,17 +650,20 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_held_with_a_floor_and_avoided_or_given_both_back() {
+    fn a_window_is_held_with_a_floor_in_memory_and_avoided_or_given_all_back() {
         let held = hold_call("kitty-1-9.scope", true);
         assert_eq!(
             held[8..],
             [
                 "kitty-1-9.scope",
                 "true",
-                "2",
+                "3",
                 "MemoryLow",
                 "t",
                 "3221225472",
+                "MemoryZSwapWriteback",
+                "b",
+                "false",
                 "ManagedOOMPreference",
                 "s",
                 "avoid"
@@ -659,7 +671,8 @@ mod tests {
         );
         let back = hold_call("kitty-1-9.scope", false);
         assert_eq!(back[13], "0");
-        assert_eq!(back[16], "none");
+        assert_eq!(back[16], "true");
+        assert_eq!(back[19], "none");
     }
 
     #[test]
