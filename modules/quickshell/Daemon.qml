@@ -50,7 +50,9 @@ Scope {
     // thousands of records holds only the few shown with nothing typed.
     property var watching: ({})
     // The keys to watch ahead, as the shell is about to need them; each
-    // change sends the watch again, which replaces the one before.
+    // change sends the watch again, which replaces the one before, and
+    // emptied it's unwatched, so a daemon reading something only while
+    // a key is ahead, as wifid reads a network's link, stops.
     property var ahead: []
     // Whether its kind is watched now. A daemon that reads only while
     // watched, as the machine daemon reads the processor each second,
@@ -222,7 +224,12 @@ Scope {
         if (wire !== null && ahead.length > 0)
             tell({ id: "ahead", ask: "watch", kind: kind, keys: ahead });
     }
-    onAheadChanged: watchAhead()
+    onAheadChanged: {
+        if (ahead.length > 0)
+            watchAhead();
+        else
+            tell({ id: "ahead", ask: "unwatch" });
+    }
 
     // Records said whole, each replacing what was held by its key, and
     // keys the daemon says are gone taken out, whether in a gone list or

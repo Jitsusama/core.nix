@@ -17,7 +17,8 @@
 // again, and the one that let go holds again. A client of a daemon
 // holding two kinds, as Google's does, stood in for
 // (daemon-kinds.py), holds records of both over one connection,
-// and names both in the watch ahead too. A client of a daemon that says
+// and names both in the watch ahead too, and its watch ahead emptied is
+// unwatched, so the daemon hears the keys let go. A client of a daemon that says
 // only what differs, as mycelium's node does, lays a change over the
 // record it holds, letting go a field said as null. A client of a kind
 // with no records knows it holds none once it's answered, and one whose
@@ -323,6 +324,14 @@ ShellRoot {
                 kinds.ahead = ["mail:two"];
             },
             holds: () => root.askedOf("mail:two") === '["meeting","mail"]'
+        },
+        {
+            what: "its watch ahead emptied is unwatched before the next",
+            run: () => {
+                kinds.ahead = [];
+                kinds.ahead = ["mail:three"];
+            },
+            holds: () => kinds.held["mail:three"]?.unwatched === 1
         },
         {
             what: "a change saying only what differs is laid over what's held",

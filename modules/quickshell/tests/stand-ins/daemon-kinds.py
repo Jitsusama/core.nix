@@ -9,6 +9,8 @@ saying only the fields that differ, one dropped as null. A watch of what waits i
 two records the first time, and the connection then dropped, and with one of them alone after,
 as the node's whole answer is once one went in a gap; one of verdicts with none. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
+An unwatch is answered as wifid answers one, and each record says how many watches ahead its
+connection has unwatched, so the test can tell an emptied watch ahead was let go.
 """
 
 import json
@@ -32,8 +34,8 @@ def kinds_of(asked: dict[str, object]) -> list[str]:
     return []
 
 
-def answer(asked: dict[str, object]) -> list[dict[str, object]]:
-    """Answer one ask, in the lines a daemon sends for it."""
+def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
+    """Answer one ask, in the lines a daemon sends for it, its connection unwatched so often."""
     if asked.get("ask") == "hello":
         return [{"id": asked.get("id"), "version": 1, "domain": "kinds", "state": "answering"}]
     if asked.get("kind") == "session":
@@ -67,13 +69,21 @@ def answer(asked: dict[str, object]) -> list[dict[str, object]]:
         else [f"{kind}:one" for kind in kinds]
     )
     records = [
-        {"key": key, "kind": key.split(":", 1)[0], "heard": 1, "asked": kinds} for key in named
+        {
+            "key": key,
+            "kind": key.split(":", 1)[0],
+            "heard": 1,
+            "asked": kinds,
+            "unwatched": unwatched,
+        }
+        for key in named
     ]
     return [{"id": asked.get("id"), "records": records}]
 
 
 def serve(client: socket.socket) -> None:
     """Answer one client, a line for each line, until it goes."""
+    unwatched = 0
     with client, client.makefile("rw") as lines:
         for line in lines:
             try:
@@ -81,7 +91,13 @@ def serve(client: socket.socket) -> None:
             except json.JSONDecodeError:
                 continue
             if isinstance(asked, dict):
-                for said in answer(asked):
+                if asked.get("ask") == "unwatch":
+                    if asked.get("id") == "ahead":
+                        unwatched += 1
+                    lines.write(json.dumps({"id": asked.get("id"), "unwatched": True}) + "\n")
+                    lines.flush()
+                    continue
+                for said in answer(asked, unwatched):
                     lines.write(json.dumps(said) + "\n")
                 lines.flush()
                 # The first watch of what waits is followed by a gap.
