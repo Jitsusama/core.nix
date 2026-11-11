@@ -2467,6 +2467,11 @@
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
   '';
+  the-launcher-closes-only-for-keys-it-held = ''
+    the open launcher holds its keys once its card is active and niri says no window has them,
+    so an opening right after a closing stays open as the closing's late focus arrives; held, a
+    click on a window closes it, and a notice held over it leaves it open
+  '';
   a-place-reads-alike-everywhere = ''
     a place's row says nothing after its name; at its right it says how it stands where it says,
     else its word for none while it holds nothing, else how many it holds, and nothing for a place

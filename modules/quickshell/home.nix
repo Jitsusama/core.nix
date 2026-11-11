@@ -306,6 +306,7 @@ let
     "launcher/RowsKept.js"
     "launcher/Order.js"
     "launcher/PlaceRow.js"
+    "launcher/KeysHeld.js"
     "launcher/RowsPlace.js"
     "launcher/Becoming.js"
     "launcher/Recent.js"
