@@ -426,7 +426,11 @@ impl Say<'_> {
             },
             &[],
         );
-        Some(json!({ "eyebrow": eyebrow, "title": self.part_name(part), "facts": facts }))
+        // The eyebrow names where it's read, so it's drawn as a name is
+        // (Drawer.qml's eyebrowNames), as Heat.qml drew it (Y2YBTS,
+        // 2026-11-11).
+        let title = self.part_name(part);
+        Some(json!({ "eyebrow": eyebrow, "eyebrowNames": true, "title": title, "facts": facts }))
     }
 
     /// A voltage, current or power in the unit that fits it: a figure
@@ -1050,6 +1054,7 @@ mod tests {
             ["High", "Critical", "Throttles At", "Linux Name", "Zone"]
         );
         assert_eq!(part["drawer"]["eyebrow"], "on this machine \u{b7} sensor");
+        assert_eq!(part["drawer"]["eyebrowNames"], true, "its eyebrow is drawn as a name");
         assert_eq!(
             row(&ready, "disk:0")["note"],
             "sensor 2 hotter at 68.9 \u{b0}C"

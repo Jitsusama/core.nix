@@ -1,12 +1,14 @@
 pragma ComponentBehavior: Bound
 // Drives the launcher's Heat (modules/quickshell/launcher/Heat.qml)
 // through Quickshell itself, over a stand-in for the machine daemon
-// serving a processor's chip and a fan's, with the launcher stood in,
-// open, "heat" typed. Heat's answer asked again before the daemon reads
-// again, as each key typed asks it, makes no row; a change to the fan's
-// chip alone makes the fan's chip and its row again and keeps the
-// processor's; and a chip let go is gone. It exits 0 once every case
-// holds, and otherwise 1, saying which didn't.
+// serving Heat's rows and headline ready (the ready-row form), with the
+// launcher stood in, open, "heat" typed. Heat answers the headline and its
+// own rows as served, in their order, each holding the rows inside it a
+// step in; its answer asked again, as each key typed asks it, makes no
+// row; a change to the fan's row makes it alone again and keeps the
+// processor's; Throttling asked alone answers its own rows; and a row let
+// go is gone. It exits 0 once every case holds, and otherwise 1, saying
+// which didn't.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -17,7 +19,7 @@ import "launcher" as Launcher
 ShellRoot {
     id: root
 
-    property string waiting: "the first reading"
+    property string waiting: "the first rows"
 
     // The launcher as Heat reads it: open, "heat" typed, so Heat's rows
     // can be seen and its daemon is watched.
@@ -30,6 +32,11 @@ ShellRoot {
         property var held: []
         property var matches: []
         property var placed: []
+        property var entered: null
+
+        function enter(row) {
+            entered = row;
+        }
 
         // No frame is drawn here, so what waits on one runs at once.
         function afterFrame(then) {
@@ -37,29 +44,62 @@ ShellRoot {
         }
     }
 
-    // A chip's record as the machine daemon says it: a processor's
-    // package, and a fan's chip turning at `rpm`.
-    readonly property string processorKey: "sensor:coretemp-isa-0000"
-    readonly property string fanKey: "sensor:dell_smm-isa-0000"
-    readonly property var processor: ({
-            key: root.processorKey,
-            kind: "sensor",
-            part: "processor",
-            chip: "coretemp",
-            temperatures: [{ n: 1, label: "Package id 0", temperature_c: 61, high_c: 100,
-                    critical_c: 100 }],
-            fans: []
+    // A row as the machine daemon serves it, in the crate's wrap.
+    function served(id, order, fields) {
+        const key = `row:heat:${id}`;
+        return { key: key, kind: "row", row: Object.assign({ key: key, thing: `heat:${id}`,
+                place: "heat", kind: "figure", order: order, depth: 0, side: [], acts: [] },
+            fields) };
+    }
+    readonly property var processor: served("processor:0", 1, {
+            kind: "part",
+            name: "Processor",
+            glyph: "heat",
+            side: [{ said: "71.0 \u00b0C", keep: 3 },
+                { said: "29.0 \u00b0C below high", keep: 1, hue: "warning" }],
+            graph: { shape: "bar", values: [0.7], warn: false },
+            acts: [{ key: "verb:copy", copy: "71.0 \u00b0C" }, { key: "verb:more", step: "rows" }]
+        })
+    readonly property var lately: served("processor:0/lately", 1, {
+            name: "Last Reads",
+            parent: "row:heat:processor:0",
+            depth: 1,
+            side: [{ said: "71.0 \u00b0C" }],
+            graph: { shape: "spark", values: [0.5], warn: false },
+            acts: [{ key: "verb:copy", copy: "71.0 \u00b0C" }]
+        })
+    readonly property var throttled: served("throttled", 2, {
+            kind: "throttled",
+            name: "Throttled",
+            side: [{ said: "3,202 times" }],
+            acts: [{ key: "verb:copy", copy: "3,202 times" }, { key: "verb:more", step: "rows" }]
+        })
+    readonly property var cores: served("throttled/cores", 1, {
+            name: "Cores",
+            parent: "row:heat:throttled",
+            depth: 1,
+            side: [{ said: "32" }],
+            acts: [{ key: "verb:copy", copy: "32" }]
         })
     function fan(rpm) {
-        return { key: root.fanKey, kind: "sensor", part: "", chip: "dell_smm", temperatures: [],
-            fans: [{ n: 1, label: "CPU Fan", rpm: rpm }] };
+        return served("fan:fan:1", 3, {
+            kind: "fan",
+            name: "Fan 1",
+            glyph: "fan",
+            side: [{ said: `${rpm} rpm` }],
+            acts: [{ key: "verb:copy", copy: `${rpm} rpm` }]
+        });
     }
+    readonly property var head: ({ key: "head:heat", kind: "head", head: {
+                said: "Processor at 71.0 \u00b0C, 1 fan turning",
+                graph: { shape: "bar", values: [0.7], warn: false } } })
 
     // The shell's watch, so the daemon can tell it more.
     property var watch: null
+    property var watched: null
 
     // A stand-in for the machine daemon, speaking the daemon interface:
-    // hello, and a watch of Heat's kinds answered whole.
+    // hello, and a watch of Heat's rows and headline answered whole.
     SocketServer {
         active: true
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
@@ -75,7 +115,9 @@ ShellRoot {
                             state: "running" };
                     } else if (ask.ask === "watch") {
                         root.watch = { socket: asked, id: ask.id };
-                        answer = { id: ask.id, records: [root.processor, root.fan(2400)] };
+                        root.watched = ask;
+                        answer = { id: ask.id, records: [root.fan(2400), root.lately,
+                                root.processor, root.head, root.cores, root.throttled] };
                     } else {
                         answer = { id: ask.id, ok: true };
                     }
@@ -94,11 +136,10 @@ ShellRoot {
     }
 
     property var before: []
-    property var chipsBefore: ({})
     property int counted: 0
 
-    // Heat says it answered each time the daemon tells it something while
-    // it shows, and a moment after a first read; each case waits for what
+    // Heat says it answered as its first rows come, and each time the
+    // daemon tells it something while it shows; each case waits for what
     // it needs to have been heard.
     Launcher.Heat {
         id: theHeat
@@ -107,7 +148,7 @@ ShellRoot {
         settings: ({ name: "heat" })
         onAnswered: {
             try {
-                if (root.waiting === "the first reading")
+                if (root.waiting === "the first rows")
                     root.first();
                 else if (root.waiting === "the fan's change")
                     root.fanChanged();
@@ -120,59 +161,72 @@ ShellRoot {
         }
     }
 
-    // Asked again with nothing read since, Heat makes no row, where each
-    // key typed while it shows made every row again.
+    // Heat's own rows as served, in their order, under the served headline;
+    // asked again with nothing told since, it makes no row.
     function first() {
         const answer = theHeat.answer("heat");
-        if (answer === null || answer.rows.length < 2)
+        if (answer === null || answer.rows.length < 3)
             return;
         root.waiting = "the fan's change";
+        Expect.expect("Heat's rows and headline watched", root.watched.kind.includes("row")
+            && root.watched.kind.includes("head") && root.watched.place === "heat",
+            JSON.stringify(root.watched));
+        Expect.expect("the headline as served", answer.headline
+            === "Processor at 71.0 \u00b0C, 1 fan turning" && answer.graph?.shape === "bar",
+            answer.headline);
+        Expect.expect("its own rows, in the daemon's order", answer.rows.map(row => row.name)
+            .join(", ") === "Processor, Throttled, Fan 1", answer.rows.map(row => row.name));
+        const part = answer.rows[0];
+        Expect.expect("a part says its figure and its limit, the limit warning",
+            part.side === "71.0 \u00b0C \u00b7 29.0 \u00b0C below high"
+            && part.sideItems?.[1]?.hue === "warning", JSON.stringify(part.sideItems));
+        Expect.expect("a part drawn against its most", part.graph?.values?.[0] === 0.7,
+            JSON.stringify(part.graph));
+        Expect.expect("a part's Return copies and closes", part.copies?.() === "71.0 \u00b0C"
+            && part.stays !== true, `${part.copies?.()} ${part.stays}`);
+        Expect.expect("a part holds its Last Reads a step in", part.verbs().map(row => row.name)
+            .join() === "Last Reads", part.verbs().map(row => row.name));
         const made = theHeat.tally.rows;
         const again = theHeat.answer("heat");
-        Expect.expect("asked again with nothing read, no row made", theHeat.tally.rows === made,
+        Expect.expect("asked again with nothing told, no row made", theHeat.tally.rows === made,
             `${theHeat.tally.rows - made} rows`);
         Expect.expect("asked again, the same rows", again.rows.every((row, at) => row
             === answer.rows[at]), "made anew");
+        const alone = theHeat.alone("heat:throttled");
+        Expect.expect("Throttled alone, its figure the headline and its rows inside",
+            alone?.headline === "3,202 times" && alone.rows.map(row => row.name).join()
+            === "Cores", JSON.stringify(alone?.headline));
         root.before = answer.rows;
-        root.chipsBefore = Object.assign({}, theHeat.chipsMade);
-        Expect.expect("each chip made by its key", Object.keys(root.chipsBefore).length === 2,
-            Object.keys(root.chipsBefore).join(", "));
-        root.counted = made;
+        root.counted = theHeat.tally.rows;
         // Shown, so what the daemon tells is answered at once.
         theLauncher.answer = answer;
         Watch.tell(root.watch, { changed: [root.fan(3100)] });
     }
 
-    // The daemon tells the fan's chip anew: the processor's chip and row
-    // are kept and the fan's made again.
+    // The daemon tells the fan's row anew: the processor's row is kept and
+    // the fan's made again, saying its speed.
     function fanChanged() {
-        const fan = theHeat.chipsMade[root.fanKey];
-        if (!fan || fan.fans[0].value !== 3100)
+        const answer = theHeat.answer("heat");
+        const fanRow = answer.rows[2];
+        if (!fanRow || !fanRow.side.includes("3100"))
             return;
         root.waiting = "the fan let go";
-        Expect.expect("the processor's chip kept", theHeat.chipsMade[root.processorKey]
-            === root.chipsBefore[root.processorKey], "made anew");
-        theHeat.reads = null;
-        const answer = theHeat.answer("heat");
         Expect.expect("the processor's row kept", answer.rows[0] === root.before[0],
             answer.rows[0]?.name);
-        const fanRow = answer.rows[1];
-        Expect.expect("the fan's row made again, saying its speed", fanRow !== root.before[1]
-            && fanRow.side.includes("3,100"), fanRow?.side);
+        Expect.expect("the fan's row made again", fanRow !== root.before[2], fanRow.side);
         Expect.expect("one row made", theHeat.tally.rows - root.counted === 1,
             `${theHeat.tally.rows - root.counted} rows`);
-        Watch.tell(root.watch, { gone: [root.fanKey] });
+        Watch.tell(root.watch, { gone: [root.fan(3100).key] });
     }
 
-    // The fan's chip let go, its row goes with it.
+    // The fan's row let go, it's gone.
     function fanGone() {
-        if (root.fanKey in theHeat.chipsMade)
+        const answer = theHeat.answer("heat");
+        if (answer.rows.length !== 2)
             return;
         root.waiting = "the end";
-        theHeat.reads = null;
-        const answer = theHeat.answer("heat");
-        Expect.expect("the fan gone", answer.rows.length === 1 && answer.rows[0] === root.before[0],
-            answer.rows.map(row => row.name));
+        Expect.expect("the fan gone, the rest kept", answer.rows[0] === root.before[0]
+            && answer.rows[1] === root.before[1], answer.rows.map(row => row.name));
         Qt.callLater(() => Qt.exit(0));
     }
 }

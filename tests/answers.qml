@@ -1065,78 +1065,6 @@ QtObject {
             "Core 8");
         machine("a processor's only sensor", Machine.processor([{ label: "", value: 1 }]).value, 1);
 
-        // Heat's parts, from the chips as Heat.chipsOf gives the laptop's,
-        // in degrees: the processor's, its cores numbered by the logical
-        // processor each is, the disk's with its hidden second sensor,
-        // dell_ddv's named sensors and fans, dell_smm's unnamed fans
-        // telling their most and power, and the battery's.
-        const heatTemp = (n, label, value, high, crit) => ({ n, label, value, high, crit });
-        const heatFan = (n, label, value, more) => Object.assign({ n, label, value }, more ?? {});
-        const heatChips = [
-            { part: "disk", temps: [heatTemp(1, "Composite", 52.85, 82.85, 84.85),
-                heatTemp(2, "Sensor 1", 53.85, null, null),
-                heatTemp(3, "Sensor 2", 68.85, null, null)], fans: [] },
-            { part: "processor", temps: [heatTemp(1, "Package id 0", 83, 100, 100),
-                heatTemp(2, "Core 0", 82, 100, 100), heatTemp(6, "Core 8", 84, 100, 100),
-                heatTemp(10, "Core 22", 79, 100, 100)], fans: [] },
-            { part: "", temps: [heatTemp(1, "CPU", 84, null, null),
-                heatTemp(6, "SODIMM", 56, null, null), heatTemp(7, "Ambient", 45, null, null)],
-                fans: [heatFan(1, "Video Fan", 5420), heatFan(2, "CPU Fan", 5385)] },
-            { part: "", temps: [], fans: [
-                heatFan(1, "", 5420, { max: 4800, target: 4800, power: 1 }),
-                heatFan(2, "", 5385, { max: 4800, target: 4800, power: 0.5 })] },
-            { part: "battery", temps: [heatTemp(1, "temp", 36.9, null, null)], fans: [] }
-        ];
-        const heatParts = Heat.gather(heatChips, [], Heat.coreCpus([{ cpu: 0, core: 0 },
-            { cpu: 1, core: 22 }, { cpu: 8, core: 8 }]));
-        machine("heat's parts, the processor first", heatParts.temps.map(part => part.id),
-            ["processor", "disk", "memory", "battery", "air"]);
-        const heatProcessor = heatParts.temps[0];
-        machine("the processor's heat, as its package reads",
-            [heatProcessor.value, heatProcessor.high, heatProcessor.crit], [83, 100, 100]);
-        machine("each core's heat, by its logical processor", heatProcessor.cores,
-            [{ cpu: 0, value: 82 }, { cpu: 1, value: 79 }, { cpu: 8, value: 84 }]);
-        const heatDisk = heatParts.temps[1];
-        machine("the disk's heat, as its composite reads",
-            [heatDisk.value, heatDisk.high, heatDisk.crit], [52.85, 82.85, 84.85]);
-        machine("the disk's other sensors, the hotter hidden one too",
-            heatDisk.sensors.map(s => [s.label, s.value]),
-            [["Sensor 1", 53.85], ["Sensor 2", 68.85]]);
-        machine("the fans by name, with what the unnamed chip says of them", heatParts.fans,
-            [{ id: "video-fan", n: 1, label: "Video Fan", value: 5420, max: 4800, min: null,
-                target: 4800, power: 1, mode: null },
-                { id: "cpu-fan", n: 2, label: "CPU Fan", value: 5385, max: 4800, min: null,
-                    target: 4800, power: 0.5, mode: null }]);
-        machine("fans no chip names, by number", Heat.fans([heatChips[3]]).map(f => [f.id, f.n]),
-            [["fan", 1], ["fan", 2]]);
-        machine("no fans", Heat.fans([heatChips[0]]), []);
-        machine("a thermal zone for a part no chip gives",
-            Heat.gather([heatChips[4]], [{ part: "processor", value: 78 }], {}).temps
-                .map(p => p.id), ["processor", "battery"]);
-        machine("a thermal zone for a part a chip gives",
-            Heat.gather(heatChips, [{ part: "processor", value: 78 }], {}).temps
-                .filter(p => p.id === "processor").map(p => p.value), [83]);
-        machine("whether a chip gives a part", [Heat.gives(heatChips, "air"),
-            Heat.gives(heatChips, "wifi")], [true, false]);
-        machine("a thermal zone by its type", ["x86_pkg_temp", "acpitz", "iwlwifi_1", "SEN1",
-            "INT3400 Thermal"].map(Heat.zonePart), ["processor", "board", "wifi", "", ""]);
-        // The processor's telemetry, as its reader says it on the laptop:
-        // the parts Heat lists come after the graphics, each held to the
-        // processor's points, and the rest are left out.
-        const heatOwn = [{ part: "chipset", celsius: 62 }, { part: "npu", celsius: 62 },
-            { part: "display", celsius: 60 }, { part: "imageProcessor", celsius: 63 },
-            { part: "systemAgent", celsius: 65 }, { part: "media", celsius: 59 }];
-        machine("the processor's own parts, after the processor",
-            Heat.gather(heatChips, [], {}, heatOwn).temps.map(p => [p.id, p.value]),
-            [["processor", 83], ["npu", 62], ["image-processor", 63], ["media-engine", 59],
-                ["display-engine", 60], ["disk", 52.85], ["memory", 56], ["battery", 36.9],
-                ["air", 45]]);
-        machine("the processor's own parts, held to its points",
-            Heat.gather(heatChips, [], {}, heatOwn).temps.filter(p => p.id === "npu")
-                .map(p => [p.high, p.crit]), [[100, 100]]);
-        machine("the processor's own parts, with no processor said",
-            Heat.gather([heatChips[4]], [], {}, [{ part: "npu", celsius: 62 }]).temps
-                .map(p => [p.id, p.crit]), [["npu", null], ["battery", null]]);
         // Bytes in decimal units to three significant digits, each
         // converted from bytes, stepping up past 999, whole below a kB.
         machine("bytes, each converted", [873 * 1048576, 6.4 * 1048576, 1.52e9, 873, 0, 999.7e3,
@@ -1151,11 +1079,9 @@ QtObject {
         machine("three significant digits, grouped and pointed as set",
             Numbers.significant(1234.5, ".", ",") + " " + Numbers.significant(5.2, ".", ","),
             "1.230 5,20");
-        machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
-            .length, 5);
-        machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps
-            .map(p => p.nth), [1, 2]);
-        machine("a lone disk, unnumbered", heatDisk.nth, 0);
+        // A temperature drawn against its most, as Machine draws the
+        // processor's and the disk's (Heat.js's level); Heat's own rows are
+        // the machine daemon's, and their cases are its (heat_rows.rs).
         machine("a processor well below its most", Heat.level(83, 100, 100, "processor"),
             { value: 0.83, warn: false });
         machine("a processor near its most", Heat.level(92, 100, 100, "processor").warn, true);
@@ -1166,109 +1092,6 @@ QtObject {
             { value: 0.5, warn: false });
         machine("a part past its most, drawn full", Heat.level(110, null, 100, "processor").value,
             1);
-        machine("a steady temperature's spark", Heat.spark([83, 83]), [0.5, 0.5]);
-        machine("a climbing temperature's spark", Heat.spark([80, 85, 90]), [0, 0.5, 1]);
-        machine("a spark with nothing read", Heat.spark([]), []);
-        machine("a fan's spark, drawn across its span", Heat.fanSpark([5000, 5250]), [0.25, 0.75]);
-        // The laptop's own counts, as the machine daemon holds them: the
-        // package's from the processor that saw most, each core once.
-        const heatThrottled = Heat.throttledOf({ throttled: {
-            cores: [{ core: 22, cpu: 1, count: 8 }, { core: 0, cpu: 0, count: 24 }],
-            cores_count: 32, package_count: 3202, package_ms: 19016, package_longest_ms: 125
-        } });
-        machine("the processor throttled, as the package", [heatThrottled.times, heatThrottled.ms,
-            heatThrottled.longest], [3202, 19016, 125]);
-        machine("each core throttled, once a core", [heatThrottled.cores, heatThrottled.total],
-            [[{ cpu: 0, count: 24 }, { cpu: 1, count: 8 }], 32]);
-        machine("no throttling counted", Heat.throttledOf({ throttled: null }), null);
-        // The chips as the machine daemon holds the laptop's: the fans'
-        // own chip and a USB-C port's stand for no part, so only labels
-        // name their sensors, and an unlabelled fan is null, not "fan2".
-        const heatHeld = Heat.chipsOf([
-            { key: "sensor:nvme", part: "disk", temperatures: [
-                { n: 1, label: "Composite", temperature_c: 52.9, high_c: 82.9, critical_c: 84.9 },
-                { n: 2, label: "Sensor 9", temperature_c: 65261.8, high_c: null }], fans: [] },
-            { key: "sensor:dell_smm", part: "fans", temperatures: [
-                { n: 1, label: "CPU", temperature_c: 61 },
-                { n: 2, label: "Ambient", temperature_c: 40, critical_c: -273 }], fans: [
-                { n: 1, label: null, rpm: 2400, max_rpm: 5900, min_rpm: 1200, target_rpm: 2400,
-                    power_ratio: 0.502, mode: "automatic" },
-                { n: 2, label: null, rpm: null }] },
-            { key: "sensor:coretemp", part: "processor", chip: "coretemp", temperatures: [
-                { n: 1, label: "Package id 0", temperature_c: 79, high_c: 100,
-                    critical_c: 100, low_c: -273, emergency_c: 105, alarm: true }], fans: [],
-                voltages: [{ n: 0, label: null, volts: 1.21 },
-                    { n: 1, label: "Vcore", volts: null }],
-                currents: [], power: [{ n: 1, label: "Package", watts: 12.5 }] }
-        ]);
-        machine("the daemon's chips, by key, each for its part", heatHeld.map(chip => chip.part),
-            ["processor", "", "disk"]);
-        machine("a chip of no part, only its labelled sensors", heatHeld[1].temps,
-            [{ n: 2, label: "Ambient", value: 40, high: null, crit: null, low: null,
-                emergency: null, alarm: false, chip: "" }]);
-        machine("a chip's limits past its high and critical, and its alarm",
-            heatHeld[0].temps.map(t => [t.low, t.emergency, t.alarm, t.chip]),
-            [[null, 105, true, "coretemp"]]);
-        machine("a chip's electricity, each figure it reads", heatHeld[0].electric,
-            { volts: [{ n: 0, label: "", value: 1.21 }], amps: [],
-                watts: [{ n: 1, label: "Package", value: 12.5 }] });
-        machine("electricity in the unit that fits it", [Heat.electricSaid(0.003, "V"),
-            Heat.electricSaid(-0.002, "A"), Heat.electricSaid(11.42, "V"),
-            Heat.electricSaid(0.9996, "V"), Heat.electricSaid(0, "W"),
-            Heat.electricSaid(1234, "W", " ", ","), Heat.electricSaid(11.42, "V", " ", ",")],
-            ["3.00 mV", "\u22122.00 mA", "11.4 V", "1.00 V", "0 W", "1 230 W", "11,4 V"]);
-        machine("a reading no part could reach, left out", heatHeld[2].temps.map(t => t.label),
-            ["Composite"]);
-        machine("an unlabelled fan, its speed read", heatHeld[1].fans,
-            [{ n: 1, label: "", value: 2400, max: 5900, min: 1200, target: 2400, power: 0.502,
-                mode: "automatic" }]);
-        const heatZones = Heat.zonesOf([
-            { type: "TCPU", temperature_c: 78.5, trips: [
-                { type: "critical", temperature_c: 110 }, { type: "passive", temperature_c: 95 },
-                { type: "active", temperature_c: -273 }] },
-            { type: "x86_pkg_temp", temperature_c: 79, trips: [
-                { type: "passive", temperature_c: 95 }, { type: "hot", temperature_c: 105 }] },
-            { type: "SEN1", temperature_c: 40 }, { type: "acpitz", temperature_c: null }]);
-        machine("the daemon's zones for a part, their trips within reach", heatZones,
-            [{ part: "processor", type: "TCPU", value: 78.5, trips: [
-                { type: "critical", value: 110 }, { type: "passive", value: 95 }] },
-                { part: "processor", type: "x86_pkg_temp", value: 79, trips: [
-                    { type: "passive", value: 95 }, { type: "hot", value: 105 }] }]);
-        machine("a part's trips, coolest first, one two zones share said once",
-            Heat.tripsFor(heatZones, "processor"),
-            [{ type: "passive", value: 95, zone: "TCPU" },
-                { type: "hot", value: 105, zone: "x86_pkg_temp" },
-                { type: "critical", value: 110, zone: "TCPU" }]);
-        machine("no trips for a part no zone stands for", Heat.tripsFor(heatZones, "disk"), []);
-        // A to Z with case alike, as Order.js reads names.
-        machine("each kind of cooling, stepped as far as any of it", Heat.coolingOf([
-            { type: "Processor", count: 16, states: [0, 2, 1], max_state: 3 },
-            { type: "iwlwifi", count: 1, states: [0], max_state: 19 },
-            { type: "LCD", count: 1, states: [0], max_state: 0 }]),
-            [{ type: "iwlwifi", count: 1, state: 0, max: 19 },
-                { type: "Processor", count: 16, state: 2, max: 3 }]);
-        machine("what's left to the high", Heat.leftTo(71, 100, 110),
-            { by: 29, limit: "high", past: false, hue: "" });
-        machine("past the high, what's left to the critical, warning", Heat.leftTo(102, 100, 110),
-            { by: 8, limit: "critical", past: false, hue: "warning" });
-        machine("past the critical, alerting", Heat.leftTo(112, 100, 110),
-            { by: 2, limit: "critical", past: true, hue: "alert" });
-        machine("a high that's the critical, warning ten degrees short", [Heat.leftTo(85, 100, 100),
-            Heat.leftTo(92, 100, 100)], [{ by: 15, limit: "critical", past: false, hue: "" },
-            { by: 8, limit: "critical", past: false, hue: "warning" }]);
-        machine("past a high with no critical", Heat.leftTo(83, 80, null),
-            { by: 3, limit: "high", past: true, hue: "warning" });
-        machine("no limit said", Heat.leftTo(50, null, null), null);
-        machine("each processor's core, from the daemon", Heat.cpusOf({ cores: [
-            { n: 0, core: 0 }, { n: 1, core: 0 }, { n: 2, core: null }] }),
-            [{ cpu: 0, core: 0 }, { cpu: 1, core: 0 }]);
-        machine("each core's first processor", Heat.coreCpus([{ cpu: 0, core: 0 },
-            { cpu: 1, core: 0 }, { cpu: 2, core: 4 }]), { 0: 0, 4: 2 });
-        machine("a part's name in a sentence", ["Processor", "Wi-Fi Card", "Air Inside", "HDR"]
-            .map(Heat.phrase), ["processor", "Wi-Fi card", "air inside", "HDR"]);
-        machine("a fan's id", Heat.fanId("Video Fan"), "video-fan");
-        machine("a sensor whose label says nothing", [Heat.labelled("CPU"), Heat.labelled("Other"),
-            Heat.labelled("SODIMM")], ["", "", "memory"]);
 
         // How things stand in the foot, as room runs short: the least of
         // each, then each its glyph by rank, and no glyph ever gives way,
