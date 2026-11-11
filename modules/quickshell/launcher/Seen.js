@@ -24,30 +24,36 @@ function asks(questions, text) {
         || (text.length >= 3 && question.startsWith(text)));
 }
 
-// Whose the rows found are, as isOf reads a row, kept for the last rows
-// found: every provider that watches asks again on every key, and a
+// Whose the rows found are, as isOf reads a row, kept for the last few
+// rows found: every provider that watches asks again on every key, and a
 // whole place lists rows by the thousand, so six providers each walking
 // Emoji's 1914 read them 114,660 times over a lab's 20 keys, about 7 ms
 // of each Backspace to its whole list (2026-11-11). This library is one
 // for every provider importing it, and the launcher sets new rows found
 // rather than changing them in place, so the rows are known again by
-// being the same.
-let foundLast = { rows: null, from: new Set(), ids: new Set() };
+// being the same. A few are kept, since a Backspace back to a place's
+// whole list lists the very rows it listed before the letter
+// (Launcher.qml's listedAs).
+const FOUND_KEPT = 4;
+let foundLately = [];
 
 function foundIn(rows) {
-    if (foundLast.rows !== rows) {
-        const from = new Set();
-        const ids = new Set();
-        for (const row of rows) {
-            if (row) {
-                from.add(row.live);
-                from.add(row.from);
-                ids.add(row.category?.id ?? "");
-            }
-        }
-        foundLast = { rows, from, ids };
+    const known = foundLately.find(one => one.rows === rows);
+    if (known) {
+        return known;
     }
-    return foundLast;
+    const from = new Set();
+    const ids = new Set();
+    for (const row of rows) {
+        if (row) {
+            from.add(row.live);
+            from.add(row.from);
+            ids.add(row.category?.id ?? "");
+        }
+    }
+    const found = { rows, from, ids };
+    foundLately = [found].concat(foundLately).slice(0, FOUND_KEPT);
+    return found;
 }
 
 // Whether `provider`'s rows show in the open launcher: its answer, a row
