@@ -990,7 +990,7 @@
         "load"
       ],
       "said": {
-        "down": "the machine daemon isn't answering"
+        "down": "not answering"
       },
       "parts": [
         "machine:cpu:spent",

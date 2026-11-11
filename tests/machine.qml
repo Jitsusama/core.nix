@@ -56,6 +56,10 @@ ShellRoot {
             expect("before the daemon says, Processor waits with its parts to come",
                 before.parted === true && before.asking === true,
                 `${before.parted} ${before.asking}`);
+            // While the daemon is down, its place says so plainly, never
+            // naming a daemon (VKCF3Z's words, Y2YBTS's ruling).
+            expect("a daemon that's down is said plainly",
+                machine.says("cpu", "down") === "not answering", machine.says("cpu", "down"));
             // A time is a measure, by the launcher's one rule: three
             // significant digits, zeros kept, grouped past three whole
             // digits, in the machine's own grouping and point.
