@@ -98,3 +98,38 @@ function lined(rows, typed, holds) {
         return copy;
     });
 }
+
+// A row's copy for every search to list, its note the line of its body
+// that holds the words `searched` says were typed last, worked out once
+// it's read for those words. Made once for each row and kept, where a
+// copy made for each row found on each key (lined) spent 35 of the 36
+// ms "c" took over 1,000 notices, in Qt's engine offscreen (2026-11-11).
+// A search lists only its own words' rows, so one copy shared by every
+// search never shows another's note. Its note is a getter made before
+// any field is copied, as lined's is.
+function lining(row, searched, holds) {
+    const copy = {};
+    let words = null;
+    let note = "";
+    Object.defineProperty(copy, "count", {
+        enumerable: true,
+        configurable: true,
+        get: () => {
+            if (words !== searched.words) {
+                words = searched.words;
+                note = named(row.title, row.wrote, words, holds).note;
+            }
+            return note;
+        },
+        set: (said) => {
+            words = searched.words;
+            note = said;
+        },
+    });
+    for (const field of Object.keys(row)) {
+        if (field !== "count") {
+            copy[field] = row[field];
+        }
+    }
+    return copy;
+}

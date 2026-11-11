@@ -223,6 +223,13 @@ Provider {
         if (everyRow.at !== mixed.placings) {
             everyRow.rows = mixed.rows();
             everyRow.at = mixed.placings;
+            // A search's copies of rows the daemon no longer serves go.
+            const copies = Object.create(null);
+            for (const row of everyRow.rows) {
+                if (searched.copies[row.key]?.row === row)
+                    copies[row.key] = searched.copies[row.key];
+            }
+            searched.copies = copies;
         }
         return everyRow.rows;
     }
@@ -259,6 +266,25 @@ Provider {
         return Notice.lined(rows, words, provider.holds);
     }
 
+    // What a search lists: each row's one copy (Notice.js's lining), its
+    // note for the words typed last, kept by its key while its row is the
+    // same, so a key copies only rows it hasn't seen. Its copies sit in an
+    // object with no prototype, never a Map, which Qt's engine looks a key
+    // up in by walking them all (RowsKept.js).
+    readonly property var searched: ({ words: [], copies: Object.create(null) })
+    function listed(rows, words) {
+        searched.words = words;
+        const copies = searched.copies;
+        return rows.map(row => {
+            const kept = copies[row.key];
+            if (kept?.row === row)
+                return kept.copy;
+            const copy = Notice.lining(row, searched, provider.holds);
+            copies[row.key] = { row: row, copy: copy };
+            return copy;
+        });
+    }
+
     // Found by its title, which names it and shows where, else by
     // anything else it said, which its note shows the line of.
     function search(typed) {
@@ -282,11 +308,11 @@ Provider {
             finest = Math.min(finest, f.grade);
         const kept = Order.sorted(found.filter(f => f.grade === finest),
             (a, b) => b.score - a.score || b.row.at - a.row.at);
-        return { rows: lined(kept.map(f => f.row), words), grade: finest };
+        return { rows: listed(kept.map(f => f.row), words), grade: finest };
     }
 
     function everything() {
-        return lined(all(), []);
+        return listed(all(), []);
     }
 
     function looksThrough() {

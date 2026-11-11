@@ -309,10 +309,14 @@ ShellRoot {
             stepIn();
             expect("stepped into again, it makes none of the notices' rows again",
                 since(before)[0] === 0, JSON.stringify(since(before)));
-            pastNotices.search("notice");
+            const listed = pastNotices.search("notice").rows;
             const pool = pastNotices.poolFor(pastNotices.looksThrough(), "notice 1");
             expect("a key typed on looks through only the notices the last one found",
                 pool === pastNotices.lastMatched.rows, `${pool.length} looked through`);
+            const again = pastNotices.search("notice 1").rows;
+            const copied = again.filter(row => !listed.includes(row));
+            expect("a key typed on copies none of the notices it listed before",
+                copied.length === 0, `${copied.length} of ${again.length} copied again`);
         }))
             return;
         const read = told.map(one => one.id === 2

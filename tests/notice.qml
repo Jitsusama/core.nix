@@ -104,6 +104,23 @@ QtObject {
         expect("a field given between linings is kept",
             Object.assign({}, regrown).sideGrown, "unread");
 
+        // A search's one copy of a row says the line for the words its
+        // last search typed, worked out once for them, so it's never made
+        // again for a key.
+        asked = 0;
+        const searched = { words: ["log", "7"] };
+        const copy = Notice.lining(rows[0], searched, counted);
+        expect("a copy lining works out no note", asked, 0);
+        expect("its note is for the words typed", copy.count, "line 7 of the deploy went by");
+        const linedOnce = asked;
+        void copy.count;
+        expect("read again for the same words, it's worked out once", asked, linedOnce);
+        searched.words = ["log", "1"];
+        expect("and again once the words change", copy.count, "line 1 of the deploy went by");
+        expect("the rest is its row's too", [copy.follows, copy.key], ["program:deploy", "7"]);
+        copy.count = "said";
+        expect("a note set holds for its words", copy.count, "said");
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
