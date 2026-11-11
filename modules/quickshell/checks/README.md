@@ -9,7 +9,8 @@ A check goes with the one place whose QML it copies. One copying several
 places', or the launcher's own machinery (its prompt, rows, keys, pacing and
 the launcher on niri), goes in `core.nix`, and the kinds that are no place's
 have their own: `shell.nix` for how the shell is built and linted,
-`looks.nix`, `words.nix`, `terminal.nix` and `command-line.nix`.
+`looks.nix`, `words.nix`, `terminal.nix`, `command-line.nix`, and
+`turned-on.nix` for which places a machine turns on.
 
 `helpers.nix` holds what more than one file uses: stand-ins for the shell's
 singletons, the shell as the account gets it, and the harnesses that run it

@@ -624,6 +624,10 @@
   every-machine-asks-names-in-each-family = ''
     every NixOS machine's name service is nsncd asking for each address family on its own
   '';
+  every-place-is-on-where-its-source-is = ''
+    on a machine holding every module and all each reads, every launcher place is on, so a
+    place turned on by a unit, option or package that was renamed is caught
+  '';
   every-program-wears-its-own-mark = ''
     every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
   '';
