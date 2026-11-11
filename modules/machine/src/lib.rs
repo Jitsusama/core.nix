@@ -14,12 +14,13 @@
 //! records and the processor's own telemetry ([`parts`], [`telemetry`]),
 //! and Heat's, Power's and Machine's own rows made of them, ready for the
 //! launcher ([`heat_rows`], [`power_rows`], [`machine_rows`],
-//! [`processor_rows`], and what held the processor back and kept it from
+//! [`processor_rows`], [`disk_rows`], and what held the processor back and kept it from
 //! resting, [`telemetry_rows`], placed and graphed through [`rows`] and
 //! worded through [`words`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before. What Firmware asks the
-//! machine to do is done through [`acts`].
+//! machine to do is done through [`acts`], and what the shell asks of the
+//! disk guard through [`guard`].
 //!
 //! A record names every figure its source has, as the source counts it,
 //! with its unit in its key (`_b` bytes, `_khz`, `_c` degrees Celsius,
@@ -36,8 +37,10 @@ pub mod boot;
 pub mod camera;
 pub mod counts;
 pub mod disk;
+pub mod disk_rows;
 pub mod firmware;
 pub mod firmware_rows;
+pub mod guard;
 pub mod heat;
 pub mod heat_rows;
 pub mod interface;

@@ -322,7 +322,7 @@ fn made_of(said: &str) -> String {
 
 /// A spark of the last reads, each a share of the most read, or of
 /// `least` where every read is under it, as the shell's `Machine.spark`.
-fn shares(values: &[f64], least: f64) -> Value {
+pub(crate) fn shares(values: &[f64], least: f64) -> Value {
     let most = values.iter().copied().fold(least, f64::max);
     let drawn: Vec<f64> = values
         .iter()

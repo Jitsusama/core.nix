@@ -1953,9 +1953,13 @@ onLinux {
 
   # The disk piece hears the guards' status files as tests/disk.qml writes
   # them, through Quickshell itself and the machine daemon over a machine of
-  # the check's own, with niri stood in for.
+  # the check's own, with niri stood in for, and systemd too, on a session
+  # bus and a system bus of the check's own (tests/systemd-units.py), so the
+  # daemon asks a silent guard's unit as it does on a machine.
   the-disk-piece-reads-the-guards =
     let
+      python = pkgs.python3.withPackages (python: [ python.jeepney ]);
+      dbus = lib.getExe' pkgs.dbus "dbus-daemon";
       niri = pkgs.writeText "Niri.qml" ''
         pragma Singleton
         import Quickshell
@@ -1989,12 +1993,26 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export MACHINE_ROOT=$TMPDIR/root FONTCONFIG_FILE=${noFonts}
+      # Each bus is up as dbus-daemon forks, and the stand-in owns systemd's
+      # name on both before it writes its fifo.
+      for bus in session system; do
+        ${dbus} --config-file=${pkgs.dbus}/share/dbus-1/session.conf \
+          --address="unix:path=$TMPDIR/$bus-bus" --fork --print-pid=3 3>> "$TMPDIR/buses"
+      done
+      export DBUS_SESSION_BUS_ADDRESS="unix:path=$TMPDIR/session-bus"
+      export DBUS_SYSTEM_BUS_ADDRESS="unix:path=$TMPDIR/system-bus"
+      mkfifo "$TMPDIR/ready"
+      ${lib.getExe python} ${./tests/systemd-units.py} "$TMPDIR/ready" \
+        "$DBUS_SESSION_BUS_ADDRESS" "$XDG_RUNTIME_DIR/account-unit" \
+        "$DBUS_SYSTEM_BUS_ADDRESS" "$XDG_RUNTIME_DIR/machine-unit" &
+      units=$!
+      read -r _ < "$TMPDIR/ready"
       XDG_RUNTIME_DIR=/run/user/1000 \
         ${lib.getExe machine} "$TMPDIR/runtime/daemons/machine.sock" "$MACHINE_ROOT" &
       daemon=$!
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
-      kill "$daemon"
+      kill "$daemon" "$units" $(< "$TMPDIR/buses")
       touch $out
     '';
 
@@ -2559,7 +2577,6 @@ onLinux {
         cp ${./ProgramGlyphs.js} ProgramGlyphs.js
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
-        cp ${./launcher/Heat.js} launcher/Heat.js
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
         cp ${./launcher/Machine.js} launcher/Machine.js
         cp ${./launcher/Machine.qml} launcher/Machine.qml

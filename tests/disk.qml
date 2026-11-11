@@ -1,7 +1,9 @@
 // Drives the disk piece (modules/quickshell/pieces/Disk.qml) through
 // Quickshell itself, over status files written where the guards write
 // theirs on a machine of the check's own (MACHINE_ROOT), which the machine
-// daemon tells the piece, with niri stood in for: healthy disks are
+// daemon tells the piece, with niri stood in for, and systemd stood in for
+// on a session bus and a system bus of the check's own, each answering how
+// a guard's unit stands from what the case wrote: healthy disks are
 // shown but not true, a filling disk says how much is free and the pass
 // that left it short but asks for nothing, a nearly full one is a warning
 // that still asks for nothing, a critically full one wants Joel with
@@ -174,8 +176,7 @@ ShellRoot {
         accountUnit: "ActiveState=activating\nResult=success\n",
         account: status([disk("/", "healthy", 400)], null, root.now - 600),
         machine: status([disk("/", "healthy", 400)]),
-        holds: piece => piece.units.account.asked
-            && piece.units.account.state === "activating"
+        holds: piece => piece.units.account?.state === "activating"
             && !piece.active && piece.value === "429\u00a0GB free"
             && piece.valueItems.length === 1
     }, {
@@ -207,13 +208,10 @@ ShellRoot {
 
     Disk {
         id: piece
-        settings: ({
-            accountUnit: ["cat", `${root.runtime}/account-unit`],
-            machineUnit: ["cat", `${root.runtime}/machine-unit`]
-        })
     }
 
-    // What each guard's unit says when asked, written before its status.
+    // What each guard's unit says when asked, written before its status,
+    // for systemd's stand-in to answer the daemon with.
     FileView {
         id: accountUnit
         path: `${root.runtime}/account-unit`

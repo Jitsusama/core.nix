@@ -26,6 +26,13 @@
 //! or its falling silent, is told at once, and carries the new figures
 //! with it. The free bytes Joel reads are in the guard's words too, so a
 //! tenth of a GiB gone is told as it goes.
+//!
+//! A guard that falls silent may only be restarting, as every switch
+//! restarts it, so its unit is asked how it stands, once, as it falls
+//! silent, and its record says so while it stays silent: whether it
+//! stopped, and the `Result` that says why (Y2YBTS, 2026-11-12: the
+//! shell spawns no `systemctl` to learn it). It's asked again only after
+//! it's been heard from.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -65,6 +72,17 @@ pub struct Watcher {
     beat: &'static str,
     /// Whether what it measures in each write is held, as a guard's is.
     measures: bool,
+    /// The unit it runs as, asked of once it falls silent, or none for a
+    /// watcher whose silence says enough alone.
+    pub unit: Option<Unit>,
+}
+
+/// A watcher's systemd unit: its name, and whether it's the account's, on
+/// the session's bus, or the machine's, on the system's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Unit {
+    pub name: &'static str,
+    pub account: bool,
 }
 
 /// The watchers of a session with this runtime folder: the account's only
@@ -81,6 +99,8 @@ pub fn watchers(runtime: Option<&str>) -> Vec<Watcher> {
             beat: "ended",
             // Each window is what Lag reads, so each is told.
             measures: false,
+            // Lag says only that it's gone quiet.
+            unit: None,
         });
         watchers.push(Watcher {
             name: "disk-guard",
@@ -88,6 +108,10 @@ pub fn watchers(runtime: Option<&str>) -> Vec<Watcher> {
             silence: Duration::from_secs(120),
             beat: "heartbeat",
             measures: true,
+            unit: Some(Unit {
+                name: "disk-guard.service",
+                account: true,
+            }),
         });
     }
     watchers.push(Watcher {
@@ -96,6 +120,10 @@ pub fn watchers(runtime: Option<&str>) -> Vec<Watcher> {
         silence: Duration::from_secs(120),
         beat: "heartbeat",
         measures: true,
+        unit: Some(Unit {
+            name: "disk-guard.service",
+            account: false,
+        }),
     });
     watchers
 }
@@ -121,6 +149,8 @@ struct Heard {
     age: Duration,
     /// Whether it's been said silent, so its deadline wakes nothing again.
     silent: bool,
+    /// What its unit said as it fell silent, if it was asked.
+    unit: Option<Value>,
 }
 
 impl Heard {
@@ -139,14 +169,35 @@ struct Told {
 }
 
 /// Each watcher's last heartbeat, and each guard's record last told,
-/// kept between reads.
-#[derive(Debug, Default)]
+/// kept between reads, with how a unit is asked how it stands.
+#[derive(Debug)]
 pub struct Kept {
     heard: HashMap<&'static str, Heard>,
     told: HashMap<&'static str, Told>,
+    ask: fn(Unit) -> Value,
+}
+
+/// Asks no unit anything, so a record says only that it's silent.
+fn unasked(_: Unit) -> Value {
+    Value::Null
+}
+
+impl Default for Kept {
+    fn default() -> Kept {
+        Kept::asking(unasked)
+    }
 }
 
 impl Kept {
+    /// Kept between reads, asking a silent watcher's unit with `ask`.
+    pub fn asking(ask: fn(Unit) -> Value) -> Kept {
+        Kept {
+            heard: HashMap::new(),
+            told: HashMap::new(),
+            ask,
+        }
+    }
+
     /// Each watcher with a status that parses as an object, as of `now`
     /// on the clock and `epoch` since the epoch: what it says without its
     /// beats, and whether it's silent. A watcher with no file, or one that
@@ -181,6 +232,7 @@ impl Kept {
                 at: now,
                 age: Duration::ZERO,
                 silent: false,
+                unit: None,
             });
             // NaN is never equal, so a first read always counts as heard.
             if heard.beat.to_bits() != beat.to_bits() {
@@ -190,13 +242,21 @@ impl Kept {
                     age: epoch
                         .saturating_sub(Duration::try_from_secs_f64(beat).unwrap_or_default()),
                     silent: false,
+                    unit: None,
                 };
             }
-            heard.silent = now >= heard.deadline(watcher.silence);
+            let silent = now >= heard.deadline(watcher.silence);
+            if silent && !heard.silent {
+                heard.unit = watcher.unit.map(self.ask).filter(|said| !said.is_null());
+            }
+            heard.silent = silent;
             for beat in BEATS {
                 said.remove(beat);
             }
-            let record = record(watcher.name, &said, heard.silent);
+            let mut record = record(watcher.name, &said, heard.silent);
+            if let Some(unit) = &heard.unit {
+                record["unit"] = unit.clone();
+            }
             if !watcher.measures {
                 records.push(record);
                 continue;
@@ -512,6 +572,61 @@ mod tests {
         let records = kept.records(&root, &watchers, start, Duration::from_secs(1000));
         assert!(records.is_empty(), "a file gone says nothing: {records:?}");
         assert_eq!(kept.due(&watchers), None, "nothing is left to fall silent");
+    }
+
+    #[test]
+    fn a_guard_fallen_silent_says_how_its_unit_stands_asked_once_until_heard_again() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static ASKED: AtomicUsize = AtomicUsize::new(0);
+        fn ask(unit: Unit) -> Value {
+            ASKED.fetch_add(1, Ordering::SeqCst);
+            json!({"unit": unit.name, "account": unit.account, "stopped": true})
+        }
+        let (dir, root) = root_with(
+            "unit",
+            &[(
+                "/run/disk-guard/status.json",
+                r#"{"heartbeat": 1000, "filesystems": []}"#,
+            )],
+        );
+        let watchers = watchers(None);
+        let mut kept = Kept::asking(ask);
+        let start = Instant::now();
+        let heard = kept.records(&root, &watchers, start, Duration::from_secs(1000));
+        assert!(
+            heard[0].get("unit").is_none(),
+            "one heard asks nothing: {heard:?}"
+        );
+        let at = |seconds: u64| start + Duration::from_secs(seconds);
+        let silent = kept.records(&root, &watchers, at(120), Duration::from_secs(1120));
+        assert_eq!(
+            silent[0]["unit"],
+            json!({"unit": "disk-guard.service", "account": false, "stopped": true}),
+            "the machine's guard is asked on the system's bus: {silent:?}"
+        );
+        let still = kept.records(&root, &watchers, at(210), Duration::from_secs(1210));
+        assert_eq!(still[0]["unit"], silent[0]["unit"], "{still:?}");
+        assert_eq!(
+            ASKED.load(Ordering::SeqCst),
+            1,
+            "asked once while it stays silent"
+        );
+        std::fs::write(
+            dir.join("run/disk-guard/status.json"),
+            r#"{"heartbeat": 1300, "filesystems": []}"#,
+        )
+        .expect("a heartbeat");
+        let back = kept.records(&root, &watchers, at(300), Duration::from_secs(1300));
+        assert!(
+            back[0].get("unit").is_none(),
+            "heard again, it's running: {back:?}"
+        );
+        kept.records(&root, &watchers, at(420), Duration::from_secs(1420));
+        assert_eq!(
+            ASKED.load(Ordering::SeqCst),
+            2,
+            "silent again, it's asked again"
+        );
     }
 
     fn record_of(name: &str, said: Value, silent: bool) -> Value {

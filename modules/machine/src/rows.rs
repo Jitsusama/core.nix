@@ -39,6 +39,9 @@ pub struct Made {
     pub acts: Vec<Value>,
     pub graph: Option<Value>,
     pub note: String,
+    /// A note that's a time, which the shell words as it says it, in
+    /// place of `note`, as "as its controller said at 06:06" is.
+    pub note_time: Option<Value>,
     pub drawer: Option<Value>,
     pub inside: Vec<Made>,
     /// Whether it's the step that asks Joel to be sure of an act that
@@ -117,11 +120,25 @@ pub fn placed(
     depth: u64,
     out: &mut Vec<Value>,
 ) {
+    placed_as(place, place, made, parent, depth, out);
+}
+
+/// As [`placed`], each row's thing named under `things` rather than its
+/// place, as the Disk's rows are a place of their own, read only while
+/// it's watched, though each is Machine's (`machine:disk:speed`).
+pub fn placed_as(
+    place: &str,
+    things: &str,
+    made: Vec<Made>,
+    parent: Option<&str>,
+    depth: u64,
+    out: &mut Vec<Value>,
+) {
     for row in made {
         let key = format!("row:{place}:{}", row.id);
         let mut record = Map::new();
         record.insert("key".to_owned(), Value::String(key.clone()));
-        record.insert("thing".to_owned(), json!(format!("{place}:{}", row.id)));
+        record.insert("thing".to_owned(), json!(format!("{things}:{}", row.id)));
         record.insert("place".to_owned(), json!(place));
         record.insert("kind".to_owned(), json!(row.kind));
         if let Some(parent) = parent {
@@ -142,7 +159,9 @@ pub fn placed(
         if let Some(graph) = row.graph {
             set("graph", graph);
         }
-        if !row.note.is_empty() {
+        if let Some(time) = row.note_time {
+            set("note", time);
+        } else if !row.note.is_empty() {
             set("note", json!(row.note));
         }
         if let Some(drawer) = row.drawer {
@@ -161,7 +180,14 @@ pub fn placed(
         }
         set("acts", Value::Array(acts));
         out.push(Value::Object(record));
-        placed(place, row.inside, Some(key.as_str()), depth + 1, out);
+        placed_as(
+            place,
+            things,
+            row.inside,
+            Some(key.as_str()),
+            depth + 1,
+            out,
+        );
     }
 }
 

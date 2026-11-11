@@ -52,8 +52,10 @@
 //! `heat` has the sensors, zones, cooling and processor read as their
 //! own watch would, one with `place` `power` the supplies, and one with
 //! `place` `firmware` fwupd, and one with `place` `machine` the processor,
-//! the memory and the boot (`machine_rows.rs`, `processor_rows.rs`), and
-//! each read makes that place's rows again and tells only those that
+//! the memory and the boot (`machine_rows.rs`, `processor_rows.rs`),
+//! and one with `place` `disk` the disks, whose rows are Machine's Disk
+//! (`disk_rows.rs`), a place of its own since each read asks an NVMe
+//! disk its temperature, and each read makes that place's rows again and tells only those that
 //! changed. Machine's are made again as the programs using them are read
 //! too, though watching its rows doesn't read them, since that reads
 //! every process's files: the shell watches `using` while it's looked at.
@@ -87,9 +89,10 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, acts, boot, camera, clock_ms, counts, disk, firmware, firmware_rows, heat, heat_rows,
-    kept, keyboards, light, links, machine_rows, memory, now_ms, power_rows, processor, rounded,
-    rows, sleep, status, steered, supply, telemetry, tree, units, using, written::Written,
+    Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
+    heat, heat_rows, kept, keyboards, light, links, machine_rows, memory, now_ms, power_rows,
+    processor, rounded, rows, sleep, status, steered, supply, telemetry, tree, units, using,
+    written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -186,7 +189,12 @@ const MACHINE: Place = Place {
     sources: &["processor", "memory", "boot"],
     heard: &["using", "telemetry"],
 };
-const PLACES: [Place; 4] = [HEAT, POWER, FIRMWARE, MACHINE];
+const DISK: Place = Place {
+    name: "disk",
+    sources: &["disk"],
+    heard: &[],
+};
+const PLACES: [Place; 5] = [HEAT, POWER, FIRMWARE, MACHINE, DISK];
 /// How lately the programs must have been read for Machine's rows to say
 /// them: two reads' time, so one read a little late doesn't lose them.
 const USING_FRESH: Duration = Duration::from_secs(2);
@@ -463,6 +471,8 @@ struct Daemon {
     heat: heat_rows::Heat,
     /// The reads Power's sparks keep while its rows are watched.
     power: power_rows::Power,
+    /// The reads the Disk's sparks keep while its rows are watched.
+    disk: disk_rows::Disk,
     /// How Firmware's acts stand: the one going, so another waits its
     /// turn, and how each ended while its rows are watched.
     acting: firmware_rows::Acting,
@@ -664,6 +674,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             words,
             heat: heat_rows::Heat::default(),
             power: power_rows::Power::default(),
+            disk: disk_rows::Disk::default(),
             acting: firmware_rows::Acting::default(),
             kept: BTreeMap::new(),
             telemetry: telemetry::Heard::default(),
@@ -688,7 +699,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
                 .filter(|folder| !folder.is_empty()),
             layer: keyboards::layer_file(),
             watchers: status::of_session(),
-            statuses: status::Kept::default(),
+            statuses: status::Kept::asking(units::standing),
         }),
         woken: Condvar::new(),
     }
@@ -799,6 +810,8 @@ fn let_go(daemon: &mut Daemon) {
             daemon.heat.forget();
         } else if place == POWER {
             daemon.power.forget();
+        } else if place == DISK {
+            daemon.disk.forget();
         } else {
             // How an act ended is said until the launcher shuts, as
             // Firmware kept it; one still going is kept.
@@ -834,6 +847,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
         held,
         heat,
         power,
+        disk,
         acting,
         words,
         telemetry,
@@ -848,6 +862,10 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
     }
     if place == FIRMWARE {
         return firmware_rows::read(&held_of(held, "firmware"), acting, words);
+    }
+    if place == DISK {
+        let read = read_at.get("disk").copied();
+        return disk.read(&held_of(held, "disk"), read, words);
     }
     if place == MACHINE {
         let using = held_of(held, "using");
@@ -2228,6 +2246,12 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
         "restart-unit" => match units::restart(said["unit"].as_str().unwrap_or("")) {
             Ok(()) => json!({"id": id, "done": true}),
             Err(unrestarted) => error(id, unrestarted.code, &unrestarted.message),
+        },
+        // The guard rewrites its status as it ends, which is heard as any
+        // write of it is.
+        "disk-keep" | "disk-unkeep" | "disk-clear" | "disk-thaw" => match guard::told(act, said) {
+            Ok(told) => json!({"id": id, "done": true, "said": told}),
+            Err(untold) => error(id, untold.code, &untold.message),
         },
         _ => error(id, "unknown-act", &format!("no act {act:?} here")),
     }
