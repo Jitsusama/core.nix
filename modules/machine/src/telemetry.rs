@@ -75,6 +75,12 @@ impl Standing {
     }
 }
 
+/// The one `telemetry` record, saying how the asking stands by `state`,
+/// a [`Standing`]'s name.
+pub fn record(state: &str) -> Value {
+    json!({ "key": "telemetry:processor", "kind": "telemetry", "state": state })
+}
+
 /// What the telemetry last said: its reading, the last seconds' of what
 /// kept the package from resting, oldest first, and whether it's
 /// answered, kept while it's asked and dropped once it isn't, so nothing

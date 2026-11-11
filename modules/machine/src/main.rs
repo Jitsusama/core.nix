@@ -386,11 +386,7 @@ impl Reader {
             records.push(kept::profile(&self.root, &buses.profile));
         }
         if wants("telemetry") {
-            records.push(json!({
-                "key": "telemetry:processor",
-                "kind": "telemetry",
-                "state": buses.telemetry,
-            }));
+            records.push(telemetry::record(buses.telemetry));
         }
         if wants("supply") {
             for name in supply::supplies(&self.root) {
@@ -901,7 +897,9 @@ fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
 /// Asks the processor's telemetry at `path` while it's asked
 /// (`telemetry_asked`), and nothing otherwise, since the reader reads the
 /// processor's counters only while asked; asked again a second after it
-/// goes, or later where it was never reached. Each second it tells is
+/// goes, or later where it was never reached, unless a watch begins or
+/// ends meanwhile, so a reader that came since is heard as it's next
+/// shown rather than half a minute on. Each second it tells is
 /// read as `telemetry`, so its standing is told as it changes and
 /// Machine's rows are made again where they're watched.
 fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
@@ -930,7 +928,13 @@ fn telemetry_loop(shared: &Shared, path: &std::path::Path) {
             }
             read(shared, &kinds, &[]);
         });
-        std::thread::sleep(if reached { EVERY } else { TELEMETRY_AGAIN });
+        let again = if reached { EVERY } else { TELEMETRY_AGAIN };
+        drop(
+            shared
+                .woken
+                .wait_timeout(lock(&shared.daemon), again)
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
     }
 }
 
