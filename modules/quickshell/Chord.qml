@@ -40,11 +40,14 @@ Flow {
             // An icon's advance and its ink rarely agree, one drawing past
             // the other by a few pixels either way, so a wide part ends where
             // its ink does, and each + keeps the same distance from both its
-            // keys.
+            // keys. Any other key's width is left to its text: one bound to
+            // implicitWidth reads it before a kept key's new padding is laid
+            // out, and that read lays it out and changes the width being
+            // worked out, a binding loop.
             readonly property rect ink: face.tightBoundingRect(text)
             leftPadding: index === 0 ? 0
                 : modelData.after === true ? Theme.space.rung.tie : plus.width
-            width: modelData.wide ? leftPadding + ink.x + ink.width : implicitWidth
+            width: modelData.wide ? leftPadding + ink.x + ink.width : undefined
             text: modelData.text
             color: chord.colour
             font.family: chord.level.family
