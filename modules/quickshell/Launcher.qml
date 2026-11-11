@@ -3041,16 +3041,23 @@ Scope {
 
     // Where the rows drawn stand, the glyph and hue an act of its own
     // without them wears and whether they're home's, told as their rows
-    // come rather than as held moves (RowsPlace.js), so the rows of a place
-    // left never redraw for the place they give way to, and a refresh in
-    // the place they stay in redraws none. A move of held that brings no
+    // come rather than as held moves (RowsPlace.js), once the list keeps
+    // them (list.keep), so the rows of a place left never redraw for the
+    // place they give way to, and a refresh in the place they stay in
+    // redraws none. A move of held that brings no
     // new rows tells them once it's done.
     property string rowsGlyph: ""
     property string rowsHue: ""
     property bool rowsAtHome: true
     function rowsPlaced() {
+        // Told while the rows drawn are still the last ones, it redraws
+        // rows about to go, as home's did for each kept opening, about
+        // 3 ms (ZINAWZ, 2026-11-11); counted for the check that it isn't.
+        if (list.rows !== matches)
+            rowsToldEarly += 1;
         RowsPlace.tell(root, held);
     }
+    property int rowsToldEarly: 0
 
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
@@ -3059,7 +3066,6 @@ Scope {
         if (visualFrom >= 0)
             visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
         rowsMade += 1;
-        rowsPlaced();
         noteKeys();
         noteFigures();
         noteDigits();
@@ -7777,10 +7783,59 @@ Scope {
         id: openMark
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/quickshell-launcher`
         printErrors: false
-        // A word into memory, so it's said by the time the shell says it
-        // opened or closed.
-        blockWrites: true
-        Component.onCompleted: setText(root.open ? "open\n" : "closed\n")
+        Component.onCompleted: root.markOpen(root.open)
+        onSaved: root.markWritten()
+        onSaveFailed: error => root.markFailed(error)
+    }
+    // What the mark says now, so each word is written once as it changes,
+    // and when it last said open, on the clock keys are timed by.
+    property string markSays: ""
+    property real markedOpenAt: -1
+    // The word a write off the shell's thread is still putting down, or
+    // none, and how many writes have held the shell while they were done,
+    // for the check that an opening makes none.
+    property string markWriting: ""
+    property int markBlocked: 0
+    function markOpen(shown) {
+        const word = shown ? "open" : "closed";
+        if (word === markSays)
+            return;
+        markSays = word;
+        if (shown)
+            markedOpenAt = KeyTimes.now();
+        if (markWriting === "")
+            markWrite();
+    }
+    // Open is written off the shell's thread, since written blocking it
+    // held a kept opening's fill 3 to 121 ms on a loaded builder (ZINAWZ,
+    // 2026-11-11), and a switch reading it a moment late only waits.
+    // Closed blocks, so it's said by the time the shell says it closed. A
+    // word wanted while another is still being written follows once that
+    // one is saved, so the last said is always the last written.
+    function markWrite() {
+        const blocking = markSays !== "open";
+        openMark.blockWrites = blocking;
+        markWriting = blocking ? "" : markSays;
+        if (blocking)
+            markBlocked += 1;
+        openMark.setText(`${markSays}\n`);
+    }
+    // A mark it couldn't write leaves its readers reading the last word,
+    // so that's said, once a shell, since each opening would say it again
+    // (Y2YBTS, 2026-11-11).
+    property bool markFailSaid: false
+    function markFailed(error) {
+        if (!markFailSaid) {
+            markFailSaid = true;
+            console.warn(`launcher: couldn't write the open mark: ${FileViewError.toString(error)}`);
+        }
+        markWritten();
+    }
+    function markWritten() {
+        const written = markWriting;
+        markWriting = "";
+        if (written !== "" && written !== markSays)
+            markWrite();
     }
 
     Connections {
@@ -7855,7 +7910,7 @@ Scope {
         const filling = open && opening;
         const began = lapped;
         opening = false;
-        openMark.setText(open ? "open\n" : "closed\n");
+        markOpen(open);
         keysHeld = filling && keysHeld;
         lettingGo = false;
         handing = null;
@@ -8046,6 +8101,7 @@ Scope {
             openBegun = -1;
             openKept = false;
             openAskedWeighings = keysWeighings;
+            openAskedRedone = redone();
             presentedBegin(openAsked);
             openChord = "";
         }
@@ -8061,6 +8117,15 @@ Scope {
     // opening's first frame, or -1 before it.
     property int openAskedWeighings: 0
     property int openFirstWeighings: -1
+    // And how many of the head's words were drawn to be measured, and how
+    // often the rows drawn were told a place before they gave way to its
+    // own, by the ask and by the first frame, or null before it.
+    property var openAskedRedone: ({})
+    property var openFirstRedone: null
+    function redone() {
+        return { measured: prompt.crumbsMade + prompt.stepsMade, toldEarly: rowsToldEarly,
+            blocked: markBlocked };
+    }
     property real openBegun: -1
     function askDone() {
         if (openAsked >= 0 && openSettled < 0)
@@ -8234,9 +8299,11 @@ Scope {
         // Asked once opening, as the card's size follows what it shows.
         openSizedAtAsk = drawnAsAsked();
         keysHeld = false;
-        // The mark says open once it's filled in (onOpenChanged), a frame
-        // or two on: written here, its blocking write held the first frame
-        // 3 to 8 ms, once 54, and what reads it waits minutes on it.
+        // Said open from the ask, written off the shell's thread, so a
+        // switch waiting on the mark never restarts the shell under the
+        // card, which is on the screen before it's filled in (Y2YBTS,
+        // 2026-11-11).
+        markOpen(true);
         prompt.take();
         if (openAsked >= 0) {
             openWorked = KeyTimes.now() - openAsked;
@@ -8293,6 +8360,7 @@ Scope {
             openFirstDrawn = KeyTimes.now();
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
+            openFirstRedone = redone();
         }
         if (openFramesSized < (openSizedAtAsk ? 1 : 2) && openFramesWaited < 20) {
             afterFrame(openShown);
@@ -8462,7 +8530,7 @@ Scope {
         if (unlooked.length > 0 || unready.length > 0)
             readying.start();
         openAsked = -1;
-        openMark.setText("closed\n");
+        markOpen(false);
         afterFramesDue();
     }
 
@@ -8595,10 +8663,19 @@ Scope {
         const weighings = (openFirstWeighings < 0 ? keysWeighings : openFirstWeighings)
             - openAskedWeighings;
         openFirstWeighings = -1;
+        const redoneBy = openFirstRedone ?? redone();
+        const measured = redoneBy.measured - (openAskedRedone.measured ?? 0);
+        const toldEarly = redoneBy.toldEarly - (openAskedRedone.toldEarly ?? 0);
+        const blocked = redone().blocked - (openAskedRedone.blocked ?? 0);
+        openFirstRedone = null;
+        // How long after the ask the mark said open, or -1 while it hasn't.
+        const marked = markSays === "open" && markedOpenAt >= asked
+            ? Math.round(markedOpenAt - asked) : -1;
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows, weighings,
-            made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
+            marked, measured, toldEarly, blocked, made: most, verbs: kept ? 0 : openVerbsWeighed, first,
+            kept, felt,
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
             into: openChord };
         if (kept)
@@ -9375,6 +9452,9 @@ Scope {
                         words: root.holdsWords || !!root.asking
                         editsWords: root.holdsWords && root.selected?.names === true
                         awake: root.open
+                        // Shut, it takes no key niri sent before it heard
+                        // the launcher let them go (Prompt's taking).
+                        taking: root.cardUp
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait
@@ -10094,6 +10174,9 @@ Scope {
                             property var rows: []
                             onShownChanged: {
                                 const same = list.keep(root.matches);
+                                // Told where they stand once they're the
+                                // rows drawn, so those they replace aren't.
+                                root.rowsPlaced();
                                 // The same rows read again leave a glide under
                                 // way; a letter typed never glides, even onto
                                 // the same rows.

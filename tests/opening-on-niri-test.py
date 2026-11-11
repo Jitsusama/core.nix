@@ -10,6 +10,10 @@ the rows land where the kept ones stood and the cursor stays on its row, so noth
 flashes in (Y2YBTS, 2026-11-10). Home is kept a few seconds after the shell starts too, so its
 first opening is drawn the same way. Every test starts with the launcher closed, and leaves it
 so.
+
+Long because every case here opens from what one shell kept, started once a run, through the
+fixture that keeps home after each case and the helpers that read its openings, so a second
+file would start a second shell and share them by import.
 """
 
 from __future__ import annotations
@@ -48,6 +52,9 @@ SPOTS_MADE_SHUT = ("spots made while closed ", "spots freshened while closed ")
 # How many closings and reopenings a case tries before a builder too busy to ask the reopening
 # within SPOTS_LATER fails it.
 REOPENINGS_TRIED = 3
+
+# What the shell says once when it can't write the open mark (Launcher.qml's markFailed).
+MARK_UNWRITTEN = "launcher: couldn't write the open mark"
 
 # How long niri leaves a surface wholly off the screen before it answers a frame of its: once
 # a second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
@@ -341,7 +348,15 @@ def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: S
     again for the find as it took the keys, 5 and 4 ms of its opening over 40 windows on a
     builder (ZINAWZ, 2026-11-11).
     """
-    opened = [shell.opened(f"Weighed {at}") for at in range(WINDOWS_WEIGHED)]
+    opening = windows_reopened(shell)
+    weighings = cast("int | None", opening.get("weighings"))
+    assert weighings is not None, f"the opening didn't say how often it weighed: {opening}"
+    assert weighings <= 1, f"the kept opening weighed its keys {weighings} times: {opening}"
+
+
+def windows_reopened(shell: Shell) -> Json:
+    """Open Windows by its chord, close it, and give its next opening, from what it kept."""
+    opened = [shell.opened(f"Reopened {at}") for at in range(WINDOWS_WEIGHED)]
     try:
         shell.as_account(shell.ipc("collection", "windows"))
         shell.launcher_ready()
@@ -351,13 +366,73 @@ def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: S
         shell.launcher_until(lambda shown: shown.get("kept"))
         timed = latest(openings(shell))
         shell.as_account(shell.ipc("collection", "windows"))
-        opening = filled_after(shell, timed)
+        return filled_after(shell, timed)
     finally:
         for window in opened:
             shell.close(window)
-    weighings = cast("int | None", opening.get("weighings"))
-    assert weighings is not None, f"the opening didn't say how often it weighed: {opening}"
-    assert weighings <= 1, f"the kept opening weighed its keys {weighings} times: {opening}"
+
+
+def test_a_place_shown_before_draws_no_words_to_measure_its_head(shell: Shell) -> None:
+    """A place's head drawn before is measured from what was kept, not drawn again to be.
+
+    Each kept opening drew its head's words in a Text to measure them, three or four, and
+    worked out its path six times, about 3 ms of Windows' opening over 40 windows on a builder
+    (ZINAWZ, 2026-11-11).
+    """
+    opening = windows_reopened(shell)
+    measured = cast("int | None", opening.get("measured"))
+    assert measured == 0, f"the kept opening drew {measured} words to measure: {opening}"
+
+
+def test_a_kept_opening_tells_only_its_own_rows_where_they_stand(shell: Shell) -> None:
+    """A kept opening tells its rows their place once they're drawn, not home's before they go.
+
+    Told as the rows were set, the place reached home's rows still drawn, each saying its
+    kind again just before it gave way, about 3 ms of Windows' opening over 40 windows on a
+    builder (ZINAWZ, 2026-11-11).
+    """
+    opening = windows_reopened(shell)
+    told = cast("int | None", opening.get("toldEarly"))
+    assert told == 0, f"the kept opening told rows about to go {told} times: {opening}"
+
+
+def test_a_kept_opening_says_it_is_open_from_its_first_frame(shell: Shell) -> None:
+    """A kept opening's mark reads open from its first frame, written without holding it.
+
+    The mark said open only at the fill, which waits for niri to present the first frame or
+    half a second, so for that long a switch waiting on it read closed with the card on the
+    screen and could restart the shell under it (Y2YBTS, 2026-11-11). Written blocking at the
+    first frame, it held the fill 3 to 121 ms on a loaded builder instead.
+    """
+    opening = opened_from_kept(shell)
+    marked = cast("int", opening.get("marked", -1))
+    assert 0 <= marked <= cast("int", opening["took"]), f"not marked open by its frame: {opening}"
+    blocked = cast("int", opening.get("blocked", -1))
+    assert blocked == 0, f"the opening waited on {blocked} writes of its mark: {opening}"
+
+
+def test_an_open_mark_it_cannot_write_is_said_once(shell: Shell) -> None:
+    """An open mark the shell can't write is said once, though each opening and closing fails.
+
+    Its readers go on reading the last word written, so without it nothing would say why a
+    switch waited on the launcher, or didn't (Y2YBTS, 2026-11-11). A folder in its place
+    refuses every write.
+    """
+    mark = Path(os.environ["XDG_RUNTIME_DIR"]) / "quickshell-launcher"
+    began = shell.mark()
+    mark.unlink(missing_ok=True)
+    mark.mkdir()
+    try:
+        for _ in range(2):
+            shell.as_account(shell.ipc("collection", "windows"))
+            shell.launcher_ready()
+            shell.close_launcher()
+    finally:
+        mark.rmdir()
+    with shell.log.open("rb") as log:
+        log.seek(began)
+        said = log.read().decode(errors="replace").count(MARK_UNWRITTEN)
+    assert said == 1, f"an unwritten mark was said {said} times over two openings"
 
 
 def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:

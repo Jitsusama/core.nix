@@ -418,6 +418,38 @@ QtObject {
         const keptNow = Measures.keptCount();
         expect("what's kept stays within its bound",
             keptNow > 0 && keptNow <= Measures.MEASURES_KEPT, keptNow);
+        // A head's words as a Text drew them are kept by the face it drew
+        // them in, axes and all, so a place shown before is drawn without
+        // a Text to measure it (ZINAWZ, 2026-11-11).
+        const title = { family: "Inter", pointSize: 14, weight: 400, italic: false,
+            variableAxes: { opsz: 32 } };
+        const drawnIn = Measures.drawnFace(title, "plain");
+        expect("words no Text has drawn have no width",
+            Measures.drawnWidth(drawnIn, "Windows") === undefined,
+            Measures.drawnWidth(drawnIn, "Windows"));
+        Measures.drew(drawnIn, "Windows", 71.5);
+        expect("words drawn keep their width", Measures.drawnWidth(drawnIn, "Windows") === 71.5,
+            Measures.drawnWidth(drawnIn, "Windows"));
+        Measures.drew(drawnIn, "Windows", 72.25);
+        expect("drawn again, as a late face does, the newest kept",
+            Measures.drawnWidth(drawnIn, "Windows") === 72.25,
+            Measures.drawnWidth(drawnIn, "Windows"));
+        const otherAxes = Measures.drawnFace(Object.assign({}, title,
+            { variableAxes: { opsz: 12 } }), "plain");
+        const otherFormat = Measures.drawnFace(title, "auto");
+        expect("another axis or format is another face",
+            Measures.drawnWidth(otherAxes, "Windows") === undefined
+            && Measures.drawnWidth(otherFormat, "Windows") === undefined,
+            [otherAxes, otherFormat]);
+        const measuredWide = Measures.measurer(metrics(14))("Windows");
+        expect("a drawn width is never a measured one", measuredWide === 98, measuredWide);
+        for (let at = 0; at < Measures.MEASURES_KEPT; at += 1)
+            Measures.drew(drawnIn, `step ${at}`, at);
+        Measures.drew(drawnIn, "Windows", 72.25);
+        const drawnNow = Measures.keptCount();
+        expect("drawn words stay within the bound",
+            drawnNow > 0 && drawnNow <= Measures.MEASURES_KEPT
+            && Measures.drawnWidth(drawnIn, "Windows") === 72.25, drawnNow);
         // A real face measures as its own metrics do.
         const real = Measures.measurer(face)(missed);
         expect("a real face's widths as its metrics say", real === face.advanceWidth(missed),
