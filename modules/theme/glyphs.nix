@@ -2,7 +2,9 @@
 # stand-in a console font can draw. The set is pi's, which chose marks the
 # monospace font has so columns stay aligned. The theme module's glyphs
 # option starts from it (home.nix), and the guide draws from it too, since
-# it runs where no account's theme is (../guide/theme.nix).
+# it runs where no account's theme is (../guide/theme.nix). Long because
+# it's one table: each mark, its stand-in and what it means, and the
+# drawing of those the margin shows.
 #
 # A mark the margin's corner shows is drawn as well (`drawn`): an SVG path
 # on a 12 by 12 grid, filled even-odd, every one touching the grid's top and
