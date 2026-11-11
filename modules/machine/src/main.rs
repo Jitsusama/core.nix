@@ -2237,9 +2237,14 @@ mod tests {
         let (end, _other) = UnixStream::pair().unwrap();
         let hangup = Arc::new(end);
         let watch = ask(r#"{"id":"f","ask":"watch","kind":["row"],"place":"firmware"}"#);
+        // A watch's whole answer is queued as it's held, not returned.
+        let _ = answer(&shared, watch, 1, &told, &hangup);
+        let first: Value = serde_json::from_str(&lines.try_recv().unwrap()).unwrap();
+        let records = first["records"].as_array().into_iter().flatten();
+        let keys: Vec<&Value> = records.map(|record| &record["key"]).collect();
         assert!(
-            answer(&shared, watch, 1, &told, &hangup).is_some(),
-            "the watch is answered"
+            keys.contains(&&json!("row:firmware:b10:install")),
+            "Install is offered: {first}"
         );
         let said = json!({ "device": "b10", "patience_s": 60 });
         firmware_act(
