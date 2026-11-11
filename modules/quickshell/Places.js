@@ -248,12 +248,14 @@ const ioStalls = 50;
 // How old the queue's heartbeat may be, in seconds, and still be heard.
 const queueHeard = 120;
 
-// Where a session handed over sat, by its id: this boot's place while it
+// Where a session to reopen sat, by its id: this boot's place while it
 // has one, else the restored boot's. An orchestrator bringing its own
 // sessions back after a reboot hands them over before Reopen Them All
 // reaches them, and without a kept place each went to its orchestrator's
 // workspace wherever niri put it (40 of them after the 21:24 boot on
-// 2026-11-08). `kept` holds `now` and `restored`, each places by id.
+// 2026-11-08). One pi's host gave back this boot sat this boot, where its
+// viewer was, not where the boot before left it. `kept` holds `now` and
+// `restored`, each places by id.
 function keptFor(id, kept) {
     return kept.now?.[id] ?? kept.restored?.[id] ?? null;
 }

@@ -1321,14 +1321,18 @@ Singleton {
     // nowhere kept opens beside where Joel was, after the rest, and Joel
     // is taken back there at the end. `gone(one, cwd)` is
     // told of one whose folder is gone, which isn't opened. `keptAt(id)`
-    // says where one sat, the boot being restored's place by default. A
-    // list given while another is being reopened joins its end, so two
-    // never open at once and misplace each other.
+    // says where one sat: by default its place this boot while it has one,
+    // else the restored boot's (Places.keptFor), so one pi's host gave back
+    // this boot opens where its viewer sat, not where the boot before left
+    // it (item 11's rollback drill, 2026-11-11). A list given while another
+    // is being reopened joins its end, so two never open at once and
+    // misplace each other.
     // `told`, when given, is each one's first prompt as it opens
     // (reopened), as Reopen Them All tells each to carry on.
     property var reopening: null
     function reopenAll(lost, gone, keptAt, told) {
-        const kept = keptAt ?? (id => arrangement[restoring.boot]?.[id] ?? null);
+        const kept = keptAt ?? (id => Places.keptFor(id, { now: arrangement[bootId],
+            restored: arrangement[restoring.boot] }));
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one));
         const here = lost.filter(one => one.machine === undefined);
         lookAtScreens(() => reopenHere(here, gone, kept, told ?? ""));
@@ -1383,8 +1387,8 @@ Singleton {
     // A JSON object whose `sessions` lists each {id, cwd}, rather than a bare
     // list, since `qs ipc call` doesn't pass an argument starting with `[`
     // through whole (2026-10-31). Each is reopened as Reopen Them All does, at
-    // its place kept this boot or else the restored boot's, else beside
-    // where Joel is. It answers "taken" at once, so the harness knows the
+    // its place kept this boot or else the restored boot's (reopenAll), else
+    // beside where Joel is. It answers "taken" at once, so the harness knows the
     // shell has them; a shell that doesn't answer leaves it to open them
     // itself. It's asked through the sessions target below.
     function handedOver(sessions) {
@@ -1421,9 +1425,7 @@ Singleton {
             return "refused: no session with an id and a folder";
         console.info(`sessions: reopening ${given.length} handed over`);
         reopenAll(given, (one, cwd) => console.info(`sessions: ${one.id} not reopened, `
-            + `since its folder, ${cwd}, is gone`),
-            id => Places.keptFor(id, { now: arrangement[bootId],
-                restored: arrangement[restoring.boot] }));
+            + `since its folder, ${cwd}, is gone`));
         return given.length === listed.length ? "taken"
             : `taken ${given.length} of ${listed.length}`;
     }
@@ -1644,7 +1646,7 @@ Singleton {
     // Joel moved it by hand). Only Reopen Them All puts them back, since a
     // kept place means something only once the sessions are back.
     // `keptAt`, when given, says where each sat, else where the shell kept
-    // it in the boot being restored.
+    // it this boot or in the boot being restored (reopenAll).
     function reopenThemAll(lost, gone, keptAt) {
         const boot = root.arrangedBefore();
         const kept = Array.isArray(arrangedOthers[boot]) ? arrangedOthers[boot] : [];
