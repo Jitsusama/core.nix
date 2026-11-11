@@ -156,12 +156,15 @@ function unlisted(standing) {
 // says a time, by the clock, so no row changes on the daemon's side as a
 // minute turns (Y2YBTS's ready rows, "Times").
 
+// What a ready row's thing says before Drive's id (src/document_rows.rs).
+const THING = /^gdoc:/;
+
 // The document a ready row is of, as `documents` says one, for what opens
 // it and what Saves and a program's Recent read of it.
 function readyDocument(row) {
     const held = row.held ?? {};
     return {
-        id: String(row.thing ?? "").replace(/^gdoc:/, ""),
+        id: String(row.thing ?? "").replace(THING, ""),
         title: String(row.name ?? ""),
         kind: String(row.kind ?? ""),
         link: String(held.link ?? ""),
