@@ -5517,7 +5517,8 @@ Scope {
     function keyTimed(typed, began, heard, pressed) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began,
             searched: Date.now() - began, parts: searchParts, begun: null,
-            rendered: null, pressed: pressed > 0 ? pressed : heard, done: KeyTimes.now() }]);
+            rendered: null, pressed: pressed > 0 ? pressed : heard, heard,
+            done: KeyTimes.now() }]);
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
         // Its handler is done once it's searched or moved, all a key's own
@@ -5531,7 +5532,7 @@ Scope {
         const begun = KeyTimes.now();
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
-            presentedAwait(key.pressed, at => keyPresented(key.pressed, at));
+            presentedAwait(key.pressed, at => keyPresented(key.pressed, at, key));
         }
         keysDrawing = Pacing.frameBegun(keysDrawing);
     }
@@ -8824,14 +8825,16 @@ Scope {
 
     // Each key presented since the launcher opened, from its press and
     // when niri presented it, on the monotonic clock, for the check that
-    // sets it against niri's screen; said in the journal as it closes.
+    // sets it against niri's screen; said in the journal as it closes, with
+    // when the shell heard it and its frame began, to say where it went.
     property var keysPresented: []
-    function keyPresented(from, at) {
-        keysPresented = keysPresented.concat([{ from, at }]).slice(-keysKept);
+    function keyPresented(from, at, key) {
+        const one = { from, at, heard: key.heard, begun: key.begun };
+        keysPresented = keysPresented.concat([one]).slice(-keysKept);
         // A key that set no glide going stood where it went at its first
         // frame, so it landed there.
         if (!keysGlided.includes(from))
-            keysLanded = keysLanded.concat([{ from, at }]).slice(-keysKept);
+            keysLanded = keysLanded.concat([one]).slice(-keysKept);
     }
 
     // Each key presented where the selection, and the list's scroll with
@@ -8885,8 +8888,10 @@ Scope {
     }
 
     function keysPresentedSaid() {
-        const first = Presented.took(keysPresented);
-        const landed = Presented.took(keysLanded);
+        // Where a key's time went is said of its first frame alone, since a
+        // key that glided landed frames later.
+        const first = Presented.keysSaid("presented", keysPresented, true);
+        const landed = Presented.keysSaid("landed", keysLanded, false);
         const updates = Presented.changesSaid(updatesPresented);
         keysPresented = [];
         keysLanded = [];
@@ -8896,15 +8901,7 @@ Scope {
         updatesWaiting = {};
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
-        if (first.count > 0)
-            console.info(`launcher: ${first.count} keys presented a median `
-                + `${first.median} ms from the key, the slowest `
-                + `${first.slowest} ms, ${first.within} within 50 ms`);
-        if (landed.count > 0)
-            console.info(`launcher: ${landed.count} keys landed a median `
-                + `${landed.median} ms from the key, the slowest `
-                + `${landed.slowest} ms, ${landed.within} within 50 ms`);
-        for (const said of updates)
+        for (const said of [first, landed].filter(line => line !== "").concat(updates))
             console.info(said);
     }
 
