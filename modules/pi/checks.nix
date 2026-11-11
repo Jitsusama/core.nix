@@ -7,6 +7,7 @@
   holds,
   lib,
   macWorkstation,
+  passesClippy,
   pkgs,
   self,
   workstation,
@@ -761,4 +762,15 @@ in
         ${onPi} ${onClaude} ${lib.getExe piClaude}
       touch $out
     '';
+
+  # pi-spawner builds with its tests run (spawner/tests/spawner.rs): what a
+  # command says and how it ends passed on, its folder and variables kept,
+  # a group of its own, a failure to start said, a drop honoured, and every
+  # group killed once pi goes.
+  pi-spawner-starts-commands-for-pi = pkgs.callPackage ./spawner/package.nix { };
+
+  # clippy finds nothing in pi-spawner, its tests included.
+  pi-spawner-passes-clippy = passesClippy "pi-spawner-passes-clippy" (
+    pkgs.callPackage ./spawner/package.nix { }
+  );
 }

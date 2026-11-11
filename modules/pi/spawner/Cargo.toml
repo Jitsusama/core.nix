@@ -1,0 +1,12 @@
+# What starts pi's shell commands for it, from a process small enough to
+# start them without stalling pi (src/main.rs says why and how).
+[package]
+name = "pi-spawner"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Signalling a command's process group when pi goes (src/main.rs).
+libc = "0.2"
