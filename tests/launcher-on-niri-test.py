@@ -393,7 +393,17 @@ def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> N
 # long the clock may take to reach that.
 QUIET = timedelta(seconds=30)
 FROM_SECOND = 45
-TURNING = timedelta(seconds=70)
+# The seconds past a minute the case closes the launcher between, so the closing's own making
+# is done before FROM_SECOND and its freshening a minute on falls after the span.
+CLOSING = range(30, 40)
+TURNING = timedelta(seconds=130)
+
+
+def until_second(seconds: range, turning: float) -> None:
+    """Wait until the clock is within these seconds past a minute."""
+    while int(now("+%S")) not in seconds:
+        assert time.monotonic() < turning, f"the clock never reached {seconds} s past a minute"
+        time.sleep(0.5)
 
 
 def test_the_closed_launcher_draws_nothing_as_the_time_it_would_show_turns(shell: Shell) -> None:
@@ -403,12 +413,23 @@ def test_the_closed_launcher_draws_nothing_as_the_time_it_would_show_turns(shell
     launcher drew a frame nobody saw each time its foot's facts changed: the time each
     minute, the lag, the volume (2026-11-01). The sandbox has no volume to change, so the
     minute and the lag are what's watched here.
+
+    A closing draws the closed launcher too: its places' spots made half a second after it
+    (Launcher.qml's spotsLater) and their figures a minute after (spotsFreshened). The span
+    began whenever the last case left it, so it caught one or the other about half the time
+    (2026-11-10: 1 and 5 frames, failing two gates). Committing nothing while shut, as the
+    kept shut surface does, ends those; until then this case is the minute's turn alone, so
+    it makes its own closing first, at a second it chooses, and counts once that settles.
     """
     frames = f"qs -p {shell.folder} ipc call frames"
     turning = time.monotonic() + TURNING.total_seconds()
-    while int(now("+%S")) < FROM_SECOND:
-        assert time.monotonic() < turning, f"the clock never reached {FROM_SECOND} s past a minute"
-        time.sleep(0.5)
+    until_second(CLOSING, turning)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    closing = shell.mark()
+    shell.close_launcher()
+    shell.reported("spots made while closed", lambda _: True, closing)
+    until_second(range(FROM_SECOND, 60), turning)
     shell.as_account(f"{frames} start")
     # The span measured, across the turn of the minute, not a wait for something to happen.
     time.sleep(QUIET.total_seconds())
