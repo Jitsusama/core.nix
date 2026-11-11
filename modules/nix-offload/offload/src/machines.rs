@@ -272,10 +272,17 @@ fn stand_ins(second: &Path, vm: &[PathBuf], at: u64) -> (Vec<String>, Vec<String
     (second, vm)
 }
 
-/// Prove the builder beside `line` names when due, with `nix`, keeping
-/// its proofs in `kept`: whether it's left out, having failed its proofs
-/// or with its store full, saying so as that changes.
-fn kept_beside(kept: &mut Vec<(String, Keeper)>, line: &str, nix: &str, now: Instant) -> bool {
+/// How the builder beside `line` names stands, keeping it in `kept`:
+/// whether it's left out, having failed its proofs or with its store
+/// full, saying so as that changes. Where root's prover writes `root`,
+/// that says, since only an account the daemon trusts can prove a builder
+/// beside; elsewhere it's proven here when due, with `nix`.
+fn kept_beside(
+    kept: &mut Vec<(String, Keeper)>,
+    line: &str,
+    (nix, root): (&str, &Path),
+    now: Instant,
+) -> bool {
     let index = kept
         .iter()
         .position(|(kept, _)| kept == line)
@@ -285,10 +292,15 @@ fn kept_beside(kept: &mut Vec<(String, Keeper)>, line: &str, nix: &str, now: Ins
         });
     let keeper = &mut kept[index].1;
     let was = keeper.health.state();
-    let (proving, nix) = (line.to_owned(), nix.to_owned());
-    keeper.keep(now, seconds(), move || {
-        proof::through_daemon(&proving, &nix, proof::WITHIN)
-    });
+    let uri = line.split_whitespace().next().unwrap_or_default();
+    if let Some(health) = proof::standing_health(root, uri, &keeper.health.builder, seconds()) {
+        keeper.health = health;
+    } else {
+        let (proving, nix) = (line.to_owned(), nix.to_owned());
+        keeper.keep(now, seconds(), move || {
+            proof::through_daemon(&proving, &nix, proof::WITHIN)
+        });
+    }
     let state = keeper.health.state();
     let name = &keeper.health.builder;
     match (was, state) {
@@ -484,6 +496,8 @@ pub struct Machines {
     kept: Vec<(String, Keeper)>,
     /// The nix the builders beside are proven through.
     nix: String,
+    /// Where root's prover says how the builders beside stand.
+    root: PathBuf,
     /// The file naming what frees each builder beside, read again with
     /// `lists`, once `freeing_from` gives it.
     freeing_from: Option<PathBuf>,
@@ -524,6 +538,7 @@ impl Machines {
             telling: None,
             kept: Vec::new(),
             nix: "nix".to_owned(),
+            root: PathBuf::from(proof::STANDING),
             freeing_from: None,
             freeing: Vec::new(),
             cloud: None,
@@ -587,6 +602,13 @@ impl Machines {
             nix: nix.to_owned(),
             ..self
         }
+    }
+
+    /// With `root` where root's prover says how the builders beside stand.
+    #[cfg(test)]
+    #[must_use]
+    pub fn proven_by_root_in(self, root: PathBuf) -> Self {
+        Self { root, ..self }
     }
 
     /// Say how the proofs of the one lent, whose line is `line`, stand, or
@@ -747,7 +769,7 @@ impl Machines {
         let mut beside: Vec<&str> = Vec::new();
         for builder in &self.beside {
             if answers(&builder.address)
-                && !kept_beside(&mut self.kept, &builder.line, &self.nix, now)
+                && !kept_beside(&mut self.kept, &builder.line, (&self.nix, &self.root), now)
             {
                 beside.push(builder.line.as_str());
             }
@@ -1357,17 +1379,82 @@ mod tests {
         };
         let before = heard(kept);
         let ending = Instant::now() + Duration::from_secs(5);
-        let mut dropped = kept_beside(kept, line, nix, now);
+        // No prover of root's writes here, so the builder is proven through `nix`.
+        let proving = (nix, Path::new("/nonexistent/nix-offload-standing.json"));
+        let mut dropped = kept_beside(kept, line, proving, now);
         // One just kept has heard no proof yet.
         let unheard = |kept: &Vec<(String, Keeper)>| {
             heard(kept) == before || heard(kept) == Some((None, None, 0, None))
         };
         while unheard(kept) && Instant::now() < ending {
             std::thread::sleep(Duration::from_millis(10));
-            dropped = kept_beside(kept, line, nix, now);
+            dropped = kept_beside(kept, line, proving, now);
         }
         assert_ne!(heard(kept), before, "no proof ended");
         dropped
+    }
+
+    #[test]
+    fn a_builder_beside_stands_as_roots_prover_says_where_one_writes() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let alone = dir.path().join("machines-beside");
+        let root = dir.path().join("standing.json");
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let line = "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark";
+        // A nix that fails every proof, so only root's word can list it.
+        let failing = dir.path().join("nix");
+        executable(&failing, "#!/bin/sh\nexit 1\n");
+        let mut machines = Machines::new(
+            dir.path().join("machines"),
+            dir.path().join("machines-with-standing"),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![],
+        )
+        .beside(
+            alone.clone(),
+            vec![Standing {
+                address,
+                line: line.to_owned(),
+            }],
+        )
+        .proving_with(&failing.display().to_string())
+        .proven_by_root_in(root.clone());
+        let says = |state: &str, free: u64, at: u64| {
+            let said = serde_json::json!({"at": at, "builders": [{"uri": "ssh-ng://work",
+                "builder": "work", "state": state, "lastSuccess": at, "lastFailure": null,
+                "consecutiveFailures": 0, "freeBytes": free}]});
+            fs::write(&root, said.to_string()).expect("write");
+        };
+        let read = |path| fs::read_to_string(path).expect("read");
+        says("passing", 80_000_000_000, seconds());
+        machines.show(None);
+        assert_eq!(
+            read(&alone),
+            format!("{line}\n"),
+            "listed while root says it passes"
+        );
+        says("full", 6_000_000_000, seconds());
+        machines.show(None);
+        assert_eq!(
+            read(&alone),
+            "",
+            "left out while root says its store is under the floor"
+        );
+        says("passing", 80_000_000_000, seconds() - proof::FRESH - 1);
+        machines.show(None);
+        assert_eq!(
+            read(&alone),
+            "",
+            "left out once root's prover has gone quiet"
+        );
+        let health = machines.beside_health().expect("builders beside");
+        assert_eq!(
+            health[0].state(),
+            State::Dropped,
+            "a quiet prover vouches for nothing"
+        );
     }
 
     #[test]

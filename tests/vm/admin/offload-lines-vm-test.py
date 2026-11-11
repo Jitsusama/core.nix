@@ -23,6 +23,9 @@ ROOTS = "/run/nix-offload-lines"
 # How long the service may take to copy what the lender wrote: it reads every two seconds,
 # and asks the cloud once for an instance it hasn't seen.
 COPYING = timedelta(minutes=1)
+# How long root's prover may take to drop a builder it never reaches: two proofs, a minute
+# apart, each failing within 45 s.
+PROVING = timedelta(minutes=3)
 
 
 def carried(key: str) -> str:
@@ -99,6 +102,32 @@ def test_the_lenders_account_cannot_write_roots_lines(lending: BaseMachine) -> N
     assert owners == ["nix-offload-lines", "nix-offload-lines"], owners
     lending.fail(f"runuser -u someone -- sh -c ': >> {ROOTS}/machines'")
     lending.fail(f"runuser -u someone -- touch {ROOTS}/machines.draft")
+
+
+def test_root_alone_says_how_the_standing_builder_stands(
+    lending: BaseMachine, values: dict[str, Any]
+) -> None:
+    """Root proves the standing builder, here never reached, in a file the lender can't write."""
+    said = "/run/nix-offload-standing/health.json"
+    uri = values["standingUri"]
+    # Two proofs a minute apart fail before it's dropped.
+    lending.wait_until_succeeds(
+        f'grep -qF \'"uri":"{uri}"\' {said} && grep -qF \'"state":"dropped"\' {said}',
+        timeout=PROVING,
+    )
+    # Dropped because no builder took the build, nearby being unreachable,
+    # not because root's Nix or the unit's fence refused the proof itself,
+    # which would drop every builder.
+    failed = lending.succeed(
+        "journalctl -u nix-offload-prove-standing -o cat | grep 'failed its proof'"
+    )
+    assert "max-jobs" in failed, failed
+    # A restart, as a switch makes, keeps what was last said.
+    lending.succeed(f"systemctl restart nix-offload-prove-standing && test -s {said}")
+    owners = lending.succeed(f"stat -c %U /run/nix-offload-standing {said}").split()
+    assert owners == ["root", "root"], owners
+    lending.fail(f"runuser -u someone -- sh -c ': >> {said}'")
+    lending.fail("runuser -u someone -- touch /run/nix-offload-standing/health.writing")
 
 
 def test_nothing_lent_takes_the_lent_line_away(lending: BaseMachine, standing: str) -> None:
