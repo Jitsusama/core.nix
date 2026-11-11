@@ -85,6 +85,13 @@ let
   # Seconds from the last key or touch to each step of stepping away: no
   # one marked at the machine, the lock, and the screens going off.
   unmarked = 120;
+  # The mark goes with the session. A switch restarts swayidle-away while
+  # the session carries on, and a restart is no key or touch, so then the
+  # mark stays as it was.
+  sessionEnded = pkgs.writeShellScript "swayidle-away-session-ended" ''
+    ${lib.getExe' pkgs.systemd "systemctl"} --user is-active --quiet graphical-session.target ||
+      ${lib.getExe' pkgs.coreutils "rm"} -f "$1"
+  '';
   locked = 300;
   screensOff = 600;
   # The mark that someone is at the machine.
@@ -117,8 +124,11 @@ in
 
   # A followed switch waits while this marks someone touched a key or the
   # pointer in the last two minutes (../update-to-main/nixos.nix), since a
-  # switch restarts the shell under their hands. A session just started
-  # has someone at it, and one ended has nobody.
+  # switch restarts the shell under their hands, and what moves Joel's
+  # sessions waits for it to stay away. Only a key or a touch makes the
+  # mark: the start used to touch it as well, so every switch read as Joel
+  # at the machine for two minutes, stopping what waited for him to be
+  # away (2026-11-11). A session ended has nobody.
   systemd.user.services.swayidle-away = {
     Unit = {
       Description = "Locks the screen and turns the screens off as Joel steps away";
@@ -127,9 +137,8 @@ in
       ConditionEnvironment = "WAYLAND_DISPLAY";
     };
     Service = {
-      ExecStartPre = "${lib.getExe' pkgs.coreutils "touch"} ${here}";
       ExecStart = "${lib.getExe away} ${toString unmarked} ${toString locked} ${toString screensOff}";
-      ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f ${here}";
+      ExecStopPost = "${sessionEnded} ${here}";
       Restart = "always";
     };
     Install.WantedBy = [ "graphical-session.target" ];

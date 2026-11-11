@@ -2,7 +2,9 @@
 # What happens as Joel steps away, each after the seconds it's given since
 # the last key or touch: `swayidle-away MARK LOCK OFF` stops marking
 # someone at the machine, locks the screen and turns the screens off. A key
-# or touch marks someone there again.
+# or touch after a second without one marks someone there again, so the
+# mark comes back at once even when this swayidle has only just started and
+# hasn't yet reached MARK.
 #
 # It runs a swayidle of its own that asks logind nothing, so logind's lock
 # against going idle stops none of these. A swayidle that hears logind
@@ -19,6 +21,7 @@ off=$3
 here=${XDG_RUNTIME_DIR:?}/someone-at-the-machine
 
 exec swayidle \
-  timeout "$mark" "rm -f '$here'" resume "touch '$here'" \
+  timeout 1 true resume "touch '$here'" \
+  timeout "$mark" "rm -f '$here'" \
   timeout "$lock" "screen-kept || lock-screen 'Joel stepped away'" \
   timeout "$off" "screen-kept || niri msg action power-off-monitors"

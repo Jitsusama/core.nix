@@ -164,6 +164,27 @@ def test_the_screen_locks_as_joel_steps_away_past_holds_that_keep_it_awake(
     desktop.as_account(f"grep -qx unlocked {LOCKED}")
 
 
+def test_a_restart_of_swayidle_away_marks_nobody_at_the_machine(desktop: Desktop) -> None:
+    """Restarting swayidle-away marks nobody at the machine, and keeps a mark already there.
+
+    A switch restarts swayidle-away, whose start used to touch the mark, so every switch read
+    as Joel at the machine for two minutes and stopped what waits for him to be away
+    (2026-11-11). Only a key or a touch marks him now, and typing by wtype counts as none here.
+    """
+    desktop.as_account(f"rm -f {HERE}")
+    try:
+        desktop.as_account("systemctl --user start swayidle-away")
+        desktop.as_account("systemctl --user restart swayidle-away")
+        desktop.as_account("systemctl --user is-active swayidle-away")
+        desktop.as_account(f"test ! -e {HERE}")
+        desktop.as_account(f"touch {HERE}")
+        desktop.as_account("systemctl --user restart swayidle-away")
+        desktop.as_account(f"test -e {HERE}")
+    finally:
+        desktop.as_account("systemctl --user stop swayidle-away || true")
+        desktop.as_account(f"rm -f {HERE}")
+
+
 def test_keep_awake_keeps_the_screen_unlocked_as_joel_steps_away(desktop: Desktop) -> None:
     """Keep Awake keeps the screen on and unlocked as Joel steps away, as a call's hold does."""
     machine = desktop.machine

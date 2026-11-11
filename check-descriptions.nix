@@ -2900,8 +2900,9 @@
     swayidle tells logind the session is idle at the same moment it turns the screens off
   '';
   someone-at-the-machine-is-marked = ''
-    swayidle marks someone at the machine from the session's start and from any key or touch, and
-    takes the mark away after two minutes without one, for a followed switch to wait on
+    swayidle marks someone at the machine from any key or touch, never from its own start, and
+    takes the mark away after two minutes without one or with the session, for a followed switch
+    and the session moves to wait on
   '';
   stepping-away-asks-logind-nothing = ''
     the lock and the screens going off as Joel steps away wait on no hold of logind's idle lock,
