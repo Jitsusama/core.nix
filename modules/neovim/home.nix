@@ -282,11 +282,21 @@ in
   xdg.configFile."nvim/lua/showing.lua".source = ./showing.lua;
   # Its Recent in the launcher stands from the first, with the files it
   # opened from the list programs share; what it has open now is its provider's
-  # own, since a Neovim's windows are kitty's.
+  # own, since a Neovim's windows are kitty's, which the programs daemon reads
+  # through open-now as its page asks.
   jitsusama.quickshell.launcher.recents = lib.mkIf pkgs.stdenv.hostPlatform.isLinux [
     {
       app = "nvim";
       kind = "file";
+    }
+    {
+      app = "nvim";
+      name = "open";
+      asked = true;
+      list = [
+        open-now
+        "neovim"
+      ];
     }
   ];
   # Neovim's own in the launcher (NeovimProgram.qml): Open a File by Name,
@@ -303,6 +313,7 @@ in
     fd = lib.getExe pkgs.fd;
     stat = lib.getExe' pkgs.coreutils "stat";
     openNow = open-now;
+    open = "listed:nvim:open";
     preview = [ (lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })) ];
   };
   xdg.configFile."quickshell/launcher/NeovimOpening.js" = lib.mkIf linux {

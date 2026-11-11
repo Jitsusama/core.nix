@@ -4675,8 +4675,8 @@ onLinux {
   # rows in its Recent, each drawer saying where it is then its kind and
   # previewing a picture, and Open
   # the Latest Download only while there's one, waiting in its place until
-  # the first reading answers. Neovim's files open now come from a stand-in
-  # open-now, whose reading of a real Neovim is open-with's own tests', each
+  # the first reading answers. Neovim's files open now come through the same
+  # daemon from a stand-in open-now, whose reading of a real Neovim is open-with's own tests', each
   # file's drawer saying where it is and its buffer.
   the-launcher-acts-only-on-what-it-can =
     let
@@ -4715,6 +4715,17 @@ onLinux {
             name = "downloads";
             asked = true;
             list = [ "${downloads}" ];
+          }
+          # What each Neovim has open, which the programs daemon reads as
+          # Neovim's module has it read.
+          {
+            app = "nvim";
+            name = "open";
+            asked = true;
+            list = [
+              "${openNow}"
+              "neovim"
+            ];
           }
         ]
       );
