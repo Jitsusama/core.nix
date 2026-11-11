@@ -158,7 +158,7 @@ fn drawn(one: &Raised, words: &Words) -> Value {
         "eyebrow": eyebrow,
         "eyebrowNames": !direct(one),
         "title": who(one, words),
-        "facts": [{"label": words.sent, "at": one.at, "as": "moment"}],
+        "facts": [{"name": words.sent, "at": one.at, "as": "moment"}],
         "body": one.text,
         "prose": true,
     })
@@ -243,6 +243,11 @@ mod tests {
                 &json!(true),
                 &json!("the deploy is out\nand green")
             )
+        );
+        // A time fact is named as ready-rows.md names every drawer fact.
+        assert_eq!(
+            drawer["facts"],
+            json!([{"name": "Sent", "at": 1_000, "as": "moment"}])
         );
         assert_eq!(made[1].1["drawer"]["eyebrow"], "direct message");
         assert_eq!(made[1].1["drawer"]["eyebrowNames"], false);
