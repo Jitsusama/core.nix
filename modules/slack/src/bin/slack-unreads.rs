@@ -258,7 +258,6 @@ fn whole(file: &Path, text: &str) -> std::io::Result<()> {
     std::fs::rename(&writing, file)
 }
 
-/// Now, in milliseconds since the epoch.
 /// The words rows are said in, read once from the launcher's vocabulary.
 fn vocabulary(path: &Path) -> Result<Words, String> {
     let text = std::fs::read_to_string(path).map_err(|why| why.to_string())?;
@@ -266,6 +265,7 @@ fn vocabulary(path: &Path) -> Result<Words, String> {
     Words::read(&whole)
 }
 
+/// Now, in milliseconds since the epoch.
 fn millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

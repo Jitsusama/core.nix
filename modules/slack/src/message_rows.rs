@@ -45,32 +45,34 @@ impl Words {
     /// The first word the vocabulary's `slack:message` or
     /// `slack:message:sent` lacks.
     pub fn read(vocabulary: &Value) -> Result<Words, String> {
-        let thing = |id: &str| {
-            vocabulary["things"]
-                .as_array()
-                .and_then(|things| things.iter().find(|thing| thing["id"] == id))
-                .ok_or_else(|| format!("the vocabulary has no {id}"))
-        };
-        let word = |id: &str, at: &[&str]| -> Result<String, String> {
-            at.iter()
-                .fold(thing(id)?, |within, field| &within[field])
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| format!("the vocabulary's {id} has no {}", at.join(".")))
-        };
-        let you = word("slack:message", &["said", "you"])?;
+        let you = word(vocabulary, "slack:message", &["said", "you"])?;
         Ok(Words {
-            glyph: word("slack:message", &["glyph"])?,
+            glyph: word(vocabulary, "slack:message", &["glyph"])?,
             you: capitalised(&you),
-            place: word("slack:message", &["said", "where"])?,
-            direct: word("slack:message", &["said", "direct"])?,
-            sent: word("slack:message:sent", &["name"])?,
+            place: word(vocabulary, "slack:message", &["said", "where"])?,
+            direct: word(vocabulary, "slack:message", &["said", "direct"])?,
+            sent: word(vocabulary, "slack:message:sent", &["name"])?,
         })
     }
 }
 
-/// A word as it opens a row's name, as SlackMessage.qml's `you` says it.
-fn capitalised(word: &str) -> String {
+/// The word at `at` in the vocabulary's thing `id`, or what's missing:
+/// the thing, or the word in it.
+pub(crate) fn word(vocabulary: &Value, id: &str, at: &[&str]) -> Result<String, String> {
+    let thing = vocabulary["things"]
+        .as_array()
+        .and_then(|things| things.iter().find(|thing| thing["id"] == id))
+        .ok_or_else(|| format!("the vocabulary has no {id}"))?;
+    at.iter()
+        .fold(thing, |within, field| &within[field])
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("the vocabulary's {id} has no {}", at.join(".")))
+}
+
+/// A word as it opens a row's name or a fact, as SlackMessage.qml's `you`
+/// and Slack.js's presence say it.
+pub(crate) fn capitalised(word: &str) -> String {
     let mut letters = word.chars();
     letters.next().map_or_else(String::new, |first| {
         first.to_uppercase().chain(letters).collect()

@@ -1824,7 +1824,8 @@
     once with the harness's sign-in, keeping who it found across a restart, and asks how they
     are each time, only ever reading; finds their conversation with Joel in plain words, only
     what's in a direct message with them, newest last; asks ahead only after a step-in, finding
-    their conversation once and never how they are; and asks nobody once Slack refuses the
+    their conversation once and never how they are; handed the launcher's words, says their
+    drawer's facts and Write in Slack ready; and asks nobody once Slack refuses the
     sign-in or with none at all, saying so; and slack-unreads holds over its socket the direct
     messages with unreads, the channels mentioning Joel, his mentions in threads and channels
     merely unread, each named once a run and opening in Slack, and what Joel read last and how

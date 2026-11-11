@@ -90,7 +90,11 @@ fn credentials(test: &str) -> PathBuf {
 /// it said back, a line each. What it keeps goes in a cache home beside
 /// the sign-in's file, so a second run with the same file finds it.
 fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
-    let mut program = started(&stand_in.origin, credentials);
+    said_to(started(&stand_in.origin, credentials), lines)
+}
+
+/// What the program said back to these lines, a line each.
+fn said_to(mut program: std::process::Child, lines: &str) -> Vec<String> {
     program
         .stdin
         .take()
@@ -105,17 +109,27 @@ fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
         .collect()
 }
 
-/// The program, started over Slack at `origin` with this sign-in.
+/// The program, started over Slack at `origin` with this sign-in, and
+/// without the launcher's words the build hands slack-unreads' cases, so
+/// it says who they are alone, as each case but one hears it.
 fn started(origin: &str, credentials: &PathBuf) -> std::process::Child {
-    Command::new(env!("CARGO_BIN_EXE_slack-people"))
+    program(origin, credentials)
+        .env_remove("LAUNCHER_WORDS")
+        .spawn()
+        .unwrap()
+}
+
+/// The program to run over Slack at `origin` with this sign-in.
+fn program(origin: &str, credentials: &PathBuf) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_slack-people"));
+    command
         .arg(credentials)
         .arg(origin)
         .env("XDG_CACHE_HOME", cache(credentials))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap()
+        .stderr(Stdio::null());
+    command
 }
 
 /// The cache home a run with this sign-in's file keeps in.
@@ -475,6 +489,44 @@ fn a_refused_sign_in_is_said_once_and_nobody_more_is_asked_about() {
     let said = told(&stand_in, &path, "ada@example.com\ngrace@example.com\n");
     assert_eq!(said, [r#"{"signedOut":true}"#]);
     assert_eq!(stand_in.heard().len(), 1);
+    forget(&path);
+}
+
+#[test]
+fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
+    let stand_in = StandIn::new(slack);
+    let path = credentials("words");
+    // The vocabulary the build hands it, as the people daemon's unit does.
+    // Ada asked again says her status, which only Slack's profile of her
+    // holds.
+    let said = said_to(
+        program(&stand_in.origin, &path).spawn().unwrap(),
+        "ada@example.com\nada@example.com\nnobody@example.com\n",
+    );
+    let said: Vec<serde_json::Value> = said
+        .iter()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let ada = said.last_chunk::<2>().unwrap();
+    assert_eq!(
+        (&ada[0]["facts"], &ada[0]["acts"]),
+        (
+            &serde_json::json!([
+                {"name": "Status", "said": "📝 Writing"},
+                {"name": "Presence", "said": "Active"},
+                {"name": "Time Zone", "zone": "Europe/London", "as": "zone"}
+            ]),
+            &serde_json::json!([{"key": "verb:person:slack",
+                "ask": {"open": {"link": "slack://user?team=T1&id=U1"}}}])
+        )
+    );
+    // Who she is stays as the shell's source reads it.
+    assert_eq!(ada[0]["zone"], "Europe/London");
+    assert_eq!(
+        ada[1]["acts"],
+        serde_json::json!([{"key": "verb:person:slack", "gone": true,
+            "side": [{"said": "not in Slack"}]}])
+    );
     forget(&path);
 }
 

@@ -22,7 +22,8 @@ let
   # (WaitingOnYou.qml), named so no quest's address is it.
   waiting = "${config.xdg.stateHome}/mission/waiting/slack.json";
   # The launcher's vocabulary, which the rows slack-unreads serves are
-  # said in (src/rows.rs).
+  # said in (src/rows.rs), and slack-people's facts of someone
+  # (src/person.rs).
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
 in
 {
@@ -73,8 +74,12 @@ in
     order = 5;
     source = ./SlackSource.qml;
     # Slack's reader, run by the people daemon alone, which asks it only
-    # what a client of the daemon asks, the shell's source among them.
+    # what a client of the daemon asks, the shell's source among them. It's
+    # handed the vocabulary through env, which becomes slack-people, since
+    # the daemon runs a source's command as it's given.
     daemon = [
+      "${pkgs.coreutils}/bin/env"
+      "LAUNCHER_WORDS=${words}"
       (lib.getExe lookUp)
       credentials
     ];
