@@ -7,6 +7,10 @@
   ...
 }:
 onLinux {
+  # ir-camera's tests run as it builds: each sample's highest eight bits
+  # kept, lines their stride apart, and a short frame refused.
+  ir-camera-relays-grey-frames = pkgs.callPackage ./package.nix { };
+
   # clippy finds nothing in ir-camera, its tests included.
   ir-camera-passes-clippy = passesClippy "ir-camera-passes-clippy" (
     pkgs.callPackage ./package.nix { }

@@ -107,6 +107,10 @@
         touch $out
       '';
 
+  # spend-watch's tests run as it builds: each cap counting only its
+  # budget's spend, a burn found and named, and a finding settled once.
+  spend-watch-counts-each-budget-apart = pkgs.callPackage ./package.nix { };
+
   # clippy finds nothing in spend-watch, its tests included.
   spend-watch-passes-clippy = passesClippy "spend-watch-passes-clippy" (
     pkgs.callPackage ./package.nix { }

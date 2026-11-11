@@ -25,6 +25,10 @@
       );
 }
 // onLinux {
+  # The collector's tests run as it builds: spans read back at their moment
+  # and in their trace, and what a slice holds kept as spans and moments.
+  collector-keeps-what-it-is-sent = pkgs.callPackage ./package.nix { };
+
   # clippy finds nothing in the collector, its tests included.
   collector-passes-clippy = passesClippy "collector-passes-clippy" (
     pkgs.callPackage ./package.nix { }
