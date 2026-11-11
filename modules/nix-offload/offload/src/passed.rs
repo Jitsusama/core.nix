@@ -258,42 +258,68 @@ pub fn forgetting(state: &Path, commit: &str) -> ExitCode {
 }
 
 /// `nix-offload passed import`: hand the keeper, once it stands, the
-/// records kept under the state folder before it did, those it lacks.
+/// records kept under the state folder, by a nix-offload from before it
+/// did or one still running from then.
 pub fn importing(state: &Path) -> ExitCode {
     let kept = Passed::here(state);
-    let Some(keeper) = &kept.keeper else {
+    if kept.keeper.is_none() {
         eprintln!("nix-offload: this machine runs no keeper to hand records to");
         return ExitCode::from(69);
-    };
-    let own = Passed::under(state);
-    let (mut handed, mut failed) = (0, false);
-    for entry in fs::read_dir(&own.folder).into_iter().flatten().flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let Some(at) = At::new(&name, None) else {
-            continue;
-        };
-        if kept.file(&at).exists() {
-            continue;
-        }
-        let lines: Vec<serde_json::Value> = fs::read_to_string(entry.path())
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| serde_json::from_str(line).ok())
-            .collect();
-        match keep::ask(keeper, &serde_json::json!({ "keep": name, "lines": lines })) {
-            Ok(()) => handed += 1,
-            Err(why) => {
-                eprintln!("nix-offload: couldn't hand over {}: {why}", at.short());
-                failed = true;
-            }
-        }
     }
+    let (handed, failed) = hand_over(&Passed::under(state), &kept);
     println!("nix-offload: handed the keeper {handed} commits' records");
     if failed {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// Hand `kept`'s keeper each line of `own` its record lacks, a commit at a
+/// time, even one it holds already, since a run from before the keeper
+/// may add to a commit after it stands. Each file handed over whole goes,
+/// so nothing handed over comes back after it's forgotten. Says how many
+/// commits had lines handed over, and whether any couldn't be.
+fn hand_over(own: &Passed, kept: &Passed) -> (usize, bool) {
+    let Some(keeper) = &kept.keeper else {
+        return (0, true);
+    };
+    let read = |file: &Path| -> Vec<serde_json::Value> {
+        fs::read_to_string(file)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect()
+    };
+    let (mut handed, mut failed) = (0, false);
+    for entry in fs::read_dir(&own.folder).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(at) = At::new(&name, None) else {
+            continue;
+        };
+        let held = read(&kept.file(&at));
+        let lines: Vec<serde_json::Value> = read(&entry.path())
+            .into_iter()
+            .filter(|line| !held.contains(line))
+            .collect();
+        if !lines.is_empty() {
+            if let Err(why) =
+                keep::ask(keeper, &serde_json::json!({ "keep": name, "lines": lines }))
+            {
+                eprintln!("nix-offload: couldn't hand over {}: {why}", at.short());
+                failed = true;
+                continue;
+            }
+            handed += 1;
+        }
+        if let Err(error) = fs::remove_file(entry.path()) {
+            eprintln!(
+                "nix-offload: handed over {} but kept its file: {error}",
+                at.short()
+            );
+        }
+    }
+    (handed, failed)
 }
 
 #[cfg(test)]
@@ -410,6 +436,39 @@ mod tests {
             passed.checks(&at),
             [] as [String; 0],
             "a forgotten commit still had its checks"
+        );
+        keeper.join().unwrap();
+    }
+
+    #[test]
+    fn import_hands_over_what_a_held_record_lacks_and_lets_its_file_go() {
+        let place = tempfile::tempdir().unwrap();
+        let (socket, folder) = (place.path().join("keep.sock"), place.path().join("kept"));
+        fs::create_dir(&folder).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let answers = folder.clone();
+        let keeper = std::thread::spawn(move || {
+            keep::serve(&listener, &answers, std::time::Duration::from_millis(500));
+        });
+        let (kept, own) = (Passed::kept(&folder, &socket), Passed::under(place.path()));
+        let at = At::new(COMMIT, None).unwrap();
+        kept.keep_checks(&at, &["checks.x.a".to_owned()]);
+        own.keep_checks(&at, &["checks.x.a".to_owned(), "checks.x.b".to_owned()]);
+        assert_eq!(
+            hand_over(&own, &kept),
+            (1, false),
+            "its lines weren't handed over"
+        );
+        assert_eq!(
+            kept.checks(&at),
+            ["checks.x.a", "checks.x.b"],
+            "the keeper lacks a line, or holds one twice"
+        );
+        assert!(!own.file(&at).exists(), "the handed-over file stayed");
+        assert_eq!(
+            hand_over(&own, &kept),
+            (0, false),
+            "a second import handed some again"
         );
         keeper.join().unwrap();
     }
