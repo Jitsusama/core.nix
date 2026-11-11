@@ -1,6 +1,6 @@
 //! Visual mode in the window: v and V start a selection with the theme's
 //! block cursor on the first word of the cursor's line, the keys move it
-//! and its text objects take what's round it (select.rs), and y or Ctrl+C
+//! and its text objects take what's round it (select/), and y or Ctrl+C
 //! copies it as the file's markdown through wl-copy, flashing what it took
 //! as his Neovim's yank does. At rest, y y, y i p, y a p and y } copy the
 //! paragraph, item or line of code the cursor's line is in, its paragraph,

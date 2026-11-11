@@ -22,7 +22,9 @@
 
 mod anchor;
 mod app;
+mod blend;
 mod ex;
+mod eyebrow;
 mod gl;
 mod keys;
 mod links;
@@ -211,7 +213,7 @@ struct App {
     /// Neovim's :nohlsearch, and n or N marks them again.
     highlighting: bool,
     /// The marks' swatches and blends: Search's, then `CurSearch`'s.
-    lit: Option<[(gl::Texture, gl::Blend); 2]>,
+    lit: Option<[(gl::Texture, blend::Blend); 2]>,
     prompt: Option<prompt::Prompt>,
     prompt_to: channel::Sender<prompt::Set>,
     prompt_serial: u32,
