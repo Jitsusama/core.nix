@@ -61,6 +61,13 @@ WAKE_BUDGET_MS = 7
 # within a few milliseconds of each.
 SETTLING_S = 2
 
+# How far the shell's minute may stand from this clock's, in seconds: its clock's timer can
+# fire a little off the minute, and a loaded shell handles it late, so a minute this clock saw
+# turn just before or after an act may be the one the shell turned during it. A For You case
+# guarded by this clock alone failed so, on a minute turned around its act (FEH1HE,
+# 2026-11-11, at 8c5ff8bf).
+CLOCK_SLACK = 5
+
 # How long a closing's spots are given to be freshened: a minute after they're made
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
 FRESHENING = timedelta(seconds=75)
@@ -645,9 +652,9 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
     def within_a_minute(act: Callable[[], dict[str, int]]) -> dict[str, int]:
         """Give the rows the act made, done again once if a minute turned, which remakes some."""
         for _ in range(2):
-            minute = int(time.time() // 60)
+            began = time.time()
             made_by_it = act()
-            if int(time.time() // 60) == minute:
+            if int((began - CLOCK_SLACK) // 60) == int((time.time() + CLOCK_SLACK) // 60):
                 break
         return made_by_it
 
