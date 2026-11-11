@@ -266,7 +266,10 @@ Scope {
             // An act done with, drawn dimmed, its acts none, so Return asks
             // nothing (RCTRF8's Firmware, 2026-11-11).
             gone: row.gone === true,
-            drawer: () => drawerOf(row)
+            // Only a row serving a drawer holds one, so a row without, as
+            // Power's Charger is, isn't taken for a thing missing its say
+            // (goes-places' undrawn, KP0L6A's 439b18d9).
+            drawer: row.drawer ? () => drawerOf(row) : undefined
         }, acting, asking, copying, fields ?? {}));
     }
 
