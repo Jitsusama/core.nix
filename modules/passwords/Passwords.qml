@@ -136,36 +136,53 @@ Provider {
 
     // The one row while it's off: Return opens the browser a manager's
     // extension fills sign-ins in, which needs no clipboard, or else what
-    // Managers.js's offOpens says. Its drawer says why it's off, which its
-    // name alone doesn't. The entries are read as a binding, so one read
-    // before they're loaded is read again once they are, which
-    // DesktopEntries.byId isn't.
+    // Managers.js's offOpens says, going into its drawer when nothing can
+    // open. Its drawer says why it's off, which its name alone doesn't, and
+    // with nothing to open, why and what would. The entries are read as a
+    // binding, so one read before they're loaded is read again once they
+    // are, which DesktopEntries.byId isn't.
     readonly property var offRow: {
         const ids = DesktopEntries.applications.values.map(entry => entry.id);
         const listed = id => (id ?? "") !== "" && ids.includes(id) ? DesktopEntries.byId(id) : null;
         const opens = Managers.offOpens(managers, one => listed(one.fills),
             one => listed(one.program));
         const name = Words.name("passwords:off");
+        const manager = opens.manager?.called ?? "";
         const row = {
             key: "passwords:off",
             name: name,
             glyph: Words.glyph("passwords:off"),
-            note: String(said[opens.note] ?? "")
-                .replace("{manager}", opens.manager?.called ?? ""),
+            note: String(said[opens.note] ?? "").replace("{manager}", manager),
             hue: "alert",
             leads: true,
             // An act with something to say beyond its name, so its drawer
             // comes out (Launcher.qml's detailed).
             thing: true,
-            drawer: { title: name, body: offAbout }
+            drawer: { title: name, body: provider.offDrawn(opens) }
         };
-        if (opens.opened !== null)
-            Object.assign(row, {
-                verb: Words.verb("passwords:off"),
-                run: () => Niri.spawn(provider.command(opens.opened))
-            });
+        Object.assign(row, opens.act === "open" ? {
+            verb: Words.verb("passwords:off"),
+            run: () => Niri.spawn(provider.command(opens.opened))
+        } : {
+            verb: "show",
+            stays: true,
+            run: () => provider.launcher?.intoDrawer?.()
+        });
         return Object.assign(thing(row), { named: Fuzzy.letters([name.toLowerCase()]),
             worded: 0 });
+    }
+
+    // What the off row's drawer says: why it's off and what Return opens
+    // (offAbout), or when nothing can open, why it's off, why nothing opens
+    // and what would.
+    function offDrawn(opens) {
+        if (opens.act !== "drawer")
+            return offAbout;
+        const tells = Words.of("passwords:off").tells ?? {};
+        const why = Words.of("passwords").tells?.offWhy ?? "";
+        const lacks = opens.manager === null ? tells.noManager ?? ""
+            : String(tells.noApp ?? "").replace("{manager}", opens.manager.called ?? "");
+        return [why, lacks, tells.would].filter(one => (one ?? "") !== "").join(" ");
     }
 
     // How long after an ask of Joel's a manager's window may come and still

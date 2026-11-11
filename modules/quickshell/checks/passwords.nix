@@ -56,4 +56,13 @@
     name = "the-passwords-place-says-why-its-off-on-niri";
     tests = ../../../tests/passwords-off-on-niri-test.py;
   };
+
+  # Off, with no password manager set up, the place's one row can open
+  # nothing, so its Return goes into its drawer, which says why
+  # (tests/passwords-off-into-its-drawer-on-niri-test.py).
+  the-passwords-place-off-goes-into-its-drawer-on-niri = launcherOnNiri {
+    name = "the-passwords-place-off-goes-into-its-drawer-on-niri";
+    tests = ../../../tests/passwords-off-into-its-drawer-on-niri-test.py;
+    shell.launcher.providers.passwords.managers = lib.mkForce [ ];
+  };
 }
