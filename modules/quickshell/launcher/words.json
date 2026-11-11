@@ -667,7 +667,7 @@
         "running": "{count} running",
         "waiting": "{count} waiting",
         "none": "nothing queued",
-        "silent": "the queue has stopped saying",
+        "silent": "not answering",
         "ranOf": "{ran} of {last} min",
         "over": "{over} min over",
         "ranFor": "for {ran} min",
