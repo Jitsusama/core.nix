@@ -1,0 +1,48 @@
+{
+  "things": [
+    {
+      "id": "on:waiting",
+      "name": "For You",
+      "tells": {
+        "known": "Known done {how}.",
+        "person": "Only you can say it's done."
+      },
+      "said": {
+        "minutes": "{minutes} min",
+        "nobody": "nobody's watching this",
+        "boot": "after the next boot",
+        "switch": "after the next switch",
+        "signin": "once signed in to {value}",
+        "device": "once the {value} is seen",
+        "file": "once its file is written",
+        "check": "once its check passes",
+        "waitedFor": "waiting {span}",
+        "ended": "session ended",
+        "concluded": "quest concluded",
+        "takes": "{minutes} min"
+      }
+    },
+    { "id": "on:waiting:since", "name": "Waiting Since" },
+    { "id": "on:waiting:clears", "name": "Clears When" },
+    { "id": "on:waiting:takes", "name": "Takes" },
+    { "id": "on:waiting:due", "name": "Due" },
+    { "id": "on:waiting:set-for", "name": "Set For" },
+    { "id": "on:waiting:machine", "name": "Machine" },
+    { "id": "on:waiting:address", "name": "Address" },
+    { "id": "on:waiting:check", "name": "Check" },
+    { "id": "on:waiting:checked", "name": "Last Checked" },
+    { "id": "on:waiting:item", "name": "Item" },
+    {
+      "id": "verb:on:waiting:done",
+      "name": "Mark It Done",
+      "verb": "done",
+      "glyph": "done"
+    },
+    {
+      "id": "verb:on:waiting:notNow",
+      "name": "Put It Off",
+      "verb": "later",
+      "glyph": "queued"
+    }
+  ]
+}

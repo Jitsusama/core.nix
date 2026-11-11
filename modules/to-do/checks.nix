@@ -34,7 +34,11 @@ onLinux {
   # list For You puts it in, by its verdict, its owner's word and Joel's,
   # put off only while it says what it said; each look is held whole and
   # counted by its state; and over its socket a watch is told each to-do,
-  # look and word of Joel's as it changes, and a to-do gone as it goes.
+  # look and word of Joel's as it changes, and a to-do gone as it goes;
+  # each to-do is worded for For You from the launcher's words, its note's
+  # parts, its drawer's facts in order and its acts asking the daemon; and
+  # Joel's word, asked as an act, is kept beside what he said before, and
+  # a file that can't be read is left as it is.
   to-do-clears-each-to-do-by-itself = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the to-do daemon, its tests included.
   to-do-passes-clippy = passesClippy "to-do-passes-clippy" (pkgs.callPackage ./package.nix { });

@@ -13,7 +13,8 @@
 //! item with no title is left out, as For You says nothing of one. A look's
 //! record is `look:<id>`, its file whole as the harness wrote it, under
 //! `look`. `waiting:summary` counts the to-dos in each state and the looks
-//! in each of theirs.
+//! in each of theirs. Given the launcher's words, each to-do's record is
+//! worded for For You beside its item too (worded.rs).
 //!
 //! Left out: whether a to-do's quest has ended, which only the harness's
 //! index of quests says and the mycelium node serves; For You drops one
@@ -31,6 +32,8 @@ use serde_json::{Map, Value, json};
 use crate::interface::SUMMARY;
 use crate::todo::{ToDo, as_javascript};
 use crate::verdicts::{State, Verdict, iso};
+use crate::worded::worded;
+use crate::words::Words;
 
 /// What an item says, so one Joel put off comes back once its owner says
 /// something new of it: the fields Waiting.js's `said` names, in its
@@ -269,6 +272,7 @@ pub fn records(
     found: &BTreeMap<String, Verdict>,
     looks: &[Value],
     settled: &Settled,
+    words: Option<&Words>,
 ) -> Vec<Value> {
     let mut records = Vec::new();
     let mut states: BTreeMap<&str, u64> = [("now", 0), ("later", 0), ("done", 0)].into();
@@ -308,6 +312,9 @@ pub fn records(
         }
         if let Some(word) = word {
             record["joel"] = word;
+        }
+        if let Some(words) = words {
+            worded(&mut record, &todo.item, &todo.key, state == "now", words);
         }
         records.push(record);
     }
@@ -374,7 +381,7 @@ mod tests {
         );
         let mut verdicts = found("Q:c", State::Ready);
         verdicts.extend(found("Q:d", State::Done));
-        let records = records(&todos, &verdicts, &[], &Settled::default());
+        let records = records(&todos, &verdicts, &[], &Settled::default(), None);
         let states: Vec<&str> = records[..5]
             .iter()
             .map(|r| r["state"].as_str().unwrap_or_default())
@@ -417,7 +424,7 @@ mod tests {
             .to_string(),
         )
         .expect("Joel's word reads");
-        let records = records(&todos, &BTreeMap::new(), &[], &settled);
+        let records = records(&todos, &BTreeMap::new(), &[], &settled, None);
         let states: Vec<&str> = records[..3]
             .iter()
             .map(|r| r["state"].as_str().unwrap_or_default())
@@ -450,7 +457,7 @@ mod tests {
             json!({"id": "b2", "kind": "page", "title": "Site", "state": "opened"}),
             json!({"id": "c3", "kind": "file", "title": "Notes", "state": "waiting"}),
         ];
-        let records = records(&[], &BTreeMap::new(), &looks, &Settled::default());
+        let records = records(&[], &BTreeMap::new(), &looks, &Settled::default(), None);
         assert_eq!(
             records[0],
             json!({"key": "look:a1", "kind": "look", "look": looks[0]}),
@@ -474,7 +481,7 @@ mod tests {
             {"id":"untitled","ready":true},
             {"id":"waits","title":"Waits","ready":false,"minutes":1}]}"#,
         );
-        let records = records(&todos, &BTreeMap::new(), &[], &Settled::default());
+        let records = records(&todos, &BTreeMap::new(), &[], &Settled::default(), None);
         let listed: Vec<(&str, &str, u64)> = records
             .iter()
             .filter(|r| r["kind"] == "to-do")
@@ -567,7 +574,7 @@ mod tests {
 
     #[test]
     fn nothing_waiting_still_counts_none() {
-        let records = records(&[], &BTreeMap::new(), &[], &Settled::default());
+        let records = records(&[], &BTreeMap::new(), &[], &Settled::default(), None);
         assert_eq!(
             records,
             [json!({"key": SUMMARY, "kind": "waiting",

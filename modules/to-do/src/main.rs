@@ -15,10 +15,11 @@
 //!
 //! Usage: `to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower
 //! UNIT] [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL]
-//! [--socket SOCKET [--looks LOOKS] [--settled SETTLED]]`.
-//! SOCKET is where it answers, none served without it; LOOKS the
-//! harness's folder of looks, SETTLED the shell's file of Joel's word.
-//! WAITING is the folder of
+//! [--socket SOCKET [--looks LOOKS] [--settled SETTLED] [--words
+//! WORDS]]`. SOCKET is where it answers, none served without it; LOOKS
+//! the harness's folder of looks, SETTLED the file of Joel's word, which
+//! it writes as he says it; WORDS the launcher's words.json, each to-do
+//! worded in it for For You (worded.rs). WAITING is the folder of
 //! to-dos, SIGNINS the folder whose files each service's sign-in touches,
 //! CORE where core's bare clone is kept. ROOT, `/` by default, is where
 //! `/proc/stat`, `/sys` and the system profile are read, so a test can
@@ -35,6 +36,10 @@
 //! devices are read each ten seconds. A to-do found done stays done,
 //! through a restart too, until it leaves its file, so a check that
 //! passed once isn't run again to be taken back.
+//!
+//! Long because the one loop is here whole: what wakes it, what it holds
+//! between wakes, and the folders it hears, each of which only that loop
+//! reads; the pieces it calls on are modules of their own.
 
 mod bounded;
 mod interface;
@@ -42,10 +47,13 @@ mod judge;
 mod pace;
 mod serve;
 mod session;
+mod settle;
 mod sources;
 mod stream;
 mod todo;
 mod verdicts;
+mod worded;
+mod words;
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
@@ -101,6 +109,8 @@ struct Paths {
     /// The harness's looks and the shell's settled.json, for the shell.
     looks: Option<PathBuf>,
     settled: Option<PathBuf>,
+    /// The launcher's words, for the shell.
+    words: Option<PathBuf>,
 }
 
 struct Daemon {
@@ -138,6 +148,8 @@ struct Daemon {
     beside: stream::Beside,
     /// What the shell is told, where a socket is served.
     shared: Option<Arc<serve::Shared>>,
+    /// The words each to-do is said in for For You, where it's given them.
+    words: Option<words::Words>,
 }
 
 fn now() -> i64 {
@@ -477,6 +489,7 @@ impl Daemon {
             &self.found,
             &self.beside.looks,
             &self.beside.settled,
+            self.words.as_ref(),
         );
         shared.change(records, sources);
     }
@@ -615,12 +628,13 @@ fn run(
     fixed.extend(told.iter().map(|t| t.watch.clone()));
     let shared = match socket {
         Some(socket) => {
-            let shared = serve::Shared::new();
+            let shared = serve::Shared::new(paths.settled.clone());
             serve::accept(Arc::clone(&shared), serve::listen(&socket)?);
             Some(shared)
         }
         None => None,
     };
+    let vocabulary = paths.words.as_deref().and_then(words::Words::in_file);
     let (tell, woken): (Sender<Woken>, Receiver<Woken>) = mpsc::channel();
     hear(inotify, signals, told, tell.clone());
     if let Some(unit) = follower {
@@ -653,6 +667,7 @@ fn run(
         todos: Vec::new(),
         beside: stream::Beside::default(),
         shared,
+        words: vocabulary,
     };
     daemon.read_beside();
     wake(&mut daemon, &woken)
@@ -747,6 +762,7 @@ fn main() -> ExitCode {
     let mut socket = None;
     let mut looks = None;
     let mut settled = None;
+    let mut words = None;
     let mut follower = Some("update-to-main-follows".to_owned());
     let mut tools = Tools {
         git: PathBuf::from("git"),
@@ -770,6 +786,7 @@ fn main() -> ExitCode {
             "--socket" => socket = rest.next().map(PathBuf::from),
             "--looks" => looks = rest.next().map(PathBuf::from),
             "--settled" => settled = rest.next().map(PathBuf::from),
+            "--words" => words = rest.next().map(PathBuf::from),
             _ => positional.push(PathBuf::from(arg)),
         }
     }
@@ -777,7 +794,7 @@ fn main() -> ExitCode {
         eprintln!(
             "usage: to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower UNIT|none] \
              [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL|none] \
-             [--socket SOCKET [--looks LOOKS] [--settled SETTLED]]"
+             [--socket SOCKET [--looks LOOKS] [--settled SETTLED] [--words WORDS]]"
         );
         return ExitCode::from(64);
     };
@@ -789,6 +806,7 @@ fn main() -> ExitCode {
         // What only the shell is told of is read only where it's served.
         looks: looks.filter(|_| socket.is_some()),
         settled: settled.filter(|_| socket.is_some()),
+        words: words.filter(|_| socket.is_some()),
     };
     match run(paths, core.clone(), follower, tools, socket) {
         Ok(()) => ExitCode::SUCCESS,
