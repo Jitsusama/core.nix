@@ -37,7 +37,7 @@
   "modules/onepassword/checks.nix" = 1;
   "modules/open-with/checks.nix" = 1;
   "modules/open-with/package.nix" = 1;
-  "modules/passwords/checks.nix" = 2;
+  "modules/passwords/checks.nix" = 1;
   "modules/pi-packages/home.nix" = 1;
   "modules/plymouth/checks.nix" = 2;
   "modules/plymouth/nixos.nix" = 5;
