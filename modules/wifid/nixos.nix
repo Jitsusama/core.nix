@@ -127,6 +127,8 @@ in
         "AF_UNIX"
         "AF_INET"
         "AF_INET6"
+        # nl80211, which says a card's station and tuning (nl80211.rs).
+        "AF_NETLINK"
       ];
       RestrictNamespaces = true;
       RestrictRealtime = true;

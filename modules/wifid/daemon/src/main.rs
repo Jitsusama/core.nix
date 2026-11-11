@@ -30,6 +30,7 @@ mod face;
 mod link;
 mod lookup;
 mod network;
+mod nl80211;
 mod page;
 mod radio;
 mod rfkill;
@@ -309,6 +310,7 @@ async fn follow(
     let mut radios = rfkill::Switches::default();
     let mut polling = tokio::time::interval(POLLING);
     polling.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut kernel: Option<nl80211::Nl80211> = None;
     loop {
         let deadline = joining.as_ref().map(|joining| joining.deadline);
         let stalled = air.stalls.due();
@@ -366,7 +368,7 @@ async fn follow(
                 }
             }
             _ = polling.tick(), if *watching.borrow() > 0 => {
-                poll(bus, wifid.supplicant, state).await;
+                poll(bus, wifid.supplicant, &mut kernel, state).await;
             }
             Ok(()) = watching.changed() => {
                 if *watching.borrow_and_update() == 0 {
@@ -930,9 +932,16 @@ fn refused(failure: store::Failure) -> Refused {
 /// network in detail.
 const POLLING: Duration = Duration::from_secs(2);
 
-/// Reads the link of each card on a network. A card wpa_supplicant can't
-/// answer for in a second is left unread rather than holding wifid up.
-async fn poll(bus: &Connection, supplicant: &SupplicantProxy<'_>, state: &watch::Sender<State>) {
+/// Reads the link of each card on a network, as wpa_supplicant polls it
+/// and as the kernel says the rest. A card wpa_supplicant can't answer for
+/// in a second is left unread, and one the kernel can't is read without
+/// it, rather than holding wifid up.
+async fn poll(
+    bus: &Connection,
+    supplicant: &SupplicantProxy<'_>,
+    kernel: &mut Option<nl80211::Nl80211>,
+    state: &watch::Sender<State>,
+) {
     let cards = state.borrow().on_networks();
     for card in cards {
         let reading = async {
@@ -947,7 +956,14 @@ async fn poll(bus: &Connection, supplicant: &SupplicantProxy<'_>, state: &watch:
             zbus::Result::Ok(Polled::read(point.to_string(), &said))
         };
         let polled = match tokio::time::timeout(Duration::from_secs(1), reading).await {
-            Ok(Ok(polled)) => Some(polled),
+            Ok(Ok(polled)) => {
+                let (station, tuning) = station(kernel, &card).await;
+                Some(Polled {
+                    station,
+                    tuning,
+                    ..polled
+                })
+            }
             Ok(Err(error)) => {
                 eprintln!("<7>can't read {card}'s link: {error}");
                 None
@@ -958,6 +974,38 @@ async fn poll(bus: &Connection, supplicant: &SupplicantProxy<'_>, state: &watch:
             }
         };
         change(state, |state| state.polled(&card, polled));
+    }
+}
+
+/// What the kernel says of a card's station and tuning, opening its socket
+/// first if none is open. A socket that errs or doesn't answer in a second
+/// is let go, to be opened again at the next poll.
+async fn station(
+    kernel: &mut Option<nl80211::Nl80211>,
+    card: &str,
+) -> (Option<nl80211::Station>, Option<nl80211::Tuning>) {
+    let reading = async {
+        if kernel.is_none() {
+            *kernel = Some(nl80211::Nl80211::open().await?);
+        }
+        let Some(socket) = kernel.as_mut() else {
+            return Ok((None, None));
+        };
+        let station = socket.station(card).await?;
+        io::Result::Ok((station, Some(socket.tuning(card).await?)))
+    };
+    match tokio::time::timeout(Duration::from_secs(1), reading).await {
+        Ok(Ok(read)) => read,
+        Ok(Err(error)) => {
+            eprintln!("<7>can't read {card}'s station from the kernel: {error}");
+            *kernel = None;
+            (None, None)
+        }
+        Err(_) => {
+            eprintln!("<7>can't read {card}'s station: the kernel didn't answer in time");
+            *kernel = None;
+            (None, None)
+        }
     }
 }
 
