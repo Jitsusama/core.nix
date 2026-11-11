@@ -45,7 +45,41 @@ QtObject {
         held.d = { order: 2048 };
         keys = Placed.placed(keys, held, ["a", "c", "d"], []);
         Expect.same("every row renumbered at once is placed once", keys, ["d", "a", "c"]);
+        nested();
         madeOnce();
+    }
+
+    // Rows served in the crate's wrapped form, with parts a step in, as the
+    // machine daemon serves Machine's: each placed under its parent.
+    function nested() {
+        const row = (order, parent) => ({ kind: "row", row: parent ? { order, parent }
+            : { order } });
+        const held = {
+            m: row(1024),
+            u: row(2048),
+            used: row(1024, "m"),
+            swap: row(2048, "m"),
+            idle: row(1024, "u")
+        };
+        let groups = Placed.nested({}, held, ["swap", "idle", "u", "used", "m"], []);
+        Expect.same("each row under its parent, in order, the top under none",
+            [groups[""], groups.m, groups.u, Object.keys(groups).length],
+            [["m", "u"], ["used", "swap"], ["idle"], 3]);
+        held.cached = row(1536, "m");
+        const before = groups;
+        groups = Placed.nested(groups, held, ["cached"], []);
+        Expect.same("a new part goes between its siblings", groups.m, ["used", "cached", "swap"]);
+        Expect.expect("and the parents it isn't under keep their lists",
+            groups.u === before.u && groups[""] === before[""], JSON.stringify(groups));
+        Expect.same("the lists before are left as they were", before.m, ["used", "swap"]);
+        delete held.idle;
+        groups = Placed.nested(groups, held, [], ["idle"]);
+        Expect.expect("a parent whose last part is gone holds none", groups.u === undefined,
+            JSON.stringify(groups));
+        held.swap = row(512, "u");
+        groups = Placed.nested(groups, held, ["swap"], []);
+        Expect.same("a part moved to another parent leaves the first", [groups.m, groups.u],
+            [["used", "cached"], ["swap"]]);
     }
 
     // A minute after a closing, the launcher asks every network's acts

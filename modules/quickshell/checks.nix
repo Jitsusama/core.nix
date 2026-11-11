@@ -2509,9 +2509,10 @@ onLinux {
 
   # The launcher's Machine answers the processors, the memory and the
   # uptime from the machine daemon, run over the sandbox's own /proc,
-  # without making their parts, and asks it for the programs only once a
-  # part saying them is looked at (tests/machine.qml), the queue, niri and
-  # the telemetry stood in for.
+  # without making their parts, the memory's and the uptime's from the
+  # rows it serves ready in the launcher's words, and asks it for the
+  # programs only once a part saying them is looked at (tests/machine.qml),
+  # the queue, niri and the telemetry stood in for.
   the-machine-answers-from-its-daemon =
     pkgs.runCommandLocal "the-machine-answers-from-its-daemon" { }
       ''
@@ -2526,6 +2527,8 @@ onLinux {
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
         cp ${./launcher/Machine.js} launcher/Machine.js
         cp ${./launcher/Machine.qml} launcher/Machine.qml
+        cp ${./launcher/Placed.js} launcher/Placed.js
+        cp ${./When.js} When.js
         cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/HomeNetwork.js} launcher/HomeNetwork.js
         cp ${./launcher/Holders.js} launcher/Holders.js
@@ -2546,7 +2549,8 @@ onLinux {
         cp ${../../tests/machine.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
-        ${lib.getExe machine} "$XDG_RUNTIME_DIR/daemons/machine.sock" &
+        ${lib.getExe machine} "$XDG_RUNTIME_DIR/daemons/machine.sock" \
+          --words ${./launcher/words.json} &
         daemon=$!
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml

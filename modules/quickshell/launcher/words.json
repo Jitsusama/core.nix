@@ -1417,7 +1417,8 @@
         "uptime"
       ],
       "said": {
-        "head": "up {when}"
+        "head": "up {when}",
+        "yesterday": "yesterday"
       },
       "parts": [
         "machine:uptime:idle",

@@ -57,6 +57,8 @@ import QtQuick
 import "Heat.js" as Heat
 import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
+import "Placed.js" as Placed
+import "../When.js" as When
 // Bytes as decimal to three digits, "12.3 GB", as what's told to a session
 // says them; it's the launcher's one such reading, kept there for networks.
 import "HomeNetwork.js" as HomeNetwork
@@ -724,170 +726,65 @@ Provider {
 
     // The memory.
 
+    // The memory, as the daemon serves it ready: its row's side is the
+    // headline, and its parts, worded and in their words' order, a step
+    // in.
     function memory() {
-        const m = record("memory:main");
-        if (!m || !(m.total_b > 0))
-            return unheld("memory");
-        return fresh({
-            headline: `${bytes(m.used_b)} used, ${percent(m.used_b / m.total_b)}`,
-            graph: bar(m.used_b / m.total_b),
-            glyph: Words.glyph(kinds.memory),
-            title: Words.name(kinds.memory),
-            note: ""
-        }, () => memoryParts(m));
+        return servedAnswer("memory", kinds.memory);
     }
 
-    // The memory's parts, from the record the headline said.
-    function memoryParts(m) {
-        const info = m.info_b ?? {};
-        const chip = Words.glyph(kinds.memory);
-        const rows = [figure({
-            name: named("memory:used"),
-            side: `${bytes(m.used_b)} of ${bytes(m.total_b)}`,
-            graph: bar(m.used_b / m.total_b),
-            note: `${bytes(m.available_b)} available`
-        })];
-        if (m.pressure?.some)
-            rows.push(pressured("memory:pressure", m.pressure, true));
-        if (info.SwapTotal > 0)
-            rows.push(figure({
-                name: named("memory:swap"),
-                side: `${bytes(info.SwapTotal - info.SwapFree)} of ${bytes(info.SwapTotal)}`,
-                graph: bar((info.SwapTotal - info.SwapFree) / info.SwapTotal),
-                note: info.SwapCached > 0 ? says("memory:swap", "cached", {
-                    cached: bytes(info.SwapCached) }) : ""
-            }));
-        if (info.Cached !== undefined)
-            rows.push(figure({
-                name: named("memory:cached"),
-                side: bytes(info.Cached),
-                graph: bar(info.Cached / m.total_b),
-                note: "files kept in memory, given up when it's wanted"
-            }));
-        const held = Machine.keptBy(info);
-        const zswap = Machine.compressed(info);
-        if (held.length > 0)
-            rows.push(holderRow({
-                name: named("memory:held"),
-                side: `${named(`memory:held-${held[0].id}`)} ${bytes(held[0].bytes)}`,
-                glyph: chip,
-                note: says("memory:held", "note")
-            }, () => held.map(part => figure({
-                name: named(`memory:held-${part.id}`),
-                side: bytes(part.bytes),
-                graph: bar(part.bytes / m.total_b),
-                note: says(`memory:held-${part.id}`, "note")
-            })).concat(zswap ? [figure({
-                name: named("memory:held-compressed"),
-                side: says("memory:held-compressed", "side", { stored: bytes(zswap.stored),
-                    pool: bytes(zswap.pool) }),
-                graph: bar(zswap.pool / m.total_b),
-                note: says("memory:held-compressed", "note", { ratio: number(zswap.ratio, 1) })
-            })] : []).concat(info.AnonHugePages > 0 || (m.huge_pages?.HugePages_Total ?? 0) > 0
-                ? [figure({
-                    name: named("memory:held-huge"),
-                    side: bytes((info.AnonHugePages ?? 0) + (info.Hugetlb ?? 0)),
-                    note: says("memory:held-huge", "note", {
-                        reserved: m.huge_pages?.HugePages_Total ?? 0 })
-                })] : [])));
-        // Its name alone on the row, the share beside it, and what's
-        // committed of what may be in the note (VKCF3Z, 2026-11-07).
-        if (info.CommitLimit > 0)
-            rows.push(figure({
-                name: named("memory:committed"),
-                side: percent(info.Committed_AS / info.CommitLimit),
-                graph: bar(info.Committed_AS / info.CommitLimit),
-                note: says("memory:committed", "note", { committed: bytes(info.Committed_AS),
-                    limit: bytes(info.CommitLimit) })
-            }));
-        if (typeof m.paged_in_b_per_s === "number")
-            rows.push(figure({
-                name: named("memory:paging"),
-                side: both(m.paged_in_b_per_s, m.paged_out_b_per_s),
-                note: says("memory:paging", "note")
-            }));
-        if (typeof m.faults_per_s === "number")
-            rows.push(figure({
-                name: named("memory:faults"),
-                side: often(m.faults_per_s),
-                note: m.major_faults_per_s > 0 ? says("memory:faults", "note", {
-                    major: often(m.major_faults_per_s) }) : ""
-            }));
-        if (typeof m.swapped_in_b_per_s === "number")
-            rows.push(figure({
-                name: named("memory:swapping"),
-                side: both(m.swapped_in_b_per_s, m.swapped_out_b_per_s),
-                // What zswap took and gave back, said only while it moves.
-                note: m.compressed_in_b_per_s > 0 || m.compressed_out_b_per_s > 0
-                    ? says("memory:swapping", "compressed", {
-                        both: both(m.compressed_in_b_per_s, m.compressed_out_b_per_s) })
-                    : ""
-            }));
-        if (typeof m.oom_kills === "number")
-            rows.push(figure({
-                name: named("memory:out-of-memory"),
-                side: `${m.oom_kills}`,
-                graph: undefined,
-                note: says("memory:out-of-memory", "note")
-            }));
-        const holders = using("memory");
-        if (holders && holders.length > 0)
-            rows.push(holderRow({
-                name: named("memory:using"),
-                side: `${holders[0].name} ${bytes(holders[0].resident_b)}`,
-                glyph: chip,
-                note: "each program's processes together"
-            }, () => holders.map((each, at) => figure({
-                key: ranked("memory", at),
-                name: each.name,
-                side: bytes(each.resident_b),
-                graph: bar(each.resident_b / m.total_b),
-                note: each.processes > 1 ? `${each.processes} processes` : ""
-            }))));
-        else if (!holders)
-            rows.push(reading(named("memory:using")));
-        const modules = Machine.modules(m.modules);
-        if (modules.length > 0) {
-            const first = modules[0];
-            const type = first.speed !== "" ? `${first.type} at ${first.speed}` : first.type;
-            const count = modules.reduce((all, one) => all + one.count, 0);
-            const each = one => figure({
-                name: one.count > 1 ? `${one.count} \u00d7 ${one.size || one.type}`
-                    : one.size || one.type,
-                side: one.speed !== "" ? `${one.type} at ${one.speed}` : one.type,
-                note: Machine.items([one.manufacturer !== "" ? `by ${one.manufacturer}` : "",
-                    one.part, one.locators.join(" \u00b7 ")])
-            });
-            rows.push(holderRow({
-                name: named("memory:type"),
-                side: type,
-                copy: type,
-                glyph: chip,
-                note: Machine.items([count > 0 && first.size !== "" && modules.length === 1
-                    ? `${count} ${count === 1 ? "module" : "modules"} of ${first.size}` : "",
-                    first.manufacturer !== "" ? `by ${first.manufacturer}` : ""])
-            }, () => modules.map(each)));
-        }
-        // Every count the kernel keeps of its memory, by its own name, so
-        // none it gives is left unseen (#2204's bar): those in bytes, then
-        // the huge pages it counts by number.
-        const counted = Object.keys(info);
-        if (counted.length > 0)
-            rows.push(holderRow({
-                name: named("memory:counts"),
-                side: `${counted.length + Object.keys(m.huge_pages ?? {}).length}`,
-                glyph: chip,
-                note: says("memory:counts", "note")
-            }, () => counted.map(name => figure({
-                key: `machine:memory:count:${name}`,
-                name: name,
-                side: bytes(info[name])
-            })).concat(Object.keys(m.huge_pages ?? {}).map(name => figure({
-                key: `machine:memory:count:${name}`,
-                name: name,
-                side: `${m.huge_pages[name]}`
-            })))));
-        return ordered(kinds.memory, rows);
+    // Machine's own rows, as the daemon serves them ready (place machine,
+    // the crate's wrapped form): the keys under each row's, placed as
+    // they come (Placed.js), so nothing here words, weighs or sorts them.
+    // Drawing them is this file's only until the launcher reads served
+    // rows itself (ReadyRows.qml); the processor's and the disks' rows
+    // come next, the same way.
+    property var nested: ({})
+
+    function take(changed, gone) {
+        nested = Placed.nested(nested, served.held, changed, gone);
+        if (shown)
+            answered();
+    }
+
+    // How a served row's times are said, as the launcher says them
+    // everywhere: a span as Interfaces does, "3 d 2 h", and a moment as
+    // When does, "06:06", "yesterday 14:10".
+    readonly property var timed: ({
+        lasted: seconds => Interfaces.lasted(seconds),
+        moment: (at, now) => When.moment(at, now, {
+            yesterday: says("uptime", "yesterday"),
+            date: (date, format) => Qt.formatDate(date, format)
+        })
+    })
+
+    // A top row the daemon serves, as the answer the launcher asks for by
+    // its words: its side the headline, its parts a step in; held in its
+    // place while it hasn't been served.
+    function servedAnswer(id, kind) {
+        const top = served.revision >= 0 ? served.held[`row:machine:${id}`] ?? null : null;
+        if (!top)
+            return unheld(id);
+        const said = Machine.served(top, Date.now(), timed);
+        return fresh({
+            headline: said.side,
+            graph: said.graph,
+            glyph: Theme.glyph[said.glyph] ?? Words.glyph(kind),
+            title: said.name,
+            about: kind,
+            note: said.note
+        }, () => servedRows(top.key));
+    }
+
+    // The rows served inside one, each a figure or, holding more, a step
+    // in that wears its thing's glyph.
+    function servedRows(parent) {
+        return (nested[parent] ?? []).filter(key => served.held[key]).map(key => {
+            const said = Machine.served(served.held[key], Date.now(), timed);
+            const fields = Object.assign({}, said, { glyph: Theme.glyph[said.glyph] ?? "" });
+            return (nested[key] ?? []).length > 0
+                ? holderRow(fields, () => servedRows(key)) : figure(fields);
+        });
     }
 
     // The disk.
@@ -1435,71 +1332,12 @@ Provider {
 
     // The boot.
 
-    function bootRecord() {
-        const held = daemon.revision >= 0 ? daemon.held : {};
-        const key = Object.keys(held).find(each => each.startsWith("boot:"));
-        return key ? held[key] : null;
-    }
-
-    // How long it's been up, from when it started, so it moves as the
-    // clock does, though the record changes only when the machine wakes.
+    // How long it's been up, served as the time it started, so it counts
+    // up here as the clock does (the Timer below) while the daemon's row
+    // changes only when the machine wakes; its parts are Idle, Asleep,
+    // when it started and its kernel.
     function uptime() {
-        const boot = bootRecord();
-        if (!boot || typeof boot.booted_at_s !== "number")
-            return unheld("uptime");
-        const seconds = Math.max(0, Date.now() / 1000 - boot.booted_at_s);
-        const days = Math.floor(seconds / 86400);
-        const hours = Math.floor(seconds % 86400 / 3600);
-        const minutes = Math.floor(seconds % 3600 / 60);
-        const said = [];
-        if (days > 0)
-            said.push(`${days} ${days === 1 ? "day" : "days"}`);
-        if (hours > 0)
-            said.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
-        if (days === 0)
-            said.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
-        return fresh({
-            headline: `up ${said.join(", ")}`,
-            glyph: Words.glyph(kinds.cpu),
-            title: Words.name(kinds.uptime),
-            note: ""
-        }, () => bootParts(boot, seconds));
-    }
-
-    // Idle first, as what moves most; Asleep after, since it moves least
-    // (VKCF3Z, 2026-11-07); then when it started and its kernel.
-    function bootParts(boot, seconds) {
-        const rows = [];
-        if (typeof boot.idle_ratio === "number")
-            rows.push(figure({
-                name: named("uptime:idle"),
-                side: percent(boot.idle_ratio),
-                graph: bar(boot.idle_ratio),
-                note: says("uptime:idle", "note")
-            }));
-        if (typeof boot.asleep_s === "number")
-            rows.push(figure({
-                name: named("uptime:asleep"),
-                side: boot.asleep_s > 0 ? lasted(boot.asleep_s) : says("uptime:asleep", "never"),
-                graph: seconds > 0 ? bar(boot.asleep_s / seconds) : undefined,
-                note: seconds > 0 && boot.asleep_s > 0 ? says("uptime:asleep", "note", {
-                    share: percent(boot.asleep_s / seconds) }) : ""
-            }));
-        rows.push(leaf({
-            name: named("uptime:started"),
-            side: Qt.formatDateTime(new Date(boot.booted_at_s * 1000), "ddd d MMM, HH:mm")
-        }));
-        // Its build is too long for a note, so it's a step in.
-        if (boot.kernel)
-            rows.push(boot.kernel_build ? holderRow({
-                name: named("uptime:kernel"),
-                side: boot.kernel,
-                copy: boot.kernel,
-                glyph: Words.glyph(kinds.cpu)
-            }, () => [leaf({ name: named("uptime:release"), side: boot.kernel }),
-                leaf({ name: named("uptime:build"), side: boot.kernel_build })])
-                : leaf({ name: named("uptime:kernel"), side: boot.kernel }));
-        return rows;
+        return servedAnswer("uptime", kinds.uptime);
     }
 
     // While one of its answers is shown, as the answer to what's typed, a
@@ -1525,7 +1363,7 @@ Provider {
     // Whether a daemon it watches hasn't yet answered this watch whole, so
     // what it shows is the placeholder, or what an earlier watch left,
     // still being read (Provider.stillReading).
-    stillReading: [daemon, diskWatch, users].some(watch => watch.live
+    stillReading: [daemon, served, diskWatch, users].some(watch => watch.live
         && !watch.answeredThisWatch && watch.state !== "not answering")
 
     // What the open launcher holds, answers and lists is left as it was
@@ -1578,8 +1416,9 @@ Provider {
         onTriggered: provider.answered()
     }
 
-    // The machine daemon: the processor, memory and boot while one of
-    // Machine's answers is shown, the disks while a Disk answer or row is,
+    // The machine daemon: the processor while one of Machine's answers is
+    // shown (its memory and uptime are served rows, above), the disks
+    // while a Disk answer or row is,
     // and the programs while a Using row can be, in the open launcher or
     // a terminal's show. Nothing is read while neither sees them; a first
     // look holds the placeholder for the few milliseconds the daemon's
@@ -1588,11 +1427,27 @@ Provider {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: ["processor", "memory", "boot"]
+        kind: "processor"
         live: provider.shown
         paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
+    }
+
+    // Machine's own rows, served ready while one of its answers is shown;
+    // the place is remade as the programs are read, so Using It names
+    // them only while a Using row can be seen.
+    Daemon {
+        id: served
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "row"
+        watching: ({ place: "machine" })
+        live: provider.shown
+        paced: provider.launcher
+        keptThroughGap: false
+        answersWhole: true
+        onHeard: (changed, gone) => provider.take(changed, gone)
     }
 
     Daemon {
