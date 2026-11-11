@@ -161,7 +161,7 @@ fn reads(notice: &Notice) -> Value {
 /// comes before what ends it; then copying what it said, last, never
 /// first (Joel, 2026-10-28: "having the separate copy option at the top is
 /// very confusing"). Each act reads it as it's done.
-fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str) -> Vec<Value> {
+fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words) -> Vec<Value> {
     let invoke = |action: &str| {
         let id = notice.id;
         json!({ "ask": "invoke", "notice": id, "action": action, "read": true })
@@ -202,13 +202,14 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str) -> Vec<Value>
             "side": body::host(&link.href), "also": reads(notice),
         }));
     }
-    let (key, now) = if notice.read {
-        ("verb:notice:unread", false)
-    } else {
-        ("verb:notice:read", true)
-    };
+    // One act, its words saying what it will do, Mark It Read or Mark It
+    // Unread, as the vocabulary words its key's states, since the : line
+    // names one command for it (VKCF3Z, 2026-11-08).
+    let state = if notice.read { "read" } else { "" };
     acts.push(json!({
-        "key": key, "ask": { "ask": "mark", "notices": [notice.id], "read": now },
+        "key": "verb:notice:read", "name": words.name("verb:notice:read", state),
+        "glyph": words.glyph("verb:notice:read", state),
+        "ask": { "ask": "mark", "notices": [notice.id], "read": !notice.read },
     }));
     if notice.live {
         acts.push(json!({
@@ -249,7 +250,7 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
         "key": format!("row:{place}:{}", notice.id), "thing": notice.key(), "place": place,
         "kind": "notice", "name": name, "note": note, "glyph": sender.glyph,
         "hue": if notice.urgency == Urgency::Low { "muted" } else { sender.hue.as_str() },
-        "side": side, "drawer": drawer, "acts": acts(notice, sender, &read, &said),
+        "side": side, "drawer": drawer, "acts": acts(notice, sender, &read, &said, words),
         "held": {
             "id": notice.id, "app": notice.app, "entry": sender.entry, "read": notice.read,
             "at": notice.at, "live": notice.live, "said": said,
@@ -541,8 +542,16 @@ mod tests {
         let [mixed, ..] = making(&[gone], &[]);
         assert_eq!(
             act_keys(&mixed[0]),
-            ["verb:notice:goTo", "verb:notice:unread", "verb:notice:copy"],
+            ["verb:notice:goTo", "verb:notice:read", "verb:notice:copy"],
             "gone, it goes to its program"
+        );
+        assert_eq!(
+            (
+                &mixed[0]["acts"][1]["name"],
+                &mixed[0]["acts"][1]["ask"]["read"]
+            ),
+            (&json!("Mark It Unread"), &json!(false)),
+            "read, it's marked unread, said so"
         );
         assert_eq!(mixed[0]["acts"][0]["go"], "slack");
         assert_eq!(
