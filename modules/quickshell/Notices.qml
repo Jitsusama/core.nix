@@ -231,7 +231,7 @@ Singleton {
             urgency: notice.urgency, category: notice.category, low: notice.low,
             urgent: notice.urgent, held: notice.held, missed: notice.missed,
             read: notice.read, readHow: notice.readHow, readAt: notice.readAt,
-            withdrawn: notice.withdrawn, waits: notice.waits,
+            withdrawn: notice.withdrawn, waits: notice.waits, transient: notice.transient,
             left: notice.left ?? undefined, leftAt: notice.leftAt ?? undefined,
             raisedAt: notice.raisedAt
         };
@@ -286,7 +286,11 @@ Singleton {
         // the margin.
         live = nowLive;
         resting = nowResting;
-        history = Object.values(made).sort((a, b) => b.at - a.at || b.id - a.id);
+        // One its sender marks transient asks not to be kept, as niri's
+        // screenshot notice does, so it's on screen but never in the
+        // history.
+        history = Object.values(made).filter(notice => !notice.transient)
+            .sort((a, b) => b.at - a.at || b.id - a.id);
         for (const id of arrivals)
             came(live[id], made[id]);
     }
