@@ -118,62 +118,6 @@ Singleton {
         return made;
     }
 
-    // A document Joel looked at lately as the same row, made from the one
-    // the google daemon serves ready (src/document_rows.rs): its name,
-    // glyph and acts as it says them, its time worded here by the clock,
-    // and its drawer what `drawerOf(key)` gives of the daemon's record
-    // (Documents.qml), so nothing here sorts or words a document but its
-    // times.
-    function readyRow(ready, provider, drawerOf) {
-        const document = Said.readyDocument(ready);
-        const acts = Said.readyActs(ready);
-        const opening = acts.find(act => act.open !== undefined) ?? { key: "", open: "" };
-        const made = provider.thing({
-            key: ready.thing,
-            what: "document",
-            component: "document",
-            kind: document.kind,
-            name: document.title,
-            verb: Words.verb(opening.key),
-            glyph: Theme.glyph[ready.glyph] ?? "",
-            hue: ready.hue ?? "program",
-            side: root.readySide(ready),
-            later: true,
-            run: () => root.open({ link: opening.open }),
-            verbs: () => acts.map(act => (act.copy !== undefined ? provider.copyRow({
-                    key: act.key,
-                    name: Words.name(act.key),
-                    copy: act.copy,
-                    glyph: Words.glyph(act.key),
-                    figure: false,
-                    hue: "action"
-                }) : provider.thing({
-                    key: act.key,
-                    name: Words.name(act.key),
-                    verb: Words.verb(act.key),
-                    glyph: Words.glyph(act.key),
-                    hue: "action",
-                    later: true,
-                    run: () => root.open({ link: act.open })
-                })))
-        });
-        // A function the drawer calls, as `row`'s is, so a copy of the row
-        // never makes it.
-        made.drawer = () => drawerOf(String(ready.drawer ?? ""));
-        return made;
-    }
-
-    // What a ready row says at its right, as `side` says a document's.
-    function readySide(ready) {
-        return Said.readySide(ready, Calendar.now, Mail.dates, root.said.said.opened);
-    }
-
-    // A ready drawer as the launcher's drawer shows it, its times worded
-    // by the clock.
-    function readyDrawer(drawer) {
-        return Said.readyDrawer(drawer, Calendar.now, Mail.dates);
-    }
-
     // What a file's row says at its right: when he last opened it.
     function side(document) {
         return Said.beside(document, Calendar.now, Mail.dates, root.said.said.opened);

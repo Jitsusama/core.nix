@@ -1,11 +1,11 @@
 // Drives the launcher's Documents (modules/google/Documents.qml) through
-// Quickshell itself, with the real Drive.qml making each row from the one
-// the google daemon serves ready, and Google's account, the clock, the
-// mail and the saves stood in. Its daemon is told records as the google
-// daemon tells them (src/document_rows.rs), through Daemon.qml's own
+// Quickshell itself, with the real ReadyRows.qml making each row from the
+// one the google daemon serves ready, and Google's account, the mail and
+// the saves stood in. Its daemon is told records as the google daemon
+// tells them (src/document_rows.rs), through ReadyRows' own Daemon.qml's
 // took, with no daemon to answer: every case runs in one turn, before a
 // refused connection could let them go. With the launcher shut, rows
-// told and a minute passing make no row, though each row says when it
+// told and the clock's turn make no row, though each row says when it
 // was opened against the clock; opened, it makes them once, in the
 // daemon's order; opened again, it makes only those that changed; a row
 // told ahead of the rest goes first, and one gone goes; and shut again,
@@ -25,13 +25,13 @@ ShellRoot {
     function row(id, title, order) {
         const key = `row:documents:${id}`;
         const link = `https://docs.google.com/document/d/${id}/edit`;
-        const viewed = Calendar.now - 3600000;
+        const viewed = Date.now() - 3600000;
         return { key, kind: "row", row: {
             key, thing: `gdoc:${id}`, place: "documents", kind: "document", name: title,
             glyph: "googleDocument", hue: "program", depth: 0,
             side: [{ at: viewed, as: "opened", keep: 1 }], drawer: `drawer:documents:${id}`,
-            acts: [{ key: "verb:docs:open", ask: { open: { link } } },
-                { key: "verb:docs:link", ask: { copy: link } }],
+            acts: [{ key: "verb:docs:open", open: link, in: "google-opens" },
+                { key: "verb:docs:link", copy: link }],
             held: { link, viewed, mime: "" }, order
         } };
     }
@@ -43,7 +43,7 @@ ShellRoot {
     }
 
     function tell(records, gone) {
-        documents.daemon.took(records, gone ?? []);
+        documents.served.link.took(records, gone ?? []);
     }
 
     QtObject {
@@ -68,7 +68,22 @@ ShellRoot {
         return documents.things.map(made => made.name).join(", ");
     }
 
-    Component.onCompleted: {
+    // The cases run once Quickshell has read the entry each row opens
+    // through (google-opens, the act's `in`), which it may read after the
+    // shell starts, since a row whose entry is gone offers no open.
+    property bool begun: false
+    Component.onCompleted: begin()
+    Connections {
+        target: DesktopEntries.applications
+        function onValuesChanged() {
+            root.begin();
+        }
+    }
+
+    function begin() {
+        if (begun || DesktopEntries.byId("google-opens") === null)
+            return;
+        begun = true;
         try {
             const shut = documents.tally.rows;
             tell([row("d1", "Quarterly Plan", 1024), drawer("d1", "Quarterly Plan")]);
@@ -77,9 +92,9 @@ ShellRoot {
             // Every row says when it was opened, as minutes ago, so the
             // clock's minute remade them all with the launcher shut, 27 a
             // minute on Joel's shell (2026-11-10).
-            Calendar.now += 60000;
+            documents.served.turned();
             tell([row("d2", "Roadmap", 2048), drawer("d2", "Roadmap")]);
-            Expect.expect("nor a minute passing and another told", documents.tally.rows === shut,
+            Expect.expect("nor the clock turning and another told", documents.tally.rows === shut,
                 documents.tally.rows - shut);
             standIn.open = true;
             Expect.expect("opened, it holds every document in the daemon's order",
@@ -125,7 +140,7 @@ ShellRoot {
                 && shown.facts[0].value === "Ada Lovelace", JSON.stringify(shown));
             standIn.open = false;
             const closed = documents.tally.rows;
-            Calendar.now += 60000;
+            documents.served.turned();
             Expect.expect("shut again, it keeps what it made",
                 titles() === "Quarterly Plan, Roadmap, Revised", titles());
             Expect.expect("and makes none", documents.tally.rows === closed,

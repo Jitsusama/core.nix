@@ -245,55 +245,6 @@ QtObject {
             ["in My Drive", 4], ["MP4", 3], ["1920 \u00d7 1080", 2], ["3:41", 1]
         ]);
 
-        // The same file as the google daemon serves it ready
-        // (src/document_rows.rs): its row, its acts and its drawer read as
-        // the shell made them from the file, only its times worded here.
-        const ready = {
-            key: "row:documents:pdf1", thing: "gdoc:pdf1", place: "documents", kind: "file",
-            name: "menu.pdf", glyph: "file", hue: "program", depth: 0,
-            side: [{ at: menuFile.viewed, as: "opened", keep: 1 }],
-            drawer: "drawer:documents:pdf1",
-            acts: [{ key: "verb:drive:open", ask: { open: { link: menuFile.link } } },
-                { key: "verb:drive:link", ask: { copy: menuFile.link } }],
-            held: { link: menuFile.link, viewed: menuFile.viewed, mime: menuFile.mime }, order: 1024
-        };
-        check("a ready row's document", Drive.readyDocument(ready), {
-            id: "pdf1", title: "menu.pdf", kind: "file", link: menuFile.link,
-            viewed: menuFile.viewed, mime: "application/pdf"
-        });
-        check("says when it was opened as a document's row does",
-            Drive.readySide(ready, now, said, opened), Drive.beside(menuFile, now, said, opened));
-        check("and nothing when never opened",
-            Drive.readySide(Object.assign({}, ready, { side: [] }), now, said, opened), "");
-        check("its acts, opening and copying its link, in the daemon's order",
-            Drive.readyActs(ready), [{ key: "verb:drive:open", open: menuFile.link },
-                { key: "verb:drive:link", copy: menuFile.link }]);
-        check("an act asked at its top level reads alike",
-            Drive.readyActs({ acts: [{ key: "verb:docs:open", open: "https://d/1" },
-                { key: "verb:docs:link", copy: "https://d/1" }] }),
-            [{ key: "verb:docs:open", open: "https://d/1" },
-                { key: "verb:docs:link", copy: "https://d/1" }]);
-        const timed = (name, when) => ({ name, at: when, as: "moment" });
-        check("its drawer reads as the shell's own", Drive.readyDrawer({
-            eyebrow: "in Team (shared drive) \u00b7 PDF",
-            title: "menu.pdf",
-            facts: [
-                timed("Changed", menuFile.changed),
-                { name: "Changed By", said: "Grace Hopper" },
-                { name: "Owner", said: "Ada Lovelace" },
-                timed("You Changed", menuFile.changedByMe),
-                timed("Created", menuFile.created),
-                timed("Shared", menuFile.sharedWithMe),
-                { name: "Shared By", said: "Ada Lovelace" },
-                { name: "Size", said: "2.4 MB" },
-                { name: "ID", said: "pdf1", identifies: true }
-            ],
-            body: "What's on, and what it costs."
-        }, now, said), Places.drawn(Drive.details(menuFile, "Untitled", now, said), menuFile,
-            around));
-        check("a drawer with no eyebrow has no items",
-            Drive.readyDrawer({ title: "Team", facts: [] }, now, said).eyebrowItems, []);
-
         // Drive's folders and downloads, as the picker and Files read them.
         // Two folders asked together, both written before the shell read.
         const listings = [
