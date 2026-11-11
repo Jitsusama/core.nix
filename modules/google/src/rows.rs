@@ -223,11 +223,12 @@ fn titled<'a>(mail: &'a Mail, words: &'a Words) -> &'a str {
 }
 
 /// A mail's row, in its place's order without an `order`, which the
-/// daemon spaces as each place's rows were last told (placed.rs).
+/// daemon spaces as each place's rows were last told (the ready-rows
+/// crate's `Kept`).
 fn row(mail: &Mail, place: &str, words: &Words) -> Value {
     json!({
         "key": format!("row:{place}:{}", mail.id),
-        "row": format!("mail:{}", mail.id),
+        "thing": format!("mail:{}", mail.id),
         "place": place,
         "kind": "mail",
         "name": titled(mail, words),
@@ -441,7 +442,7 @@ mod tests {
         let keys: Vec<&str> = rows.iter().filter_map(|row| row["key"].as_str()).collect();
         assert_eq!(keys, ["row:mail:b", "row:mail:c", "row:mail:a"]);
         let first = &rows[0];
-        assert_eq!(first["row"], "mail:b");
+        assert_eq!(first["thing"], "mail:b");
         assert_eq!(first["place"], "mail");
         assert_eq!(first["kind"], "mail");
         assert_eq!(first["name"], "Engines");
@@ -475,7 +476,7 @@ mod tests {
             "a conversation once at its newest, none that still wants him"
         );
         assert_eq!(rows[0]["place"], "lately");
-        assert_eq!(rows[0]["row"], "mail:newer");
+        assert_eq!(rows[0]["thing"], "mail:newer");
         assert_eq!(rows[0]["drawer"], "drawer:lately:newer");
         let many: Vec<Mail> = (0..12)
             .map(|at| in_talk(&format!("m{at}"), at, &format!("t{at}")))

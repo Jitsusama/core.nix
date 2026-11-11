@@ -25,9 +25,9 @@
 //! each held lately in Calendar's Recent a `row:held:<id>` and each call
 //! in Meet's Recent a `row:meet:<code>`, the row the launcher shows for
 //! it, worded in the vocabulary this program is handed (`rows.rs`,
-//! `document_rows.rs`, `calendar_rows.rs`), so the shell makes no rows
-//! of its own; a `list` or
-//! `watch` of rows names its `place`, one or a list of them, to hear only
+//! `document_rows.rs`, `calendar_rows.rs`) and wrapped and ordered as
+//! every daemon's (`ready.rs`), so the shell makes no rows of its own;
+//! a `list` or `watch` of rows names its `place`, one or a list of them, to hear only
 //! those. Each row's drawer is a `drawer:<place>:<id>` record of its own,
 //! which the row names, watched by its key only while it shows, so a
 //! mail's body never rides with its row. Without a vocabulary, no rows
@@ -50,17 +50,14 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
-use jiff::tz::TimeZone;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::ask;
-use crate::calendar_rows;
-use crate::document_rows;
 use crate::drive::Drive;
 use crate::files::Fetched;
-use crate::placed::placed;
-use crate::rows::{self, Vocabulary};
+use crate::ready::Ready;
+use crate::rows::Vocabulary;
 use crate::state::{Meet, Standing, State};
 
 /// The interface's version.
@@ -131,49 +128,6 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
     made
 }
 
-/// Every ready row the state makes, in each place's order, as records
-/// keyed as rows.rs keys them, each its row under `row`, at `now` on
-/// Joel's clock, which says which meetings are over, each row's order
-/// kept from the records `told` where it can be (placed.rs).
-/// A place whose words didn't read makes none, and the rest make theirs.
-fn rows_of(
-    state: &State,
-    words: &Vocabulary,
-    now: i64,
-    told: &BTreeMap<String, Value>,
-) -> Vec<(String, Value)> {
-    let zone = TimeZone::system();
-    let (meetings, held) = (&state.meetings, &state.held);
-    let drives = &state.drive.places.drives.files;
-    let mut rows = Vec::new();
-    let mut drawers = Vec::new();
-    if let Some(mail) = &words.mail {
-        rows.extend(rows::mail(&state.mail, mail));
-        rows.extend(rows::lately(&state.lately, &state.mail, mail));
-        drawers.extend(rows::mail_drawers(&state.mail, &state.lately, mail));
-    }
-    if let Some(documents) = &words.documents {
-        rows.extend(document_rows::documents(&state.documents, documents));
-        drawers.extend(document_rows::drawers(&state.documents, drives, documents));
-    }
-    if let Some(calendar) = &words.calendar {
-        rows.extend(calendar_rows::meetings(
-            meetings, held, now, &zone, calendar,
-        ));
-        drawers.extend(calendar_rows::drawers(meetings, held, now, &zone, calendar));
-    }
-    let rows = placed(rows, told).into_iter().map(|row| {
-        let key = row["key"].as_str().unwrap_or_default().to_owned();
-        let record = json!({"key": key, "kind": "row", "row": row});
-        (key, record)
-    });
-    let drawers = drawers.into_iter().map(|(key, drawer)| {
-        let record = json!({"key": key, "kind": "drawer", "drawer": drawer});
-        (key, record)
-    });
-    rows.chain(drawers).collect()
-}
-
 /// The source's word for how the account stands, as the people daemon
 /// says its sources' (`starting` until Google is first asked).
 fn word(state: Option<&State>) -> (&'static str, &'static str) {
@@ -231,6 +185,8 @@ struct Held {
     state: Option<State>,
     /// The words rows are said in, none to make no rows.
     words: Option<Vocabulary>,
+    /// Each place's rows as last told, which keeps their order.
+    ready: Ready,
     watches: Vec<Watch>,
     since: i64,
     connections: u64,
@@ -288,11 +244,12 @@ impl Daemon {
     /// sees it, and each that went as gone, and how the account stands
     /// whenever that changes.
     pub fn say(&self, state: &State, now: i64) {
-        let mut held = self.lock();
+        let mut guard = self.lock();
+        let held = &mut *guard;
         let before = word(held.state.as_ref());
         let mut made = records(state);
         if let Some(words) = &held.words {
-            made.extend(rows_of(state, words, now, &held.records));
+            made.extend(held.ready.made(state, words, now));
         }
         let mut changed = Vec::new();
         let mut order = Vec::with_capacity(made.len());
@@ -581,6 +538,7 @@ fn handed() -> Option<UnixListener> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rows;
 
     #[test]
     fn a_signed_out_account_is_one_record_of_how_it_stands() {
@@ -670,7 +628,7 @@ mod tests {
             "a watch of documents heard mail's rows: {heard}"
         );
         assert_eq!(heard["changed"][0]["key"], "row:mail:m1");
-        assert_eq!(heard["changed"][0]["row"]["row"], "mail:m1");
+        assert_eq!(heard["changed"][0]["row"]["thing"], "mail:m1");
         assert_eq!(heard["changed"][0]["row"]["name"], "Engines");
         assert!(lines.try_recv().is_err(), "more was said than mail's row");
         assert_eq!(documents["records"], json!([]));

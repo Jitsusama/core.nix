@@ -190,7 +190,7 @@ fn titled<'a>(meeting: &'a Meeting, words: &'a Words) -> &'a str {
 /// `calledRow`): named for its meeting, who it was with and when it was
 /// held beside it, its times below, found by its guests' addresses too.
 /// Its `order` is the daemon's, spaced as its place's rows were last told
-/// (placed.rs).
+/// (the ready-rows crate's `Kept`).
 fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
     let meeting = listed.meeting;
     let id = &meeting.id;
@@ -239,7 +239,7 @@ fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
     };
     json!({
         "key": format!("row:{}:{}", listed.place, listed.id),
-        "row": thing,
+        "thing": thing,
         "place": listed.place,
         "kind": kind,
         "name": titled(meeting, words),

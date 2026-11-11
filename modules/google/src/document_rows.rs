@@ -248,7 +248,7 @@ fn title(document: &Document, words: &Words) -> String {
 /// A Drive file's one row, keyed by Drive's id as a document's always
 /// was, so a document is one row in Docs' Recent and Drive's alike. Its
 /// `order` is the daemon's, spaced as its place's rows were last told
-/// (placed.rs).
+/// (the ready-rows crate's `Kept`).
 fn row(document: &Document, place: &str, words: &Words) -> Value {
     let kind = kind(document.kind);
     let named = words.of(&kind);
@@ -259,7 +259,7 @@ fn row(document: &Document, place: &str, words: &Words) -> Value {
         .collect();
     json!({
         "key": format!("row:{place}:{}", document.id),
-        "row": format!("gdoc:{}", document.id),
+        "thing": format!("gdoc:{}", document.id),
         "place": place,
         "kind": document.kind,
         "name": title(document, words),

@@ -117,7 +117,7 @@ fn meetings_to_come_are_listed_soonest_first_and_those_held_newest_first_a_serie
         rows.iter().all(|row| row["order"].is_null()),
         "the daemon spaces each place's order, not the rows"
     );
-    assert_eq!(rows[0]["row"], "calendar:meeting:on");
+    assert_eq!(rows[0]["thing"], "calendar:meeting:on");
     assert_eq!(rows[3]["held"]["earlier"], 1);
     assert_eq!(rows[3]["drawer"], "drawer:held:standup-2");
     let drawn = drawers(&[], &[rows_meeting_held()], MONDAY, &zone(), &words());
@@ -396,7 +396,7 @@ fn meets_recent_is_each_call_held_on_a_meet_link_once_by_code_saying_who_it_was_
         ["row:meet:abc-defg-hij", "row:meet:xyz-wxyz-xyz"],
         "one room is one call however its link is written, and Zoom's is none"
     );
-    assert_eq!(calls[0]["row"], "meet:held:abc-defg-hij");
+    assert_eq!(calls[0]["thing"], "meet:held:abc-defg-hij");
     assert_eq!(calls[0]["kind"], "call");
     assert_eq!(calls[0]["glyph"], "joinCall");
     assert_eq!(
