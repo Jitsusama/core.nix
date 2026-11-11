@@ -11,11 +11,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 import launcher_on_niri
-import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from launcher_on_niri import Json, Shell
 
 # The place's one row while it's off.
@@ -24,22 +21,20 @@ OFF = "Passwords Is Off While It's Made Safe"
 WHY = "No password manager is set up, so nothing opens from here."
 
 
-@pytest.fixture(scope="module")
-def shell() -> Iterator[Shell]:
-    """Give the shell, started once a run."""
-    started = launcher_on_niri.started()
-    yield started
-    started.stop()
-
-
 def into_drawer(shown: Json) -> bool:
     """Say whether the keys are in the off row's drawer, which says why nothing opens."""
     drawer = cast("Json", shown["drawer"] or {})
     return bool(shown["open"]) and shown["mode"] == "page" and WHY in str(drawer.get("body", ""))
 
 
-def test_the_off_rows_return_goes_into_its_drawer_saying_why(shell: Shell) -> None:
+def test_the_off_rows_return_goes_into_its_drawer_saying_why() -> None:
     """With nothing to open, Return on the off row puts the keys in its drawer, saying why."""
+    with launcher_on_niri.running() as shell:
+        goes_into_its_drawer(shell)
+
+
+def goes_into_its_drawer(shell: Shell) -> None:
+    """Open the place, press Return on its one row, and give the keys back from its drawer."""
     shell.as_account(shell.ipc("collection", "passwords"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"] == [OFF])
