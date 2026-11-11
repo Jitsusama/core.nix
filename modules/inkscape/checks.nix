@@ -28,7 +28,8 @@ onLinux {
   # clipboard over a wl-paste that says nothing, and the desktop's list of
   # files opened lately as GLib writes it (tests/inkscape-recent.xbel),
   # recent-files adding one more as a program does, read by recent-files
-  # and by the account's own inkscape-drawings over drawings made here:
+  # and by the account's own inkscape-drawings over drawings made here,
+  # both run by the programs daemon given the sources the account gives:
   # its Recent lists each drawing Inkscape opened by when, newest first,
   # merged with the shared list's, each once, Inkscape's own row kept, one
   # that's gone left out; each says when, and its drawer its size as its
@@ -43,6 +44,10 @@ onLinux {
     let
       home = account graphical;
       settings = home.jitsusama.quickshell.launcher.providers.inkscape;
+      # Its drawings lately, as the account's programs daemon is given them.
+      drawn = lib.findFirst (
+        source: source.name or null == "drawings"
+      ) null home.jitsusama.quickshell.launcher.recents;
       qs = lib.getExe' graphical.pkgs.quickshell "qs";
       # What each program had open lately is the programs daemon's.
       programs = pkgs.callPackage ../programs/package.nix { };
@@ -61,6 +66,7 @@ onLinux {
         "Media.js"
         "Recents.qml"
         "Recents.js"
+        "Listed.qml"
         "Recent.js"
         "Captured.js"
         "Ago.js"
@@ -151,14 +157,14 @@ onLinux {
       export TEMPLATE=$HOME/default.svg TEMPLATE_KEPT=${settings.template}
       install -m 644 ${settings.template} $TEMPLATE
       export INKSCAPE=${inkscape} PASTE=${paste} RECENT_FILES=${recent-files}
-      export DRAWINGS_LIST=${lib.head settings.list}
       ${pkgs.bash}/bin/bash ${./tests/drawings-lately.sh} ${../../tests/inkscape-recent.xbel} \
         ${recent-files}
       # The programs daemon runs the list programs share, given the source
-      # shell.qml's Applications is, as recents.nix gives it.
+      # shell.qml's Applications is, as recents.nix gives it, and Inkscape's
+      # drawings lately as the account gives them.
       cat > sources.json <<EOF
       [{"watch": "$XDG_DATA_HOME/recently-used.xbel", "list": ["$RECENT_FILES", "list"],
-        "dated": true}]
+        "dated": true}, ${builtins.toJSON drawn}]
       EOF
       ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
       ${shellFolderLint}

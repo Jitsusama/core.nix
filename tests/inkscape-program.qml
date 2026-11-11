@@ -5,11 +5,11 @@
 // (Copied.qml) with wl-paste stood in, so a copy is set by hand, the
 // clipboard's history stood in by its newest copy alone, and the desktop's
 // list of files opened lately as GLib writes it, read by recent-files as
-// the list programs share and by the provider itself, with the account's
-// own inkscape-drawings. First, in Qt's own engine, Inkscape.js's cases:
-// which bookmarks are drawings Inkscape opened and when, to the
-// microsecond, each once; the sizes an SVG's root says, said; what
-// inkscape-drawings prints, read; what Inkscape's drawer in Programs says;
+// the list programs share and by the account's own inkscape-drawings, each
+// run by the programs daemon. First, in Qt's own engine, Inkscape.js's
+// cases: the sizes an SVG's root says, said; what inkscape-drawings
+// prints, read, when to the microsecond, each once; what Inkscape's
+// drawer in Programs says;
 // what a copy makes a drawing of, and the commands that make each.
 //
 // Then Inkscape's Recent: each drawing Inkscape opened, newest first,
@@ -111,8 +111,7 @@ ShellRoot {
             inkscape: Quickshell.env("INKSCAPE"),
             template: Quickshell.env("TEMPLATE"),
             drawings: root.made,
-            recent: `${root.home}/data/recently-used.xbel`,
-            list: [Quickshell.env("DRAWINGS_LIST")],
+            lately: "listed:org.inkscape.Inkscape:drawings",
             paste: Quickshell.env("PASTE"),
             // Stand-ins for the theme's edge and sunken roles, which the
             // provider only passes on into the drawing.
@@ -205,8 +204,9 @@ ShellRoot {
                 id => DesktopEntries.heuristicLookup(id), Niri.current);
             theLauncher.open = true;
             theLauncher.held = [{ row: entry(), rows: [] }];
-            // A step's frame never waits on starting a process.
-            same("its drawings are looked at once the step is drawn", theLauncher.frames.due.length, 1);
+            // A step's frame never waits on its drawings, which the
+            // programs daemon reads.
+            same("nothing waits for the step's frame", theLauncher.frames.due.length, 0);
             theLauncher.drawn();
             stepped();
         } catch (error) {
@@ -216,43 +216,6 @@ ShellRoot {
 
     // Inkscape.js's own cases, as Qt's engine runs them.
     function sums() {
-        const bookmark = (href, kind, programs) => `<bookmark href="${href}" added="x">`
-            + `<info><metadata><mime:mime-type type="${kind}"/><bookmark:applications>`
-            + programs.map(([name, stamp]) => `<bookmark:application name="${name}"`
-                + ` exec="&apos;${name} %u&apos;" ${stamp} count="1"/>`).join("")
-            + "</bookmark:applications></metadata></info></bookmark>";
-        const list = [
-            bookmark("file:///d/a.svg", "image/svg+xml",
-                [["org.inkscape.Inkscape", "modified=\"2026-11-09T08:30:12.123456Z\""]]),
-            bookmark("file:///d/Tom%20&amp;%20Jerry.SVG", "image/svg+xml",
-                [["nvim", "modified=\"2026-11-09T09:00:00Z\""],
-                    ["inkscape", "modified=\"2026-11-09T08:00:00.5Z\""]]),
-            bookmark("file://localhost/d/old.svgz", "application/octet-stream",
-                [["inkscape", "timestamp=\"1700000000\""]]),
-            bookmark("file:///d/plain", "image/svg+xml-compressed",
-                [["org.inkscape.Inkscape", "modified=\"2026-11-09T07:00:00Z\""]]),
-            bookmark("file:///d/export.png", "image/png",
-                [["org.inkscape.Inkscape", "modified=\"2026-11-09T09:30:00Z\""]]),
-            bookmark("file:///d/poster.svg", "image/svg+xml",
-                [["nvim", "modified=\"2026-11-09T09:30:00Z\""]]),
-            bookmark("https://example.com/far.svg", "image/svg+xml",
-                [["org.inkscape.Inkscape", "modified=\"2026-11-09T09:30:00Z\""]]),
-            bookmark("file:///d/a.svg", "image/svg+xml",
-                [["org.inkscape.Inkscape", "modified=\"2026-11-09T06:00:00Z\""]]),
-            bookmark("file:///d/two%0Alines.svg", "image/svg+xml",
-                [["org.inkscape.Inkscape", "modified=\"2026-11-09T09:30:00Z\""]])
-        ].join("\n");
-        const opened = Inkscape.opened(list);
-        json("Inkscape's drawings, newest first, by its own time, each once",
-            opened.map(one => one.path), ["/d/a.svg", "/d/Tom & Jerry.SVG", "/d/plain",
-                "/d/old.svgz"]);
-        const ats = [Date.UTC(2026, 10, 9, 8, 30, 12) + 123.456,
-            Date.UTC(2026, 10, 9, 8, 0, 0) + 500, Date.UTC(2026, 10, 9, 7, 0, 0), 1700000000000];
-        for (const [index, one] of opened.entries())
-            expect(`${one.path} opened when GLib says, to the microsecond`,
-                Math.abs(one.at - ats[index]) < 0.001, one.at - ats[index]);
-        json("no list, no drawings", Inkscape.opened(""), []);
-
         // [its root's start tag, its size as said]
         const sizes = [
             ["<svg width=\"210mm\" height=\"297mm\" viewBox=\"0 0 210 297\">",
@@ -272,15 +235,17 @@ ShellRoot {
         for (const [tag, said] of sizes)
             same(`${tag}'s size`, Inkscape.dimensions(Inkscape.extent(tag)), said);
 
-        const lately = [{ path: "/d/a.svg", at: 3 }, { path: "/d/b.svg", at: 2 },
-            { path: "/d/c.svg", at: 1 }];
-        json("what's still there, newest first, with its weight and size, at most as many asked",
-            Inkscape.drawings(["/d/b.svg\t40\t<svg viewBox=\"0 0 4 2\">",
-                "/d/a.svg\t5\t", "/d/x.svg\t1\t", "/d/c.svg\t\t", "/d/c.svg\tsome\t"],
-            lately, 1), [{ path: "/d/a.svg", at: 3, size: 5, extent: null }]);
-        same("each one's size read", Inkscape.dimensions(Inkscape.drawings(
-            ["/d/b.svg\t40\t<svg viewBox=\"0 0 4 2\">"], lately, 9)[0].extent),
-        "4 \u00d7 2\u00a0px");
+        const printed = ["/d/b.svg\t2000000\t40\t<svg viewBox=\"0 0 4 2\">",
+            "/d/a.svg\t3000123\t5\t", "/d/x.svg\t\t1\t", "/d/c.svg\t1000000\t\t",
+            "/d/c.svg\t1000000\tsome\t", "/d/a.svg\t1\t9\t"];
+        json("what's still there, newest first, when to the microsecond, at most as many asked",
+            Inkscape.drawings(printed, 1), [{ path: "/d/a.svg", at: 3000.123, size: 5,
+                extent: null }]);
+        json("each once, one without a time or a weight passed over",
+            Inkscape.drawings(printed, 9).map(one => one.path), ["/d/a.svg", "/d/b.svg"]);
+        same("each one's size read", Inkscape.dimensions(Inkscape.drawings(printed, 9)[1].extent),
+            "4 \u00d7 2\u00a0px");
+        json("nothing printed, no drawings", Inkscape.drawings([], 9), []);
 
         const words = inkscape.words;
         json("its drawer in Programs: the last, and how many", Inkscape.held([

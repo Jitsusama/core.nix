@@ -11,15 +11,35 @@
 //! program, the file and when that program last opened it in seconds since
 //! 1970, a tab between each, once for each program that opened it, so the
 //! launcher can place it among Recent's other sources by when (as
-//! recents.nix's `dated` says).
+//! recents.nix's `dated` says). `recent-files by PROGRAM...` prints every
+//! local file still there that one of PROGRAMs opened, once, the one they
+//! opened last first, a line each: the file, when the last of them opened
+//! it in microseconds since 1970, and its kind as the list says it, a tab
+//! between each, so a program's own lister reads its files lately
+//! (inkscape-drawings, which keeps the drawings). A file whose path holds a
+//! tab or a line's end can't be said on a line, and isn't.
 
 use std::env;
 use std::io::{self, Write};
+use std::path::Path;
 use std::process::ExitCode;
 
 use open_with::recent;
 
-const USAGE: &str = "usage: recent-files add PROGRAM FILE... | recent-files list";
+const USAGE: &str =
+    "usage: recent-files add PROGRAM FILE... | recent-files list | recent-files by PROGRAM...";
+
+/// Prints what `programs` had lately, as `by` says above.
+fn had_by(list: &Path, programs: &[String]) -> Result<(), String> {
+    let had = recent::by(list, programs).map_err(|error| error.to_string())?;
+    let mut out = io::stdout().lock();
+    had.iter()
+        .filter(|each| each.path.exists())
+        .map(|each| (each, each.path.display().to_string()))
+        .filter(|(_, path)| !path.contains(['\t', '\n', '\r']))
+        .try_for_each(|(each, path)| writeln!(out, "{path}\t{}\t{}", each.at, each.kind))
+        .map_err(|error| error.to_string())
+}
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
@@ -48,6 +68,7 @@ fn main() -> ExitCode {
                     })
                     .map_err(|error| error.to_string())
             }),
+        Some((verb, programs)) if verb == "by" && !programs.is_empty() => had_by(&list, programs),
         _ => Err(USAGE.to_owned()),
     };
     match done {

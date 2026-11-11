@@ -298,6 +298,7 @@ in
 {
   imports = [
     ../keys/home.nix
+    ../quickshell/recents.nix
     ../theme/home.nix
     niri
     quickshell
@@ -336,8 +337,22 @@ in
     inkscape = lib.getExe' inkscape "inkscape";
     template = "${template}";
     inherit drawings border desk;
-    recent = "${config.xdg.dataHome}/recently-used.xbel";
-    list = [ (lib.getExe (pkgs.callPackage ./drawings.nix { })) ];
+    # The programs daemon's key for its drawings lately, listed below.
+    lately = "listed:org.inkscape.Inkscape:drawings";
     paste = lib.getExe' pkgs.wl-clipboard "wl-paste";
   };
+
+  # Its drawings lately, which the programs daemon reads as its page asks,
+  # at most as many as Recent lists (Recent.js).
+  jitsusama.quickshell.launcher.recents = [
+    {
+      app = "org.inkscape.Inkscape";
+      name = "drawings";
+      asked = true;
+      list = [
+        (lib.getExe (pkgs.callPackage ./drawings.nix { }))
+        "9"
+      ];
+    }
+  ];
 }
