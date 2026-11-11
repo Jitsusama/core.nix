@@ -515,10 +515,18 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     Ok(ExitCode::FAILURE)
 }
 
+/// The changed-checks merge-net was built with, by its store path, so
+/// `merge-net needs` from the profile, where none is on PATH, says which VM
+/// tests moved rather than naming every one; one found on PATH otherwise.
+const CHANGED_CHECKS: &str = match option_env!("MERGE_NET_CHANGED_CHECKS") {
+    Some(own) => own,
+    None => "changed-checks",
+};
+
 /// What `changed-checks --name-only` says moved between `base` and the
 /// working copy, or nothing when it couldn't compare.
 fn moved_from(base: &str) -> Option<String> {
-    let ran = Command::new("changed-checks")
+    let ran = Command::new(CHANGED_CHECKS)
         .args(["--base", base, "--name-only", "--system", SYSTEM])
         .stderr(Stdio::inherit())
         .output()
