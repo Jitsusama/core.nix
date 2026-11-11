@@ -1822,11 +1822,6 @@ in
                     // {
                       file = providerFile provider;
                     }
-                    # Emoji are listed in the tone chosen, so the list is
-                    # built from the provider's own settings.
-                    // lib.optionalAttrs (provider.source == "emoji") {
-                      list = "${emojiList (provider.tone or "none")}";
-                    }
                     # The zones, and which tzdata they came from, which
                     # Time's Zone says, and which chrony keeps the clock,
                     # which its Clock says, where chrony does.

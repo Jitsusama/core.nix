@@ -408,6 +408,11 @@ QtObject {
         Expect.same("one refused unworded says the launcher's",
             Ready.refusal({ error: { code: "NotJoined" } }, words), "couldn't");
         Expect.same("one unanswered says so", Ready.refusal(null, words), "no answer");
+        Expect.same("a mark served as its code points is their characters, joined ones too",
+            ["1F600", "1F469 200D 1F4BB", "2764 FE0F"].map(code => Ready.glyphOf({ code }, roles)),
+            ["\u{1F600}", "\u{1F469}\u200D\u{1F4BB}", "\u2764\uFE0F"]);
+        Expect.same("and one among them that isn't a code point makes none",
+            [{ code: "1F469 zz" }, {}].map(glyph => Ready.glyphOf(glyph, roles)), ["", ""]);
         closing();
     }
 

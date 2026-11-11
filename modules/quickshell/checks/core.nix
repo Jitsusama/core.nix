@@ -20,11 +20,12 @@
   ...
 }:
 let
-  # The clipboard's history as the account runs it, serving Copies' rows,
-  # so a place the launcher opens on niri has what Joel's has.
+  # The clipboard's history as the account runs it, serving Copies' and
+  # Emoji's rows, so a place the launcher opens on niri has what Joel's has.
   clipboard = [
     "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}"
     "CLIPBOARD_WORDS=${(import ../launcher/words.nix).file}"
+    "CLIPBOARD_EMOJI=${import ../launcher/emoji.nix { inherit lib pkgs; } "none"}"
   ];
 in
 {
@@ -36,9 +37,9 @@ in
   # answering from the files a test writes, the real warp reading them
   # (tests/warp-cli-stand-in.sh), and warp holds its link on the socket
   # the account's systemd would, as WARP, the shaper's status what a test
-  # writes in ~/shaper, and the clipboard's history
-  # serves Copies' rows. The home network is the eero daemon's stand-in,
-  # holding the contract's network and the rows the daemon serves of it
+  # writes in ~/shaper, and the clipboard's history serves Copies' rows and
+  # Emoji's. The home network is the eero daemon's stand-in, holding the
+  # contract's network and the rows the daemon serves of it
   # (tests/desktop/stand-in-eero.py), as EERO.
   the-launcher-answers-whats-typed-on-niri =
     let
@@ -80,15 +81,15 @@ in
   # keys typed as it opens all land (tests/opening-on-niri-test.py).
   # Its `lab` times each chord's opening, the one way every launcher change
   # quotes (docs/testing.md's Timing the Launcher), built only when asked for
-  # by name, since no gate runs it (tests/launcher-lab-on-niri.py), with the
-  # clipboard's history serving Copies as Joel's does, and its `keys-lab`
-  # each key typed from home as Joel types them, with Qt's profiler at hand
-  # for a run that asks (tests/launcher-keys-lab-on-niri.py). They're passed
-  # through, which outlasts the description checks.nix adds.
+  # by name, since no gate runs it (tests/launcher-lab-on-niri.py), and its
+  # `keys-lab` each key typed from home as Joel types them, with Qt's
+  # profiler at hand for a run that asks (tests/launcher-keys-lab-on-niri.py).
+  # They're passed through, which outlasts the description checks.nix adds.
   the-launcher-opens-on-what-it-kept-on-niri =
     (launcherOnNiri {
       name = "the-launcher-opens-on-what-it-kept-on-niri";
       tests = ../../../tests/opening-on-niri-test.py;
+      given = clipboard;
     }).overrideAttrs
       (old: {
         passthru = old.passthru or { } // {
