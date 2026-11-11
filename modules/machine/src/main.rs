@@ -697,7 +697,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
 /// and says those that changed and the keys of those gone.
 fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
     let ready = ready(daemon, place);
-    let held = &mut daemon.held;
+    let kept = &mut daemon.held;
     let rows = ready
         .rows
         .into_iter()
@@ -710,19 +710,19 @@ fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
         .iter()
         .filter_map(|record| record["key"].as_str())
         .collect();
-    let gone: Vec<String> = held
+    let gone: Vec<String> = kept
         .keys()
         .filter(|key| place.holds(key) && !keys.contains(key.as_str()))
         .cloned()
         .collect();
     for key in &gone {
-        held.remove(key);
+        kept.remove(key);
     }
     let mut changed = Vec::new();
     for record in made {
         let key = record["key"].as_str().unwrap_or_default().to_owned();
-        if held.get(&key) != Some(&record) {
-            held.insert(key, record.clone());
+        if kept.get(&key) != Some(&record) {
+            kept.insert(key, record.clone());
             changed.push(record);
         }
     }
