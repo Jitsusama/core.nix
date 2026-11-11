@@ -45,9 +45,18 @@ function keptCount() {
     return Object.keys(measures.earlier).length + measures.count;
 }
 
+// How many faces were named, each reading eleven of a font's properties,
+// which tests/rows.qml holds a row given new words to naming none.
+const faces = { named: 0 };
+
+function facesNamed() {
+    return faces.named;
+}
+
 // A face as one key: everything of a font that changes how wide words
 // are drawn in it.
 function faceOf(font) {
+    faces.named += 1;
     return JSON.stringify([font.family, font.styleName ?? "", font.pointSize ?? -1,
         font.pixelSize ?? -1, font.weight, font.italic === true, font.letterSpacing ?? 0,
         font.wordSpacing ?? 0, font.capitalization ?? 0, font.kerning ?? true,

@@ -133,8 +133,7 @@ Rectangle {
         if (!countWords && (!sideWhole || countItems.length === 0)) {
             return count;
         }
-        void wordsFace.font;
-        const width = Measures.measurer(wordsFace, true);
+        const width = row.wordsMeasured;
         const around = [row.also !== "" ? `\u201c${row.also}\u201d \u00b7 ` : "",
             row.kind !== "" && row.side !== "" ? ` \u00b7 ${row.side}` : ""]
             .reduce((sum, words) => sum + (words === "" ? 0 : width(words)), 0);
@@ -166,12 +165,9 @@ Rectangle {
             ? row.countItems.map(item => item.said).join(" \u00b7 ") : row.count,
         row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
     readonly property bool detailed: detailUncut !== ""
-    // Read through the face's font, as noted is, so a scale or a theme
+    // Read through the face's measurer, as noted is, so a scale or a theme
     // changed measures it again.
-    readonly property real detailWide: {
-        void wordsFace.font;
-        return detailed ? Measures.measurer(wordsFace, true)(detailUncut) : 0;
-    }
+    readonly property real detailWide: detailed ? row.wordsMeasured(detailUncut) : 0
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
     // Its name is the shell speaking to Joel, in the voice's face, as an
@@ -363,8 +359,8 @@ Rectangle {
         // as detailWide measures them, so the room kept for it and the fit
         // agree to the pixel.
         readonly property string whole: row.names
-            ? Reading.wholeNamesFromEnd(row.detail, room, Measures.measurer(wordsFace, true))
-            : Reading.wholeItemsFromEnd(row.detail, room, Measures.measurer(wordsFace, true))
+            ? Reading.wholeNamesFromEnd(row.detail, room, row.wordsMeasured)
+            : Reading.wholeItemsFromEnd(row.detail, room, row.wordsMeasured)
         width: Math.min(implicitWidth, room)
         elide: Text.ElideRight
         anchors.baseline: monoLine.baseline
@@ -396,11 +392,9 @@ Rectangle {
     readonly property string noteWhole: {
         if (row.note === "" || row.nameCut || row.detailCut)
             return "";
-        void wordsFace.font;
-        const width = Measures.measurer(wordsFace, true);
         const room = row.noteEnd - row.noteFrom
-            - (row.noteApart === "" ? 0 : Measures.measurer(wordsFace)(row.noteApart));
-        return Reading.noteFitted(row.note, room, width);
+            - (row.noteApart === "" ? 0 : row.wordsAdvanced(row.noteApart));
+        return Reading.noteFitted(row.note, room, row.wordsMeasured);
     }
 
     Text {
@@ -419,6 +413,15 @@ Rectangle {
         id: wordsFace
         font: countText.font
     }
+
+    // Each face's measurer, made as its font is set and again only when it
+    // changes, which a binding reading one follows. One made at every fit
+    // read its font's eleven properties again to name its face, about 7 ms
+    // of a key's frame on home (prof6, 2026-11-11).
+    readonly property var wordsMeasured: Measures.measurer(wordsFace, true)
+    readonly property var wordsAdvanced: Measures.measurer(wordsFace)
+    readonly property var sideMeasured: Measures.measurer(sideFace, true)
+    readonly property var sayMeasured: Measures.measurer(sayFace, true)
 
     Graph {
         id: drawing
@@ -471,7 +474,7 @@ Rectangle {
         // The items a side of them keeps in its room, the least needed
         // given way first (Reading.js's keptItems).
         readonly property var kept: itemised ? Reading.keptItems(row.sideItems, room,
-            Measures.measurer(sideFace, true)) : []
+            row.sideMeasured) : []
         // The colour each kept item is drawn in where it names a role of
         // its own (`hue`), as a count of what failed wears the alert's,
         // or "" for the side's.
@@ -496,7 +499,7 @@ Rectangle {
         // room whole: the name is cut, so where it's cut holds still as
         // that item changes, by the column, as any side's does.
         readonly property bool squeezed: itemised
-            && Measures.measurer(sideFace, true)(said) > room
+            && row.sideMeasured(said) > room
         // How a row stands never gives way: the name is cut first, at a
         // whole word, and "256 \u00d7 256 px" stays whole (docs/design.md,
         // A row says what it is; VKCF3Z, 6918348b, and of Inkscape's
@@ -667,9 +670,8 @@ Rectangle {
     // fit (2026-11-07: never "A b\u2026 84% full"). Qt elides with a pixel
     // to spare, so each is measured with one.
     readonly property string sayWhole: {
-        void sayFace.font;
         const cut = Reading.wholeItemsFromEnd(row.say, row.sayEnd - row.sayFrom,
-            Measures.measurer(sayFace, true));
+            row.sayMeasured);
         return !cut.endsWith("\u2026") || cut.includes(" ") ? cut : "";
     }
 

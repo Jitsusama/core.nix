@@ -36,6 +36,7 @@ import Quickshell
 import QtQuick
 import QtQuick.Shapes
 import "Bands.js" as Bands
+import "Measures.js" as Measures
 
 ShellRoot {
     id: root
@@ -774,6 +775,20 @@ ShellRoot {
         const laid = textsSaying(saying, saying.side, []);
         expect("a side said with no chord is laid out once", laid.length === 1,
             `${laid.length} Texts say ${saying.side}`);
+        // Given new words, it fits them in the faces it already named and
+        // names none again, which read eleven of a font's properties at
+        // every fit, about 7 ms of a key's frame (prof6, 2026-11-11).
+        const named = Measures.facesNamed();
+        const was = [saying.side, saying.say, noting.note];
+        for (const minutes of [10, 20, 30, 40, 50]) {
+            saying.side = `${minutes}%`;
+            saying.say = `full in ${minutes} min`;
+            noting.note = `${root.sentence} ${minutes}`;
+        }
+        const renamed = Measures.facesNamed() - named;
+        [saying.side, saying.say, noting.note] = was;
+        expect("a row given new words names no face again", renamed === 0,
+            `${renamed} faces named for 5 rows' words`);
     }
 
     // What the cursor row says of how it stands, on the row rather than in
