@@ -49,6 +49,9 @@ SPOTS_MADE_SHUT = ("spots made while closed ", "spots freshened while closed ")
 # within SPOTS_LATER fails it.
 REOPENINGS_TRIED = 3
 
+# What the shell says once when it can't write the open mark (Launcher.qml's markFailed).
+MARK_UNWRITTEN = "launcher: couldn't write the open mark"
+
 # How long niri leaves a surface wholly off the screen before it answers a frame of its: once
 # a second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
 UNANSWERED_MS = 900
@@ -402,6 +405,30 @@ def test_a_kept_opening_says_it_is_open_from_its_first_frame(shell: Shell) -> No
     assert 0 <= marked <= cast("int", opening["took"]), f"not marked open by its frame: {opening}"
     blocked = cast("int", opening.get("blocked", -1))
     assert blocked == 0, f"the opening waited on {blocked} writes of its mark: {opening}"
+
+
+def test_an_open_mark_it_cannot_write_is_said_once(shell: Shell) -> None:
+    """An open mark the shell can't write is said once, though each opening and closing fails.
+
+    Its readers go on reading the last word written, so without it nothing would say why a
+    switch waited on the launcher, or didn't (Y2YBTS, 2026-11-11). A folder in its place
+    refuses every write.
+    """
+    mark = Path(os.environ["XDG_RUNTIME_DIR"]) / "quickshell-launcher"
+    began = shell.mark()
+    mark.unlink(missing_ok=True)
+    mark.mkdir()
+    try:
+        for _ in range(2):
+            shell.as_account(shell.ipc("collection", "windows"))
+            shell.launcher_ready()
+            shell.close_launcher()
+    finally:
+        mark.rmdir()
+    with shell.log.open("rb") as log:
+        log.seek(began)
+        said = log.read().decode(errors="replace").count(MARK_UNWRITTEN)
+    assert said == 1, f"an unwritten mark was said {said} times over two openings"
 
 
 def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:

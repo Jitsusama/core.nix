@@ -7785,7 +7785,7 @@ Scope {
         printErrors: false
         Component.onCompleted: root.markOpen(root.open)
         onSaved: root.markWritten()
-        onSaveFailed: root.markWritten()
+        onSaveFailed: error => root.markFailed(error)
     }
     // What the mark says now, so each word is written once as it changes,
     // and when it last said open, on the clock keys are timed by.
@@ -7819,6 +7819,17 @@ Scope {
         if (blocking)
             markBlocked += 1;
         openMark.setText(`${markSays}\n`);
+    }
+    // A mark it couldn't write leaves its readers reading the last word,
+    // so that's said, once a shell, since each opening would say it again
+    // (Y2YBTS, 2026-11-11).
+    property bool markFailSaid: false
+    function markFailed(error) {
+        if (!markFailSaid) {
+            markFailSaid = true;
+            console.warn(`launcher: couldn't write the open mark: ${FileViewError.toString(error)}`);
+        }
+        markWritten();
     }
     function markWritten() {
         const written = markWriting;
