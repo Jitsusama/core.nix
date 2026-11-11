@@ -108,6 +108,33 @@ ShellRoot {
         Qt.callLater(() => Qt.exit(status));
     }
 
+    // A row made again with getters (Provider.qml's gotten) keeps every
+    // field it had, each getter read as it's asked, through rows of
+    // shapes grown one from another, where turning a field into a getter
+    // in place lost the field grown after it under Qt 6.12 (the shell's
+    // crash of 2026-11-11). Muted, a switch, is made that way.
+    function gotten() {
+        let muted = true;
+        const grown = sound.thing({ key: "grown", name: "Grown", hue: "action" });
+        const first = sound.gotten(grown, { side: () => muted ? "yes" : "no" });
+        grown.sideGrown = "kept";
+        const second = sound.gotten(grown, { side: () => muted ? "yes" : "no" });
+        expect("a row made again keeps the field it was given since",
+            Object.assign({}, second).sideGrown === "kept", Object.assign({}, second).sideGrown);
+        expect("and every field it had", first.key === "grown" && first.name === "Grown"
+            && second.hue === "action" && first.chord.length === 0, JSON.stringify(first));
+        muted = false;
+        expect("its getter is read as it's asked", second.side === "no", second.side);
+        const flipped = [];
+        const switched = sound.mutedSwitch("sound:test:mute", () => muted, () => "m",
+            () => flipped.push(true));
+        switched.run();
+        expect("Muted keeps its act and key", flipped.length === 1
+            && switched.key === "sound:test:mute" && switched.stays === true,
+            JSON.stringify(switched));
+        expect("and says how it stands", switched.glyph === "m", switched.glyph);
+    }
+
     function run() {
         const playing = microphone("a2dp-sink");
         expect("a headset playing music would switch", sound.switches(playing), "it wouldn't");
@@ -121,6 +148,7 @@ ShellRoot {
             && heard.note === sound.said("level-in"), `${heard.side}, ${heard.note}`);
 
         drawers();
+        gotten();
         partsKept();
     }
 

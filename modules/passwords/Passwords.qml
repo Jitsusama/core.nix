@@ -327,7 +327,8 @@ Provider {
     function todoRow(found, done) {
         const words = "passwords:todo";
         const rows = () => provider.troubledRows();
-        const row = member({
+        // Made again below while done, so Return enters the row it is.
+        let row = member({
             thing: true,
             what: "on",
             key: done ? `${words}:done` : words,
@@ -352,10 +353,7 @@ Provider {
         // Done, it says when as the clock says it as it's read, so one
         // cleared yesterday names its day.
         if (done)
-            Object.defineProperty(row, "side", {
-                enumerable: true,
-                get: () => provider.clearedSide(found)
-            });
+            row = gotten(row, { side: () => provider.clearedSide(found) });
         return row;
     }
 

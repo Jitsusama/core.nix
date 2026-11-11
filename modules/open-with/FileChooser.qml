@@ -573,8 +573,7 @@ Provider {
             stays: true,
             run: () => provider.replacing(taken, trimmed, () => provider.stage(path))
         });
-        Object.defineProperty(row, "note", { get: () => provider.fetchingSaid(), enumerable: true });
-        return row;
+        return gotten(row, { note: () => provider.fetchingSaid() });
     }
 
     // Makes the folder a path kept elsewhere is saved in, then answers the
@@ -651,11 +650,7 @@ Provider {
             if (typeof fields.open === "function")
                 row.openOwn = () => provider.openElsewhere(fields);
             Object.assign(row, { verb: acts[0].verb, run: acts[0].run, verbs: () => acts, stays: true });
-            Object.defineProperty(row, "note", {
-                get: () => provider.fetchingSaid() || (fields.note ?? ""),
-                enumerable: true
-            });
-            return row;
+            return gotten(row, { note: () => provider.fetchingSaid() || (fields.note ?? "") });
         };
         if (several)
             return gatheringRow(fields.key, made);
@@ -731,20 +726,13 @@ Provider {
         // A file kept elsewhere keeps the launcher while it's fetched.
         const away = () => (provider.marked.length > 0 ? provider.marked : [id])
             .some(each => !each.startsWith("/"));
-        Object.defineProperties(row, {
-            stays: { enumerable: true, get: away },
-            verb: {
-                enumerable: true,
-                get: () => provider.marked.length > 0 ? `${opens} ${provider.marked.length}`
-                    : opens
-            },
-            glyph: {
-                enumerable: true,
-                get: () => Words.glyph(is() ? "file-chooser:marked" : "path:file")
-            },
-            hue: { enumerable: true, get: () => is() ? "action" : "program" }
+        return gotten(row, {
+            stays: away,
+            verb: () => provider.marked.length > 0 ? `${opens} ${provider.marked.length}`
+                : opens,
+            glyph: () => Words.glyph(is() ? "file-chooser:marked" : "path:file"),
+            hue: () => is() ? "action" : "program"
         });
-        return row;
     }
 
     // Gathers the files of the rows given, as :arga adds them to Vim's

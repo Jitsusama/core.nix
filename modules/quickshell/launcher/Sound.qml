@@ -788,15 +788,11 @@ Provider {
             state: () => provider.said(muted() ? "yes" : "no"),
             run: flip
         });
-        Object.defineProperties(row, {
-            verb: {
-                enumerable: true,
-                get: () => Words.verb("sound:mute", muted() ? "muted" : "")
-            },
-            glyph: { enumerable: true, get: mark },
-            side: { enumerable: true, get: () => provider.said(muted() ? "yes" : "no") }
+        return gotten(row, {
+            verb: () => Words.verb("sound:mute", muted() ? "muted" : ""),
+            glyph: mark,
+            side: () => provider.said(muted() ? "yes" : "no")
         });
-        return row;
     }
 
     // The programs Playing through an output, or Recording from an input:

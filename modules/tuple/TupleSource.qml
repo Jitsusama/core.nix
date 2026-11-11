@@ -100,12 +100,9 @@ PersonSource {
                     { [id]: { wanted: wanted, key: key } });
             }
         });
-        return Object.defineProperties(row, {
-            side: { enumerable: true, get: () => (kept() ? "yes" : "no") },
-            verb: {
-                enumerable: true,
-                get: () => Words.verb("verb:person:favourite", kept() ? "favourite" : "")
-            }
+        return provider.gotten(row, {
+            side: () => (kept() ? "yes" : "no"),
+            verb: () => Words.verb("verb:person:favourite", kept() ? "favourite" : "")
         });
     }
 }

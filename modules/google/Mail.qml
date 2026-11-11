@@ -292,13 +292,15 @@ Singleton {
             state: () => root.became(mail, "read") || root.became(mail, "unread"),
             run: () => root.tidy(mail, root.isRead(mail) ? "unread" : "read")
         });
-        return Object.defineProperties(row, {
-            side: { enumerable: true, get: () => root.isRead(mail) ? "yes" : "no" },
-            verb: {
-                enumerable: true,
-                get: () => Words.verb(key, root.isRead(mail) ? "read" : "")
-            }
-        });
+        // Made again with its side and verb as getters, never turned in
+        // place, as Provider.qml's gotten says why.
+        const fields = Object.getOwnPropertyDescriptors(row);
+        fields.side = { enumerable: true, get: () => root.isRead(mail) ? "yes" : "no" };
+        fields.verb = {
+            enumerable: true,
+            get: () => Words.verb(key, root.isRead(mail) ? "read" : "")
+        };
+        return Object.defineProperties({}, fields);
     }
 
     // Copy the Link copies its conversation's link in Gmail, for pasting
