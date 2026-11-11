@@ -14,8 +14,10 @@
 // Every word is the vocabulary's (launcher/words.json). The daemon asks fwupd once a minute while
 // watched and at once each time fwupd says something changed, as when a
 // device is unplugged from the charger, so nothing here asks fwupd
-// anything but to install, or to fix a security attribute or put its fix
-// back. A machine without fwupd names no Firmware.
+// anything. Installing, fixing a security attribute or putting its fix
+// back, and restarting into the firmware's setup are the daemon's acts
+// too, asked on the same socket, so the shell spawns nothing. A machine
+// without fwupd names no Firmware.
 //
 // A device with an update offered holds Install first (VKCF3Z,
 // 2026-10-30), which asks once, saying what it ends, since firmware can't
@@ -27,7 +29,6 @@
 // nothing is dimmed (VKCF3Z, 2026-11-08).
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Firmware.js" as Fwupd
 import "Machine.js" as Machine
@@ -55,13 +56,10 @@ Provider {
     // The attribute whose restart into firmware setup is being asked of
     // logind, or "".
     property string restarting: ""
-    // The minutes an install or a change was waited for before fwupdmgr
-    // was stopped, or 0 while it ended by itself.
-    property int installStopped: 0
-    property int changeStopped: 0
 
+    // The fwupdmgr the daemon installs with, named here only to say
+    // whether this machine has fwupd at all.
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
-    readonly property string systemctl: settings.systemctl ?? ""
     // Whether Firmware's rows can be seen: its answer, or words typed that
     // ask it, a row of it, or Machine's place holding its row, so the
     // daemon asks fwupd only then and a change fwupd says is answered at
@@ -377,20 +375,21 @@ Provider {
     // Has logind restart into the firmware's setup, unless it's already
     // asked to.
     function restart(attribute) {
-        if (restarting !== "" || systemctl === "")
+        if (restarting !== "")
             return;
         restarting = attribute.id;
-        restarter.command = [systemctl, "reboot", "--firmware-setup"];
-        restarter.running = true;
+        const minutes = Fwupd.changePatience();
+        daemon.ask({ ask: "act", act: "firmware-setup", patience_s: minutes * 60 },
+            answer => provider.restartEnded(Fwupd.acted(answer, minutes)));
     }
 
     // logind refused the restart, or took it, in which case nothing here
     // is left to see it.
-    function restartEnded(code) {
-        if (code !== 0) {
+    function restartEnded(run) {
+        if (run.code !== 0) {
             const ended = Object.assign({}, changes);
-            ended[`setup:${restarting}`] = { outcome: "failed",
-                reason: Fwupd.reason(restarterErr.text) };
+            ended[`setup:${restarting}`] = Fwupd.ended(run,
+                Words.of("verb:firmware:setup").said, "restarted");
             changes = ended;
         }
         restarting = "";
@@ -398,31 +397,27 @@ Provider {
     }
 
     // Has fwupd fix an attribute itself, or put a fix back, unless a
-    // change is going in. Neither asks anything in fwupd 2.1.9, but
-    // --no-reboot-check keeps a later fwupdmgr from answering a restart's
-    // question by itself, as Install does; the restart stays Joel's.
+    // change is going in, through the daemon, which asks fwupd over the
+    // system bus as fwupdmgr's security-fix and security-undo do. Neither
+    // restarts; the restart stays Joel's.
     function change(attribute, how) {
         if (changing !== "")
             return;
         changing = `${how}:${attribute.id}`;
-        changeStopped = 0;
-        changer.command = [fwupdmgr, how === "fix" ? "security-fix" : "security-undo",
-            attribute.id, "--assume-yes", "--no-reboot-check"];
-        changer.running = true;
-        changeWait.interval = Fwupd.changePatience() * 60000;
-        changeWait.restart();
+        const minutes = Fwupd.changePatience();
+        daemon.ask({ ask: "act", act: `firmware-${how}`, attribute: attribute.id,
+            patience_s: minutes * 60 },
+            answer => provider.changeEnded(Fwupd.acted(answer, minutes)));
         answered();
     }
 
     // A change ended: fwupd says what changed, which the daemon reads at
     // once, so the attribute says what it found now. One stopped for
     // taking too long says how long it was waited for.
-    function changeEnded(code) {
-        changeWait.stop();
+    function changeEnded(run) {
         const how = changing.slice(0, changing.indexOf(":"));
         const ended = Object.assign({}, changes);
-        ended[changing] = Fwupd.ended({ code: code, stopped: changeStopped, err: changerErr.text },
-            Words.of(`verb:firmware:${how}`).said, "changed");
+        ended[changing] = Fwupd.ended(run, Words.of(`verb:firmware:${how}`).said, "changed");
         changes = ended;
         changing = "";
         answered();
@@ -520,11 +515,10 @@ Provider {
         if (installing !== "" || device.offered === null)
             return;
         installing = device.id;
-        installStopped = 0;
-        installer.command = [fwupdmgr, "update", device.id, "--assume-yes", "--no-reboot-check"];
-        installer.running = true;
-        installWait.interval = Fwupd.installPatience(device) * 60000;
-        installWait.restart();
+        const minutes = Fwupd.installPatience(device);
+        daemon.ask({ ask: "act", act: "firmware-install", device: device.id,
+            patience_s: minutes * 60 },
+            answer => provider.installEnded(Fwupd.acted(answer, minutes)));
         answered();
     }
 
@@ -532,12 +526,10 @@ Provider {
     // at once, so the row says whether it waits for the restart or has
     // gone in. One stopped for taking too long says how long it was
     // waited for, and the device says what fwupd went on to do.
-    function installEnded(code) {
-        installWait.stop();
+    function installEnded(run) {
         const ended = Object.assign({}, installs);
-        ended[installing] = Fwupd.ended(
-            { code: code, stopped: installStopped, err: installerErr.text },
-            Words.of("verb:firmware:install").said, "installed");
+        ended[installing] = Fwupd.ended(run, Words.of("verb:firmware:install").said,
+            "installed");
         installs = ended;
         installing = "";
         answered();
@@ -632,51 +624,5 @@ Provider {
         paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
-    }
-
-    Process {
-        id: installer
-        stderr: StdioCollector {
-            id: installerErr
-        }
-        onExited: code => provider.installEnded(code)
-    }
-
-    Process {
-        id: changer
-        stderr: StdioCollector {
-            id: changerErr
-        }
-        onExited: code => provider.changeEnded(code)
-    }
-
-    Process {
-        id: restarter
-        stderr: StdioCollector {
-            id: restarterErr
-        }
-        onExited: code => provider.restartEnded(code)
-    }
-
-    // A stuck fwupdmgr, or a polkit prompt left unanswered, is stopped
-    // once it has been waited for long enough (Firmware.js), so one
-    // install or change can't hold every other until the launcher
-    // restarts.
-    Timer {
-        id: installWait
-
-        onTriggered: {
-            provider.installStopped = Math.round(interval / 60000);
-            installer.running = false;
-        }
-    }
-
-    Timer {
-        id: changeWait
-
-        onTriggered: {
-            provider.changeStopped = Math.round(interval / 60000);
-            changer.running = false;
-        }
     }
 }

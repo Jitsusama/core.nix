@@ -1444,9 +1444,6 @@ in
             lib.getExe' osConfig.services.fwupd.package "fwupdmgr"
           else
             "";
-        # What asks logind to restart into the firmware's setup, by its
-        # store path, so its refusal can be read and said.
-        systemctl = lib.getExe' pkgs.systemd "systemctl";
       };
       # How WARP's link stands, from warp (modules/warp) asking the warp-cli
       # the system installs, only where it installs one, so a machine without
@@ -2524,6 +2521,13 @@ in
       };
       Install.WantedBy = [ "default.target" ];
     };
+
+    # Firmware's installs are put in by the machine daemon, with the
+    # fwupdmgr Firmware names, so the shell spawns nothing; a machine
+    # without fwupd names none, and installs nothing.
+    systemd.user.services.machine.Service.Environment =
+      lib.mkIf ((launcher.providers.firmware.fwupdmgr or "") != "")
+        [ "MACHINE_FWUPDMGR=${launcher.providers.firmware.fwupdmgr}" ];
 
     systemd.user.services.timekeeping = lib.mkIf keepsTime {
       Unit = {
