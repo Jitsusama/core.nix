@@ -225,7 +225,7 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
                 ended,
                 this_boot: boot.is_some()
                     && p.owner.as_ref().and_then(|o| o.boot_id.as_ref()) == boot.as_ref(),
-                running: p.owner.as_ref().and_then(|o| o.pid).is_some_and(is_pi),
+                running: p.runs(is_pi, is_host),
                 parked: p.state == "parked" || mesh.is_parked(&p.session),
                 address,
                 orchestrated_by: p.orchestrated_by,
@@ -241,6 +241,15 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
 /// Whether `pid` is a pi, rather than gone or reused by another program.
 pub fn is_pi(pid: u32) -> bool {
     fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "pi")
+}
+
+/// Whether `pid` is a shared pi host: node running the harness's
+/// `scripts/pi-host.ts`, rather than gone or reused by another program.
+pub fn is_host(pid: u32) -> bool {
+    fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| {
+        line.split(|&b| b == 0)
+            .any(|arg| arg.ends_with(b"/scripts/pi-host.ts"))
+    })
 }
 
 /// What the machine's node holds, by `mycelium held`, or none when it

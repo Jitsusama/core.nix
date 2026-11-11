@@ -43,6 +43,17 @@ pub struct Presence {
     /// What it has spent and when, its last turn under `turns.last`.
     #[serde(default)]
     pub usage: serde_json::Value,
+    /// The shared pi host it runs in, when it runs in one rather than in
+    /// a pi of its own.
+    #[serde(default)]
+    pub hosted: Option<Hosted>,
+}
+
+/// The shared pi host a conversation runs in, as its presence names it.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct Hosted {
+    pub host: String,
+    pub conversation: String,
 }
 
 impl Presence {
@@ -54,6 +65,24 @@ impl Presence {
         let began: jiff::Timestamp = last["at"].as_str()?.parse().ok()?;
         let took = last["duration_ms"].as_i64().unwrap_or_default();
         Some((began.as_millisecond() + took) / 1000)
+    }
+
+    /// Whether its process runs: a pi of its own, or the shared pi host
+    /// that holds it as one of its conversations. A hosted presence's
+    /// owner is the host, a node rather than a pi, so asking only whether
+    /// the owner is a pi judged every moved session dead: on 10 November
+    /// cadence started a second pi on a conversation a host held, and
+    /// both wrote to its one log.
+    #[must_use]
+    pub fn runs(&self, is_pi: impl Fn(u32) -> bool, is_host: impl Fn(u32) -> bool) -> bool {
+        let Some(pid) = self.owner.as_ref().and_then(|o| o.pid) else {
+            return false;
+        };
+        let held = self
+            .hosted
+            .as_ref()
+            .is_some_and(|h| h.conversation == self.session);
+        is_pi(pid) || (held && is_host(pid))
     }
 }
 
@@ -356,6 +385,7 @@ mod tests {
             title: String::new(),
             groups: vec![],
             usage: serde_json::Value::Null,
+            hosted: None,
         };
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {
@@ -370,6 +400,46 @@ mod tests {
         assert!(!alive(Some(&gone), |_| false));
         assert!(alive(Some(&gone), |pid| pid == 7));
         assert!(!alive(None, |_| true));
+    }
+
+    #[test]
+    fn a_conversation_a_live_host_holds_runs_and_one_it_left_does_not() {
+        // As 1H56ZJ's presence read once the background host held it.
+        let presence = |hosted: serde_json::Value| -> Presence {
+            serde_json::from_value(serde_json::json!({
+                "session": "01a1be5c",
+                "addresses": ["1H56ZJ"],
+                "state": "listening",
+                "owner": {"pid": 1_784_702, "host": "work-background"},
+                "hosted": hosted,
+            }))
+            .unwrap()
+        };
+        let host = |pid| pid == 1_784_702;
+        let no_pi = |_| false;
+        let held = presence(serde_json::json!({
+            "host": "work-background",
+            "conversation": "01a1be5c",
+        }));
+        assert!(held.runs(no_pi, host), "its host runs, so it does");
+        assert!(!held.runs(no_pi, |_| false), "its host is gone, so it is");
+        let unhosted = presence(serde_json::Value::Null);
+        assert!(
+            !unhosted.runs(no_pi, host),
+            "a host owning it unsaid is a reused pid, not its host"
+        );
+        let another = presence(serde_json::json!({
+            "host": "work-background",
+            "conversation": "someone-else",
+        }));
+        assert!(
+            !another.runs(no_pi, host),
+            "the host holds another conversation"
+        );
+        assert!(
+            unhosted.runs(|pid| pid == 1_784_702, |_| false),
+            "a pi of its own runs"
+        );
     }
 
     #[test]

@@ -35,7 +35,8 @@ pub struct Quiet {
 
 impl Quiet {
     /// Reads one from a presence, given when its session's log was last
-    /// written, the boot running now and whether a pid is a pi. A
+    /// written, the boot running now and whether its process runs (see
+    /// `Presence::runs`). A
     /// presence's last turn is gone once its day's usage starts again at
     /// midnight, so the log, written at each turn, counts too: on 9
     /// November one was said to have taken no turn since 22:32 when its
@@ -46,7 +47,7 @@ impl Quiet {
         logged: Option<i64>,
         boot: Option<&str>,
         parked: bool,
-        is_pi: impl Fn(u32) -> bool,
+        runs: impl Fn(&Presence) -> bool,
     ) -> Option<Self> {
         let address = p.addresses.first()?.clone();
         let owner = p.owner.as_ref();
@@ -59,7 +60,7 @@ impl Quiet {
             quest: p.quest.clone(),
             orchestrated_by: p.orchestrated_by.clone(),
             listening: p.state == "listening" && !parked,
-            running: this_boot && owner.and_then(|o| o.pid).is_some_and(is_pi),
+            running: this_boot && runs(p),
             since: turned.max(started),
             unstarted: started.is_some() && turned < started,
         })
@@ -258,7 +259,8 @@ mod tests {
         };
         // 1_000_000 s is 1970-01-12T13:46:40Z.
         let turned_later = presence("1970-01-12T13:46:40Z", 900_000_000);
-        let q = Quiet::from(&turned_later, None, Some("b"), false, |pid| pid == 7).unwrap();
+        let seven = |p: &Presence| p.owner.as_ref().and_then(|o| o.pid) == Some(7);
+        let q = Quiet::from(&turned_later, None, Some("b"), false, seven).unwrap();
         assert_eq!(q.since, Some(1_000_060));
         assert!(!q.unstarted);
         assert!(q.running && q.listening);
