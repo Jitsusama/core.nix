@@ -532,6 +532,11 @@ Rectangle {
         // does, so a count is said at a row's right even where its chord
         // is (VKCF3Z, 2026-11-05: "12 \u00b7 \u2699 + 0").
         readonly property bool counted: chorded && said !== ""
+        // The figure as the count draws it, or nothing where there's no
+        // count: a row reused for another lays out and measures its words
+        // anew at eight times their size, so a side said by sideText alone
+        // is never laid out a second and third time unseen.
+        readonly property string counts: counted ? said : ""
         // How wide what it says is drawn, from its right, which the say
         // stands before.
         readonly property real inked: chorded ? keys.width
@@ -544,7 +549,9 @@ Rectangle {
             id: keys
             anchors.right: parent.right
             visible: atRight.chorded
-            keys: row.chord
+            // None where it isn't drawn, since each key is a Text made
+            // afresh whenever the row is given other keys.
+            keys: atRight.chorded ? row.chord : []
             colour: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         }
 
@@ -566,7 +573,7 @@ Rectangle {
         }
         TextMetrics {
             id: countInk
-            text: atRight.said
+            text: atRight.counts
             font.family: Theme.level.note.family
             font.italic: Theme.level.note.italic
             font.weight: Theme.level.note.weight
@@ -574,7 +581,7 @@ Rectangle {
         }
         // From the figure's width as drawn rather than its fine advance,
         // since a face hinted fully draws its advance in whole pixels.
-        readonly property real countBearing: atRight.said === "" ? 0
+        readonly property real countBearing: atRight.counts === "" ? 0
             : Math.max(0, countFigure.implicitWidth - (countInk.tightBoundingRect.x
                 + countInk.tightBoundingRect.width) / row.fine)
         Row {
@@ -588,7 +595,7 @@ Rectangle {
 
             Text {
                 id: countFigure
-                text: atRight.said
+                text: atRight.counts
                 textFormat: Text.PlainText
                 color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
                 font.family: Theme.level.note.family
