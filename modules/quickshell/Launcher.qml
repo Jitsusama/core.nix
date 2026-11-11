@@ -5016,6 +5016,7 @@ Scope {
         // keeping its rows as a refresh does.
         steadying = true;
         ordering = ordered === true;
+        list.afresh = false;
         try {
             search(typed);
         } finally {
@@ -5037,7 +5038,13 @@ Scope {
         // above it went, and stopped a glide short (Joel, 2026-11-08).
         if (current !== now)
             current = now;
-        root.showMoved(at);
+        // Rows listed afresh stand from the list's start, so the selection
+        // is put back in view wherever it stands, at once: left there, a row
+        // kept in its place sat below the card unseen.
+        if (list.afresh && current >= 0)
+            list.positionViewAtIndex(current, ListView.Contain);
+        else
+            root.showMoved(at);
     }
 
     // Whether the search under way only says again what's there, as a
@@ -10010,6 +10017,10 @@ Scope {
                             // showing says beside its own time, or null
                             // until the rows it composed were kept.
                             property var keptLast: null
+                            // Whether keeping them last put every row in
+                            // again (RowsKept.afresh), so they stand from
+                            // the list's start, whatever it was scrolled to.
+                            property bool afresh: false
 
                             // Brings the kept rows into line with these, by
                             // what each is (RowsKept.js): a row listed before
@@ -10027,6 +10038,7 @@ Scope {
                                 // listed afresh, which reads each row in view
                                 // once, where each move read them again.
                                 const steps = RowsKept.steps(list.keptKeys, keys, root.rows);
+                                list.afresh = RowsKept.whole(list.keptKeys, steps);
                                 list.keptKeys = keys;
                                 if (steps.length === 0) {
                                     list.rows = rows;
