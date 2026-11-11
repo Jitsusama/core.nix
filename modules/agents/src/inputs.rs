@@ -1,11 +1,12 @@
 //! Everything Agents' rows are made from, as each source last told it:
 //! the node's sessions and the machine's queue, the to-do daemon's
-//! to-dos, spend-watch's collection and budgets, the harness's list of
-//! orchestrators, and whether the shell says the screen is shared. Each
+//! to-dos, the windows daemon's windows, spend-watch's collection and
+//! budgets, the harness's list of orchestrators, and whether the shell
+//! says the screen is shared. Each
 //! source changes its own part, and `made` makes every record from all of
 //! them.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use daemon_serve::watch::Held;
 use serde_json::Value;
@@ -27,6 +28,8 @@ pub struct Inputs {
     pub jobs: Held,
     /// The to-do daemon's `to-do` records.
     pub to_dos: Held,
+    /// The windows daemon's `window` records.
+    pub windows: Held,
     /// Spend-watch's collection, or none before it's written.
     pub spend: Option<Value>,
     /// Spend-watch's budgets, or none before they're written.
@@ -38,6 +41,34 @@ pub struct Inputs {
 }
 
 impl Inputs {
+    /// When each session's window was last used, in milliseconds, by its
+    /// address: the window the windows daemon says opened with the app id
+    /// the session's did (`Session::opened`), the oldest of them where
+    /// several did, as Sessions.qml finds it. One with none isn't said.
+    fn used(&self) -> HashMap<String, u64> {
+        let mut by_opened: HashMap<&str, (u64, u64)> = HashMap::new();
+        for (_, window) in self.windows.records() {
+            let opened = window.get("opened").and_then(Value::as_str);
+            let id = window.get("id").and_then(Value::as_u64);
+            let (Some(opened), Some(id)) = (opened, id) else {
+                continue;
+            };
+            let order = window.get("order").and_then(Value::as_u64).unwrap_or(0);
+            let kept = by_opened.entry(opened).or_insert((id, order));
+            if id < kept.0 {
+                *kept = (id, order);
+            }
+        }
+        self.sessions
+            .records()
+            .filter_map(|(_, one)| {
+                let session = Session(one);
+                let (_, order) = by_opened.get(session.opened().as_str())?;
+                Some((session.address().to_owned(), *order))
+            })
+            .collect()
+    }
+
     /// What a session spent today, by pi's id for it.
     fn spent(&self, id: &str) -> Option<String> {
         let said = self.spend.as_ref()?.get("sessions")?.get(id)?.as_str()?;
@@ -104,9 +135,9 @@ impl Inputs {
         let spent = |id: &str| self.spent(id);
         let family = |quest: &str| self.family(quest);
         let listed = |address: &str| self.listed(address);
-        // Whether a session has a window to go to comes from the windows
-        // daemon (3TXW9E, Thu 12 Nov); until then one here is taken to
-        // have its own, as a held session's kitty window is.
+        // One here is taken to have a window to go to, as a held session's
+        // kitty window is, since a window opened without an app id is one
+        // only its kitty can say, which Sessions.qml asks.
         let windowed = |session: Session| session.here();
         let known = Known {
             joel_can: &joel_can,
@@ -117,8 +148,12 @@ impl Inputs {
             windowed: &windowed,
             sharing: self.sharing,
         };
-        let sessions =
-            session::in_order(self.sessions.records().map(|(_, one)| Session(one)), &|_| 0);
+        let used = self.used();
+        let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
+        let sessions = session::in_order(
+            self.sessions.records().map(|(_, one)| Session(one)),
+            &last_used,
+        );
         let states: Vec<_> = sessions
             .iter()
             .map(|one| one.stands(&joel_can, &jobs))
@@ -210,6 +245,32 @@ mod tests {
              "presence": {"addresses": ["X"]}}
         ]}));
         inputs
+    }
+
+    #[test]
+    fn a_sessions_window_was_used_when_the_oldest_opened_with_its_app_id_was() {
+        let mut inputs = inputs();
+        inputs.sessions.took(&json!({"records": [
+            {"key": "session:o", "standing": "running", "window": {"app_id": "pi-session.1"},
+             "presence": {"addresses": ["O"]}},
+            {"key": "session:p", "standing": "running",
+             "presence": {"addresses": ["P"], "session": "s-p", "hosted": true}},
+            {"key": "session:q", "standing": "running", "presence": {"addresses": ["Q"]}}
+        ]}));
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "opened": "pi-session.1", "order": 10},
+            {"key": "window:9", "id": 9, "opened": "pi-session.1", "order": 99},
+            {"key": "window:8", "id": 8, "opened": "pi-hosted.s-p", "order": 20},
+            {"key": "window:3", "id": 3, "opened": "kitty", "order": 50}
+        ]}));
+        let used = inputs.used();
+        assert_eq!(used.get("O"), Some(&10), "the oldest window of its app id");
+        assert_eq!(used.get("P"), Some(&20), "a hosted one's viewer");
+        assert_eq!(
+            used.get("Q"),
+            None,
+            "one opened without an app id isn't said"
+        );
     }
 
     /// Every record served of what the inputs say now.

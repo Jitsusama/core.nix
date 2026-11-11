@@ -1,7 +1,8 @@
 # Agents' rows, ready for the launcher: the agents daemon, a program of
 # core's own (src/main.rs), follows the home realm's mycelium node for
 # every pi session and the machine's queue, the to-do daemon for what
-# waits on Joel, spend-watch's collection for what each spent, and the
+# waits on Joel, the windows daemon for when each session's window was
+# last used, spend-watch's collection for what each spent, and the
 # harness's list of orchestrators, and makes every row Agents shows from
 # all of it, worded from the launcher's own words.json. It serves them
 # over $XDG_RUNTIME_DIR/daemons/agents.sock in the shell's daemon
@@ -39,6 +40,8 @@ lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && realm != null) {
         "%t/mycelium/${realm}.sock"
         "--to-do"
         "%t/daemons/to-do.sock"
+        "--windows"
+        "%t/daemons/windows.sock"
         "--spend"
         "%t/spend-watch/collection.json"
         "--orchestrators"

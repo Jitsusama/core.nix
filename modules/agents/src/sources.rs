@@ -24,6 +24,8 @@ pub enum Heard {
     Jobs(Value),
     /// An answer to the to-do daemon's watch of its to-dos.
     ToDos(Value),
+    /// An answer to the windows daemon's watch of its windows.
+    Windows(Value),
     /// Files that landed or went.
     Files(Vec<PathBuf>),
     /// Whether the shell says the screen is shared.
@@ -78,6 +80,9 @@ impl Inputs {
             }
             Heard::ToDos(answer) => {
                 self.to_dos.took(&answer);
+            }
+            Heard::Windows(answer) => {
+                self.windows.took(&answer);
             }
             Heard::Files(landed) => {
                 for path in landed {

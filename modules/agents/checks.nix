@@ -49,6 +49,7 @@ onLinux {
       (
         lib.hasInfix "--node %t/mycelium/harbour.sock" started
         && lib.hasInfix "--to-do %t/daemons/to-do.sock" started
+        && lib.hasInfix "--windows %t/daemons/windows.sock" started
         && lib.hasInfix "-words.json" started
         && lib.hasInfix "--socket %t/daemons/agents.sock" started
         && socket.Socket.ListenStream == "%t/daemons/agents.sock"

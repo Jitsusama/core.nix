@@ -125,6 +125,34 @@ impl<'a> Session<'a> {
         self.0.get("changed").and_then(Value::as_u64).unwrap_or(0)
     }
 
+    /// The app id its window opened with, which the windows daemon says of
+    /// the window too: as the node was told it with the window, or for a
+    /// hosted session its viewer's, `pi-hosted.<id>`, as Sessions.qml
+    /// finds it. Empty for a window opened without one, which only its
+    /// kitty can say, so Sessions alone finds it.
+    pub fn opened(self) -> String {
+        let told = self
+            .0
+            .get("window")
+            .and_then(|window| window.get("app_id"))
+            .and_then(Value::as_str)
+            .filter(|app| !app.is_empty());
+        if let Some(app) = told {
+            return app.to_owned();
+        }
+        let hosted = self
+            .presence()
+            .and_then(|presence| presence.get("hosted"))
+            .is_some_and(|hosted| !matches!(hosted, Value::Null | Value::Bool(false)));
+        let id = self.said("session").unwrap_or("");
+        let plain = !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+        if hosted && plain {
+            format!("pi-hosted.{id}")
+        } else {
+            String::new()
+        }
+    }
+
     /// How it stands among the others, given who has something Joel can
     /// do now and the machine's queue.
     pub fn stands(self, joel_can: &JoelCan, jobs: &[Value]) -> Stands {
@@ -444,5 +472,30 @@ mod tests {
             .map(|session| session.address())
             .collect();
         assert_eq!(order, ["Q", "O", "P", "B", "A"]);
+    }
+
+    #[test]
+    fn a_window_is_known_by_the_app_id_it_opened_with_or_its_viewers() {
+        let told = json!({"window": {"app_id": "pi-session.4"},
+            "presence": {"session": "s-1", "hosted": true}});
+        let hosted = json!({"presence": {"session": "s-1", "hosted": true}});
+        let odd = json!({"presence": {"session": "s 1", "hosted": true}});
+        let held = json!({"window": {"app_id": ""}, "presence": {"session": "s-1"}});
+        assert_eq!(
+            Session(&told).opened(),
+            "pi-session.4",
+            "the app id told wins"
+        );
+        assert_eq!(
+            Session(&hosted).opened(),
+            "pi-hosted.s-1",
+            "else its viewer's"
+        );
+        assert_eq!(Session(&odd).opened(), "", "never an id no app id can hold");
+        assert_eq!(
+            Session(&held).opened(),
+            "",
+            "and none for one opened without"
+        );
     }
 }
