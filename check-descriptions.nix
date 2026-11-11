@@ -3480,6 +3480,12 @@
     disturb, For You's tray lit by a critical notice unread, a wait lasting a minute, the muted
     microphone, dictation, what's playing and caps lock, and Now says each and answers the keys
   '';
+  vm-desktop-moves-keep-their-window = ''
+    a session the launcher holds moves into pi's host in its own window, or carries on as plain pi
+    there when the host won't take it, keeping the window's id, workspace, column and size, taking
+    no focus, changing no pixel and losing no key; the node gives the session that window, so no
+    second viewer opens and Go To goes to it
+  '';
   vm-desktop-opens-and-sets = ''
     the launcher sets sound and opens its outputs' and microphones' parts, works a program's media,
     sets the power profile, scales displays, joins Wi-Fi and names each connection's addresses
