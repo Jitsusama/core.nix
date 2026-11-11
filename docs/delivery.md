@@ -11,8 +11,12 @@ They're measured from the raw records: `nix-offload/there.jsonl` under
 XDG's state folder for every run sent to a builder, the lent builder's
 `changed-checks/runs.jsonl` for each evaluation, and the merges on main.
 
-- Merge to on: a median under 8 minutes from a merge to the switch that
-  puts it on the machine.
+- Merge to on: a median under 18 minutes from a merge to the switch that
+  puts it on the machine. The follower keeps switches 30 minutes apart,
+  since on 9 November the launcher stopped taking keys after five shell
+  restarts in half an hour, so a merge waits 15 minutes on average for
+  the next. The target goes back to 8 once the launcher is shown to
+  survive repeated restarts and the spacing can shrink while Joel is away.
 - Last commit to merge: a median under 20 minutes for a change outside
   [`must-run.txt`][2]'s areas.
 - A VM run's wait for a builder: a median under 2 minutes.
