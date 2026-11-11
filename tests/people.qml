@@ -322,11 +322,17 @@ ShellRoot {
                 waiting?.run();
                 expect("and opens nothing while dimmed", Niri.spawned.length === 0,
                     Niri.spawned.join(" "));
+                // Their drawer is the daemon's, a source's facts ready in
+                // it, so showing it merges no one.
+                const merges = people.merging.merges;
                 const facts = open[0].drawer().facts.map(fact => `${fact.label}: ${fact.value}`);
                 expect("a source's facts are theirs, the time there after their zone",
-                    facts[1] === "Team: Shell" && facts[2] === "Time Zone: Asia/Kolkata"
+                    facts[0] === "Email: ada@example.com" && facts[1] === "Team: Shell"
+                        && facts[2] === "Time Zone: Asia/Kolkata"
                         && /^Time There: \d\d:\d\d, 5 h 30 min ahead$/.test(facts[3]),
                     facts.join("; "));
+                expect("showing their drawer merges no one", people.merging.merges === merges,
+                    `${people.merging.merges - merges} merges`);
                 expect("a favourite says so", steps[3].side === "yes" && steps[3].verb === "unstar",
                     `${steps[3].side} ${steps[3].verb}`);
                 expect("their email copies itself", steps[4].verb === "copy", steps[4].verb);

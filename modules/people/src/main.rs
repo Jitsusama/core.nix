@@ -30,14 +30,15 @@
 //!
 //! A `list` or `watch` of kind `listing` is those People lists with
 //! nothing typed, as it shows them (listing.rs): for each, a ready row
-//! in its order, kept as every daemon's are (../ready-rows), and a record
+//! in its order, kept as every daemon's are (../ready-rows), a record
 //! as one person, with how they stand by each source's `stands` in
-//! People's words as WORDS, the launcher's words.json, says them. A
+//! People's words as WORDS, the launcher's words.json, says them, and
+//! their drawer (drawer.rs), as a search's answer holds it too. A
 //! watch of it is told again only once the book changed, or the clock
 //! reached a meeting's start or end, and then only the records that
 //! changed and the keys that went, so the shell remakes nothing else.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
@@ -48,6 +49,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use people::drawer::{self, Named};
 use people::listing::{self, Stands, Told};
 use people::{Ask, Book, Heard, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
@@ -114,6 +116,8 @@ struct Daemon {
     /// The sources in the order they're consulted, each with how its lines
     /// say someone stands.
     sources: Vec<(String, Option<Stands>)>,
+    /// What a drawer names what it adds to the sources' facts.
+    named: Named,
     /// Counts each change the book takes, for a watch of those listed.
     revision: u64,
 }
@@ -126,18 +130,7 @@ fn main() {
         eprintln!("usage: people SOCKET SOURCES [WORDS]");
         std::process::exit(64);
     };
-    let said = args.next().map_or_else(BTreeMap::default, |words| {
-        match std::fs::read_to_string(&words)
-            .map_err(|error| error.to_string())
-            .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|e| e.to_string()))
-        {
-            Ok(vocabulary) => listing::words(&vocabulary),
-            Err(why) => {
-                eprintln!("<4>couldn't read the launcher's words, so each is said by name: {why}");
-                BTreeMap::default()
-            }
-        }
-    });
+    let (said, drawn) = drawer::words_at(args.next().as_deref());
     let sources: Vec<Source> = match std::fs::read_to_string(&sources)
         .map_err(|error| error.to_string())
         .and_then(|text| serde_json::from_str::<Sources>(&text).map_err(|error| error.to_string()))
@@ -174,6 +167,7 @@ fn main() {
                     (source.name.clone(), stands)
                 })
                 .collect(),
+            named: drawn,
             revision: 0,
         }),
         Condvar::new(),
@@ -475,6 +469,7 @@ fn say_gathered(daemon: &mut Daemon) {
         watches,
         book,
         sources,
+        named,
         revision,
         ..
     } = daemon;
@@ -487,7 +482,7 @@ fn say_gathered(daemon: &mut Daemon) {
                 return true;
             }
             *seen = *revision;
-            let moved = told.changes(book, sources, at);
+            let moved = told.changes(book, sources, named, at);
             if moved.is_empty() {
                 return true;
             }
@@ -542,7 +537,7 @@ fn listing(
 ) -> Option<Value> {
     let mut daemon = lock(shared);
     let mut said = Told::default();
-    said.changes(&daemon.book, &daemon.sources, clock());
+    said.changes(&daemon.book, &daemon.sources, &daemon.named, clock());
     let records = said.all();
     if !watch {
         return Some(json!({"id": id, "records": records}));
@@ -598,7 +593,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 .book
                 .search(&words, limit)
                 .into_iter()
-                .map(|record| listing::found(record, &daemon.sources))
+                .map(|record| listing::found(record, &daemon.sources, &daemon.named))
                 .collect();
             json!({"id": id, "records": records})
         }
@@ -762,6 +757,7 @@ mod tests {
                 took: VecDeque::new(),
                 since: now(),
                 sources: Vec::new(),
+                named: Named::read(&Value::Null),
                 revision: 0,
             }),
             Condvar::new(),

@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde_json::{Value, json};
 
+pub mod drawer;
 pub mod listing;
 
 /// The interface's version this speaks.

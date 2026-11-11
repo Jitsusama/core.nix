@@ -9915,6 +9915,16 @@
       "glyph": "unread"
     },
     {
+      "id": "people:email",
+      "in": "people",
+      "name": "Email"
+    },
+    {
+      "id": "people:there",
+      "in": "people",
+      "name": "Time There"
+    },
+    {
       "id": "transcripts",
       "in": "people",
       "name": "Transcripts",
