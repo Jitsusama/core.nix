@@ -10,9 +10,8 @@ told after a watch's answer.
 """
 
 import json
-import socket
+import socketserver
 import sys
-import threading
 from pathlib import Path
 
 SOCKET = Path(sys.argv[1])
@@ -36,24 +35,19 @@ def answer(said: dict[str, object]) -> dict[str, object]:
     return {"id": said.get("id"), "error": "the eero daemon doesn't know that ask"}
 
 
-def serve(connection: socket.socket) -> None:
-    """Answer each line one connection says until it goes."""
-    with connection, connection.makefile("rw", encoding="utf-8") as line:
-        for said in line:
-            line.write(json.dumps(answer(json.loads(said))) + "\n")
-            line.flush()
+class Connection(socketserver.StreamRequestHandler):
+    """One client, each line it says answered in order until it goes."""
+
+    def handle(self) -> None:
+        """Answer each line as it comes."""
+        for said in self.rfile:
+            self.wfile.write(f"{json.dumps(answer(json.loads(said)))}\n".encode())
 
 
-def main() -> None:
-    """Listen on the socket the shell holds, as the daemon's unit makes it."""
-    SOCKET.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    SOCKET.unlink(missing_ok=True)
-    listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    listening.bind(str(SOCKET))
-    listening.listen()
-    while True:
-        connection, _ = listening.accept()
-        threading.Thread(target=serve, args=(connection,), daemon=True).start()
-
-
-main()
+SOCKET.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+SOCKET.unlink(missing_ok=True)
+# Each client on a thread of its own, as the daemon serves each, so the shell's held connection
+# never keeps a test's own ask waiting.
+with socketserver.ThreadingUnixStreamServer(str(SOCKET), Connection) as server:
+    server.daemon_threads = True
+    server.serve_forever()
