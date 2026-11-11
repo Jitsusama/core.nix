@@ -68,6 +68,9 @@ Scope {
     // Each row as last made, by key, made again only once its record
     // changes or its time is said anew.
     readonly property var made: ({})
+    // The acts served in a form the launcher refuses, by key, each
+    // journalled once (ReadyRows.js's misformed).
+    readonly property var misformed: ({})
     // Which row names each drawer served apart, by the drawer's key, so
     // the row is made again once its drawer changes.
     readonly property var drawers: ({})
@@ -212,6 +215,12 @@ Scope {
         return Ready.sideSaid(row?.side, Date.now(), timeWords);
     }
 
+    // A row's side as its items, each drawn as it is, its times said as of
+    // now.
+    function itemsOf(row) {
+        return Ready.sideItems(row?.side, Date.now(), timeWords);
+    }
+
     // A row's note, words or a time said as of now.
     function noteOf(row) {
         return Ready.noteSaid(row?.note ?? "", Date.now(), timeWords);
@@ -239,16 +248,19 @@ Scope {
         const first = acts[0] ?? null;
         const steps = acts.some(one => one.step === "rows");
         const verbs = () => steps ? inside(key) : acts.map(one => actRow(key, one));
-        // How a Return leaves the launcher is leaving's. A row whose Return asks is that act's for the key language, so its
+        // How a Return leaves the launcher is ReadyRows.js's leaving's. A
+        // row whose Return asks is that act's for the key language, so its
         // command is read from the act's words (CommandBinding.wordsFor), as
         // Firmware's Install Now ends something and writes `install!` on
         // the line rather than running at the first Return (RCTRF8,
-        // 2026-11-11).
-        const asking = Ready.actForm(first) === "ask" ? { wordsId: first.key } : {};
+        // 2026-11-11), unless it shuts the launcher (ReadyRows.js's
+        // wordsOf).
+        const words = Ready.wordsOf(first);
+        const asking = words === "" ? {} : { wordsId: words };
         const acting = acts.length === 0 ? {} : Object.assign({
             verb: verbOf(first),
             run: () => act(key, first)
-        }, leaving(first));
+        }, Ready.leaving(first));
         // A row asking Joel to be sure holds its one act alone, as the
         // shell's own sure rows did, so the key language reads that act's
         // command (Catalogue.endsSomething) rather than a row of verbs.
@@ -262,7 +274,7 @@ Scope {
             now: true,
             copies: () => first.copy
         };
-        const items = Ready.sideItems(row.side, Date.now(), timeWords);
+        const items = itemsOf(row);
         return maker.member(Object.assign({
             key: row.thing ?? key,
             thing: !!row.drawer,
@@ -290,23 +302,6 @@ Scope {
         }, acting, asking, copying, fields ?? {}));
     }
 
-    // How the launcher leaves once an act is done. A step into rows or an
-    // ask keeps it open, so Joel sees what it became, as a setting's choice
-    // always has; a copy or an open closes it, as a value's row always has.
-    // An ask that brings its sender forward with a token is done while the
-    // launcher holds the keys, since niri gives one only then, and closes
-    // it, as does going to a program, done once the launcher's gone, since
-    // niri focuses a window only then, and opening a link, so its window
-    // takes the keys, as a row's Return opening one does.
-    function leaving(one) {
-        const form = Ready.actForm(one);
-        return {
-            stays: one.step === "rows" || form === "ask" && one.token !== true,
-            now: form === "ask" && one.token === true,
-            later: form === "go" || form === "open"
-        };
-    }
-
     // The acts of a row the launcher can do here: a step into the drawer
     // only where the launcher steps into one, so nothing offered does
     // nothing. Going to a program is always offered, since the daemon
@@ -316,6 +311,13 @@ Scope {
     // named in saying it opened nothing.
     function actsOf(row) {
         const launcher = maker?.launcher;
+        for (const one of row?.acts ?? []) {
+            const why = Ready.misformed(one);
+            if (why !== "" && !(one.key in misformed)) {
+                misformed[one.key] = true;
+                console.info(`launcher: ${one.key} refused: ${why}`);
+            }
+        }
         const named = {};
         const here = id => {
             const entry = DesktopEntries.byId(id);
@@ -354,8 +356,8 @@ Scope {
             side: said.side,
             hue: "action",
             stays: one.step === "rows",
-            now: leaving(one).now,
-            later: leaving(one).later,
+            now: Ready.leaving(one).now,
+            later: Ready.leaving(one).later,
             copies: typeof one.copy === "string" ? () => one.copy : undefined,
             run: () => act(key, one)
         });
@@ -400,7 +402,10 @@ Scope {
                 launcher?.intoDrawer(rowAt(key));
             return;
         case "ask":
-            asked(key, one);
+            if (Ready.closes(one))
+                shut(key, one);
+            else
+                asked(key, one);
         }
     }
 
@@ -428,6 +433,28 @@ Scope {
             const why = Ready.refusal(answer, Words.field.becoming ?? {});
             if (why !== "")
                 console.info(`launcher: ${one.key}'s also refused: ${why}`);
+        });
+    }
+
+    // Asks an act that shuts the launcher, as a paste does, which holds
+    // nothing drawn, since nothing is drawn by the time it's answered. A
+    // refusal is journalled at once and told as Joel next opens the
+    // launcher, in the daemon's words, so nothing fails silently.
+    function shut(key, one) {
+        const name = served(key)?.name ?? "";
+        const refused = why => {
+            console.info(`launcher: ${one.key} refused: ${why}`);
+            maker?.launcher?.toldNot(name, one.ask.act ?? verbOf(one), why);
+        };
+        const words = Words.field.becoming ?? {};
+        if (!link) {
+            refused(Ready.refusal(null, words));
+            return;
+        }
+        link.ask(one.ask, answer => {
+            const why = Ready.refusal(answer, words);
+            if (why !== "")
+                refused(why);
         });
     }
 

@@ -243,7 +243,7 @@ function drawerServed(row, held) {
 // "step", into the row's drawer or the rows inside it; or "" for a form
 // the shell doesn't know, which is never guessed at, and so never offered.
 function actForm(act) {
-    if (typeof act?.key !== "string" || act.key === "") {
+    if (typeof act?.key !== "string" || act.key === "" || misformed(act) !== "") {
         return "";
     }
     if (act.ask !== null && typeof act.ask === "object") {
@@ -298,6 +298,48 @@ function opened(act, commandOf, words) {
         return { run, why: "" };
     }
     return { run: null, why: (words.missing ?? "").replace("{program}", act.program ?? "") };
+}
+
+// Why an act can't be done as it's served, or "" where it can: one that
+// shuts the launcher holds nothing drawn, so it can't say what its row
+// becomes.
+function misformed(act) {
+    return act?.closes === true && act.becomes !== undefined ? "closes and becomes" : "";
+}
+
+// Whether an ask shuts the launcher as it's asked, as a paste does, so the
+// keys go back to the window under it before the daemon presses any.
+function closes(act) {
+    return actForm(act) === "ask" && act.closes === true;
+}
+
+// How the launcher leaves once an act is done. A step into rows or an
+// ask keeps it open, so Joel sees what it became, as a setting's choice
+// always has; a copy or an open closes it, as a value's row always has.
+// An ask that shuts it, as a paste does, or that brings its sender forward
+// with a token, which niri gives only while the launcher holds the keys,
+// is done at once, in Return's own turn, the keys given back in the next
+// frame, before its closing's work (Launcher.qml's choose). Going to a
+// program is done once the launcher's gone, since niri focuses a window
+// only then, as is opening a link, so its window takes the keys, as a
+// row's Return opening one does.
+function leaving(act) {
+    const now = closes(act) || (actForm(act) === "ask" && act.token === true);
+    return {
+        stays: act?.step === "rows" || (actForm(act) === "ask" && !now),
+        now,
+        later: actForm(act) === "go" || actForm(act) === "open"
+    };
+}
+
+// The words a row whose Return asks is read by in the key language, its
+// act's (CommandBinding.wordsFor), so Firmware's Install Now writes
+// `install!` on the line rather than running at the first Return; "" for
+// any other, and for an ask that shuts the launcher, which is done in
+// Return's own turn, as Super+V's paste is, though `put` changes
+// something: read by its words, Return from the find would land on it.
+function wordsOf(act) {
+    return actForm(act) === "ask" && !closes(act) ? act.key : "";
 }
 
 // A row's mark as drawn: words.json's glyph role it names (`roles`, the

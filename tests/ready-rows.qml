@@ -326,6 +326,45 @@ QtObject {
         Expect.same("one refused unworded says the launcher's",
             Ready.refusal({ error: { code: "NotJoined" } }, words), "couldn't");
         Expect.same("one unanswered says so", Ready.refusal(null, words), "no answer");
+        closing();
+    }
+
+    function closing() {
+        const paste = { key: "verb:copy:paste", ask: { ask: "paste", copy: 3 }, closes: true };
+        const both = Object.assign({ becomes: { key: "row:copies:3" } }, paste);
+        Expect.same("an ask that shuts the launcher is still an ask", Ready.actForm(paste),
+            "ask");
+        Expect.same("and shuts it", Ready.closes(paste), true);
+        Expect.same("an ask that doesn't, doesn't",
+            Ready.closes({ key: "verb:wifi-leave", ask: { ask: "act" } }), false);
+        Expect.same("only an ask shuts it",
+            Ready.closes({ key: "verb:copy:copy", copy: "a", closes: true }), false);
+        Expect.same("one that shuts it is done in Return's turn, the launcher let go",
+            Ready.leaving(paste), { stays: false, now: true, later: false });
+        Expect.same("one that asks without shutting it keeps it, to show what it became",
+            Ready.leaving({ key: "verb:wifi-leave", ask: { ask: "act" } }),
+            { stays: true, now: false, later: false });
+        Expect.same("one that brings its sender forward is done while the keys are held",
+            Ready.leaving({ key: "verb:notice:open", ask: { ask: "invoke" }, token: true }),
+            { stays: false, now: true, later: false });
+        Expect.same("one that copies leaves it as a value's row does",
+            Ready.leaving({ key: "verb:copy:copy", copy: "a" }),
+            { stays: false, now: false, later: false });
+        Expect.same("going to a program is done once the launcher's gone",
+            Ready.leaving({ key: "verb:go", go: "kitty" }),
+            { stays: false, now: false, later: true });
+        Expect.same("an ask is read by its act's words in the key language",
+            Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
+            "verb:firmware:install");
+        Expect.same("but one that shuts the launcher isn't, so Return does it from the find",
+            Ready.wordsOf(paste), "");
+        Expect.same("nor any other act", Ready.wordsOf({ key: "verb:copy:copy", copy: "a" }), "");
+        Expect.same("shutting it and saying what it becomes is refused", Ready.misformed(both),
+            "closes and becomes");
+        Expect.same("so it's no act at all", Ready.actForm(both), "");
+        Expect.same("and isn't offered", Ready.actsOf({ acts: [both, paste] }).map(act => act.key),
+            ["verb:copy:paste"]);
+        Expect.same("a well-formed act says nothing", Ready.misformed(paste), "");
     }
 
     function ticking() {

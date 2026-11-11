@@ -8096,8 +8096,7 @@
         "line": "{count} line",
         "lines": "{count} lines",
         "image": "image",
-        "imageSized": "image {across} \u00d7 {down}",
-        "picture": "picture"
+        "imageSized": "image {across} \u00d7 {down}"
       },
       "glyph": "clipboard",
       "ask": "which copy?"
@@ -14191,6 +14190,7 @@
         "off": "turned off",
         "on": "turned on",
         "open": "opened",
+        "paste": "pasted",
         "pause": "paused",
         "reopen": "reopened",
         "resume": "resumed",

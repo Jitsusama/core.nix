@@ -33,11 +33,15 @@
 //! rows and files going with them.
 //!
 //! The shell asks it, as its own asks, `{"ask": "copy", "copy": N}` to put
-//! copy N back on the clipboard (not `id`, which names the ask itself), or with `"text"` in place of the number to
-//! put the shell's own text there, kept as a copy is. `"paste"`, with
+//! copy N back on the clipboard (not `id`, which names the ask itself), or
+//! with `"text"` in place of the number to put the shell's own text there,
+//! kept as a copy is. `"paste"`, with
 //! `"into": "terminal"` or `"plain"`, puts it there and then presses the
 //! paste keys for the window the launcher closed over: Ctrl+Shift+V for a
 //! terminal, whose Ctrl+V is a key of its own, and Ctrl+V anywhere else.
+//! Without `"into"`, they're the keys of the focused workspace's active
+//! window as the paste is asked, and with none, the copy
+//! is only put on the clipboard, with nowhere to paste it.
 //! They're pressed through the compositor's virtual keyboard, once niri
 //! says the launcher's layer has let go of the keys, so they reach the
 //! window and not the launcher, and nothing waits on the shell's thread:
@@ -126,6 +130,17 @@ const PATIENCE: Duration = Duration::from_secs(2);
 /// holds the keys while it's open.
 const LAUNCHER: &str = "launcher";
 
+/// The programs whose Ctrl+V is a key of their own, which paste with
+/// Ctrl+Shift+V instead: the terminals, by the app id niri gives them, as
+/// the shell's Pasting.qml names them.
+const TERMINALS: [&str; 5] = [
+    "kitty",
+    "foot",
+    "Alacritty",
+    "org.wezfurlong.wezterm",
+    "com.mitchellh.ghostty",
+];
+
 /// How long the launcher has to let go of the keys before a paste gives up
 /// rather than press them into it.
 const LETTING_GO: Duration = Duration::from_secs(1);
@@ -180,12 +195,13 @@ enum Which {
     Text(String),
 }
 
-/// What the shell asks for.
+/// What the shell asks for: a paste with the keys it names, or with none,
+/// those of the window under the launcher.
 #[derive(Debug, PartialEq)]
 enum Wanted {
     Clear,
     Copy(Which),
-    Paste(Which, Keys),
+    Paste(Which, Option<Keys>),
 }
 
 /// Where an ask's answer goes: back to the connection that asked, which
@@ -231,9 +247,10 @@ fn wanted(said: &Value) -> Option<Wanted> {
         "clear" => Some(Wanted::Clear),
         "copy" => Some(Wanted::Copy(which(said)?)),
         "paste" => {
-            let keys = match said["into"].as_str()? {
-                "terminal" => Keys::Terminal,
-                "plain" => Keys::Plain,
+            let keys = match &said["into"] {
+                Value::Null => None,
+                Value::String(into) if into == "terminal" => Some(Keys::Terminal),
+                Value::String(into) if into == "plain" => Some(Keys::Plain),
                 _ => return None,
             };
             Some(Wanted::Paste(which(said)?, keys))
@@ -263,14 +280,73 @@ fn let_go(answer: &str) -> Option<bool> {
     }))
 }
 
-/// Asks niri whether the launcher holds no keys.
-fn asked_niri(socket: &Path) -> Option<bool> {
+/// What the keys go back to as the launcher lets go of them: a window, by
+/// its id, or nothing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Focus {
+    Window(u64),
+    Nowhere,
+}
+
+/// What niri's answer to `Workspaces` says the keys go back to: the
+/// focused workspace's active window. niri says no window is focused
+/// while the launcher holds the keys, so its focused window can't say.
+/// None when it isn't an answer to that.
+fn active(answer: &str) -> Option<Focus> {
+    let answer: Value = serde_json::from_str(answer).ok()?;
+    let workspaces = answer.get("Ok")?.get("Workspaces")?.as_array()?;
+    let focused = workspaces
+        .iter()
+        .find(|workspace| workspace.get("is_focused").and_then(Value::as_bool) == Some(true));
+    Some(
+        match focused.and_then(|workspace| workspace.get("active_window_id")?.as_u64()) {
+            Some(id) => Focus::Window(id),
+            None => Focus::Nowhere,
+        },
+    )
+}
+
+/// The keys window `id` takes, from niri's answer to `Windows`: none when
+/// it isn't an answer to that or doesn't hold the window.
+fn keys_of(answer: &str, id: u64) -> Option<Keys> {
+    let answer: Value = serde_json::from_str(answer).ok()?;
+    let windows = answer.get("Ok")?.get("Windows")?.as_array()?;
+    let window = windows
+        .iter()
+        .find(|window| window.get("id").and_then(Value::as_u64) == Some(id))?;
+    let app = window.get("app_id").and_then(Value::as_str).unwrap_or("");
+    Some(if TERMINALS.contains(&app) {
+        Keys::Terminal
+    } else {
+        Keys::Plain
+    })
+}
+
+/// Asks niri one question, `ask` as its socket takes it, and reads its
+/// answer with `read`.
+fn asked_niri<T>(socket: &Path, ask: &[u8], read: impl FnOnce(&str) -> Option<T>) -> Option<T> {
     let mut stream = UnixStream::connect(socket).ok()?;
     stream.set_read_timeout(Some(LETTING_GO)).ok()?;
-    stream.write_all(b"\"Layers\"\n").ok()?;
+    stream.write_all(ask).ok()?;
     let mut answer = String::new();
     BufReader::new(stream).read_line(&mut answer).ok()?;
-    let_go(&answer)
+    read(&answer)
+}
+
+/// The keys the window under the launcher takes, as niri says, or none
+/// with no window focused to paste into. With no niri to ask, or no answer
+/// from it, Ctrl+V, as most windows take.
+fn under(niri: Option<&Path>) -> Option<Keys> {
+    let Some(niri) = niri else {
+        return Some(Keys::Plain);
+    };
+    match asked_niri(niri, b"\"Workspaces\"\n", active) {
+        Some(Focus::Window(id)) => Some(
+            asked_niri(niri, b"\"Windows\"\n", |answer| keys_of(answer, id)).unwrap_or(Keys::Plain),
+        ),
+        Some(Focus::Nowhere) => None,
+        None => Some(Keys::Plain),
+    }
 }
 
 /// Waits until niri says the launcher has let go of the keys, or with no
@@ -288,7 +364,7 @@ fn keys_let_go(niri: Option<&Path>) -> bool {
     };
     let deadline = Instant::now() + LETTING_GO;
     while Instant::now() < deadline {
-        if asked_niri(niri) == Some(true) {
+        if asked_niri(niri, b"\"Layers\"\n", let_go) == Some(true) {
             return true;
         }
         thread::sleep(ASKING);
@@ -809,8 +885,16 @@ impl State {
 
     /// Puts a copy on the clipboard, then waits, away from the Wayland
     /// side, for the launcher to let go of the keys, and asks for the paste
-    /// keys to be pressed once it has. The paste is answered then.
-    fn paste(&mut self, which: Which, keys: Keys, reply: Reply, handle: &QueueHandle<Self>) {
+    /// keys to be pressed once it has: those named, or those of the window
+    /// under it. The paste is answered then, or with no window to paste
+    /// into, as a copy.
+    fn paste(
+        &mut self,
+        which: Which,
+        keys: Option<Keys>,
+        reply: Reply,
+        handle: &QueueHandle<Self>,
+    ) {
         let asked = Instant::now();
         if !self.offer(which, handle) {
             eprintln!("That copy isn't kept, so nothing was pasted.");
@@ -823,6 +907,15 @@ impl State {
         };
         let pressing = self.pressing.clone();
         thread::spawn(move || {
+            // Asked before the launcher lets go, since an ask after waits
+            // behind niri drawing, which held a paste's keys 119 ms on a
+            // builder (2026-11-11). The workspace's active window is asked,
+            // since niri says no window is focused while the launcher holds
+            // the keys, which left a paste into kitty with nowhere to go.
+            let Some(keys) = keys.or_else(|| under(niri.as_deref())) else {
+                let _ = reply.send(json!({ "copied": true }));
+                return;
+            };
             let said = if keys_let_go(niri.as_deref()) {
                 let let_go = Instant::now();
                 Asked::Press(keys, let_go - asked, let_go, reply)
@@ -1636,12 +1729,53 @@ mod tests {
     fn the_shell_asks_for_a_paste_with_the_keys_its_window_takes() {
         assert_eq!(
             wanted(&json!({ "ask": "paste", "copy": 3, "into": "terminal" })),
-            Some(Wanted::Paste(Which::Kept(3), Keys::Terminal))
+            Some(Wanted::Paste(Which::Kept(3), Some(Keys::Terminal)))
         );
         assert_eq!(
             wanted(&json!({ "ask": "paste", "text": "a b", "into": "plain" })),
-            Some(Wanted::Paste(Which::Text("a b".to_string()), Keys::Plain))
+            Some(Wanted::Paste(
+                Which::Text("a b".to_string()),
+                Some(Keys::Plain)
+            ))
         );
+    }
+
+    #[test]
+    fn a_paste_that_names_no_keys_takes_its_windows() {
+        assert_eq!(
+            wanted(&json!({ "ask": "paste", "copy": 3 })),
+            Some(Wanted::Paste(Which::Kept(3), None))
+        );
+    }
+
+    #[test]
+    fn the_keys_go_back_to_the_focused_workspaces_active_window() {
+        let workspaces = json!({ "Ok": { "Workspaces": [
+            { "id": 1, "is_focused": false, "active_window_id": 3 },
+            { "id": 2, "is_focused": true, "active_window_id": 7 }
+        ] } });
+        assert_eq!(active(&workspaces.to_string()), Some(Focus::Window(7)));
+        let empty = json!({ "Ok": { "Workspaces": [
+            { "id": 1, "is_focused": false, "active_window_id": 3 },
+            { "id": 2, "is_focused": true, "active_window_id": null }
+        ] } });
+        assert_eq!(active(&empty.to_string()), Some(Focus::Nowhere));
+        assert_eq!(active("{\"Ok\":{\"Layers\":[]}}"), None);
+        assert_eq!(under(None), Some(Keys::Plain));
+    }
+
+    #[test]
+    fn a_window_says_its_keys_by_its_program() {
+        let windows = json!({ "Ok": { "Windows": [
+            { "id": 3, "app_id": "firefox" },
+            { "id": 7, "app_id": "foot" },
+            { "id": 8, "app_id": "com.mitchellh.ghostty" }
+        ] } })
+        .to_string();
+        assert_eq!(keys_of(&windows, 7), Some(Keys::Terminal));
+        assert_eq!(keys_of(&windows, 8), Some(Keys::Terminal));
+        assert_eq!(keys_of(&windows, 3), Some(Keys::Plain));
+        assert_eq!(keys_of(&windows, 9), None, "a window niri doesn't list");
     }
 
     #[test]
@@ -1650,8 +1784,8 @@ mod tests {
             json!({ "ask": "copy" }),
             json!({ "ask": "copy", "copy": "x" }),
             json!({ "ask": "copy", "id": 3 }),
-            json!({ "ask": "paste", "copy": 3 }),
             json!({ "ask": "paste", "copy": 3, "into": "loud" }),
+            json!({ "ask": "paste", "copy": 3, "into": 1 }),
             json!({ "ask": "press" }),
             json!({}),
         ] {

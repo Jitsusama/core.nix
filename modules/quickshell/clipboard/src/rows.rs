@@ -198,11 +198,12 @@ fn came(at: u128) -> Value {
 }
 
 /// What a row asks for when it's pasted and when it's copied, in the one
-/// verb order; the shell adds which keys the window under takes.
+/// verb order. Each shuts the launcher as it's asked, so a paste's keys go
+/// to the window under it, whose own keys the history presses.
 fn acts(id: u64) -> Value {
     json!([
-        { "key": "verb:copy:paste", "ask": { "ask": "paste", "copy": id } },
-        { "key": "verb:copy:copy", "ask": { "ask": "copy", "copy": id } }
+        { "key": "verb:copy:paste", "ask": { "ask": "paste", "copy": id }, "closes": true },
+        { "key": "verb:copy:copy", "ask": { "ask": "copy", "copy": id }, "closes": true }
     ])
 }
 
@@ -252,14 +253,23 @@ pub fn picture(picture: &Picture, words: &Words) -> Value {
     };
     let (across, down) = picture.size.unwrap_or((0, 0));
     // Said by its format's own name, which no vocabulary words, as a
-    // document's "PDF" is: "PNG" for image/png.
+    // document's "PDF" is: "PNG" for image/png. One without a name says
+    // only its size, since its row already says it's an image.
     let kind = match picture.kind {
-        "image/png" => "PNG".to_owned(),
-        "image/jpeg" => "JPEG".to_owned(),
-        "image/webp" => "WebP".to_owned(),
-        "image/gif" => "GIF".to_owned(),
-        _ => capitalised(&words.said("picture")),
+        "image/png" => Some("PNG"),
+        "image/jpeg" => Some("JPEG"),
+        "image/webp" => Some("WebP"),
+        "image/gif" => Some("GIF"),
+        _ => None,
     };
+    let side: Vec<Value> = kind
+        .map(|said| json!({ "said": said }))
+        .into_iter()
+        .chain([
+            json!({ "said": words.bytes(picture.bytes) }),
+            came(picture.at),
+        ])
+        .collect();
     json!({
         "key": format!("row:{PLACE}:{}", picture.id),
         "thing": format!("picture:{}", picture.id),
@@ -268,7 +278,7 @@ pub fn picture(picture: &Picture, words: &Words) -> Value {
         "name": capitalised(&name),
         "glyph": "picture",
         "hue": "text",
-        "side": [{ "said": kind }, { "said": words.bytes(picture.bytes) }, came(picture.at)],
+        "side": side,
         "acts": acts(picture.id),
         "held": { "id": picture.id, "picture": picture.path, "across": across, "down": down },
     })
@@ -368,6 +378,8 @@ mod tests {
         );
         assert_eq!(row["held"]["reads"], "first\nsecond");
         assert_eq!(row["acts"][0]["ask"], json!({ "ask": "paste", "copy": 7 }));
+        assert_eq!(row["acts"][0]["closes"], true, "a paste shuts the launcher");
+        assert_eq!(row["acts"][1]["closes"], true, "and so does a copy");
         let one = text(8, 2_000, "one line", &words());
         assert_eq!(one["side"], json!([{ "at": 2_000, "as": "came" }]));
     }
@@ -395,8 +407,10 @@ mod tests {
         kept.bytes = 512;
         let unknown = picture(&kept, &words());
         assert_eq!(unknown["name"], "Image");
-        assert_eq!(unknown["side"][0]["said"], "Picture");
-        assert_eq!(unknown["side"][1]["said"], "512 B");
+        assert_eq!(
+            unknown["side"][0]["said"], "512 B",
+            "a format without a name says only its size"
+        );
     }
 
     #[test]
