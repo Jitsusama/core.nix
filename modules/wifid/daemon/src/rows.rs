@@ -8,7 +8,6 @@
 //! when something it draws changes (face.rs).
 
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
@@ -107,7 +106,8 @@ impl Network<'_> {
 }
 
 /// Every row, in the order the launcher lists them, each without its
-/// `order`, which `Orders` gives it. A machine with no card has none.
+/// `order`, which ready-rows' `Kept` gives it (face.rs). A machine with no
+/// card has none.
 pub fn rows(described: &Described, words: &Words) -> Vec<Value> {
     if described.cards.is_empty() {
         return Vec::new();
@@ -120,7 +120,7 @@ pub fn rows(described: &Described, words: &Words) -> Vec<Value> {
         .and_then(|card| card.network.as_deref());
     if let Some(network) = signing {
         rows.push(json!({
-            "key": key("sign-in"), "row": "wifi:sign-in", "place": PLACE, "kind": "sign-in",
+            "key": key("sign-in"), "thing": "wifi:sign-in", "place": PLACE, "kind": "sign-in",
             "name": words.sign_in.name.replace("{network}", network),
             "glyph": words.sign_in.glyph, "hue": "machine", "depth": 0, "side": [],
             "held": {"network": network},
@@ -149,7 +149,7 @@ fn radio_row(on: bool, words: &Words) -> Value {
         &words.radio_off
     };
     json!({
-        "key": key("radio"), "row": "wifi:radio", "place": PLACE, "kind": "radio",
+        "key": key("radio"), "thing": "wifi:radio", "place": PLACE, "kind": "radio",
         "name": radio.name, "glyph": radio.glyph, "hue": "machine", "depth": 0, "side": [],
         "held": {"on": on},
     })
@@ -315,7 +315,7 @@ fn network_row(network: &Network, signing: Option<&str>, words: &Words) -> Value
         // Keyed apart from the radio's and the sign-in's, so a network
         // named radio is a row of its own.
         "key": key(&format!("network:{}", network.name)),
-        "row": format!("wifi:{}", network.name), "place": PLACE,
+        "thing": format!("wifi:{}", network.name), "place": PLACE,
         "kind": "network", "name": network.name, "note": note, "glyph": glyph, "hue": "machine",
         "depth": 0, "side": side,
         "held": {
@@ -335,105 +335,6 @@ fn security(security: Security) -> &'static str {
         Security::Personal => "personal",
         Security::Enterprise => "enterprise",
     }
-}
-
-/// How far apart rows are placed when they're placed afresh, so one row
-/// moving later finds room between two others.
-pub const SPACING: i64 = 1024;
-
-/// Each row's place, kept from one making to the next, so a row moving
-/// changes its own `order` alone: the longest run of rows still in their
-/// order keeps theirs, and each other row is placed midway between its
-/// neighbours. Only when no room is left between two is every row placed
-/// afresh, said in the same change.
-#[derive(Clone, Debug, Default)]
-pub struct Orders {
-    last: BTreeMap<String, i64>,
-}
-
-impl Orders {
-    /// The rows with their `order`, by the keys they were listed in.
-    pub fn place(&mut self, mut rows: Vec<Value>) -> Vec<Value> {
-        let keys: Vec<String> = rows
-            .iter()
-            .map(|row| row["key"].as_str().unwrap_or("").to_owned())
-            .collect();
-        let orders = self.orders(&keys);
-        for (row, order) in rows.iter_mut().zip(&orders) {
-            row["order"] = json!(order);
-        }
-        self.last = keys.into_iter().zip(orders).collect();
-        rows
-    }
-
-    fn orders(&self, keys: &[String]) -> Vec<i64> {
-        let before: Vec<Option<i64>> = keys.iter().map(|key| self.last.get(key).copied()).collect();
-        let kept = longest_run(&before);
-        let mut orders: Vec<Option<i64>> = before
-            .iter()
-            .enumerate()
-            .map(|(at, order)| if kept.contains(&at) { *order } else { None })
-            .collect();
-        let mut at = 0;
-        while at < orders.len() {
-            if orders[at].is_some() {
-                at += 1;
-                continue;
-            }
-            let end = (at..orders.len())
-                .find(|&end| orders[end].is_some())
-                .unwrap_or(orders.len());
-            let count = i64::try_from(end - at).unwrap_or(i64::MAX);
-            let low = if at == 0 { None } else { orders[at - 1] };
-            let high = orders.get(end).copied().flatten();
-            let (low, high) = match (low, high) {
-                (Some(low), Some(high)) => (low, high),
-                (Some(low), None) => (low, low + SPACING * (count + 1)),
-                (None, Some(high)) => (high - SPACING * (count + 1), high),
-                (None, None) => (0, SPACING * (count + 1)),
-            };
-            let step = (high - low) / (count + 1);
-            if step < 1 {
-                return (1..=keys.len())
-                    .map(|place| SPACING * i64::try_from(place).unwrap_or(i64::MAX))
-                    .collect();
-            }
-            for (placed, slot) in orders[at..end].iter_mut().enumerate() {
-                *slot = Some(low + step * (i64::try_from(placed).unwrap_or(0) + 1));
-            }
-            at = end;
-        }
-        orders.into_iter().map(|order| order.unwrap_or(0)).collect()
-    }
-}
-
-/// The places of the longest run of orders still increasing, leaving out
-/// rows with none.
-fn longest_run(orders: &[Option<i64>]) -> Vec<usize> {
-    let placed: Vec<(usize, i64)> = orders
-        .iter()
-        .enumerate()
-        .filter_map(|(at, order)| order.map(|order| (at, order)))
-        .collect();
-    // The longest run ending at each, and the one before it there.
-    let mut length = vec![1usize; placed.len()];
-    let mut previous = vec![None; placed.len()];
-    for one in 0..placed.len() {
-        for before in 0..one {
-            if placed[before].1 < placed[one].1 && length[before] + 1 > length[one] {
-                length[one] = length[before] + 1;
-                previous[one] = Some(before);
-            }
-        }
-    }
-    let mut run = Vec::new();
-    let mut at = (0..placed.len()).max_by_key(|&at| length[at]);
-    while let Some(one) = at {
-        run.push(placed[one].0);
-        at = previous[one];
-    }
-    run.reverse();
-    run
 }
 
 #[cfg(test)]
@@ -549,7 +450,7 @@ mod tests {
     fn a_network_says_how_it_stands_its_bars_and_how_its_joined() {
         let rows = rows(&described(), &words());
         assert_eq!(rows[0]["key"], "row:wifi:network:Lantern");
-        assert_eq!(rows[0]["row"], "wifi:Lantern");
+        assert_eq!(rows[0]["thing"], "wifi:Lantern");
         assert_eq!(rows[0]["note"], "a password");
         assert_eq!(rows[0]["glyph"], "lockedSignal3");
         assert_eq!(
@@ -655,44 +556,5 @@ mod tests {
         let mut none = described();
         none.cards.clear();
         assert_eq!(rows(&none, &words()), Vec::<Value>::new());
-    }
-
-    fn placed(orders: &mut Orders, keys: &[&str]) -> Vec<i64> {
-        let rows = keys.iter().map(|key| json!({"key": key})).collect();
-        orders
-            .place(rows)
-            .iter()
-            .map(|row| row["order"].as_i64().expect("an order"))
-            .collect()
-    }
-
-    #[test]
-    fn rows_are_placed_apart_and_one_moving_changes_its_own_order_alone() {
-        let mut orders = Orders::default();
-        assert_eq!(
-            placed(&mut orders, &["a", "b", "c", "d"]),
-            [1024, 2048, 3072, 4096]
-        );
-        assert_eq!(
-            placed(&mut orders, &["a", "d", "b", "c"]),
-            [1024, 1536, 2048, 3072]
-        );
-        assert_eq!(
-            placed(&mut orders, &["e", "a", "d", "b", "c", "f"]),
-            [0, 1024, 1536, 2048, 3072, 4096]
-        );
-    }
-
-    #[test]
-    fn with_no_room_left_every_row_is_placed_afresh() {
-        let mut orders = Orders::default();
-        placed(&mut orders, &["a", "b"]);
-        let mut squeezed = vec!["a"];
-        let names: Vec<String> = (0..1100).map(|n| format!("n{n}")).collect();
-        squeezed.extend(names.iter().map(String::as_str));
-        squeezed.push("b");
-        let said = placed(&mut orders, &squeezed);
-        let spaced: Vec<i64> = (1..=1102).map(|n| n * SPACING).collect();
-        assert_eq!(said, spaced);
     }
 }

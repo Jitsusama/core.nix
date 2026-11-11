@@ -30,7 +30,9 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::acts;
-use crate::rows::{self, Orders, Words};
+use ready_rows::kept::Kept;
+
+use crate::rows::{self, Words};
 use crate::service::Ask;
 use crate::state::State;
 
@@ -47,35 +49,35 @@ const STORE: &str = "/nix/store/";
 /// rather than told less than it asked for.
 const WAITING: usize = 64;
 
-/// The rows, by key, as they stand in one vocabulary.
+/// The rows' records, by key, as they stand in one vocabulary, each
+/// `{ key, kind: "row", row }` as every daemon serves them (ready-rows).
 pub type Made = BTreeMap<String, Value>;
 
 /// The rows made in one vocabulary, made again as wifid's state changes
 /// for as long as anyone watches them.
 struct Vocabulary {
     words: Words,
-    orders: Orders,
+    kept: Kept,
     made: watch::Sender<Arc<Made>>,
 }
 
 impl Vocabulary {
-    /// Makes the rows again from the state, telling whoever watches only
-    /// when one of them changed.
+    /// Makes the rows again from the state, each keeping its spaced order
+    /// where it can, and tells whoever watches only when one of them
+    /// changed.
     fn make(&mut self, state: &State) {
-        let placed = self
-            .orders
-            .place(rows::rows(&state.described(), &self.words));
-        let made: Made = placed
-            .into_iter()
-            .filter_map(|row| Some((row["key"].as_str()?.to_owned(), row)))
+        let moved = self
+            .kept
+            .take(rows::rows(&state.described(), &self.words), Vec::new());
+        if moved.is_empty() {
+            return;
+        }
+        let made: Made = self
+            .kept
+            .all()
+            .filter_map(|record| Some((record["key"].as_str()?.to_owned(), record.clone())))
             .collect();
-        self.made.send_if_modified(|held| {
-            if **held == made {
-                return false;
-            }
-            *held = Arc::new(made);
-            true
-        });
+        self.made.send_replace(Arc::new(made));
     }
 }
 
@@ -155,7 +157,7 @@ impl Face {
             .map_err(|error| format!("{} isn't JSON: {error}", path.display()))?;
         let mut vocabulary = Vocabulary {
             words: Words::read(&whole)?,
-            orders: Orders::default(),
+            kept: Kept::default(),
             made: watch::Sender::new(Arc::new(Made::new())),
         };
         vocabulary.make(&state);
@@ -506,11 +508,12 @@ mod tests {
             keys(&whole, "records"),
             ["row:wifi:network:Lantern", "row:wifi:radio"]
         );
-        assert_eq!(whole["records"][1]["name"], "Wi-Fi Off");
+        assert_eq!(whole["records"][1]["kind"], "row");
+        assert_eq!(whole["records"][1]["row"]["name"], "Wi-Fi Off");
         state.send_modify(|state| state.radio(false));
         let change = client.heard().await;
         assert_eq!(keys(&change, "changed"), ["row:wifi:radio"]);
-        assert_eq!(change["changed"][0]["name"], "Wi-Fi On");
+        assert_eq!(change["changed"][0]["row"]["name"], "Wi-Fi On");
         assert_eq!(change["gone"], json!(["row:wifi:network:Lantern"]));
     }
 
