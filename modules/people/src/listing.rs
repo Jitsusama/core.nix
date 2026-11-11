@@ -228,6 +228,13 @@ fn bare(name: &str) -> bool {
     name.is_empty() || name.contains('@')
 }
 
+/// A record as a search answers it, with the row it's found as.
+pub fn found(record: &Record, sources: &[(String, Option<Stands>)]) -> Value {
+    let mut said = record.json();
+    said["row"] = person(record, sources).found();
+    said
+}
+
 /// A record as one person, by its sources in the order they're consulted,
 /// each with how it says anyone stands.
 pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
@@ -346,8 +353,7 @@ impl Person {
         })
     }
 
-    /// Their row as a search finds them among everyone, ready: as `row`,
-    /// but saying nothing of how they stand, since only those listed do.
+    /// As `row`, found among everyone by a search, so saying nothing of how they stand.
     pub fn found(&self) -> Value {
         let mut row = self.row();
         row["glyph"] = json!("person");
@@ -697,11 +703,9 @@ mod tests {
             (json!("person"), json!("")),
             "one named by their address says it once"
         );
+        let found = favourite.found();
         assert_eq!(
-            (
-                favourite.found()["glyph"].clone(),
-                favourite.found()["side"].clone()
-            ),
+            (found["glyph"].clone(), found["side"].clone()),
             (json!("person"), json!("")),
             "found among everyone, they say nothing of how they stand"
         );
