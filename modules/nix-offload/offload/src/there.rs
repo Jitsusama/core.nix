@@ -1,6 +1,6 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
 //! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
-//! FLAKE ATTR...`, or
+//! FLAKE ATTR...`, or `FLAKE#ATTR...` of one flake, or
 //! `DRV...` in place of the flake and its attributes: builds a flake's
 //! attributes on the lent builder by sending it a command, or here with
 //! `--here` when none takes it, or with `--here-when-idle` while this
@@ -167,7 +167,8 @@ impl Alone {
 }
 
 /// Reads `there`'s arguments: its flags, in any place, then the flake and
-/// at least one attribute. `--apply FUNCTION` and `--out DIR` take one
+/// at least one attribute, or installables naming one flake, as
+/// `.#checks.x.a .#checks.x.b`. `--apply FUNCTION` and `--out DIR` take one
 /// attribute only, and `--out` not with `--print-out-paths`. Anything
 /// else is refused, since only a build whose
 /// every word is known can be sent whole.
@@ -211,6 +212,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             pinned: None,
         });
     }
+    let words = installed(words)?;
     let (flake, attributes) = words.split_first()?;
     let one = attributes.len() == 1;
     let applied_to_one = one || (apply.is_none() && out.is_none());
@@ -226,6 +228,31 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         bulk,
         derivations: false,
         pinned: None,
+    })
+}
+
+/// `words` as a flake and its attributes: as they are when none names an
+/// installable, and split at each `#` when all do, as `nix build` takes
+/// them. Sessions wrote `there .#checks.x.a` 15 times from 8 to 10
+/// November, each taken as a flake no builder could read and answered
+/// as if none were lent. Some naming installables and some not, or
+/// installables of two flakes, ask nothing.
+fn installed(words: Vec<String>) -> Option<Vec<String>> {
+    if !words.iter().any(|word| word.contains('#')) {
+        return Some(words);
+    }
+    let split: Option<Vec<(&str, &str)>> = words.iter().map(|word| word.split_once('#')).collect();
+    let split = split?;
+    let flake = split.first()?.0;
+    let one_flake = split
+        .iter()
+        .all(|(each, attribute)| *each == flake && !attribute.is_empty());
+    one_flake.then(|| {
+        let flake = if flake.is_empty() { "." } else { flake };
+        std::iter::once(flake)
+            .chain(split.iter().map(|(_, attribute)| *attribute))
+            .map(str::to_owned)
+            .collect()
     })
 }
 
@@ -3991,6 +4018,30 @@ mod tests {
         );
         let outliving = super::asked(&words("--outlive github:o/r/abc checks.x.a"));
         assert!(outliving.is_some_and(|asked| asked.alone == Alone::GoesOn));
+    }
+
+    #[test]
+    fn installables_of_one_flake_are_asked_as_its_attributes() {
+        let asked_of =
+            |line: &str| asked(&words(line)).map(|asked| (asked.flake, asked.attributes));
+        let wanted = |flake: &str, attributes: &str| Some((flake.to_owned(), words(attributes)));
+        assert_eq!(
+            asked_of("-L .#checks.x.a .#checks.x.b"),
+            wanted(".", "checks.x.a checks.x.b")
+        );
+        assert_eq!(asked_of("#checks.x.a"), wanted(".", "checks.x.a"));
+        assert_eq!(
+            asked_of("github:o/r#checks.x.a"),
+            wanted("github:o/r", "checks.x.a")
+        );
+        assert_eq!(asked_of(". checks.x.a"), wanted(".", "checks.x.a"));
+        assert_eq!(
+            asked_of(".#checks.x.a checks.x.b"),
+            None,
+            "some installables, some not"
+        );
+        assert_eq!(asked_of(".#checks.x.a ../o#checks.x.b"), None, "two flakes");
+        assert_eq!(asked_of(".#"), None, "no attribute");
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
 //! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
-//! (FLAKE ATTR... | DRV...)` to build a flake, or derivations, on the
+//! (FLAKE ATTR... | FLAKE#ATTR... | DRV...)` to build a flake, or derivations, on the
 //! builder, or on a machine nearby for systems this one can't build, as
 //! src/there.rs says. A build waiting for a builder
 //! says so in /run/nix-offload/wanted, which counts as queued work.
@@ -250,7 +250,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
                     [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
                     [--bulk] [--first] \
-                    (FLAKE ATTR... | DRV...) \
+                    (FLAKE ATTR... | FLAKE#ATTR... | DRV...) \
                     | nix-offload there [--never-ask] [--first] --changed \
                     [CHANGED-CHECKS ARGUMENT...] \
                     | nix-offload there [--never-ask] --run [--copy PATH]... \
