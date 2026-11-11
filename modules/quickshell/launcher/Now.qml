@@ -1380,12 +1380,10 @@ Provider {
             thing(Object.assign(named("deal"), {
                 key: `verb:on:waiting:deal:${key}`,
                 run: () => {
+                    // The node wakes one parked once its words are in.
                     Sessions.steer(address, {
                         act: "fill",
                         text: readyToDeal(asked)
-                    }, put => {
-                        if (put && resting)
-                            Sessions.wake(resting);
                     });
                     Sessions.goTo(session());
                 }

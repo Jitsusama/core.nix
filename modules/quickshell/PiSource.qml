@@ -32,8 +32,6 @@ Singleton {
     readonly property string state: Pi.state(node)
 
     readonly property string home: Quickshell.env("HOME")
-    // Where the harness keeps its state, by the XDG base directories.
-    readonly property string harness: `${Quickshell.env("XDG_STATE_HOME") || `${home}/.local/state`}/pi/agentic-harness.pi`
 
     FileView {
         id: realmFile
@@ -186,42 +184,9 @@ Singleton {
     // Every session it tells of, as the contract's records.
     readonly property var sessions: Pi.sessions(sorting, machine)
 
-    // Where the harness keeps each parked session's marker (its
-    // park-workflow/parked/<session>.json), which names the file that wakes
-    // it. The node watches the folder and says which are parked itself.
-    readonly property string parkedFolder: `${harness}/park-workflow/parked`
-
-    // A parked session's marker, read when asked.
-    FileView {
-        id: marker
-        blockLoading: true
-        printErrors: false
-    }
-    function read(path) {
-        marker.path = path;
-        marker.reload();
-        marker.waitForJob();
-        return marker.text();
-    }
-
-    // The file that wakes a parked session, by its id, or "" for one not
-    // parked: anything written to the file its marker names has its holder
-    // start it again in its window (the harness's askWake).
-    function wakes(id) {
-        if (!resting.some(one => one.presence.session === id))
-            return "";
-        let parked = null;
-        try {
-            parked = JSON.parse(read(`${parkedFolder}/${id}.json`));
-        } catch (error) {
-            parked = null;
-        }
-        const file = typeof parked?.wake === "string" ? parked.wake : "";
-        return file.startsWith("/") ? file : "";
-    }
-
     // Puts a steer in a session's inbox by its address: `{ text, id }`
-    // talks to it, `{ act }` pauses, resumes, stops or closes it. The
+    // talks to it, `{ act }` pauses, resumes, stops or closes it, and
+    // `{ act: "wake" }` only wakes one parked, putting nothing in. The
     // realm's node is asked on the connection kept to it, here or
     // elsewhere alike: it writes the inbox of the machine running the
     // session, one parked included, carrying it over the link when that's

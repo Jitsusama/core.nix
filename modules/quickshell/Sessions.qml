@@ -2018,13 +2018,9 @@ Singleton {
         const text = words.trim();
         if (text === "")
             return false;
-        // Talk gives a parked session a turn, as a question would, so it's
-        // woken to read it, once its words are in its inbox.
-        const resting = parkedAs(address);
-        steer(address, { text: text, id: `talk-${Date.now()}` }, put => {
-            if (put && resting)
-                wake(resting);
-        });
+        // Talk gives a parked session a turn, as a question would: the node
+        // wakes one parked here once its words are in its inbox.
+        steer(address, { text: text, id: `talk-${Date.now()}` });
         return true;
     }
 
@@ -2370,7 +2366,6 @@ Singleton {
     // again as the source sorts them, into the windows they run in here.
     readonly property string nodePath: PiSource.nodePath
     readonly property var node: PiSource.node
-    readonly property string parkedFolder: PiSource.parkedFolder
     Connections {
         target: PiSource
         function onSorted() {
@@ -2378,19 +2373,16 @@ Singleton {
         }
     }
 
-    // Wakes a parked session, as a peer sending it a turn does: anything
-    // written to the file its marker names has its holder start it again
-    // in its window, written in place, since the holder reads it whole and
-    // deletes it (the harness's askWake). It starts with its steer inbox
-    // read, so words left there first reach it as it wakes.
+    // Wakes a parked session by asking the node, on the connection kept to
+    // it, to steer it with nothing but the act: the node writes the wake
+    // file of the holder keeping it here, which starts it again in its
+    // window with its steer inbox read, so words left there first reach it
+    // as it wakes (mycelium's PROTOCOL.md, its steer). One the node can't
+    // wake, parked on another machine or with no holder this boot, is said
+    // by `unsteered` with the node's reason.
     function wake(session) {
-        const id = String(session?.presence?.session ?? "");
-        const wakes = PiSource.wakes(id);
-        if (wakes === "")
-            return;
-        Niri.spawn(["sh", "-c", 'printf "%s\\n" "$2" > "$1"', "wake", wakes,
-            JSON.stringify({ session: id, messageId: "joel", at: new Date().toISOString() })]);
-        Report.say(`woke session ${session.address}`);
+        if (session?.address)
+            steer(session.address, { act: "wake" });
     }
     // Each running session's record, by every address it answers to.
     property var present: ({})
