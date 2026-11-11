@@ -6,7 +6,8 @@
 //! `Machine.js` made of the same memory, boot and using records, moved
 //! here so the shell words, sorts and builds nothing (Joel, 2026-11-10:
 //! "the daemons need to be the data layer"). The Processor's are made
-//! in `processor_rows.rs` with the pieces here; the disks follow.
+//! in `processor_rows.rs` with the pieces here, and the Disk's in
+//! `disk_rows.rs`.
 //!
 //! Nothing here reads the wall clock: how long the machine has been up
 //! and when it started travel as times (`lasted` and `moment`), which
@@ -149,7 +150,7 @@ impl Say<'_> {
         self.measure(count, &BYTES)
     }
 
-    fn rate(&self, count: f64) -> String {
+    pub(crate) fn rate(&self, count: f64) -> String {
         format!("{}/s", self.bytes(count))
     }
 

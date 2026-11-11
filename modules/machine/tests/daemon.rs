@@ -12,8 +12,9 @@
 //! write them; a watcher's status is told as it writes it, and silent
 //! once its heartbeat is late; a charge limit set is told before it's
 //! answered; Heat's rows are made for a watch of their place and told as
-//! they move; the processor's telemetry is asked only once it's watched,
-//! and what it hears becomes Held Back and Kept From Resting; a firmware
+//! they move, and the Disk's are a place of their own; the processor's
+//! telemetry is asked only once it's watched, and what it hears becomes
+//! Held Back and Kept From Resting; a firmware
 //! install is answered once fwupdmgr is done, the connection answering
 //! meanwhile and a second act refused as busy; and an ask, act or kind
 //! it doesn't know is refused.
@@ -631,6 +632,44 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
     assert!(
         side.starts_with("kitty "),
         "the program using most: {named}"
+    );
+}
+
+#[test]
+fn the_disks_rows_are_a_place_of_their_own_each_still_machines() {
+    let words = json!({ "things": [
+        { "id": "machine:disk", "name": "Disk", "glyph": "disk",
+            "said": { "head": "{free} free on {mount}",
+                "since-boot": "since the machine started" } },
+        { "id": "machine:disk:model", "name": "Model" },
+        { "id": "machine:disk:link", "name": "PCIe",
+            "said": { "side": "{speed} \u{d7}{width}" } }
+    ] });
+    let running = Running::worded("disk-rows", &words);
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "disk", "ask": "watch", "kind": "row", "place": "disk"}));
+    let records = &said["records"];
+    let disk = &record(records, "row:disk:disk")["row"];
+    assert_eq!(
+        disk["thing"], "machine:disk",
+        "the Disk is Machine's thing, in a place of its own"
+    );
+    let side = disk["side"][0]["said"].as_str().unwrap_or_default();
+    assert!(
+        side.ends_with(" free on /mnt/system"),
+        "the room on its first file system, where none is /: {disk}"
+    );
+    assert_eq!(
+        disk["note"], "since the machine started",
+        "a first read's rates"
+    );
+    let model = &record(records, "row:disk:disk:model")["row"];
+    assert_eq!(model["side"][0]["said"], "PVC10 SK hynix 1024GB");
+    assert_eq!(model["parent"], "row:disk:disk", "under the disk's row");
+    let link = &record(records, "row:disk:disk:link")["row"];
+    assert_eq!(
+        link["side"][0]["said"], "16.0 GT/s PCIe \u{d7}4",
+        "the link it's on, a step in under Model"
     );
 }
 
