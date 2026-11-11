@@ -3,7 +3,10 @@
 //! is no session, so it reads the mesh's messages itself, from the folder
 //! `MERGE_NET_MESH` names, or the harness's under XDG's state. A hold
 //! ends when its sender answers it or sends one in its place, or when the
-//! machine boots after it was sent.
+//! machine boots after it was sent. The harness files older messages into
+//! a folder for each day and may leave a hold above its answer, so both
+//! levels are read: on 11 November one Monday hold, whose end had gone
+//! into its day's folder, stood again and held the net for half an hour.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,9 +47,16 @@ pub fn booted() -> Option<u64> {
 /// the messages in `folder` sent since `since` (milliseconds, as each
 /// file's name begins).
 pub fn standing(folder: &Path, since: u64) -> Option<String> {
-    let mut sent: Vec<(u64, Value)> = fs::read_dir(folder)
-        .ok()?
-        .filter_map(Result::ok)
+    let entries: Vec<fs::DirEntry> = fs::read_dir(folder).ok()?.filter_map(Result::ok).collect();
+    let days: Vec<fs::DirEntry> = entries
+        .iter()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter_map(|day| fs::read_dir(day.path()).ok())
+        .flat_map(|day| day.filter_map(Result::ok))
+        .collect();
+    let mut sent: Vec<(u64, Value)> = days
+        .into_iter()
+        .chain(entries)
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
             let at: u64 = name.split('-').next()?.parse().ok()?;
@@ -124,6 +134,33 @@ mod tests {
         assert_eq!(standing(&folder, 2000), None);
         write("3000-A-1-bb.json", &hold("new", "A", "#machine"));
         assert_eq!(standing(&folder, 2000), Some("new".to_owned()));
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn an_answer_filed_in_a_day_folder_still_ends_its_hold() {
+        let folder = std::env::temp_dir().join(format!("merge-net-days-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(folder.join("2026-11-09")).unwrap();
+        let held = hold("1000-A-1-aa", "A", "#all");
+        fs::write(folder.join("1000-A-1-aa.json"), held.to_string()).unwrap();
+        assert_eq!(
+            standing(&folder, 500),
+            Some("1000-A-1-aa".to_owned()),
+            "a hold with no answer stands"
+        );
+        let ended =
+            json!({ "id": "2000-A-1-bb", "from": "A", "re": "1000-A-1-aa", "intent": "fyi" });
+        fs::write(
+            folder.join("2026-11-09/2000-A-1-bb.json"),
+            ended.to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            standing(&folder, 500),
+            None,
+            "the answer in the day's folder ends the hold above it"
+        );
         fs::remove_dir_all(&folder).unwrap();
     }
 }
