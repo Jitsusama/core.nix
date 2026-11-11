@@ -538,6 +538,7 @@ fn handed() -> Option<UnixListener> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rows;
 
     #[test]
     fn a_signed_out_account_is_one_record_of_how_it_stands() {
