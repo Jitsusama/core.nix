@@ -1,7 +1,6 @@
 //! What a notice's body says, read once as its row is made, rather than
-//! by the shell for each list it shows in (modules/quickshell/`NoticeBody.js`,
-//! whose cases these are): as plain text, for a row's note, a search and a
-//! copy; as styled text a drawer draws, carrying only the markup the
+//! by the shell for each list it shows in: as plain text, for a row's
+//! note, a search and a copy; as styled text a drawer draws, carrying only the markup the
 //! notification spec allows (bold, italics, underline and links) with
 //! everything else escaped, so a sender can't draw what the desktop
 //! doesn't; and its links, each its words and where it goes. A bare

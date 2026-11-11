@@ -55,12 +55,10 @@ Singleton {
     // Whether the daemon is there to ask.
     readonly property bool answering: daemon.wire !== null
 
-    // { id, at, app, entry, summary, body, styled, links, picture, glyph,
-    // hue, urgency, category, low, urgent, held, missed, read, readHow,
-    // waits, left, leftAt }: `body` is its words plain and `styled` with
-    // the markup a card draws, `links` each { text, href }, `urgency` what
-    // its sender asked (low, normal or critical) and `urgent` whether it
-    // stays, `readHow` how it was read where that wasn't here (markRead),
+    // { id, at, app, entry, summary, body, urgency, category, low, urgent,
+    // held, missed, read, readHow, waits, left, leftAt }: `body` is its
+    // words plain, `urgency` what its sender asked (low, normal or
+    // critical) and `urgent` whether it stays, `readHow` how it was read where that wasn't here (markRead),
     // and `left` how it left the screen once it has (expired, dismissed or
     // withdrawn), and when. Each is made again only as the daemon says its
     // record changed, so the launcher's rows of the rest are kept.
@@ -114,11 +112,6 @@ Singleton {
         return notification?.image ?? "";
     }
 
-    // A notice's picture as the history has it.
-    function pictureOf(notice) {
-        return notice.picture ?? "";
-    }
-
     // Each notice as the history has it, by id, made again only as its
     // record changes, so a reader keeping its rows by the notice keeps
     // those of the rest.
@@ -126,16 +119,13 @@ Singleton {
     // The ids heard open, so one first heard open is known to have come.
     property var heardOpen: ({})
 
-    // A record as the history has it: its words plain for the launcher's
-    // rows, the find and a copy, and styled for a card and a drawer, with
-    // its links, and its sender's mark.
+    // A record as the history has it, its words plain, as the shell's own
+    // readers of it find and withdraw notices by what they said; its rows
+    // and their drawers are the daemon's.
     function madeOf(notice, card) {
-        const from = card.from;
-        const said = card.words;
         return {
             id: notice.id, at: notice.at, app: notice.app, entry: notice.entry,
-            summary: notice.summary, body: said.plain, styled: said.styled,
-            links: said.links, picture: notice.picture, glyph: from.glyph, hue: from.hue,
+            summary: notice.summary, body: card.words.plain,
             urgency: notice.urgency, category: notice.category, low: notice.low,
             urgent: notice.urgent, held: notice.held, missed: notice.missed,
             read: notice.read, readHow: notice.readHow, readAt: notice.readAt,

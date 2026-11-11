@@ -17,10 +17,6 @@ Singleton {
     function seen() {}
     function mark(id, read) {}
 
-    function pictureOf(notice) {
-        return "";
-    }
-
     function senderWindow(app) {
         return null;
     }

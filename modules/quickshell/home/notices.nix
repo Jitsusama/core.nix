@@ -13,7 +13,6 @@
   "Card.qml"
   "Cover.qml"
   "NoticeRow.qml"
-  "NoticeBody.js"
   "Signature.qml"
   "Notices.qml"
   "Forward.js"

@@ -472,6 +472,18 @@ mod tests {
     }
 
     #[test]
+    fn its_kind_is_said_from_its_category_or_left_out() {
+        let words = crate::words::tests::core();
+        let said = |category| kind(category, &words);
+        assert_eq!(said("im"), "message", "a kind by its class");
+        assert_eq!(said("im.received"), "message", "and with its subtype");
+        assert_eq!(said("transfer.error"), "transfer failed", "an error fails");
+        assert_eq!(said("email.bounced"), "mail bounced", "a bounced mail");
+        assert_eq!(said("x-gnome.music"), "", "one never named, never raw");
+        assert_eq!(said(""), "", "and none given");
+    }
+
+    #[test]
     fn a_row_is_named_and_marked_as_its_card() {
         let [mixed, ..] = making(&[notice(5, &json!({ "urgency": "low" }))], &[]);
         let row = &mixed[0];
