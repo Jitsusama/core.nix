@@ -573,6 +573,8 @@ let
     # Whether polkit lets an account switch the machine shows only with
     # polkit, systemd and a system to switch to.
     vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };
+    # Only a key plugged into a machine shows which sign-ins take its touch.
+    vm-a-yubikey-answers-only-once-in = import ./tests/yubikey-touch.nix { inherit self pkgs; };
     # Whether root is given only the builders nix-offload's lines trust,
     # in files the lender's account can't write, shows only with systemd
     # running the service as its own account.
@@ -1302,6 +1304,7 @@ gather (
     ./modules/sun/checks.nix
     ./modules/swayidle/checks.nix
     ./modules/swayimg/checks.nix
+    ./modules/switch-system/checks.nix
     ./modules/systemd/checks.nix
     ./modules/systemd-networkd/checks.nix
     ./modules/tcp/checks.nix

@@ -56,11 +56,40 @@
       touch $out
     '';
 
+  # A sign-in but polkit's that names pam_u2f, as a login, the greeter,
+  # the lock or sudo would, stops the machine building, since a touch
+  # there would let someone in with no password.
+  only-polkit-may-take-a-yubikey-touch =
+    let
+      touchingLogin = bareNixos [
+        self.nixosModules.workstation
+        { security.pam.services.login.u2f.enable = true; }
+      ];
+      refused =
+        machine:
+        lib.any (
+          check: !check.assertion && lib.hasInfix "YubiKey's touch" check.message
+        ) machine.config.assertions;
+    in
+    holds "only-polkit-may-take-a-yubikey-touch"
+      "A login takes a YubiKey's touch and the machine still builds, or a workstation with no key is refused."
+      (refused touchingLogin && !refused workstation);
+
   # Once a key is named, polkit's sign-in takes its touch before the
-  # password, from the root-owned file the system makes, and no other
-  # login does; with none named, polkit asks for the password alone.
+  # password, from the root-owned file the system makes, but only past the
+  # gate that says the person is in, and its helper can reach the key; no
+  # other login takes one, and with none named polkit asks for the
+  # password alone.
   polkit-takes-a-yubikey-touch-once-one-is-named =
     let
+      helper = enrolled.config.systemd.services."polkit-agent-helper@".serviceConfig;
+      # The auth line just before the touch.
+      gate =
+        let
+          lines = lib.filter (lib.hasPrefix "auth ") (lib.splitString "\n" polkit);
+          at = lib.lists.findFirstIndex (lib.hasInfix "pam_u2f.so") null lines;
+        in
+        if at == null || at == 0 then "" else lib.elemAt lines (at - 1);
       credential = "aGFuZGxl,cHVibGlj,es256,+presence";
       enrolled = bareNixos [
         self.nixosModules.workstation
@@ -83,6 +112,11 @@
         && lib.hasInfix "pam_u2f.so" asksFirst
         && lib.hasInfix "authfile=/etc/u2f-mappings" polkit
         && lib.hasInfix "origin=pam://administrators" polkit
+        && lib.hasInfix "[success=ok default=1]" gate
+        && lib.hasInfix "pam_exec.so quiet" gate
+        && lib.hasInfix "yubikey-once-in" gate
+        && !helper.PrivateDevices
+        && lib.elem "char-hidraw rw" helper.DeviceAllow
         && mappings == "someone:${credential}\n"
         && !touches enrolled "login"
         && !touches enrolled "sudo"

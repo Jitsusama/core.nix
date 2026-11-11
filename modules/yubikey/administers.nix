@@ -2,7 +2,10 @@
 # for run0 or a switch to a system the machine has never run
 # (modules/switch-system), with the password still taken when no key is
 # there. A touch is quicker than typing the password, and just as far out
-# of reach of an agent running as the account.
+# of reach of an agent running as the account. Getting in is the person's
+# own secret alone: the key sits in the machine, so a touch is taken only
+# once they're in, from their seat's session while it's unlocked
+# (once-in.sh), never at the disk, a login, the greeter or the lock.
 #
 # Each key is enrolled once, by hand, with pamu2fcfg, and what it prints
 # is named per account in jitsusama.yubikey.administers; until a key is
@@ -22,6 +25,16 @@ let
   origin = "pam://administrators";
   # pamu2fcfg's line for an account, its name and then each key's
   # credential, colon-separated.
+  # The gate before the touch, which says whether the person is in.
+  onceIn = pkgs.writeShellApplication {
+    name = "yubikey-once-in";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnugrep
+      pkgs.systemd
+    ];
+    text = builtins.readFile ./once-in.sh;
+  };
   mappings = lib.concatStrings (
     lib.mapAttrsToList (account: keys: "${lib.concatStringsSep ":" ([ account ] ++ keys)}\n") enrolled
   );
@@ -53,15 +66,59 @@ in
       # pamu2fcfg, to enrol a key before any is named.
       environment.systemPackages = [ pkgs.pam_u2f ];
     }
+    {
+      # Getting in is the person's own secret alone: no sign-in but
+      # polkit's, which only a session already in reaches, takes a key.
+      assertions =
+        let
+          touching = lib.attrNames (
+            lib.filterAttrs (
+              name: service: name != "polkit-1" && lib.hasInfix "pam_u2f.so" (toString service.text)
+            ) config.security.pam.services
+          );
+        in
+        [
+          {
+            assertion = touching == [ ];
+            message = "A YubiKey's touch would let someone in with no password: ${lib.concatStringsSep ", " touching}.";
+          }
+        ];
+    }
     (lib.mkIf (enrolled != { }) {
       environment.etc.u2f-mappings = {
         text = mappings;
         mode = "0444";
       };
 
-      # Only polkit's own sign-in asks for a touch; the greeter, the lock
-      # and every other login keep the password alone.
-      security.pam.services.polkit-1.u2f.enable = true;
+      # Only polkit's own sign-in asks for a touch, and only once the
+      # person is in (once-in.sh); the greeter, the lock and every other
+      # login keep the password alone.
+      security.pam.services.polkit-1 = {
+        u2f.enable = true;
+        # Skips the touch, straight to the password, unless the gate
+        # says yes; a jump counts for nothing in the sign-in's result.
+        rules.auth.yubikey-once-in = {
+          order = config.security.pam.services.polkit-1.rules.auth.u2f.order - 10;
+          control = "[success=ok default=1]";
+          modulePath = "${pkgs.pam}/lib/security/pam_exec.so";
+          args = [
+            "quiet"
+            (lib.getExe onceIn)
+          ];
+        };
+      };
+      # The helper systemd starts for each prompt hides the machine's
+      # devices and the runtime folders; NixOS opens them only for a u2f
+      # set on every service, so polkit's alone opens them here: the key's
+      # hidraw for pam_u2f, and the runtime folders for the lock's word.
+      systemd.services."polkit-agent-helper@".serviceConfig = {
+        PrivateDevices = false;
+        DeviceAllow = [
+          "/dev/urandom r"
+          "char-hidraw rw"
+        ];
+        ProtectHome = "read-only";
+      };
       security.pam.u2f.settings = {
         authfile = "/etc/u2f-mappings";
         inherit origin;

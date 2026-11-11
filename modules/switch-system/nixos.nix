@@ -40,6 +40,7 @@ let
     name = "switch-system-known";
     runtimeInputs = [
       pkgs.coreutils
+      pkgs.gnugrep
       config.systemd.package
     ];
     text = builtins.readFile ./switch-system-known.sh;
