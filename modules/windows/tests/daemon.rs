@@ -291,7 +291,11 @@ fn a_resize_is_told_only_to_a_watch_naming_layouts() {
     running
         .niri
         .says(&window(11, "Calendar", "google-chrome", 1, 2, 900));
-    assert!(!keys(&unnamed.heard()).contains(&"layout:10".to_owned()));
+    let heard = keys(&unnamed.heard());
+    assert!(
+        !heard.contains(&"layout:10".to_owned()),
+        "a watch naming no kind heard the resize: {heard:?}"
+    );
 }
 
 #[test]

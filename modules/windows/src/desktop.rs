@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde_json::{Value, json};
 
+use crate::capture::Captures;
 use crate::entries::{Entries, tidy};
 
 /// What hearing one event did.
@@ -38,12 +39,8 @@ pub struct Desktop {
     focused: Option<u64>,
     overview: bool,
     settings_failed: bool,
-    /// Every cast by its stream's id.
-    casts: BTreeMap<u64, Value>,
-    /// The last screenshot's path, and how many have been taken, so a
-    /// reader hears of a new one even where it's saved to the same path.
-    screenshot: Value,
-    screenshots: u64,
+    /// What's cast and shot of the screen.
+    captures: Captures,
 }
 
 fn id_of(value: &Value) -> Option<u64> {
@@ -173,40 +170,7 @@ impl Desktop {
                 }
             }
             "ConfigLoaded" => self.settings_failed = said["failed"] == true,
-            _ => return self.hear_capture(name, said),
-        }
-        Heard::Changed
-    }
-
-    /// Hears an event of what's cast or shot of the screen.
-    fn hear_capture(&mut self, name: &str, said: &Value) -> Heard {
-        match name {
-            "CastsChanged" => {
-                self.casts = said["casts"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|cast| cast.is_object())
-                    .filter_map(|cast| Some((id_of(&cast["stream_id"])?, cast.clone())))
-                    .collect();
-            }
-            "CastStartedOrChanged" => {
-                let cast = &said["cast"];
-                let Some(id) = id_of(&cast["stream_id"]).filter(|_| cast.is_object()) else {
-                    return Heard::Nothing;
-                };
-                self.casts.insert(id, cast.clone());
-            }
-            "CastStopped" => {
-                if let Some(id) = id_of(&said["stream_id"]) {
-                    self.casts.remove(&id);
-                }
-            }
-            "ScreenshotCaptured" => {
-                self.screenshot = said["path"].clone();
-                self.screenshots += 1;
-            }
-            _ => return Heard::Nothing,
+            _ => return self.captures.hear(name, said),
         }
         Heard::Changed
     }
@@ -333,17 +297,12 @@ impl Desktop {
         records
     }
 
-    /// The records only a few readers draw from: each cast as niri says
-    /// it; each window's tile as laid out, which moves at every resize and
-    /// scroll, so a watch is told it only when it names `layout`; and the
-    /// last screenshot.
+    /// The records only a few readers draw from: each cast and the last
+    /// screenshot (`Captures`), and each window's tile as laid out, which
+    /// moves at every resize and scroll, so a watch is told it only when
+    /// it names `layout`.
     fn kept_records(&self, records: &mut Vec<Value>) {
-        records.extend(self.casts.iter().map(|(id, cast)| {
-            let mut record = cast.clone();
-            record["key"] = json!(format!("cast:{id}"));
-            record["order"] = json!(id);
-            record
-        }));
+        self.captures.records(records);
         records.extend(
             self.windows
                 .iter()
@@ -356,11 +315,6 @@ impl Desktop {
                     record
                 }),
         );
-        records.push(json!({
-            "key": "screenshot",
-            "path": self.screenshot,
-            "taken": self.screenshots,
-        }));
     }
 
     /// Each workspace's record, with the programs on it (`inside`, each
@@ -654,50 +608,23 @@ mod tests {
     }
 
     #[test]
-    fn each_cast_is_kept_as_niri_says_it() {
+    fn a_cast_or_a_screenshot_changes_its_own_record_alone() {
+        // What each says is capture.rs's to prove; here, that the desktop
+        // hears them and changes no window for them.
         let mut desktop = heard(BEGINNING);
-        hear(
-            &mut desktop,
-            r#"{"CastsChanged":{"casts":[{"stream_id":3,"kind":"PipeWire","is_active":true,"target":{"Output":{"name":"eDP-1"}},"pid":200}]}}"#,
-        );
-        let said = records(&desktop);
-        assert_eq!(said["cast:3"]["kind"], "PipeWire");
-        assert_eq!(said["cast:3"]["target"]["Output"]["name"], "eDP-1");
-        let before = said;
+        let before = records(&desktop);
         hear(
             &mut desktop,
             r#"{"CastStartedOrChanged":{"cast":{"stream_id":4,"kind":"WlrScreencopy","is_active":true,"target":{"Window":{"id":11}}}}}"#,
         );
-        assert_eq!(changed(&before, &records(&desktop)), ["cast:4"]);
-        hear(&mut desktop, r#"{"CastStopped":{"stream_id":3}}"#);
-        let after = records(&desktop);
-        assert!(!after.contains_key("cast:3"));
-        assert_eq!(after["cast:4"]["target"]["Window"]["id"], 11);
+        hear(
+            &mut desktop,
+            r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#,
+        );
         assert_eq!(
-            desktop.hear(&json!({"CastStartedOrChanged": {"cast": null}})),
-            Heard::Nothing
+            changed(&before, &records(&desktop)),
+            ["cast:4", "screenshot"]
         );
-    }
-
-    #[test]
-    fn each_screenshot_is_counted_even_at_the_same_path() {
-        let mut desktop = heard(BEGINNING);
-        let before = records(&desktop);
-        assert_eq!(before["screenshot"]["taken"], 0);
-        hear(
-            &mut desktop,
-            r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#,
-        );
-        let once = records(&desktop);
-        assert_eq!(changed(&before, &once), ["screenshot"]);
-        assert_eq!(once["screenshot"]["path"], "/tmp/a.png");
-        hear(
-            &mut desktop,
-            r#"{"ScreenshotCaptured":{"path":"/tmp/a.png"}}"#,
-        );
-        let twice = records(&desktop);
-        assert_eq!(changed(&once, &twice), ["screenshot"]);
-        assert_eq!(twice["screenshot"]["taken"], 2);
     }
 
     #[test]

@@ -182,7 +182,11 @@ mod tests {
                 keys: None
             }
         );
-        assert!(!unnamed().contains(&"layout".to_owned()));
+        assert!(
+            !unnamed().contains(&"layout".to_owned()),
+            "a watch naming no kind takes layouts: {:?}",
+            unnamed()
+        );
     }
 
     #[test]
