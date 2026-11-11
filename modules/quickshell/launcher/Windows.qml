@@ -107,10 +107,13 @@ Provider {
     // its order. While the daemon is down the rows held are all there is,
     // said so (pressing), and the keys may have moved unheard since, so
     // niri's own word on where they are holds, or Return would go to the
-    // window he's in.
+    // window he's in. A terminal's walk of the shut launcher (`launcher
+    // show`) ends before any answer can come, so it's offered the rows
+    // held, as it was before; the next walk has what the answer said
+    // (launcher-on-niri's terminal case, 2026-11-10).
     function everything() {
         const heard = daemon.answeredThisWatch;
-        if (!heard && daemon.state !== "not answering")
+        if (!heard && daemon.state !== "not answering" && provider.launcher?.open !== false)
             return [];
         const others = things.filter(window => window.is !== "windows:this"
             && (heard ? !window.focused : window.id !== Niri.current));

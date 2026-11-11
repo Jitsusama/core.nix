@@ -179,6 +179,11 @@ ShellRoot {
             windows.windowsDaemon.answeredThisWatch = false;
             Niri.focused = 12;
             Niri.revision += 1;
+            // A terminal's walk of the shut launcher ends before any answer
+            // can come, so it's offered the rows held, as it was before.
+            Expect.same("a walk of the shut launcher is offered the rows held",
+                names(windows.everything()), "Logbook, Notes");
+            theLauncher.open = true;
             Expect.same("before the answer, no row of the last opening is offered",
                 names(windows.everything()), "");
             told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
@@ -186,6 +191,7 @@ ShellRoot {
                 Object.assign({}, notes, { order: 220000 })] }, desktop(draft));
             Expect.same("once answered, the rows in the order used now",
                 names(windows.everything()), "Notes, Logbook");
+            theLauncher.open = false;
             told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
                 Object.assign({}, draft, { order: 250000, focused: true }), notes] },
                 desktop(draft));
