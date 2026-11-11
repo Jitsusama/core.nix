@@ -1,8 +1,9 @@
 //! The net's world as it is: its own checkout of the repository, git and
 //! changed-checks there, `nix-offload there` for each check, which sends
-//! it to a builder, and gh for the PRs it lands. git, nix and gh are
-//! the person's own, with their settings, so a commit is signed as theirs
-//! are, and they're found on the path rather than pinned.
+//! it to a builder, and for each evaluation, and gh for the PRs it lands.
+//! git, nix and gh are the person's own, with their settings, so a commit
+//! is signed as theirs are, and they're found on the path rather than
+//! pinned.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -365,6 +366,15 @@ impl Real {
 }
 
 impl Real {
+    /// What `nix eval` says of `attribute`, asked `how`, on a lent builder.
+    /// `nix-offload there --run` runs it from the net's checkout, the only
+    /// folder it needs, and the builder fetches the flake itself.
+    fn evaluated(&self, attribute: &str, how: &[&str]) -> Result<String, String> {
+        run(Command::new("nix-offload")
+            .args(eval_args(attribute, how))
+            .current_dir(self.checkout()))
+    }
+
     /// Whether `check` fails at `commit` as well, so a change isn't refused
     /// for a check that was failing before it: a revert waiting on main's
     /// other breaks would leave its own break in place.
@@ -442,6 +452,28 @@ pub fn there_args(flake: &str, attribute: &str, takes: &str) -> Vec<String> {
         args.push("--bulk".to_owned());
     }
     args.extend(["-L".to_owned(), flake.to_owned(), attribute.to_owned()]);
+    args
+}
+
+/// The longest an evaluation runs on a builder: one takes about 16
+/// seconds, and one past ten minutes is one that hangs.
+const EVALUATES_AT_MOST: &str = "600";
+
+/// What the net asks `nix-offload there` to evaluate `attribute` with,
+/// `how` saying what `nix eval` prints: on a lent builder, never here.
+/// Four at a time here held 3.4 GB of the person's machine on 11 November,
+/// about 850 MB and most of a core each, for 82 derivations an hour while
+/// a search ran; sent, each holds 13 MB here and takes 16 seconds against
+/// 10.
+pub fn eval_args(attribute: &str, how: &[&str]) -> Vec<String> {
+    let sent = ["there", "--run", "--longest", EVALUATES_AT_MOST, "--"];
+    let mut args: Vec<String> = sent
+        .into_iter()
+        .chain(["nix", "eval"])
+        .map(str::to_owned)
+        .collect();
+    args.extend(how.iter().map(|&word| word.to_owned()));
+    args.push(attribute.to_owned());
     args
 }
 
@@ -533,24 +565,20 @@ impl World for Real {
     }
 
     fn has_check(&self, commit: &str, check: &str) -> Result<bool, String> {
-        let flake = format!(
-            "git+file://{}?rev={commit}#checks.{}",
-            self.checkout().display(),
-            self.system
-        );
+        let attribute = format!("{}#checks.{}", self.flake(commit), self.system);
         let asked = format!("checks: builtins.hasAttr \"{check}\" checks");
-        let said = run(Command::new("nix").args(["eval", "--json", &flake, "--apply", &asked]))?;
+        let said = self.evaluated(&attribute, &["--json", "--apply", &asked])?;
         Ok(said == "true")
     }
 
     fn drv(&self, commit: &str, check: &str) -> Result<String, String> {
         let attribute = format!(
-            "git+file://{}?rev={commit}#checks.{}.{check}.drvPath",
-            self.checkout().display(),
+            "{}#checks.{}.{check}.drvPath",
+            self.flake(commit),
             self.system
         );
         kept_drv(&self.state.join("drv"), commit, check, || {
-            run(Command::new("nix").args(["eval", "--raw", &attribute]))
+            self.evaluated(&attribute, &["--raw"])
         })
     }
 
@@ -886,7 +914,7 @@ fn file(path: &Path) -> Result<fs::File, String> {
 
 /// The derivation a check builds at a commit, kept in `dir` once known.
 /// A commit's derivation never changes, but a search asks it of the same
-/// merge again and again, and each ask evaluated the flake here afresh:
+/// merge again and again, and each ask evaluated the flake afresh:
 /// seen in the CPU alarms of 8 November, at 1.5 to 3 GB an evaluation.
 /// Only a full commit hash is kept, since a name like a branch moves.
 fn kept_drv(
@@ -1051,6 +1079,33 @@ mod tests {
             there_args(flake, attribute, ""),
             ["there", "-L", flake, attribute],
             "none could be read"
+        );
+    }
+
+    #[test]
+    fn a_derivation_is_evaluated_on_a_builder_never_here() {
+        let attribute = "github:o/core/abc#checks.x86_64-linux.vm-a.drvPath";
+        assert_eq!(
+            eval_args(attribute, &["--raw"]),
+            [
+                "there",
+                "--run",
+                "--longest",
+                "600",
+                "--",
+                "nix",
+                "eval",
+                "--raw",
+                attribute
+            ],
+            "an evaluation here holds most of a GB of the person's machine"
+        );
+        let checks = "github:o/core/abc#checks.x86_64-linux";
+        let asked = "checks: builtins.hasAttr \"vm-a\" checks";
+        assert_eq!(
+            eval_args(checks, &["--json", "--apply", asked])[5..],
+            ["nix", "eval", "--json", "--apply", asked, checks],
+            "what it's asked goes with it"
         );
     }
 

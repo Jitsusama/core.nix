@@ -87,7 +87,9 @@ filled them was runs that told nobody anything new.
   sent. That day 42 VM runs repeated an earlier run's commit and tests.
 - Evaluation leaves the machine. `changed-checks` sends its whole run
   unless asked `--here`; a bare `nix flake check` held 24.5 GB beside
-  Joel's work on 2026-10-25.
+  Joel's work on 2026-10-25. The net's `nix eval` of one test at a merge
+  goes through `nix-offload there --run` too: on 2026-11-11 four at once
+  here held 3.4 GB while a search ran.
 - A gate is a command of its own. The harness's queue lets a run straight
   to the builder only when every heavy step in its command sends its work
   away, so a `git push` in the same command kept one 18 minutes at place 6

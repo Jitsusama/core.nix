@@ -1,9 +1,10 @@
 //! Which merges in a range changed a test's derivation, the only ones a
 //! search for what broke it need run. Each answer is a `nix eval` of the
-//! flake at that merge, about 20 seconds here; on 10 November two searches
-//! asked them one after another across 27 merges, nine minutes each before
-//! the search's first run. So they are asked several at once, a few at a
-//! time across every search the net runs, since each holds up to two GiB.
+//! flake at that merge, about 16 seconds on a lent builder; on 10 November
+//! two searches asked them one after another across 27 merges, nine
+//! minutes each before the search's first run. So they are asked several
+//! at once, a few at a time across every search the net runs, since each
+//! holds up to two GiB on the builder that evaluates it.
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 
