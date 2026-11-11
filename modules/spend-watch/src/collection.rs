@@ -145,9 +145,15 @@ pub struct Collection {
     pub findings: Vec<Line>,
     /// Reports that belong behind no other row.
     pub more: Vec<Line>,
-    /// What the collection shows while the screen is shared: how today
-    /// stands, each cap's share and each finding, with no amount in any.
+    /// What the collection shows while the screen is shared: each finding
+    /// that wants a look, how today stands, each cap's share and the rest
+    /// of what was found, with no amount in any.
     pub quiet: Vec<Line>,
+    /// The keys of the lines the launcher lists, in its order (`ranked`),
+    /// so the shell places each row without ranking any.
+    pub shown: Vec<String>,
+    /// The keys of the rows the summary answers "spend" with, in order.
+    pub summary_rows: Vec<String>,
     /// Each report by its id, "<period>/<cut>" or a focused one's name,
     /// for the rows that stand for one and the answers to what's typed.
     pub reports: BTreeMap<String, Shown>,
@@ -181,6 +187,36 @@ pub struct Collection {
     pub periods: Vec<Words>,
     pub cuts: Vec<Words>,
     pub examples: Vec<String>,
+}
+
+/// Whether a line is a finding that wants a look, which comes first.
+fn asks(line: &Line) -> bool {
+    line.role == "alert" || line.role == "warning"
+}
+
+/// The lines with each that wants a look first, the rest as they were.
+fn asking_first(lines: Vec<Line>) -> Vec<Line> {
+    let (asking, rest): (Vec<Line>, Vec<Line>) = lines.into_iter().partition(asks);
+    asking.into_iter().chain(rest).collect()
+}
+
+/// The keys of the lines the launcher lists, in its order: each finding
+/// that wants a look first, under the cursor as the collection opens,
+/// then how things stand, the rest of what was found and the reports
+/// behind no other row. And the summary's rows, which leave out today's,
+/// whose words are its headline, and those reports.
+fn ranked(now: &[Line], findings: &[Line], more: &[Line]) -> (Vec<String>, Vec<String>) {
+    let key = |line: &Line| line.key.clone();
+    let asking: Vec<String> = findings.iter().filter(|line| asks(line)).map(key).collect();
+    let rest: Vec<String> = findings
+        .iter()
+        .filter(|line| !asks(line))
+        .map(key)
+        .collect();
+    let stand: Vec<String> = now.iter().map(key).collect();
+    let behind: Vec<String> = more.iter().map(key).collect();
+    let summary = [&asking[..], stand.get(1..).unwrap_or_default(), &rest[..]].concat();
+    ([asking, stand, rest, behind].concat(), summary)
 }
 
 fn line(key: impl Into<String>, name: impl Into<String>, side: impl Into<String>) -> Line {
@@ -1020,12 +1056,17 @@ pub fn collection(
         made.report = "outliers".into();
         more.push(made);
     }
+    let quiet = asking_first(quiet(picture, &reports, findings));
+    let findings: Vec<Line> = findings.iter().map(finding_line).collect();
+    let (shown, summary_rows) = ranked(&now, &findings, &more);
     Collection {
         v: VERSION,
         now,
-        findings: findings.iter().map(finding_line).collect(),
+        findings,
         more,
-        quiet: quiet(picture, &reports, findings),
+        quiet,
+        shown,
+        summary_rows,
         reports: reports
             .into_iter()
             .map(|(id, (_, shown))| (id, shown))
@@ -1133,12 +1174,15 @@ pub fn held(shape: i64) -> Collection {
         markdown: format!("{}\n", made.copy),
         words: String::new(),
     };
+    let (shown, summary_rows) = ranked(&[], std::slice::from_ref(&made), &[]);
     Collection {
         v: VERSION,
         now: Vec::new(),
         findings: vec![made.clone()],
         more: Vec::new(),
         quiet: vec![made],
+        shown,
+        summary_rows,
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
         sessions: BTreeMap::new(),
         today: String::new(),
@@ -1381,10 +1425,11 @@ mod tests {
         assert_eq!(collected.now[0].rows[0].name, "Premium Day");
         // While sharing there's nothing behind a row, so the quiet lines
         // are the first screen's, and a day's cap that matters is a
-        // finding among them.
+        // finding among them, after those that want a look.
         let quiet: Vec<&str> = collected
             .quiet
             .iter()
+            .skip_while(|line| line.key.starts_with("quiet:finding:"))
             .take_while(|line| !line.key.starts_with("quiet:finding:"))
             .map(|line| line.name.as_str())
             .collect();
@@ -1901,7 +1946,12 @@ mod tests {
             }
         }
         // Today's drawer keeps what went on rebuilding context as a share.
-        let today = collected.quiet[0].drawn.as_ref().unwrap();
+        let today = collected
+            .quiet
+            .iter()
+            .find(|line| line.key == "quiet:today")
+            .and_then(|line| line.drawn.as_ref())
+            .unwrap();
         assert!(
             today.facts.iter().any(|fact| fact.id == "rebuilding"),
             "{today:?}"
@@ -1957,6 +2007,38 @@ mod tests {
             .find(|line| line.key.starts_with("cap:"))
             .unwrap();
         assert!(cap.budget.starts_with("budget:"), "{}", cap.budget);
+    }
+
+    // A finding that wants a look is listed first and in the summary,
+    // which leaves out today's row, whose words are its headline, and the
+    // reports behind no other row; while shared, it comes first too.
+    #[test]
+    fn a_finding_that_wants_a_look_is_ranked_first() {
+        let made = |key: &str, role: &str| {
+            let mut made = line(key, key, "");
+            made.role = role.into();
+            made
+        };
+        let now = [made("today", "text"), made("week", "text")];
+        let findings = [made("finding:fine", "found"), made("finding:burn", "alert")];
+        let (shown, summary) = ranked(&now, &findings, &[made("report:waste", "report")]);
+        assert_eq!(
+            shown,
+            [
+                "finding:burn",
+                "today",
+                "week",
+                "finding:fine",
+                "report:waste"
+            ]
+        );
+        assert_eq!(summary, ["finding:burn", "week", "finding:fine"]);
+        let quiet = asking_first(vec![
+            made("quiet:today", "text"),
+            made("quiet:finding:burn", "warning"),
+        ]);
+        let keys: Vec<&str> = quiet.iter().map(|line| line.key.as_str()).collect();
+        assert_eq!(keys, ["quiet:finding:burn", "quiet:today"]);
     }
 
     /// The busy collection, with today's and this week's spend partly

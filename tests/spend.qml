@@ -359,8 +359,8 @@ ShellRoot {
         const down = spend.everything();
         const asked = spend.answer("spend");
         if (spend.collection?.noun !== "spend" || down.length !== 1
-            || down[0].name !== "Start the Watch" || down[0].note !== "the watch isn't answering"
-            || asked?.headline !== "the watch isn't answering" || asked.rows.length !== 1
+            || down[0].name !== "Start the Watch" || down[0].note !== "not answering"
+            || asked?.headline !== "not answering" || asked.rows.length !== 1
             || spend.answer("hello") !== null) {
             const shown = JSON.stringify([down.map(row => [row.name, row.note]), asked]);
             console.warn(`FAIL a collection with nothing written says the watch is down: ${shown}`);
@@ -563,7 +563,7 @@ ShellRoot {
             // Read from the file, with no socket answering, its figures
             // are said to be the last ones rather than passing as current.
             expect("the file's figures said as its last",
-                today.note === "the watch isn't answering; these are its last figures",
+                today.note === "not answering \u00b7 its last figures",
                 today.note);
             const week = spend.answer("spend last week by quest");
             expect("a report by its words", week !== null
@@ -687,6 +687,8 @@ ShellRoot {
                     { id: "most-model", value: "claude-opus-5-5 \u00b7 all" }
                 ] }
             }];
+            // Listed as the daemon would list them.
+            budgeted.shown = budgeted.now.map(line => line.key);
             SpendWatch.readCollection(budgeted);
             const budgets = spend.everything()[0];
             expect("a budget's mark in the warning's colour",
@@ -703,8 +705,18 @@ ShellRoot {
             root.drawers(budgets);
             root.capsAndPeriods(spend.everything());
 
+            // The rows come as the daemon placed them, the shell ranking
+            // none (2026-11-10).
+            const placed = JSON.parse(root.collected);
+            placed.shown = placed.shown.slice().reverse();
+            SpendWatch.readCollection(placed);
+            const reversed = spend.everything().map(row => row.key).join(", ");
+            expect("the rows as the daemon placed them",
+                reversed === placed.shown.map(key => `spend:${key}`).join(", "), reversed);
+
             // A finding with an action goes to its session, and steps into
-            // marking it expected.
+            // marking it expected. The daemon lists it first, and first in
+            // the summary's rows.
             const shown = JSON.parse(root.collected);
             shown.findings = [{
                 key: "finding:burn:s1", name: "A burn in Aquifer", side: "alert",
@@ -712,6 +724,8 @@ ShellRoot {
                 run: ["spend-watch", "go", "s1"], verb: "go to",
                 expect: ["spend-watch", "findings", "expect", "burn:s1"]
             }];
+            shown.shown = ["finding:burn:s1"].concat(shown.shown);
+            shown.summaryRows = ["finding:burn:s1"].concat(shown.summaryRows);
             SpendWatch.readCollection(shown);
             const burn = spend.everything()[0];
             expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go to"

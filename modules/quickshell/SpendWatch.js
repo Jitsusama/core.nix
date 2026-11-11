@@ -66,10 +66,25 @@ function records(collection) {
     for (const [id, from] of [["all", "today"], ["agents", "agentsToday"]]) {
         cut[`day:${id}`] = { key: `day:${id}`, kind: "day", spent: collection[from] ?? null };
     }
+    const places = keys => {
+        const at = {};
+        (keys ?? []).forEach((key, place) => {
+            at[key] = place;
+        });
+        return at;
+    };
+    const shown = places(collection.shown);
+    const summed = places(collection.summaryRows);
     for (const list of ["now", "findings", "more", "quiet"]) {
         (collection[list] ?? []).forEach((line, order) => {
             const key = `row:${list}:${line.key}`;
             cut[key] = { key, kind: "row", list, order, line };
+            if (list !== "quiet" && line.key in shown) {
+                cut[key].place = shown[line.key];
+            }
+            if (list !== "quiet" && line.key in summed) {
+                cut[key].summed = summed[line.key];
+            }
         });
     }
     for (const id of ["periods", "cuts", "examples"]) {
@@ -149,13 +164,26 @@ function made(held, property) {
     case "agentsToday":
         return String(held["day:agents"]?.spent ?? "");
     case "rows": {
-        const lists = { now: [], findings: [], more: [], quiet: [] };
+        // Each row put where the daemon placed it, so none is ranked
+        // here: today's in `now`, every row listed in `shown`, the
+        // summary's in `summary`, and those shown while shared in `quiet`.
+        const lists = { now: [], shown: [], summary: [], quiet: [] };
         for (const record of of("row")) {
-            lists[record.list]?.push(record);
+            const row = { key: record.key, line: record.line };
+            if (record.list === "now" || record.list === "quiet") {
+                lists[record.list][record.order] = row;
+            }
+            if (typeof record.place === "number") {
+                lists.shown[record.place] = row;
+            }
+            if (typeof record.summed === "number") {
+                lists.summary[record.summed] = row;
+            }
         }
+        // A place told before the rest of its list is, as a record let
+        // go before its list is told again, leaves no gap.
         for (const list of Object.keys(lists)) {
-            lists[list] = lists[list].sort((a, b) => a.order - b.order)
-                .map(record => ({ key: record.key, line: record.line }));
+            lists[list] = lists[list].filter(row => row !== undefined);
         }
         return lists;
     }

@@ -265,8 +265,11 @@ ShellRoot {
     // spawns nothing for an act (2026-11-10).
     function acted() {
         const burn = "A burn in Aquifer";
+        // Listed last, since no row held has a place as high as the count
+        // of records.
         tell({
             key: "row:findings:finding:burn:s1", kind: "row", list: "findings", order: 0,
+            place: Object.keys(root.served).length,
             line: {
                 key: "finding:burn:s1", name: burn, side: "alert", copy: `${burn}.`,
                 role: "alert", run: ["spend-watch", "go", "s1"], verb: "go to",

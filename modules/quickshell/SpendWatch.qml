@@ -18,9 +18,10 @@ pragma Singleton
 // reports and their words while Spend's rows are wanted. budgets.json
 // was read again each pass too, about 9 KB, while nothing drew it.
 //
-// Spend still makes its rows from these records, and its drawers in
-// SpendDrawer.js, until spend-watch serves them ready and ranked, planned
-// for 2026-11-12.
+// spend-watch ranks the rows, placing each in the lists it's shown in, so
+// none is ranked here. Spend still makes its rows from these records, and
+// its drawers in SpendDrawer.js, until spend-watch serves them ready,
+// planned for 2026-11-12.
 //
 // While the socket isn't there, as before the daemon starts or in a check
 // that writes the file by hand, the file is read instead, when the watch
@@ -58,10 +59,11 @@ Singleton {
     // spent today, each "" until it's said.
     property string today: ""
     property string agentsToday: ""
-    // The collection's rows, each list in the daemon's order: { now,
-    // findings, more, quiet }, each row { key, line }, its record's key and
-    // the row as the daemon wrote it.
-    property var rows: ({ now: [], findings: [], more: [], quiet: [] })
+    // The collection's rows, each list as the daemon placed it: { now,
+    // shown, summary, quiet }, how things stand, every row listed, the
+    // summary's and those listed while shared, each row { key, line }, its
+    // record's key and the row as the daemon wrote it.
+    property var rows: ({ now: [], shown: [], summary: [], quiet: [] })
     // Each report by its id, and the words that name a period, a cut, and
     // the examples the field offers.
     property var reports: ({})
