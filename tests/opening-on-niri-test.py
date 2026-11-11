@@ -360,6 +360,18 @@ def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: S
     assert weighings <= 1, f"the kept opening weighed its keys {weighings} times: {opening}"
 
 
+def test_a_kept_opening_says_it_is_open_from_its_first_frame(shell: Shell) -> None:
+    """A kept opening's mark reads open from its first frame, before it's filled in.
+
+    The mark said open only at the fill, which waits for niri to present the first frame or
+    half a second, so for that long a switch waiting on it read closed with the card on the
+    screen and could restart the shell under it (Y2YBTS, 2026-11-11).
+    """
+    opening = opened_from_kept(shell)
+    marked = cast("int", opening.get("marked", -1))
+    assert 0 <= marked <= cast("int", opening["took"]), f"not marked open by its frame: {opening}"
+
+
 def test_a_place_kept_over_one_window_is_drawn_as_kept_over_another(shell: Shell) -> None:
     """Kept over one window, a place whose rows follow none is drawn as kept over another's.
 

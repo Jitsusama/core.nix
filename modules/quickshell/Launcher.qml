@@ -7780,7 +7780,20 @@ Scope {
         // A word into memory, so it's said by the time the shell says it
         // opened or closed.
         blockWrites: true
-        Component.onCompleted: setText(root.open ? "open\n" : "closed\n")
+        Component.onCompleted: root.markOpen(root.open)
+    }
+    // What the mark says now, so each word is written once as it changes,
+    // and when it last said open, on the clock keys are timed by.
+    property string markSays: ""
+    property real markedOpenAt: -1
+    function markOpen(shown) {
+        const word = shown ? "open" : "closed";
+        if (word === markSays)
+            return;
+        markSays = word;
+        if (shown)
+            markedOpenAt = KeyTimes.now();
+        openMark.setText(`${word}\n`);
     }
 
     Connections {
@@ -7855,7 +7868,7 @@ Scope {
         const filling = open && opening;
         const began = lapped;
         opening = false;
-        openMark.setText(open ? "open\n" : "closed\n");
+        markOpen(open);
         keysHeld = filling && keysHeld;
         lettingGo = false;
         handing = null;
@@ -8234,9 +8247,9 @@ Scope {
         // Asked once opening, as the card's size follows what it shows.
         openSizedAtAsk = drawnAsAsked();
         keysHeld = false;
-        // The mark says open once it's filled in (onOpenChanged), a frame
-        // or two on: written here, its blocking write held the first frame
-        // 3 to 8 ms, once 54, and what reads it waits minutes on it.
+        // The mark says open once its first frame is drawn (openShown):
+        // written here, its blocking write held that frame 3 to 8 ms, once
+        // 54 (ZINAWZ, 2026-11-11).
         prompt.take();
         if (openAsked >= 0) {
             openWorked = KeyTimes.now() - openAsked;
@@ -8293,6 +8306,11 @@ Scope {
             openFirstDrawn = KeyTimes.now();
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
+            // On the screen from this frame, though it's filled in only once
+            // niri presents it or half a second on (fillUnpresented), so a
+            // switch waiting on the mark never restarts the shell under it
+            // (Y2YBTS, 2026-11-11).
+            markOpen(true);
         }
         if (openFramesSized < (openSizedAtAsk ? 1 : 2) && openFramesWaited < 20) {
             afterFrame(openShown);
@@ -8462,7 +8480,7 @@ Scope {
         if (unlooked.length > 0 || unready.length > 0)
             readying.start();
         openAsked = -1;
-        openMark.setText("closed\n");
+        markOpen(false);
         afterFramesDue();
     }
 
@@ -8595,10 +8613,13 @@ Scope {
         const weighings = (openFirstWeighings < 0 ? keysWeighings : openFirstWeighings)
             - openAskedWeighings;
         openFirstWeighings = -1;
+        // How long after the ask the mark said open, or -1 while it hasn't.
+        const marked = markSays === "open" && markedOpenAt >= asked
+            ? Math.round(markedOpenAt - asked) : -1;
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows, weighings,
-            made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
+            marked, made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
             into: openChord };
         if (kept)
