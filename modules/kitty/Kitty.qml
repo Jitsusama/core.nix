@@ -39,6 +39,7 @@ pragma ComponentBehavior: Bound
 import qs
 import Quickshell
 import QtQuick
+import "../Hearing.js" as Hearing
 import "Kitty.js" as Kitty
 import "KittyOpens.js" as Opens
 
@@ -167,10 +168,11 @@ Provider {
     }
 
     // Each answer draws kitty's step again, once a frame however many come
-    // together.
+    // together, timed from the earliest line that asked (Hearing.js).
     function heard() {
-        Qt.callLater(provider.redraw);
+        Qt.callLater(Hearing.putOff(redrawn));
     }
+    readonly property var redrawn: Hearing.carried(() => provider.redraw())
 
     function redraw() {
         provider.changed();

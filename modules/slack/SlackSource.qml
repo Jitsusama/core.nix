@@ -33,6 +33,7 @@ import Quickshell
 import QtQuick
 import "Slack.js" as Slack
 import "../Ago.js" as Ago
+import "../../Hearing.js" as Hearing
 
 PersonSource {
     id: source
@@ -267,9 +268,12 @@ PersonSource {
                 missed = Object.assign({}, missed, { [said.email]: true });
         }
         pending[said.email] = said;
+        Hearing.putOff(settled);
         if (!settling.running)
             settling.start();
     }
+    // The burst is told as from its first line (Hearing.js).
+    readonly property var settled: Hearing.carried(() => source.settle())
 
     // Takes the answers that came together as one change, or none when
     // they're what was known, so nobody is made anew.
@@ -287,7 +291,7 @@ PersonSource {
         // Started by the first of a burst, never put off by the rest, so
         // a step-in's answer lights within a quarter of a second.
         interval: 250
-        onTriggered: source.settle()
+        onTriggered: source.settled.tell()
     }
 
     Daemon {

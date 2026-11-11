@@ -195,8 +195,13 @@ Scope {
                 then(null);
             return;
         }
-        if (then)
-            awaited[id] = then;
+        // Its answer is heard as from the line that asked, when one did, so
+        // a change an answer tells is timed from the line that set it going
+        // and not from the answer's (Hearing.js).
+        if (then) {
+            const from = Hearing.heardAt();
+            awaited[id] = answer => Hearing.within(from, () => then(answer));
+        }
         tell(Object.assign({}, said, { id: id }));
     }
 

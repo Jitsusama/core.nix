@@ -152,14 +152,47 @@ ShellRoot {
                 return;
             }
             root.markedAt = Hearing.heardAt();
+            root.marks = root.marks.concat([root.markedAt]);
             root.markedThen = Date.now();
             Qt.callLater(() => root.markedLater = Hearing.heardAt());
+            Qt.callLater(Hearing.putOff(root.carriedLater));
+            Hearing.putOff(root.carriedAsk);
+            if (root.askedFrom < 0)
+                carrying.start();
         }
     }
     property real wholeMarkedAt: -1
     property real markedAt: -1
     property real markedThen: -1
     property real markedLater: -1
+    property var marks: []
+
+    // A tell put off carrying its line reads it, by Qt.callLater or a
+    // Timer; and an ask sent from one is answered as from that line, not
+    // from the answer's own, as the launcher times a change an answer
+    // tells (Hearing.js, Daemon.qml's sent).
+    readonly property var carriedLater: Hearing.carried(() => {
+        root.markedCarried = Hearing.heardAt();
+    })
+    property real markedCarried: -1
+    readonly property var carriedAsk: Hearing.carried(() => {
+        root.askedFrom = Hearing.heardAt();
+        marked.find({ ask: "get", kind: "mark", keys: ["mark:asked"] }, () => {
+            root.askAnswered = Hearing.heardAt();
+            root.askAnsweredThen = Date.now();
+        });
+    })
+    property real askedFrom: -1
+    property real askAnswered: -1
+    property real askAnsweredThen: -1
+    // Long enough that the answer's own line is read in a later
+    // millisecond than the line that asked, so the two can't be confused.
+    Timer {
+        id: carrying
+
+        interval: 20
+        onTriggered: root.carriedAsk.tell()
+    }
 
     // Not live, so watching only once it's refreshed, until answered.
     Daemon {
@@ -441,6 +474,14 @@ ShellRoot {
                 + " whole answer and one put off read none",
             holds: () => root.wholeMarkedAt === 0 && root.markedAt > 0 && root.markedAt <= root.markedThen
                 && root.markedThen - root.markedAt < 1000 && root.markedLater === 0
+                && Hearing.heardAt() === 0
+        },
+        {
+            what: "one put off carrying its line reads it, and so does an ask's answer",
+            holds: () => root.marks.includes(root.markedCarried)
+                && root.marks.includes(root.askedFrom)
+                && root.askAnswered === root.askedFrom
+                && root.askAnsweredThen - root.askedFrom >= carrying.interval
                 && Hearing.heardAt() === 0
         },
         {

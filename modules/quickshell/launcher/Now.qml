@@ -22,6 +22,7 @@ import Quickshell.Io
 import QtQuick
 import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
+import "../Hearing.js" as Hearing
 import "../Marks.js" as Marks
 import "../When.js" as When
 import "Ago.js" as Ago
@@ -1850,7 +1851,9 @@ Provider {
     // moves all of Now for it. Asked after the change, never inside it.
     readonly property var forYouHeard: [forYouItems, WaitingOnYou.later, given, latelyPieces,
         Sessions.wanting]
-    onForYouHeardChanged: Qt.callLater(provider.forYouMoved)
+    onForYouHeardChanged: Qt.callLater(Hearing.putOff(forYouTold))
+    // Timed from the earliest line whose change it tells (Hearing.js).
+    readonly property var forYouTold: Hearing.carried(() => provider.forYouMoved())
 
     function forYouMoved() {
         if (heldKeys().length > 0)
