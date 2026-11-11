@@ -38,48 +38,67 @@ pub fn record(key: &str, path: &str) -> Value {
 #[derive(Debug, Default)]
 pub struct Looked {
     keys: HashMap<i32, Vec<(String, Option<String>)>>,
-    watching: HashSet<(String, PathBuf)>,
+    // Each key's folders watched, with the one name each hears, if one:
+    // a folder heard from the one above it isn't yet watched itself.
+    watching: HashSet<(String, PathBuf, Option<String>)>,
 }
 
 impl Looked {
-    /// Watches a folder for a key, if it isn't yet and can be, as one that
-    /// isn't there yet can't: it's tried again as the key is next read.
-    pub fn watch(&mut self, notify: Option<&Notify>, key: &str, path: &Path) {
-        self.hear(notify, key, path, None);
+    /// Watches a folder for a key, if it isn't yet. One that isn't there
+    /// yet is heard from the nearest folder that is, for the name of the
+    /// one on the way to it, so the key is read again as it's made, and
+    /// that read watches it. Says whether it wasn't watched before, so a
+    /// change made while it was read is read too.
+    pub fn watch(&mut self, notify: Option<&Notify>, key: &str, path: &Path) -> bool {
+        self.hear(notify, key, path, None)
     }
 
     /// Watches the folder a file is in for a key, hearing only that file,
     /// as zsh's history sits in a home folder that changes for many other
-    /// reasons.
-    pub fn watch_file(&mut self, notify: Option<&Notify>, key: &str, file: &Path) {
+    /// reasons. Says whether it wasn't watched before.
+    pub fn watch_file(&mut self, notify: Option<&Notify>, key: &str, file: &Path) -> bool {
         let (Some(folder), Some(name)) = (file.parent(), file.file_name()) else {
-            return;
+            return false;
         };
         self.hear(
             notify,
             key,
             folder,
             Some(name.to_string_lossy().into_owned()),
-        );
+        )
     }
 
-    fn hear(&mut self, notify: Option<&Notify>, key: &str, folder: &Path, name: Option<String>) {
-        let heard = name
-            .as_ref()
-            .map_or_else(|| folder.to_path_buf(), |name| folder.join(name));
-        let pair = (key.to_owned(), heard);
-        if self.watching.contains(&pair) {
-            return;
-        }
-        let Some(watch) = notify.and_then(|notify| notify.watch(folder)) else {
-            return;
+    fn hear(
+        &mut self,
+        notify: Option<&Notify>,
+        key: &str,
+        folder: &Path,
+        name: Option<String>,
+    ) -> bool {
+        let Some(notify) = notify else {
+            return false;
         };
-        let keys = self.keys.entry(watch).or_default();
-        let held = (key.to_owned(), name);
-        if !keys.contains(&held) {
-            keys.push(held);
+        let (mut folder, mut name) = (folder.to_path_buf(), name);
+        loop {
+            let pair = (key.to_owned(), folder.clone(), name.clone());
+            if self.watching.contains(&pair) {
+                return false;
+            }
+            if let Some(watch) = notify.watch(&folder) {
+                let keys = self.keys.entry(watch).or_default();
+                let held = (key.to_owned(), name);
+                if !keys.contains(&held) {
+                    keys.push(held);
+                }
+                self.watching.insert(pair);
+                return true;
+            }
+            let (Some(parent), Some(child)) = (folder.parent(), folder.file_name()) else {
+                return false;
+            };
+            name = Some(child.to_string_lossy().into_owned());
+            folder = parent.to_path_buf();
         }
-        self.watching.insert(pair);
     }
 
     /// The keys a change of this name in this watch's folder is heard for:
@@ -170,6 +189,41 @@ mod tests {
         );
         std::fs::remove_dir_all(&one).unwrap();
         std::fs::remove_dir_all(&two).unwrap();
+    }
+
+    #[test]
+    fn a_folder_not_made_yet_is_heard_from_the_nearest_one_there() {
+        let notify = Notify::new().expect("inotify is there");
+        let there = std::env::temp_dir().join(format!("looked-there-{}", std::process::id()));
+        std::fs::create_dir_all(&there).unwrap();
+        let mut looked = Looked::default();
+        let key = "machines:/there/.ssh";
+        let fresh = looked.watch_file(Some(&notify), key, &there.join(".ssh/far/config"));
+        assert!(fresh, "a watch begun is said to be new");
+        let watch = notify.watch(&there).expect("the folder there is watched");
+        assert_eq!(
+            of(&looked, watch, ".ssh"),
+            [key],
+            "heard as the folder on the way comes"
+        );
+        assert!(
+            of(&looked, watch, "other").is_empty(),
+            "and not as another does"
+        );
+        let again = looked.watch_file(Some(&notify), key, &there.join(".ssh/far/config"));
+        assert!(!again, "the same watch isn't said to be new");
+        std::fs::create_dir_all(there.join(".ssh/far")).unwrap();
+        let made = looked.watch_file(Some(&notify), key, &there.join(".ssh/far/config"));
+        assert!(made, "once made, the folder is watched itself");
+        let far = notify
+            .watch(&there.join(".ssh/far"))
+            .expect("the folder made is watched");
+        assert_eq!(
+            of(&looked, far, "config"),
+            [key],
+            "heard as its file is written"
+        );
+        std::fs::remove_dir_all(&there).unwrap();
     }
 
     /// The keys a change of this name in this watch's folder is heard for.

@@ -395,22 +395,31 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
 /// preview again only of a file changed since.
 fn read_named(shared: &Shared, keys: &[String]) {
     for key in keys {
+        let notify = shared.notify.as_ref();
         let record = if let Some(path) = folder::path_of(key) {
-            lock(&shared.daemon)
+            let _ = lock(&shared.daemon)
                 .looked
-                .watch(shared.notify.as_ref(), key, Path::new(path));
+                .watch(notify, key, Path::new(path));
             folder::record(key, path)
-        } else if let Some(read) = repositories::read(key) {
-            let mut daemon = lock(&shared.daemon);
-            for folder in &read.heard {
-                daemon.looked.watch(shared.notify.as_ref(), key, folder);
-            }
+        } else if let Some(read) = watching(
+            || repositories::read(key),
+            |read: &repositories::Read| {
+                let looked = &mut lock(&shared.daemon).looked;
+                read.heard
+                    .iter()
+                    .fold(false, |any, folder| looked.watch(notify, key, folder) | any)
+            },
+        ) {
             read.record
-        } else if let Some(record) = visited::record(key).or_else(|| machines::record(key)) {
-            let mut daemon = lock(&shared.daemon);
-            for file in files_of(&record) {
-                daemon.looked.watch_file(shared.notify.as_ref(), key, &file);
-            }
+        } else if let Some(record) = watching(
+            || kittys(key),
+            |record: &Value| {
+                let looked = &mut lock(&shared.daemon).looked;
+                files_of(record).iter().fold(false, |any, file| {
+                    looked.watch_file(notify, key, file) | any
+                })
+            },
+        ) {
             record
         } else if let Some(path) = preview::path_of(key) {
             if preview::current(lock(&shared.daemon).held.get(key), path) {
@@ -425,6 +434,30 @@ fn read_named(shared: &Shared, keys: &[String]) {
         };
         keep(&mut lock(&shared.daemon), vec![record], &[]);
     }
+}
+
+/// Reads what a key names until reading it starts no new watch, so what
+/// changed between a read and its watch isn't missed, as a folder made
+/// while it was read, which is then watched itself. A path is only so
+/// deep, so the reads stop; past `READS` the last stands.
+fn watching<T>(read: impl Fn() -> Option<T>, watch: impl Fn(&T) -> bool) -> Option<T> {
+    const READS: usize = 8;
+    let mut held = read()?;
+    for _ in 0..READS {
+        if !watch(&held) {
+            break;
+        }
+        match read() {
+            Some(again) => held = again,
+            None => break,
+        }
+    }
+    Some(held)
+}
+
+/// What kitty's page reads of zoxide, ssh and zsh's history, by its key.
+fn kittys(key: &str) -> Option<Value> {
+    visited::record(key).or_else(|| machines::record(key))
 }
 
 /// The files a record of kitty's page was read from, each heard alone in

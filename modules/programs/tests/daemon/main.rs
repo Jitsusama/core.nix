@@ -706,6 +706,37 @@ fn the_repositories_watched_are_said_again_as_one_is_cloned_or_its_git_writes() 
 }
 
 #[test]
+fn the_repositories_under_a_folder_made_once_watched_are_each_said_as_cloned() {
+    let running = Running::new("repositories-later");
+    // Two folders short of there, as a new account's ~/src is.
+    let src = running.path("later/src");
+    let key = format!("repositories:{}", src.display());
+    let mut watching = running.client();
+    watching.ask(&json!({"id": 1, "ask": "watch", "kind": "repositories", "keys": [key]}));
+    let first = watching.changed(&key);
+    assert!(
+        paths_of(&first).is_empty(),
+        "a folder not there held some: {first}"
+    );
+    // Each cloned as git makes it, the folders on the way with it.
+    for (name, count) in [("one", 1), ("two", 2)] {
+        git_in(
+            &running.path("."),
+            &["init", "-q", &src.join(name).display().to_string()],
+        );
+        let mut said = watching.changed(&key);
+        while paths_of(&said).len() < count {
+            said = watching.changed(&key);
+        }
+        assert_eq!(
+            paths_of(&said).len(),
+            count,
+            "{name} wasn't said as cloned: {said}"
+        );
+    }
+}
+
+#[test]
 fn what_kittys_page_reads_of_zoxide_and_ssh_is_read_as_each_is_asked() {
     let running = Running::new("kitty");
     let tide = running.path("tide");
@@ -758,8 +789,8 @@ fn what_kittys_page_reads_of_zoxide_and_ssh_is_read_as_each_is_asked() {
 #[test]
 fn what_kittys_page_reads_is_said_again_as_its_file_changes_while_watched() {
     let running = Running::new("kitty-heard");
+    // ssh's folder is made only once its key is watched, as a new account's is.
     let ssh = running.path(".ssh");
-    std::fs::create_dir_all(&ssh).unwrap();
     let history = running.path("history");
     std::fs::write(&history, ": 1700000000:0;ssh reef\n").unwrap();
     let reached = format!("reached:{}", history.display());
@@ -788,6 +819,7 @@ fn what_kittys_page_reads_is_said_again_as_its_file_changes_while_watched() {
     let mut knowing = running.client();
     knowing.ask(&json!({"id": 1, "ask": "watch", "kind": "machines", "keys": [machines]}));
     knowing.changed(&machines);
+    std::fs::create_dir_all(&ssh).unwrap();
     std::fs::write(ssh.join("known_hosts"), "shoal ssh-ed25519 AAAA\n").unwrap();
     let known = knowing.changed(&machines);
     assert_eq!(

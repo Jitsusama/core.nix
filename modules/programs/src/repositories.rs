@@ -107,6 +107,10 @@ fn found(folder: &Path) -> Found {
     let mut under = vec![(folder.to_path_buf(), 1, false)];
     while let Some((at, depth, inside)) = under.pop() {
         let Ok(read) = fs::read_dir(&at) else {
+            // A folder not made yet is still heard, so its first clone is.
+            if depth == 1 {
+                found.heard.push(at);
+            }
             continue;
         };
         let entries: Vec<fs::DirEntry> = read.flatten().collect();
