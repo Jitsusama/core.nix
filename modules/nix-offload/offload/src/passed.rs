@@ -150,11 +150,18 @@ impl Passed {
         self.keep(at, &lines);
     }
 
-    /// Keep that a changed-checks run with `arguments` passed at `at`,
-    /// having printed `printed`.
-    pub fn keep_run(&self, at: &At, arguments: &[String], printed: &str) {
+    /// Keep that a changed-checks run with `arguments`, started at
+    /// `started` in seconds since 1970, passed at `at`, having printed
+    /// `printed`. When it started orders merges whose gates share files
+    /// (`running.rs`).
+    pub fn keep_run(&self, at: &At, arguments: &[String], printed: &str, started: u64) {
         if self.run(at, arguments).is_none() {
-            let line = serde_json::json!({ "dir": at.dir, "run": arguments, "printed": printed });
+            let line = serde_json::json!({
+                "dir": at.dir,
+                "run": arguments,
+                "printed": printed,
+                "started": started,
+            });
             self.keep(at, &[line]);
         }
     }
@@ -238,8 +245,8 @@ mod tests {
 
         let arguments = checks(&["--build"]);
         assert_eq!(passed.run(&top, &arguments), None);
-        passed.keep_run(&top, &arguments, "changed  a\n");
-        passed.keep_run(&top, &arguments, "changed  a\n");
+        passed.keep_run(&top, &arguments, "changed  a\n", 1_700_000_000);
+        passed.keep_run(&top, &arguments, "changed  a\n", 1_700_000_001);
         assert_eq!(
             passed.run(&top, &arguments).as_deref(),
             Some("changed  a\n")
@@ -248,6 +255,10 @@ mod tests {
         assert_eq!(passed.run(&sub, &arguments), None);
         let kept = fs::read_to_string(passed.file(&top)).unwrap();
         assert_eq!(kept.lines().count(), 4, "{kept}");
+        assert!(
+            kept.contains("\"started\":1700000000"),
+            "the run's start wasn't kept: {kept}"
+        );
     }
 
     #[test]

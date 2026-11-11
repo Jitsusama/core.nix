@@ -205,7 +205,14 @@ run: once the same change passed whole at two commits, a clean rebase onto
 any newer main merges with none, whatever main moved, and the net tests it
 after, unless a file either side moved names a path the other renamed or
 deleted since the newest of the two. Main moves faster than a run, and one
-branch ran six times in a day, every run passing. A machine switches only
+branch ran six times in a day, every run passing. Two changes sharing a
+file merge in the order their gates started, so the one nearly through
+isn't the one made to run again: `nix-offload there --changed` says each
+gate going in `nix-offload/running/<pid>.json` and keeps its start with its
+pass, and `ready` refuses a head while a gate that started before its own,
+in another tree, still runs and changes one of its files other than the
+lists. A gate whose process is gone, or that started three hours ago, holds
+nothing back. A machine switches only
 to merged main, and a bad switch is undone by switching back to the
 generation before it.
 
