@@ -22,7 +22,7 @@ import time
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, cast
 
 import launcher_on_niri
 
@@ -46,6 +46,9 @@ PORT = "3768"
 # A key's line, as Trials.qml says it, and each part of it the lab reads by name.
 KEY = re.compile(r'launcher: "(?P<typed>[^"]*)" took (?P<took>\d+) ms to its frame, (?P<rest>.*)')
 PARTS = ("searching", "rows", "answers", "before", "counting", "typed", "words", "readying")
+
+# How long the profiler may take to write its trace once asked, in seconds.
+FLUSHING = 60
 
 # How many of a span's costliest places are said.
 COSTLIEST = 25
@@ -174,6 +177,28 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
                 )
 
 
+def flushed(profiler: subprocess.Popen[bytes], trace: Path) -> None:
+    """Have the profiler stop recording and write its trace, then quit, while the shell runs.
+
+    A shell stopped while it records drops the connection before its trace is sent, and the
+    profiler writes none, so the trace is asked for first, and taken once it stops growing.
+    """
+    # Started with a pipe to its commands, as the test starts it.
+    commands = cast("IO[bytes]", profiler.stdin)
+    commands.write(b"f\n")
+    commands.flush()
+    deadline = time.monotonic() + FLUSHING
+    size = -1
+    while time.monotonic() < deadline:
+        time.sleep(1)
+        now = trace.stat().st_size if trace.exists() else -1
+        if now > 0 and now == size:
+            break
+        size = now
+    commands.write(b"q\n")
+    commands.flush()
+
+
 def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     """Type each word from home, round after round, and print each key's line and medians.
 
@@ -195,11 +220,13 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
                     "localhost",
                     "-p",
                     PORT,
+                    "--interactive",
                     "-o",
                     str(trace),
                     "--include",
                     "binding,javascript,handlingsignal,debugmessages",
                 ],
+                stdin=subprocess.PIPE,
                 stdout=profiling.open("wb"),
                 stderr=subprocess.STDOUT,
             )
@@ -218,6 +245,8 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
                     parts[typed]["took"].append(took or 0)
                     for name in PARTS:
                         parts[typed][name].append((part(line, name) or 0) if line else 0)
+        if profiler is not None:
+            flushed(profiler, trace)
     heard: list[str] = []
     if profiler is not None:
         heard.append(f"the profiler ended {profiler.wait(timeout=60)}")
