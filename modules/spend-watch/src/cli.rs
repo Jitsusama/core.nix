@@ -34,6 +34,9 @@ spend-watch: what AI use costs
                                     what working it out cost
   spend-watch import                read what's new from pi and the harness once
   spend-watch run                   the daemon
+  spend-watch serve                 serve the files the daemon last wrote on
+                                    its socket, with no pass and no acts: for
+                                    fixtures standing in for the daemon
   spend-watch version
 
 Every command takes --config <file>; the default is the one the module
@@ -117,6 +120,10 @@ fn command(args: Vec<String>) -> Result<String, String> {
         ["run"] => {
             let config = Config::read(&path)?;
             crate::daemon::run(&config).map(|()| String::new())
+        }
+        ["serve"] => {
+            let config = Config::read(&path)?;
+            crate::daemon::serve(&config).map(|()| String::new())
         }
         ["import"] => import(&path),
         ["show"] => show(&path, false),

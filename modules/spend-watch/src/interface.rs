@@ -215,8 +215,13 @@ impl Hub {
 
     /// An act asked of the line `line` names, a row's or an action the
     /// bar's piece offers, done off the lock, since bringing a window
-    /// forward waits on kitty and niri.
+    /// forward waits on kitty and niri. A hub with nothing to do it, as
+    /// one serving only what was written (`daemon::serve`), refuses every
+    /// act as not answering.
     fn act(&self, id: &Value, act: &str, line: &str) -> Value {
+        let Some(doer) = self.doer.get() else {
+            return error(id, "not-answering", "spend-watch can't act yet");
+        };
         let held = {
             let held = self.lock();
             held.records
@@ -228,9 +233,6 @@ impl Hub {
         let doing = match acts::asked(act, line, held.as_ref()) {
             Ok(doing) => doing,
             Err(refusal) => return error(id, refusal.code, &refusal.message),
-        };
-        let Some(doer) = self.doer.get() else {
-            return error(id, "not-answering", "spend-watch can't act yet");
         };
         match doer(doing) {
             Ok(()) => json!({"id": id, "done": true}),
@@ -281,6 +283,12 @@ impl Hub {
         if !held.passed {
             held.records.extend(cut_budgets(&whole));
         }
+    }
+
+    /// Says what was written is what it answers with, as a first pass
+    /// would, for a hub serving only that (`daemon::serve`).
+    pub fn answering(&self) {
+        self.lock().passed = true;
     }
 
     /// Takes what a pass made, telling each watch what changed of its
@@ -714,6 +722,44 @@ mod tests {
             client.next()["records"].as_array().map(Vec::len),
             Some(keys.len()),
             "once a pass has told the collection, what was written is passed over"
+        );
+    }
+
+    // What was written, served as it stands, tells a watch what a pass
+    // making it tells, answering, so a fixture writing the files stands in
+    // for the daemon (daemon.rs's serve); and with nothing to do them, it
+    // refuses every act.
+    #[test]
+    fn what_was_written_is_told_as_a_pass_tells_it() {
+        let made = collection();
+        let written = Arc::new(Hub::new(1));
+        written.seed(&serde_json::to_string(&made).expect("the collection, written"));
+        written.answering();
+        let passed = Arc::new(Hub::new(1));
+        passed.publish(&made, None);
+        let watched = r#"{"id":"all","ask":"watch","kind":["session","quest","row","summary"]}"#;
+        let told = |hub: &Arc<Hub>| Client::to(hub, watched).next();
+        let first = told(&written);
+        assert!(
+            first["records"].as_array().is_some_and(|all| all.len() > 3),
+            "the written collection should tell its records: {first}"
+        );
+        assert_eq!(
+            first,
+            told(&passed),
+            "what was written should tell what a pass does"
+        );
+        let mut client = Client::to(&written, r#"{"id":1,"ask":"hello"}"#);
+        assert_eq!(
+            client.next()["state"],
+            "answering",
+            "it answers with what was written"
+        );
+        client.say(r#"{"id":2,"ask":"act","act":"run","line":"held"}"#);
+        assert_eq!(
+            client.next()["error"]["code"],
+            "not-answering",
+            "with nothing to do it, every act is refused as not answering"
         );
     }
 

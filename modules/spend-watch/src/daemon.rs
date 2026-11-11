@@ -573,6 +573,26 @@ fn hub(config: &Config) -> Result<Arc<Hub>, String> {
     Ok(hub)
 }
 
+/// Serves what the runtime directory holds, `collection.json` and
+/// `budgets.json` as the daemon last wrote them, on its socket as the
+/// daemon tells them, ready rows and all, and nothing more: no pass, and
+/// every act refused as not answering. It's for fixtures: a check or a
+/// virtual machine writes the files to stand in for the daemon, and the
+/// shell reads them over the same wire (Y2YBTS, 2026-11-11).
+pub fn serve(config: &Config) -> Result<(), String> {
+    let hub = hub(config)?;
+    hub.answering();
+    let (wake, inbox) = mpsc::channel();
+    listen(&config.socket(), wake, hub)?;
+    // A word the command line asks, as refresh, has no pass to wait on.
+    for woken in inbox {
+        if let Wake::Asked(_, reply) = woken {
+            let _ = reply.send("spend-watch is serving only what was written".into());
+        }
+    }
+    Ok(())
+}
+
 pub fn run(config: &Config) -> Result<(), String> {
     let _lock = lock(&config.state)?;
     config.runtime()?;
