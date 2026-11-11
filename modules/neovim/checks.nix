@@ -4,13 +4,30 @@
   account,
   holds,
   lib,
-  neovimAt,
   onLinux,
   pkgs,
   workstation,
   ...
 }:
 let
+  # Puts an account's Neovim where Neovim looks for it, under $PWD: every
+  # file the account has in ~/.config/nvim, and the plugins.
+  neovimAt =
+    home:
+    let
+      files = home.xdg.configFile;
+      names = lib.filter (lib.hasPrefix "nvim/") (lib.attrNames files);
+    in
+    ''
+      export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+      export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
+      mkdir -p data/nvim/site/pack
+      ln -s ${home.xdg.dataFile."nvim/site/pack/hm".source} data/nvim/site/pack/hm
+      ${lib.concatMapStrings (name: ''
+        mkdir -p config/${dirOf name}
+        cp ${files.${name}.source} config/${name}
+      '') names}
+    '';
   # Runs Neovim headless with a probe and fails unless it answers as
   # expected (probe.sh).
   probed = "${lib.getExe pkgs.bash} ${./probe.sh}";
