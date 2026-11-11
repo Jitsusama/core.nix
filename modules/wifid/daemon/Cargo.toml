@@ -14,6 +14,9 @@ chacha20poly1305 = { version = "0.11", features = ["zeroize"] }
 futures-util = { version = "0.3", default-features = false }
 hmac = "0.13"
 libc = "0.2"
+# The ready-row form every daemon serves the launcher's rows in: each
+# row's spaced order, and the records a making changed (../../ready-rows).
+ready-rows = { path = "../../ready-rows" }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

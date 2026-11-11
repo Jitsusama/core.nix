@@ -1,6 +1,7 @@
 # wifid's sign-in window, built from the workspace beside wifid itself but
 # as a package of its own, so the machine's wifid never carries WebKit.
-# Its tests run as it builds.
+# Its tests run as it builds. The daemon beside it names ../../ready-rows,
+# and cargo reads every member, so the source reaches that too.
 {
   lib,
   rustPlatform,
@@ -10,18 +11,21 @@
   webkitgtk_6_0,
   glib-networking,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "wifid-sign-in";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ../.;
+    root = ../../.;
     fileset = lib.fileset.unions [
       ../Cargo.toml
       ../Cargo.lock
       ../daemon
       ./.
+      ../../ready-rows/Cargo.toml
+      ../../ready-rows/src
     ];
   };
+  sourceRoot = "${src.name}/wifid";
   cargoLock.lockFile = ../Cargo.lock;
   cargoBuildFlags = [
     "--package"

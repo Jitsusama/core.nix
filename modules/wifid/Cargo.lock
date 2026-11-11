@@ -962,6 +962,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
+name = "ready-rows"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1554,6 +1561,7 @@ dependencies = [
  "futures-util",
  "hmac",
  "libc",
+ "ready-rows",
  "rustls",
  "serde",
  "serde_json",

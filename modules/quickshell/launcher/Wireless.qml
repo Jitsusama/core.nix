@@ -119,8 +119,10 @@ Provider {
             lookedFrom = -1;
     }
 
-    // The rows wifid serves, by key as it last said each, and the keys in
-    // the order its rows say, placed as each change comes (Placed.js).
+    // The rows wifid serves, each in a record `{ key, kind: "row", row }`
+    // as every daemon serves them, held by key as it last said each, and
+    // the keys in the order its rows say, placed as each change comes
+    // (Placed.js).
     Daemon {
         id: served
 
@@ -131,24 +133,31 @@ Provider {
         onHeard: (changed, gone) => provider.take(changed, gone)
     }
     property var placed: []
-    readonly property var rows: placed.map(key => served.held[key])
+    property var rowOf: ({})
+    readonly property var rows: placed.map(key => rowOf[key])
     // Each network's row as made from what wifid last served of it, by
     // key, so a change remakes only the networks it names.
     property var madeOf: ({})
 
     function take(changed, gone) {
+        const held = Object.assign({}, rowOf);
         const kept = Object.assign({}, madeOf);
         for (const key of gone) {
+            delete held[key];
             delete kept[key];
             delete verbsOf[key];
         }
         for (const key of changed) {
-            const row = served.held[key];
-            if (row?.kind === "network")
+            const row = served.held[key]?.row;
+            if (!row)
+                continue;
+            held[key] = row;
+            if (row.kind === "network")
                 kept[key] = made(networkOf(row));
         }
+        rowOf = held;
         madeOf = kept;
-        placed = Placed.placed(placed, served.held, changed, gone);
+        placed = Placed.placed(placed, held, changed, gone);
     }
 
     // A network as its row's held fields say it, for its acts.
