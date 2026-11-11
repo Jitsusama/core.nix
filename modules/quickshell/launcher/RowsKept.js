@@ -90,9 +90,11 @@ function afresh(was, now) {
 // The lists shown lately, newest first, each as { rows, said }: its rows
 // and what was worked out of them by name. A backspace back to a place's
 // whole list lists the very rows it listed before, and each key walked
-// every one of them again, Emoji's 1,914, to key them, measure their
-// sides and weigh their keys, about 5 ms of each such key on a builder
-// (2026-11-11). Kept as that list again, they're worked out once.
+// every one of them again, Emoji's 1,914, to key them for the list and
+// weigh their keys, a few milliseconds of each such key on a builder
+// (2026-11-11). Kept as that list again, they're worked out once. What
+// a row says at its right is still measured each time, since a row kept
+// by its place can say something new (Copies.qml's made).
 const LATELY = 4;
 
 // `was` with `rows` first, keeping what was worked out of it, and only

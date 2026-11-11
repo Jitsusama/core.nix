@@ -370,13 +370,7 @@ Scope {
         list.keptLast = null;
         const composed = live((steadying && !ordering ? steadied(rows.concat(below))
             : rows.concat(below)).concat(ending));
-        // The same rows listed lately are that list again, as a backspace
-        // back to a place's whole list lists them, so what was worked out
-        // over every one of them is kept (RowsKept.lately).
-        const shownAgain = RowsKept.again(listedLately, composed, matches);
-        if (shownAgain !== composed)
-            listedAgain += 1;
-        matches = shownAgain;
+        matches = listedAs(composed);
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
@@ -3104,12 +3098,8 @@ Scope {
             || ((row.chord ?? []).length > 0 ? ""
                 : typeof row.counts === "function" ? row.sideWidest ?? row.side ?? ""
                 : row.side ?? "")).length;
-        // Kept by the step too, since what a row says at its right there
-        // depends on whether it's home's.
-        const { now, sides } = RowsKept.said(listedLately, matches, `widest|${step}`, () => ({
-            now: Math.max(0, ...matches.filter(row => !!row.graph).map(said)),
-            sides: Math.max(0, ...matches.map(said))
-        }));
+        const now = Math.max(0, ...matches.filter(row => !!row.graph).map(said));
+        const sides = Math.max(0, ...matches.map(said));
         if (step !== figuresStep) {
             figuresStep = step;
             figuresWidest = now;
@@ -3152,6 +3142,16 @@ Scope {
     // (RowsKept.lately), and how many times a key listed one again.
     property var listedLately: []
     property int listedAgain: 0
+
+    // The same rows listed lately are that list again, as a backspace back
+    // to a place's whole list lists them, so what was worked out over every
+    // one of them is kept (RowsKept.lately).
+    function listedAs(rows) {
+        const again = RowsKept.again(listedLately, rows, matches);
+        if (again !== rows)
+            listedAgain += 1;
+        return again;
+    }
 
     // Where the rows drawn stand, the glyph and hue an act of its own
     // without them wears and whether they're home's, told as their rows
@@ -5558,7 +5558,7 @@ Scope {
             const lived = live(found);
             const livedAt = Date.now();
             list.keptLast = null;
-            matches = lived;
+            matches = listedAs(lived);
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
