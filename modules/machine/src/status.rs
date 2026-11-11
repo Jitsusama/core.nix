@@ -604,7 +604,7 @@ mod tests {
             json!({"unit": "disk-guard.service", "account": false, "stopped": true}),
             "the machine's guard is asked on the system's bus: {silent:?}"
         );
-        let still = kept.records(&root, &watchers, at(200), Duration::from_secs(1200));
+        let still = kept.records(&root, &watchers, at(210), Duration::from_secs(1210));
         assert_eq!(still[0]["unit"], silent[0]["unit"], "{still:?}");
         assert_eq!(
             ASKED.load(Ordering::SeqCst),

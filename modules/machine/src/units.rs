@@ -8,6 +8,7 @@
 //! systemd's bus as `systemctl show` would, on the session's for the
 //! account's units and the system's for the machine's (status.rs).
 
+use std::fmt::Write;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -134,7 +135,7 @@ fn escaped(name: &str) -> String {
         if byte.is_ascii_alphabetic() || (byte.is_ascii_digit() && at > 0) {
             path.push(char::from(byte));
         } else {
-            path.push_str(&format!("_{byte:02x}"));
+            let _ = write!(path, "_{byte:02x}");
         }
     }
     path

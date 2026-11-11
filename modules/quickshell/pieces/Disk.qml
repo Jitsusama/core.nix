@@ -200,16 +200,16 @@ Piece {
     }
 
     // One at a time, as the guard's foot says one sentence.
-    property bool telling: false
+    property bool guardAsked: false
 
     function tell(act, said) {
-        if (telling)
+        if (guardAsked)
             return;
-        telling = true;
+        guardAsked = true;
         told = "\u2026";
         Watchers.act(Object.assign({ act: act }, said), answer => {
-            telling = false;
-            told = answer === null ? "the machine daemon isn't answering"
+            piece.guardAsked = false;
+            piece.told = answer === null ? "the machine daemon isn't answering"
                 : answer.error?.message ?? answer.said ?? "";
         });
     }
