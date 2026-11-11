@@ -434,7 +434,7 @@ fn drawer(drawn: &Value, name: &str, words: &Words) -> Value {
         "facts": facts, "body": "",
     });
     if drawn["names"] == true {
-        made["names"] = json!(true);
+        made["eyebrowNames"] = json!(true);
     }
     made
 }
@@ -590,7 +590,8 @@ mod tests {
         let made = rows(PLACE, &[&window], &Value::Null, &words());
         assert_eq!(
             made[0]["drawer"],
-            json!({"eyebrow": "in Claude Pro · window", "names": true, "title": "Five Hours",
+            json!({"eyebrow": "in Claude Pro · window", "eyebrowNames": true,
+            "title": "Five Hours",
             "body": "", "facts": [
                 {"name": "Resets", "said": "16:20"},
                 {"name": "Week", "said": "40%",

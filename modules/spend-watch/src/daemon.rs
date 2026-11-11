@@ -556,13 +556,14 @@ fn hub(config: &Config) -> Result<Arc<Hub>, String> {
     let since = u64::try_from(jiff::Timestamp::now().as_millisecond()).unwrap_or_default();
     // A vocabulary that can't be read leaves each word its id, as the
     // launcher says one it doesn't hold, rather than serving no rows.
-    let words = config
+    let vocabulary = config
         .vocabulary
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|text| crate::ready::Words::from_vocabulary(&text).ok())
         .unwrap_or_default();
-    let hub = Arc::new(Hub::new(since).worded(words));
+    let words = crate::ready::Words::from_vocabulary(&vocabulary).unwrap_or_default();
+    let refusals = crate::interface::refusals(&vocabulary);
+    let hub = Arc::new(Hub::new(since).worded(words).refusing(refusals));
     let runtime = config.runtime()?;
     if let Ok(written) = std::fs::read_to_string(runtime.join("collection.json")) {
         hub.seed(&written);
@@ -607,15 +608,15 @@ pub fn serve(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-/// Tells the loop whenever a file in the runtime directory is written or
-/// put in place, for `serve`.
+/// Tells the loop whenever a file in the runtime directory is written, put
+/// in place or removed, for `serve`.
 #[cfg(target_os = "linux")]
 fn rewrites(runtime: &std::path::Path, wake: Sender<Wake>) {
     use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
     let Ok(fd) = inotify::init(CreateFlags::CLOEXEC) else {
         return;
     };
-    let flags = WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO;
+    let flags = WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO | WatchFlags::DELETE;
     if inotify::add_watch(&fd, runtime, flags).is_err() {
         return;
     }
