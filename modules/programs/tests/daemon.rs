@@ -15,6 +15,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
@@ -131,8 +132,10 @@ fn fixture(folder: &Path) -> PathBuf {
 
 /// A stand-in for file-preview, kept (serve), answering each file asked
 /// with its path and the process that answered, so a case sees whether
-/// one kept was asked. It runs on the shell the path finds, as the build
-/// has no /bin/sh.
+/// one kept was asked, and never answering a file named stuck, as one
+/// whose read never ends, waiting on a child of its own as file-preview
+/// waits on pdftoppm, its process kept beside it (`.waiting`). It runs
+/// on the shell the path finds, as the build has no /bin/sh.
 fn previewer(path: &Path) {
     let shell = std::env::var("PATH")
         .unwrap_or_default()
@@ -142,6 +145,7 @@ fn previewer(path: &Path) {
         .expect("no sh on the path");
     let script = r#"#!SHELL
 while IFS= read -r line; do
+  case $line in *stuck*) sleep infinity & echo $! > "$0.waiting"; wait ;; esac
   printf '{"picture": "%s", "by": %s}\n' "${line#show }" $$
 done
 "#
@@ -670,6 +674,62 @@ fn what_a_file_shows_is_asked_of_one_file_preview_kept() {
     assert_eq!(
         first["shown"]["by"], second["shown"]["by"],
         "both weren't asked of one file-preview, kept"
+    );
+}
+
+#[test]
+fn a_file_that_file_preview_never_answers_is_said_unanswered_and_holds_up_nothing() {
+    const GLANCE: Duration = Duration::from_millis(10);
+    let running = Running::new("stuck");
+    let mut client = running.client();
+    let before = client.ask(&json!({"id": 1, "ask": "get", "keys": ["preview:/c.png"]}));
+    let asked = Instant::now();
+    let stuck = client.ask(&json!({"id": 2, "ask": "get", "keys": ["preview:/stuck.png"]}));
+    assert_eq!(
+        stuck["records"][0]["answering"],
+        json!(false),
+        "a file file-preview never answers isn't said as answered: {stuck}"
+    );
+    assert!(
+        asked.elapsed() < Duration::from_secs(6),
+        "it waited {:?} on a file that never answers",
+        asked.elapsed()
+    );
+    let waiting = std::fs::read_to_string(running.path("file-preview.waiting"))
+        .expect("the stuck stand-in says the child it waits on");
+    let left = Path::new("/proc").join(waiting.trim()).join("stat");
+    // Stopped, it's gone or a zombie waiting on its reaper, polled for as
+    // the kill lands, a GLANCE apart.
+    let stopped = Instant::now();
+    while std::fs::read_to_string(&left).is_ok_and(|stat| !stat.contains(") Z ")) {
+        assert!(
+            stopped.elapsed() < Duration::from_secs(2),
+            "the stuck file-preview's own child ran on: {}",
+            waiting.trim()
+        );
+        std::thread::sleep(GLANCE);
+    }
+    let after = client.ask(&json!({"id": 3, "ask": "get", "keys": ["preview:/d.png"]}));
+    assert_eq!(
+        after["records"][0]["shown"]["picture"],
+        json!("/d.png"),
+        "the file after a stuck one wasn't said: {after}"
+    );
+    assert_ne!(
+        before["records"][0]["shown"]["by"], after["records"][0]["shown"]["by"],
+        "the stuck file-preview was kept rather than stopped"
+    );
+    let asked = Instant::now();
+    let again = client.ask(&json!({"id": 4, "ask": "get", "keys": ["preview:/stuck.png"]}));
+    assert_eq!(
+        again["records"][0]["answering"],
+        json!(false),
+        "the stuck file is said as answered: {again}"
+    );
+    assert!(
+        asked.elapsed() < Duration::from_secs(1),
+        "an unchanged stuck file was asked again, waiting {:?}",
+        asked.elapsed()
     );
 }
 

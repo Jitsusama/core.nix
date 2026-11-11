@@ -1721,9 +1721,11 @@
     it ignores, as each is asked, reads when zoxide's database saw each folder, ssh's config
     and known hosts, and the ssh lines of zsh's history as each is asked, reads what a program
     has open as it's asked, and a list its program tells of again only once told it changed, or as
-    each ask comes while it names a process that never told, asks
-    what a file shows of one file-preview it keeps, again only once the file changed, follows a
-    data folder through each link a switch replaces, and refuses an ask or a kind it doesn't know
+    each ask comes while it names a process that never told, asks what a file shows of one
+    file-preview it keeps, again only once the file changed, says a file that file-preview doesn't
+    answer within its deadline as not answering, stopping it and what it waits on, and goes on to
+    the next, follows a data folder through each link a switch replaces, and refuses an ask or a
+    kind it doesn't know
   '';
   programs-passes-clippy = ''
     clippy finds nothing in the programs daemon or its tests
