@@ -89,7 +89,10 @@ in
     };
   };
 
+  # Only a charger's events, never a battery's: a battery charging says its
+  # level every few seconds, which restarted this about 35 times a minute and
+  # never changed the reading, since a charger coming or going sends its own.
   services.udev.extraRules = ''
-    SUBSYSTEM=="power_supply", RUN+="${systemctl} --no-block restart ${follower}.service"
+    SUBSYSTEM=="power_supply", ATTR{type}!="Battery", RUN+="${systemctl} --no-block restart ${follower}.service"
   '';
 }
