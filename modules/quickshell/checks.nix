@@ -434,6 +434,16 @@ onLinux {
         ((account graphical).systemd.user.services.sessions-kitty.Unit.X-SwitchMethod or null) == "keep-old"
       );
 
+  # The sessions' kitty draws only the frames niri asks for, so the windows
+  # niri doesn't show stop being drawn.
+  the-sessions-kitty-keeps-niris-pace =
+    let
+      service = (account graphical).systemd.user.services.sessions-kitty.Service;
+    in
+    holds "the-sessions-kitty-keeps-niris-pace"
+      "The sessions' kitty draws as it pleases, so every hidden session's window is drawn too."
+      (lib.any (lib.hasInfix "-o sync_to_monitor=yes") (lib.toList (service.ExecStart or [ ])));
+
   # A machine shapes what the overview shows in a line a change: a piece
   # moved, cut, shown only while true, a threshold changed and the rest kept,
   # and a piece of its own linked beside the built-in ones.

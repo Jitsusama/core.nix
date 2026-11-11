@@ -2271,9 +2271,19 @@ in
         # the scrollback swapped out cold.
         CPUWeight = 1000;
         MemoryMin = "512M";
+        # It draws a frame only when niri asks for one, unlike Joel's own kitty
+        # (kitty.conf's sync_to_monitor no). Drawing as it pleased, it drew
+        # every session's window, hidden ones too, since niri never marks one
+        # suspended: 106 ms of its thread a second at the median and 188 at
+        # the 95th, 56% of it making each window's context current, and it
+        # woke niri out of 505 of its 603 sleeps of 8 ms or more (7QEY1S,
+        # 2026-11-10). niri asks a window it doesn't show for about one frame
+        # a second, so the hidden ones go quiet; a shown one waits at most a
+        # frame, 8.3 ms at 120 Hz.
         ExecStart = lib.concatStringsSep " " [
           "${config.home.profileDirectory}/bin/kitty"
           "-1 --instance-group pi-sessions --wait-for-single-instance-window-close"
+          "-o sync_to_monitor=yes"
           "--class pi-sessions-kept --start-as=hidden ${lib.getExe' pkgs.coreutils "sleep"} infinity"
         ];
         Restart = "always";

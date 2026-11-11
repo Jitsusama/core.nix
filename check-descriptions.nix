@@ -2191,6 +2191,10 @@
   the-sessions-kitty-outlives-a-switch = ''
     a switch never restarts the kitty every session's window is in, so no switch closes them
   '';
+  the-sessions-kitty-keeps-niris-pace = ''
+    the kitty every session's window is drawn by draws only the frames niri asks for, so the
+    session windows niri doesn't show aren't drawn
+  '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
     with a hard memory floor agents.slice keeps as large, so a session opening never starves the
