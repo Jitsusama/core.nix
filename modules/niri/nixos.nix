@@ -181,6 +181,19 @@
     # patch (suspends-hidden-windows.patch) suspends a window within a
     # second of no output drawing it, unless it's cast, and unsuspends it as
     # a frame holds it again. Its tests run as niri builds.
+    #
+    # niri renders a frame as soon as the vblank before it passes, and sends
+    # each window its frame callback after that render, so a window that
+    # answers a key a few milliseconds later waits for the next vblank to be
+    # rendered and the one after it to be shown. Joel's keys spent a median
+    # 48 ms from their frame's start to the screen on 11 November, of 58 ms
+    # in all. The patch (render-deadline.patch, upstream's #4692, not yet
+    # merged there) renders as late as it can and still make the next
+    # vblank, its margin growing when it misses one and shrinking as it
+    # doesn't, and renders at once on a VRR screen, after a few idle
+    # refreshes, or where its margin passes three quarters of a refresh.
+    # debug's disable-render-deadline turns it off. Its tests run as niri
+    # builds.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -214,6 +227,7 @@
         ./refreshes-once-a-frame.patch
         ./powers-off-each-output.patch
         ./suspends-hidden-windows.patch
+        ./render-deadline.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
