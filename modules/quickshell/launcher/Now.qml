@@ -808,7 +808,9 @@ Provider {
     // Each file's text, by its name, as it was last read.
     property var lookTexts: ({})
     // Each file's look is kept by its text, in looksParsed.by, so only a
-    // file that changed is parsed again.
+    // file that changed is parsed again. A stopgap: KP0L6A's agents daemon
+    // takes the looks over by Sat 14 Nov, and For You takes its rows from
+    // it ready, with nothing to read or parse here.
     readonly property var looks: ForYou.looks(Object.keys(lookTexts)
         .map(file => ({ file: file, text: lookTexts[file] })), looksParsed)
     readonly property var looksParsed: ({})
@@ -892,7 +894,10 @@ Provider {
     // sync to disk, it took 3 to 31 ms of Joel's act, 70 on the first
     // (2026-11-10). Each file has a writer of its own until it's written,
     // since a writer given a second write gives up the first: a second
-    // write of the same file is the one meant, and replaces the first.
+    // write of the same file is the one meant, and replaces the first. A
+    // write that fails puts the look back as it read before the act and
+    // says so, since a look shown cleared that comes back at the next read
+    // would say nothing of why (Y2YBTS, 2026-11-10).
     Component {
         id: lookWrite
 
@@ -900,13 +905,16 @@ Provider {
             id: writer
 
             required property string file
+            // The file's text before the act, and the text written.
+            required property string was
+            property string wrote: ""
 
             preload: false
             printErrors: false
             atomicWrites: true
             blockWrites: false
             onSaved: provider.lookWritten(file, writer)
-            onSaveFailed: provider.lookWritten(file, writer)
+            onSaveFailed: error => provider.lookUnwritten(file, writer, error)
         }
     }
     // Each file's writer, by its name, while its write is under way.
@@ -917,10 +925,20 @@ Provider {
             return;
         const text = ForYou.rewritten(one, state, how, Date.now());
         if (!(one.file in lookWriters))
-            lookWriters[one.file] = lookWrite.createObject(provider,
-                { file: one.file, path: `${provider.looksAt}/${one.file}` });
+            lookWriters[one.file] = lookWrite.createObject(provider, { file: one.file,
+                was: lookTexts[one.file] ?? "", path: `${provider.looksAt}/${one.file}` });
+        lookWriters[one.file].wrote = text;
         lookWriters[one.file].setText(text);
         heardLook(one.file, text);
+    }
+
+    // Put back only while nothing has read or written the file since.
+    function lookUnwritten(file, writer, error) {
+        console.warn(`Now: ${looksAt}/${file} wasn't written (${FileViewError.toString(error)}),`
+            + " so its look stands as it was");
+        if (lookWriters[file] === writer && lookTexts[file] === writer.wrote && writer.was !== "")
+            heardLook(file, writer.was);
+        lookWritten(file, writer);
     }
 
     function lookWritten(file, writer) {
