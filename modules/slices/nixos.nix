@@ -573,6 +573,13 @@ in
             "%t/pi/background"
             "--weigh"
             "mycelium-pi-"
+            # A pi host's unit holds many sessions behind one node process,
+            # each shown by a terminal running only mycelium's attach, so the
+            # unit ranks as they would in windows of their own: low while
+            # every one is marked, held while Joel is at a window showing
+            # one, and keeping an orchestrator's floor for each it holds.
+            "--hosts"
+            "pi-host-"
             # When the kernel's reclaim thread gives up, agents' work gives a
             # gibibyte back, which brings it back; otherwise every program
             # reclaims for itself until the OOM killer ends one.
