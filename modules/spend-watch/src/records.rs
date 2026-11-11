@@ -7,8 +7,10 @@
 //! - `day:all` and `day:agents`, how today stands, for the home row and
 //!   Agents;
 //! - `row:<list>:<key>`, one row of the collection's lists (`now`,
-//!   `findings`, `more` and `quiet`), with its place in that list, for
-//!   the launcher while it's open;
+//!   `findings`, `more` and `quiet`), with its `order` in that list, and
+//!   its `place` in the list the launcher shows and `summed` in the
+//!   summary's rows where it's in them, for the launcher while it's
+//!   open, which places each row by them and ranks none;
 //! - `report:<id>`, one report, and `words:periods`, `words:cuts` and
 //!   `words:examples`, for Spend's answers while it's wanted;
 //! - `budget:<name>`, how one budget stands, and `drew:<id>`, the budget a
@@ -127,16 +129,34 @@ pub fn cut(whole: Value) -> BTreeMap<String, Value> {
             json!({"key": key, "kind": "day", "spent": spent}),
         );
     }
+    let places = |field: &str| -> BTreeMap<String, usize> {
+        let Some(Value::Array(keys)) = whole.get(field) else {
+            return BTreeMap::new();
+        };
+        keys.iter()
+            .enumerate()
+            .filter_map(|(at, key)| Some((key.as_str()?.to_owned(), at)))
+            .collect()
+    };
+    let (shown, summed) = (places("shown"), places("summaryRows"));
     for list in ["now", "findings", "more", "quiet"] {
         let Some(Value::Array(lines)) = whole.remove(list) else {
             continue;
         };
         for (order, line) in lines.into_iter().enumerate() {
-            let key = format!("row:{list}:{}", line["key"].as_str().unwrap_or_default());
-            made.insert(
-                key.clone(),
-                json!({"key": key, "kind": "row", "list": list, "order": order, "line": line}),
-            );
+            let of = line["key"].as_str().unwrap_or_default().to_owned();
+            let key = format!("row:{list}:{of}");
+            let mut record =
+                json!({"key": key, "kind": "row", "list": list, "order": order, "line": line});
+            if list != "quiet" {
+                if let Some(place) = shown.get(&of) {
+                    record["place"] = json!(place);
+                }
+                if let Some(at) = summed.get(&of) {
+                    record["summed"] = json!(at);
+                }
+            }
+            made.insert(key, record);
         }
     }
     for id in ["periods", "cuts", "examples"] {

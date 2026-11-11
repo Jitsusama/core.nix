@@ -248,16 +248,6 @@ Provider {
         return byWord.score < 0 ? byWord : { score: byWord.score / 2, grade: byWord.grade };
     }
 
-    // A finding that wants a look comes first, under the cursor as the
-    // collection opens; the rest come after how things stand.
-    function asking(given) {
-        return given.role === "alert" || given.role === "warning";
-    }
-
-    function ordered(rows, found) {
-        return found.filter(asking).concat(rows, found.filter(given => !asking(given)));
-    }
-
     // Made only while they're wanted (Provider.qml's whileWanted), since
     // every row was made again at each of the daemon's passes: 90 in four
     // minutes with the launcher shut on Joel's shell (YQZGPC, 2026-11-10).
@@ -269,18 +259,13 @@ Provider {
         return rows;
     })
 
-    // The rows the daemon gives to be listed, each { key, line }, in order.
+    // The rows the daemon gives to be listed, each { key, line }, in the
+    // order it ranked them: a finding that wants a look first, under the
+    // cursor as the collection opens.
     function listedRows() {
-        const rows = SpendWatch.rows;
         return SpendWatch.down ? [{ key: "start", line: downLine }]
             : !known ? []
-            : sharing ? orderedRows([], rows.quiet)
-            : orderedRows(rows.now, rows.findings).concat(rows.more);
-    }
-
-    function orderedRows(rows, found) {
-        const asks = one => asking(one.line);
-        return found.filter(asks).concat(rows, found.filter(one => !asks(one)));
+            : sharing ? SpendWatch.rows.quiet : SpendWatch.rows.shown;
     }
 
     // What the daemon gives to be listed, as it gives it.
@@ -401,23 +386,21 @@ Provider {
         const shown = id === null ? null : reports[id] ?? null;
         if (shown === null)
             return id !== null && SpendWatch.reportsReading ? waitingAnswer() : null;
-        const quiet = SpendWatch.rows.quiet.map(one => one.line);
-        const now = SpendWatch.rows.now.map(one => one.line);
-        const found = SpendWatch.rows.findings.map(one => one.line);
+        const lines = list => SpendWatch.rows[list].map(one => one.line);
         if (sharing)
             return {
                 // In lower case, as every other answer's headline is.
                 headline: "amounts are hidden while the screen is shared",
                 copy: "",
-                rows: ordered([], quiet).map(build),
+                rows: lines("quiet").map(build),
                 note: "ask again once sharing ends"
             };
         if (id === "summary") {
-            const lead = now[0];
+            const lead = SpendWatch.rows.now[0]?.line;
             return {
                 headline: lead ? lead.copy : shown.headline,
                 copy: shown.markdown,
-                rows: ordered(now.slice(1), found).map(build),
+                rows: lines("summary").map(build),
                 note: noted("Return copies the summary")
             };
         }

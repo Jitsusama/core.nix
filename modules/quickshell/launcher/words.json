@@ -511,8 +511,8 @@
       "said": {
         "unread": "not read yet",
         "window": "in {budget} \u00b7 window",
-        "down": "the watch isn't answering",
-        "lastFigures": "the watch isn't answering; these are its last figures",
+        "down": "not answering",
+        "lastFigures": "not answering · its last figures",
         "lastRun": "the watch is still reading; these are its last run's figures"
       }
     },
