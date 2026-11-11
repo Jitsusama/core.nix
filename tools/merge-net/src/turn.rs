@@ -11,7 +11,8 @@
 //! what passed (`passed.rs` and `running.rs` there). Ordering by start
 //! rather than by whether a gate still runs means the earlier change never
 //! waits on the later one, so neither waits on the other forever. A gate
-//! whose process is gone, or that ran past [`LONGEST`], holds nothing
+//! whose process is gone, or is another process now, started at another
+//! time than the gate's, or that ran past [`LONGEST`], holds nothing
 //! back; nor does one in the asking tree, or one sharing only lists each
 //! change adds a line to (`lists.rs`), which never make a pass stale.
 
@@ -21,15 +22,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The longest a gate is waited on. Gates have run past an hour on
-/// saturated lenders, so this leaves room, while a file left behind by a
-/// process whose id came back to another nix-offload still lets merges go
-/// within a few hours.
+/// saturated lenders, so this leaves room, while a gate that hangs still
+/// lets merges go within a few hours.
 pub const LONGEST: u64 = 3 * 60 * 60;
 
 /// A gate going now, as nix-offload said it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Gate {
     pub pid: u32,
+    /// When its process started, in clock ticks since boot.
+    pub ticks: u64,
     pub commit: String,
     pub folder: PathBuf,
     pub started: u64,
@@ -47,6 +49,7 @@ pub fn gates(folder: &Path) -> Vec<Gate> {
         .filter_map(|said| {
             Some(Gate {
                 pid: u32::try_from(said["pid"].as_u64()?).ok()?,
+                ticks: said["ticks"].as_u64()?,
                 commit: said["commit"].as_str()?.to_owned(),
                 folder: PathBuf::from(said["folder"].as_str()?),
                 started: said["started"].as_u64()?,
@@ -76,7 +79,7 @@ pub struct Ahead<'a> {
 
 /// The gate among `gates` that holds back a change whose own gate started
 /// at `started`, in the tree at `here`, changing `ours`: the earliest that
-/// started before it, still runs as `alive` says of its process, hasn't
+/// started before it, still runs as `alive` says of it, hasn't
 /// run past [`LONGEST`] by `now`, and changes, as `files_of` says, a file
 /// of `ours` that's no list.
 pub fn ahead<'a>(
@@ -84,7 +87,7 @@ pub fn ahead<'a>(
     started: u64,
     here: &Path,
     now: u64,
-    alive: &dyn Fn(u32) -> bool,
+    alive: &dyn Fn(&Gate) -> bool,
     files_of: &dyn Fn(&Gate) -> Option<Vec<String>>,
     ours: &[String],
 ) -> Option<Ahead<'a>> {
@@ -100,7 +103,7 @@ pub fn ahead<'a>(
         .collect();
     earlier.sort_by_key(|gate| gate.started);
     earlier.into_iter().find_map(|gate| {
-        if !alive(gate.pid) {
+        if !alive(gate) {
             return None;
         }
         let shared: Vec<String> = files_of(gate)?
@@ -152,11 +155,18 @@ fn files_of(gate: &Gate) -> Option<Vec<String>> {
     Some(files.lines().map(str::to_owned).collect())
 }
 
-/// Whether process `pid` is a nix-offload still, rather than gone or
-/// another program given its id since.
-pub fn alive(pid: u32) -> bool {
-    fs::read(format!("/proc/{pid}/cmdline"))
-        .is_ok_and(|said| said.windows(11).any(|word| word == b"nix-offload"))
+/// Whether `gate`'s process still runs: one has its id and started when
+/// the gate said, so a process given the id since doesn't count.
+pub fn alive(gate: &Gate) -> bool {
+    ticks(gate.pid) == Some(gate.ticks)
+}
+
+/// When process `pid` started, in clock ticks since boot: the 22nd field
+/// of its `stat`, counted after the name, which may hold spaces.
+fn ticks(pid: u32) -> Option<u64> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_, after) = stat.rsplit_once(')')?;
+    after.split_whitespace().nth(19)?.parse().ok()
 }
 
 /// The folder nix-offload says its gates going in.
@@ -173,6 +183,7 @@ mod tests {
     fn gate(pid: u32, folder: &str, started: u64) -> Gate {
         Gate {
             pid,
+            ticks: 1,
             commit: format!("{pid:040}"),
             folder: PathBuf::from(folder),
             started,
@@ -183,7 +194,7 @@ mod tests {
         names.iter().map(|name| (*name).to_owned()).collect()
     }
 
-    fn everyone(_: u32) -> bool {
+    fn everyone(_: &Gate) -> bool {
         true
     }
 
@@ -233,7 +244,7 @@ mod tests {
     fn a_gate_gone_here_too_long_or_sharing_only_lists_holds_nothing_back() {
         let ours = owned(&["y.rs", "check-descriptions.nix"]);
         let gone = [gate(1, "/a", 100)];
-        let nobody = |_| false;
+        let nobody = |_: &Gate| false;
         let touch = touching(&["y.rs"]);
         let at = Path::new("/b");
         assert_eq!(
@@ -274,6 +285,27 @@ mod tests {
     }
 
     #[test]
+    fn a_gate_is_alive_only_while_a_process_started_when_it_said_has_its_id() {
+        let pid = std::process::id();
+        let ticks = ticks(pid).expect("this process's start is read");
+        let mut running = gate(pid, "/a", 100);
+        running.ticks = ticks;
+        assert!(
+            alive(&running),
+            "a gate whose process runs was taken as ended"
+        );
+        running.ticks = ticks + 1;
+        assert!(
+            !alive(&running),
+            "a gate was taken as running by another process given its id"
+        );
+        assert!(
+            !alive(&gate(u32::MAX, "/a", 100)),
+            "a gate with no process ran"
+        );
+    }
+
+    #[test]
     fn the_gates_going_are_read_beside_what_passed() {
         assert!(
             folder().is_some_and(|folder| folder.ends_with("nix-offload/running")),
@@ -286,7 +318,7 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("merge-net-turn-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(&folder).unwrap();
-        let said = r#"{"pid":7,"commit":"abc","folder":"/t","started":5}"#;
+        let said = r#"{"pid":7,"ticks":9,"commit":"abc","folder":"/t","started":5}"#;
         fs::write(folder.join("7.json"), said).unwrap();
         fs::write(folder.join("8.json.new"), said).unwrap();
         fs::write(folder.join("9.json"), "not yet whole").unwrap();
@@ -296,6 +328,7 @@ mod tests {
             read,
             [Gate {
                 pid: 7,
+                ticks: 9,
                 commit: "abc".to_owned(),
                 folder: PathBuf::from("/t"),
                 started: 5
