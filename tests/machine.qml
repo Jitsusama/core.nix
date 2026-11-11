@@ -27,6 +27,9 @@ ShellRoot {
         property var held: []
         property var matches: []
         property var placed: []
+        // What a terminal's `launcher show` sees, as Launcher.qml starts it,
+        // so Machine's bindings read it rather than throwing on its absence.
+        property var terminalSees: ({ walked: [], listed: [] })
 
         // No frame is drawn here, so what waits on one runs at once.
         function afterFrame(then) {
