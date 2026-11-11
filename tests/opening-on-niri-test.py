@@ -341,7 +341,15 @@ def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: S
     again for the find as it took the keys, 5 and 4 ms of its opening over 40 windows on a
     builder (ZINAWZ, 2026-11-11).
     """
-    opened = [shell.opened(f"Weighed {at}") for at in range(WINDOWS_WEIGHED)]
+    opening = windows_reopened(shell)
+    weighings = cast("int | None", opening.get("weighings"))
+    assert weighings is not None, f"the opening didn't say how often it weighed: {opening}"
+    assert weighings <= 1, f"the kept opening weighed its keys {weighings} times: {opening}"
+
+
+def windows_reopened(shell: Shell) -> Json:
+    """Open Windows by its chord, close it, and give its next opening, from what it kept."""
+    opened = [shell.opened(f"Reopened {at}") for at in range(WINDOWS_WEIGHED)]
     try:
         shell.as_account(shell.ipc("collection", "windows"))
         shell.launcher_ready()
@@ -351,13 +359,34 @@ def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: S
         shell.launcher_until(lambda shown: shown.get("kept"))
         timed = latest(openings(shell))
         shell.as_account(shell.ipc("collection", "windows"))
-        opening = filled_after(shell, timed)
+        return filled_after(shell, timed)
     finally:
         for window in opened:
             shell.close(window)
-    weighings = cast("int | None", opening.get("weighings"))
-    assert weighings is not None, f"the opening didn't say how often it weighed: {opening}"
-    assert weighings <= 1, f"the kept opening weighed its keys {weighings} times: {opening}"
+
+
+def test_a_place_shown_before_draws_no_words_to_measure_its_head(shell: Shell) -> None:
+    """A place's head drawn before is measured from what was kept, not drawn again to be.
+
+    Each kept opening drew its head's words in a Text to measure them, three or four, and
+    worked out its path six times, about 3 ms of Windows' opening over 40 windows on a builder
+    (ZINAWZ, 2026-11-11).
+    """
+    opening = windows_reopened(shell)
+    measured = cast("int | None", opening.get("measured"))
+    assert measured == 0, f"the kept opening drew {measured} words to measure: {opening}"
+
+
+def test_a_kept_opening_tells_only_its_own_rows_where_they_stand(shell: Shell) -> None:
+    """A kept opening tells its rows their place once they're drawn, not home's before they go.
+
+    Told as the rows were set, the place reached home's rows still drawn, each saying its
+    kind again just before it gave way, about 3 ms of Windows' opening over 40 windows on a
+    builder (ZINAWZ, 2026-11-11).
+    """
+    opening = windows_reopened(shell)
+    told = cast("int | None", opening.get("toldEarly"))
+    assert told == 0, f"the kept opening told rows about to go {told} times: {opening}"
 
 
 def test_a_kept_opening_says_it_is_open_from_its_first_frame(shell: Shell) -> None:

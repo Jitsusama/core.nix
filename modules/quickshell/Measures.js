@@ -63,6 +63,30 @@ function faceOf(font) {
         font.features ?? null]);
 }
 
+// A face as a Text draws it, its variable axes included, which a
+// FontMetrics' measure leaves out, and how the Text reads its words.
+function drawnFace(font, format) {
+    return `${faceOf(font)}${JSON.stringify(font.variableAxes ?? null)}${format}\u241d`;
+}
+
+// How wide a Text drew `words` in `face` (drawnFace), or undefined until
+// one has, kept with the rest, so a head drawn again for a place shown
+// before makes no Text to measure it: each kept opening's head made three
+// or four, and worked out its path six times, about 3 ms of a Windows
+// opening on a loaded builder (ZINAWZ, 2026-11-11).
+function drawnWidth(face, words) {
+    const key = face + words;
+    return measures.latest[key] ?? measures.earlier[key];
+}
+
+// Keeps how wide a Text drew `words` in `face`, which a font loading late
+// changes, so the newest said is kept.
+function drew(face, words, wide) {
+    const key = face + words;
+    remembered(key, () => wide);
+    measures.latest[key] = wide;
+}
+
 // How wide words are in a FontMetrics' face, as its advanceWidth says,
 // or with a pixel to spare, rounded up, where `spared`, as Qt elides; each
 // measured once and kept. The face is read as the measurer is made, so a

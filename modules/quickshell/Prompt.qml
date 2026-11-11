@@ -28,6 +28,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Shapes
 import "Reading.js" as Reading
+import "Measures.js" as Measures
 import "MarkSize.js" as MarkSize
 import "Editing.js" as Editing
 import "KeyNames.js" as KeyNames
@@ -973,6 +974,13 @@ Item {
     // Title's ink measured at eight times its size and read back down,
     // since a measure at the size drawn comes in whole pixels.
     readonly property real titleInkFine: 8
+    // A step of the path, saying its words and how they're drawn, so
+    // pathDrawn can read them by type.
+    component PathStep: Row {
+        required property string modelData
+        property bool cut
+        property real spare
+    }
     component TitleInk: TextMetrics {
         font.family: Theme.level.title.family
         font.pointSize: Theme.level.title.pointSize * prompt.titleInkFine
@@ -1024,9 +1032,10 @@ Item {
     // where Joel is whole; past it, what's typed scrolls in what's left, as
     // Vim's command line scrolls a long line (VKCF3Z, 2026-11-06).
     readonly property var crumbsShown: {
-        void titleFace.font;
+        void crumbsMade;
         const line = end - Theme.space.rung.inset - ledWidth - pathGap;
-        const width = text => crumbsWanted.get(text) ?? Math.ceil(titleFace.advanceWidth(text)) + 1;
+        const width = text => Math.ceil(Measures.drawnWidth(crumbsFace, text)
+            ?? titleFace.advanceWidth(text)) + 1;
         const steps = crumbSteps;
         const least = Reading.crumbsLeast(steps, width, betweenWide);
         const room = Math.max(0, line - typingRoom, Math.min(least, line));
@@ -1038,23 +1047,19 @@ Item {
     // face's metrics leave out the title's axes, and a face hinted fully
     // draws in whole pixels, so a width scaled from the face's measure
     // came out several pixels wide and folded a folder with room for it.
-    // Until a way's Text is made, the face's measure stands.
-    readonly property var crumbsWanted: {
-        void crumbsMade;
-        const wanted = new Map();
-        for (let at = 0; at < crumbsDrawn.count; at += 1) {
-            const drawn = crumbsDrawn.itemAt(at);
-            if (drawn)
-                wanted.set(drawn.text, Math.ceil(drawn.implicitWidth) + 1);
-        }
-        return wanted;
-    }
+    // Until a way's Text is made, the face's measure stands. Each is kept
+    // once drawn (Measures.drew), so only a way not drawn before is made.
+    readonly property string crumbsFace: Measures.drawnFace(titleFace.font, "plain")
+    // How many ways and steps have been drawn and kept, read by what
+    // they're measured for, and by the launcher, which counts those an
+    // opening made.
     property int crumbsMade: 0
+    property int stepsMade: 0
 
     Repeater {
         id: crumbsDrawn
         model: Reading.crumbTexts(prompt.crumbSteps)
-        onItemAdded: prompt.crumbsMade += 1
+            .filter(text => Measures.drawnWidth(prompt.crumbsFace, text) === undefined)
 
         Text {
             required property string modelData
@@ -1062,6 +1067,12 @@ Item {
             text: modelData
             textFormat: Text.PlainText
             font: titleFace.font
+            Component.onCompleted: kept()
+            onImplicitWidthChanged: kept()
+            function kept() {
+                Measures.drew(prompt.crumbsFace, text, implicitWidth);
+                prompt.crumbsMade += 1;
+            }
         }
     }
 
@@ -1069,24 +1080,27 @@ Item {
     // metrics leave out the title's axes, which change its letters'
     // widths, so measured by them a step came out a hair short and was cut.
     // Until a step's Text is made for its words, the face's measure stands.
-    readonly property var chipsWanted: stepsMade >= 0 ? chips.map((chip, at) => {
-        const drawn = stepsDrawn.itemAt(at);
-        return Math.ceil(drawn && drawn.text === chip.text ? drawn.implicitWidth
-            : titleFace.advanceWidth(chip.text)) + 1;
-    }) : []
-    // How many steps' Texts have been made, so each new one is measured.
-    property int stepsMade: 0
+    readonly property string stepsFace: Measures.drawnFace(titleFace.font, "auto")
+    readonly property var chipsWanted: stepsMade >= 0 ? chips.map(chip =>
+        Math.ceil(Measures.drawnWidth(stepsFace, chip.text)
+            ?? titleFace.advanceWidth(chip.text)) + 1) : []
 
     Repeater {
         id: stepsDrawn
         model: prompt.chips
-        onItemAdded: prompt.stepsMade += 1
+            .filter(chip => Measures.drawnWidth(prompt.stepsFace, chip.text) === undefined)
 
         Text {
             required property var modelData
             visible: false
             text: modelData.text
             font: titleFace.font
+            Component.onCompleted: kept()
+            onImplicitWidthChanged: kept()
+            function kept() {
+                Measures.drew(prompt.stepsFace, text, implicitWidth);
+                prompt.stepsMade += 1;
+            }
         }
     }
     // Whether each step is said whole, for the launcher's report.
@@ -1118,15 +1132,14 @@ Item {
                 id: stepsShown
                 model: prompt.crumbsShown.said
 
-                Row {
+                PathStep {
                     id: step
 
-                    required property string modelData
                     required property int index
                     // Whether its words are drawn cut, and the room it
                     // takes past them, for the launcher's report.
-                    readonly property bool cut: stepName.truncated
-                    readonly property real spare: stepName.width - stepName.implicitWidth
+                    cut: stepName.truncated
+                    spare: stepName.width - stepName.implicitWidth
 
                     // Where its words' ink starts past their advance, and
                     // where the step before's ends short of its, so the
@@ -1184,7 +1197,7 @@ Item {
     function pathDrawn(): var {
         const drawn = [];
         for (let at = 0; at < stepsShown.count; at += 1) {
-            const step = stepsShown.itemAt(at);
+            const step = stepsShown.itemAt(at) as PathStep;
             if (step)
                 drawn.push({ said: step.modelData, cut: step.cut, spare: step.spare });
         }

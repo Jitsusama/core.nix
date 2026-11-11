@@ -3041,16 +3041,23 @@ Scope {
 
     // Where the rows drawn stand, the glyph and hue an act of its own
     // without them wears and whether they're home's, told as their rows
-    // come rather than as held moves (RowsPlace.js), so the rows of a place
-    // left never redraw for the place they give way to, and a refresh in
-    // the place they stay in redraws none. A move of held that brings no
+    // come rather than as held moves (RowsPlace.js), once the list keeps
+    // them (list.keep), so the rows of a place left never redraw for the
+    // place they give way to, and a refresh in the place they stay in
+    // redraws none. A move of held that brings no
     // new rows tells them once it's done.
     property string rowsGlyph: ""
     property string rowsHue: ""
     property bool rowsAtHome: true
     function rowsPlaced() {
+        // Told while the rows drawn are still the last ones, it redraws
+        // rows about to go, as home's did for each kept opening, about
+        // 3 ms (ZINAWZ, 2026-11-11); counted for the check that it isn't.
+        if (list.rows !== matches)
+            rowsToldEarly += 1;
         RowsPlace.tell(root, held);
     }
+    property int rowsToldEarly: 0
 
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
@@ -3059,7 +3066,6 @@ Scope {
         if (visualFrom >= 0)
             visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
         rowsMade += 1;
-        rowsPlaced();
         noteKeys();
         noteFigures();
         noteDigits();
@@ -8059,6 +8065,7 @@ Scope {
             openBegun = -1;
             openKept = false;
             openAskedWeighings = keysWeighings;
+            openAskedRedone = redone();
             presentedBegin(openAsked);
             openChord = "";
         }
@@ -8074,6 +8081,14 @@ Scope {
     // opening's first frame, or -1 before it.
     property int openAskedWeighings: 0
     property int openFirstWeighings: -1
+    // And how many of the head's words were drawn to be measured, and how
+    // often the rows drawn were told a place before they gave way to its
+    // own, by the ask and by the first frame, or null before it.
+    property var openAskedRedone: ({})
+    property var openFirstRedone: null
+    function redone() {
+        return { measured: prompt.crumbsMade + prompt.stepsMade, toldEarly: rowsToldEarly };
+    }
     property real openBegun: -1
     function askDone() {
         if (openAsked >= 0 && openSettled < 0)
@@ -8306,6 +8321,7 @@ Scope {
             openFirstDrawn = KeyTimes.now();
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
+            openFirstRedone = redone();
             // On the screen from this frame, though it's filled in only once
             // niri presents it or half a second on (fillUnpresented), so a
             // switch waiting on the mark never restarts the shell under it
@@ -8613,13 +8629,18 @@ Scope {
         const weighings = (openFirstWeighings < 0 ? keysWeighings : openFirstWeighings)
             - openAskedWeighings;
         openFirstWeighings = -1;
+        const redoneBy = openFirstRedone ?? redone();
+        const measured = redoneBy.measured - (openAskedRedone.measured ?? 0);
+        const toldEarly = redoneBy.toldEarly - (openAskedRedone.toldEarly ?? 0);
+        openFirstRedone = null;
         // How long after the ask the mark said open, or -1 while it hasn't.
         const marked = markSays === "open" && markedOpenAt >= asked
             ? Math.round(markedOpenAt - asked) : -1;
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows, weighings,
-            marked, made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
+            marked, measured, toldEarly, made: most, verbs: kept ? 0 : openVerbsWeighed, first,
+            kept, felt,
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
             into: openChord };
         if (kept)
@@ -10115,6 +10136,9 @@ Scope {
                             property var rows: []
                             onShownChanged: {
                                 const same = list.keep(root.matches);
+                                // Told where they stand once they're the
+                                // rows drawn, so those they replace aren't.
+                                root.rowsPlaced();
                                 // The same rows read again leave a glide under
                                 // way; a letter typed never glides, even onto
                                 // the same rows.
