@@ -279,17 +279,24 @@ fn let_go(answer: &str) -> Option<bool> {
     }))
 }
 
-/// The keys the window niri's answer to `FocusedWindow` says has the focus
-/// takes, or `Some(None)` with no window focused: none when it isn't an
-/// answer to that.
-fn focused(answer: &str) -> Option<Option<Keys>> {
+/// What niri says has the focus: a window, which takes these keys, or
+/// nothing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Focus {
+    Window(Keys),
+    Nowhere,
+}
+
+/// What niri's answer to `FocusedWindow` says has the focus: none when it
+/// isn't an answer to that.
+fn focused(answer: &str) -> Option<Focus> {
     let answer: Value = serde_json::from_str(answer).ok()?;
     let window = answer.get("Ok")?.get("FocusedWindow")?;
     if window.is_null() {
-        return Some(None);
+        return Some(Focus::Nowhere);
     }
     let app = window.get("app_id").and_then(Value::as_str).unwrap_or("");
-    Some(Some(if TERMINALS.contains(&app) {
+    Some(Focus::Window(if TERMINALS.contains(&app) {
         Keys::Terminal
     } else {
         Keys::Plain
@@ -311,8 +318,11 @@ fn asked_niri<T>(socket: &Path, ask: &[u8], read: fn(&str) -> Option<T>) -> Opti
 /// them, as niri says, or none with no window focused to paste into. With
 /// no niri to ask, or no answer from it, Ctrl+V, as most windows take.
 fn under(niri: Option<&Path>) -> Option<Keys> {
-    niri.and_then(|niri| asked_niri(niri, b"\"FocusedWindow\"\n", focused))
-        .unwrap_or(Some(Keys::Plain))
+    match niri.and_then(|niri| asked_niri(niri, b"\"FocusedWindow\"\n", focused)) {
+        Some(Focus::Window(keys)) => Some(keys),
+        Some(Focus::Nowhere) => None,
+        None => Some(Keys::Plain),
+    }
 }
 
 /// Waits until niri says the launcher has let go of the keys, or with no
@@ -1714,13 +1724,22 @@ mod tests {
         let window = |app: &str| {
             format!("{{\"Ok\":{{\"FocusedWindow\":{{\"id\":7,\"app_id\":\"{app}\"}}}}}}")
         };
-        assert_eq!(focused(&window("foot")), Some(Some(Keys::Terminal)));
+        assert_eq!(
+            focused(&window("foot")),
+            Some(Focus::Window(Keys::Terminal))
+        );
         assert_eq!(
             focused(&window("com.mitchellh.ghostty")),
-            Some(Some(Keys::Terminal))
+            Some(Focus::Window(Keys::Terminal))
         );
-        assert_eq!(focused(&window("firefox")), Some(Some(Keys::Plain)));
-        assert_eq!(focused("{\"Ok\":{\"FocusedWindow\":null}}"), Some(None));
+        assert_eq!(
+            focused(&window("firefox")),
+            Some(Focus::Window(Keys::Plain))
+        );
+        assert_eq!(
+            focused("{\"Ok\":{\"FocusedWindow\":null}}"),
+            Some(Focus::Nowhere)
+        );
         assert_eq!(focused("{\"Ok\":{\"Layers\":[]}}"), None);
         assert_eq!(under(None), Some(Keys::Plain));
     }
