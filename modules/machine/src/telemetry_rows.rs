@@ -228,22 +228,9 @@ mod tests {
     use super::*;
     use crate::words::Words;
 
+    /// The words these cases say: the launcher's own (`Words::launchers`).
     fn words() -> Words {
-        let vocabulary = json!({ "things": [
-            { "id": "machine:cpu", "name": "Processor", "glyph": "processor" },
-            { "id": "machine:cpu:held-back", "name": "Held Back", "said": {
-                "note": "by {limit}, over the last second", "none": "nothing holds it back now",
-                "core": "by {limit}", "limit-pl1": "its power limit, PL1",
-                "limit-heat": "heat" } },
-            { "id": "machine:cpu:held-back-core", "name": "Core {n}" },
-            { "id": "machine:cpu:kept-from-resting", "name": "Kept From Resting", "said": {
-                "by": "by {keeper}", "quiet": "nothing keeps it from resting now",
-                "spread": "by no one part for long", "refused": "can't be read" } },
-            { "id": "machine:cpu:kept-by-npu", "name": "NPU", "said": { "by": "the NPU" } },
-            { "id": "machine:cpu:kept-by-graphics", "name": "Graphics",
-                "said": { "by": "the graphics" } }
-        ] });
-        Words::new(&vocabulary, ",", ".")
+        Words::launchers(",", ".")
     }
 
     fn said(made: &Made) -> &str {

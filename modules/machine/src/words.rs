@@ -24,6 +24,24 @@ pub struct Words {
 }
 
 impl Words {
+    /// The launcher's own words for every thing the rows' cases say,
+    /// copied from words.json into tests/words.json, which the check
+    /// `the-daemons-test-the-launchers-words` keeps the same as it, so a
+    /// case holds a row to the words Joel reads.
+    #[cfg(test)]
+    pub fn launchers(group: &str, point: &str) -> Words {
+        Words::new(&Words::launchers_vocabulary(), group, point)
+    }
+
+    /// The launcher's words as they're written, for a case that changes
+    /// one to see what follows.
+    #[cfg(test)]
+    #[must_use]
+    pub fn launchers_vocabulary() -> Value {
+        serde_json::from_str(include_str!("../tests/words.json"))
+            .expect("the launcher's words parse")
+    }
+
     /// The vocabulary's things, each by its id, and the number settings;
     /// an empty group or point takes the comma and the full stop.
     pub fn new(vocabulary: &Value, group: &str, point: &str) -> Words {

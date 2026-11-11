@@ -732,55 +732,9 @@ mod tests {
 
     use super::*;
 
-    /// The words these cases say, as words.json has them.
+    /// The words these cases say: the launcher's own (`Words::launchers`).
     fn words() -> Words {
-        let vocabulary = json!({ "things": [
-            { "id": "machine:disk", "name": "Disk", "glyph": "disk",
-                "said": { "head": "{free} free on {mount}",
-                    "since-boot": "since the machine started",
-                    "since-asked": "since you last asked", "since-now": "just now" },
-                "parts": ["machine:disk:space", "machine:disk:filling", "machine:disk:speed",
-                    "machine:disk:pressure", "machine:disk:busy", "machine:disk:latency",
-                    "machine:disk:queue", "machine:disk:temperature", "machine:disk:health",
-                    "machine:disk:file-systems", "machine:disk:model"] },
-            { "id": "machine:disk:space", "name": "Space",
-                "said": { "free": "{free} free", "on": "on {mount}, of {size}" } },
-            { "id": "machine:disk:speed", "name": "Speed",
-                "said": { "iops": "{n} requests/s", "merged": "{n} merged/s" } },
-            { "id": "machine:disk:reading", "name": "Reading" },
-            { "id": "machine:disk:writing", "name": "Writing" },
-            { "id": "machine:disk:busy", "name": "Busy" },
-            { "id": "machine:disk:pressure", "name": "Pressure",
-                "said": { "side": "{pct}% held up" } },
-            { "id": "machine:disk:latency", "name": "Latency",
-                "said": { "idle": "none asked of it", "side-idle": "idle", "ms": "{n} ms",
-                    "note": "each request, on average" } },
-            { "id": "machine:disk:latency-reading", "name": "Reading" },
-            { "id": "machine:disk:queue", "name": "Backlog",
-                "said": { "queued": "{queued} on average", "depth": "{depth} at most" } },
-            { "id": "machine:disk:temperature", "name": "Temperature",
-                "said": { "degrees": "{n} \u{b0}C", "most": "at most {degrees}" } },
-            { "id": "machine:disk:health", "name": "Health",
-                "said": { "side": "{n}% worn", "asked": "as its controller said at {time}",
-                    "failing": "its controller says it's failing",
-                    "told": "as its controller says" } },
-            { "id": "machine:disk:spare", "name": "Spare",
-                "said": { "side": "{n}%", "note": "it warns below {n}%" } },
-            { "id": "machine:disk:shutdowns", "name": "Unsafe Shutdowns",
-                "said": { "note": "of {cycles} times it was powered" } },
-            { "id": "machine:disk:warnings", "name": "Warnings",
-                "said": { "none": "none", "spare": "spare running out" } },
-            { "id": "machine:disk:file-systems", "name": "File Systems",
-                "said": { "room": "{free} free of {size}", "reserved": "{reserved} kept back",
-                    "files": "{free} of {files} files free" } },
-            { "id": "machine:disk:model", "name": "Model" },
-            { "id": "machine:disk:link", "name": "PCIe",
-                "said": { "side": "{speed} \u{d7}{width}", "full": "as fast as it goes",
-                    "slower": "of {most} at most" } },
-            { "id": "machine:disk:block", "name": "Block Size",
-                "said": { "one": "{n} B",
-                    "both": "{logical} B logical \u{b7} {physical} B physical" } }] });
-        Words::new(&vocabulary, ",", ".")
+        Words::launchers(",", ".")
     }
 
     fn disk() -> Value {

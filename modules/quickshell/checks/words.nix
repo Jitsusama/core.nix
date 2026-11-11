@@ -44,8 +44,9 @@
       cp ${../../to-do/tests/words.json} to-do.json
       cp ${../whereabouts/tests/words.json} whereabouts.json
       cp ${../../windows/tests/screen-words.json} windows-screens.json
+      cp ${../../machine/tests/words.json} machine.json
       ${lib.getExe pkgs.python3} ${../../../tests/daemon-words.py} ${words} \
-        to-do.json whereabouts.json windows-screens.json
+        to-do.json whereabouts.json windows-screens.json machine.json
       touch $out
     '';
 

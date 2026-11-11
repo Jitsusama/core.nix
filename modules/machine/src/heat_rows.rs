@@ -873,47 +873,9 @@ fn capitalised(label: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The words these cases say, as words.json has them.
+    /// The words these cases say: the launcher's own (`Words::launchers`).
     fn words() -> Words {
-        let vocabulary = json!({ "things": [
-            { "id": "heat", "name": "Heat", "glyph": "heat", "said": {
-                "hottest": "{degrees} at the {part}", "stopped": "fans stopped",
-                "turning": "a fan turning", "turnings": "{count} fans turning" } },
-            { "id": "heat:processor", "name": "Processor" },
-            { "id": "heat:disk", "name": "Disk" },
-            { "id": "heat:cores", "name": "Cores",
-                "said": { "hottest": "the hottest, core {n} at {degrees}" } },
-            { "id": "heat:core", "name": "Core {n}" },
-            { "id": "heat:sensor", "name": "Sensor {n}",
-                "said": { "hotter": "{sensor} hotter at {degrees}" } },
-            { "id": "heat:throttled", "name": "Throttled", "said": { "never": "never",
-                "once": "once", "times": "{count} times",
-                "for": "for {time} in all, since the machine started",
-                "since": "since the machine started" } },
-            { "id": "heat:package", "name": "Whole Processor",
-                "said": { "for": "for {time} in all", "longest": "the longest {time}" } },
-            { "id": "heat:throttled-cores", "name": "Cores",
-                "said": { "most": "the most, core {n}, {times}", "alone": "each on its own" } },
-            { "id": "heat:throttled-core", "name": "Core {n}" },
-            { "id": "heat:fan", "name": "Fan {n}", "said": { "stopped": "stopped",
-                "rated": "rated for {speed}", "full": "at full power",
-                "share": "at {pct}% power" } },
-            { "id": "heat:lately", "name": "Last Reads", "said": { "range": "{least} to {most}",
-                "one": "one read so far", "many": "the last {count} reads" } },
-            { "id": "heat:high", "name": "High", "said": { "below": "{by} \u{b0}C below high",
-                "past": "{by} \u{b0}C past high", "note": "where it starts to warn" } },
-            { "id": "heat:critical", "name": "Critical", "said": {
-                "below": "{by} \u{b0}C below critical", "past": "{by} \u{b0}C past critical",
-                "note": "the most it's meant to reach" } },
-            { "id": "heat:trip:passive", "name": "Throttles At" },
-            { "id": "heat:chip", "name": "Linux Name", "said": {
-                "sensor": "on this machine \u{b7} sensor",
-                "zone": "on this machine \u{b7} zone" } },
-            { "id": "heat:zone", "name": "Zone" },
-            { "id": "heat:power", "name": "Power", "said": { "note": "how hard it's driven" } },
-            { "id": "heat:control", "name": "Control", "said": { "automatic": "automatic",
-                "note": "what sets its speed" } }] });
-        Words::new(&vocabulary, "", "")
+        Words::launchers("", "")
     }
 
     fn sensors(processor: f64, core: f64) -> Vec<Value> {
@@ -1121,29 +1083,30 @@ mod tests {
     /// go with the last watch.
     #[test]
     fn the_last_reads_are_kept_only_while_watched() {
+        const ONE: &str = "one read so far, one a second while it's shown";
         let mut heat = Heat::default();
         let lately = |ready: &Ready| row(ready, "processor:0/lately")["note"].clone();
         let first = read(&mut heat, 71.0, 79.0, 1000);
-        assert_eq!(lately(&first), "one read so far");
+        assert_eq!(lately(&first), ONE);
         read(&mut heat, 72.0, 79.0, 2000);
         // Read again a fifth of a second on, as a read not yet of now is,
         // the spark takes nothing.
         assert_eq!(
             lately(&read(&mut heat, 90.0, 79.0, 2200)),
-            "the last 2 reads"
+            "the last 2 reads, one a second while it's shown"
         );
         let third = read(&mut heat, 75.0, 79.0, 3000);
-        assert_eq!(lately(&third), "the last 3 reads");
+        assert_eq!(
+            lately(&third),
+            "the last 3 reads, one a second while it's shown"
+        );
         assert_eq!(
             row(&third, "processor:0/lately")["side"],
             json!([{ "said": "71.0 to 75.0 \u{b0}C" }])
         );
         let stale = read(&mut heat, 75.0, 79.0, 3000 + STALE_MS + 1);
-        assert_eq!(lately(&stale), "one read so far");
+        assert_eq!(lately(&stale), ONE);
         heat.forget();
-        assert_eq!(
-            lately(&read(&mut heat, 75.0, 79.0, 9000)),
-            "one read so far"
-        );
+        assert_eq!(lately(&read(&mut heat, 75.0, 79.0, 9000)), ONE);
     }
 }

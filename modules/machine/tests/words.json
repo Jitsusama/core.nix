@@ -1,0 +1,1190 @@
+{
+  "things": [
+    {
+      "id": "machine:memory",
+      "once": ["RAM"],
+      "name": "Memory",
+      "term": "Machine/memory",
+      "provider": "machine",
+      "question": "memory",
+      "glyph": "memory",
+      "answers": ["memory", "swap"],
+      "said": {
+        "head": "{used} used, {share}",
+        "moving": "{in} in \u00b7 {out} out",
+        "still": "none"
+      },
+      "parts": [
+        "machine:memory:used",
+        "machine:memory:pressure",
+        "machine:memory:faults",
+        "machine:memory:swapping",
+        "machine:memory:paging",
+        "machine:memory:using",
+        "machine:memory:swap",
+        "machine:memory:cached",
+        "machine:memory:held",
+        "machine:memory:committed",
+        "machine:memory:out-of-memory",
+        "machine:memory:counts",
+        "machine:memory:type"
+      ]
+    },
+    {
+      "id": "machine:memory:used",
+      "in": "machine:memory",
+      "name": "Used",
+      "said": {
+        "side": "{used} of {total}",
+        "note": "{available} available"
+      }
+    },
+    {
+      "id": "machine:memory:pressure",
+      "in": "machine:memory",
+      "name": "Pressure",
+      "answers": ["memory pressure"],
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited for memory",
+        "pair": "{some}% something waited \u00b7 {full}% everything",
+        "some": "{some}% something waited"
+      }
+    },
+    {
+      "id": "machine:memory:pressure-10",
+      "in": "machine:memory:pressure",
+      "name": "Last 10 Seconds"
+    },
+    {
+      "id": "machine:memory:cached",
+      "in": "machine:memory",
+      "name": "Cached",
+      "said": {
+        "note": "files kept in memory, given up when it's wanted"
+      }
+    },
+    {
+      "id": "machine:memory:held",
+      "in": "machine:memory",
+      "name": "Held By",
+      "said": {
+        "note": "what holds the memory, biggest first"
+      }
+    },
+    {
+      "id": "machine:memory:held-programs",
+      "in": "machine:memory:held",
+      "name": "Programs",
+      "term": "Programs/program",
+      "said": {
+        "note": "programs' own memory"
+      }
+    },
+    {
+      "id": "machine:memory:held-files",
+      "in": "machine:memory:held",
+      "name": "Files",
+      "said": {
+        "note": "files kept from the disk"
+      }
+    },
+    {
+      "id": "machine:memory:held-compressed",
+      "in": "machine:memory:held",
+      "name": "Compressed",
+      "said": {
+        "side": "{stored} in {pool}",
+        "note": "swapped into memory, {ratio} times smaller"
+      }
+    },
+    {
+      "id": "machine:memory:counts",
+      "in": "machine:memory",
+      "name": "Every Count",
+      "said": {
+        "note": "each Linux keeps, by its own name"
+      }
+    },
+    {
+      "id": "machine:memory:using",
+      "in": "machine:memory",
+      "name": "Using It",
+      "said": {
+        "note": "each program's processes together",
+        "processes": "{n} processes"
+      }
+    },
+    {
+      "id": "machine:memory:type",
+      "in": "machine:memory",
+      "name": "Type",
+      "answers": ["memory type"],
+      "said": {
+        "speed": "{type} at {speed}",
+        "by": "by {maker}",
+        "module": "{count} module of {size}",
+        "modules": "{count} modules of {size}"
+      }
+    },
+    {
+      "id": "machine:cpu",
+      "once": ["CPU"],
+      "name": "Processor",
+      "term": "Machine/processor",
+      "provider": "machine",
+      "question": "processor",
+      "glyph": "processor",
+      "answers": ["processor", "cores", "load"],
+      "said": {
+        "down": "not answering",
+        "head": "{busy} busy",
+        "since-boot": "since the machine started",
+        "since-asked": "since you last asked",
+        "since-now": "just now"
+      },
+      "parts": [
+        "machine:cpu:spent",
+        "machine:cpu:pressure",
+        "machine:cpu:switches",
+        "machine:cpu:interrupts",
+        "machine:cpu:started",
+        "machine:cpu:cores",
+        "machine:cpu:maxed",
+        "machine:cpu:clock",
+        "machine:cpu:held-back",
+        "machine:cpu:kept-from-resting",
+        "machine:cpu:temperature",
+        "machine:cpu:using",
+        "machine:cpu:load",
+        "machine:cpu:running",
+        "machine:cpu:npu-load",
+        "machine:cpu:kinds",
+        "machine:cpu:model"
+      ]
+    },
+    {
+      "id": "machine:cpu:spent",
+      "in": "machine:cpu",
+      "name": "Time Spent"
+    },
+    {
+      "id": "machine:cpu:spent-user",
+      "in": "machine:cpu:spent",
+      "name": "Programs",
+      "term": "Programs/program",
+      "said": {
+        "note": "programs' own work"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-stolen",
+      "in": "machine:cpu:spent",
+      "name": "Stolen",
+      "said": {
+        "note": "taken by a machine this one runs inside"
+      }
+    },
+    {
+      "id": "machine:cpu:cores",
+      "in": "machine:cpu",
+      "name": "Cores",
+      "term": "Machine/core",
+      "said": {
+        "one": "core {n}",
+        "run": "cores {first} to {last}",
+        "list": "cores {list} and {last}"
+      }
+    },
+    {
+      "id": "machine:cpu:core",
+      "in": "machine:cpu:cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "machine:cpu:maxed",
+      "in": "machine:cpu",
+      "name": "Maxed",
+      "answers": ["maxed"],
+      "said": {
+        "none": "none",
+        "many": "{n} of {all}",
+        "note": "at 95% or more"
+      }
+    },
+    {
+      "id": "machine:cpu:clock",
+      "in": "machine:cpu",
+      "name": "Clock Speed",
+      "term": "Machine/clock speed",
+      "answers": ["clock speed"],
+      "said": {
+        "of": "on average, of {most} at most",
+        "mean": "on average"
+      }
+    },
+    {
+      "id": "machine:cpu:clock-range",
+      "in": "machine:cpu:clock",
+      "name": "Range",
+      "said": {
+        "side": "{low} to {high}",
+        "kinds": "its slowest cores top out at {least}"
+      }
+    },
+    {
+      "id": "machine:cpu:clock-turbo",
+      "in": "machine:cpu:clock",
+      "name": "Turbo",
+      "said": {
+        "side-on": "on",
+        "side-off": "off",
+        "on": "it may clock past its base",
+        "off": "held to its base"
+      }
+    },
+    {
+      "id": "machine:cpu:held-back",
+      "in": "machine:cpu",
+      "name": "Held Back",
+      "term": "Machine/held back",
+      "said": {
+        "note": "by {limit}, over the last second",
+        "none": "nothing holds it back now",
+        "core": "by {limit}",
+        "limit-pl1": "its power limit, PL1",
+        "limit-pl2": "its short power limit, PL2",
+        "limit-pl3": "its peak power limit, PL3",
+        "limit-platformPl1": "the whole machine's power limit, PL1",
+        "limit-platformPl2": "the whole machine's short power limit, PL2",
+        "limit-platformPl3": "the whole machine's peak power limit, PL3",
+        "limit-prochot": "being told to slow down",
+        "limit-regulatorHot": "a regulator running hot",
+        "limit-heat": "heat",
+        "limit-power": "power",
+        "limit-current": "current",
+        "limit-other": "something else"
+      }
+    },
+    {
+      "id": "machine:cpu:held-back-core",
+      "in": "machine:cpu:held-back",
+      "name": "Core {n}"
+    },
+    {
+      "id": "machine:cpu:temperature",
+      "in": "machine:cpu",
+      "name": "Temperature",
+      "said": {
+        "degrees": "{n} \u00b0C",
+        "most": "at most {degrees}"
+      }
+    },
+    {
+      "id": "machine:cpu:using",
+      "in": "machine:cpu",
+      "name": "Using It",
+      "said": {
+        "note": "of the whole processor",
+        "processes": "{n} processes"
+      }
+    },
+    {
+      "id": "machine:cpu:load",
+      "in": "machine:cpu",
+      "name": "Load",
+      "said": {
+        "note": "over 1, 5 and 15 minutes"
+      }
+    },
+    {
+      "id": "machine:cpu:npu-load",
+      "in": "machine:cpu",
+      "name": "NPU Load",
+      "said": {
+        "at": "at {clock} of {most}",
+        "resting": "resting"
+      }
+    },
+    {
+      "id": "machine:cpu:kinds",
+      "in": "machine:cpu",
+      "name": "Kinds",
+      "answers": ["core kinds"],
+      "said": {
+        "at": "{n} at {clock}"
+      }
+    },
+    {
+      "id": "machine:cpu:performance",
+      "in": "machine:cpu:kinds",
+      "name": "Performance"
+    },
+    {
+      "id": "machine:cpu:efficient",
+      "in": "machine:cpu:kinds",
+      "name": "Efficient"
+    },
+    {
+      "id": "machine:cpu:model",
+      "in": "machine:cpu",
+      "name": "Model",
+      "term": "Machine/model",
+      "answers": ["processor model"]
+    },
+    {
+      "id": "machine:cpu:model-name",
+      "in": "machine:cpu:model",
+      "name": "Name"
+    },
+    {
+      "id": "machine:cpu:caches",
+      "in": "machine:cpu:model",
+      "name": "Caches",
+      "term": "Machine/cache",
+      "said": {
+        "note": "all of them together"
+      }
+    },
+    {
+      "id": "machine:cpu:cache",
+      "in": "machine:cpu:caches",
+      "name": "L{level} {type}",
+      "said": {
+        "own": "one a core",
+        "shared": "each shared by {n} cores",
+        "ways": "{ways}-way",
+        "line": "{line} B lines",
+        "times": "{size} \u00d7 {count}"
+      }
+    },
+    {
+      "id": "machine:cpu:cache-data",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Data"
+    },
+    {
+      "id": "machine:cpu:kept-from-resting",
+      "in": "machine:cpu",
+      "name": "Kept From Resting",
+      "term": "Machine/kept from resting",
+      "provider": "machine",
+      "question": "kept from resting",
+      "answers": ["kept from resting"],
+      "said": {
+        "by": "by {keeper}",
+        "quiet": "nothing keeps it from resting now",
+        "spread": "by no one part for long",
+        "refused": "can't be read"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-npu",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "NPU",
+      "term": "Machine/NPU",
+      "said": {
+        "by": "the NPU"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-graphics",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Graphics",
+      "term": "Machine/graphics",
+      "said": {
+        "by": "the graphics"
+      }
+    },
+    {
+      "id": "machine:uptime",
+      "in": "computer",
+      "name": "Uptime",
+      "answers": ["uptime"],
+      "said": {
+        "head": "up {time}",
+        "yesterday": "yesterday"
+      },
+      "parts": [
+        "machine:uptime:idle",
+        "machine:uptime:asleep",
+        "machine:uptime:started",
+        "machine:uptime:kernel"
+      ]
+    },
+    {
+      "id": "machine:uptime:asleep",
+      "in": "machine:uptime",
+      "name": "Asleep",
+      "said": {
+        "never": "never",
+        "note": "{share} of the time since it started"
+      }
+    },
+    {
+      "id": "machine:uptime:idle",
+      "in": "machine:uptime",
+      "name": "Idle",
+      "term": "Machine/idle",
+      "said": {
+        "note": "of the processors' time awake since it started"
+      }
+    },
+    {
+      "id": "machine:uptime:started",
+      "in": "machine:uptime",
+      "name": "Started"
+    },
+    {
+      "id": "machine:uptime:kernel",
+      "in": "machine:uptime",
+      "name": "Linux"
+    },
+    {
+      "id": "machine:uptime:release",
+      "in": "machine:uptime:kernel",
+      "name": "Version",
+      "term": "Machine/version"
+    },
+    {
+      "id": "machine:uptime:build",
+      "in": "machine:uptime:kernel",
+      "name": "Build"
+    },
+    {
+      "id": "machine:disk",
+      "once": ["Drive", "SSD", "Storage"],
+      "name": "Disk",
+      "term": "Disk/disk",
+      "provider": "machine",
+      "question": "disk",
+      "glyph": "disk",
+      "answers": ["disk", "space"],
+      "said": {
+        "head": "{free} free on {mount}",
+        "unwatched": "nothing watched",
+        "since-boot": "since the machine started",
+        "since-asked": "since you last asked",
+        "since-now": "just now",
+        "filling": "filling",
+        "nearly-full": "nearly full",
+        "critically-full": "critically full"
+      },
+      "parts": [
+        "machine:disk:space",
+        "machine:disk:filling",
+        "machine:disk:speed",
+        "machine:disk:pressure",
+        "machine:disk:busy",
+        "machine:disk:latency",
+        "machine:disk:queue",
+        "machine:disk:temperature",
+        "machine:disk:health",
+        "machine:disk:file-systems",
+        "machine:disk:model"
+      ]
+    },
+    {
+      "id": "machine:disk:space",
+      "in": "machine:disk",
+      "name": "Space",
+      "said": {
+        "free": "{free} free",
+        "on": "on {mount}, of {size}",
+        "clearing": "clearing old builds",
+        "clearingAll": "clearing all it can",
+        "cleared": "nothing left to clear"
+      }
+    },
+    {
+      "id": "machine:disk:speed",
+      "in": "machine:disk",
+      "name": "Speed",
+      "term": "Machine/speed",
+      "answers": ["disk speed"],
+      "said": {
+        "iops": "{n} requests/s",
+        "merged": "{n} merged/s"
+      }
+    },
+    {
+      "id": "machine:disk:reading",
+      "in": "machine:disk:speed",
+      "name": "Reading"
+    },
+    {
+      "id": "machine:disk:writing",
+      "in": "machine:disk:speed",
+      "name": "Writing"
+    },
+    {
+      "id": "machine:disk:busy",
+      "in": "machine:disk",
+      "name": "Busy"
+    },
+    {
+      "id": "machine:disk:latency",
+      "in": "machine:disk",
+      "name": "Latency",
+      "answers": ["disk latency"],
+      "said": {
+        "ms": "{n} ms",
+        "note": "each request, on average",
+        "side-idle": "idle",
+        "idle": "none asked of it"
+      }
+    },
+    {
+      "id": "machine:disk:latency-reading",
+      "in": "machine:disk:latency",
+      "name": "Reading"
+    },
+    {
+      "id": "machine:disk:queue",
+      "in": "machine:disk",
+      "name": "Backlog",
+      "term": "Machine/backlog",
+      "said": {
+        "queued": "{queued} on average",
+        "depth": "{depth} at most"
+      }
+    },
+    {
+      "id": "machine:disk:pressure",
+      "in": "machine:disk",
+      "name": "Pressure",
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited on a disk"
+      }
+    },
+    {
+      "id": "machine:disk:temperature",
+      "in": "machine:disk",
+      "name": "Temperature",
+      "answers": ["disk temperature"],
+      "said": {
+        "degrees": "{n} \u00b0C",
+        "most": "at most {degrees}"
+      }
+    },
+    {
+      "id": "machine:disk:health",
+      "in": "machine:disk",
+      "name": "Health",
+      "answers": ["disk health"],
+      "said": {
+        "side": "{n}% worn",
+        "asked": "as its controller said at {time}",
+        "told": "as its controller says",
+        "failing": "its controller says it's failing"
+      }
+    },
+    {
+      "id": "machine:disk:file-systems",
+      "in": "machine:disk",
+      "name": "File Systems",
+      "said": {
+        "room": "{free} free of {size}",
+        "reserved": "{reserved} kept back",
+        "files": "{free} of {files} files free"
+      }
+    },
+    {
+      "id": "machine:disk:spare",
+      "in": "machine:disk:health",
+      "name": "Spare",
+      "term": "Disk/spare",
+      "said": {
+        "side": "{n}%",
+        "note": "it warns below {n}%"
+      }
+    },
+    {
+      "id": "machine:disk:shutdowns",
+      "in": "machine:disk:health",
+      "name": "Unsafe Shutdowns",
+      "said": {
+        "note": "of {cycles} times it was powered"
+      }
+    },
+    {
+      "id": "machine:disk:warnings",
+      "in": "machine:disk:health",
+      "name": "Warnings",
+      "said": {
+        "note": "what its controller warns of",
+        "none": "none",
+        "spare": "spare running out",
+        "temperature": "temperature",
+        "degraded": "reliability degraded",
+        "read-only": "read-only",
+        "volatile-memory": "its memory's backup failed",
+        "persistent-memory-read-only": "its persistent memory read-only"
+      }
+    },
+    {
+      "id": "machine:disk:model",
+      "in": "machine:disk",
+      "name": "Model",
+      "term": "Machine/model",
+      "answers": ["disk model"]
+    },
+    {
+      "id": "machine:disk:link",
+      "in": "machine:disk:model",
+      "name": "PCIe",
+      "said": {
+        "side": "{speed} \u00d7{width}",
+        "full": "as fast as it goes",
+        "slower": "of {most} at most"
+      }
+    },
+    {
+      "id": "machine:disk:block",
+      "in": "machine:disk:model",
+      "name": "Block Size",
+      "said": {
+        "one": "{n} B",
+        "both": "{logical} B logical \u00b7 {physical} B physical"
+      }
+    },
+    {
+      "id": "power",
+      "name": "Battery",
+      "answers": ["battery", "charge", "charger", "energy"],
+      "parts": [
+        "power:rate",
+        "power:voltage",
+        "power:health",
+        "power:cycles",
+        "power:type",
+        "power:limit",
+        "power:temperature",
+        "power:made"
+      ],
+      "said": {
+        "full": "{time} to full",
+        "charging": "charging",
+        "empty": "{time} to empty",
+        "battery": "on battery",
+        "whole": "full",
+        "holding": "on power, holding"
+      }
+    },
+    {
+      "id": "power:charger",
+      "once": ["Mains"],
+      "in": "power",
+      "name": "Charger",
+      "term": "Machine/charger",
+      "said": {
+        "charging": "{watts} W on port {n}",
+        "on": "on port {n}",
+        "plugged": "plugged in",
+        "none": "none plugged in",
+        "port": "one USB-C port",
+        "ports": "{count} USB-C ports"
+      }
+    },
+    {
+      "id": "power:port",
+      "in": "power:charger",
+      "name": "Port {n}",
+      "said": {
+        "charging": "charging",
+        "giving": "powering what's plugged in",
+        "plugged": "plugged in, giving nothing",
+        "empty": "empty"
+      }
+    },
+    {
+      "id": "power:port:drawer",
+      "in": "power:port",
+      "said": {
+        "eyebrow": "on this machine \u00b7 charger",
+        "accessory": "{mode} accessory",
+        "range": "{from} to {to} V",
+        "at": "{offers} at {amps} A",
+        "mode:usb_power_delivery": "USB Power Delivery",
+        "mode:default": "USB default",
+        "mode:1.5A": "USB-C at 1.5 A",
+        "mode:3.0A": "USB-C at 3 A"
+      }
+    },
+    {
+      "id": "power:port:offers",
+      "in": "power:port",
+      "name": "Offers"
+    },
+    {
+      "id": "power:port:supply",
+      "in": "power:port",
+      "name": "Supply"
+    },
+    {
+      "id": "power:charge",
+      "in": "power",
+      "name": "Charge",
+      "said": {
+        "level": "its level {level}"
+      }
+    },
+    {
+      "id": "power:rate",
+      "in": "power",
+      "name": "Drawing",
+      "states": {
+        "charging": {
+          "name": "Charging"
+        }
+      },
+      "answers": ["power draw"],
+      "said": {
+        "into": "into the battery",
+        "from": "from the battery"
+      }
+    },
+    {
+      "id": "power:energy",
+      "in": "power",
+      "name": "Energy",
+      "said": {
+        "eyebrow": "on this machine \u00b7 battery",
+        "of": "{now} of {full} Wh",
+        "note": "now, of what it holds full",
+        "full": "what it holds full"
+      }
+    },
+    {
+      "id": "power:health",
+      "in": "power",
+      "name": "Health",
+      "answers": ["battery health"],
+      "said": {
+        "design": "{pct}% of design",
+        "cycle": "1 cycle",
+        "cycles": "{count} cycles",
+        "says": "the battery says it's {health}"
+      }
+    },
+    {
+      "id": "power:limit",
+      "in": "power",
+      "name": "Charge Limit",
+      "answers": ["charge limit"],
+      "said": {
+        "full": "charges fully",
+        "stop": "stops at {stop}%",
+        "both": "stops at {stop}%, starts below {start}%",
+        "firmware": "set in the firmware's settings",
+        "refused": "the battery said no",
+        "refused:refused": "the battery wouldn't take it",
+        "refused:bad-act": "not a limit this battery takes"
+      }
+    },
+    {
+      "id": "power:limit:stop",
+      "in": "power:limit",
+      "name": "Stop at {n}%",
+      "verb": "set",
+      "said": {
+        "chosen": "chosen"
+      }
+    },
+    {
+      "id": "heat",
+      "name": "Heat",
+      "glyph": "heat",
+      "answers": ["heat"],
+      "said": {
+        "hottest": "{degrees} at the {part}",
+        "stopped": "fans stopped",
+        "turning": "a fan turning",
+        "turnings": "{count} fans turning"
+      }
+    },
+    {
+      "id": "heat:processor",
+      "in": "heat",
+      "name": "Processor",
+      "term": "Machine/processor"
+    },
+    {
+      "id": "heat:cores",
+      "in": "heat:processor",
+      "name": "Cores",
+      "term": "Machine/core",
+      "said": {
+        "hottest": "the hottest, core {n} at {degrees}"
+      }
+    },
+    {
+      "id": "heat:core",
+      "in": "heat:cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:throttled",
+      "in": "heat",
+      "name": "Throttled",
+      "term": "Machine/throttled",
+      "answers": ["throttled"],
+      "said": {
+        "never": "never",
+        "once": "once",
+        "times": "{count} times",
+        "for": "for {time} in all, since the machine started",
+        "since": "since the machine started"
+      }
+    },
+    {
+      "id": "heat:package",
+      "in": "heat:throttled",
+      "name": "Whole Processor",
+      "said": {
+        "for": "for {time} in all",
+        "longest": "the longest {time}"
+      }
+    },
+    {
+      "id": "heat:throttled-cores",
+      "in": "heat:throttled",
+      "name": "Cores",
+      "term": "Machine/core",
+      "said": {
+        "most": "the most, core {n}, {times}",
+        "alone": "each on its own"
+      }
+    },
+    {
+      "id": "heat:throttled-core",
+      "in": "heat:throttled-cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:disk",
+      "in": "heat",
+      "name": "Disk",
+      "term": "Disk/disk"
+    },
+    {
+      "id": "heat:sensor",
+      "in": "heat:disk",
+      "name": "Sensor {n}",
+      "said": {
+        "hotter": "{sensor} hotter at {degrees}"
+      }
+    },
+    {
+      "id": "heat:fan",
+      "in": "heat",
+      "name": "Fan {n}",
+      "said": {
+        "stopped": "stopped",
+        "rated": "rated for {speed}",
+        "full": "at full power",
+        "share": "at {pct}% power"
+      }
+    },
+    {
+      "id": "heat:lately",
+      "in": "heat",
+      "name": "Last Reads",
+      "said": {
+        "range": "{least} to {most}",
+        "one": "one read so far, one a second while it's shown",
+        "many": "the last {count} reads, one a second while it's shown"
+      }
+    },
+    {
+      "id": "heat:high",
+      "in": "heat",
+      "name": "High",
+      "said": {
+        "below": "{by} \u00b0C below high",
+        "past": "{by} \u00b0C past high",
+        "note": "where it starts to warn"
+      }
+    },
+    {
+      "id": "heat:critical",
+      "in": "heat",
+      "name": "Critical",
+      "said": {
+        "below": "{by} \u00b0C below critical",
+        "past": "{by} \u00b0C past critical",
+        "note": "the most it's meant to reach"
+      }
+    },
+    {
+      "id": "heat:trip:passive",
+      "in": "heat",
+      "name": "Throttles At"
+    },
+    {
+      "id": "heat:chip",
+      "in": "heat",
+      "name": "Linux Name",
+      "term": "Machine/Linux name",
+      "said": {
+        "sensor": "on this machine \u00b7 sensor",
+        "zone": "on this machine \u00b7 zone"
+      }
+    },
+    {
+      "id": "heat:zone",
+      "in": "heat",
+      "name": "Zone"
+    },
+    {
+      "id": "heat:power",
+      "in": "heat",
+      "name": "Power",
+      "said": {
+        "note": "how hard it's driven"
+      }
+    },
+    {
+      "id": "heat:control",
+      "in": "heat",
+      "name": "Control",
+      "said": {
+        "automatic": "automatic",
+        "manual": "set by hand",
+        "full": "full speed",
+        "note": "what sets its speed"
+      }
+    },
+    {
+      "id": "firmware",
+      "name": "Firmware",
+      "term": "Machine/firmware",
+      "glyph": "firmware",
+      "answers": ["firmware", "update", "updates"],
+      "said": {
+        "current": "up to date",
+        "one": "1 update ready",
+        "many": "{count} updates ready",
+        "ready": "{version} ready \u00b7 from {was}",
+        "restart": "{version} at the restart \u00b7 from {was}"
+      }
+    },
+    {
+      "id": "firmware:version",
+      "in": "firmware",
+      "name": "Version",
+      "term": "Machine/version"
+    },
+    {
+      "id": "firmware:vendor",
+      "in": "firmware",
+      "name": "Vendor",
+      "said": {
+        "alone": "firmware",
+        "from": "from {vendor} \u00b7 firmware"
+      }
+    },
+    {
+      "id": "firmware:last-updated",
+      "in": "firmware",
+      "name": "Last Updated"
+    },
+    {
+      "id": "firmware:size",
+      "in": "firmware",
+      "name": "Size"
+    },
+    {
+      "id": "firmware:released",
+      "in": "firmware",
+      "name": "Released"
+    },
+    {
+      "id": "firmware:takes",
+      "in": "firmware",
+      "name": "Takes",
+      "said": {
+        "minutes": "{count} min"
+      }
+    },
+    {
+      "id": "firmware:held",
+      "in": "firmware",
+      "name": "Blocked By",
+      "term": "Machine/blocked by",
+      "said": {
+        "system-power-too-low": "low power",
+        "unreachable": "out of reach",
+        "power-too-low": "its battery low",
+        "update-pending": "an update waiting to go in",
+        "require-ac-power": "no charger",
+        "lid-is-closed": "lid shut",
+        "is-emulated": "emulated",
+        "missing-license": "no licence",
+        "system-inhibit": "updates turned off",
+        "update-in-progress": "another update going",
+        "in-use": "in use",
+        "display-required": "no screen",
+        "lower-priority": "another device first",
+        "insecure-platform": "an insecure signing key",
+        "firmware-locked": "firmware locked"
+      }
+    },
+    {
+      "id": "firmware:serial",
+      "in": "firmware",
+      "name": "Serial"
+    },
+    {
+      "id": "firmware:security",
+      "in": "firmware",
+      "name": "Security Level",
+      "term": "Machine/security level",
+      "said": {
+        "0": "none of the basic protections",
+        "1": "only the most basic protections",
+        "2": "the basic and important protections",
+        "3": "those below and out-of-band protection",
+        "4": "those below and encryption and execution protection",
+        "5": "those below and out-of-band attestation",
+        "eyebrow": "on this machine \u00b7 rating",
+        "lowered": "lowered by what's running",
+        "sentence": "fwupd rates the firmware's defences at level {level} of 5, which holds {meaning}.",
+        "sentence-lowered": "fwupd rates the firmware's defences at level {level} of 5, which holds {meaning}, and what's running lowers it."
+      }
+    },
+    {
+      "id": "firmware:needed",
+      "in": "firmware",
+      "name": "Needed for Level {level}"
+    },
+    {
+      "id": "firmware:lowered",
+      "in": "firmware",
+      "name": "Lowered By"
+    },
+    {
+      "id": "firmware:result",
+      "in": "firmware",
+      "name": "Found",
+      "said": {
+        "unknown": "unknown",
+        "enabled": "enabled",
+        "not-enabled": "not enabled",
+        "valid": "valid",
+        "not-valid": "not valid",
+        "locked": "locked",
+        "not-locked": "not locked",
+        "encrypted": "encrypted",
+        "not-encrypted": "not encrypted",
+        "tainted": "tainted",
+        "not-tainted": "not tainted",
+        "found": "found",
+        "not-found": "not found",
+        "supported": "supported",
+        "not-supported": "not supported",
+        "missing": "unread"
+      }
+    },
+    {
+      "id": "firmware:group",
+      "in": "firmware",
+      "name": "Group",
+      "said": {
+        "level": "level {level}",
+        "running": "running",
+        "kind": "check"
+      }
+    },
+    {
+      "id": "firmware:fixed-in",
+      "in": "firmware",
+      "name": "Fixed In",
+      "said": {
+        "setup": "firmware setup",
+        "system": "the system's settings",
+        "maker": "an update from its maker"
+      }
+    },
+    {
+      "id": "firmware:setting",
+      "in": "firmware",
+      "name": "Firmware Setting"
+    },
+    {
+      "id": "firmware:attribute",
+      "in": "firmware",
+      "name": "Attribute"
+    },
+    {
+      "id": "verb:firmware:install",
+      "command": "install",
+      "in": "firmware",
+      "name": "Install {version}",
+      "verb": "install",
+      "glyph": "firmware",
+      "sure": "Install {version} on {device} Now",
+      "said": {
+        "final": "it can't be undone",
+        "final-at-restart": "it can't be undone, and finishes at a restart",
+        "installing": "installing",
+        "waits": "restart to finish",
+        "installed": "installed",
+        "failed": "didn't install",
+        "stopped": "stopped waiting after {count} min"
+      }
+    },
+    {
+      "id": "verb:firmware:fix",
+      "command": "secure",
+      "in": "firmware",
+      "name": "Secure It",
+      "verb": "fix",
+      "glyph": "firmware",
+      "sure": "Secure {attribute} Now",
+      "said": {
+        "what": "fwupd changes the setting",
+        "final": "fwupd changes the setting, and may need a restart",
+        "changing": "securing",
+        "changed": "secured",
+        "failed": "didn't secure",
+        "stopped": "stopped waiting after {count} min"
+      }
+    },
+    {
+      "id": "verb:firmware:undo",
+      "command": "undo",
+      "in": "firmware",
+      "name": "Undo It",
+      "verb": "undo",
+      "glyph": "firmware",
+      "sure": "Undo the Fix to {attribute} Now",
+      "said": {
+        "what": "fwupd puts the setting back as it was",
+        "final": "it lowers the level, and may need a restart",
+        "changing": "undoing",
+        "changed": "undone",
+        "failed": "didn't undo",
+        "stopped": "stopped waiting after {count} min"
+      }
+    },
+    {
+      "id": "verb:firmware:setup",
+      "command": "reboot",
+      "argument": "setup",
+      "in": "firmware",
+      "name": "Reboot Into Firmware Setup",
+      "verb": "reboot",
+      "glyph": "firmware",
+      "sure": "Reboot Into Firmware Setup Now",
+      "said": {
+        "set": "set {setting} to {target} there",
+        "find": "set it there",
+        "final": "it closes every window",
+        "failed": "didn't reboot",
+        "stopped": "stopped waiting after {count} min"
+      }
+    }
+  ]
+}
