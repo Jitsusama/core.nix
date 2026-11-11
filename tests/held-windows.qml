@@ -53,6 +53,20 @@ QtObject {
         Expect.expect("its record goes with it", !("window:1" in held.records)
             && !("window:1" in held.windows), JSON.stringify(Object.keys(held.records)));
 
+        // While the launcher is shut, only when each window was used is
+        // told, and each is placed by it; one not held is answered, to be
+        // asked whole.
+        Expect.same("when windows were used places them, answering those not held",
+            HeldWindows.used(held, [{ key: "window:3", order: 500 },
+                { key: "window:4", order: 400 }, { key: "window:7", order: 600 }]),
+            ["window:7"]);
+        Expect.same("the one used last goes first", held.order,
+            ["window:3", "window:4", "window:2"]);
+        Expect.same("and its window reads the time", held.windows["window:3"].focus_timestamp,
+            { secs: 0, nanos: 500000000 });
+        Expect.same("a whole answer saying the same after differs in none",
+            HeldWindows.take(held, [record(3, 500, { title: "renamed" })], []), []);
+
         const window = HeldWindows.asWindow(record(5, 1000500,
             { workspace: 2, column: 3, down: 2, floating: true }));
         Expect.same("a window reads as niri describes one", [window.workspace_id,
