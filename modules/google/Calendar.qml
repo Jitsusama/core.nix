@@ -340,8 +340,9 @@ Singleton {
             }
             return found;
         };
-        // Counted making no one's row (Calendar.js).
-        const count = Said.guestsCounted(meeting, Google.peopleOf(provider.launcher));
+        // Counted by the google daemon, each address once
+        // (calendar_rows.rs), so it's there with the meeting's other rows.
+        const count = meeting.guestsCounted ?? 0;
         if (count === 0)
             return null;
         const key = "verb:calendar:guests";

@@ -97,8 +97,14 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
         serde_json::to_value(thing).unwrap_or(Value::Null)
     }
     let mut made = Vec::new();
+    // A meeting says how many are on it, as its Guests row counts them.
+    let meeting_value = |meeting: &crate::calendar::Meeting| {
+        let mut value = as_value(meeting);
+        value["guestsCounted"] = json!(crate::calendar_rows::guests_counted(meeting));
+        value
+    };
     for meeting in &state.meetings {
-        made.push(record("meeting", &meeting.id, as_value(meeting)));
+        made.push(record("meeting", &meeting.id, meeting_value(meeting)));
     }
     // Mail done is still a mail record, its `done` saying how it went,
     // so a watch hears the one it held change rather than vanish.
@@ -109,7 +115,7 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
         made.push(record("file", &document.id, as_value(document)));
     }
     for meeting in &state.held {
-        made.push(record("held", &meeting.id, as_value(meeting)));
+        made.push(record("held", &meeting.id, meeting_value(meeting)));
     }
     for mail in &state.lately {
         made.push(record("lately", &mail.id, as_value(mail)));

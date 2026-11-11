@@ -147,7 +147,7 @@ def placed(key: str, title: str, kind: str, mime: str, now: int) -> dict[str, ob
 
 def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict[str, object]:
     """Give a meeting as the program says one: answered yes, on Meet, Joel's, with no reminder."""
-    return {
+    given = {
         "id": key,
         "title": title,
         "start": start,
@@ -169,6 +169,12 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
         "repeats": None,
         **more,
     }
+    # How many are on it besides Joel, each address once, as the program counts them.
+    organizer = given["organizer"]
+    holder = [] if given["holds"] or not isinstance(organizer, dict) else [organizer]
+    guests = given["guests"] if isinstance(given["guests"], list) else []
+    addresses = {str(one["email"]).lower() for one in [*holder, *guests] if one.get("email")}
+    return {**given, "guestsCounted": len(addresses)}
 
 
 # Each of a document's kinds as the daemon words it (src/document_rows.rs): its glyph, the

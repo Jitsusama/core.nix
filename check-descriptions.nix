@@ -730,8 +730,8 @@
   google-reads-the-calendar = ''
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
-    can't be reached, tells the shell each meeting's times, answer, the one link it's joined by and
-    how its series repeats, asking each series only every five minutes and keeping its rule while
+    can't be reached, tells the shell each meeting's times, answer, the one link it's joined by,
+    how many are on it besides Joel, each address once, and how its series repeats, asking each series only every five minutes and keeping its rule while
     Google fails, and answers an invitation the shell asks it to, changing only Joel's own answer,
     cancels a meeting only when Joel holds it, telling every guest, moves one through the calendar
     Google lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
