@@ -300,8 +300,11 @@ fn refused(what: &str) -> Vec<u8> {
     vec![FAILURE]
 }
 
+/// A key an agent holds, as its wire blob, and the comment it gives it.
+type Listed = (Vec<u8>, Vec<u8>);
+
 /// Each key, with its comment, in an identities answer.
-fn keys_in(answer: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, String> {
+fn keys_in(answer: &[u8]) -> Result<Vec<Listed>, String> {
     let mut fields = Fields::new(answer);
     if fields.byte()? != IDENTITIES_ANSWER {
         return Err("it didn't answer with its keys".to_owned());

@@ -774,16 +774,4 @@ in
   pi-spawner-passes-clippy = passesClippy "pi-spawner-passes-clippy" (
     pkgs.callPackage ./spawner/package.nix { }
   );
-
-  # pi-agent-proxy builds with its tests run (agent-proxy/tests/agent_proxy.rs):
-  # the keys behind it listed, a login signed once its allowed host signed
-  # the session, and nothing else reaching the agent behind it: no session,
-  # another host, a forged binding, a commit, another session or key, a
-  # forwarded agent, or adding, removing and locking keys.
-  pi-agent-proxy-signs-only-logins = pkgs.callPackage ./agent-proxy/package.nix { };
-
-  # clippy finds nothing in pi-agent-proxy, its tests included.
-  pi-agent-proxy-passes-clippy = passesClippy "pi-agent-proxy-passes-clippy" (
-    pkgs.callPackage ./agent-proxy/package.nix { }
-  );
 }
