@@ -41,6 +41,7 @@ const BUILT_IN: [(&str, &str); 3] = [
 pub struct Words {
     names: BTreeMap<String, String>,
     verbs: BTreeMap<String, String>,
+    glyphs: BTreeMap<String, String>,
     said: BTreeMap<String, String>,
 }
 
@@ -60,6 +61,9 @@ impl Words {
             if let Some(verb) = thing["verb"].as_str() {
                 words.verbs.insert(id.to_owned(), verb.to_owned());
             }
+            if let Some(glyph) = thing["glyph"].as_str() {
+                words.glyphs.insert(id.to_owned(), glyph.to_owned());
+            }
             // A state's own name and verb, as `verb:sound-to`'s name for an
             // input and `sound:mute`'s verb while muted.
             for (state, worded) in thing["states"].as_object().into_iter().flatten() {
@@ -68,6 +72,11 @@ impl Words {
                 }
                 if let Some(verb) = worded["verb"].as_str() {
                     words.verbs.insert(format!("{id}#{state}"), verb.to_owned());
+                }
+                if let Some(glyph) = worded["glyph"].as_str() {
+                    words
+                        .glyphs
+                        .insert(format!("{id}#{state}"), glyph.to_owned());
                 }
             }
             if id == PLACE
@@ -109,6 +118,17 @@ impl Words {
             .unwrap_or_default()
     }
 
+    /// A thing's glyph role in a state, as Words.qml's `glyph` gives it,
+    /// or its own where the state has none: a program's Muted switch wears
+    /// silent while muted.
+    pub(crate) fn glyph_in(&self, id: &str, state: &str) -> String {
+        self.glyphs
+            .get(&format!("{id}#{state}"))
+            .or_else(|| self.glyphs.get(id))
+            .cloned()
+            .unwrap_or_default()
+    }
+
     /// A thing's name in a state of its own, as Words.qml's `name` gives
     /// it, or its name where the state has none.
     pub(crate) fn name_in(&self, id: &str, state: &str, fill: &[(&str, &str)]) -> String {
@@ -135,7 +155,11 @@ pub(crate) struct Device<'a> {
 }
 
 impl<'a> Device<'a> {
+    /// A device record as a device, a stream's being none.
     pub(crate) fn of(record: &'a Value) -> Option<Device<'a>> {
+        if record["kind"] != "device" {
+            return None;
+        }
         Some(Device {
             record,
             name: record["name"].as_str()?,
@@ -143,7 +167,7 @@ impl<'a> Device<'a> {
         })
     }
 
-    fn property(&self, key: &str) -> &'a str {
+    pub(crate) fn property(&self, key: &str) -> &'a str {
         self.record["properties"][key].as_str().unwrap_or("")
     }
 

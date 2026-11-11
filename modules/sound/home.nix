@@ -3,9 +3,20 @@
 # ready over $XDG_RUNTIME_DIR/daemons/sound.sock in the shell's daemon
 # interface, for the launcher's Sound (src/main.rs says how). The shell
 # imports it, since that's what it holds.
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   sound = pkgs.callPackage ./package.nix { };
+  # Each program's own mark, so a program's row in Sound wears the mark
+  # its row among Programs does.
+  marks = import ../quickshell/program-marks.nix {
+    inherit lib pkgs;
+    launcher = config.jitsusama.quickshell.launcher or null;
+  };
 in
 {
   # It isn't in background.slice: what it holds is what the launcher
@@ -32,6 +43,8 @@ in
         "%t/daemons/sound.sock"
         "--vocabulary"
         "${../quickshell/launcher/words.json}"
+        "--marks"
+        "${marks}"
       ];
       Restart = "on-failure";
       RestartSec = 5;

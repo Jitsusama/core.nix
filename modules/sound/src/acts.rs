@@ -6,12 +6,14 @@
 //! own Props. The choice goes into the default metadata's configured key,
 //! which the session manager keeps and follows, and a program's stream is
 //! sent to a device by its `target.object` there, which the session
-//! manager moves it by, live.
+//! manager moves it by, live. A program's volume and mute are set on
+//! each of its streams' own Props, as its row names them.
 
 use serde_json::{Value, json};
 
 use crate::devices::Device;
 use crate::levels::{ported, props, routed};
+use crate::streams::Streams;
 
 /// One act, as asked.
 #[derive(Clone, Debug, PartialEq)]
@@ -35,12 +37,19 @@ pub enum Act {
         key: String,
         index: i32,
     },
-    /// A program's stream sent to a device, by the device's node name,
-    /// or back to the default, given none, which it then follows.
+    /// A program's streams sent to a device, by the device's node name,
+    /// or back to the default, given none, which they then follow.
     Send {
         key: String,
-        stream: u32,
+        streams: Vec<u32>,
         target: Option<String>,
+    },
+    /// A program's volume or mute, set on each of its streams.
+    Program {
+        key: String,
+        streams: Vec<u32>,
+        volume: Option<f32>,
+        muted: Option<bool>,
     },
 }
 
@@ -69,6 +78,8 @@ pub enum Move {
     Choose { key: &'static str, value: String },
     /// A stream's target said in the default metadata, or let go of.
     Send { stream: u32, target: Option<String> },
+    /// Several moves, done in turn, as a program's streams are each set.
+    Each(Vec<Move>),
 }
 
 #[expect(clippy::cast_possible_truncation, reason = "a volume fits an f32")]
@@ -80,6 +91,12 @@ fn share(volume: f64) -> f32 {
 pub fn act(name: &str, said: &Value) -> Result<Act, Refused> {
     if name == "send" {
         return sent(said);
+    }
+    if said["key"]
+        .as_str()
+        .is_some_and(|key| key.starts_with("program:"))
+    {
+        return program(name, said);
     }
     let key = said["key"]
         .as_str()
@@ -118,22 +135,75 @@ pub fn act(name: &str, said: &Value) -> Result<Act, Refused> {
     }
 }
 
-/// A send: the stream it moves, by its key, `stream:<id>` as PipeWire
-/// numbers it, and the device it goes to, by its node name, or "" for the
-/// default.
+/// The streams a program's act names, by their ids, at least one.
+fn streams_of(said: &Value) -> Result<Vec<u32>, Refused> {
+    let ids: Option<Vec<u32>> = said["streams"].as_array().map(|ids| {
+        ids.iter()
+            .filter_map(|id| id.as_u64().and_then(|id| u32::try_from(id).ok()))
+            .collect()
+    });
+    ids.filter(|ids| !ids.is_empty())
+        .ok_or_else(|| refused("bad-act", "a program's act names its streams"))
+}
+
+/// A send: the streams it moves, one by its key, `stream:<id>` as
+/// PipeWire numbers it, or a program's by their ids, and the device they
+/// go to, by its node name, or "" for the default.
 fn sent(said: &Value) -> Result<Act, Refused> {
     let key = said["key"].as_str().unwrap_or_default();
-    let stream = key
-        .strip_prefix("stream:")
-        .and_then(|id| id.parse().ok())
-        .ok_or_else(|| refused("bad-act", "a send names its stream's key"))?;
+    let streams = match key.strip_prefix("stream:") {
+        Some(id) => id.parse().ok().map(|id| vec![id]),
+        None => key
+            .starts_with("program:")
+            .then(|| streams_of(said).ok())
+            .flatten(),
+    }
+    .ok_or_else(|| {
+        refused(
+            "bad-act",
+            "a send names its stream's key, or a program's streams",
+        )
+    })?;
     let target = said["target"]
         .as_str()
         .ok_or_else(|| refused("bad-act", "a send says its device, or \"\" for the default"))?;
     Ok(Act::Send {
         key: key.to_owned(),
-        stream,
+        streams,
         target: (!target.is_empty()).then(|| target.to_owned()),
+    })
+}
+
+/// A program's volume or mute, on the streams it names.
+fn program(name: &str, said: &Value) -> Result<Act, Refused> {
+    let key = said["key"].as_str().unwrap_or_default().to_owned();
+    let streams = streams_of(said)?;
+    let (volume, muted) = match name {
+        "volume" => {
+            let volume = said["volume"]
+                .as_f64()
+                .filter(|volume| (0.0..=1.0).contains(volume))
+                .ok_or_else(|| refused("bad-act", "a volume act says a volume from 0 to 1"))?;
+            (Some(share(volume)), said["muted"].as_bool())
+        }
+        "mute" => {
+            let muted = said["muted"]
+                .as_bool()
+                .ok_or_else(|| refused("bad-act", "a mute act says whether it's muted"))?;
+            (None, Some(muted))
+        }
+        _ => {
+            return Err(refused(
+                "unknown-act",
+                format!("no act {name:?} for a program"),
+            ));
+        }
+    };
+    Ok(Act::Program {
+        key,
+        streams,
+        volume,
+        muted,
     })
 }
 
@@ -145,21 +215,69 @@ impl Act {
             | Act::Mute { key, .. }
             | Act::Use { key }
             | Act::Port { key, .. }
-            | Act::Send { key, .. } => key,
+            | Act::Send { key, .. }
+            | Act::Program { key, .. } => key,
         }
     }
 
     /// How it's done where it needs no device found first: a send, whose
-    /// stream is the session manager's to find.
+    /// streams are the session manager's to find, each in turn.
     pub fn alone(&self) -> Option<Move> {
-        match self {
-            Act::Send { stream, target, .. } => Some(Move::Send {
+        let Act::Send {
+            streams, target, ..
+        } = self
+        else {
+            return None;
+        };
+        let mut moves: Vec<Move> = streams
+            .iter()
+            .map(|stream| Move::Send {
                 stream: *stream,
                 target: target.clone(),
-            }),
-            _ => None,
-        }
+            })
+            .collect();
+        Some(if moves.len() == 1 {
+            moves.remove(0)
+        } else {
+            Move::Each(moves)
+        })
     }
+}
+
+/// How a program's act is done on each of its streams, every one of
+/// which must still be heard, so no act reaches another program's.
+pub fn on_streams(act: &Act, heard: &Streams) -> Result<Move, Refused> {
+    let Act::Program {
+        streams,
+        volume,
+        muted,
+        ..
+    } = act
+    else {
+        return Err(refused(
+            "bad-act",
+            "only a program's act is done on its streams",
+        ));
+    };
+    let mut moves = Vec::new();
+    for id in streams {
+        let Some(stream) = heard.stream(*id) else {
+            return Err(refused("no-stream", format!("no stream {id} here")));
+        };
+        let volumes = match volume {
+            Some(_) if stream.volumes.is_empty() => {
+                let message = format!("stream {id} hasn't said its volume yet");
+                return Err(refused("no-volume", message));
+            }
+            Some(volume) => Some(leveled(&stream.volumes, *volume)),
+            None => None,
+        };
+        moves.push(Move::Node {
+            id: *id,
+            pod: props(volumes.as_deref(), *muted),
+        });
+    }
+    Ok(Move::Each(moves))
 }
 
 /// Each channel's share for a volume as the shell shows it, keeping how
@@ -199,9 +317,12 @@ pub fn planned(act: &Act, device: &Device) -> Result<Move, Refused> {
             (Some(leveled(device.volumes, *volume)), *muted)
         }
         Act::Mute { muted, .. } => (None, Some(*muted)),
-        // Done alone, by `alone`, since it moves a stream.
-        Act::Send { .. } => {
-            return Err(refused("bad-act", "a send moves a stream, not a device"));
+        // Done alone, by `alone`, or on its streams, by `on_streams`.
+        Act::Send { .. } | Act::Program { .. } => {
+            return Err(refused(
+                "bad-act",
+                "a program's act moves streams, not a device",
+            ));
         }
         Act::Port { index, .. } => {
             // Only a port its card offers it, so no act moves another
@@ -298,6 +419,56 @@ mod tests {
         assert_eq!(back, Ok(Some(Move::Send { stream: 93, target })));
         let said = json!({"key": "device:speakers", "muted": true});
         assert_eq!(act("mute", &said).map(|act| act.alone()), Ok(None));
+    }
+
+    #[test]
+    fn a_programs_send_moves_each_of_its_streams() {
+        let said = json!({"key": "program:speakers:Firefox", "streams": [70, 71],
+            "target": "headphones"});
+        let target = Some("headphones".to_owned());
+        let moves = vec![
+            Move::Send {
+                stream: 70,
+                target: target.clone(),
+            },
+            Move::Send { stream: 71, target },
+        ];
+        let sending = act("send", &said).map(|act| act.alone());
+        assert_eq!(sending, Ok(Some(Move::Each(moves))));
+        let none = json!({"key": "program:speakers:Firefox", "streams": [], "target": ""});
+        let refused = act("send", &none).map_err(|refused| refused.code);
+        assert_eq!(
+            refused,
+            Err("bad-act"),
+            "a program's send names its streams"
+        );
+    }
+
+    // A program's volume is set on each stream's own Props, keeping how
+    // its channels stand; a stream no longer heard refuses the act.
+    #[test]
+    fn a_programs_volume_is_set_on_each_stream() {
+        let mut heard = Streams::default();
+        let class = |class: &str| {
+            std::collections::BTreeMap::from([("media.class".to_owned(), class.to_owned())])
+        };
+        heard.node(70, class("Stream/Output/Audio"));
+        heard.levels(70, Some(vec![0.125, 0.015_625]), Some(true));
+        let said = json!({"key": "program:speakers:Firefox", "streams": [70],
+            "volume": 0.75, "muted": false});
+        let asked = act("volume", &said).expect("a program's volume is an act");
+        let wanted = Move::Each(vec![Move::Node {
+            id: 70,
+            pod: props(
+                Some(leveled(&[0.125, 0.015_625], 0.75).as_slice()),
+                Some(false),
+            ),
+        }]);
+        assert_eq!(on_streams(&asked, &heard), Ok(wanted));
+        let gone = json!({"key": "program:speakers:Firefox", "streams": [71], "muted": true});
+        let asked = act("mute", &gone).expect("a program's mute is an act");
+        let refused = on_streams(&asked, &heard).map_err(|refused| refused.code);
+        assert_eq!(refused, Err("no-stream"), "a stream gone");
     }
 
     #[test]

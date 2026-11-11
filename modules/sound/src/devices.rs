@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use crate::levels::Port;
+use crate::streams::Streams;
 
 /// A change the sound server said, as the daemon takes it in.
 #[derive(Clone, Debug, PartialEq)]
@@ -30,8 +31,11 @@ pub enum Change {
         id: u32,
         properties: BTreeMap<String, String>,
     },
-    /// A node, a card or the default metadata going away, by its id.
+    /// A node, a card, a link or the default metadata going away, by its
+    /// id.
     Gone { id: u32 },
+    /// A link, from the node it goes out of to the one it goes into.
+    Link { id: u32, from: u32, to: u32 },
     /// A card saying which of its routes plays one of its profile's
     /// devices, as its Route param does.
     Route { card: u32, index: i32, device: i32 },
@@ -92,6 +96,8 @@ pub struct Devices {
     /// device's node name or its object serial, as `WirePlumber` takes
     /// either. A stream not here follows the default.
     sent: BTreeMap<u32, String>,
+    /// Programs' streams, and the links joining them to devices.
+    pub streams: Streams,
 }
 
 /// One device as an act finds it.
@@ -128,7 +134,7 @@ fn named(value: Option<&str>) -> Option<String> {
 /// A volume as the shell shows it: the mean of each channel's cube root,
 /// since PipeWire holds each share cubed, to four places so a share read
 /// back the same never reads as a change.
-fn shown(volumes: &[f32]) -> f64 {
+pub(crate) fn shown(volumes: &[f32]) -> f64 {
     if volumes.is_empty() {
         return 0.0;
     }
@@ -145,14 +151,15 @@ impl Devices {
             Change::Node { id, properties } => {
                 let class = properties.get("media.class").map_or("", String::as_str);
                 if direction(class).is_none() {
-                    return self.nodes.remove(&id).is_some();
+                    let stream = self.streams.node(id, properties);
+                    return self.nodes.remove(&id).is_some() || stream;
                 }
                 self.nodes.entry(id).or_default().properties = properties;
                 true
             }
             Change::Levels { id, volumes, muted } => {
                 let Some(node) = self.nodes.get_mut(&id) else {
-                    return false;
+                    return self.streams.levels(id, volumes, muted);
                 };
                 if let Some(volumes) = volumes {
                     node.volumes = volumes;
@@ -185,8 +192,12 @@ impl Devices {
                 self.offers.retain(|(card, _), _| *card != id);
                 self.profiles.remove(&id);
                 self.forms.remove(&id);
-                self.nodes.remove(&id).is_some()
+                // A stream gone takes where it was sent with it.
+                let sent = self.sent.remove(&id).is_some();
+                let stream = self.streams.gone(id);
+                self.nodes.remove(&id).is_some() || sent || stream
             }
+            Change::Link { id, from, to } => self.streams.link(id, from, to),
             // A route moves the port its device says is chosen.
             Change::Route {
                 card,
@@ -334,8 +345,25 @@ impl Devices {
     }
 
     /// Each device as a record, keyed by its node's name, which a device
-    /// keeps from one sound server to the next where its id doesn't.
+    /// keeps from one sound server to the next where its id doesn't, then
+    /// each program's stream, saying the devices it's linked to by name
+    /// and where it's sent, its `target`, "" while it follows the default.
     pub fn records(&self) -> Vec<Value> {
+        let mut records = self.devices();
+        let named = |id: u32| {
+            let node = self.nodes.get(&id)?;
+            node.properties.get("node.name").map(String::as_str)
+        };
+        records.extend(self.streams.records(named).into_iter().map(|mut record| {
+            let id = record["id"].as_u64().and_then(|id| u32::try_from(id).ok());
+            let sent = id.and_then(|id| self.sent.get(&id));
+            record["target"] = json!(sent.map_or("", String::as_str));
+            record
+        }));
+        records
+    }
+
+    fn devices(&self) -> Vec<Value> {
         self.nodes
             .iter()
             .filter_map(|(id, node)| {
@@ -408,10 +436,15 @@ mod tests {
             "an input is a device"
         );
         assert!(
-            !devices.hear(node(42, "spotify", "Stream/Output/Audio")),
-            "a program's stream isn't a device"
+            devices.hear(node(42, "spotify", "Stream/Output/Audio")),
+            "a program's stream is heard"
         );
-        assert_eq!(keys(&devices), ["device:speakers", "device:microphone"]);
+        assert!(
+            !devices.hear(node(43, "camera", "Video/Source")),
+            "a camera is neither"
+        );
+        let heard = ["device:speakers", "device:microphone", "stream:42"];
+        assert_eq!(keys(&devices), heard, "a program's stream isn't a device");
         let records = devices.records();
         assert_eq!(records[0]["sink"], json!(true));
         assert_eq!(records[1]["sink"], json!(false));

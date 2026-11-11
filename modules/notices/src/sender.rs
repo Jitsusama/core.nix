@@ -12,13 +12,15 @@
 //! (Capture, the camera, a timer, the battery, firmware) its own. Every
 //! other sender wears its program's mark, the one its row among Programs
 //! wears, from the marks file the module writes (ProgramGlyphs.js's table
-//! and the machine's own), and the bell where no program's is known.
+//! and the machine's own, read as the windows crate's marks, which Sound's
+//! programs wear too), and the bell where no program's is known.
 
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 use windows::entries::Entries;
+pub use windows::marks::Marks;
 
 use crate::words::Words;
 
@@ -45,49 +47,8 @@ pub struct Senders {
     pub senders: BTreeMap<String, Known>,
 }
 
-/// Each program's own mark by its desktop entry id in lower case: a code
-/// point in hex, or `mark:<role>` for one the theme names.
-#[derive(Debug, Default, Deserialize)]
-pub struct Marks(BTreeMap<String, String>);
-
 /// The bell, worn by a sender no program's mark is known for.
 const BELL: &str = "f0f3";
-const MARK: &str = "mark:";
-
-impl Marks {
-    /// Marks given outright, as a test gives only those it reads.
-    pub fn of(marks: &[(&str, &str)]) -> Self {
-        Self(
-            marks
-                .iter()
-                .map(|(id, mark)| ((*id).to_owned(), (*mark).to_owned()))
-                .collect(),
-        )
-    }
-
-    /// A program's mark as a row's glyph: its role, or its code point;
-    /// a browser's window of its own wears the browser's. None where no
-    /// mark is known for it.
-    pub fn glyph(&self, id: &str) -> Option<Value> {
-        let key = id.to_lowercase();
-        let found = self.0.get(&key).or_else(|| {
-            chrome_site(&key)
-                .then(|| self.0.get("google-chrome"))
-                .flatten()
-        })?;
-        Some(match found.strip_prefix(MARK) {
-            Some(role) => json!(role),
-            None => json!({ "code": found }),
-        })
-    }
-}
-
-/// Whether an id is a Chrome window of a page's own, `chrome-<site>-<profile>`.
-fn chrome_site(id: &str) -> bool {
-    id.strip_prefix("chrome-")
-        .and_then(|rest| rest.rsplit_once('-'))
-        .is_some_and(|(site, profile)| !site.is_empty() && !profile.is_empty())
-}
 
 /// A sender as a notice's row and card sign it.
 #[derive(Clone, Debug, PartialEq)]
@@ -226,15 +187,5 @@ mod tests {
             ("some-tool", "program")
         );
         assert_eq!(stranger.entry, None);
-    }
-
-    #[test]
-    fn a_browser_page_of_its_own_wears_the_browser() {
-        let marks = Marks::of(&[("google-chrome", "f268")]);
-        assert_eq!(
-            marks.glyph("chrome-mail.google.com__-Default"),
-            Some(json!({ "code": "f268" }))
-        );
-        assert_eq!(marks.glyph("chromeless"), None);
     }
 }

@@ -2,18 +2,20 @@
 //! each a step in from it, in the order Sound.qml lists a device's parts:
 //! using it, where it isn't the one chosen; whether it's Muted, one switch;
 //! its Volume, or a microphone's Gain, a setting with its levels a step
-//! in; and its Port, where its card offers more than one. Each act asks
-//! the daemon (acts.rs), so the shell runs nothing to do it.
+//! in; the programs playing through it or recording from it
+//! (programs.rs); and its Port, where its card offers more than one. Each
+//! act asks the daemon (acts.rs), so the shell runs nothing to do it.
 //!
-//! The rest of a device's parts, its Level, programs, filters, channels,
-//! profile and facts, are still made by Sound.qml from the sound server.
+//! The rest of a device's parts, its Level, filters, channels, profile
+//! and facts, are still made by Sound.qml from the sound server.
 
 use serde_json::{Value, json};
 
+use crate::programs::{Around, Naming, Sendable, programs_part};
 use crate::rows::{APART, Device, PLACE, Words, bar, kind, percent, rows, switches, worn};
 
 /// How far Louder and Quieter move a volume, as Sound.qml's `step`.
-const STEP: f64 = 0.05;
+pub(crate) const STEP: f64 = 0.05;
 
 /// The levels a volume can be set to at once, as Sound.qml's `levels`.
 const LEVELS: [f64; 4] = [0.25, 0.5, 0.75, 1.0];
@@ -23,23 +25,45 @@ const LEVELS: [f64; 4] = [0.25, 0.5, 0.75, 1.0];
 const DECIBELS_CUBED: f64 = 60.0;
 
 /// Every row Sound's place serves: each device's row, as rows.rs lists
-/// them, and its parts after it.
-pub fn served(records: &[Value], words: &Words) -> Vec<Value> {
+/// them, and its parts after it, its programs named as `naming` names
+/// them.
+pub fn served(records: &[Value], words: &Words, naming: Naming) -> Vec<Value> {
     let devices: Vec<Device> = records.iter().filter_map(Device::of).collect();
-    rows(records, words)
-        .into_iter()
+    let tops = rows(records, words);
+    // Where a program can be sent: each device listed its way, in Sound's
+    // order, by its row's name.
+    let listed = |sink: bool| Sendable {
+        devices: tops
+            .iter()
+            .filter_map(|top| {
+                let device = devices.iter().find(|one| top["held"]["node"] == one.name)?;
+                let name = top["name"].as_str().unwrap_or(device.name);
+                (device.sink == sink).then(|| (device, name.to_owned()))
+            })
+            .collect(),
+    };
+    let (outputs, inputs) = (listed(true), listed(false));
+    let around = |sink: bool| Around {
+        records,
+        devices: &devices,
+        sendable: if sink { &outputs } else { &inputs },
+        words,
+        naming,
+    };
+    tops.iter()
         .flat_map(|top| {
             let parts = devices
                 .iter()
                 .find(|device| top["held"]["node"] == device.name)
-                .map(|device| of(device, &top, &devices, words))
+                .map(|device| of(device, top, &around(device.sink)))
                 .unwrap_or_default();
-            std::iter::once(top).chain(parts)
+            std::iter::once(top.clone()).chain(parts)
         })
         .collect()
 }
 
-fn of(device: &Device, top: &Value, devices: &[Device], words: &Words) -> Vec<Value> {
+fn of(device: &Device, top: &Value, around: &Around) -> Vec<Value> {
+    let (devices, words) = (around.devices, around.words);
     let parent = format!("row:{PLACE}:{}", device.name);
     let mut parts = Vec::new();
     if !device.chosen() {
@@ -48,6 +72,7 @@ fn of(device: &Device, top: &Value, devices: &[Device], words: &Words) -> Vec<Va
     }
     parts.push(mute_row(device, words, &parent));
     parts.extend(volume_rows(device, words, &parent));
+    parts.extend(programs_part(device, around, &parent));
     parts.extend(port_rows(device, words, &parent));
     parts
 }
@@ -189,7 +214,7 @@ fn volume_rows(device: &Device, words: &Words, parent: &str) -> Vec<Value> {
 }
 
 /// A verb as an act's name says it, its first letter a capital.
-fn capitalised(verb: &str) -> String {
+pub(crate) fn capitalised(verb: &str) -> String {
     let mut letters = verb.chars();
     letters.next().map_or_else(String::new, |first| {
         first.to_uppercase().chain(letters).collect()
@@ -198,7 +223,7 @@ fn capitalised(verb: &str) -> String {
 
 /// A volume moved by `by`, kept to whole steps from nothing to full, as
 /// Sounds.js's `stepped`.
-fn stepped(level: f64, by: f64) -> f64 {
+pub(crate) fn stepped(level: f64, by: f64) -> f64 {
     let kept = (((level + by) / STEP).round() * STEP).clamp(0.0, 1.0);
     (kept * 1e6).round() / 1e6
 }
@@ -298,7 +323,17 @@ fn port_rows(device: &Device, words: &Words, parent: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::programs::Named;
     use crate::rows::tests::{device, words};
+
+    /// Every row served, each program by the name it gives.
+    fn served(records: &[Value], words: &Words) -> Vec<Value> {
+        let naming = |given: &str| Named {
+            name: given.to_owned(),
+            glyph: json!("program"),
+        };
+        super::served(records, words, &naming)
+    }
 
     fn keyed<'a>(rows: &'a [Value], key: &str) -> &'a Value {
         rows.iter()

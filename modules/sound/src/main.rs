@@ -1,18 +1,22 @@
-//! sound SOCKET [--vocabulary WORDS]
+//! sound SOCKET [--vocabulary WORDS] [--marks MARKS]
 //!
 //! The sound server's devices, held ready for the shell and anything else
 //! that asks, over SOCKET in the shell's daemon interface (interface.rs):
 //! each output and input as a `device` record, saying how loud it's set,
 //! whether it's muted and whether it's the one chosen (devices.rs), and
 //! as the launcher's Sound row for it, worded from WORDS, the launcher's
-//! words.json (rows.rs), with its parts inside it (parts.rs); and where
-//! each program's stream is sent, as one `targets` record.
+//! words.json (rows.rs), with its parts inside it (parts.rs), the
+//! programs playing through it among them, each wearing its mark from
+//! MARKS (programs.rs); each program's stream as a `stream` record
+//! (streams.rs); and where each stream is sent, as one `targets` record.
 //!
 //! It hears PipeWire through its own API for as long as it runs, rather
 //! than a program's output read line by line: the registry says each
-//! node as it comes and goes, each device's node says its properties and
-//! its Props as they change, and the default metadata says which output
-//! and input are chosen and where each stream is sent. A watch is told only the records that changed,
+//! node and link as it comes and goes, each device's and stream's node
+//! says its properties and its Props as they change, and the default
+//! metadata says which output and input are chosen and where each stream
+//! is sent. A program is named by its desktop entry, read again as the
+//! entries change. A watch is told only the records that changed,
 //! and those gone, so a volume moving tells its one device. Nothing runs
 //! on a timer: with PipeWire gone, it tries again every two seconds until
 //! it's back.
@@ -49,12 +53,16 @@ use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
-use sound::acts::{Move, act, planned};
+use sound::acts::{Act, Move, act, on_streams, planned};
 use sound::devices::{Change, Devices, direction};
 use sound::interface::{Ask, VERSION, ask, error, kind_of};
 use sound::levels::{levels, offered, profile, route};
+use sound::naming::{Naming, followed, read_or_none};
 use sound::parts::served;
 use sound::rows::Words;
+use sound::streams::playing;
+use windows::entries::Entries;
+use windows::marks::Marks;
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -103,6 +111,8 @@ struct Daemon {
     /// told, each keeping its place in their order.
     words: Words,
     served: Kept,
+    /// What each program is called and the mark it wears.
+    naming: Naming,
     /// How PipeWire stands: "starting" until it first answers,
     /// "answering", or "not answering" while it's gone.
     server: &'static str,
@@ -112,23 +122,28 @@ struct Daemon {
     acting: Option<pw::channel::Sender<Doing>>,
 }
 
+const USAGE: &str = "usage: sound SOCKET [--vocabulary WORDS] [--marks MARKS]";
+
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (Some(socket), vocabulary) = (args.next(), args.next()) else {
-        eprintln!("usage: sound SOCKET [--vocabulary WORDS]");
+    let Some(socket) = args.next().map(PathBuf::from) else {
+        eprintln!("{USAGE}");
         std::process::exit(64);
     };
-    let socket = PathBuf::from(socket);
     // Without its words, a row says the vocabulary's ids for them, as
-    // the launcher's Sound does, rather than the daemon not starting.
-    let words = match (vocabulary.as_deref(), args.next()) {
-        (Some("--vocabulary"), Some(path)) => worded(Path::new(&path)),
-        (None, None) => Words::default(),
-        _ => {
-            eprintln!("usage: sound SOCKET [--vocabulary WORDS]");
-            std::process::exit(64);
+    // the launcher's Sound does, and without marks a program wears the
+    // launcher's, rather than the daemon not starting.
+    let (mut words, mut marks) = (Words::default(), Marks::default());
+    while let Some(flag) = args.next() {
+        match (flag.as_str(), args.next()) {
+            ("--vocabulary", Some(path)) => words = read_or_none(&path, Words::from_vocabulary),
+            ("--marks", Some(path)) => marks = read_or_none(&path, Marks::read),
+            _ => {
+                eprintln!("{USAGE}");
+                std::process::exit(64);
+            }
         }
-    };
+    }
     let listener = match listen(&socket) {
         Ok(listener) => listener,
         Err(why) => {
@@ -142,11 +157,22 @@ fn main() {
         devices: Devices::default(),
         words,
         served: Kept::default(),
+        naming: Naming {
+            entries: Entries::default(),
+            marks,
+        },
         server: "starting",
         changes: 0,
         since: now_ms(),
         acting: None,
     }));
+    // A program is named anew each time the desktop entries change.
+    let renaming = Arc::clone(&shared);
+    lock(&shared).naming.entries = followed(move |read| {
+        let mut daemon = lock(&renaming);
+        daemon.naming.entries = read;
+        refresh(&mut daemon);
+    });
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || follow(&shared));
@@ -158,19 +184,6 @@ fn main() {
         };
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
-    }
-}
-
-/// The launcher's words, read from its words.json, or none where it
-/// can't be read, said once.
-fn worded(path: &Path) -> Words {
-    let read = std::fs::read_to_string(path).map_err(|why| why.to_string());
-    match read.and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string())) {
-        Ok(words) => words,
-        Err(why) => {
-            eprintln!("<4>couldn't read the words in {}: {why}", path.display());
-            Words::default()
-        }
     }
 }
 
@@ -293,6 +306,7 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
                     ObjectType::Node => node(&shared, &registry, global),
                     ObjectType::Device => card(&shared, &registry, global),
                     ObjectType::Metadata => defaults(&shared, &registry, global),
+                    ObjectType::Link => linked(&shared, global),
                     _ => None,
                 };
                 if let Some(found) = found {
@@ -302,8 +316,9 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
         })
         .global_remove({
             let shared = Arc::clone(shared);
+            // A node, a card, or a link, never bound, goes with whatever it
+            // was sent to.
             move |id| match bound.borrow_mut().remove(&id) {
-                Some(Bound::Node { .. } | Bound::Card { .. }) => told(&shared, Change::Gone { id }),
                 Some(Bound::Defaults { .. }) => {
                     told(
                         &shared,
@@ -315,12 +330,7 @@ fn hear(shared: &Arc<Mutex<Daemon>>) -> Result<(), String> {
                     let (stream, target) = (None, None);
                     told(&shared, Change::Sent { stream, target });
                 }
-                // A program's stream, never bound, gone with whatever it
-                // was sent to.
-                None => {
-                    let (stream, target) = (Some(id), None);
-                    told(&shared, Change::Sent { stream, target });
-                }
+                _ => told(&shared, Change::Gone { id }),
             }
         })
         .register();
@@ -369,7 +379,25 @@ fn done(bound: &HashMap<u32, Bound>, doing: &Move) -> Result<(), String> {
             metadata(bound)?.set_property(*stream, TARGET, None, target.as_deref());
             Ok(())
         }
+        Move::Each(moves) => moves.iter().try_for_each(|one| done(bound, one)),
     }
+}
+
+/// Hears a link, from the node it goes out of to the one it goes into,
+/// as its global says them; it's never bound, since nothing of it moves.
+fn linked(shared: &Mutex<Daemon>, global: &GlobalObject<&DictRef>) -> Option<Bound> {
+    let props = global.props?;
+    let end = |key: &str| props.get(key).and_then(|id| id.parse().ok());
+    let (from, to) = (end("link.output.node")?, end("link.input.node")?);
+    told(
+        shared,
+        Change::Link {
+            id: global.id,
+            from,
+            to,
+        },
+    );
+    None
 }
 
 /// The default metadata, while it's bound.
@@ -383,14 +411,17 @@ fn metadata(bound: &HashMap<u32, Bound>) -> Result<&Metadata, String> {
         .ok_or_else(|| "the default metadata is gone".to_owned())
 }
 
-/// Binds a node that's an output or an input, by the class the registry
-/// says of it, hearing its properties and its Props.
+/// Binds a node that's an output or an input, or a program's stream, by
+/// the class the registry says of it, hearing its properties and Props.
 fn node(
     shared: &Arc<Mutex<Daemon>>,
     registry: &RegistryRc,
     global: &GlobalObject<&DictRef>,
 ) -> Option<Bound> {
-    direction(global.props?.get("media.class")?)?;
+    let class = global.props?.get("media.class")?;
+    if direction(class).is_none() && playing(class).is_none() {
+        return None;
+    }
     let id = global.id;
     let node: Node = registry.bind(global).ok()?;
     let listener = node
@@ -553,7 +584,8 @@ fn told(shared: &Mutex<Daemon>, change: Change) {
 /// those gone, telling each watch what changed of what it wants.
 fn refresh(daemon: &mut Daemon) {
     let mut records = daemon.devices.records();
-    let ready = served(&records, &daemon.words);
+    let naming = |given: &str| daemon.naming.named(given);
+    let ready = served(&records, &daemon.words, &naming);
     daemon.served.take(ready, Vec::new());
     records.extend(daemon.served.all().cloned());
     records.push(daemon.devices.targets());
@@ -669,6 +701,11 @@ fn acted(shared: &Mutex<Daemon>, id: &Value, name: &str, said: &Value) -> Value 
         let daemon = lock(shared);
         if let Some(done) = asked.alone() {
             (done, daemon.acting.clone())
+        } else if let Act::Program { .. } = asked {
+            match on_streams(&asked, &daemon.devices.streams) {
+                Ok(done) => (done, daemon.acting.clone()),
+                Err(refused) => return error(id, refused.code, &refused.message),
+            }
         } else {
             let Some(device) = daemon.devices.device(asked.key()) else {
                 return error(id, "no-device", &format!("no device {} here", asked.key()));

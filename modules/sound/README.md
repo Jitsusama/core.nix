@@ -6,8 +6,9 @@ The sound server's outputs and inputs, held ready for the launcher over
 imports it, so a machine with the shell runs it.
 
 It hears PipeWire through its own API for as long as it runs: the
-registry says each node as it comes and goes, each output's and input's
-node says its properties and its Props as they change, and the default
+registry says each node and link as it comes and goes, each output's,
+input's and program stream's node says its properties and its Props as
+they change, and the default
 metadata says which output and input are chosen and where each
 program's stream is sent. A watch is told only
 the records that changed and the keys gone, so a volume moving tells its
@@ -29,6 +30,11 @@ levels and choices, and read whole files rewritten by another daemon.
 |                         | `unplugged`: whether nothing is in its jack     | whether it's listed     |
 |                         | `ports`: its card's ports for it, each's index, | Port                    |
 |                         | name and `available`, and the one `chosen`      |                         |
+| `stream:<id>`           | a program's stream, by its node's PipeWire id:  | each device's programs  |
+|                         | its name, `sink`, `volume`, `volumes`, `muted`  | and each program's row  |
+|                         | and `properties`, as a device's are             |                         |
+|                         | `ends`: the ids of the nodes it's linked to     | which device it plays   |
+|                         | `target`: where it's sent, or "" by default     | Plays On, Records From  |
 | `row:sound:<node name>` | the launcher's row for it, ready to draw        | Sound's place           |
 | `targets:default`       | `targets`: each stream's `target.object`, by    | Plays On, Records From  |
 |                         | the stream's id, where one is sent              |                         |
@@ -58,10 +64,14 @@ Props. Use goes into the default metadata's configured key, which the
 session manager keeps and follows. A send names a program's stream as
 `stream:<id>`, its PipeWire id, rather than a device, and goes into
 the default metadata as the stream's `target.object`, which the session
-manager moves it by, live. An act on a device not heard is
-refused as `no-device`, one missing what it needs as `bad-act`, a port
-its card doesn't offer it as `no-port`, and any while the server is
-away as `not-answering`.
+manager moves it by, live. An act on a program names it as
+`program:<device's node name>:<program's name>`, with its row's
+`streams`, and acts on each of them: `volume` and `mute` on each
+stream's own Props, and `send` on each stream's target. An act on a
+device not heard is refused as `no-device`, one on a stream not heard
+as `no-stream`, one missing what it needs as `bad-act`, a port its card
+doesn't offer it as `no-port`, and any while the server is away as
+`not-answering`.
 
 ## Sound's Rows
 
@@ -87,13 +97,24 @@ Inside each device's row come the parts served of it (`src/parts.rs`),
 a step in, in the order the launcher lists them: using it, where it
 isn't the one chosen; whether it's Muted, one switch; its Volume, or a
 microphone's Gain, with Louder, Quieter and four levels a step in; and
-its Port, where its card offers more than one, with each it can move
-to. Each part's act asks the daemon's own act, so the shell runs no
-process to do it.
+its Programs, or a microphone's Recording, each playing through it or
+through a filter aimed at it (`src/programs.rs`); and its Port, where
+its card offers more than one, with each it can move to. Each part's act
+asks the daemon's own act, so the shell runs no process to do it.
+
+A device's programs are its streams grouped by the desktop entry each
+names, as Quickshell's lookup finds it, A to Z by the entry's name and
+wearing the mark the launcher gives it among Programs, from the marks
+file the service names as `--marks`. Each says how loud it is, whether
+it's paused, and holds Muted, Louder and Quieter; where there's more
+than one device to choose from, Plays On (or Records From) with each it
+can be sent to; and its first stream's Sample Rate and Delay.
 
 ## What Comes Next
 
 The launcher's Sound lists these rows rather than making its own, and
-sends programs through the daemon rather than a `pw-metadata` each. The
-rest of each device's parts and its programs are served ready next, so
-`pw-top` goes too.
+sends programs through the daemon rather than a `pw-metadata` each. A
+program's drawer is still made in the shell, from Quickshell's streams;
+it's served next, with each program's timings read here while its row
+is ahead, so `pw-top` goes too. Then the rest of each device's parts:
+its filters, channels, profile, hardware and Level.
