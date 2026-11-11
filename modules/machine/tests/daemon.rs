@@ -611,8 +611,8 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
     );
     let load = &record(records, "row:machine:cpu:load")["row"];
     assert_eq!(
-        load["side"][0]["said"], "1.50 \u{b7} 1.25 \u{b7} 1.00",
-        "a part, a step in"
+        load["side"][0]["said"], "1.5 \u{b7} 1.25 \u{b7} 1",
+        "a part, a step in, to two places, trailing zeros let go"
     );
     assert_eq!(
         load["parent"], "row:machine:cpu",
