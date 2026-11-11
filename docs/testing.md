@@ -3,9 +3,10 @@
 Checks are for the loop of making a change: each one has to tell whoever is
 changing core.nix something they need to know, quickly, and something no
 cheaper check already tells them. A check sits in the `checks.nix` of the
-folder it proves something about, a module's or a hardware model's, and
-[`checks.nix`][1] at the root gathers them, names the virtual machine tests,
-and holds the few about the repository as a whole. Nothing runs on a
+folder it proves something about, a module's, a hardware model's or a
+tool's, and those about the repository as a whole sit in `tests/repository/`
+and `tests/rules/`. [`checks.nix`][1] at the root gathers them and names the
+virtual machine tests not yet in an area. Nothing runs on a
 schedule but the net under main, which runs each merge's VM tests after it
 lands, as The Net Under Main below says.
 
@@ -529,8 +530,8 @@ picture caught before its state was drawn is a fault in the test instead.
   part carrying only the stand-ins its area needs, so a change reruns only
   the part it touches. Each subtest sets up what it needs and leaves nothing
   behind, so it can run alone. `every-vm-test-keeps-to-the-pyramid` fails on
-  one past twenty subtests; those past it already are listed in `checks.nix`
-  with their counts, which may only fall.
+  one past twenty subtests; those past it already are listed, with their
+  counts, which may only fall, in `tests/repository/checks.nix`.
 - One machine carried through a story whose every step needs the ones
   before it stays whole, since each part of a split would replay the story
   to reach its first step and finish no sooner. The guide's install is one:

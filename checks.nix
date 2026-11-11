@@ -6,10 +6,10 @@
 # to give a signal the ones below it don't, and docs/testing.md says which.
 #
 # Each check sits in the checks.nix of the folder whose promise it holds, a
-# module's, a hardware model's or a VM area's, given the helpers below by
-# name. This file keeps the helpers, the virtual machines not yet in an area
-# of tests/vm/, and the checks about the repository as a whole, and gathers
-# every folder's.
+# module's, a hardware model's, a tool's, a VM area's or the repository's own
+# in tests/repository/ and tests/rules/, given the helpers below by name. This
+# file keeps the helpers, the virtual machines not yet in an area of
+# tests/vm/, and the checks of the roles, and gathers every folder's.
 {
   self,
   pkgs,
@@ -416,6 +416,7 @@ let
       nix-darwin
       rust-overlay
       formatting
+      formatterExcludes
       bareNixos
       bareDarwin
       evaluates
@@ -564,447 +565,15 @@ gather (
           !(account workstationWithoutNeovim).programs.neovim.enable
         );
 
-      # Every surface takes its look from the theme, so no module but the theme's
-      # names a colour or a face of its own: one that did would stay put when the
-      # theme changes. Colours are caught as hex or CSS functions, faces by the
-      # families anything here installs or falls back to.
-      nothing-names-its-own-look =
-        let
-          colours = [
-            "#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?\\b"
-            "\\b(rgba?|hsla?)\\("
-          ];
-          faces = [
-            "Monaspice"
-            "Monaspace"
-            "Mona Sans"
-            "Hubot Sans"
-            "Fira Code"
-            "Fira Mono"
-            "Victor Mono"
-            "JetBrains Mono"
-            "Nerd Font"
-            "Adwaita Sans"
-            "Adwaita Mono"
-            "DejaVu"
-            "Noto Sans"
-            "Noto Serif"
-            "Noto Naskh"
-            "Terminus"
-          ];
-          pattern = lib.concatStringsSep "|" (colours ++ [ "\\b(${lib.concatStringsSep "|" faces})\\b" ]);
-        in
-        pkgs.runCommandLocal "nothing-names-its-own-look" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
-          cd ${./.}
-          # The launcher's colour answers, and the colours they're tested on, name
-          # colours because colours are what's asked, and eero's views are tested
-          # on a theme's terminal colours; none is a look.
-          # ripgrep answers 0 for a match, 1 for none and 2 when it can't
-          # search, and only none passes.
-          status=0
-          rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
-            --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
-            --glob '!modules/eero/tests/osaka-jade.json' \
-            -e ${lib.escapeShellArg pattern} modules roles hardware tests examples flake.nix \
-            || status=$?
-          if [ $status = 0 ]; then
-            echo "The lines above name a colour or a face; name the theme's role or font instead."
-            exit 1
-          fi
-          [ $status = 1 ]
-          touch $out
-        '';
-
-      # Every surface draws its marks from the theme's table (modules/theme/
-      # glyphs.nix) by name, so no module but the theme's spells one of the
-      # table's code points itself: a surface that did would keep its mark when
-      # the table changes, and could drift from the mark the same idea wears
-      # elsewhere. A code point is caught as a script writes one, 0xf023 or an
-      # escape; tests spell what they expect to see, which is their job, so no
-      # tests folder is read, at the top or beside its module.
-      nothing-spells-a-mark =
-        pkgs.runCommandLocal "nothing-spells-a-mark" { nativeBuildInputs = [ pkgs.ripgrep ]; }
-          ''
-            cd ${./.}
-            codes=$(rg --only-matching --no-filename --replace '$1' 'nerd "([0-9a-fA-F]+)"' \
-              modules/theme/glyphs.nix | sort -u | paste -sd '|')
-            [ -n "$codes" ]
-            # ripgrep answers 0 for a match, 1 for none and 2 when it can't
-            # search, and only none passes.
-            status=0
-            rg --line-number --no-heading --hidden --ignore-case --glob '!modules/theme/**' \
-              --glob '!**/tests/**' \
-              -e "(0x|\\\\u\\{?|\\\\U000)0*($codes)\\b" modules roles hardware examples flake.nix \
-              || status=$?
-            if [ $status = 0 ]; then
-              echo "The lines above spell a mark the theme names; use the theme's mark instead."
-              exit 1
-            fi
-            [ $status = 1 ]
-            touch $out
-          '';
-
-      # Quickshell's JavaScript lacks some of the language's newer methods, which
-      # qmllint lets through and the shell fails on only as it runs, so the
-      # shell's code calls none of them, in Quickshell's module and in every
-      # module that gives the shell a file. Spotify's Escape script runs in
-      # Spotify's own browser, which has them, so it alone is left out.
-      the-desktop-speaks-its-javascript =
-        pkgs.runCommandLocal "the-desktop-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
-          ''
-            cd ${./.}
-            # ripgrep answers 0 for a match, 1 for none and 2 when it can't
-            # search, and only none passes.
-            status=0
-            rg --line-number --no-heading --glob '*.qml' --glob '*.js' \
-              --glob '!modules/spotify/backs-out.js' \
-              -e '\.(at|flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' \
-              -e '\b(structuredClone|Object\.groupBy|Object\.hasOwn|Object\.fromEntries)\(' \
-              modules || status=$?
-            if [ $status = 0 ]; then
-              echo "The lines above call a method Quickshell's JavaScript doesn't have."
-              exit 1
-            fi
-            [ $status = 1 ]
-            touch $out
-          '';
-
-      # changed-checks names a check by how its derivation moved, so what it
-      # builds is what a change touched: its tests run as it builds, the
-      # whole program among them, against stand-ins for git and nix
-      # (tools/changed-checks).
-      changed-checks-names-what-moved = pkgs.callPackage ./tools/changed-checks/package.nix { };
-
-      # clippy finds nothing in changed-checks, its tests included.
-      changed-checks-passes-clippy = passesClippy "changed-checks-passes-clippy" (
-        pkgs.callPackage ./tools/changed-checks/package.nix { }
-      );
-
-      # merge-net decides what to run, revert, quarantine and hold from what
-      # each run gave, so its tests drive a round against a stand-in for git,
-      # nix and GitHub, and run as it builds (tools/merge-net).
-      merge-net-catches-a-broken-merge = pkgs.callPackage ./tools/merge-net/package.nix { };
-
-      # clippy finds nothing in merge-net, its tests included.
-      merge-net-passes-clippy = passesClippy "merge-net-passes-clippy" (
-        pkgs.callPackage ./tools/merge-net/package.nix { }
-      );
-
-      # run-subtests keeps a test script's boot and helpers and only the subtests
-      # named, and runs a pytest one whole with its tests picked, so what it runs
-      # is what was asked for (tools/run-subtests/run-subtests-test.py, against
-      # stand-ins for nix and a check's driver).
-      run-subtests-keeps-what-is-named =
-        let
-          run-subtests = pkgs.callPackage ./tools/run-subtests/run-subtests.nix { };
-          python = pkgs.python3.withPackages (python: [ python.pytest ]);
-        in
-        pkgs.runCommandLocal "run-subtests-keeps-what-is-named" { } ''
-          RUN_SUBTESTS=${lib.getExe run-subtests} PYTHONDONTWRITEBYTECODE=1 \
-            ${python}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
-            --quiet ${./tools/run-subtests/run-subtests-test.py}
-          touch $out
-        '';
-
-      # What VM tests share (tests/lib), proven against stand-ins for the
-      # driver and its machines, which record what they're handed. Named
-      # without vm- so the machine queue doesn't take these milliseconds for
-      # a VM test.
-      what-vm-tests-share-does-what-it-says =
-        let
-          python = pkgs.python3.withPackages (python: [ python.pytest ]);
-        in
-        pkgs.runCommandLocal "what-vm-tests-share-does-what-it-says" { } ''
-          cd ${./tests/lib}
-          PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 ${python}/bin/python -m pytest \
-            -p no:cacheprovider --import-mode=importlib --quiet \
-            vm-helpers-test.py vm-pytest-test.py
-          touch $out
-        '';
-
-      # The qemu VM tests run, put in front of a stand-in qemu that says how
-      # it was run.
-      qemu-starts-after-its-sockets =
-        let
-          python = pkgs.python3.withPackages (python: [ python.pytest ]);
-          standIn =
-            pkgs.runCommandLocal "qemu-stand-in" { } ''
-              mkdir -p $out/bin
-              printf '#!%s\nprintf "%%s\\n" "$@" > "$QEMU_RAN"\n' ${pkgs.runtimeShell} \
-                > $out/bin/qemu-system-x86_64
-              printf '#!%s\n' ${pkgs.runtimeShell} > $out/bin/qemu-img
-              chmod +x $out/bin/*
-            ''
-            // {
-              inherit (pkgs) stdenv;
-            };
-        in
-        pkgs.runCommandLocal "qemu-starts-after-its-sockets" { } ''
-          QEMU=${qemuAfterItsSockets standIn} PYTHONDONTWRITEBYTECODE=1 \
-            ${python}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
-            --quiet ${./tests/lib/qemu-after-its-sockets-test.py}
-          touch $out
-        '';
-
-      example-nixos = evaluates "example-nixos" (
-        import ./examples/nixos.nix {
-          core = self;
-          inherit nixpkgs;
-        }
-      );
-      example-laptop = evaluates "example-laptop" (
-        import ./examples/laptop.nix {
-          core = self;
-          inherit nixpkgs;
-        }
-      );
-      example-apple-laptop = evaluates "example-apple-laptop" (
-        import ./examples/apple-laptop.nix {
-          core = self;
-          inherit nixpkgs;
-        }
-      );
-      example-darwin = evaluates "example-darwin" (
-        import ./examples/darwin.nix {
-          core = self;
-          inherit nix-darwin;
-        }
-      );
       # Only an aarch64 builder makes its image, so here it's evaluated.
       the-apple-silicon-stick-evaluates = pkgs.writeText "the-apple-silicon-stick-evaluates" (
         builtins.unsafeDiscardStringContext self.packages.aarch64-linux.stick.drvPath
       );
-
-      # Every folder says what goes in it, so a reader reaches any file from the
-      # map by names alone: in a README, the opening comment of its entry file
-      # or of a file beside it of its name, a line of its parent's README
-      # opening with its name, or a line of the top README's or AGENTS.md's
-      # map. The folders below are still waiting for their note, and the check
-      # fails once one has it or is gone, so the list only shrinks.
-      every-folder-says-what-it-holds =
-        let
-          waiting = [
-            # The desk keyboard's layout, which firmware.nix describes. Its
-            # folder's hash is the board's serial, so a note in it would change
-            # the firmware and need a reflash; it takes one with the next
-            # layout change.
-            "modules/ergodox/keymap"
-          ];
-        in
-        self.lib.everyFolderSaysWhatItHolds pkgs {
-          src = ./.;
-          inherit waiting;
-        };
-
-      # A code file past 800 lines, or a folder of more than 40 entries, says
-      # why it stays whole or is split, since one that grew past them is
-      # usually several things a reader has to tell apart. Those over before
-      # the rule wait in tests/rules/every-long-file-says-why-waiting.nix, and
-      # the check fails once one is split, says why or is gone, so the list
-      # only shrinks.
-      every-long-file-says-why = self.lib.everyLongFileSaysWhy pkgs {
-        src = ./.;
-        waiting = import ./tests/rules/every-long-file-says-why-waiting.nix;
-      };
-
-      # A program past five lines lives in a file of its own language rather
-      # than a Nix string, since no linter, type checker or editor reads a
-      # string and the values spliced into one are where quoting breaks. Those
-      # in strings before the rule wait, counted by file, in
-      # tests/rules/programs-live-in-their-own-files-waiting.nix, and a count
-      # may only fall.
-      programs-live-in-their-own-files = self.lib.programsLiveInTheirOwnFiles pkgs {
-        src = ./.;
-        waiting = import ./tests/rules/programs-live-in-their-own-files-waiting.nix;
-      };
-
-      # A test waits on the event it needs, and a fixed wait stands only for
-      # "nothing happens for this long" and says so, since a guess at how long
-      # a loaded machine takes fails or wastes time when it's wrong. Those
-      # before the rule wait, counted by file, in
-      # tests/rules/every-fixed-wait-says-why-waiting.nix, and a count may only
-      # fall.
-      every-fixed-wait-says-why = self.lib.everyFixedWaitSaysWhy pkgs {
-        src = ./.;
-        waiting = import ./tests/rules/every-fixed-wait-says-why-waiting.nix;
-      };
-
-      # A failure that says only "assertion failed" makes the reader run the test
-      # again to learn anything, so an assertion the language can't show both
-      # sides of carries a message. Those before the rule wait, counted by
-      # file, in tests/rules/every-assert-says-what-was-wrong-waiting.nix, and a
-      # count may only fall.
-      every-assert-says-what-was-wrong = self.lib.everyAssertSaysWhatWasWrong pkgs {
-        src = ./.;
-        waiting = import ./tests/rules/every-assert-says-what-was-wrong-waiting.nix;
-      };
-
-      # A test that can't run, for want of a filesystem, a device or a tool,
-      # fails rather than passing, since a skip nobody sees passes a gate that
-      # proved nothing. Those before the rule wait, counted by file, in
-      # tests/rules/every-test-runs-or-fails-waiting.nix, and a count may only
-      # fall.
-      every-test-runs-or-fails = self.lib.everyTestRunsOrFails pkgs {
-        src = ./.;
-        waiting = import ./tests/rules/every-test-runs-or-fails-waiting.nix;
-      };
-
-      # A suppression is a judgement that the linter is wrong here, and one with
-      # no reason can't be checked again when the code or the linter changes.
-      # Those before the rule wait, counted by file, in
-      # tests/rules/every-suppression-says-why-waiting.nix, and a count may only
-      # fall.
-      every-suppression-says-why = self.lib.everySuppressionSaysWhy pkgs {
-        src = ./.;
-        waiting = import ./tests/rules/every-suppression-says-why-waiting.nix;
-      };
-
-      # shellcheck's optional checks for a hidden failure, a set -e turned off,
-      # an uppercase variable nothing sets and a case with no default find
-      # faults, but too many scripts break them for treefmt to run them yet.
-      # Those findings wait, counted by script, in
-      # tests/rules/every-script-meets-shellcheck-at-its-strictest-waiting.nix,
-      # and a count may only fall.
-      every-script-meets-shellcheck-at-its-strictest =
-        self.lib.everyScriptMeetsShellcheckAtItsStrictest pkgs
-          {
-            src = ./.;
-            waiting = import ./tests/rules/every-script-meets-shellcheck-at-its-strictest-waiting.nix;
-            includes = [ "modules/quickshell/in-a-terminal/tests/qs" ];
-          };
-
-      # A test's function copied into a second file drifts from the first the
-      # next time one is fixed. Those before the rule wait, counted by file, in
-      # tests/rules/every-test-function-lives-once-waiting.nix, and a count may
-      # only fall.
-      every-test-function-lives-once = self.lib.everyTestFunctionLivesOnce pkgs {
-        src = ./.;
-        waiting = import ./tests/rules/every-test-function-lives-once-waiting.nix;
-      };
-
-      # A doc names only what's there, so a move or a rename that leaves a guide
-      # pointing at nothing fails here rather than misleading the next reader:
-      # every relative link, and every backticked path from a top folder. Those
-      # below name something deliberately absent, and fail once they're gone.
-      docs-name-what-exists = pkgs.callPackage ./tests/repository/docs-name-what-exists.nix { } {
-        src = ./.;
-        exempt = [
-          # A module a reader would add, as an example.
-          "docs/modules.md modules/jq/checks.nix"
-          # A file in the kernel's own source tree.
-          "docs/hardware.md tools/power/x86/turbostat/Makefile"
-        ];
-      };
-
-      # core.nix knows nothing about what builds on it: no file names a machine, a
-      # machine repository or an employer, so the repositories that use core name
-      # it and never the other way round. Every file is read but this one, which
-      # has to name the words, and the lock file, which only names pins.
-      stands-alone =
-        let
-          outside = [
-            "shopify"
-            "/opt/dev"
-            "gitstream"
-            "devx"
-            "minerva"
-            "cloudflare"
-            "dotfiles"
-            "joel-gerber"
-            "joel.gerber"
-            "grrbrr"
-            "monorepo"
-            "work repository"
-            "work layer"
-            "personal repository"
-            "personal layer"
-            "optimus"
-            "penelope"
-            "methuselah"
-            "equilibrius"
-          ];
-        in
-        pkgs.runCommandLocal "stands-alone" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
-          cd ${./.}
-          if rg --ignore-case --fixed-strings --line-number --no-heading --hidden \
-            --glob '!checks.nix' --glob '!flake.lock' \
-            ${lib.concatMapStringsSep " " (word: "-e ${lib.escapeShellArg word}") outside} .; then
-            echo "The lines above name what builds on core.nix; they belong where it is built."
-            exit 1
-          fi
-          touch $out
-        '';
-
-      # The glossary gives each thing one word and each word one thing within
-      # its context, and writes no name it replaces
-      # (tests/repository/glossary.py), printing each word to settle.
-      the-glossary-names-each-thing-once =
-        pkgs.runCommandLocal "the-glossary-names-each-thing-once" { }
-          ''
-            ${lib.getExe pkgs.python3} ${./tests/repository/glossary.py} ${./docs/glossary.md}
-            touch $out
-          '';
-
-      # No VM test grows past twenty subtests, where docs/testing.md says one
-      # splits by area (tests/repository/every-vm-test-keeps-to-the-pyramid.py).
-      # Those past it today are listed with their counts, which may only
-      # fall, and each comes off once it's within the limit, so the list only
-      # shrinks. It reads the VM tests' files alone, so no other change reruns it.
-      every-vm-test-keeps-to-the-pyramid =
-        let
-          over = [
-            # One machine's story, kept whole since a split would replay it
-            # (docs/testing.md, Earning a Check).
-            "tests/vm/guide/guide-install-vm-test.py 26"
-          ];
-          tests = lib.fileset.toSource {
-            root = ./.;
-            fileset = lib.fileset.fileFilter (file: lib.hasSuffix "-vm-test.py" file.name) ./.;
-          };
-        in
-        pkgs.runCommandLocal "every-vm-test-keeps-to-the-pyramid" { } ''
-          ${lib.getExe pkgs.python3} ${./tests/repository/every-vm-test-keeps-to-the-pyramid.py} ${tests} \
-            ${pkgs.writeText "over" (lib.concatLines over)}
-          touch $out
-        '';
-
-      # Every path pattern merge-net's must-run.txt, ruff.toml's per-file
-      # ignores and what treefmt leaves unread give still names a file
-      # (tests/repository/every-pattern-names-a-file.py), since none of the tools says
-      # when one matches nothing, and a file moved from under one would
-      # quietly drop its VM tests from the net or its ignores from ruff, and
-      # the next file to take its name would go unlinted. It's given the files' paths, not what they hold,
-      # so only a file added, moved or removed runs it again.
-      every-pattern-names-a-file =
-        let
-          paths = map (file: lib.removePrefix "./" (lib.path.removePrefix ./. file)) (lib.fileset.toList ./.);
-        in
-        pkgs.runCommandLocal "every-pattern-names-a-file" { } ''
-          ${lib.getExe pkgs.python3} ${./tests/repository/every-pattern-names-a-file.py} \
-            ${./tools/merge-net/must-run.txt} ${./ruff.toml} \
-            ${pkgs.writeText "unread" (lib.concatLines formatterExcludes)} \
-            ${pkgs.writeText "paths" (lib.concatLines paths)}
-          touch $out
-        '';
     }
-    # shell-preview shows the shell nested in a Wayland session, which only
-    # Linux has.
-    (onLinux {
-      # shell-preview links each built file the working copy holds back to it,
-      # so an edit shows without a build, and copies what the build made, and
-      # ends the nested desktop it started however it's ended: its tests run
-      # as it builds, the whole program among them, against stand-ins for git,
-      # nix and the desktop (tools/shell-preview).
-      shell-preview-follows-the-working-copy = pkgs.callPackage ./tools/shell-preview/package.nix { };
-
-      # clippy finds nothing in shell-preview, its tests included.
-      shell-preview-passes-clippy = passesClippy "shell-preview-passes-clippy" (
-        pkgs.callPackage ./tools/shell-preview/package.nix { }
-      );
-    })
     (onLinux vmTests)
   ]
   ++ map (file: import file given) [
+    ./examples/checks.nix
     ./hardware/apple-macbook-pro-m4-pro-a3401/checks.nix
     ./hardware/dell-xps-14-da14260/checks.nix
     ./hardware/microsoft-surface-laptop-4-1958/checks.nix
@@ -1141,6 +710,9 @@ gather (
     ./modules/zoom/checks.nix
     ./modules/zoxide/checks.nix
     ./modules/zsh/checks.nix
+    ./tests/lib/checks.nix
+    ./tests/repository/checks.nix
+    ./tests/rules/checks.nix
     ./tests/vm/admin/checks.nix
     ./tests/vm/boot/checks.nix
     ./tests/vm/devices/checks.nix
@@ -1149,5 +721,9 @@ gather (
     ./tests/vm/keys/checks.nix
     ./tests/vm/network/checks.nix
     ./tests/vm/sound/checks.nix
+    ./tools/changed-checks/checks.nix
+    ./tools/merge-net/checks.nix
+    ./tools/run-subtests/checks.nix
+    ./tools/shell-preview/checks.nix
   ]
 )

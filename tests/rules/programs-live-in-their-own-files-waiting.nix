@@ -4,7 +4,7 @@
 # on one holding fewer until its count here is lowered, so the list only
 # shrinks.
 {
-  "checks.nix" = 4;
+  "checks.nix" = 1;
   "hardware/dell-xps-14-da14260/camera/camera.nix" = 1;
   "hardware/dell-xps-14-da14260/checks.nix" = 10;
   "hardware/microsoft-surface-laptop-4-1958/checks.nix" = 1;

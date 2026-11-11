@@ -3,7 +3,6 @@
 # changes for one reason, or to say why it stays whole. The check fails on one
 # that's split, says why or is gone, so the list only shrinks.
 [
-  "checks.nix"
   "modules/backlight/src/main.rs"
   "modules/backlight/src/monitor.rs"
   "modules/creative-pebble-x-plus/lights.rs"
