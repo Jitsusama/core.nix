@@ -77,7 +77,7 @@ ShellRoot {
     // Each change the daemon tells, after the quests took it, its keys
     // kept for the case that waits on it.
     Connections {
-        target: theQuests.rowsKind
+        target: theQuests.served
 
         function onHeard(changed, gone) {
             for (let at = 0; at < changed.length; at += 1)

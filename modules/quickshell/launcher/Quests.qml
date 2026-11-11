@@ -38,29 +38,26 @@ Provider {
     // daemons need to be the data layer, and they need to serve the
     // launcher"). Sorting Joel's 1,084 quests here, with their titles in
     // pieces and their rows laid out, was a third of the stall after an
-    // opening's frame (H6EDLC's profile, 2026-11-10). Its rows are held by
-    // key as the daemon tells each change (rowsKind), each wrapped with its
-    // acts only as it changes, and laid out only while they're wanted
-    // (Provider.qml's wanted), giving those last laid out otherwise.
+    // opening's frame (H6EDLC's profile, 2026-11-10). Its rows are held and
+    // placed as the daemon tells each change (ReadyRows.qml), each wrapped
+    // with its acts only as it changes, and laid out only while they're
+    // wanted (Provider.qml's wanted), giving those last laid out otherwise.
     readonly property var all: provider.wanted ? laidOut() : lastLaidOut.rows ?? []
     readonly property var lastLaidOut: ({})
 
-    // The daemon's rows of Quests, each record held by its key, its fields
-    // under `row` (Y2YBTS's ready-rows.md), watched whether or not the
-    // launcher's open, so it opens on rows already held.
-    readonly property var rowsKind: rowsLink.item
-    LazyLoader {
-        id: rowsLink
-        active: !!Quickshell.env("XDG_RUNTIME_DIR")
-
-        Daemon {
-            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/quests.sock`
-            kind: ["row", "summary"]
-            watching: ({ place: "quests" })
-            answersWhole: true
-            onHeard: (changed, gone) => provider.placed(changed, gone)
-        }
+    // The daemon's rows of Quests, watched whether or not the launcher's
+    // open, so it opens on rows already held. Its acts are made here from
+    // what each row holds until the quests daemon serves them (RCTRF8).
+    ReadyRows {
+        id: ready
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/quests.sock`
+        place: "quests"
+        beside: ["summary"]
+        make: row => provider.made(row)
+        drawn: provider.launcher?.open ?? false
     }
+    // What the daemon serves, for a reader told of each change it hears.
+    readonly property alias served: ready
     readonly property string summaryKey: "summary:quests"
 
     // The realm's machines, as Machines reads them, so a machine Start a
@@ -102,56 +99,9 @@ Provider {
         };
     }
 
-    // The keys of its rows in the order the daemon gives them, each put in
-    // its place by its `order` as it changes, never the list sorted; and
-    // each row as last wrapped, by key. Plain, so keeping them notifies
-    // nothing; `placings` says they moved. As Agents.qml holds its rows,
-    // until ReadyRows.qml (Y2YBTS, due 2026-11-11) holds every place's.
-    readonly property var placing: ({ keys: [] })
-    readonly property var wrapped: ({})
-    property int placings: 0
-
-    // Takes what the daemon said moved: each key gone or changed let go,
-    // and each changed row put back where its order places it. Its lists
-    // come through the signal converted, so they're read by index.
-    function placed(changed, gone) {
-        const held = rowsKind?.held ?? {};
-        const placedKeys = placing.keys;
-        const moved = [];
-        for (let at = 0; at < changed.length; at += 1)
-            moved.push(changed[at]);
-        for (let at = 0; at < gone.length; at += 1)
-            moved.push(gone[at]);
-        for (const key of moved) {
-            delete wrapped[key];
-            const at = placedKeys.indexOf(key);
-            if (at >= 0)
-                placedKeys.splice(at, 1);
-        }
-        for (let at = 0; at < changed.length; at += 1) {
-            const key = changed[at];
-            const order = held[key]?.row?.order;
-            if (typeof order !== "number")
-                continue;
-            let low = 0;
-            let high = placedKeys.length;
-            while (low < high) {
-                const middle = (low + high) >> 1;
-                if ((held[placedKeys[middle]]?.row?.order ?? 0) < order)
-                    low = middle + 1;
-                else
-                    high = middle;
-            }
-            placedKeys.splice(low, 0, key);
-        }
-        placings += 1;
-    }
-
     // Every quest's row, in the daemon's order.
     function laidOut() {
-        void placings;
-        const held = rowsKind?.held ?? {};
-        const rows = placing.keys.map(key => rowOf(key, held)).filter(row => row !== null);
+        const rows = ready.rows();
         lastLaidOut.rows = rows;
         return rows;
     }
@@ -160,41 +110,10 @@ Provider {
     }
     onAllChanged: changedTo(all)
 
-    // A row of the daemon's, wrapped with what doing it needs, as it was
-    // last wrapped while the daemon told no change to it.
-    function rowOf(key, held) {
-        const served = held[key]?.row;
-        if (!served)
-            return null;
-        if (!(key in wrapped))
-            wrapped[key] = made(served);
-        return wrapped[key];
-    }
-
     // A quest's title by its id, as its row says it, for a place naming
     // the quest a session has loaded.
     function titleOf(id) {
-        return rowsKind?.held?.[`row:quests:${id}`]?.row?.name;
-    }
-
-    // A side item as the shell says it: its words, or a time in the
-    // ready-row form, which no daemon words since the day depends on the
-    // clock and the zone it's read by (KP0L6A, 2026-11-10). Here until
-    // ReadyRows.qml words every place's times.
-    function sideSaid(item) {
-        if (typeof item.said === "string")
-            return item.said;
-        return item.as === "day" ? dayOf(item.at) : "";
-    }
-
-    // A moment's day by this calendar, "22 Oct", its year when not this
-    // one, "5 Jan 2025"; nothing where there's none.
-    function dayOf(at) {
-        if (typeof at !== "number")
-            return "";
-        const when = new Date(at);
-        const thisYear = when.getFullYear() === new Date().getFullYear();
-        return Qt.formatDate(when, thisYear ? "d MMM" : "d MMM yyyy");
+        return ready.served(`row:quests:${id}`)?.name;
     }
 
     // What a row's acts need of its quest, from what the daemon holds
@@ -208,7 +127,7 @@ Provider {
             status: held.status,
             priority: held.priority,
             updated: held.updated,
-            day: dayOf(held.touched),
+            day: ready.timeSaid({ at: held.touched, as: "day" }),
             folder: held.folder,
             open: held.open,
             parent: held.parent ?? null,
@@ -274,7 +193,7 @@ Provider {
             unfinished: served.unfinished === true,
             glyph: Theme.glyph[served.glyph] ?? Theme.glyph.pending,
             hue: served.hue ?? "program",
-            side: (served.side ?? []).map(sideSaid).join(" \u00b7 "),
+            side: ready.sideOf(served),
             note: served.note ?? "",
             reads: served.reads ?? "",
             later: true,
@@ -444,8 +363,8 @@ Provider {
     // How many are open and driving, as the daemon says it, so saying how
     // many makes no row.
     function counted() {
-        void rowsKind?.revision;
-        return String(rowsKind?.held?.[summaryKey]?.summary?.said ?? "");
+        void ready.placings;
+        return String(ready.held[summaryKey]?.summary?.said ?? "");
     }
 
     Connections {
