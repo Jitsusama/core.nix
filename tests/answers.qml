@@ -2645,13 +2645,13 @@ QtObject {
         // daemon keeping its own.
         const profileTold = holds => ({ holds,
             named: { "power-saver": "Power Saver", performance: "Performance" },
-            said: { silent: "the profile daemon didn't answer", held: "{app} holds {profile}",
-                kept: "the daemon kept {profile}" } });
+            said: { silent: "power profile not set \u00b7 not answering",
+                held: "{app} holds {profile}", kept: "{profile} kept" } });
         machine("a profile taken says nothing",
             Power.profileRefusal("balanced", "balanced", profileTold([])), "");
         machine("a daemon that didn't answer is said so",
             Power.profileRefusal("balanced", "", profileTold([])),
-            "the profile daemon didn't answer");
+            "power profile not set \u00b7 not answering");
         machine("a program holding the profile kept is named",
             Power.profileRefusal("balanced", "performance",
                 profileTold([{ profile: "performance", app: "Steam" }])),
@@ -2659,7 +2659,7 @@ QtObject {
         machine("else the daemon kept its own",
             Power.profileRefusal("balanced", "power-saver",
                 profileTold([{ profile: "performance", app: "Steam" }])),
-            "the daemon kept Power Saver");
+            "Power Saver kept");
         machine("Type-C's own current", Power.protocol("[C] PD PD_PPS"), "USB-C");
         machine("a plain USB port", Power.protocol("[SDP] DCP CDP"), "USB");
         const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };

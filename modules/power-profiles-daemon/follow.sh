@@ -78,7 +78,7 @@ follow() {
     return
   fi
   if [ "$(active)" != "$now" ]; then
-    refused "the daemon kept $(active)"
+    refused "$(active) kept"
     return
   fi
   # Written in place, so a reader watching the file keeps its watch.

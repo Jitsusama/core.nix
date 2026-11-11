@@ -10418,9 +10418,9 @@
       "glyph": "balanced",
       "said": {
         "set": "power profile set to {profile}",
-        "silent": "the profile daemon didn't answer",
+        "silent": "power profile not set \u00b7 not answering",
         "held": "{app} holds {profile}",
-        "kept": "the daemon kept {profile}"
+        "kept": "{profile} kept"
       }
     },
     {
