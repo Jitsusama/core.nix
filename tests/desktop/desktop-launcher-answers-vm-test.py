@@ -169,7 +169,9 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Battery" in shown["rows"])
     desktop.type_in("battery", "Battery")
-    assert re.search("^\\u2212?[\\d.]+ \\u00b0C$", desktop.showing()["selected"]["side"])
+    # Its heat first, then how far it is from its limit, where it has one.
+    side = desktop.showing()["selected"]["side"]
+    assert re.search("^\\u2212?[\\d.]+ \\u00b0C( \\u00b7 |$)", side), side
 
     def in_battery(shown: Json) -> bool:
         """Say whether the launcher holds the battery's heat, its Last Reads selected."""
@@ -1647,7 +1649,8 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
         )
     )
     desktop.type_in("npu", "NPU")
-    assert desktop.showing()["selected"]["side"] == "62.0 \u00b0C"
+    side = desktop.showing()["selected"]["side"]
+    assert side.split(" \u00b7 ")[0] == "62.0 \u00b0C", side
     desktop.close_launcher()
     # The Processor says what held it back, after its Clock, and each core
     # held, a step in; the core its cluster didn't hold isn't listed.

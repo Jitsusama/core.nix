@@ -2736,8 +2736,9 @@
     it, gives the theme's sans or monospaced face, carrying the name asked for
   '';
   heat-remakes-only-what-moved = ''
-    Heat's answer asked again with nothing read since makes no row, a chip the machine daemon tells
-    anew is made again alone, the processor's row kept as the fan's changes, and a chip let go goes
+    Heat answers its rows and headline as the machine daemon serves them ready, in its order, each
+    part's own rows a step in; asked again with nothing told it makes no row, a row told anew is
+    made again alone, and a row let go goes
   '';
   power-remakes-only-what-moved = ''
     Power answers its rows and headline as the machine daemon serves them ready, in its order, and

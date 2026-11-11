@@ -186,7 +186,6 @@ let
     "Niri.qml"
     "NiriRecords.js"
     "Wifi.qml"
-    "ProcessorTelemetry.qml"
     "Timekeeping.qml"
     "Calendars.qml"
     "SignIn.qml"
