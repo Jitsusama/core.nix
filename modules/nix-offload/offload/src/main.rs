@@ -137,7 +137,8 @@
 //! builders are named, so a switch that changes them needs no reload.
 //!
 //! Every lender proves its builder every minute with a tiny build no store
-//! holds, as src/proof.rs says, and the main one the builders beside too.
+//! holds, as src/proof.rs says, and the main one the builders beside too,
+//! unless root proves those (src/standing.rs), when it reads what root says.
 //! A lent builder that fails two in a row is taken out of every file this
 //! lender writes and given back as lost, which ends its helper and the
 //! relay with it, so hung connections close and Nix sends their builds
@@ -165,6 +166,7 @@ mod queue;
 mod relay;
 mod running;
 mod sleep;
+mod standing;
 #[cfg(test)]
 mod testing;
 mod there;
@@ -249,6 +251,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload lines --config PATH \
+                    | nix-offload prove-standing --config PATH \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload progress HOST \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
@@ -502,6 +505,9 @@ fn main() -> ExitCode {
     if arguments.first().map(String::as_str) == Some("lines") {
         return lining(given("--config"));
     }
+    if arguments.first().map(String::as_str) == Some("prove-standing") {
+        return proving_standing(given("--config"));
+    }
     if arguments.first().map(String::as_str) == Some("stand") {
         let (standing, beside) = (given("--standing"), given("--beside"));
         if standing.is_none() && beside.is_none() {
@@ -539,6 +545,25 @@ fn lining(config: Option<String>) -> ExitCode {
         PathBuf::from,
     );
     lines::serve(&settings, state.join("gcloud"))
+}
+
+/// `prove-standing`: proves, as root, the standing builders lines' settings
+/// name, saying how they stand in `proof::STANDING`, for as long as it runs.
+fn proving_standing(config: Option<String>) -> ExitCode {
+    let Some(config) = config else {
+        eprintln!("nix-offload: prove-standing needs --config\n{USED}");
+        return ExitCode::from(64);
+    };
+    match fs::read_to_string(&config)
+        .map_err(|error| error.to_string())
+        .and_then(|text| standing::standing(&text))
+    {
+        Ok(builders) => standing::serve(builders, "nix", Path::new(proof::STANDING)),
+        Err(error) => {
+            eprintln!("nix-offload: {config}: {error}");
+            ExitCode::from(64)
+        }
+    }
 }
 
 /// Starts `there` again marked as work run elsewhere, and as sent first
@@ -1960,9 +1985,11 @@ fn machines_of(settings: &Settings) -> Machines {
 }
 
 /// Prove `builder` with a tiny build when one is due, over `ssh` as
-/// `there` reaches it, or through the daemon where the helper named no
-/// store, keeping its proofs in `keeper`, which starts afresh for a
-/// builder it didn't keep: whether its last `proof::FAILS` failed.
+/// `there` reaches it, keeping its proofs in `keeper`, which starts afresh
+/// for a builder it didn't keep: whether its last `proof::FAILS` failed.
+/// One whose helper named no store fails, since only the daemon could
+/// reach it, and the daemon takes a builder line only from an account it
+/// trusts.
 fn kept(
     settings: &Settings,
     keeper: &mut Option<Keeper>,
@@ -1979,12 +2006,13 @@ fn kept(
     let Some(keeper) = keeper.as_mut() else {
         return false;
     };
-    let (store, line) = (builder.store.clone(), builder.line.clone());
+    let store = builder.store.clone();
     let (scratch, ssh) = (settings.dir.join("proving.d"), ssh.to_owned());
     let was = keeper.health.state();
-    let heard = keeper.keep(at, now(), move || match store {
-        Some(store) => proof::over_ssh(&store, &scratch, &ssh, proof::WITHIN),
-        None => proof::through_daemon(&line, "nix", proof::WITHIN),
+    let heard = keeper.keep(at, now(), move || {
+        store.map_or_else(proof::Proven::default, |store| {
+            proof::over_ssh(&store, &scratch, &ssh, proof::WITHIN)
+        })
     });
     let name = &builder.name;
     let state = keeper.health.state();

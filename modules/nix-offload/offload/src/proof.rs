@@ -10,7 +10,9 @@
 //! proven over the ssh its `there` builds take, with its store's key and
 //! host key; a builder beside, reached only by root's ssh, through the
 //! daemon's build hook, as every build sent to it is, passing once its
-//! output comes back.
+//! output comes back. The daemon takes a builder line only from an account
+//! it trusts, so where root's prover runs (`src/standing.rs`) it proves
+//! those, and a lender reads what it says from [`STANDING`].
 //!
 //! A proof also reads how many bytes its builder's store has free: over
 //! ssh with a df once it has built, and through the daemon with this
@@ -80,6 +82,11 @@ pub const FRESH: u64 = 180;
 
 /// The file a lender says how its builders stand in, in its folder.
 pub const HEALTH: &str = "health.json";
+
+/// Where root's prover says how each standing builder stands
+/// (`src/standing.rs`), for a lender to read rather than prove them
+/// itself, which only an account the daemon trusts can.
+pub const STANDING: &str = "/run/nix-offload-standing/health.json";
 
 /// The least a builder's store may have free and still take builds, in
 /// bytes: one with less is left out until it has room again. On 9
@@ -184,6 +191,18 @@ impl Health {
     /// Whether it takes no builds: dropped, or full.
     pub fn left_out(&self) -> bool {
         matches!(self.state(), State::Dropped | State::Full)
+    }
+
+    /// Its health as [`Health::json`] wrote it, where it reads as one.
+    pub fn from_json(said: &Value) -> Option<Self> {
+        let at = |name: &str| said[name].as_u64();
+        Some(Self {
+            builder: said["builder"].as_str()?.to_owned(),
+            last_success: at("lastSuccess"),
+            last_failure: at("lastFailure"),
+            failures: u32::try_from(said["consecutiveFailures"].as_u64()?).ok()?,
+            free: at("freeBytes"),
+        })
     }
 
     pub fn json(&self) -> Value {
@@ -456,6 +475,9 @@ fn proven_through(line: &str, nix: &str, within: Duration, coreutils: Option<&st
     let mut command = Command::new(nix);
     command
         .args(["build", "--no-link", "--impure", "--max-jobs", "0", "-L"])
+        // Root's Nix may not turn the command on, as a NixOS machine's
+        // doesn't unless told, and the proof would fail every builder.
+        .args(["--extra-experimental-features", "nix-command"])
         .args(["--option", "substitute", "false", "--builders"])
         .arg(own.join(" "))
         .arg("--expr")
@@ -640,6 +662,30 @@ pub fn write(dir: &Path, lent: Option<&Health>, beside: Option<&[Health]>, at: u
     if let Err(error) = written {
         eprintln!("nix-offload: writing {}: {error}", path.display());
     }
+}
+
+/// How the standing builder `uri` names stands, as root's prover said in
+/// `path` as of `now`: `None` with no prover there, so the lender proves
+/// it itself as before; dropped once the prover has written nothing for
+/// `FRESH`, since a stopped prover vouches for nothing; and unproven when
+/// it names no such builder.
+pub fn standing_health(path: &Path, uri: &str, named: &str, now: u64) -> Option<Health> {
+    let text = fs::read_to_string(path).ok()?;
+    let said: Value = serde_json::from_str(&text).unwrap_or_default();
+    let mut health = Health::of(named);
+    if said["at"].as_u64().is_none_or(|at| at + FRESH < now) {
+        health.failures = FAILS;
+        health.last_failure = Some(now);
+        return Some(health);
+    }
+    let builders = said["builders"].as_array().map_or(&[][..], Vec::as_slice);
+    Some(
+        builders
+            .iter()
+            .find(|builder| builder["uri"] == uri)
+            .and_then(Health::from_json)
+            .unwrap_or(health),
+    )
 }
 
 /// Whether the builder `dir`'s lender keeps passed its last proof, no

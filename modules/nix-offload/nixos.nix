@@ -43,6 +43,8 @@ let
     "machines-for-anything"
   ];
   offload = pkgs.callPackage ./offload/package.nix { };
+  # The standing builders root proves, with no lines settings none.
+  proven = if lines == null then [ ] else lines.standing;
   # What src/lines.rs reads, as JSON.
   linesSettings = {
     from = "/run/nix-offload";
@@ -58,7 +60,12 @@ let
     startupScript = if lines.startupScript == null then null else "${lines.startupScript}";
     hookKey = "/etc/nix/offload_ed25519.pub";
     standing = map (builder: {
-      inherit (builder) uri key hostKey;
+      inherit (builder)
+        uri
+        key
+        hostKey
+        systems
+        ;
     }) lines.standing;
     lent = map (builder: {
       inherit (builder) uri;
@@ -153,6 +160,11 @@ in
                 options.hostKey = lib.mkOption {
                   type = lib.types.str;
                   description = "Its host key as its line carries it, in base64.";
+                };
+                options.systems = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  default = [ pkgs.stdenv.hostPlatform.system ];
+                  description = "The systems it builds for; root proves it with the first.";
                 };
               }
             );
@@ -310,6 +322,49 @@ in
         CapabilityBoundingSet = "";
         RestrictSUIDSGID = true;
         LockPersonality = true;
+      };
+    };
+
+    # Proving a standing builder means handing the daemon a builder line,
+    # which it takes only from an account it trusts, so root proves them
+    # and the lender reads what it says (offload/src/standing.rs). Nothing
+    # but root writes there, and anyone may read it.
+    systemd.services.nix-offload-prove-standing = lib.mkIf (proven != [ ]) {
+      description = "Proves, as root, that each standing builder still builds";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "nix-daemon.socket" ];
+      restartTriggers = [ config.environment.etc."nix-offload/lines.json".source ];
+      path = [ config.nix.package ];
+      environment = {
+        # A home of its own, since root's is hidden and, with no capability
+        # to pass over that, Nix looking there for channels fails.
+        HOME = "/var/cache/nix-offload-standing";
+        XDG_CACHE_HOME = "/var/cache/nix-offload-standing";
+        # Through the daemon, said rather than left to Nix finding the store
+        # unwritable, since a proof built in this process proves nothing.
+        NIX_REMOTE = "daemon";
+      };
+      serviceConfig = {
+        ExecStart = "${lib.getExe offload} prove-standing --config /etc/nix-offload/lines.json";
+        Restart = "always";
+        RestartSec = 5;
+        RuntimeDirectory = "nix-offload-standing";
+        RuntimeDirectoryMode = "0755";
+        # A restart, a switch's among them, keeps what was last said, so the
+        # lender never falls back meanwhile; a stopped prover's file goes
+        # stale within three minutes and drops every builder anyway.
+        RuntimeDirectoryPreserve = true;
+        CacheDirectory = "nix-offload-standing";
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        NoNewPrivileges = true;
+        # It needs only the daemon's socket, and stays root so the daemon
+        # trusts the lines it passes.
+        CapabilityBoundingSet = "";
+        PrivateNetwork = true;
+        RestrictAddressFamilies = "AF_UNIX";
+        SystemCallFilter = "@system-service";
       };
     };
 
