@@ -66,6 +66,16 @@ ShellRoot {
     property string waiting: "the start"
     // What each provider has said changed, counted.
     property int heard: 0
+    // What the repositories have said changed, counted.
+    property int repositoriesSaid: 0
+
+    Connections {
+        target: Launcher.Repositories
+
+        function onChanged() {
+            root.repositoriesSaid += 1;
+        }
+    }
 
     function tick() {
         if (at >= steps.length)
@@ -520,6 +530,18 @@ ShellRoot {
                 expect("a repository's files forgotten as the launcher closes", kept.length === 0,
                     kept);
                 expect("the repositories kept", Launcher.Repositories.listed.length === 3, "");
+                root.repositoriesSaid = 0;
+                theLauncher.open = true;
+            }
+        }, {
+            what: "the repositories asked again as the launcher opens, as they were",
+            until: () => Launcher.Repositories.reading === "",
+            then: () => {
+                // Each act reading them is drawn again at a change, which
+                // held kitty's page past its frame when none had come.
+                expect("no change said where none came", root.repositoriesSaid === 0,
+                    String(root.repositoriesSaid));
+                theLauncher.open = false;
                 // As if every repository went, so the next read finds none.
                 Launcher.Repositories.folder = `${root.home}/nowhere`;
                 theLauncher.open = true;

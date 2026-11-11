@@ -2276,7 +2276,7 @@
     picture in a file of its own, copied from the clipboard's history or written by wl-paste;
     and Open a File by Name and Open a Repository on GitHub show only while the repositories
     under ~/src, read by the programs daemon once for both as the shell starts and as the
-    launcher opens, hold one they
+    launcher opens, saying a change only where one came, hold one they
     can open, listing the one whose git last wrote first, a repository's files the one changed
     last first, each beside its folder there, its hidden ones but not what git ignores, and only
     those with a remote on GitHub, origin's first; Chrome's downloads, read as Chrome is

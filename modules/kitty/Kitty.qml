@@ -103,14 +103,27 @@ Provider {
             return;
         const held = kind => Object.values(daemon.held).find(one => one.kind === kind);
         const visited = held("visited")?.folders ?? [];
+        const config = held("machines")?.config ?? "";
+        const hosts = held("machines")?.hosts ?? "";
+        const history = (held("reached")?.lines ?? []).join("\n");
+        // Each opening asks again, and only what changed since draws
+        // kitty's step again: an answer the same as the last, remade, held
+        // the step into kitty's page 150 ms past its frame in half the
+        // lab's rounds, against a third before it was asked here.
+        const said = JSON.stringify([visited, config, hosts, history]);
+        if (said === provider.readSaid)
+            return;
+        provider.readSaid = said;
         provider.visited = visited.map(one => one.path).join("\n");
         provider.visits = visited.reduce((all, one) =>
             Object.assign(all, { [one.path]: one.at }), {});
-        provider.config = held("machines")?.config ?? "";
-        provider.hosts = held("machines")?.hosts ?? "";
-        provider.history = (held("reached")?.lines ?? []).join("\n");
+        provider.config = config;
+        provider.hosts = hosts;
+        provider.history = history;
         provider.heard();
     }
+    // What the daemon last said of the files, as read() compares it.
+    property string readSaid: ""
 
     Daemon {
         id: daemon
