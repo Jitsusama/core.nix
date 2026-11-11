@@ -517,42 +517,7 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || profile_loop(&shared));
     }
-    {
-        let shared = Arc::clone(&shared);
-        let folders = vec![root.path(keyboards::LIGHTS)];
-        std::thread::spawn(move || heard_loop(&shared, &KEYBOARDS, &folders, keyboards::names));
-    }
-    {
-        let shared = Arc::clone(&shared);
-        let folders = vec![root.path(counts::FOLDER)];
-        std::thread::spawn(move || heard_loop(&shared, &["counts"], &folders, counts::names));
-    }
-    if let Some(folder) = keyboards::layer_file()
-        .as_deref()
-        .and_then(|file| std::path::Path::new(file).parent())
-        .map(|folder| root.path(&folder.to_string_lossy()))
-    {
-        let shared = Arc::clone(&shared);
-        let folders = vec![folder];
-        std::thread::spawn(move || {
-            heard_loop(&shared, &["layer"], &folders, keyboards::names_the_layer);
-        });
-    }
-    {
-        let shared = Arc::clone(&shared);
-        let folders = lock(&shared.reader)
-            .watchers
-            .iter()
-            .map(|watcher| root.path(&watcher.folder))
-            .collect::<Vec<_>>();
-        std::thread::spawn(move || {
-            let due = |shared: &Shared| {
-                let reader = lock(&shared.reader);
-                reader.statuses.due(&reader.watchers)
-            };
-            heard_until(&shared, &["status"], &folders, status::names, due);
-        });
-    }
+    hear_keyboards_and_watchers(&shared, &root);
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
@@ -583,6 +548,45 @@ fn worded(words: Option<&str>, numbers: Option<&str>) -> Option<Words> {
     let numbers = numbers.and_then(read).unwrap_or(Value::Null);
     let mark = |name: &str| numbers[name].as_str().unwrap_or("").to_owned();
     Some(Words::new(&vocabulary, &mark("group"), &mark("point")))
+}
+
+/// Hears the keyboards' lights, the layer and the key counts, and the
+/// watchers' status, each as its files are written.
+fn hear_keyboards_and_watchers(shared: &Arc<Shared>, root: &Root) {
+    {
+        let shared = Arc::clone(shared);
+        let folders = vec![root.path(keyboards::LIGHTS)];
+        std::thread::spawn(move || heard_loop(&shared, &KEYBOARDS, &folders, keyboards::names));
+    }
+    {
+        let shared = Arc::clone(shared);
+        let folders = vec![root.path(counts::FOLDER)];
+        std::thread::spawn(move || heard_loop(&shared, &["counts"], &folders, counts::names));
+    }
+    if let Some(folder) = keyboards::layer_file()
+        .as_deref()
+        .and_then(|file| std::path::Path::new(file).parent())
+        .map(|folder| root.path(&folder.to_string_lossy()))
+    {
+        let shared = Arc::clone(shared);
+        let folders = vec![folder];
+        std::thread::spawn(move || {
+            heard_loop(&shared, &["layer"], &folders, keyboards::names_the_layer);
+        });
+    }
+    let shared = Arc::clone(shared);
+    let folders = lock(&shared.reader)
+        .watchers
+        .iter()
+        .map(|watcher| root.path(&watcher.folder))
+        .collect::<Vec<_>>();
+    std::thread::spawn(move || {
+        let due = |shared: &Shared| {
+            let reader = lock(&shared.reader);
+            reader.statuses.due(&reader.watchers)
+        };
+        heard_until(&shared, &["status"], &folders, status::names, due);
+    });
 }
 
 /// What every thread shares, holding nothing yet, reading under `root`
