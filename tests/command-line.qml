@@ -548,6 +548,19 @@ QtObject {
             lines(filledMenu([{ key: "player:other", name: "Pause the Other", verb: "pause" }],
                 { name: "Playing" }))[0][0], "pause");
 
+        // An answer after the line is done, as a screen's setting niri
+        // refused: said on the line while it holds the keys that ran it,
+        // in the journal once Joel has typed on, and nothing where it
+        // has no words.
+        const refused = "1.3\u00d7 not set \u00b7 HP offers 1\u00d7 to 3\u00d7";
+        holds("a late refusal is said while the keys are still the line's",
+            SetWords.later("scale", refused, 7, 7), { say: refused });
+        holds("a late refusal after Joel typed on goes to the journal alone",
+            SetWords.later("scale", refused, 7, 9),
+            { journal: `launcher: scale refused after Joel typed on: ${refused}` });
+        holds("a late answer with no words does nothing", SetWords.later("scale", "", 7, 9),
+            null);
+
         // Each option as Vim's :set volume? says it.
         holds("a switch on says its name, off its no",
             [SetWords.shown("dnd", true, options.dnd),

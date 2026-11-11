@@ -140,6 +140,10 @@
     quietly where the last boot kept it, and keeps the place of one no host serves yet, opens none
     for one kept nowhere, and holds one bound for the workspace Joel is on until he leaves it
   '';
+  a-screens-power-says-how-it-stands = ''
+    a screen's power says how it stands before asking niri, and the last lit screen not turned off
+    or unplugged says so as niri's refusals are, a $ in a name kept as written
+  '';
   a-session-behind-the-lock-waits-for-its-kin = ''
     a session handed over while the screen is locked, beside its sender in the sessions' kitty,
     waits once the lock is gone until the node says which window is the sender's, by the app id it
@@ -169,13 +173,12 @@
   '';
   a-things-drawer-says-its-parts = ''
     a thing's drawer says each part as a fact, its acts left out, a holder of figures opened in
-    place and a level's bar a stroke; a screen's says whether its mode is preferred or custom, its
-    refresh to every digit niri has where its row rounds it, variable refresh, scale as a multiple,
-    where it sits, its modes and its density to three figures, an off one only what it offers;
-    the backlight daemon's files say whether the room sets the level and what it's on its way
-    to past a gap too slight to move, the room's light with the lid shut or that none is heard,
-    measured to three digits in lx or klx, and every point of its curve, dimmest first, kept
-    where the daemon keeps it, its lux every digit in the same units; the machine daemon's
+    place and a level's bar a stroke; a screen's white point is a measure by Joel's settings, it
+    and each primary a point named x and y to three places, and figures that aren't whole say
+    nothing; the backlight daemon's files say whether the room sets the level and what it's on
+    its way to past a gap too slight to move, the room's light with the lid shut or that none is
+    heard, measured to three digits in lx or klx, and every point of its curve, dimmest first,
+    kept where the daemon keeps it, its lux every digit in the same units; the machine daemon's
     backlight says its steps, those read back only where they differ, its stepping and driver
     only where the kernel says them, and its sensor its count grouped, its lux a count and an
     offset only where it isn't none; and the facts that identify a thing end its drawer, marked,
@@ -2372,8 +2375,8 @@
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
-    off, and :set noscreens asks it too, as read on the way to niri's socket; and a scale niri
-    refuses says niri's words for why on the warning line
+    off, and :set noscreens asks it too, as read on the way to niri's socket; and a :setl scale
+    niri refuses says niri's words for why on the : line
   '';
   the-newest-surface-takes-the-keys-on-niri = ''
     on niri, the launcher opened over held notices takes the keys and gives them back as it
@@ -2709,11 +2712,6 @@
     zathura's provider reads open-now's lines as each zathura's document, page and page count,
     says the page beside a document only one zathura has open, and its drawer says each one's
     page and how far through it is
-  '';
-  the-launcher-says-what-niri-refuses = ''
-    a screen's change niri refuses says what was asked, what wasn't done and niri's words for why,
-    begun in lower case with no closing full stop, a $ in them kept as written, and one to a
-    screen gone says it's unplugged; the last lit screen not turned off says so the same way
   '';
   the-launcher-says-why-the-desktop-lags = ''
     the launcher's Lag leads with the worst of what waited, offers to see what's behind it from

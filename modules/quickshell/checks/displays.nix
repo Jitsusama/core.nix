@@ -16,7 +16,7 @@
   # Turn Every Screen Off and :set noscreens ask niri to power its monitors
   # off, which keeps each output connected, read on their way to niri; and
   # a scale niri refuses, turned into its ReturnError on the way, says
-  # niri's words for why on the warning line.
+  # niri's words for why on the : line.
   the-screens-go-off-on-niri = launcherOnNiri {
     name = "the-screens-go-off-on-niri";
     tests = ../../../tests/screens-off-on-niri-test.py;
@@ -40,15 +40,15 @@
       touch $out
     '';
 
-  # A change to a screen niri refuses says on the warning line what was
-  # asked, what wasn't done and niri's own words for why, and one to a
-  # screen gone says it's unplugged, as tests/screen-answers.qml holds
-  # launcher/ScreenAnswers.js to it in Qt's own engine.
-  the-launcher-says-what-niri-refuses =
+  # A screen's power says how it stands before asking niri, the last lit
+  # screen not turned off or unplugged said as niri's refusals are, as
+  # tests/screen-answers.qml holds launcher/ScreenAnswers.js to it in Qt's
+  # own engine; what niri refuses, the windows daemon says (acts.rs).
+  a-screens-power-says-how-it-stands =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-launcher-says-what-niri-refuses" { } ''
+    pkgs.runCommandLocal "a-screens-power-says-how-it-stands" { } ''
       cp ${../../../tests/screen-answers.qml} screen-answers.qml
       cp ${../launcher/ScreenAnswers.js} ScreenAnswers.js
       cp ${../../../tests/lib/Expect.js} Expect.js

@@ -763,8 +763,12 @@ fn answer(
 
 /// Does the act a screen's row asked, and answers it.
 fn screen_done(shared: &Arc<Shared>, id: &Value, said: &Value) -> Value {
-    let Some(act) = Act::asked(said) else {
-        return error(id, "unknown-act", &format!("no act on a screen in {said}"));
+    let act = {
+        let daemon = lock(&shared.daemon);
+        match screens::line::asked(id, said, &daemon.outputs, daemon.words.as_ref()) {
+            Ok(act) => act,
+            Err(refused) => return refused,
+        }
     };
     // Every screen goes dark, as does the last lit one, once the key that
     // asked is up, on a thread of its own so no other ask waits; the ask

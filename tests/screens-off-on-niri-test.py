@@ -16,12 +16,13 @@ its name (Joel, 2026-11-07: "i want to be able to control the screen that gets s
 the other, all"). What each screen offers is held in Qt's engine (tests/screens.qml); here, only
 that the act reaches niri.
 
-A change to a screen niri refuses says so on the launcher's warning line, in niri's own words for
-why, where Return otherwise looked done and only the shell's log said otherwise. niri refuses a
-screen's change only where it can't read it or won't make its mode, which the shell never asks
-for, so the proxy turns the shell's request into niri's own ReturnError, which niri answers with
-its example error. What the line says of each refusal, and of a screen
-gone, is held in Qt's engine (tests/screen-answers.qml); here, only that niri's words reach it.
+A change to a screen niri refuses says so on the : line, in niri's own words for why, where
+Return otherwise looked done and only the shell's log said otherwise. niri refuses a screen's
+change only where it can't read it or won't make its mode, which the windows daemon never asks
+for, so the proxy turns the daemon's request into niri's own ReturnError, which niri answers with
+its example error. What the daemon says of each refusal, and of a screen gone, is held in its
+own tests (modules/windows, screens/acts.rs and screens/line.rs); here, only that niri's words
+reach the line.
 """
 
 from __future__ import annotations
@@ -211,7 +212,7 @@ def test_set_noscreens_powers_niris_monitors_off(shell: Shell, proxy: Proxy) -> 
 
 
 def test_a_scale_niri_refuses_says_niris_why(shell: Shell, proxy: Proxy) -> None:
-    """:setl scale=1.25 that niri refuses says on the warning line it wasn't set, and why."""
+    """:setl scale=1.25 that niri refuses says on the : line it wasn't set, and why."""
     shell.answer("screens")
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Screens")
     shell.step_in()
@@ -225,4 +226,4 @@ def test_a_scale_niri_refuses_says_niris_why(shell: Shell, proxy: Proxy) -> None
         shell.send_key("ret")
         niri_asked(proxy, mark, b'"Scale":{"scale":{"Specific":1.25}}')
         wanted = f"1.25\u00d7 not set \u00b7 {NIRIS_EXAMPLE_ERROR}"
-        shell.launcher_until(lambda shown: str(shown["operated"]).endswith(wanted))
+        shell.launcher_until(lambda shown: shown["commandSaid"] == wanted)
