@@ -5483,12 +5483,9 @@ Scope {
             // not counted, so no list changes order as it grows. A part
             // named leads what's found.
             let found = [];
-            if (from && words.length === 0) {
-                const members = from.everything();
-                const parts = partsOf(from);
-                found = Words.of(from.settings.name).lead === "parts" ? parts.concat(members)
-                    : members.concat(parts);
-            } else if (from)
+            if (from && words.length === 0)
+                found = listedWhole(from);
+            else if (from)
                 found = within(partsOf(from), letters)
                         .concat(learnedFirst(from.search(letters).rows, letters));
             // A step's rows, all of them in their order until something's
@@ -7831,9 +7828,9 @@ Scope {
             under: keptUnder(name) };
     }
     // What a place's rows follow of the window the launcher opens over, as
-    // its source says (keptOver): Shortcuts' the keys that work there,
-    // Windows' the window itself, which they leave out. The rest follow
-    // none, so they're drawn as kept over any window: kept with the app
+    // its source says (keptOver): Shortcuts' the keys that work there. The
+    // rest follow none, or are listed afresh as they open (keptListing), so
+    // they're drawn as kept over any window: kept with the app
     // opened over, every other chord pressed over another program's window
     // was made whole.
     function keptUnder(name) {
@@ -7848,6 +7845,10 @@ Scope {
         const kept = placesKept[name];
         if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
             return false;
+        const source = collections.find(one => one.settings.name === name) ?? null;
+        const listed = source?.keptListed === true ? keptListing(source) : kept.matches;
+        if (listed === null)
+            return false;
         keeping = true;
         try {
             held = kept.held;
@@ -7858,7 +7859,7 @@ Scope {
             typed = "";
             candidates = [];
             prompt.text = "";
-            matches = kept.matches;
+            matches = listed;
             current = 0;
             tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
         } finally {
@@ -7869,6 +7870,31 @@ Scope {
         openInto = name;
         beginOpening();
         return true;
+    }
+
+    // A collection's rows with nothing typed: all of it, and its parts, the
+    // parts first where its vocabulary says they lead ("lead": "parts"),
+    // so the Keyboard's keyboards aren't below a hundred keys.
+    function listedWhole(from) {
+        const members = from.everything();
+        const parts = partsOf(from);
+        return Words.of(from.settings.name).lead === "parts" ? parts.concat(members)
+            : members.concat(parts);
+    }
+
+    // A kept place whose rows its source lists afresh (`keptListed`), as
+    // Windows' leave out the window it opens over: listed as they stand
+    // now, each row made already, so it's drawn as kept over any window
+    // rather than made whole, or null while the source is waiting on its
+    // daemon (`waiting`), when it opens whole. Super+Tab is pressed over a
+    // window other than the one Windows was kept over, the one it went
+    // to, so it opened whole every time, 50 ms to the shell's frame over 86
+    // windows on a builder against 10 to 20 for home kept (ZINAWZ,
+    // 2026-11-11).
+    function keptListing(source) {
+        if (source.waiting === true)
+            return null;
+        return live(listedWhole(source));
     }
 
     function intoWhole(name) {
