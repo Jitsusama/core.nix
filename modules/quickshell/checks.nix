@@ -2495,6 +2495,7 @@ onLinux {
         cp ${./launcher/Characters.js} launcher/Characters.js
         cp ${./launcher/Characters.qml} launcher/Characters.qml
         cp ${./Daemon.qml} Daemon.qml
+        cp ${./Hearing.js} Hearing.js
         cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
