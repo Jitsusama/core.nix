@@ -50,7 +50,7 @@ fn settled(kept: &[u64], screens: Screens) -> Vec<(String, Vec<u64>)> {
 
 fn order_of(screens: Screens, at: Instant) -> Order {
     let mut order = Order::default();
-    let put = order.heard(&listed(screens), at);
+    let put = order.heard(&listed(screens), None, at);
     assert_eq!(put, None, "the first list was put back");
     order
 }
@@ -58,8 +58,8 @@ fn order_of(screens: Screens, at: Instant) -> Order {
 /// What the order puts back once it hears these screens, or none.
 fn after(order: &mut Order, screens: Screens, at: Instant) -> Option<Vec<(String, Vec<u64>)>> {
     order
-        .heard(&listed(screens), at)
-        .map(|kept| settled(&kept, screens))
+        .heard(&listed(screens), None, at)
+        .map(|put| settled(&put.kept, screens))
 }
 
 /// The screens as a test expects them.
@@ -256,6 +256,43 @@ fn a_workspace_the_order_doesnt_hold_stays_after_those_it_does() {
         ),
         Some(each(&[("DP-1", &[2, 19, 40]), ("eDP-1", &[101])])),
         "a workspace niri made was put among Joel's"
+    );
+}
+
+#[test]
+fn a_screen_coming_back_focuses_again_the_window_joel_had() {
+    let start = Instant::now();
+    let mut order = order_of(&[("eDP-1", &[2, 19, 100])], start);
+    let back = order.heard(
+        &listed(&[("DP-1", &[19, 2, 101]), ("eDP-1", &[102])]),
+        Some(1019),
+        start,
+    );
+    assert_eq!(
+        back.and_then(|put| put.focus),
+        Some(1019),
+        "the window Joel had focused wasn't to be focused again"
+    );
+}
+
+#[test]
+fn a_window_joel_focuses_while_the_order_settles_stays_focused() {
+    let start = Instant::now();
+    let mut order = order_of(&[("eDP-1", &[5, 2, 19, 100])], start);
+    let came = order.heard(
+        &listed(&[("DP-1", &[2, 101]), ("eDP-1", &[5, 19, 100])]),
+        Some(1019),
+        start,
+    );
+    let home = order.heard(
+        &listed(&[("DP-1", &[19, 2, 101]), ("eDP-1", &[5, 100])]),
+        Some(1005),
+        start + SETTLING / 2,
+    );
+    assert_eq!(
+        (came.and_then(|put| put.focus), home.map(|put| put.focus)),
+        (Some(1019), Some(None)),
+        "a window was focused again other than as the screens changed"
     );
 }
 

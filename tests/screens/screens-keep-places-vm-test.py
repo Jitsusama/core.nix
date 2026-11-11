@@ -527,10 +527,16 @@ def holds_order(booted: Screens, screen: str, wanted: list[str]) -> None:
         time.sleep(1)
 
 
+def keeps_focus(booted: Screens, title: str) -> None:
+    """Check the window Joel had focused still is, once the order is back and has held."""
+    focus = [w["title"] for w in niri_json(booted, "windows") if w["is_focused"]]
+    assert focus == [title], f"the screens changing took Joel's focus off {title}: {focus}"
+
+
 def test_workspaces_go_back_in_the_order_joel_set_as_screens_come_and_go(
     booted: Screens,
 ) -> None:
-    """Workspaces go back in the order Joel last set when a screen comes or goes.
+    """Workspaces go back in the order Joel last set when a screen comes or goes, focus kept.
 
     On 2026-11-11 a monitor plugged back in, then the laptop's lid shut, left Joel's seven
     workspaces in niri's order rather than the one he'd set while undocked, his apps fifth.
@@ -564,12 +570,14 @@ def test_workspaces_go_back_in_the_order_joel_set_as_screens_come_and_go(
         booted.plug("detect", "Virtual-2")
         booted.outputs_say("Virtual-2", there=True)
         holds_order(booted, "Virtual-2", ["Gull", "Kelp", "Sand"])
+        keeps_focus(booted, "Sand")
         machine.succeed(booted.in_niri(f"niri msg output {MONITOR} off"))
         machine.wait_until_succeeds(
             booted.in_niri(f'! niri msg --json workspaces | grep -qF \'"output":"{MONITOR}"\''),
             timeout=dt.timedelta(seconds=60),
         )
         holds_order(booted, "Virtual-2", ["Reed", "Gull", "Kelp", "Sand"])
+        keeps_focus(booted, "Sand")
     finally:
         machine.succeed(booted.in_niri(f"niri msg output {MONITOR} on"))
         booted.plug("detect", "Virtual-2")
