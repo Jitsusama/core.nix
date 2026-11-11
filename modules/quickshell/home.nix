@@ -1351,7 +1351,7 @@ in
         order = 102;
         source = "eero";
         weight = 0.9;
-        enable = config.systemd.user.services ? eero-watch;
+        enable = config.systemd.user.services ? eero-daemon;
       };
       # The devices sound goes out of and comes in through.
       sound = {
