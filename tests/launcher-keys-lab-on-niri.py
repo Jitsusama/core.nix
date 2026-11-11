@@ -49,6 +49,9 @@ PARTS = ("searching", "rows", "answers", "before", "counting", "typed", "words",
 # How long the profiler may take to write its trace once asked, in seconds.
 FLUSHING = 60
 
+# How many of the slowest searches' time before gathering is said apart.
+SLOWEST = 6
+
 # How many of a span's costliest places are said.
 COSTLIEST = 25
 
@@ -164,12 +167,14 @@ class Parts:
         self.ends = 0
         self.part = ""
         self.gathered = 0
+        self.count = 0
 
     def at(self, index: str, start: int, ends: int) -> list[str]:
         """Give the spans a range of this event, starting and ending so, falls in."""
         if start >= self.ends:
             if index in self.functions["search"]:
                 self.ends, self.part = ends, "before"
+                self.count += 1
             return []
         if index in self.functions["gathering"] and self.part == "before":
             self.part, self.gathered = "lists", ends
@@ -177,7 +182,10 @@ class Parts:
             self.part = "rows"
         if index in self.functions["compose"] and self.part in {"lists", "rows"}:
             self.part = "answers"
-        return ["search", f"search-{self.part}"]
+        # Each search's time before it gathers is a span of its own too, `before#<n>`, so the
+        # slowest are named apart from the rest.
+        alone = [f"before#{self.count}"] if self.part == "before" else []
+        return ["search", f"search-{self.part}", *alone]
 
 
 def census(trace: Path) -> list[str]:
@@ -209,9 +217,15 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
             whole = ET.parse(trace).getroot() if trace.exists() else None  # noqa: S314
             ranges = len(list(whole.iter("range"))) if whole is not None else 0
             print(f"lab-profile: no search profiled, of {ranges} ranges", flush=True)
-        for span, places in spans.items():
+        each = sorted(
+            (span for span in spans if span.startswith("before#")),
+            key=lambda span: sum(spent.own for spent in spans[span].values()),
+            reverse=True,
+        )
+        for span in [span for span in spans if "#" not in span] + each[:SLOWEST]:
+            places = spans[span]
             ordered = sorted(places.items(), key=lambda one: one[1].own, reverse=True)
-            for place, spent in ordered[:COSTLIEST]:
+            for place, spent in ordered[: COSTLIEST if "#" not in span else COSTLIEST // 2]:
                 print(
                     f"lab-profile {span}: own {spent.own:.2f} ms, whole {spent.whole:.2f}"
                     f" over {spent.count}, {place}",
