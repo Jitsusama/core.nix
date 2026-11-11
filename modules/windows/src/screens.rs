@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 use crate::light::{self, Seen};
 
 pub mod acts;
+pub mod settings;
 pub mod vocabulary;
 use acts::Act;
 
@@ -96,6 +97,11 @@ pub struct Words {
     not_off: String,
     /// A screen niri wouldn't unplug, and why.
     not_unplugged: String,
+    /// A setting's choice niri wouldn't set, and why: "{thing} not set
+    /// · {why}".
+    not_set: String,
+    /// Beside the choice a setting is at.
+    chosen: String,
     /// A screen gone before niri came to it: "{name} is unplugged".
     is_unplugged: String,
     /// Beside the last lit screen's Turn It Off: a key wakes it.
@@ -121,6 +127,12 @@ struct Told {
     preferred_mode: String,
     at: String,
     unsupported: String,
+    /// How Variable Refresh stands, on or off.
+    variable_on: String,
+    variable_off: String,
+    /// Each of niri's transforms as the : line's :setl rotation= takes
+    /// it, "upright" for Normal.
+    typed: BTreeMap<&'static str, String>,
     /// Every part of Screens the vocabulary names, by its id after
     /// `displays:`, which desk-facts' facts are named by.
     parts: BTreeMap<String, String>,
@@ -189,6 +201,8 @@ impl Words {
             not_on: said("not-on"),
             not_off: said("not-off"),
             not_unplugged: said("not-unplugged"),
+            not_set: said("not-set"),
+            chosen: said("chosen"),
             is_unplugged: said("isUnplugged"),
             wakes: word("verb:display-off", &["said", "wakes"], "wakes"),
             moves: word("verb:display-unplug", &["said", "moves"], "moves"),
@@ -220,6 +234,15 @@ impl Words {
                 ),
                 at: word("displays:modes", &["said", "at"], "at"),
                 unsupported: word("displays:variable", &["said", "unsupported"], "unsupported"),
+                variable_on: word("displays:variable", &["said", "on"], "on"),
+                variable_off: word("displays:variable", &["said", "off"], "off"),
+                typed: TRANSFORMS
+                    .iter()
+                    .map(|turn| {
+                        let typed = format!("typed-{turn}");
+                        (*turn, word("displays:rotation", &["said", &typed], &typed))
+                    })
+                    .collect(),
                 parts: things
                     .iter()
                     .filter_map(|(id, thing)| {
@@ -731,6 +754,12 @@ pub fn rows(
             })
         })
         .collect();
+    // Each lit screen's settings, inside its row, as a step in offers them.
+    for (name, output) in &shown {
+        if standing(output) == "lit" && output["logical"].is_object() {
+            rows.extend(settings::rows(name, output, words));
+        }
+    }
     if lit > 0 {
         rows.push(json!({
             "key": key("sleep"),

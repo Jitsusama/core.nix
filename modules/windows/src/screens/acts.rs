@@ -1,10 +1,12 @@
 //! What the launcher's Screens asks done to a screen, done here on niri
 //! and answered in the launcher's words, so the shell asks niri nothing
 //! for it: a lit screen focused, a screen turned on, by name where it's
-//! only dark, turned off or unplugged, and every screen turned off. A
-//! row serves its acts as `{"ask": "screen", "do": <act>, "output":
-//! <connector>}`; `do` rather than `act`, since the shell would say an
-//! `act` in the row's becoming line (ReadyRows.qml's asked).
+//! only dark, turned off or unplugged, one of its settings set to a
+//! choice, and every screen turned off. A row serves its acts as
+//! `{"ask": "screen", "do": <act>, "output": <connector>}`, a choice's
+//! with niri's action on the output beside; `do` rather than `act`, since
+//! the shell would say an `act` in the row's becoming line
+//! (ReadyRows.qml's asked).
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -41,6 +43,20 @@ pub enum Act {
     /// Every screen goes dark, each still connected, so a monitor's hub
     /// and network card stay powered.
     Sleep,
+    /// A setting of a lit screen set as a choice of it says (settings.rs).
+    Set(Set),
+}
+
+/// A setting's choice as its row asks it: the screen's connector, niri's
+/// own action on that output, what the choice is said as, for a refusal's
+/// words, and which words say it wasn't done: "set" for a setting's
+/// choice, "on" or "off" for a switch turned so.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Set {
+    pub output: String,
+    pub action: Value,
+    pub said: String,
+    pub done: String,
 }
 
 impl Act {
@@ -61,6 +77,14 @@ impl Act {
             "off" => output().map(Act::Off),
             "unplug" => output().map(Act::Unplug),
             "sleep" => Some(Act::Sleep),
+            "set" => Some(Act::Set(Set {
+                output: output()?,
+                action: Some(&said["action"])
+                    .filter(|action| action.is_object())?
+                    .clone(),
+                said: said["said"].as_str()?.to_owned(),
+                done: said["done"].as_str()?.to_owned(),
+            })),
             _ => None,
         }
     }
@@ -76,6 +100,10 @@ impl Act {
             Act::Off(output) => ("off", Some(output)),
             Act::Unplug(output) => ("unplug", Some(output)),
             Act::Sleep => ("sleep", None),
+            Act::Set(set) => {
+                return json!({"ask": "screen", "do": "set", "output": set.output,
+                    "action": set.action, "said": set.said, "done": set.done});
+            }
         };
         match output {
             Some(output) => json!({"ask": "screen", "do": done, "output": output}),
@@ -92,7 +120,8 @@ impl Act {
             | Act::Wake(output)
             | Act::Dark(output)
             | Act::Off(output)
-            | Act::Unplug(output) => Some(output),
+            | Act::Unplug(output)
+            | Act::Set(Set { output, .. }) => Some(output),
             Act::Sleep => None,
         }
     }
@@ -109,6 +138,7 @@ impl Act {
                 json!({"Output": {"output": output, "action": "Off"}})
             }
             Act::Sleep => json!({"Action": {"PowerOffMonitors": {}}}),
+            Act::Set(set) => json!({"Output": {"output": set.output, "action": set.action}}),
         }
     }
 }
@@ -167,7 +197,9 @@ pub fn done(niri: &Path, act: &Act) -> Option<Value> {
 
 /// The answer to the ask of `id`: done, or why not, in the launcher's
 /// words where it has them for the act. A screen turned on, off or
-/// unplugged that niri refuses says niri's own words for why, begun in
+/// unplugged, or a setting set, that niri refuses says niri's own words
+/// for why, its choice named where it's a setting's ("1.5× not set ·
+/// invalid custom mode"), begun in
 /// lower case with no full stop closing them, as the foot's words are
 /// ("Built-in Screen not turned on · no such output"), and one gone
 /// before niri came to it says it's unplugged, both as Displays.qml said
@@ -195,7 +227,18 @@ pub fn answered(
         Act::On(_) | Act::Wake(_) => Some(&words.not_on),
         Act::Dark(_) | Act::Off(_) => Some(&words.not_off),
         Act::Unplug(_) => Some(&words.not_unplugged),
+        Act::Set(set) => Some(match set.done.as_str() {
+            "on" => &words.not_on,
+            "off" => &words.not_off,
+            _ => &words.not_set,
+        }),
         Act::Focus(_) | Act::Sleep => None,
+    };
+    // A setting's refusal says the choice, as its row does, rather than
+    // the screen.
+    let thing = match act {
+        Act::Set(set) => set.said.as_str(),
+        _ => named,
     };
     if let Some(why) = answer["Err"].as_str() {
         let why = why.trim().trim_end_matches('.');
@@ -204,7 +247,7 @@ pub fn answered(
             .next()
             .map(|first| first.to_lowercase().chain(letters).collect())
             .unwrap_or_default();
-        let said = not_done.map(|words| words.replace("{thing}", named).replace("{why}", &why));
+        let said = not_done.map(|words| words.replace("{thing}", thing).replace("{why}", &why));
         return refused("refused", said);
     }
     if answer["Ok"]["OutputConfigChanged"] == "OutputWasMissing" {
@@ -221,7 +264,17 @@ mod tests {
     use super::*;
     use crate::screens::tests::words;
 
-    fn every_act() -> [Act; 7] {
+    /// Scale's 1.5× on DP-3, as its choice's row asks it.
+    fn scaled() -> Act {
+        Act::Set(Set {
+            output: "DP-3".to_owned(),
+            action: json!({"Scale": {"scale": {"Specific": 1.5}}}),
+            said: "1.5×".to_owned(),
+            done: "set".to_owned(),
+        })
+    }
+
+    fn every_act() -> [Act; 8] {
         [
             Act::Focus("eDP-1".to_owned()),
             Act::On("DP-3".to_owned()),
@@ -230,6 +283,7 @@ mod tests {
             Act::Off("DP-3".to_owned()),
             Act::Unplug("DP-3".to_owned()),
             Act::Sleep,
+            scaled(),
         ]
     }
 
@@ -250,6 +304,8 @@ mod tests {
             json!({"ask": "screen", "do": "focus"}),
             json!({"ask": "screen", "do": "on", "output": ""}),
             json!({"ask": "screen", "do": "darken", "output": "DP-3"}),
+            json!({"ask": "screen", "do": "set", "output": "DP-3", "said": "1×",
+                "done": "set"}),
             json!({"ask": "screen"}),
         ] {
             assert_eq!(Act::asked(&said), None, "{said} was taken for an act");
@@ -269,6 +325,8 @@ mod tests {
                 json!({"Output": {"output": "DP-3", "action": "Off"}}),
                 json!({"Output": {"output": "DP-3", "action": "Off"}}),
                 json!({"Action": {"PowerOffMonitors": {}}}),
+                json!({"Output": {"output": "DP-3",
+                    "action": {"Scale": {"scale": {"Specific": 1.5}}}}}),
             ],
             "niri was asked otherwise"
         );
@@ -399,6 +457,16 @@ mod tests {
                 "DELL not unplugged \u{b7} no such output"
             ],
             "the refusals were said otherwise"
+        );
+    }
+
+    #[test]
+    fn a_choice_niri_wont_set_says_the_choice_and_why() {
+        let answer = json!({"Err": "Invalid custom mode."});
+        assert_eq!(
+            answered(&json!(6), &scaled(), Some(&answer), "DELL", &words())["error"]["said"],
+            "1.5× not set · invalid custom mode",
+            "a setting's refusal named the screen rather than its choice"
         );
     }
 

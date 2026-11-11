@@ -285,11 +285,26 @@ fn screen(make: &str, scale: Option<f64>) -> Value {
         "logical": scale.map(|scale| json!({"scale": scale})), "powered_off": false})
 }
 
+/// The records a watch was told first, those inside a row left out, as a
+/// screen's settings are.
+fn placed(said: &Value) -> Vec<Value> {
+    said["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|record| record["row"].get("parent").is_none())
+        .cloned()
+        .collect()
+}
+
+/// The keys of the records a message changed, those inside a row left
+/// out, as a screen's settings are.
 fn keys(said: &Value) -> Vec<String> {
     said["changed"]
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|record| record["row"].get("parent").is_none())
         .filter_map(|record| record["key"].as_str().map(str::to_owned))
         .collect()
 }
@@ -499,7 +514,7 @@ fn a_watch_of_screens_is_told_each_screens_row_and_only_those_a_change_moved() {
     let records = loop {
         let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
             "place": "displays"}));
-        let records = said["records"].as_array().cloned().unwrap_or_default();
+        let records = placed(&said);
         if records.len() == 3 {
             break records;
         }
@@ -569,10 +584,7 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
     loop {
         let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
             "place": "displays"}));
-        if said["records"]
-            .as_array()
-            .is_some_and(|records| records.len() == 2)
-        {
+        if placed(&said).len() == 2 {
             break;
         }
         client.ask(&json!({"id": 1, "ask": "unwatch"}));
@@ -592,7 +604,12 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
     );
     let said = client.heard();
     assert_eq!(keys(&said), ["row:displays:display:eDP-1"]);
-    let row = &said["changed"][0]["row"];
+    let row = &said["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|record| record["key"] == "row:displays:display:eDP-1")
+        .expect("the screen's row changed")["row"];
     assert_eq!(
         row["note"], "2880 \u{d7} 1920 \u{b7} 120 Hz \u{b7} scale 1.5\u{d7}",
         "the new scale is said: {said}"
@@ -660,10 +677,7 @@ fn a_screen_looked_at_reads_its_light_from_the_machine_daemon_until_it_isnt() {
     let records = loop {
         let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row",
             "place": "displays"}));
-        if said["records"]
-            .as_array()
-            .is_some_and(|records| records.len() == 2)
-        {
+        if placed(&said).len() == 2 {
             break said["records"].clone();
         }
         client.ask(&json!({"id": 1, "ask": "unwatch"}));

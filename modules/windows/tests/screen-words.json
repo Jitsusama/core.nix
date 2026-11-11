@@ -13,6 +13,8 @@
         "not-on": "{thing} not turned on \u00b7 {why}",
         "not-off": "{thing} not turned off \u00b7 {why}",
         "not-unplugged": "{thing} not unplugged \u00b7 {why}",
+        "not-set": "{thing} not set \u00b7 {why}",
+        "chosen": "chosen",
         "isUnplugged": "{name} is unplugged",
         "steps": "{now} of {most} steps",
         "stepping-linear": "linear",
@@ -41,11 +43,13 @@
       "said": { "note": "a key wakes them \u00b7 hubs stay on" }
     },
     { "id": "displays:mode", "name": "Screen Mode" },
+    { "id": "displays:scale", "name": "Scale" },
     { "id": "displays:refresh", "name": "Refresh" },
+    { "id": "displays:resolution", "name": "Resolution" },
     {
       "id": "displays:variable",
       "name": "Variable Refresh",
-      "said": { "unsupported": "unsupported" }
+      "said": { "unsupported": "unsupported", "on": "on", "off": "off" }
     },
     { "id": "displays:logical", "name": "Logical Size" },
     { "id": "displays:position", "name": "Position" },
@@ -60,7 +64,15 @@
         "Flipped": "mirrored",
         "Flipped90": "mirrored, a quarter turn left",
         "Flipped180": "mirrored, upside down",
-        "Flipped270": "mirrored, a quarter turn right"
+        "Flipped270": "mirrored, a quarter turn right",
+        "typed-Normal": "upright",
+        "typed-90": "left",
+        "typed-180": "upside-down",
+        "typed-270": "right",
+        "typed-Flipped": "mirrored",
+        "typed-Flipped90": "mirrored-left",
+        "typed-Flipped180": "mirrored-upside-down",
+        "typed-Flipped270": "mirrored-right"
       }
     },
     {
