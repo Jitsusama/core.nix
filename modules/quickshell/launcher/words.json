@@ -14178,6 +14178,7 @@
       "late": "{object} not {did} yet",
       "noAnswer": "no answer",
       "couldNot": "couldn't",
+      "missing": "{program} is gone",
       "objects": {
         "deskLight": "Desk Light",
         "recording": "Recording"
@@ -14189,6 +14190,7 @@
         "forget": "forgotten",
         "off": "turned off",
         "on": "turned on",
+        "open": "opened",
         "pause": "paused",
         "reopen": "reopened",
         "resume": "resumed",

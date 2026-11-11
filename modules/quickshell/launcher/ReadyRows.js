@@ -287,6 +287,19 @@ function opening(act, commandOf) {
     return command ? Array.from(command).concat([act.open]) : null;
 }
 
+// What an open act does at Return: `run`s its opening, or, where its
+// program went after its rows were listed, runs nothing and says `why` in
+// words.json's field.becoming, naming the program as it was shown
+// (`program`), as a refused ask does, so it never fails silently (Y2YBTS
+// on #3313, VKCF3Z's words, 2026-11-11).
+function opened(act, commandOf, words) {
+    const run = opening(act, commandOf);
+    if (run !== null) {
+        return { run, why: "" };
+    }
+    return { run: null, why: (words.missing ?? "").replace("{program}", act.program ?? "") };
+}
+
 // A row's mark as drawn: words.json's glyph role it names (`roles`, the
 // theme's glyphs), or a program's own mark no role names, served as
 // `{ code }` in hex and made its character once, as the row is made

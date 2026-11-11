@@ -299,6 +299,15 @@ QtObject {
             ["/bin/google-opens", link]);
         Expect.same("never elsewhere, once its program's gone",
             Ready.opening(inGone, () => null), null);
+        // Its program gone between listing and Return, it opens nothing
+        // and says why, never failing silently (Y2YBTS on #3313).
+        const becoming = { missing: "{program} is gone" };
+        Expect.same("an open whose program is here runs its opening, saying nothing",
+            Ready.opened(inGoogle, () => ["/bin/google-opens"], becoming),
+            { run: ["/bin/google-opens", link], why: "" });
+        Expect.same("one whose program went runs nothing and says why, naming it as it was shown",
+            Ready.opened(Object.assign({ program: "Google" }, inGone), () => null, becoming),
+            { run: null, why: "Google is gone" });
         Expect.same("an open naming none opens as any link",
             Ready.opening({ key: "verb:open", open: link }, () => null), ["xdg-open", link]);
         Expect.same("an act's verb is its words' where they say one",
