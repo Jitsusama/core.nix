@@ -139,11 +139,9 @@ def test_the_notices_daemon_waits_out_another_holding_the_name_then_takes_it(
     assert found, f"notices.service's ExecStart says no argv: {shown}"
     program, *pairs = found.group(1).split()
     given = dict(zip(pairs[::2], pairs[1::2], strict=True))
-    given |= {
-        "--socket": "/tmp/notices-stand-in/notices.sock",
-        "--state": "/tmp/notices-stand-in",
-        "--quiet": "/tmp/notices-stand-in/quiet",
-    }
+    # The account's own runtime folder, which only it may write.
+    own = desktop.as_account('echo "$XDG_RUNTIME_DIR"').strip() + "/notices-stand-in"
+    given |= {"--socket": f"{own}/notices.sock", "--state": own, "--quiet": f"{own}/quiet"}
     given.pop("--shells", None)
     stand_in = shlex.join([program, *(word for pair in given.items() for word in pair)])
     desktop.as_account("systemctl --user stop notices.socket notices.service")
@@ -155,7 +153,7 @@ def test_the_notices_daemon_waits_out_another_holding_the_name_then_takes_it(
     # Past systemd's default limit of five starts in ten seconds, which would fail it.
     machine.wait_until_succeeds(
         desktop.in_session(
-            "test $(journalctl --user -u notices.service -o cat | grep -c \"is another's\") -ge 7"
+            'test $(journalctl --user -u notices.service -o cat | grep -c "is another\'s") -ge 7'
         ),
         timeout=SAYING,
     )
