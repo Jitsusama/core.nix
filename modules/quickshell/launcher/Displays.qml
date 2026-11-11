@@ -15,13 +15,14 @@
 // niri for its screens as a display comes or goes, so the shell asks
 // niri nothing of them itself. A change made here, from a row or the :
 // line, is the daemon's to ask of niri, which says nothing of it in its
-// stream, so the daemon looks again once niri answers. What a display's EDID says of itself, who
-// made it and when, its size, native mode, refresh range, colour depth,
-// colours, white point, primaries and HDR, desk-facts writes to a file
-// (modules/desk-facts), which the daemon's drawer says, and the right
-// arrow lists after the settings, named first as parts are (Colour depth
-// "10 bit"), Return copying one. The white point and primaries come as figures, said here by Joel's
-// grouping and decimal point (Screens.js).
+// stream, so the daemon looks again once niri answers. What a display's
+// EDID says of itself, who made it and when, its size, native mode,
+// refresh range, colour depth, colours, white point, primaries and HDR,
+// desk-facts writes to a file (modules/desk-facts), which the daemon
+// follows and serves, in its drawer and as rows inside the screen's
+// after its settings and the ways it turns off, named first as parts are
+// (Colour Depth "10 bit"), Return copying one (screens/facts.rs), so the
+// shell reads no file for them.
 //
 // The panel's backlight is the one brightness, lid shut or not: the
 // backlight daemon (modules/backlight) sets every monitor it reaches to
@@ -52,7 +53,6 @@
 // warmth" asks it.
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
@@ -182,10 +182,11 @@ Provider {
         return output.name.startsWith("eDP");
     }
 
-    // Whether a monitor's brightness follows the panel's, as desk-facts
-    // says by the brightness the daemon read back from it.
+    // Whether a monitor's brightness follows the panel's, which the
+    // windows daemon holds on its row from desk-facts, by a brightness
+    // read back from it (screens/facts.rs).
     function follows(output) {
-        return (facts[output.name] ?? []).some(fact => fact.name.toLowerCase() === "brightness");
+        return ready.served(screenKey(output))?.held?.follows === true;
     }
 
     // Whether the room's light is heard here: the built-in screen's lid
@@ -549,12 +550,18 @@ Provider {
     }
 
     // What a served row is made into: a screen's, by the niri record it
-    // holds, Turn Every Screen Off, or one of a lit screen's settings, its
-    // choices or its Variable Refresh, inside its row (modules/windows,
-    // screens/settings.rs).
+    // holds, Turn Every Screen Off, or what's inside a screen's row: a lit
+    // one's settings, their choices and its Variable Refresh
+    // (modules/windows, screens/settings.rs), the ways it turns off or on
+    // (acts.rs) and what its EDID says (facts.rs).
     function madeFrom(row, key) {
         if (key === "row:displays:sleep")
             return sleepRow(row);
+        // A way and a fact are made as served: a way's Return asks the
+        // daemon, the last lit screen's closing the launcher, and a fact's
+        // copies what it says.
+        if (row.kind === "action" || row.kind === "fact")
+            return ready.thing(row, key);
         // A setting with choices offers them, so what's typed from the
         // screen finds them, as Sound's served settings do.
         if (row.kind === "setting")
@@ -587,10 +594,10 @@ Provider {
 
     // A screen's row as the daemon says it, its name, how it stands and
     // what it runs, and its Return, focusing it or turning it on, the
-    // daemon's act (modules/windows, screens/acts.rs). Its verbs are made
-    // here still, of the settings and the ways to turn off the daemon
-    // serves, so Return, done, closes the launcher as it did, and the key
-    // language reads none of its act.
+    // daemon's act (modules/windows, screens/acts.rs). Its verbs are its
+    // light, made here, and what the daemon serves inside it, so Return,
+    // done, closes the launcher as it did, and the key language reads none
+    // of its act.
     function made(output, row, key) {
         const stands = Screens.standing(output);
         return ready.thing(row, key, {
@@ -749,32 +756,12 @@ Provider {
         });
     }
 
-    // What desk-facts knows of each display, by its connector's name; one
-    // it says nothing of, or no file at all, has no facts.
-    property var facts: ({})
-
-    FileView {
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/displays.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.facts = provider.parsed(text())
-        onLoadFailed: provider.facts = ({})
-    }
-
-    // What its spots are made of (Launcher.qml's spotsFrom): the screens as niri
-    // says them, which one holds the Brightness, whether the room's sensor
-    // and the warmth are there, and which facts desk-facts says; never a
-    // level, a lux or a warmth's figure, which move while nothing else
-    // does. modules/windows' display kind takes this over, serving the
-    // screens' rows ready, by 12 November.
-    // And what one thing's spots are made of, so a change to one screen
-    // makes only its parts again as the launcher closes (Launcher.qml's
-    // heldSpots): its served rows (ReadyRows.stampOf), and for a screen
-    // whether it holds the light, the sensor and warmth, and its facts;
-    // never a level. Joel's closing at 14:36 on 2026-11-11 made all 87 of
-    // Displays' rows again. The display kind serving the parts ready ends
-    // it too.
+    // What one thing's spots are made of, so a change to one screen makes
+    // only its parts again as the launcher closes (Launcher.qml's
+    // heldSpots): its served rows, those inside it among them, its EDID's
+    // facts and its ways (ReadyRows.stampOf), and for a screen whether it
+    // holds the light, the sensor and warmth; never a level. Joel's closing
+    // at 14:36 on 2026-11-11 made all 87 of Displays' rows again.
     function spotsStampOf(thing) {
         const served = ready.stampOf(thing);
         const name = served === null ? undefined
@@ -784,45 +771,16 @@ Provider {
             return served;
         return JSON.stringify([served, backlit(output),
             light === null ? false : light.connector ?? "", roomSensor !== null,
-            warmth === null ? null : warmth.seesColour === true,
-            (facts[name] ?? []).map(fact => `${fact.name}:${fact.value === ""}`)]);
+            warmth === null ? null : warmth.seesColour === true]);
     }
+
+    // What its spots are made of (Launcher.qml's spotsFrom): the screens
+    // as the daemon serves them, which one holds the Brightness, and
+    // whether the room's sensor and the warmth are there; never a level, a
+    // lux or a warmth's figure, which move while nothing else does.
     property string spotsStamp: JSON.stringify([ready.placings,
         light === null ? false : light.connector ?? "", roomSensor !== null,
-        warmth === null ? null : warmth.seesColour === true,
-        Object.keys(facts).sort().map(name => [name,
-            (facts[name] ?? []).map(fact => `${fact.name}:${fact.value === ""}`)])])
-
-    // What desk-facts says of a display, each named first as a part is:
-    // Colour depth "10 bit", Colours, then who made it and when, the depth
-    // first since it's what's asked.
-    function factRows(output) {
-        // A monitor's brightness is the panel's, which the Brightness
-        // setting says, so it isn't said again as a fact.
-        const said = (facts[output.name] ?? [])
-            .filter(fact => fact.name.toLowerCase() !== "brightness")
-            .map(fact => {
-                const told = toldFigures[fact.name.toLowerCase()];
-                return told ? { name: fact.name, value: told(fact.value) } : fact;
-            })
-            .filter(fact => fact.value !== "");
-        return factParts("displays", output.name, said, askedFirst);
-    }
-
-    // The facts desk-facts gives as figures, said here by the launcher's
-    // grouping and decimal point, as Warmth beside them is (Y2YBTS,
-    // 2026-11-09).
-    readonly property var toldFigures: {
-        const words = { said: (id, key) => provider.partSaid(id, key) };
-        return {
-            white: figures => Screens.whitePoint(figures, words, settings),
-            primaries: figures => Screens.primaries(figures, words, settings)
-        };
-    }
-
-    // The facts asked of a display most, which lead the rest, its white
-    // point and primaries beside its colours (VKCF3Z, 2026-11-09).
-    readonly property var askedFirst: ["depth", "colours", "white", "primaries", "hdr"]
+        warmth === null ? null : warmth.seesColour === true])
 
     // A part's name, as the vocabulary says it (Provider's partNamed).
     function partName(id) {
@@ -834,37 +792,15 @@ Provider {
         return Numbers.format(value, undefined, settings.group, settings.point);
     }
 
-    // A display's right arrow: turning it on while it's off or dark; while
-    // it's lit, its light, then each of its settings the daemon serves
-    // inside its row, a part saying how it's set, whose step in offers the
-    // others (and whose choices what's typed finds from here, so "scale
-    // 1.5" is Scale's 1.5\u00d7), then the ways it turns off the daemon
-    // serves, then what its EDID says.
+    // A display's right arrow: while it's lit, its light, then what the
+    // daemon serves inside its row (screens.rs), as a step in offers it:
+    // a lit one's settings, each saying how it's set and stepping into its
+    // choices (which what's typed finds from here, so "scale 1.5" is
+    // Scale's 1.5\u00d7), then the ways it turns off or on, then what its
+    // EDID says, Return copying one.
     function verbs(output) {
-        const key = screenKey(output);
-        const ways = (ready.served(key)?.acts ?? [])
-            .filter(one => String(one.key).startsWith("verb:display-"))
-            .map(one => powerRow(one, key));
-        if (Screens.standing(output) !== "lit")
-            return ways.concat(factRows(output));
-        return lightRows(output).concat(ready.inside(key), ways, factRows(output));
-    }
-
-    // One way a screen turns off or on, as a choice, an act the daemon
-    // serves and does (modules/windows, screens/acts.rs): its words the
-    // vocabulary's and its note the daemon's, and the last lit screen's
-    // darkening, which waits for the key to come up, closing the launcher,
-    // since nothing would show it.
-    function powerRow(act, key) {
-        return thing({
-            key: act.key,
-            name: Words.name(act.key),
-            glyph: Words.glyph(act.key),
-            hue: "action",
-            note: act.note ?? "",
-            stays: act.waits !== true,
-            run: () => ready.act(key, act)
-        });
+        const inside = ready.inside(screenKey(output));
+        return Screens.standing(output) === "lit" ? lightRows(output).concat(inside) : inside;
     }
 
     // A setting as a part: its name, how it's set, and the choices a step

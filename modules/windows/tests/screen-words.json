@@ -34,9 +34,17 @@
       }
     },
     { "id": "displays:built-in", "name": "Built-in Screen" },
-    { "id": "verb:display-off", "said": { "wakes": "a key wakes it" } },
+    { "id": "verb:display-on", "name": "Turn It On", "glyph": "display" },
+    {
+      "id": "verb:display-off",
+      "name": "Turn It Off",
+      "glyph": "displayOff",
+      "said": { "wakes": "a key wakes it" }
+    },
     {
       "id": "verb:display-unplug",
+      "name": "Unplug It",
+      "glyph": "disconnect",
       "said": { "moves": "its windows move to the other screens" }
     },
     {

@@ -8,6 +8,7 @@
 //! the shell would say an `act` in the row's becoming line
 //! (ReadyRows.qml's asked).
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -153,7 +154,7 @@ impl Act {
 /// screen is never unplugged, or nothing would show the launcher; its
 /// darkening waits for the key that asked to come up, since niri lights
 /// every screen at any key once all are off by name, so it's served
-/// `waits` and the launcher closes for it. An older niri only unplugs,
+/// `closes` and the launcher closes for it. An older niri only unplugs,
 /// as its Turn It Off, as Displays.qml offered them.
 #[must_use]
 pub fn of(name: &str, stands: &str, last: bool, each: bool, words: &Words) -> Vec<Value> {
@@ -169,7 +170,7 @@ pub fn of(name: &str, stands: &str, last: bool, each: bool, words: &Words) -> Ve
         let mut dark = act("verb:display-off", &Act::Dark(name.clone()));
         if last {
             dark["note"] = Value::String(words.wakes.clone());
-            dark["waits"] = Value::Bool(true);
+            dark["closes"] = Value::Bool(true);
         }
         acts.push(dark);
     }
@@ -183,6 +184,66 @@ pub fn of(name: &str, stands: &str, last: bool, each: bool, words: &Words) -> Ve
         });
     }
     acts
+}
+
+/// The ways a screen turns on, off or unplugged, by their act's key, each
+/// as a step into it names it.
+pub const WAYS: [&str; 3] = ["verb:display-on", "verb:display-off", "verb:display-unplug"];
+
+/// A way's name and mark, as the vocabulary says them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Way {
+    pub name: String,
+    pub glyph: String,
+}
+
+impl Way {
+    /// Each way's words, as `word` reads a thing's from the vocabulary,
+    /// by its act's key.
+    pub fn read(word: &dyn Fn(&str, &[&str], &str) -> String) -> BTreeMap<&'static str, Way> {
+        WAYS.iter()
+            .map(|id| {
+                let (name, glyph) = (word(id, &["name"], id), word(id, &["glyph"], ""));
+                (*id, Way { name, glyph })
+            })
+            .collect()
+    }
+}
+
+/// The ways the screen of connector `name` turns off or on, as `of`
+/// serves them, each as a row inside the screen's row (`screen`, its key)
+/// whose Return does it, after its settings, as a step in offers them:
+/// Turn It On for one off or dark, else Turn It Off then Unplug It.
+#[must_use]
+pub fn ways(
+    name: &str,
+    stands: &str,
+    last: bool,
+    each: bool,
+    screen: &str,
+    words: &Words,
+) -> Vec<Value> {
+    of(name, stands, last, each, words)
+        .into_iter()
+        .filter_map(|act| {
+            let id = act["key"].as_str()?.to_owned();
+            let way = words.ways.get(id.as_str())?;
+            Some(json!({
+                "key": super::key(&format!("way:{name}:{id}")),
+                "thing": id,
+                "place": super::PLACE,
+                "kind": "action",
+                "parent": screen,
+                "name": way.name,
+                "glyph": way.glyph,
+                "hue": "action",
+                "depth": 1,
+                "side": [],
+                "note": act.get("note").cloned().unwrap_or_else(|| json!("")),
+                "acts": [act],
+            }))
+        })
+        .collect()
 }
 
 /// niri's answer to an act, or none where it didn't answer in time.
@@ -351,12 +412,12 @@ mod tests {
         );
     }
 
-    /// Each act as `[key, do, note, waits]`, so a case reads as the
+    /// Each act as `[key, do, note, closes]`, so a case reads as the
     /// screen's step-in would.
     fn offered(name: &str, stands: &str, last: bool, each: bool) -> Vec<Value> {
         of(name, stands, last, each, &words())
             .iter()
-            .map(|act| json!([act["key"], act["ask"]["do"], act["note"], act["waits"]]))
+            .map(|act| json!([act["key"], act["ask"]["do"], act["note"], act["closes"]]))
             .collect()
     }
 
