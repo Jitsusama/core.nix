@@ -1,8 +1,8 @@
 // What decides whether a program's act on a copy or a repository shows,
 // and what it opens, run in Qt's own JavaScript engine, the one the shell
-// runs it in: what the clipboard's history says the clipboard holds read
-// back as its types and text, its lines kept, and its other lines passed
-// over (Copied.js); a picture only among
+// runs it in: what the clipboard's history holds of what the clipboard
+// holds read back as its types and text, its lines kept, and any other
+// record passed over (Copied.js); a picture only among
 // picture types, PNG asked for first, its type said and saved by its
 // own name; one web address alone, not one among words, two, or another
 // kind of link; a file's path from the root, home or a file URL, with a
@@ -108,22 +108,20 @@ QtObject {
         };
         const home = "/home/joel";
 
-        // The history's line for what the clipboard holds, read back.
-        const now = (types, text) => JSON.stringify({ now: { types, text } });
-        check("a text copy", Copying.heard(now(["text/plain", "UTF8_STRING"], "one\ntwo")),
+        // The history's record of what the clipboard holds, read back.
+        const now = (types, text) => ({ key: "now:clipboard", kind: "now", now: { types, text } });
+        check("a text copy", Copying.held(now(["text/plain", "UTF8_STRING"], "one\ntwo")),
             { types: ["text/plain", "UTF8_STRING"], text: "one\ntwo" });
-        check("a picture copy", Copying.heard(now(["image/png", "image/jpeg"], "")),
+        check("a picture copy", Copying.held(now(["image/png", "image/jpeg"], "")),
             { types: ["image/png", "image/jpeg"], text: "" });
-        check("a copy with nothing to read", Copying.heard(now([], "")),
+        check("a copy with nothing to read", Copying.held(now([], "")),
             { types: [], text: "" });
-        check("a tab inside the text kept", Copying.heard(now(["text/plain"], "a\tb")),
+        check("a tab inside the text kept", Copying.held(now(["text/plain"], "a\tb")),
             { types: ["text/plain"], text: "a\tb" });
-        check("a copy kept passed over",
-            Copying.heard(JSON.stringify({ at: 1, id: 2, text: "{\"now\":" })), null);
-        check("pictures let go passed over", Copying.heard("{\"gone\":[3]}"), null);
-        check("a broken line passed over", Copying.heard("{\"now\":{"), null);
+        check("no record yet", Copying.held(undefined), null);
+        check("a record of something else", Copying.held({ key: "summary:copies" }), null);
         check("what it can't read read as nothing",
-            Copying.heard(JSON.stringify({ now: { types: ["a", 1], text: 2 } })),
+            Copying.held({ now: { types: ["a", 1], text: 2 } }),
             { types: ["a"], text: "" });
 
         // [types, the type asked for]

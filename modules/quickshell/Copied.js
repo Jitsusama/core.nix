@@ -1,5 +1,5 @@
 // What the clipboard holds, as the acts that take a copy read it
-// (Copied.qml): the line the clipboard's history says of it, whether it's
+// (Copied.qml): the record the clipboard's history holds of it, whether it's
 // a picture and of what type, one web address alone, or a file's path
 // with the line and column to open it at, and whether that file is
 // markdown. Kept apart from Quickshell's types, so the
@@ -7,13 +7,8 @@
 // engine (tests/quick-acts.qml).
 .pragma library
 
-// How the clipboard's history opens the line saying what the clipboard
-// holds now, told apart from its copies' lines by that alone, so the
-// copies it sends as the shell connects aren't parsed here.
-const NOW = "{\"now\":";
-
 // A picture's type, as the clipboard's history says it too
-// (launcher/Copies.qml), in the fewest words, and the extension a file of
+// (clipboard/src/rows.rs), in the fewest words, and the extension a file of
 // it is saved with.
 const PICTURES = {
     "image/png": { said: "PNG", extension: "png" },
@@ -61,21 +56,13 @@ const MARKDOWN = /\.(md|markdown)$/i;
 // MuPDF reads too are the picture viewer's.
 const DOCUMENT = /\.(pdf|xps|oxps|epub|fb2|mobi|djvu|djv|ps|eps)$/i;
 
-// What the clipboard's history says the clipboard holds now,
-// {"now":{"types":[...],"text":"..."}}, as { types, text }: the types it's
-// offered as, and its text, "" for one with none to read, as one cleared
-// or a password manager's. Null for any other line it sends, a copy kept
-// or let go, which the launcher's Copies reads (clipboard/src/main.rs).
-function heard(line) {
-    if (!line.startsWith(NOW)) {
-        return null;
-    }
-    let said;
-    try {
-        said = JSON.parse(line).now;
-    } catch (_error) {
-        return null;
-    }
+// What the clipboard's history says the clipboard holds now, its record
+// `now:clipboard`, `{ key, kind: "now", now: { types, text } }`, as
+// { types, text }: the types it's offered as, and its text, "" for one
+// with none to read, as one cleared or a password manager's. Null while
+// it holds no such record (clipboard/src/main.rs).
+function held(record) {
+    const said = record?.now;
     if (said === null || typeof said !== "object") {
         return null;
     }

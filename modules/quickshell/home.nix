@@ -2175,6 +2175,8 @@ in
           [
             (lib.getExe clipboardHistory)
             "--socket %t/clipboard-history.sock"
+            # The launcher's words, which Copies' rows are said in.
+            "--vocabulary ${launcherWords}"
           ]
           ++ (
             if keepsCopies then

@@ -8090,7 +8090,17 @@
         "one": "{count} copy",
         "many": "{count} copies",
         "silent": "not answering",
-        "unpasted": "didn't paste"
+        "unpasted": "didn't paste",
+        "unkept": "no longer kept",
+        "line": "{count} line",
+        "lines": "{count} lines",
+        "image": "Image",
+        "imageSized": "Image {across} \u00d7 {down}",
+        "picture": "Picture",
+        "png": "PNG",
+        "jpeg": "JPEG",
+        "webp": "WebP",
+        "gif": "GIF"
       },
       "glyph": "clipboard",
       "ask": "which copy?"

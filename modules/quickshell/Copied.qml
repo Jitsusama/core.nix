@@ -4,9 +4,10 @@ pragma ComponentBehavior: Bound
 // Tuple's joining a call whose link was copied (Tuple.qml), and the
 // programs' acts in the launcher that take one, GIMP's picture, Neovim's
 // path, Chrome's link and the reader's markdown. The clipboard's history
-// says what it holds, over the socket it serves the launcher's copies on
-// (clipboard/src/main.rs), so a copy starts nothing, and Copied.js says
-// what the copy is.
+// holds what it holds, `now:clipboard`, over the socket it serves the
+// launcher's copies on (clipboard/src/main.rs), watched as every daemon
+// is (Daemon.qml), so a copy starts nothing, and Copied.js says what the
+// copy is.
 //
 // Its types are what the program offering it lists, and its text is read
 // only when one of them is text, so a picture isn't read as words. A copy
@@ -19,7 +20,6 @@ pragma ComponentBehavior: Bound
 // removed after it was copied takes its act with it, and nothing reads
 // the file itself, however large.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import Qt.labs.folderlistmodel
 import "Copied.js" as Copying
@@ -70,87 +70,24 @@ Singleton {
         }
     }
 
-    readonly property string socket:
-        `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
-
-    // Whether the history is connected.
-    property bool linked: false
-
-    // A connection of its own, read only for what the clipboard holds now,
-    // since the launcher's Copies, which reads the rest, isn't there where
-    // the launcher keeps no copies. A fresh one each time, as Copies' is,
-    // tried again as Daemon.qml's are: two seconds on and twice as long
-    // after each refusal, a minute at most, and one with nothing at its
-    // path once the socket appears.
+    // A watch of its own, of what the clipboard holds alone, since the
+    // launcher's Copies, which watches the rest, isn't there where the
+    // launcher keeps no copies. Not where there's no runtime folder, as in
+    // a test with no session, so nothing is asked of a socket never made.
     LazyLoader {
-        id: listening
-        active: true
+        active: !!Quickshell.env("XDG_RUNTIME_DIR")
 
-        Socket {
-            path: root.socket
-            connected: true
-            parser: SplitParser {
-                onRead: line => {
-                    const copy = Copying.heard(line);
-                    if (copy === null)
-                        return;
-                    root.types = copy.types;
-                    root.text = copy.text;
-                }
-            }
-            onConnectionStateChanged: {
-                root.linked = connected;
-                if (connected)
-                    root.refusals = 0;
-                else
-                    root.tryAgain();
-            }
-            onError: failed => {
-                if (failed !== root.serverNotFound)
-                    root.tryAgain();
+        Daemon {
+            id: history
+            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
+            kind: "now"
+            onHeard: changed => {
+                const copy = Copying.held(history.held["now:clipboard"]);
+                if (copy === null)
+                    return;
+                root.types = copy.types;
+                root.text = copy.text;
             }
         }
-    }
-
-    // QLocalSocket::ServerNotFoundError: nothing at the socket's path.
-    readonly property int serverNotFound: 2
-
-    // The socket's file, watched and never read, so one made after the
-    // last try is tried at once; watched only while there's no connection,
-    // since the watch covers the whole runtime folder.
-    FileView {
-        path: root.socket
-        preload: false
-        printErrors: false
-        watchChanges: !root.linked
-        onFileChanged: {
-            if (!root.linked)
-                root.connectAgain();
-        }
-    }
-
-    function connectAgain() {
-        again.stop();
-        listening.active = false;
-        listening.active = true;
-    }
-
-    // How many times it's been refused since it last answered.
-    property int refusals: 0
-
-    // A connection dropped says so twice, as its state and as an error,
-    // so a try already waiting counts once.
-    function tryAgain() {
-        if (again.running)
-            return;
-        again.interval = Math.min(2000 * 2 ** refusals, 60000);
-        refusals += 1;
-        again.restart();
-    }
-
-    Timer {
-        id: again
-        interval: 2000
-        onTriggered: root.connectAgain()
     }
 }

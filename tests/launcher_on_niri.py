@@ -102,13 +102,20 @@ class Shell:
             means = Path(os.environ["XDG_RUNTIME_DIR"]) / "meaning-means.json"
             self.daemon("meaning", os.environ["MEANING"], str(means))
         # The clipboard's history, the store's own when the check gives it as CLIPBOARD, run as
-        # its unit runs it, so the launcher's copies and pastes go through it.
+        # its unit runs it, so the launcher's copies and pastes go through it, its rows said in
+        # the launcher's words the check gives as CLIPBOARD_WORDS.
         if "CLIPBOARD" in os.environ:
             socket = Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"
             with (self.log.parent / "clipboard-history.log").open("wb") as log:
                 self.daemons.append(
                     subprocess.Popen(  # noqa: S603, the program the check gives
-                        [os.environ["CLIPBOARD"], "--socket", str(socket)],
+                        [
+                            os.environ["CLIPBOARD"],
+                            "--socket",
+                            str(socket),
+                            "--vocabulary",
+                            os.environ["CLIPBOARD_WORDS"],
+                        ],
                         stdout=log,
                         stderr=subprocess.STDOUT,
                     )

@@ -1,34 +1,30 @@
 // The clipboard's history, a collection: every copy made this session, text
-// and pictures, newest first, as clipboard-history hears them
-// (clipboard/src/main.rs). One connection to its socket brings every copy
-// kept, then each new one, so nothing is started per copy and nothing is
-// written to disk. A search with a match adds one row; the right arrow, or
-// Super+V, shows them all. A text copy's row runs its lines together, cut
-// short, and the selected one reads whole below the rows. A picture's row
-// is named by its size, and the launcher shows the picture itself while
-// it's selected (`picture`, its file). Return pastes the copy into the
-// window the launcher opened over: the helper, told its number, puts it
-// back on the clipboard and, once the window has the keys again, presses
-// its paste keys for it, nothing of it waiting on the shell (Pasting.qml,
-// which Super+E's emoji paste through too, this the helper it asks).
-// With no window there, Return only copies, as the right arrow's Copy
-// always does. Forget the Clipboard, the clipboard's last row while
-// there's something to forget and found by its words from anywhere, has
-// the helper forget every copy, and what the clipboard holds with them.
-// Once the history has been silent a second, its row says "not answering"
-// where it counts the copies, and its head says so while it's entered, as
-// People's does; a paste that never landed is said there the same way
-// (Pasting.qml's pressing). Each copy's row keeps its own note.
-// Its rows are made here as each copy is heard, for now: they move into
-// clipboard-history next, which is to serve them worded and ranked by
-// 2026-11-12.
+// and pictures, newest first, their rows made ready by clipboard-history
+// (clipboard/src/main.rs and src/rows.rs) and held over one connection to
+// its socket in the ready-row form (ReadyRows.qml), so nothing is started
+// per copy, nothing is written to disk, and nothing here sorts or words a
+// copy. A search with a match adds one row; the right arrow, or Super+V,
+// shows them all. A text copy's row runs its lines together, cut short,
+// and the selected one reads whole below the rows. A picture's row is
+// named by its size, and the launcher shows the picture itself while it's
+// selected (`picture`, its file). Return pastes the copy into the window
+// the launcher opened over: the history, asked for it by its number, puts
+// it back on the clipboard and, once the window has the keys again,
+// presses its paste keys for it, nothing of it waiting on the shell
+// (Pasting.qml, which Super+E's emoji paste through too, this the helper
+// it asks). With no window there, Return only copies, as the right arrow's
+// Copy always does. Forget the Clipboard, the clipboard's last row while
+// there's something to forget and found by its words from anywhere, asks
+// the history to forget every copy, and what the clipboard holds with
+// them. Once the history has been silent a second, its row says "not
+// answering" where it counts the copies, and its head says so while it's
+// entered, as People's does; a paste that never landed is said there the
+// same way (Pasting.qml's pressing). Each copy's row keeps its own note.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "Ago.js" as Ago
 import "Order.js" as Order
 
 Provider {
@@ -38,13 +34,36 @@ Provider {
 
     collection: Words.collection("clipboard")
 
-    // Newest first.
-    property var all: []
+    // The history's rows of Copies, watched whether or not the launcher's
+    // open, so it opens on rows already held.
+    ReadyRows {
+        id: ready
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
+        place: "copies"
+        beside: ["summary"]
+        make: row => provider.made(row)
+        drawn: provider.launcher?.open ?? false
+        onHeard: changed => provider.heard(changed)
+    }
+    readonly property string summaryKey: "summary:copies"
 
-    // Whether the helper is connected, to copy and paste for Pasting.qml.
-    property bool linked: false
+    // Newest first, as the history serves them.
+    readonly property var all: ready.rows()
+
+    // Whether the history is connected, to copy and paste for Pasting.qml.
+    readonly property bool linked: (ready.link?.wire ?? null) !== null
 
     Component.onCompleted: Pasting.helper = provider
+
+    // Asks the history, as Daemon.qml asks; `then` is given its answer, or
+    // null while it isn't there to ask.
+    function ask(said, then) {
+        const link = ready.link;
+        if (link)
+            link.ask(said, then);
+        else if (then)
+            then(null);
+    }
 
     // What its row and its head say of the history, ahead of the count.
     readonly property string pressing: Pasting.pressing
@@ -61,66 +80,51 @@ Provider {
         name: Words.name("copies:forget"),
         glyph: Words.glyph("copies:forget"),
         hue: "action",
-        run: () => provider.tell("clear")
+        run: () => provider.ask({ ask: "clear" }, answer => {
+            if (answer?.cleared === true)
+                Report.say("forgot the copies");
+        })
     })
-
-    // Asks the helper for something, a line at a time.
-    function tell(line) {
-        const socket = link.item as Socket;
-        if (socket !== null) {
-            socket.write(`${line}\n`);
-            socket.flush();
-        }
-    }
 
     things: all.length > 0 ? [forget] : []
 
-    readonly property string socket:
-        `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
-
-    // How a copy reads in a row: its lines run together, cut short.
-    function shown(text) {
-        const flat = text.replace(/\s+/g, " ").trim();
-        return flat.length > 120 ? `${flat.slice(0, 119)}…` : flat;
-    }
-
-    // What a copy is, by the theme's mark for it, so a link, a path or a
-    // number stands out from the text around it.
-    function kind(text, lines) {
-        const one = text.trim();
-        if (lines > 1)
-            return Theme.glyph.lines;
-        if (/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(one))
-            return Theme.glyph.link;
-        if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(one))
-            return Theme.glyph.email;
-        if (/^(~|\.{0,2})\/\S*$/.test(one))
-            return Theme.glyph.path;
-        if (/^[-+]?[\d,_ ]*\.?\d+$/.test(one))
-            return Theme.glyph.number;
-        return Theme.glyph.clipboard;
-    }
-
-    function made(copy) {
-        const lines = copy.text.trim().split("\n").length;
-        const row = member({
+    // A copy's row, from the one the history serves: worded there, and
+    // given its acts here, through Pasting.qml, until ReadyRows does a
+    // row's acts itself.
+    function made(served) {
+        const held = served.held ?? {};
+        const picture = served.kind === "picture";
+        const fields = {
             thing: true,
-            key: `copy:${shown(copy.text)}`,
-            name: shown(copy.text),
-            glyph: kind(copy.text, lines),
-            hue: "text",
-            at: copy.at,
-            text: copy.text,
+            key: served.thing,
+            name: served.name,
+            glyph: Theme.glyph[served.glyph] ?? Theme.glyph.clipboard,
+            hue: served.hue ?? "text",
+            side: ready.sideOf(served)
+        };
+        const kept = picture ? {
+            id: held.id,
+            picture: held.picture,
+            across: held.across ?? 0,
+            down: held.down ?? 0,
+            // Its type and weight, its side but for when it was copied, for
+            // GIMP's and Inkscape's acts on it (CopiedPicture.qml).
+            about: ready.sideOf({ side: (served.side ?? []).filter(item => item.at === undefined) })
+        } : {
+            text: held.text,
             // As it was copied, lines and all, which the row cuts short.
-            reads: copy.text.trim(),
-            about: lines > 1 ? `${lines} lines` : "",
+            reads: held.reads,
             // Copied while the launcher holds the keys, which the clipboard
-            // needs when the helper has gone and Qt copies it.
+            // needs when the history has gone and Qt copies it.
             now: true
-        });
-        return pastes(row, `${copy.id}`, () => {
-            Quickshell.clipboardText = copy.text;
-        });
+        };
+        const row = member(Object.assign(fields, kept));
+        // A picture lives in the history alone, so without it there's
+        // nothing to copy.
+        const unhelped = picture ? () => {} : () => {
+            Quickshell.clipboardText = held.text;
+        };
+        return pastes(row, `${held.id}`, unhelped);
     }
 
     // A row that pastes on Return, and steps into Paste and Copy, or Copy
@@ -163,87 +167,17 @@ Provider {
         return row;
     }
 
-    // A picture's type and size, in the fewest words.
-    readonly property var kinds: ({
-        "image/png": "PNG",
-        "image/jpeg": "JPEG",
-        "image/webp": "WebP",
-        "image/gif": "GIF"
-    })
-
-    // A picture's size in decimal units, as a file's and a disk's are said
-    // everywhere else in the launcher (Machine.qml's bytes).
-    function weighed(bytes) {
-        const units = [[1e9, "GB"], [1e6, "MB"], [1e3, "kB"]];
-        const unit = units.find(each => bytes >= each[0]);
-        if (!unit)
-            return `${Math.round(bytes)} B`;
-        const scaled = bytes / unit[0];
-        return `${scaled < 10 ? scaled.toFixed(1) : Math.round(scaled)} ${unit[1]}`;
-    }
-
-    // A picture's row, named by its width and height when its type says
-    // them, which a search for "image" finds.
-    function pictured(copy) {
-        const size = copy.width ? ` ${copy.width} \u00d7 ${copy.height}` : "";
-        const row = member({
-            thing: true,
-            key: `picture:${copy.picture}`,
-            name: `Image${size}`,
-            glyph: Theme.glyph.picture,
-            hue: "text",
-            at: copy.at,
-            id: copy.picture,
-            picture: copy.path,
-            across: copy.width ?? 0,
-            down: copy.height ?? 0,
-            about: `${kinds[copy.type] ?? "Picture"} \u00b7 ${weighed(copy.bytes)}`
-        });
-        return pastes(row, `${copy.picture}`, () => provider.tell(`copy ${copy.picture}`));
-    }
-
-    // Each row's age, as of now, after what it is.
-    function aged(rows) {
-        const now = Date.now();
-        for (const row of rows) {
-            row.side = [row.about, Ago.ago(row.at, now)].filter(part => part !== "")
-                .join(" \u00b7 ");
+    // Each copy heard, said for the checks that wait on it: a picture by
+    // its name, and text by its first line.
+    function heard(changed) {
+        for (const key of changed) {
+            const row = ready.served(key);
+            if (!row)
+                continue;
+            const said = row.kind === "picture" ? row.name
+                : String(row.held?.text ?? "").split("\n")[0];
+            Report.say(`heard copy ${said}`);
         }
-        return rows;
-    }
-
-    function heard(line) {
-        let said;
-        try {
-            said = JSON.parse(line);
-        } catch (e) {
-            return;
-        }
-        // What the clipboard holds now, which Copied.qml reads.
-        if (said.now !== undefined)
-            return;
-        if (said.unpasted) {
-            Pasting.missed();
-            Report.say("never pasted");
-            return;
-        }
-        if (said.clear) {
-            all = [];
-            Report.say("forgot the copies");
-            return;
-        }
-        // Pictures the helper let go to make room, whose files are gone.
-        if (said.gone) {
-            all = all.filter(row => row.picture === undefined || !said.gone.includes(row.id));
-            Report.say(`let go ${said.gone.length === 1 ? "a picture" : `${said.gone.length} pictures`}`);
-            return;
-        }
-        const picture = said.picture !== undefined;
-        const kept = all.filter(row => picture ? row.id !== said.picture : row.text !== said.text);
-        const row = picture ? pictured(said) : made(said);
-        kept.unshift(row);
-        all = kept.slice(0, settings.keep ?? 200);
-        Report.say(`heard copy ${picture ? row.name : said.text.split("\n")[0]}`);
     }
 
     function search(typed) {
@@ -261,14 +195,15 @@ Provider {
         const asked = all.length > 0 ? Fuzzy.match(forget.prepared, words, false)
             : { score: -1 };
         // Newest first among equals, not shortest, since a copy is wanted
-        // by when it was made.
+        // by when it was made: the history's order, which a stable sort
+        // keeps.
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
         if (asked.score >= 0)
             finest = Math.min(finest, asked.grade);
-        const kept = aged(Order.sorted(found.filter(f => f.grade === finest),
-            (a, b) => b.score - a.score || b.row.at - a.row.at).map(f => f.row));
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score).map(f => f.row);
         const forgets = asked.score >= 0 && asked.grade === finest;
         return { rows: forgets ? kept.concat([forget]) : kept, grade: finest };
     }
@@ -277,86 +212,13 @@ Provider {
     // lands on the newest copy, never on forgetting them all, as Wi-Fi
     // holds its off (collection-order.md).
     function everything() {
-        return all.length > 0 ? aged(all.slice()).concat([forget]) : [];
+        return all.length > 0 ? all.concat([forget]) : [];
     }
 
-    // How many copies it keeps, its Forget not among them.
+    // How many copies it keeps, its Forget not among them, as the history
+    // says it.
     function counted() {
-        return countedAs(all.length);
-    }
-
-    // A fresh connection each time, since one refused or dropped doesn't
-    // try again by itself. What it sends again replaces what was held. One
-    // refused is tried again as Daemon.qml's are, two seconds on and twice
-    // as long after each refusal, a minute at most, and one with nothing at
-    // its path only once the socket appears: tried every two seconds, a
-    // nested niri without the history woke the shut shell twice a second
-    // for nothing else (RO9YDD, 2026-11-11).
-    LazyLoader {
-        id: link
-        active: true
-
-        Socket {
-            path: provider.socket
-            connected: true
-            parser: SplitParser {
-                onRead: line => provider.heard(line)
-            }
-            onConnectionStateChanged: {
-                provider.linked = connected;
-                if (connected) {
-                    provider.refusals = 0;
-                    provider.all = [];
-                } else {
-                    provider.tryAgain();
-                }
-            }
-            onError: failed => {
-                if (failed !== provider.serverNotFound)
-                    provider.tryAgain();
-            }
-        }
-    }
-
-    // QLocalSocket::ServerNotFoundError: nothing at the socket's path.
-    readonly property int serverNotFound: 2
-
-    // The socket's file, watched and never read, so one made after the
-    // last try is tried at once; watched only while there's no connection,
-    // since the watch covers the whole runtime folder.
-    FileView {
-        path: provider.socket
-        preload: false
-        printErrors: false
-        watchChanges: !provider.linked
-        onFileChanged: {
-            if (!provider.linked)
-                provider.connectAgain();
-        }
-    }
-
-    function connectAgain() {
-        again.stop();
-        link.active = false;
-        link.active = true;
-    }
-
-    // How many times it's been refused since it last answered.
-    property int refusals: 0
-
-    // A connection dropped says so twice, as its state and as an error,
-    // so a try already waiting counts once.
-    function tryAgain() {
-        if (again.running)
-            return;
-        again.interval = Math.min(2000 * 2 ** refusals, 60000);
-        refusals += 1;
-        again.restart();
-    }
-
-    Timer {
-        id: again
-        interval: 2000
-        onTriggered: provider.connectAgain()
+        void ready.placings;
+        return String(ready.held[summaryKey]?.summary?.said ?? countedAs(all.length));
     }
 }
