@@ -21,9 +21,7 @@
 //!   "lastFailure": null, "consecutiveFailures": 0, "freeBytes": 81604378624}]}
 //! ```
 
-#[cfg(test)]
-use crate::proof::Health;
-use crate::proof::{self, Keeper};
+use crate::proof::{self, Health, Keeper};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
@@ -152,17 +150,29 @@ pub fn prove_once(kept: &mut [(Standing, Keeper)], nix: &str, path: &Path, now: 
 
 /// Proves `builders` for as long as it runs, writing to `path`.
 pub fn serve(builders: Vec<Standing>, nix: &str, path: &Path) -> ! {
-    let mut kept: Vec<(Standing, Keeper)> = builders
-        .into_iter()
-        .map(|standing| {
-            let named = proof::named(&standing.uri);
-            (standing, Keeper::of(&named))
-        })
-        .collect();
+    let mut kept = going_on(builders, &proof::earlier(path, "builders"));
     loop {
         prove_once(&mut kept, nix, path, Instant::now());
         std::thread::sleep(PACE);
     }
+}
+
+/// A keeper for each of `builders`, going on from how `earlier`, what
+/// the prover before this one last wrote, said it stood: the prover starts
+/// again with each switch that changes its settings, and one starting
+/// afresh would say a full builder is unproven, so lenders would name it.
+fn going_on(builders: Vec<Standing>, earlier: &[Value]) -> Vec<(Standing, Keeper)> {
+    builders
+        .into_iter()
+        .map(|standing| {
+            let health = earlier
+                .iter()
+                .find(|said| said["uri"] == standing.uri.as_str())
+                .and_then(Health::from_json)
+                .unwrap_or_else(|| Health::of(&proof::named(&standing.uri)));
+            (standing, Keeper::going_on(health))
+        })
+        .collect()
 }
 
 /// A standing builder's health from a prover's, for tests elsewhere.
@@ -235,6 +245,17 @@ mod tests {
         assert!(
             health_of(&said, "ssh-ng://beside").is_none(),
             "one it never kept"
+        );
+        let started = going_on(standing, said["builders"].as_array().expect("builders"));
+        assert_eq!(
+            started[0].1.health.state(),
+            proof::State::Full,
+            "a prover started again goes on from the full one: {said}"
+        );
+        assert_eq!(
+            started[1].1.health.state(),
+            proof::State::Unproven,
+            "and one it never kept is unproven"
         );
     }
 }
