@@ -1894,6 +1894,8 @@ onLinux {
 
   # The keyboard's backlight is heard when its firmware changes it, over a
   # folder laid out as the kernel's lights are, through Quickshell itself.
+  # Kept in Nix because each line lays a light, copies a file Nix gives it
+  # beside the cases, or sets what Quickshell runs them with.
   the-keyboard-light-is-heard = pkgs.runCommandLocal "the-keyboard-light-is-heard" { } ''
     mkdir -p runtime/leds/test::kbd_backlight runtime/leds/input0::capslock && chmod 700 runtime
     echo 3 > runtime/leds/test::kbd_backlight/max_brightness

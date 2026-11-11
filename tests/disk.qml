@@ -228,21 +228,26 @@ ShellRoot {
         printErrors: false
     }
 
-    FileView {
-        id: account
-        path: `${root.machineRoot}/run/user/1000/disk-guard/status.json`
-        printErrors: false
+    // Says what each guard said, or leaves a file nothing parses where it
+    // was, written beside and renamed into place as the guards write
+    // theirs: a FileView's write can make a file new by linking it in,
+    // which says only that it was made, and the daemon, as it should,
+    // waits for one written whole. The case is waited on once both are.
+    Process {
+        id: writer
+
+        onExited: {
+            root.left = 100;
+            waiting.start();
+        }
     }
 
-    FileView {
-        id: machine
-        path: `${root.machineRoot}/run/disk-guard/status.json`
-        printErrors: false
-    }
-
-    // Says what a guard said, or leaves a file nothing parses where it was.
-    function write(file, said) {
-        file.setText(said ?? "");
+    function write(account, machine) {
+        writer.command = ["sh", "-c", 'printf %s "$1" > "$2.writing" && mv "$2.writing" "$2"'
+            + ' && printf %s "$3" > "$4.writing" && mv "$4.writing" "$4"', "write",
+            account ?? "", `${root.machineRoot}/run/user/1000/disk-guard/status.json`,
+            machine ?? "", `${root.machineRoot}/run/disk-guard/status.json`];
+        writer.running = true;
     }
 
     function begin() {
@@ -252,14 +257,11 @@ ShellRoot {
         accountUnit.setText(step.accountUnit ?? running);
         machineUnit.setText(step.machineUnit ?? running);
         // A guard's words may be reckoned as its case begins.
-        write(account, typeof step.account === "function" ? step.account() : step.account);
-        write(machine, step.machine);
-        left = 100;
-        waiting.start();
+        write(typeof step.account === "function" ? step.account() : step.account, step.machine);
     }
 
-    // Quickshell reads the files in the background, so each case waits for
-    // the piece to hold, for five seconds at most.
+    // The daemon tells the piece what was written over its socket, so each
+    // case waits for the piece to hold, for five seconds at most.
     Timer {
         id: waiting
         interval: 50
