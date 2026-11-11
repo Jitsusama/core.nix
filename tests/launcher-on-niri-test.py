@@ -48,9 +48,6 @@ HELD = timedelta(seconds=2)
 CARD_SHARE = 0.02
 # How many bytes of niri's screen are compared at once, a few rows of pixels.
 STRETCH = 4096
-# How soon after the time an opening says it was presented niri's screen shows the card: a
-# screencopy, drawn in software, takes a few hundred ms here.
-SEEN_WITHIN = timedelta(seconds=1)
 # How long before the time said niri's screen may already show a change: niri's screencopy copies
 # what the shell committed as it's asked, while niri presents it only with its next frame of the
 # output, which waits on the headless sway it's nested in for its turn to draw. On a quiet builder
@@ -2135,18 +2132,37 @@ def changed(before: bytes, after: bytes) -> float:
     return differ / len(stretches)
 
 
-def first_changed(before: bytes, deadline: float) -> float:
-    """Give when niri's screen first differed from `before`, on the monotonic clock in ms.
+def first_changed(before: bytes, deadline: float) -> tuple[float, float]:
+    """Give when niri's screen first differed from `before`, and when it last didn't.
 
-    The time is read as each picture is taken, before it's compared, so it's when the screen
-    already showed the change, never later by the comparing; -1 when it never did.
+    Both on the monotonic clock in ms. The first is read as the picture that differed is taken,
+    before it's compared, so it's when the screen already showed the change, never later by the
+    comparing; -1 when it never did. The second is when the last picture that still matched began
+    to be taken, so the change can't have been presented before it; -1 when the first differed.
     """
+    unchanged = -1.0
     while time.monotonic() < deadline:
+        began = time.monotonic() * 1000
         now = screen()
         taken = time.monotonic() * 1000
         if changed(before, now) > CARD_SHARE:
-            return taken
-    return -1.0
+            return taken, unchanged
+        unchanged = began
+    return -1.0, unchanged
+
+
+def presented_after_unchanged(at: float, unchanged: float, what: str) -> None:
+    """Fail when `what` is said presented at `at` before a picture still without it was taken.
+
+    niri's screencopy copies what the shell has committed, which niri presents only after, so a
+    picture begun after the time said must show it. It's judged by order alone, never by how soon
+    a picture came, which a loaded builder stretches past any bound (1036 ms against 1000 on
+    2026-11-11).
+    """
+    assert unchanged < 0 or unchanged <= at + CLOCKS_APART_MS, (
+        f"{what} was said presented at {at:.0f},"
+        f" yet niri's screen didn't show it at {unchanged:.0f}"
+    )
 
 
 def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) -> None:
@@ -2156,7 +2172,8 @@ def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) ->
     is time from trigger to visible on the screen"), so the launcher times each opening to niri's
     presentation feedback. With the shell held stopped just after a chord, niri can show nothing
     new, so the time is at least that long; and niri's own screen first shows the card no sooner
-    than the frame before the time said (COPIED_BEFORE_PRESENTED), and soon after it.
+    than the frame before the time said (COPIED_BEFORE_PRESENTED), and no picture after it lacks
+    the card.
     """
     before = screen()
     chord = time.time()
@@ -2168,7 +2185,7 @@ def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) ->
         # How long the shell is held, as its thread was held after Joel's chords.
         time.sleep(HELD.total_seconds())
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    shown = first_changed(before, deadline)
+    shown, unchanged = first_changed(before, deadline)
     assert shown >= 0, "niri's screen never showed the card"
     seen = shown - chord_at
     shell.launcher_ready()
@@ -2183,11 +2200,7 @@ def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) ->
     assert presented <= seen + lead, (
         f"said presented at {presented} ms; niri's screen showed it at {seen:.0f}"
     )
-    within = SEEN_WITHIN.total_seconds() * 1000
-    assert seen - presented <= within, (
-        f"niri's screen showed the card {seen - presented:.0f} ms after the time said,"
-        f" past {within}"
-    )
+    presented_after_unchanged(chord_at + presented, unchanged, "the opening")
 
 
 def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> None:
@@ -2195,15 +2208,15 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
 
     Joel's bar is every key's change visible within 50 ms (2026-11-10), so each key is timed to
     niri's presentation feedback for the frame that drew it: niri's screen first shows what the
-    key found no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and soon
-    after it.
+    key found no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and no
+    picture after it lacks it.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     before = screen()
     shell.as_account("wtype w")
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    seen = first_changed(before, deadline)
+    seen, unchanged = first_changed(before, deadline)
     assert seen >= 0, "niri's screen never showed what the key found"
     presented: list[Json] = []
     while not presented and time.monotonic() < deadline:
@@ -2215,10 +2228,7 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     assert key["from"] <= key["at"] <= seen + lead, (
         f"said {key}; niri's screen showed it at {seen:.0f}"
     )
-    within = SEEN_WITHIN.total_seconds() * 1000
-    assert seen - key["at"] <= within, (
-        f"niri's screen showed the key {seen - key['at']:.0f} ms after the time said, past {within}"
-    )
+    presented_after_unchanged(key["at"], unchanged, "the key")
     # A letter sets no glide going, so it landed at its first frame.
     landed = json.loads(shell.as_account(shell.ipc("keysLanded")))
     assert key in landed, f"the letter {key} didn't land at its first frame: {landed}"
@@ -2290,15 +2300,15 @@ class StandIn:
     """Serve a daemon's records, as the quests or machine daemon does, and tell each a change.
 
     It answers the shell's daemon interface on the socket the account's systemd holds for the
-    daemon, which nothing else serves while it stands in: hello, a watch with every record held of the one kind
-    it names, and any other ask with none.
+    daemon, which nothing else serves while it stands in: hello, a watch with every record held
+    of what it watches, and any other ask with none.
     """
 
     def __init__(self, path: Path) -> None:
         """Listen on `path`, holding nothing yet."""
         self.path = path
         self.held: dict[str, Json] = {}
-        # Each client watching, by the kind it watches, "" for every kind.
+        # Each client watching, by what it watches (StandIn.theirs).
         self.clients: dict[socket.socket, str] = {}
         self.lock = threading.Lock()
         path.parent.mkdir(mode=0o700, exist_ok=True)
@@ -2338,6 +2348,27 @@ class StandIn:
             },
         }
 
+    @staticmethod
+    def watched(asked: Json) -> str:
+        """Give what a watch asks for: its one kind, "place:" a place's served rows, "" all.
+
+        A place's ready rows watch a list of kinds, its rows and those beside them, narrowed to
+        the place (ReadyRows.qml), as Power's rows and headline are watched of the machine daemon.
+        """
+        kind = asked.get("kind")
+        if isinstance(kind, str):
+            return kind
+        return f"place:{asked['place']}" if "place" in asked else ""
+
+    @staticmethod
+    def theirs(watching: str, record: Json) -> bool:
+        """Give whether a client watching `watching` is told of `record`."""
+        if watching.startswith("place:"):
+            # A served record's key names its place second, "row:power:charge", "head:power".
+            key = str(record["key"])
+            return key.split(":")[1] == watching.removeprefix("place:")
+        return watching in ("", record.get("kind"))
+
     def accept(self) -> None:
         """Answer each client that connects, for as long as the run lasts."""
         while True:
@@ -2355,25 +2386,20 @@ class StandIn:
                 if asked.get("ask") == "hello":
                     self.write(client, {"id": "hello", "version": 1, "state": "answering"})
                 elif asked.get("ask") == "watch" and asked.get("id") == "all":
-                    kind = asked.get("kind")
-                    one = kind if isinstance(kind, str) else ""
-                    self.write(client, {"id": "all"}, watching=one)
+                    self.write(client, {"id": "all"}, watching=self.watched(asked))
                 else:
                     self.write(client, {"id": asked.get("id"), "records": []})
 
     def write(self, client: socket.socket, said: Json, *, watching: str | None = None) -> None:
         """Send one line to a client, a watch with every record held, which it's told of after.
 
-        A watch naming one kind gets only that kind, as each of the machine daemon's kinds is
-        watched apart, and "" every record. Under the lock, so no change is told between a watch's
-        records and its being told.
+        A watch gets only what it watches (StandIn.theirs). Under the lock, so no change is told
+        between a watch's records and its being told.
         """
         with self.lock:
             if watching is not None:
                 records = [
-                    record
-                    for record in self.held.values()
-                    if watching in ("", record.get("kind"))
+                    record for record in self.held.values() if self.theirs(watching, record)
                 ]
                 said = {**said, "records": records}
                 self.clients[client] = watching
@@ -2387,8 +2413,8 @@ class StandIn:
             for key in gone:
                 self.held.pop(key, None)
             at = time.monotonic() * 1000
-            for client, kind in list(self.clients.items()):
-                theirs = [record for record in changed if kind in ("", record.get("kind"))]
+            for client, watched in list(self.clients.items()):
+                theirs = [record for record in changed if self.theirs(watched, record)]
                 said = {"id": "all", "changed": theirs, "gone": gone}
                 try:
                     client.sendall((json.dumps(said) + "\n").encode())
@@ -2397,11 +2423,11 @@ class StandIn:
                     del self.clients[client]
         return at
 
-    def watching(self, kind: str, deadline: float) -> bool:
-        """Give whether a client watches `kind` by `deadline`, so what it's told is heard."""
+    def watching(self, watched: str, deadline: float) -> bool:
+        """Give whether a client watches `watched` by `deadline`, so what it's told is heard."""
         while time.monotonic() < deadline:
             with self.lock:
-                if kind in self.clients.values():
+                if watched in self.clients.values():
                     return True
             time.sleep(launcher_on_niri.POLL)
         return False
@@ -2425,19 +2451,29 @@ def quests() -> Iterator[StandIn]:
     served.close()
 
 
-def battery(pct: int) -> Json:
-    """Give the machine's battery at `pct`, as the machine daemon says it (tests/power.qml)."""
-    return {
-        "key": "supply:BAT0",
-        "kind": "supply",
-        "type": "Battery",
-        "scope": "System",
-        "name": "BAT0",
-        "status": "Discharging",
-        "capacity_pct": pct,
-        "energy_wh": pct / 2,
-        "energy_full_wh": 50,
+def battery(pct: int) -> list[Json]:
+    """Give Power's headline and Charge row at `pct`, as the machine daemon serves them.
+
+    The shapes are power_rows.rs's, in the crate's wrap, as tests/power.qml serves them too.
+    """
+    graph = {"shape": "bar", "values": [pct / 100], "warn": False}
+    head = {"said": f"{pct}% \u00b7 on battery", "graph": graph}
+    row = {
+        "key": "row:power:charge",
+        "thing": "power:charge",
+        "place": "power",
+        "kind": "figure",
+        "order": 2,
+        "depth": 0,
+        "name": "Charge",
+        "side": [{"said": f"{pct}%"}],
+        "graph": graph,
+        "acts": [{"key": "verb:copy", "copy": f"{pct}%"}],
     }
+    return [
+        {"key": "head:power", "kind": "head", "head": head},
+        {"key": "row:power:charge", "kind": "row", "row": row},
+    ]
 
 
 @pytest.fixture
@@ -2450,7 +2486,7 @@ def machine(shell: Shell) -> Iterator[StandIn]:
     """
     shell.daemon_stopped("machine")
     served = StandIn(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "machine.sock")
-    served.told([battery(80)], [])
+    served.told(battery(80), [])
     try:
         yield served
     finally:
@@ -2497,13 +2533,14 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
     Joel's 50 ms bar holds for updates as for keys (2026-11-10), so the launcher times each change
     a daemon tells from the line it came in to niri's presentation feedback for the frame drawing
     it (Y2YBTS, 2026-11-11): never from before the line was written, and niri's screen first shows
-    it no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and soon after.
+    it no sooner than the frame before the time said (COPIED_BEFORE_PRESENTED), and no picture
+    after it lacks it.
     """
     after = quests_shown(shell)
     before = screen()
     written = quests.told(added(), [])
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    seen = first_changed(before, deadline)
+    seen, unchanged = first_changed(before, deadline)
     assert seen >= 0, "niri's screen never showed the change"
     presented = updates_presented(shell, after, deadline)
     shell.launcher_until(lambda shown: f"Kestrel {ADDED}" in shown["rows"])
@@ -2518,11 +2555,7 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
     assert change["from"] <= change["at"] <= seen + lead, (
         f"said {change}; niri's screen showed it at {seen:.0f}"
     )
-    within = SEEN_WITHIN.total_seconds() * 1000
-    assert seen - change["at"] <= within, (
-        f"niri's screen showed the change {seen - change['at']:.0f} ms after the time said,"
-        f" past {within}"
-    )
+    presented_after_unchanged(change["at"], unchanged, "the change")
 
 
 def test_a_daemons_change_niri_holds_back_is_presented_late(
@@ -2612,8 +2645,8 @@ def test_an_answer_its_daemon_moves_is_presented_as_a_change_is(
     shell.answer("battery")
     shell.launcher_until(lambda shown: shown["kind"] == "answer")
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    assert machine.watching("supply", deadline), "the shell never watched the battery"
-    written = machine.told([battery(79)], [])
+    assert machine.watching("place:power", deadline), "the shell never watched Power's rows"
+    written = machine.told(battery(79), [])
     presented = moved_presented(shell, written, deadline)
     shell.close_launcher()
     assert presented, "the battery's move was never said presented"
