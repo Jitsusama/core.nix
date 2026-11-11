@@ -106,7 +106,8 @@ impl World {
         // be sent beside it, failing if it never is. While drops-once is
         // there, the next build on the builders loses its builder, as a
         // corrupted tunnel did on 11 November. A batch built here is
-        // written in batched, and the pieces linked to be kept in kept. A system's
+        // written in batched, and the pieces linked to be kept in kept, with
+        // the outputs of the secret piece the wrapper is built from. A system's
         // build starts a call while call-starts is there. Each input
         // overridden is written down, and a system made for a commit with
         // its input at a rev, as COMMIT+REV, is what they build.
@@ -124,6 +125,9 @@ impl World {
                  /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; \
                  if [ -e {big} ]; then printf '  /nix/store/e-big.drv\\n  \
                  /nix/store/d-modules.drv\\n' >&2; fi; exit 0;;\n\
+                 *' derivation show /nix/store/s-secret.drv '*) echo '{{\"derivations\": \
+                 {{\"s-secret.drv\": {{\"outputs\": {{\"out\": {{\"path\": \"{secret_out}\"}}, \
+                 \"doc\": {{\"path\": \"{secret_out}-doc\"}}}}}}}}}}'; exit 0;;\n\
                  *' derivation show '*) secret=\n\
                  big=; [ -e {big} ] && big=', \"e-big.drv\": {{\"name\": \"big-1\", \
                  \"env\": {{\"requiredSystemFeatures\": \"big-parallel\"}}}}, \
@@ -137,7 +141,7 @@ impl World {
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
                  \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}\
                  '\"$secret$big\"'}}}}'; exit 0;;\n\
-                 *'/evaluated/drv '*) echo \"$*\" >> {kept}; exit 0;;\n\
+                 *'/evaluated/drv '*|*'/evaluated/built '*) echo \"$*\" >> {kept}; exit 0;;\n\
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' build --no-link -L '*) echo \"$*\" >> {batched}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
@@ -187,6 +191,7 @@ impl World {
                 here = root.join("here").display(),
                 batched = root.join("batched").display(),
                 kept = root.join("kept").display(),
+                secret_out = root.join("secret-out").display(),
                 call_starts = root.join("call-starts").display(),
                 call = root.join("call").display(),
                 away = root.join("away").display(),
@@ -1964,9 +1969,18 @@ fn what_the_system_needs_is_kept_from_being_collected_while_it_builds() {
     let evaluated = world.config.state.join("evaluated");
     fs::create_dir_all(&evaluated).unwrap();
     fs::write(evaluated.join("drv-9"), "").unwrap();
+    // The secret piece's output is in the store and its doc isn't.
+    let secret = world.root.join("secret-out");
+    fs::write(&secret, "").unwrap();
     assert_eq!(world.update().1, done(&head));
+    let kept = world.read("kept");
+    let mut links = kept.lines();
     assert_eq!(
-        world.read("kept").split_whitespace().collect::<Vec<_>>(),
+        links
+            .next()
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>(),
         [
             "--extra-experimental-features",
             "nix-command",
@@ -1980,6 +1994,23 @@ fn what_the_system_needs_is_kept_from_being_collected_while_it_builds() {
             "/nix/store/t-secret-tool.drv",
         ],
         "each piece the dry run listed wasn't linked to be kept"
+    );
+    assert_eq!(
+        links
+            .next()
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>(),
+        [
+            "--extra-experimental-features",
+            "nix-command",
+            "flakes",
+            "build",
+            "--out-link",
+            &evaluated.join("built").display().to_string(),
+            &secret.display().to_string(),
+        ],
+        "what a needed piece is built from, built already, wasn't kept: {kept}"
     );
     assert!(
         !evaluated.join("drv-9").exists(),

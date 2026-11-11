@@ -8,7 +8,7 @@ use crate::batches;
 use crate::config::{Config, Kind};
 use crate::line::Applied;
 use crate::run::{self, Failure};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -178,7 +178,11 @@ pub(crate) fn needed(
 /// and the switch failed when its build came to it. A derivation's own
 /// path, with no outputs named, is linked as it is, with nothing built. A
 /// derivation left unkept only risks that again, so a failure is said and
-/// the build goes on.
+/// the build goes on. What the needed pieces are built from and is built
+/// already is kept too, since the dry run counts it built and so lists it
+/// nowhere: on 11 November the disk guard's collection took the kernel's
+/// output, which nothing else held, three minutes after a dry run, and the
+/// build here compiled the kernel for `boot.json`.
 fn keep(config: &Config, drvs: &[String]) {
     let folder = config.evaluated_folder();
     let kept = match fs::remove_dir_all(&folder) {
@@ -200,6 +204,65 @@ fn keep(config: &Config, drvs: &[String]) {
     if let Err(failure) = run::output(link, "keeping what the system needs", drvs) {
         eprintln!("{}", failure.why);
     }
+    let built = match built_from(config, drvs) {
+        Ok(built) => built,
+        Err(failure) => {
+            eprintln!("{}", failure.why);
+            return;
+        }
+    };
+    if built.is_empty() {
+        return;
+    }
+    // Each is in the store, so linking it builds nothing.
+    let mut link = nix(config);
+    link.args(["build", "--out-link"]).arg(folder.join("built"));
+    if let Err(failure) = run::output(link, "keeping what the system is built from", &built) {
+        eprintln!("{}", failure.why);
+    }
+}
+
+/// The outputs in the store of the derivations `drvs` are built from that
+/// aren't among them.
+fn built_from(config: &Config, drvs: &[String]) -> Result<Vec<String>, Failure> {
+    let show = |what: &[String]| {
+        let mut show = nix(config);
+        show.args(["derivation", "show"]);
+        run::output(show, "reading what the system is built from", what)
+    };
+    let needed = pieces(&show(drvs)?)?;
+    let inputs: Vec<String> = needed
+        .values()
+        .flat_map(|piece| piece.inputs.iter())
+        .filter(|input| !needed.contains_key(*input))
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(output_paths(&show(&inputs)?)?
+        .into_iter()
+        .filter(|path| Path::new(path).exists())
+        .collect())
+}
+
+/// Every output path of the derivations `nix derivation show` gave, which
+/// newer Nix names in the store and older by its whole path.
+fn output_paths(shown: &str) -> Result<Vec<String>, Failure> {
+    let shown: serde_json::Value = serde_json::from_str(shown)
+        .map_err(|e| Failure::new(format!("reading what the system is built from: {e}")))?;
+    let derivations = shown.get("derivations").unwrap_or(&shown);
+    Ok(derivations
+        .as_object()
+        .into_iter()
+        .flat_map(|derivations| derivations.values())
+        .filter_map(|d| d["outputs"].as_object())
+        .flat_map(|outputs| outputs.values())
+        .filter_map(|output| output["path"].as_str())
+        .map(stored)
+        .collect())
 }
 
 /// Builds the big pieces on the builders and, beside them, the small ones
@@ -1121,6 +1184,24 @@ mod tests {
         let (kept, rest) = heavy(&pieces(older).unwrap(), &needed, &["secret".to_owned()]);
         assert_eq!(kept, ["/nix/store/s-secret.drv"]);
         assert_eq!(rest, [] as [std::string::String; 0]);
+    }
+
+    #[test]
+    fn every_output_a_derivation_names_is_read_by_its_path() {
+        let newer = r#"{"version": 4, "derivations": {"k-linux.drv": {"outputs": {
+            "out": {"path": "p-linux"}, "dev": {"path": "d-linux-dev"}}}}}"#;
+        assert_eq!(
+            output_paths(newer).unwrap(),
+            ["/nix/store/d-linux-dev", "/nix/store/p-linux"],
+            "an output newer Nix names in the store wasn't read"
+        );
+        let older = r#"{"/nix/store/k-linux.drv": {"outputs": {
+            "out": {"path": "/nix/store/p-linux"}}}}"#;
+        assert_eq!(
+            output_paths(older).unwrap(),
+            ["/nix/store/p-linux"],
+            "an output older Nix gives by its whole path wasn't read"
+        );
     }
 
     #[test]
