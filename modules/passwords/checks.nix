@@ -114,6 +114,9 @@ onLinux {
         lib.hasInfix "%t/daemons/passwords.sock" started
         && (home.systemd.user.sockets.passwords.Socket.ListenStream or "") == "%t/daemons/passwords.sock"
         && (service.Service.LimitCORE or null) == 0
+        # Nothing starts it or its socket until agents are fenced (home.nix).
+        && !(service ? Install.WantedBy)
+        && !(home.systemd.user.sockets.passwords ? Install.WantedBy)
         && (service.Service.StateDirectory or null) == "passwords"
         && lib.elem "graphical-session.target" (service.Unit.PartOf or [ ])
         && lib.any (lib.hasInfix "PASSWORDS_COPIER=") (lib.toList (service.Service.Environment or [ ]))
