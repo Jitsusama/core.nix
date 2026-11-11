@@ -180,6 +180,21 @@ QtObject {
         lined[2].count = "said";
         expect("a note set holds", lined[2].count, "said");
 
+        // A row lined, then given a field more, as History's age gives its
+        // rows their side, keeps that field when it's lined again. Qt 6.12
+        // names the slot of a getter's setter once per shape, so a field
+        // turned into a getter on a shape grown since writes its setter
+        // over the new field, or past the copy's end. That wrote over the
+        // shell's memory until it crashed in Notice.lined, at 11:09 on
+        // 2026-11-11.
+        const grown = { key: "notice:grown", count: "", title: "Deploy log", wrote: log,
+            atGrown: 1 };
+        Notice.lined([grown], ["log"], holds);
+        grown.sideGrown = "unread";
+        const regrown = Notice.lined([grown], ["log"], holds)[0];
+        expect("a field given between linings is kept",
+            Object.assign({}, regrown).sideGrown, "unread");
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
