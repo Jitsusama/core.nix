@@ -1,6 +1,6 @@
 """Time each chord's opening the one way every launcher change quotes, on niri.
 
-A lab, not a check: modules/quickshell/checks.nix builds it as the `lab` of
+A lab, not a check: modules/quickshell/checks/core.nix builds it as the `lab` of
 the-launcher-opens-on-what-it-kept-on-niri, which no gate runs, and docs/testing.md's Timing the
 Launcher says how its runs are taken a side at a time and read. Two labs gave chords 43 to 73 ms
 and 173 to 225 ms presented (2026-11-11), for they opened different places, kept and whole, with
