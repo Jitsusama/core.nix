@@ -14,8 +14,9 @@
       what each path is, a file unless it says folder, or a site, an address
       and a title a line; `watch`, the file read again each time it
       changes, or `asked`, read only as the program is stepped into, once
-      each time the launcher opens; `list`, the command that prints it,
-      newest first; `dated`, true where each line it prints ends in a tab
+      each time the launcher opens, and with `told` too, read again only
+      once the program says its list changed (kitty's tells.py); `list`,
+      the command that prints it, newest first; `dated`, true where each line it prints ends in a tab
       and when it was last used in seconds since 1970, or nothing where
       that isn't known, so a program's Recent places it among its other
       sources by when, and lists one with no time after those with one

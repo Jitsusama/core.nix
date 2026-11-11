@@ -247,8 +247,9 @@ def said_of(shown: Json, name: str) -> list[str]:
 def test_the_launcher_goes_to_a_kitty_tab_inside_its_window(desktop: Desktop) -> None:
     """The launcher lists kitty's tabs, and Return on one goes to it through kitty.
 
-    One path through the connection: open-now asking a real kitty over its socket, the tab
-    matched to niri's window, and kitty's remote control bringing it forward once niri has
+    One path through the connection: kitty's watcher telling the programs daemon of the tab
+    made after the shell first read the list, open-now asking a real kitty over its socket,
+    the tab matched to niri's window, and kitty's remote control bringing it forward once niri has
     focused the window. Beside Tabs are the repositories fd finds under ~/src in zoxide's
     order, and the machines ssh's files name, by zsh's history: each read from the account's
     own files. No row of them is run, since each would open a window. Each case of the rows'
