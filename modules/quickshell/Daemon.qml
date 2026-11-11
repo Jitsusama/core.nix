@@ -278,7 +278,13 @@ Scope {
         return now;
     }
 
+    // How many lines it has read, for the check that the shut shell hears
+    // nothing of a window resized. Read only when asked, so nothing wakes
+    // for it.
+    property int linesHeard: 0
+
     function said(line) {
+        linesHeard += 1;
         let answer;
         try {
             answer = JSON.parse(line);

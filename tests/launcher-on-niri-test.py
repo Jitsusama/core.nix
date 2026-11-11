@@ -528,32 +528,39 @@ RESIZES = 20
 
 
 def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
-    """With the launcher shut, a window resized over and over wakes the shell no more than quiet.
+    """With the launcher shut, a window resized over and over is heard of not once.
 
     The shell's niri heard every event niri sent, each tile resized or scrolled among them, and
     Joel's shut shell woke for each (2026-11-10), though only a notice drawn beside its window
     reads a tile. It now hears the windows daemon, told only the fields it reads, and asks for
-    tiles only while a notice is drawn. Wakes are counted over the resizes and over as long left
-    quiet; niri's own events, heard, would wake the shell at least once a resize.
+    tiles only while a notice is drawn. What the shell reads of niri's windows is counted line
+    by line, the window's opening proving the count runs; a wake counted from /proc took in
+    whatever else the shell did then, such as the work a closing leaves for a moment after.
     """
+
+    def heard() -> dict[str, int]:
+        return cast("dict[str, int]", json.loads(shell.as_account(shell.ipc("linesHeard"))))
+
+    before = heard()
     window = shell.opened("Dunlin Notes")
     try:
         shell.as_account(f"niri msg action focus-window --id {window['id']}")
         # The span measured, for the window's opening to reach the shell, not a wait for it.
         time.sleep(SETTLING.total_seconds())
-        began, before = time.monotonic(), shell.wakes()
+        opening = heard()
         for one in range(RESIZES):
             shell.as_account(f"niri msg action set-column-width {'+' if one % 2 else '-'}10%")
+        # The span measured, for the resizes' events to reach the shell, not a wait for them.
         time.sleep(SETTLING.total_seconds())
-        resized, span = shell.wakes() - before, time.monotonic() - began
-        before = shell.wakes()
-        # The quiet span measured, as long as the resizes took, not a wait for something to happen.
-        time.sleep(span)
-        quiet = shell.wakes() - before
+        resized = heard()
     finally:
         shell.close(window)
-    assert resized - quiet < RESIZES // 2, (
-        f"the shut shell woke {resized} times over {RESIZES} resizes, {quiet} left quiet as long"
+    assert opening["niri"] > before["niri"], (
+        f"the shell heard nothing of a window opened: {before}, then {opening}"
+    )
+    moved = {name: resized[name] - opening.get(name, 0) for name in resized}
+    assert not any(moved.values()), (
+        f"the shut shell heard of {RESIZES} resizes, by lines read: {moved}"
     )
 
 

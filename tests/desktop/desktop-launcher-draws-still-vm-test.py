@@ -95,15 +95,17 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     # of the queue's, and the node's record of it isn't watched, which the
     # reports below say, only the opening's heard. Nor are its rows joined
     # again while it's closed, even by a change it does hear, a window
-    # opening, counted before it opens, since an open launcher joins them
+    # opening, heard before it opens, since an open launcher joins them
     # as anything on the desktop changes: a budget for the opening's joins
-    # failed whenever the desktop moved meanwhile (2026-11-06).
+    # failed whenever the desktop moved meanwhile (2026-11-06). The window
+    # is seen heard by the lines Windows reads of it, since a closed
+    # Windows holds it and makes no row, so says no change of its own.
     assert watches() == 0, "the closed launcher watches the queue's folder"
-    windows = int(desktop.as_account("qs ipc call launcher changes windows"))
+    lines = "qs ipc call launcher linesHeard | jq .windows"
+    windows = int(desktop.as_account(lines))
     desktop.as_account("niri msg action spawn -- kitty --title still-closed sleep infinity")
     desktop.machine.wait_until_succeeds(
-        desktop.in_session(f"test $(qs ipc call launcher changes windows) -gt {windows}"),
-        timeout=STARTING,
+        desktop.in_session(f"test $({lines}) -gt {windows}"), timeout=STARTING
     )
     joined = int(desktop.as_account("qs ipc call launcher joined")) - before
     assert joined == 0, f"the closed launcher joined its rows {joined} times"

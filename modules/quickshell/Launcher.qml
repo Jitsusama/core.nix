@@ -6578,6 +6578,18 @@ Scope {
             return String(root.choicesJoined);
         }
 
+        // How many lines the shell has read of niri's windows, Niri.qml's
+        // and each source's that hears the windows daemon, by name, for the
+        // check that the shut shell hears nothing of a window resized.
+        function linesHeard(): string {
+            const by = { niri: Niri.linesHeard() };
+            for (const source of root.sources) {
+                if (typeof source.linesHeard === "function")
+                    by[source.settings?.name ?? ""] = source.linesHeard();
+            }
+            return JSON.stringify(by);
+        }
+
         // How many changes a source has said, open or closed, so that check
         // knows the closed launcher heard one before counting what it made.
         function changes(name: string): string {

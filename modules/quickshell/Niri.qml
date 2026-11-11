@@ -450,10 +450,22 @@ Singleton {
         }
         parser: SplitParser {
             onRead: line => {
+                root.streamHeard += 1;
                 const event = JSON.parse(line);
                 if (!("Ok" in event))
                     root.hear(event);
             }
         }
+    }
+
+    // How many lines niri's stream has said while it stood in.
+    property int streamHeard: 0
+
+    // Every line heard of niri's windows and places, from the windows
+    // daemon or niri's own stream, for the check that the shut shell hears
+    // nothing of a window resized.
+    function linesHeard(): int {
+        return windowsHeard.linesHeard + placesHeard.linesHeard + tilesHeard.linesHeard
+            + streamHeard;
     }
 }
