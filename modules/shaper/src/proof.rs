@@ -17,10 +17,13 @@
 //! of blocks has the shaper on for one and off for the other, in turn
 //! first, so a link that drifts through the run favours neither.
 //!
-//! The load goes on the link only while no call is on, no audio plays
-//! and Joel has been idle two minutes, as Wayland's idle notice tells
-//! swayidle; the moment any of them changes, every load stops, the shaper goes back as it was, the
-//! pair under way is dropped, and it waits for his next idle stretch. It
+//! The load goes on the link only while no call is on, no audio plays,
+//! nothing the machine names in `jitsusama.shaper.proofWaitsWhile` says
+//! it's busy, such as a meeting within ten minutes, since a call can ring
+//! before its microphone opens, and Joel has been idle two minutes, as
+//! Wayland's idle notice tells swayidle. The moment any of them changes,
+//! every load stops, the shaper goes back as it was, the pair under way
+//! is dropped, and it waits for his next idle stretch. It
 //! waits `--wait` seconds from its start in all, and exits 75 if they run
 //! out before every pair is measured, writing what it measured to
 //! `--out`. The call's packets are src/call.rs's.
@@ -56,6 +59,10 @@ const SERVER_ENV: &str = "SHAPER_SPEED_SERVER";
 const SETTLE: Duration = Duration::from_secs(15);
 /// What the gate's idle notice waits for, in seconds.
 const IDLE_S: u32 = 120;
+/// Where the commands the proof waits on are named, as a JSON list of
+/// commands, each a list of its program and arguments: the machine's
+/// `jitsusama.shaper.proofWaitsWhile`, which the wrapper sets.
+const WAITS_ENV: &str = "SHAPER_PROOF_WAITS_WHILE";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Arm {
@@ -123,14 +130,45 @@ fn asked(args: &[String], named: Option<String>) -> Result<Asked, String> {
     Ok(a)
 }
 
+/// Reads the commands the proof waits on from `named`, the machine's;
+/// none named waits on none.
+fn waits_while(named: Option<&str>) -> Result<Vec<Vec<String>>, String> {
+    let commands: Vec<Vec<String>> = match named.filter(|n| !n.trim().is_empty()) {
+        Some(n) => serde_json::from_str(n).map_err(|e| format!("{WAITS_ENV}: {e}"))?,
+        None => Vec::new(),
+    };
+    if commands.iter().any(Vec::is_empty) {
+        return Err(format!("{WAITS_ENV}: a command with no program"));
+    }
+    Ok(commands)
+}
+
+/// Whether any of `commands` says the machine is busy: each exits 1
+/// while it isn't, and anything else, a program that won't run
+/// included, counts as busy, since it couldn't tell.
+fn busy(commands: &[Vec<String>]) -> bool {
+    commands.iter().any(|command| {
+        !Command::new(&command[0])
+            .args(&command[1..])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.code() == Some(1))
+    })
+}
+
 /// Joel's being away and no call on, held as swayidle tells it.
 struct Gate {
     mark: PathBuf,
     idle: Child,
+    /// What else the load waits on, as `jitsusama.shaper.proofWaitsWhile`
+    /// names it.
+    waits: Vec<Vec<String>>,
 }
 
 impl Gate {
-    fn new() -> Option<Gate> {
+    fn new(waits: Vec<Vec<String>>) -> Option<Gate> {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR")?;
         let mark = PathBuf::from(runtime).join(format!("shaper-proof-idle-{}", std::process::id()));
         let _ = fs::remove_file(&mark);
@@ -142,11 +180,12 @@ impl Gate {
             .stdout(Stdio::null())
             .spawn()
             .ok()?;
-        Some(Gate { mark, idle })
+        Some(Gate { mark, idle, waits })
     }
 
     /// Whether the link may carry the load now. A call detector that
-    /// can't tell is taken for a call, and so is audio playing.
+    /// can't tell is taken for a call, and so is audio playing, and the
+    /// commands waited on are asked last, being the slowest.
     fn open(&self) -> bool {
         self.mark.exists()
             && Command::new("a-call-is-on")
@@ -155,6 +194,7 @@ impl Gate {
                 .status()
                 .is_ok_and(|s| s.code() == Some(1))
             && !audio_plays()
+            && !busy(&self.waits)
     }
 }
 
@@ -408,7 +448,14 @@ pub fn command(args: &[String]) -> ExitCode {
         eprintln!("no default route to measure");
         return ExitCode::FAILURE;
     };
-    let Some(gate) = Gate::new() else {
+    let waits = match waits_while(std::env::var(WAITS_ENV).ok().as_deref()) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let Some(gate) = Gate::new(waits) else {
         eprintln!("couldn't start swayidle to hear whether Joel is away");
         return ExitCode::FAILURE;
     };
@@ -422,7 +469,10 @@ pub fn command(args: &[String]) -> ExitCode {
         |from| window(&asked, &link, &gate, was_on, from, &mut idle),
     );
     if pairs.is_empty() {
-        eprintln!("Joel hasn't been idle two minutes, or a call is on: not loading the link");
+        eprintln!(
+            "Joel hasn't been idle two minutes, or a call, audio or a meeting is on: \
+             not loading the link"
+        );
         return ExitCode::from(75);
     }
     let verdict = judge(&idle, &pairs);
@@ -527,7 +577,9 @@ fn window(
         thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
                 if !gate.open() {
-                    eprintln!("Joel is back, or a call started: stopping the load");
+                    eprintln!(
+                        "Joel is back, or a call, audio or a meeting started: stopping the load"
+                    );
                     stop.store(true, Ordering::Relaxed);
                     stop_scopes();
                 }
@@ -669,6 +721,40 @@ mod tests {
         assert!(
             (2..=6).contains(&asked),
             "asked {asked} times, not every 0.4 s"
+        );
+    }
+
+    #[test]
+    fn a_command_waited_on_that_says_busy_holds_the_load() {
+        let exits = |code: u8| vec!["sh".to_string(), "-c".into(), format!("exit {code}")];
+        assert!(busy(&[exits(1), exits(0)]), "loaded through a meeting");
+        assert!(
+            busy(&[exits(2)]),
+            "loaded through a calendar it couldn't read"
+        );
+        assert!(
+            busy(&[vec!["no-such-program-here".into()]]),
+            "loaded where a command waited on wouldn't run"
+        );
+        assert!(!busy(&[exits(1), exits(1)]), "held with nothing busy");
+        assert!(!busy(&[]), "held with nothing to wait on");
+    }
+
+    #[test]
+    fn the_commands_waited_on_are_read() {
+        let named = r#"[["a-meeting-is-near", "/calls", "/off"]]"#;
+        assert_eq!(
+            waits_while(Some(named)).expect("a command"),
+            vec![vec!["a-meeting-is-near", "/calls", "/off"]]
+        );
+        assert_eq!(waits_while(None).expect("none"), Vec::<Vec<String>>::new());
+        assert!(
+            waits_while(Some("[[]]")).is_err(),
+            "took a command with no program"
+        );
+        assert!(
+            waits_while(Some("a-meeting-is-near")).is_err(),
+            "took what isn't JSON"
         );
     }
 
