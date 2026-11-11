@@ -2075,9 +2075,9 @@ works the same way everywhere.
   network, and Sign in to it comes after the focused window at home. Each
   opens the sign-in window; nothing opens it by itself.
 - **Awake on purpose.** Keep Awake, in the launcher, stops the machine
-  sleeping so work left running goes on, and with power it keeps running
-  with the lid shut. Without power the lid is let go, since a laptop shut in
-  a bag on its battery would cook. While it holds, Keep Awake shows in Now,
+  sleeping so work left running goes on, and it keeps running with the lid
+  shut, on battery as on the charger. Away from a desk, a shut lid locks the
+  screen, as the sleep it holds back would have. While it holds, Keep Awake shows in Now,
   saying it's on, and the margin's mark says so.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.

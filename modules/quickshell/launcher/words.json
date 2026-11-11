@@ -10342,6 +10342,8 @@
         "held": "{who}: {why}",
         "locks": "never \u00b7 it only locks",
         "locksCharging": "never on the charger \u00b7 it only locks",
+        "lidShut": "on battery too",
+        "lidSleeps": "the lid still sleeps it",
         "never": "never",
         "suspend": "suspends",
         "hibernate": "hibernates",

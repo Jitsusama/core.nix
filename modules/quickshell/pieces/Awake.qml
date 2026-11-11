@@ -5,6 +5,8 @@ import qs
 import QtQuick
 
 Piece {
+    readonly property var said: Words.of("session:awake").said ?? {}
+
     // Keep Awake's own drawer, as the session's row draws it
     // (launcher/Now.qml's borrowed): none while that row draws none.
     drawnBy: ({ place: "session", key: "session:awake" })
@@ -13,9 +15,9 @@ Piece {
     title: "Keep Awake"
     hint: KeepAwake.lidShutToo ? "Staying awake, the lid shut too"
         : "Staying awake while the lid is open"
-    context: KeepAwake.lidShutToo ? "until the power goes" : "the lid still sleeps it"
+    context: KeepAwake.lidShutToo ? said.lidShut : said.lidSleeps
     // The lid's acts only where holding it changes something: where a shut
-    // lid on the charger never suspends, neither would do anything.
+    // lid never suspends, neither would do anything.
     actions: [{
         glyph: Theme.glyph.suspend,
         name: "Let It Sleep",
@@ -29,11 +31,11 @@ Piece {
         verb: Words.verb("verb:on:awake:open"),
         stays: true,
         run: () => KeepAwake.open()
-    }] : KeepAwake.plugged ? [{
+    }] : [{
         glyph: Words.glyph("verb:on:awake:shut"),
         name: Words.name("verb:on:awake:shut"),
         verb: Words.verb("verb:on:awake:shut"),
         stays: true,
         run: () => KeepAwake.keep()
-    }] : [])
+    }])
 }

@@ -53,6 +53,22 @@ LAG_LASTS = 3600
 # The scales Joel's screens are seen at, which a design's shots are judged at.
 JOELS_SCALES = ("1.5", "2")
 
+# Whether Keep Awake holds something, and whether it holds the lid.
+HELD = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
+LID_HELD = f"{HELD} | grep -q handle-lid-switch"
+# The stand-in sleep leaves this file (tests/desktop.nix).
+ASLEEP = "test -e /run/suspended"
+# logind sees the lid open and no sleep is coming, queued or running. The sleep unit's state
+# is read, since is-active calls a oneshot still running "activating".
+SETTLED = (
+    "busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
+    " org.freedesktop.login1.Manager LidClosed PreparingForSleep | grep -cx 'b false' | grep -qx 2"
+    " && ! systemctl list-jobs --no-legend | grep -q suspend"
+    " && systemctl show -P ActiveState systemd-suspend.service | grep -qx inactive"
+)
+# How long logind is given to act on a shut lid it mustn't sleep for.
+LOOKING = timedelta(seconds=5)
+
 
 def now_down_to(desktop: Desktop, name: str) -> None:
     """Open Now with Super+O, and move down to this row from For You.
@@ -89,7 +105,6 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
 ) -> None:
     """The launcher keeps the machine awake, lid shut too, then lets it sleep."""
     machine = desktop.machine
-    held = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -100,21 +115,11 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.follow()
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=timedelta(seconds=10))
-    machine.wait_until_succeeds(
-        f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
-    )
+    machine.wait_until_succeeds(f"{HELD} | grep -qw idle", timeout=timedelta(seconds=10))
+    machine.wait_until_succeeds(LID_HELD, timeout=timedelta(seconds=10))
     # Kept awake, a suspend asked for by the power key or the launcher
-    # still goes through, and so does the lid's on battery.
-    machine.fail(f"{held} | grep -q sleep")
-    # Without power the lid is let go, and taken again when it's back.
-    desktop.power("off")
-    machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10))
-    machine.succeed(f"{held} | grep -qw idle")
-    desktop.power("on")
-    machine.wait_until_succeeds(
-        f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
-    )
+    # still goes through.
+    machine.fail(f"{HELD} | grep -q sleep")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.shoot("launcher-home-awake")
@@ -122,46 +127,43 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     # Return from the find lands on it, since it changes how things stand, and a second does it.
     desktop.land()
     machine.send_key("ret")
-    machine.wait_until_fails(held, timeout=timedelta(seconds=10))
+    machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.
     desktop.close_launcher()
 
 
-def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
+def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps(
     desktop: Desktop,
 ) -> None:
-    """The lid is let go when the power goes, though the shell never hears it."""
+    """Kept awake, a lid shut on battery locks the screen and runs on; let go, it sleeps."""
     machine = desktop.machine
-    held = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
-    # The supplies were told of the rules once udev had settled, so the
-    # mains is a device systemd tracks, as it is after a switch.
-    machine.succeed("systemctl is-active power-supplies-seen.service")
-    machine.succeed("systemctl is-active sys-subsystem-power_supply-mains.device")
+    locked = desktop.in_session("qs ipc call lock isLocked | grep -q true")
     desktop.as_account("systemctl --user start keep-awake.service keep-awake-lid.service")
-    machine.wait_until_succeeds(
-        f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
-    )
-    # The shell frozen stands in for one that missed the power going while
-    # the machine slept, as on 2026-10-28, when a laptop ran flat in a bag.
-    # Frozen rather than stopped, it's the same shell once thawed: one
-    # started again took the moments after it as its first, saying no
-    # notice and showing the lag of its own start, which the subtests after
-    # this one saw.
-    desktop.as_account("systemctl --user freeze quickshell.service")
+    machine.wait_until_succeeds(LID_HELD, timeout=timedelta(seconds=10))
+    # Joel keeps it awake to run with no power and the lid shut (2026-11-10).
+    desktop.power("off")
     try:
-        desktop.power("off")
-        machine.wait_until_fails(
-            f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
-        )
-        machine.succeed(f"{held} | grep -qw idle")
+        machine.succeed(LID_HELD)
+        desktop.lid(shut=True)
+        # The lid's hold hears it shut and locks the screen, as the sleep would have.
+        machine.wait_until_succeeds(locked, timeout=timedelta(seconds=10))
+        # A sleep is logind's to start, so it's given a while to start one, which it mustn't.
+        machine.sleep(LOOKING)
+        machine.fail(ASLEEP)
+        desktop.lid(shut=False)
+        desktop.as_account("qs ipc call lock release && systemctl --user stop keep-awake.service")
+        machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
+        desktop.lid(shut=True)
+        machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
     finally:
+        desktop.lid(shut=False)
+        # The stand-in sleep ends at once and logind may queue another, so it settles first.
+        machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
+        machine.succeed("rm -f /run/suspended")
         desktop.power("on")
-        desktop.as_account("systemctl --user stop keep-awake.service")
-        desktop.as_account("systemctl --user thaw quickshell.service")
-        machine.wait_until_succeeds(
-            desktop.in_session("qs ipc call launcher list > /dev/null"),
-            timeout=timedelta(seconds=30),
-        )
+        # The sleep locked the screen first, as it does before every one.
+        desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
+        machine.wait_until_fails(locked, timeout=timedelta(seconds=10))
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(
@@ -297,8 +299,6 @@ def test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep(
     machine = desktop.machine
     # Keep Awake was just let go, and the margin leaves as it fades.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
-    # Its own, so it runs alone: whether something holds the machine awake.
-    held = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
     # A camera's card from before is gone first, so what changes along the
     # top is the glyph alone.
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
@@ -346,7 +346,7 @@ def test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep(
     # From the find, Return lands on it, since it changes how things stand, and a second does it.
     desktop.land()
     machine.send_key("ret")
-    machine.wait_until_fails(held, timeout=timedelta(seconds=10))
+    machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     # Letting it sleep stays in the launcher, which shows it done.
     stays_showing_it_gone(desktop, "Keep Awake")

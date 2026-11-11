@@ -335,29 +335,35 @@ let
     "launcher/Lately.js"
   ];
 
-  # A service holding one of logind's locks for as long as it runs, with a
-  # file saying so.
+  # A service holding one of logind's locks for as long as what it runs
+  # does, nothing unless it says, with a file saying so.
   holding =
     {
       what,
       flag,
+      runs ? [
+        (lib.getExe' pkgs.coreutils "sleep")
+        "infinity"
+      ],
       ...
     }@unit:
     {
       Unit = removeAttrs unit [
         "what"
         "flag"
+        "runs"
       ];
       Service = {
-        ExecStart = lib.escapeShellArgs [
-          (lib.getExe' pkgs.systemd "systemd-inhibit")
-          "--what=${what}"
-          "--who=Keep Awake"
-          "--why=Kept awake from the launcher"
-          "--mode=block"
-          (lib.getExe' pkgs.coreutils "sleep")
-          "infinity"
-        ];
+        ExecStart = lib.escapeShellArgs (
+          [
+            (lib.getExe' pkgs.systemd "systemd-inhibit")
+            "--what=${what}"
+            "--who=Keep Awake"
+            "--why=Kept awake from the launcher"
+            "--mode=block"
+          ]
+          ++ runs
+        );
         ExecStartPost = "${lib.getExe' pkgs.coreutils "touch"} %t/${flag}";
         ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/${flag}";
       };
@@ -837,14 +843,18 @@ let
         inherit (said) hours minutes seconds;
       }
     );
-  # Whether shutting the lid on the charger suspends the machine, as logind
-  # does unless told otherwise; the lid module tells it to ignore it. Only
-  # where it suspends does keeping awake need to hold the lid too. Only
-  # what's said for the charger counts, so a machine that ignores its lid
-  # everywhere, as the test VM's does, still holds it, which changes
-  # nothing there.
-  lidSleepsOnPower =
-    (osConfig.services.logind.settings.Login.HandleLidSwitchExternalPower or "suspend") != "ignore";
+  # Whether shutting the lid suspends the machine on battery or on the
+  # charger, as logind does unless told otherwise; the lid module has it
+  # suspend on battery. Only where it suspends does keeping awake need to
+  # hold the lid too. A setting left unsaid counts as suspending, so a
+  # machine that says only what its lid does on battery, as the test VM's
+  # does, still holds it, which changes nothing there.
+  lidSleeps =
+    let
+      login = osConfig.services.logind.settings.Login or { };
+    in
+    (login.HandleLidSwitch or "suspend") != "ignore"
+    || (login.HandleLidSwitchExternalPower or "suspend") != "ignore";
   followsTheLaptop =
     (launcher.providers.weather.enable or false)
     && (launcher.providers.weather.lookups or launcher.lookups)
@@ -993,6 +1003,20 @@ let
       pkgs.systemd
     ];
     text = builtins.readFile ./askpass.sh;
+  };
+
+  # Locks the screen as the lid shuts while Keep Awake holds it, away from a
+  # desk (./lid-held.sh).
+  lidHeld = pkgs.writeShellApplication {
+    name = "lid-held";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.glib
+      pkgs.gnugrep
+      pkgs.quickshell
+      pkgs.systemd
+    ];
+    text = builtins.readFile ./lid-held.sh;
   };
 in
 {
@@ -1994,8 +2018,9 @@ in
               // Each viewer's command line, which its : opens, from its
               // module (command-lines.nix).
               readonly property var commandLines: ${object launcher.commandLines}
-              // Whether a shut lid suspends the machine on the charger.
-              readonly property bool lidSleepsOnPower: ${lib.boolToString lidSleepsOnPower}
+              // Whether a shut lid suspends the machine, on battery or on the
+              // charger.
+              readonly property bool lidSleeps: ${lib.boolToString lidSleeps}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}
               // The sound a want makes, and what plays it; "" for none.
               readonly property var sounds: ${
@@ -2543,7 +2568,8 @@ in
 
     # Keep Awake, from the launcher (KeepAwake.qml): one service holds
     # logind's lock against going idle and the other its lock against the
-    # lid, which the shell takes only while there's power. Neither holds the
+    # lid, on battery as on the charger, since Joel keeps it awake to run
+    # with no power and the lid shut (2026-11-10). Neither holds the
     # lock against sleep: logind's own handling of the power and suspend keys
     # honours it, so a suspend Joel asks for with the power key would be
     # refused. (The launcher's suspend is his own and passes his own locks,
@@ -2557,22 +2583,19 @@ in
       Description = "Keeps the machine from sleeping while work runs";
       PartOf = [ "graphical-session.target" ];
     };
-    # Only where a shut lid on the charger suspends: elsewhere it never does,
-    # and holding the lid would change nothing.
-    systemd.user.services.keep-awake-lid = lib.mkIf lidSleepsOnPower (holding {
+    # Only where a shut lid suspends: elsewhere it never does, and holding
+    # the lid would change nothing. A battery run nearly flat still powers
+    # off, as UPower has it (../power-profiles-daemon/nixos.nix), since
+    # neither lock holds that back.
+    systemd.user.services.keep-awake-lid = lib.mkIf lidSleeps (holding {
       what = "handle-lid-switch";
       flag = "kept-awake-lid";
-      Description = "Keeps the machine running with its lid shut, while there's power";
+      Description = "Keeps the machine running with its lid shut";
       PartOf = [ "keep-awake.service" ];
-      # Bound to the mains supply, which systemd holds ready only while it's
-      # online (nixos.nix), so it stops the moment the power goes, whatever
-      # the shell heard; it never starts without it.
-      BindsTo = [ "sys-subsystem-power_supply-mains.device" ];
-      After = [
-        "keep-awake.service"
-        "sys-subsystem-power_supply-mains.device"
-      ];
-      ConditionACPower = true;
+      After = [ "keep-awake.service" ];
+      # The sleep a shut lid brought locked the screen first (../swayidle),
+      # so while it's held a shut lid locks it instead, away from a desk.
+      runs = [ (lib.getExe lidHeld) ];
     });
 
     systemd.user.services.quickshell = {
