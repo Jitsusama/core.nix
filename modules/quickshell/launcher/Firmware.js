@@ -273,7 +273,7 @@ const CLOSING_STOP = /\.$/u;
 // are in English.
 const CAPITALS = /^[A-Z]{2}/u;
 
-// The last line fwupdmgr or systemctl said of why what it was asked
+// The last line fwupdmgr, fwupd or logind said of why what it was asked
 // didn't go, or "" where it said nothing, as a note says it, after a
 // dot: its first letter lowered, unless it opens a word in capitals,
 // and no closing full stop (VKCF3Z, 2026-11-09).
@@ -309,13 +309,26 @@ function changePatience() {
     return CHANGE_PATIENCE;
 }
 
-// How a run of fwupdmgr ended, as its row keeps it until Firmware is
+// How a firmware act the machine daemon answered ran, as `ended` reads
+// it: { code, stopped, err }, code 0 where it was done; the minutes it
+// was waited for where the daemon stopped waiting at its patience, or 0;
+// and the words fwupdmgr, fwupd or logind said of why not. No answer at
+// all, from a daemon that went, is one that didn't go, saying nothing.
+function acted(answer, minutes) {
+    if (answer?.done === true) {
+        return { code: 0, stopped: 0, err: "" };
+    }
+    const error = answer?.error ?? {};
+    return { code: 1, stopped: error.code === "stopped" ? minutes : 0,
+        err: String(error.message ?? "") };
+}
+
+// How a firmware act ended, as its row keeps it until Firmware is
 // opened again: `done` ("installed" or "changed") where it ended by
 // itself with nothing wrong; otherwise "failed", saying it stopped
 // waiting after so many minutes where its patience ran out, else why in
-// fwupdmgr's last line. `run` is { code, stopped, err }: its exit code,
-// the minutes it was waited for before it was stopped or 0, and what it
-// said on stderr; `said` is its act's words, holding "stopped".
+// the last line of what was said. `run` is { code, stopped, err }, as
+// `acted` gives it; `said` is its act's words, holding "stopped".
 function ended(run, said, done) {
     if (run.code === 0 && run.stopped === 0) {
         return { outcome: done, reason: "" };

@@ -54,7 +54,10 @@
 //! It acts as well as answers, so the shell spawns and writes nothing of
 //! its own: `charge-limit` moves a battery's charge limit, and the supply
 //! is read again before the act is answered, so each watch is told the
-//! new limit first.
+//! new limit first. The firmware's acts (acts.rs) can wait minutes on
+//! fwupd or a polkit prompt, so each goes on a thread of its own, one at
+//! a time, and is answered once it's done, the connection answering
+//! everything else meanwhile; fwupd is asked again as each ends.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -71,8 +74,8 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, kept, keyboards, light,
-    memory, now_ms, power_rows, processor, rounded, rows, sleep, status, steered, supply,
+    Root, acts, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, kept, keyboards,
+    light, memory, now_ms, power_rows, processor, rounded, rows, sleep, status, steered, supply,
     telemetry, tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
@@ -82,6 +85,9 @@ use serde_json::{Value, json};
 const EVERY: Duration = Duration::from_secs(1);
 /// How soon after a read whose rates aren't of now it's read again.
 const SOON: Duration = Duration::from_millis(200);
+/// How long a firmware act that says no patience of its own is waited
+/// for: a polkit prompt left unanswered, not a change still going in.
+const ACT_PATIENCE: Duration = Duration::from_secs(120);
 /// How often each disk's health is asked while disks are watched.
 const HEALTH_EVERY: Duration = Duration::from_secs(60);
 /// The longest a call to a bus service may take, so one that hangs can't
@@ -424,6 +430,8 @@ struct Daemon {
     telemetry: Vec<Value>,
     /// The kinds whose source said they changed, to be asked again now.
     hurried: HashSet<String>,
+    /// Whether a firmware act is going, so another waits its turn.
+    acting: bool,
     /// When the last sleep began and ended, as logind's signal said.
     slept: Arc<Mutex<Value>>,
     took: VecDeque<u64>,
@@ -612,6 +620,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             kept: BTreeMap::new(),
             telemetry: Vec::new(),
             hurried: HashSet::new(),
+            acting: false,
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
             since: now_ms(),
@@ -2035,6 +2044,10 @@ fn answer(
                 "took_us": daemon.took.iter().collect::<Vec<_>>(),
             })
         }
+        Ask::Act { id, act, said } if act.starts_with("firmware-") => {
+            firmware_act(shared, id, act, said, told.clone());
+            return None;
+        }
         Ask::Act { id, act, said } => acted(shared, &id, &act, &said),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
@@ -2068,6 +2081,56 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
         },
         _ => error(id, "unknown-act", &format!("no act {act:?} here")),
     }
+}
+
+/// Does a firmware act on a thread of its own and tells how it went once
+/// it's done, waiting at most the `patience_s` it's given; another asked
+/// while one goes is refused as `busy`, since fwupd puts in one thing at
+/// a time. fwupd is asked again as it ends, whatever it said.
+fn firmware_act(
+    shared: &Arc<Shared>,
+    id: Value,
+    act: String,
+    said: Value,
+    told: SyncSender<String>,
+) {
+    {
+        let mut daemon = lock(&shared.daemon);
+        if daemon.acting {
+            let busy = error(&id, "busy", "another firmware act is going");
+            let _ = told.send(busy.to_string());
+            return;
+        }
+        daemon.acting = true;
+    }
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        let patience = said["patience_s"]
+            .as_u64()
+            .map_or(ACT_PATIENCE, Duration::from_secs);
+        let text = |name: &str| said[name].as_str().unwrap_or("");
+        let done = match act.as_str() {
+            "firmware-install" => {
+                let fwupdmgr = std::env::var(acts::FWUPDMGR).unwrap_or_default();
+                acts::install(&fwupdmgr, text("device"), patience)
+            }
+            "firmware-fix" => acts::change(text("attribute"), false, patience),
+            "firmware-undo" => acts::change(text("attribute"), true, patience),
+            "firmware-setup" => acts::setup(patience),
+            _ => Err(acts::refused("unknown-act", format!("no act {act:?} here"))),
+        };
+        {
+            let mut daemon = lock(&shared.daemon);
+            daemon.acting = false;
+            daemon.hurried.insert("firmware".to_owned());
+        }
+        shared.woken.notify_all();
+        let answer = match done {
+            Ok(()) => json!({"id": id, "done": true}),
+            Err(refused) => error(&id, refused.code, &refused.message),
+        };
+        let _ = told.send(answer.to_string());
+    });
 }
 
 #[cfg(test)]

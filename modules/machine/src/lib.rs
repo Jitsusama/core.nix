@@ -14,7 +14,8 @@
 //! ([`heat_rows`], [`power_rows`], placed and graphed through [`rows`] and
 //! worded through [`words`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
-//! a function of the files and the read before.
+//! a function of the files and the read before. What Firmware asks the
+//! machine to do is done through [`acts`].
 //!
 //! A record names every figure its source has, as the source counts it,
 //! with its unit in its key (`_b` bytes, `_khz`, `_c` degrees Celsius,
@@ -26,6 +27,7 @@
 // the macro's default depth.
 #![recursion_limit = "256"]
 
+pub mod acts;
 pub mod boot;
 pub mod camera;
 pub mod counts;

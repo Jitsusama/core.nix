@@ -990,7 +990,7 @@
         "load"
       ],
       "said": {
-        "down": "the machine daemon isn't answering"
+        "down": "not answering"
       },
       "parts": [
         "machine:cpu:spent",
@@ -3309,7 +3309,8 @@
         "set": "set {setting} to {target} there",
         "find": "set it there",
         "final": "it closes every window",
-        "failed": "didn't reboot"
+        "failed": "didn't reboot",
+        "stopped": "stopped waiting after {count} min"
       }
     },
     {
