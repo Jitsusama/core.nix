@@ -41,13 +41,15 @@ first frame lists them in that order, and a retitle wakes nothing.
 |                     | `inside`: its programs, each once with its count, `new`: niri's empty last one | Move to Workspace's rows |
 | `desktop`           | the window the keys were in, with its title and program, the workspace and output in front, the overview, whether niri's settings failed to load | Capture |
 |                     | `spaces`: each output's workspaces, in order    | Move to Workspace's order     |
+| `focus`             | the window niri says has the keys, none while a layer such as the launcher has them | the shell's niri (Niri.qml) |
 | `cast:<stream id>`  | each cast as niri says it: its kind, whether it's active, its session, process and target | the recorder, the bar's sharing mark, a call |
 | `layout:<niri id>`  | each window's tile as niri lays it out: its place in the view, its size and the window's | where a notice opens below, the recorder's size |
 | `screenshot`        | the last screenshot's path, and `taken`: how many so far | the recorder |
 
 A watch or list that names no kind gets every kind but `layout`, which
-changes at every resize and scroll, so only a watch that draws tiles is
-woken by them.
+changes at every resize and scroll, and `focus`, which changes at every
+opening of the launcher, so only a watch that draws tiles, or follows
+niri's focus, is woken by them.
 
 A window's program is the desktop entry its app id names, as Quickshell's
 `heuristicLookup` finds it: by its id, its id in any case, its class,

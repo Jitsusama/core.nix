@@ -8,22 +8,25 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 6] = [
+pub const KINDS: [&str; 7] = [
     "window",
     "workspace",
     "desktop",
+    "focus",
     "cast",
     "layout",
     "screenshot",
 ];
 
 /// The kinds of which there's one record, keyed by its kind alone.
-const SOLE: [&str; 2] = ["desktop", "screenshot"];
+const SOLE: [&str; 3] = ["desktop", "focus", "screenshot"];
 
 /// The kinds an ask gets only by naming them: a window's tile moves at
-/// every resize and scroll, which would wake every watch that names no
-/// kind, where only the few that draw tiles want it.
-const NAMED_ONLY: [&str; 1] = ["layout"];
+/// every resize and scroll, and the window niri says has the keys moves
+/// to none at every opening of the launcher, which would wake every watch
+/// that names no kind, where only the few that draw tiles, or follow the
+/// keys as niri does, want them.
+const NAMED_ONLY: [&str; 2] = ["focus", "layout"];
 
 /// The kind a key names: `window` for `window:12`, and `desktop` for the
 /// one record of its kind, keyed by its kind alone.
@@ -229,12 +232,18 @@ mod tests {
             "a watch naming no kind takes layouts: {:?}",
             unnamed()
         );
+        assert!(
+            !unnamed().contains(&"focus".to_owned()),
+            "a watch naming no kind takes niri's focus: {:?}",
+            unnamed()
+        );
     }
 
     #[test]
     fn the_screenshot_is_keyed_by_its_kind_alone() {
         assert_eq!(kind_of("screenshot"), Some("screenshot"));
         assert_eq!(kind_of("screenshot:1"), None);
+        assert_eq!(kind_of("focus"), Some("focus"));
         assert_eq!(kind_of("cast:3"), Some("cast"));
         assert_eq!(kind_of("layout:12"), Some("layout"));
     }
