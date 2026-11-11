@@ -177,9 +177,12 @@ fn answer(
     BufReader::new(stream.take(ASK_AT_MOST)).read_line(&mut ask)?;
     let mut out = stream;
     if let Some(said) = held::ask(config, ask.trim(), uid) {
-        // A pause stops what runs too, so nothing switches after it.
+        // A pause stops what the follower alone asked for too, so it
+        // switches nothing after it; what a person asked for runs on.
         let why = match said {
-            Ok(said) if ask.trim() == held::PAUSE => format!("{}; {said}", stop(current)),
+            Ok(said) if ask.trim() == held::PAUSE => {
+                format!("{}; {said}", stop(current, Asked::ByTheFollower))
+            }
             Ok(said) => said,
             Err(why) => why,
         };
@@ -194,7 +197,7 @@ fn answer(
         eprintln!("uid {asker} asks to stop the update");
         let stopped = Line::Refused {
             commit: update::last(config),
-            why: stop(current),
+            why: stop(current, Asked::ByAnyone),
         };
         return writeln!(out, "{}", stopped.json());
     }
@@ -251,10 +254,18 @@ fn hear(heard: &Answer, out: &mut impl Write) -> io::Result<()> {
 }
 
 /// The update running now, or a new one started for this ask.
+/// Which updates a stop ends: any, or only one the follower alone asked
+/// for, as a pause does.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Asked {
+    ByAnyone,
+    ByTheFollower,
+}
+
 /// Stops the running update while it fetches or builds, saying what it
 /// did. One switching runs on, since a switch cut short leaves the machine
 /// between two systems.
-fn stop(current: &Mutex<Option<Arc<Answer>>>) -> String {
+fn stop(current: &Mutex<Option<Arc<Answer>>>, asked: Asked) -> String {
     let current = current.lock().expect("the current update's lock");
     let Some(running) = current.as_ref() else {
         return "no update is running, so nothing was stopped".to_owned();
@@ -263,6 +274,9 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>) -> String {
     let (None, Some(worker)) = (&said.ended, said.worker) else {
         return "no update is running, so nothing was stopped".to_owned();
     };
+    if asked == Asked::ByTheFollower && !said.following {
+        return "the update running was asked for by a person, so it runs on".to_owned();
+    }
     let latest = said
         .lines
         .last()

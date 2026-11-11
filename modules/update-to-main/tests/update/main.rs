@@ -962,7 +962,7 @@ fn how_an_update_ended_is_kept_for_its_group_to_read() {
 }
 
 #[test]
-fn a_pause_asked_on_the_socket_refuses_updates_until_resumed() {
+fn a_pause_asked_on_the_socket_refuses_the_followers_updates_until_resumed() {
     let world = World::new();
     let one = world.signed("one");
     world.system(&one);
@@ -978,20 +978,53 @@ fn a_pause_asked_on_the_socket_refuses_updates_until_resumed() {
         panic!("a pause wasn't answered with what holds: {paused:?}")
     };
     assert!(held::says(why), "a pause wasn't taken: {why}");
-    let (_, ending) = world.update();
+    let (_, ending) = world.asked_by(&|| true);
     let Line::Refused { why, .. } = &ending else {
-        panic!("a paused machine wasn't refused: {ending:?}")
+        panic!("a paused machine didn't refuse the follower: {ending:?}")
     };
     assert!(
         why.contains("updates are paused"),
         "refused for another reason: {why}"
     );
-    assert_eq!(world.builds(), 0, "a paused machine built");
-    ask::once(&world.config.socket, held::RESUME).unwrap();
+    assert_eq!(world.builds(), 0, "a paused machine built for the follower");
     assert_eq!(
         world.update().1,
         done(&one),
-        "a resumed machine didn't update"
+        "a paused machine refused a person's ask"
+    );
+    ask::once(&world.config.socket, held::RESUME).unwrap();
+    let two = world.signed("two");
+    world.system(&two);
+    assert_eq!(
+        world.asked_by(&|| true).1,
+        done(&two),
+        "a resumed machine didn't update for the follower"
+    );
+}
+
+#[test]
+fn a_pause_taken_while_the_followers_switch_waits_refuses_it() {
+    let world = World::new();
+    let one = world.signed("one");
+    world.system(&one);
+    world.update();
+    let two = world.signed("two");
+    world.system(&two);
+    let asked = std::cell::Cell::new(0);
+    let (_, ending) = world.asked_by(&|| {
+        // The first look is before anything builds; the pause comes after.
+        asked.set(asked.get() + 1);
+        if asked.get() > 1 {
+            held::ask(&world.config, held::PAUSE, Some(1000));
+        }
+        true
+    });
+    let Line::Refused { why, .. } = &ending else {
+        panic!("a pause taken while it waited didn't refuse the switch: {ending:?}")
+    };
+    assert!(
+        why.contains("updates are paused"),
+        "refused for another reason: {why}"
     );
 }
 

@@ -8,8 +8,9 @@
 //!   when the daemon couldn't be asked or stopped answering.
 //! - `update-to-main stop [--socket FILE]`: stops the update the daemon is
 //!   fetching or building, and prints what it did. A switch runs on.
-//! - `update-to-main pause|resume [--socket FILE]`: refuses every update,
-//!   stopping the one that runs, until resumed; and `update-to-main
+//! - `update-to-main pause|resume [--socket FILE]`: refuses the
+//!   follower's updates, stopping one it alone asked for, until resumed,
+//!   while a person's ask still updates; and `update-to-main
 //!   hold|lift COMMIT [--socket FILE]` refuses any main holding the
 //!   commit, by its full id, until lifted (src/held.rs). Each prints what
 //!   holds now, and exits 0, or 2 when the daemon refused the ask.
