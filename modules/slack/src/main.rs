@@ -22,7 +22,14 @@
 //! Once Slack refuses the sign-in, the line `{"signedOut":true}` is said
 //! and nobody more is asked about. With no sign-in in CREDENTIALS, the
 //! harness's file, it asks nothing and says `{"signedIn":false}` to each
-//! line, so the shell waits on no answer. ORIGIN is Slack's, unless a
+//! line, so the shell waits on no answer.
+//!
+//! Given the launcher's vocabulary, its store path in `LAUNCHER_WORDS`
+//! as the people daemon's unit hands it, each line about someone also
+//! holds their drawer's facts and Write in Slack, worded (person.rs), so
+//! the people daemon takes Slack's part of them ready. Without it, or
+//! when it can't be read, lines say who they are alone. ORIGIN is Slack's,
+//! unless a
 //! test names a stand-in.
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -31,6 +38,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
+use slack_people::person::{self, Words};
 use slack_people::{Account, Found, Kept, Refused, Slack, asked, now};
 
 /// How long the next look-up ahead waits for each search Slack was asked
@@ -59,6 +67,11 @@ fn main() {
         kept: Kept::at(kept_in()),
         talked: HashSet::new(),
         signed_out: false,
+        words: std::env::var_os("LAUNCHER_WORDS").and_then(|path| {
+            vocabulary(&PathBuf::from(&path))
+                .inspect_err(|why| eprintln!("<3>saying no facts, {}: {why}", path.display()))
+                .ok()
+        }),
     };
     let (lines, heard) = mpsc::channel();
     std::thread::spawn(move || {
@@ -141,6 +154,14 @@ fn kept_in() -> Option<PathBuf> {
     Some(home.join("slack-people").join("known.json"))
 }
 
+/// The words people are said in, read once from the launcher's
+/// vocabulary.
+fn vocabulary(path: &std::path::Path) -> Result<Words, String> {
+    let text = std::fs::read_to_string(path).map_err(|why| why.to_string())?;
+    let whole = serde_json::from_str(&text).map_err(|why| why.to_string())?;
+    Words::read(&whole)
+}
+
 /// Says each line to the shell, or false once it's stopped listening.
 fn say(lines: &[String]) -> bool {
     let stdout = std::io::stdout();
@@ -160,6 +181,9 @@ struct Asker {
     /// Whose conversation Slack has been asked for this run.
     talked: HashSet<String>,
     signed_out: bool,
+    /// What their facts and act are said in, when the vocabulary was
+    /// given.
+    words: Option<Words>,
 }
 
 impl Asker {
@@ -176,7 +200,7 @@ impl Asker {
             return vec![NOT_SIGNED_IN.to_owned()];
         };
         let had = self.had(email);
-        let said: Vec<String> = had.iter().filter_map(line).collect();
+        let said: Vec<String> = had.iter().filter_map(|had| self.line(had)).collect();
         // A shell gone is found by the next line said, so nothing more
         // is needed of this one.
         let _ = say(&said);
@@ -188,7 +212,8 @@ impl Asker {
         .and_then(|found| present(&self.slack, &account, found))
         .map(|found| self.talking(&account, found));
         match self.heard(found) {
-            Heard::Found(found) => line(&found)
+            Heard::Found(found) => self
+                .line(&found)
                 .filter(|fresh| !said.contains(fresh))
                 .into_iter()
                 .collect(),
@@ -214,7 +239,7 @@ impl Asker {
         let more = had
             .as_ref()
             .is_none_or(|had| had.id.is_some() && !self.talked.contains(email));
-        (had.iter().filter_map(line).collect(), more)
+        (had.iter().filter_map(|had| self.line(had)).collect(), more)
     }
 
     /// What Slack says now of someone asked about ahead, unless it's what
@@ -229,7 +254,7 @@ impl Asker {
         {
             return Vec::new();
         }
-        let said: Vec<String> = had.iter().filter_map(line).collect();
+        let said: Vec<String> = had.iter().filter_map(|had| self.line(had)).collect();
         let Some(account) = Account::read(&self.credentials) else {
             return vec![NOT_SIGNED_IN.to_owned()];
         };
@@ -241,7 +266,8 @@ impl Asker {
         }
         .map(|found| self.talking(&account, found));
         match self.heard(found) {
-            Heard::Found(found) => line(&found)
+            Heard::Found(found) => self
+                .line(&found)
                 .filter(|fresh| !said.contains(fresh))
                 .into_iter()
                 .collect(),
@@ -300,9 +326,15 @@ enum Heard {
     Unreachable,
 }
 
-/// Someone as the shell is told them.
-fn line(found: &Found) -> Option<String> {
-    serde_json::to_string(found).ok()
+impl Asker {
+    /// Someone as the people daemon is told them: ready, with their facts
+    /// and act, once there are words to say them in.
+    fn line(&self, found: &Found) -> Option<String> {
+        match &self.words {
+            Some(words) => serde_json::to_string(&person::ready(found, words)).ok(),
+            None => serde_json::to_string(found).ok(),
+        }
+    }
 }
 
 /// Someone found, with whether they're active or away, unless their

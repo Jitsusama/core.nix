@@ -9564,6 +9564,21 @@
       "name": "Sent"
     },
     {
+      "id": "slack:person:status",
+      "in": "people",
+      "name": "Status"
+    },
+    {
+      "id": "slack:person:presence",
+      "in": "people",
+      "name": "Presence"
+    },
+    {
+      "id": "slack:person:zone",
+      "in": "people",
+      "name": "Time Zone"
+    },
+    {
       "id": "verb:slack:message:open",
       "command": "open",
       "in": "slack:message",

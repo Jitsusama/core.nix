@@ -57,26 +57,7 @@ impl Words {
     /// The first word the vocabulary's `slack:conversation`, or a
     /// message's, lacks.
     pub fn read(vocabulary: &Value) -> Result<Words, String> {
-        let conversation = vocabulary["things"]
-            .as_array()
-            .and_then(|things| {
-                things
-                    .iter()
-                    .find(|thing| thing["id"] == "slack:conversation")
-            })
-            .ok_or("the vocabulary has no slack:conversation")?;
-        let word = |at: &[&str]| -> Result<String, String> {
-            at.iter()
-                .fold(conversation, |within, field| &within[field])
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| {
-                    format!(
-                        "the vocabulary's slack:conversation has no {}",
-                        at.join(".")
-                    )
-                })
-        };
+        let word = |at: &[&str]| message_rows::word(vocabulary, "slack:conversation", at);
         let mut kinds = BTreeMap::new();
         for kind in KINDS {
             kinds.insert(kind.to_owned(), word(&["said", kind])?);
