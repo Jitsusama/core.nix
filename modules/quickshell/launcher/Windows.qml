@@ -233,6 +233,12 @@ Provider {
         }
     }
 
+    // Every line its two connections have heard, for the check that the
+    // shut shell hears nothing of a window resized.
+    function linesHeard(): int {
+        return daemon.linesHeard + used.linesHeard;
+    }
+
     // While the launcher is shut, when each window was used, and only
     // that: told a line only as the focus moves to a window, never as one
     // is retitled, resized or scrolled past, so the shut shell wakes once
