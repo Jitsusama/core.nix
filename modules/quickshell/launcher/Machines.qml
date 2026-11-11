@@ -13,7 +13,6 @@
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../When.js" as When
@@ -38,6 +37,7 @@ Provider {
         model: Quickshell.env("XDG_RUNTIME_DIR") ? provider.realms : []
 
         Daemon {
+            id: node
             required property string modelData
             readonly property string realm: modelData
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/${modelData}.sock`
@@ -46,6 +46,22 @@ Provider {
             answersWhole: true
             onRevisionChanged: provider.hear(realm, held)
             Component.onDestruction: provider.hear(realm, null)
+
+            // An update of one of its machines, asked on this node's own
+            // connection, answered once its updater says how it ended.
+            Connections {
+                target: provider
+
+                function onUpdateAsked(realm, machine) {
+                    if (realm !== node.realm)
+                        return;
+                    node.find({ ask: "update", machine: machine }, answer => {
+                        provider.updating = "";
+                        Report.say(Listed.updateEnded(machine, answer,
+                            Words.of("machines").said ?? {}));
+                    });
+                }
+            }
         }
     }
 
@@ -215,26 +231,19 @@ Provider {
         });
     }
 
-    // Asks its realm's node to update it, through mycelium's own command,
-    // which answers once its updater says how it ended.
+    // Asks its realm's node to update it over the node's held socket,
+    // rather than starting a program to ask it, as the launcher starts
+    // none to get or do anything. A realm no node answers for says so.
+    signal updateAsked(string realm, string machine)
     function update(record) {
         if (updating !== "")
             return;
-        updating = record.name;
-        updater.machine = record.name;
-        updater.command = ["mycelium", "--realm", record.realm, "update", record.name];
-        updater.running = true;
-    }
-    Process {
-        id: updater
-        property string machine: ""
-        stdout: StdioCollector {
-            onStreamFinished: {
-                provider.updating = "";
-                Report.say(Listed.updateEnded(updater.machine, text,
-                    Words.of("machines").said ?? {}));
-            }
+        if (!realms.includes(record.realm)) {
+            Report.say(Listed.updateEnded(record.name, null, Words.of("machines").said ?? {}));
+            return;
         }
+        updating = record.name;
+        updateAsked(record.realm, record.name);
     }
 
     function search(typed) {
