@@ -318,6 +318,59 @@ QtObject {
         expect("likeliest", Rank.likeliest({ "b": 3, "a": 3, "c": 9, "gone": 50 },
             { a: "Alpha", b: "Beta", c: "Gamma" }), ["c", "a", "b"]);
 
+        // A key named as Object's own is a key like any other, so a thing
+        // named so is one row, said as what it threw where it throws so a
+        // failure doesn't end the run.
+        const tried = work => {
+            try {
+                return work();
+            } catch (e) {
+                return `threw ${e}`;
+            }
+        };
+        expect("a thing named as Object's own is one row", tried(() => keys(Rank.once([
+            row("constructor", "A"), row("__proto__", "B"), row("constructor", "A", { rich: 1 })
+        ]))), "constructor __proto__");
+
+        // Latching a pick costs a few walks over the rows picked, never a
+        // walk for each latch: a Set in Qt's engine looks a key up by
+        // walking every key it holds (H6EDLC, 2026-11-11). It's held to a
+        // multiple of one walk making and reading an object of the keys,
+        // the fastest of five batches, since a slower one is the builder's
+        // other work or the collector.
+        const fastest = work => {
+            let least = Infinity;
+            for (let batch = 0; batch < 5; batch += 1) {
+                const began = Date.now();
+                for (let round = 0; round < 10; round += 1) {
+                    work();
+                }
+                least = Math.min(least, (Date.now() - began) / 10);
+            }
+            return least;
+        };
+        const everyRow = Array.from({ length: 1914 }, (_, at) =>
+            row(`emoji:${at}`, `Emoji ${at}`));
+        const everyKey = {};
+        everyRow.forEach((one, at) => { everyKey[one.key] = at; });
+        const walk = fastest(() => {
+            const places = Object.create(null);
+            everyRow.forEach((one, at) => { places[one.key] = at; });
+            return everyRow.filter(one => places[one.key] !== undefined).length;
+        });
+        const pickedOf = {};
+        everyRow.forEach((one, at) => {
+            const asked = `q${at % 40}`;
+            (pickedOf[asked] ?? (pickedOf[asked] = {}))[one.key] = { n: 1, c: 1, t: 0 };
+        });
+        const latchedAt = {};
+        everyRow.forEach((one, at) => { latchedAt[`r${at}`] = one.key; });
+        const there = Rank.standing(everyKey);
+        const took = fastest(() => Rank.relatch(latchedAt, pickedOf, "em", there));
+        console.info(`latching a pick took ${took} ms against a walk's ${walk}`);
+        expect(`latching a pick takes ${took} ms, at most ten walks of ${walk} ms`,
+            took <= 10 * walk + 1, true);
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);
