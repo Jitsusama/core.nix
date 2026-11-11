@@ -9,7 +9,8 @@
 }:
 let
   # `merge-net needs` runs this one by its store path, since the profile
-  # it's installed in holds no changed-checks.
+  # it's installed in holds none: without one it named every VM test. Not
+  # a wrapper, which would leave the watcher never matching what's installed.
   changed-checks = callPackage ../changed-checks/package.nix { };
 in
 rustPlatform.buildRustPackage {
