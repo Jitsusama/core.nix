@@ -284,6 +284,10 @@ pub fn hold_call(unit: &str, hold: bool) -> Vec<String> {
 #[derive(Debug, Default)]
 pub struct Holding {
     held: HashSet<PathBuf>,
+    /// The holds taken up from a sorter before this one, set again the
+    /// first time each is wanted, as that sorter may have set fewer
+    /// properties than [`hold_call`] does now.
+    again: HashSet<PathBuf>,
     /// Whether a failure to hold a window has been said.
     pub failed: bool,
 }
@@ -295,15 +299,20 @@ impl Holding {
     /// the sorter that set it: otherwise each restart would leave up to
     /// [`MOST`] stale floors sharing agents.slice's own until their windows
     /// ended. An orchestrator's floor is smaller, and `src/keep.rs`'s.
+    /// Those still wanted are held again, once: on 11 November a switch
+    /// left three windows with their floor but without writeback held
+    /// off, which the sorter before had never set.
     pub fn left(
         scopes: impl IntoIterator<Item = PathBuf>,
         floor: impl Fn(&Path) -> Option<u64>,
     ) -> Self {
+        let held: HashSet<PathBuf> = scopes
+            .into_iter()
+            .filter(|scope| floor(scope) == Some(FLOOR))
+            .collect();
         Self {
-            held: scopes
-                .into_iter()
-                .filter(|scope| floor(scope) == Some(FLOOR))
-                .collect(),
+            again: held.clone(),
+            held,
             failed: false,
         }
     }
@@ -313,7 +322,7 @@ impl Holding {
     pub fn changes(&self, wanted: &[PathBuf]) -> Vec<(PathBuf, bool)> {
         let hold = wanted
             .iter()
-            .filter(|scope| !self.held.contains(*scope))
+            .filter(|scope| !self.held.contains(*scope) || self.again.contains(*scope))
             .map(|scope| (scope.clone(), true));
         let give_back = self
             .held
@@ -325,6 +334,7 @@ impl Holding {
 
     /// Notes a scope as held or given back.
     pub fn done(&mut self, scope: &Path, hold: bool) {
+        self.again.remove(scope);
         if hold {
             self.held.insert(scope.to_path_buf());
         } else {
@@ -342,6 +352,7 @@ impl Holding {
     /// Forgets the scopes that have gone.
     pub fn keep_only(&mut self, there: impl Fn(&Path) -> bool) {
         self.held.retain(|scope| there(scope));
+        self.again.retain(|scope| there(scope));
     }
 }
 
@@ -717,6 +728,20 @@ mod tests {
             "an orchestrator's floor is keep.rs's"
         );
         assert_eq!(holding.changes(&[]), [(held, false)]);
+    }
+
+    #[test]
+    fn a_hold_taken_up_and_still_wanted_is_set_again_once() {
+        let held = PathBuf::from("kitty-1-1.scope");
+        let mut holding = Holding::left([held.clone()], |_| Some(FLOOR));
+        let wanted = [held.clone()];
+        assert_eq!(
+            holding.changes(&wanted),
+            [(held.clone(), true)],
+            "set again with every property this sorter sets"
+        );
+        holding.done(&held, true);
+        assert_eq!(holding.changes(&wanted), [], "once is enough");
     }
 
     #[test]
