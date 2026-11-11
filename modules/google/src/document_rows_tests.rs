@@ -82,7 +82,6 @@ fn a_document_is_a_row_keyed_as_the_launcher_keys_it_in_the_order_held() {
         row["kind"], "spreadsheet",
         "the row's kind isn't Google's word"
     );
-    assert_eq!(row["order"], 1);
     assert_eq!(row["name"], "Plan");
     assert_eq!(row["glyph"], "googleSpreadsheet");
     assert_eq!(row["drawer"], "drawer:documents:s");
@@ -156,8 +155,8 @@ fn a_file_is_said_by_its_ending_measure_and_length_on_its_shared_drive() {
     assert!(
         drawer["facts"]
             .as_array()
-            .is_some_and(|facts| facts.contains(&json!({"name": "Size", "said": "48 MB"}))),
-        "its size wasn't said in decimal units: {drawer}"
+            .is_some_and(|facts| facts.contains(&json!({"name": "Size", "said": "48.2 MB"}))),
+        "its size wasn't said in decimal units to three figures: {drawer}"
     );
     let mut lost = document("x", Is::Other);
     lost.mime = "application/vnd.google-apps.form".into();
@@ -170,6 +169,22 @@ fn a_file_is_said_by_its_ending_measure_and_length_on_its_shared_drive() {
     assert_eq!(
         drawer["eyebrow"], "in My Drive \u{b7} File",
         "a kind of Google's the vocabulary doesn't name is said as a file"
+    );
+}
+
+#[test]
+fn a_size_is_said_to_three_figures_as_the_launcher_says_every_measure() {
+    let words = words();
+    let said: Vec<String> = [12, 3_400, 999_600, 5_600_000, 48_200_000, 1_234_000_000_000]
+        .into_iter()
+        .map(|bytes| weighed(bytes, &words))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            "12 B", "3.40 kB", "1.00 MB", "5.60 MB", "48.2 MB", "1,230 GB"
+        ],
+        "FileFacts.js's sizes, a thousand of one unit said as one of the next"
     );
 }
 

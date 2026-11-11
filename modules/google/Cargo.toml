@@ -11,6 +11,9 @@ publish = false
 [dependencies]
 inotify = { version = "0.11", default-features = false }
 jiff = "0.2"
+# The ready-row form every daemon shares: rows' spaced order, and figures
+# said as the launcher says them.
+ready-rows = { path = "../ready-rows" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }

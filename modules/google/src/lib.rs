@@ -9,7 +9,8 @@
 //! (daemon.rs), how a thing stopped wanting Joel (done.rs), what the
 //! shell asks (ask.rs), what Joel saves into Drive (saves.rs), the Meet
 //! calls Joel is in (meet.rs), the account as it stands (watch.rs), and
-//! everyone its meetings and mail name, for People (people.rs).
+//! everyone its meetings and mail name, for People (people.rs), and
+//! where each ready row stands among its place's (placed.rs).
 
 pub mod account;
 pub mod api;
@@ -27,6 +28,7 @@ pub mod link;
 pub mod mail;
 pub mod meet;
 pub mod people;
+pub mod placed;
 pub mod rows;
 pub mod saves;
 pub mod state;

@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 
+use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
 use crate::drive::{Document, Is};
@@ -217,8 +218,7 @@ impl Words {
 /// which a file on one says where it is.
 pub fn documents(held: &[Document], words: &Words) -> Vec<Value> {
     held.iter()
-        .enumerate()
-        .map(|(order, document)| row(document, "documents", order, words))
+        .map(|document| row(document, "documents", words))
         .collect()
 }
 
@@ -246,8 +246,10 @@ fn title(document: &Document, words: &Words) -> String {
 }
 
 /// A Drive file's one row, keyed by Drive's id as a document's always
-/// was, so a document is one row in Docs' Recent and Drive's alike.
-fn row(document: &Document, place: &str, order: usize, words: &Words) -> Value {
+/// was, so a document is one row in Docs' Recent and Drive's alike. Its
+/// `order` is the daemon's, spaced as its place's rows were last told
+/// (placed.rs).
+fn row(document: &Document, place: &str, words: &Words) -> Value {
     let kind = kind(document.kind);
     let named = words.of(&kind);
     let side: Vec<Value> = document
@@ -260,7 +262,6 @@ fn row(document: &Document, place: &str, order: usize, words: &Words) -> Value {
         "row": format!("gdoc:{}", document.id),
         "place": place,
         "kind": document.kind,
-        "order": order,
         "name": title(document, words),
         "glyph": named.glyph,
         "hue": "program",
@@ -394,27 +395,28 @@ fn lasting(milliseconds: u64, words: &Words) -> String {
     }
 }
 
-/// A size in decimal units, as Mail.js's weighed says it, with a figure
-/// after the point only below ten. Its units are the vocabulary's; how
-/// its figure is written becomes the ready-rows crate's number wording
-/// once that lands, from the account's number settings.
+/// A size in decimal units, to three significant figures as the launcher
+/// says every measure (FileFacts.js's weighed): 5.60 MB, 48.0 MB, 312 kB.
+/// Its units are the vocabulary's and its figure the ready-rows crate's,
+/// grouped and pointed as the launcher's own sizes are, with the comma
+/// and the full stop.
 fn weighed(bytes: u64, words: &Words) -> String {
     const UNITS: [(f64, &str); 3] = [(1e9, "gigabytes"), (1e6, "megabytes"), (1e3, "kilobytes")];
+    // What rounds to a thousand of one unit, to three figures.
+    const ROUNDS_UP: f64 = 999.5;
+    let numbers = Numbers::default();
     #[expect(clippy::cast_precision_loss, reason = "a size said to three figures")]
     let bytes = bytes as f64;
-    let (count, unit) = UNITS.iter().find(|(unit, _)| bytes >= *unit).map_or_else(
-        || (bytes.to_string(), "bytes"),
-        |(unit, name)| {
-            let scaled = bytes / unit;
-            let count = if scaled < 10.0 {
-                format!("{scaled:.1}")
-            } else {
-                format!("{scaled:.0}")
-            };
-            (count, *name)
-        },
-    );
-    fill(words.word(unit), &[("count", &count)])
+    let Some(at) = UNITS.iter().position(|(unit, _)| bytes >= *unit) else {
+        return fill(words.word("bytes"), &[("count", &numbers.whole(bytes))]);
+    };
+    let scaled = bytes / UNITS[at].0;
+    // 999.6 kB would read 1,000 kB: it's 1.00 MB instead.
+    let (scaled, unit) = match at.checked_sub(1) {
+        Some(up) if scaled >= ROUNDS_UP => (scaled / 1e3, UNITS[up].1),
+        _ => (scaled, UNITS[at].1),
+    };
+    fill(words.word(unit), &[("count", &numbers.significant(scaled))])
 }
 
 #[cfg(test)]

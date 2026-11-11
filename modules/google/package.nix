@@ -11,15 +11,20 @@
 rustPlatform.buildRustPackage {
   pname = "google";
   version = "0.1.0";
+  # The ready-rows crate it names by path comes beside it, and it builds
+  # from its own folder within.
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
     ];
   };
+  sourceRoot = "source/google";
   cargoLock.lockFile = ./Cargo.lock;
   doCheck = words != null;
   env = lib.optionalAttrs (words != null) { LAUNCHER_WORDS = "${words}"; };
