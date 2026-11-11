@@ -195,6 +195,25 @@ pub fn done(niri: &Path, act: &Act) -> Option<Value> {
     serde_json::from_str(&line).ok()
 }
 
+/// The journal's line for an act that waited for the key, which was
+/// answered done before niri was asked, so the journal is the only place
+/// niri not answering or refusing it shows: the line names the act and
+/// says what niri said. None where niri did it.
+#[must_use]
+pub fn unheard(act: &Act, answer: Option<&Value>) -> Option<String> {
+    let ask = act.ask();
+    let done = ask["do"].as_str().unwrap_or_default();
+    let named = act
+        .output()
+        .map_or_else(|| done.to_owned(), |output| format!("{done} {output}"));
+    match answer {
+        None => Some(format!("<4>niri didn't answer the screen act {named}")),
+        Some(answer) => answer["Err"]
+            .as_str()
+            .map(|why| format!("<4>niri refused the screen act {named}: {why}")),
+    }
+}
+
 /// The answer to the ask of `id`: done, or why not, in the launcher's
 /// words where it has them for the act. A screen turned on, off or
 /// unplugged, or a setting set, that niri refuses says niri's own words
@@ -483,6 +502,25 @@ mod tests {
         assert_eq!(
             said["error"]["said"], "DELL is unplugged",
             "it was said otherwise: {said}"
+        );
+    }
+
+    #[test]
+    fn a_waiting_act_niri_didnt_do_is_journalled_by_name() {
+        let refused = json!({"Err": "No such output."});
+        let lines = [
+            unheard(&Act::Sleep, None),
+            unheard(&Act::Dark("eDP-1".to_owned()), Some(&refused)),
+            unheard(&Act::Sleep, Some(&json!({"Ok": "Handled"}))),
+        ];
+        assert_eq!(
+            lines,
+            [
+                Some("<4>niri didn't answer the screen act sleep".to_owned()),
+                Some("<4>niri refused the screen act dark eDP-1: No such output.".to_owned()),
+                None
+            ],
+            "the journal was told otherwise"
         );
     }
 

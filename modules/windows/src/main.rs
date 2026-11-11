@@ -765,8 +765,8 @@ fn screen_done(shared: &Arc<Shared>, id: &Value, said: &Value) -> Value {
         return error(id, "unknown-act", &format!("no act on a screen in {said}"));
     };
     // Every screen goes dark, as does the last lit one, once the key that
-    // asked is up, on a thread of its own so no other ask waits, with
-    // nothing to show a refusal by then.
+    // asked is up, on a thread of its own so no other ask waits; the ask
+    // is answered by then, so the journal says what niri didn't do.
     let waits = match &act {
         Act::Sleep => true,
         Act::Dark(name) => screens::last_lit(&lock(&shared.daemon).outputs, name),
@@ -776,7 +776,9 @@ fn screen_done(shared: &Arc<Shared>, id: &Value, said: &Value) -> Value {
         let shared = Arc::clone(shared);
         std::thread::spawn(move || {
             std::thread::sleep(acts::KEY_UP);
-            acts::done(&shared.niri, &act);
+            if let Some(line) = acts::unheard(&act, acts::done(&shared.niri, &act).as_ref()) {
+                eprintln!("{line}");
+            }
             looked(&shared);
         });
         return json!({"id": id, "done": true});
