@@ -1346,7 +1346,7 @@ in
       # The home network the eero daemon keeps (modules/eero): the
       # internet, its nodes and the devices on them, only where the
       # daemon runs, so a machine without it names no Home Network in
-      # Network. It holds nothing until the daemon has written its record.
+      # Network. It holds nothing until the daemon has told its record.
       eero = {
         order = 102;
         source = "eero";

@@ -2,11 +2,11 @@
 //! changes, and each time its ages next read differently, so what it shows
 //! is never older than it says.
 //!
-//! It listens on the daemon's socket rather than watching the record's
-//! file, since the daemon writes every listener each new model and reads
-//! the network at its fast pace while anyone listens: watching is looking,
-//! and the daemon should know it. When the daemon isn't listening, the
-//! page says so and the watch tries again until it is.
+//! It holds the daemon's socket rather than watching the record's file,
+//! since the daemon tells every watch each new model, and watching the
+//! network ahead reads it at the fast pace: watching is looking, and the
+//! daemon should know it. When the daemon isn't listening, the page says
+//! so and the watch tries again until it is.
 
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::UnixStream;
@@ -14,6 +14,9 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
+use serde_json::{Value, json};
+
+use crate::listeners::KIND;
 use crate::model::HomeNetwork;
 use crate::views::{self, Clock, Ink, View};
 
@@ -45,9 +48,12 @@ pub fn watch(how: &Watch, out: &mut impl Write) -> Result<(), String> {
     let mut said = None;
     loop {
         match UnixStream::connect(&socket) {
-            Ok(stream) => {
+            Ok(mut stream) => {
                 said = None;
-                follow(how, stream, out, &Clock::system)?;
+                // A daemon that went as it was asked is waited for again.
+                if look(&mut stream).is_ok() {
+                    follow(how, stream, out, &Clock::system)?;
+                }
             }
             Err(error) => {
                 let page = absent(&socket, &error);
@@ -59,6 +65,34 @@ pub fn watch(how: &Watch, out: &mut impl Write) -> Result<(), String> {
         }
         thread::sleep(AGAIN);
     }
+}
+
+/// Watches the home network, and ahead, so the daemon reads it often.
+fn look(stream: &mut UnixStream) -> io::Result<()> {
+    for asked in [
+        json!({"id": "all", "ask": "watch", "kind": KIND}),
+        json!({"id": "ahead", "ask": "watch", "kind": KIND, "keys": [KIND]}),
+    ] {
+        stream.write_all(format!("{asked}\n").as_bytes())?;
+    }
+    stream.flush()
+}
+
+/// The model a line of the daemon's tells, if it tells one: the network's
+/// record in a watch's answer or a change.
+fn told(line: &[u8]) -> Result<Option<HomeNetwork>, String> {
+    let said: Value = serde_json::from_slice(line)
+        .map_err(|e| format!("eero-daemon wrote a line this eero can't read: {e}"))?;
+    let records = said.get("records").or_else(|| said.get("changed"));
+    let Some(record) = records
+        .and_then(Value::as_array)
+        .and_then(|records| records.iter().find(|record| record["key"] == KIND))
+    else {
+        return Ok(None);
+    };
+    serde_json::from_value(record["network"].clone())
+        .map(Some)
+        .map_err(|e| format!("eero-daemon wrote a model this eero can't read: {e}"))
 }
 
 /// What the page says while the daemon isn't listening.
@@ -115,10 +149,9 @@ pub fn follow(
                 return Ok(());
             }
             Ok(_) if line.ends_with(b"\n") => {
-                model =
-                    Some(serde_json::from_slice(&line).map_err(|e| {
-                        format!("eero-daemon wrote a model this eero can't read: {e}")
-                    })?);
+                if let Some(network) = told(&line)? {
+                    model = Some(network);
+                }
                 line.clear();
             }
             // The daemon went in the middle of a line; the next read says so.
@@ -189,8 +222,10 @@ mod tests {
         String::from_utf8(out).unwrap()
     }
 
+    /// A change the daemon tells, as one line.
     fn line(model: &HomeNetwork) -> String {
-        format!("{}\n", serde_json::to_string(model).unwrap())
+        let record = json!({"key": KIND, "kind": KIND, "network": model});
+        format!("{}\n", json!({"id": "all", "changed": [record]}))
     }
 
     #[test]
@@ -235,7 +270,11 @@ mod tests {
     #[test]
     fn a_model_this_eero_cant_read_ends_the_watch_saying_so() {
         let (ours, mut theirs) = UnixStream::pair().unwrap();
-        theirs.write_all(b"{\"read\": 5}\n").unwrap();
+        let record = json!({"key": KIND, "kind": KIND, "network": {"read": 5}});
+        let answer = json!({"id": "all", "records": [record]});
+        theirs
+            .write_all(format!("{{\"id\":\"hello\"}}\n{answer}\n").as_bytes())
+            .unwrap();
         drop(theirs);
         let ink = Ink::plain();
         let how = Watch {
@@ -250,6 +289,27 @@ mod tests {
         assert!(
             refused.starts_with("eero-daemon wrote a model this eero can't read"),
             "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_watch_asks_for_the_network_and_looks_at_it() {
+        let (mut ours, theirs) = UnixStream::pair().unwrap();
+
+        look(&mut ours).unwrap();
+        drop(ours);
+
+        let asked: Vec<Value> = BufReader::new(theirs)
+            .lines()
+            .map(|line| serde_json::from_str(&line.unwrap()).unwrap())
+            .collect();
+        assert_eq!(
+            asked,
+            [
+                json!({"id": "all", "ask": "watch", "kind": KIND}),
+                json!({"id": "ahead", "ask": "watch", "kind": KIND, "keys": [KIND]}),
+            ],
+            "a watch watches the network, and ahead, so the daemon reads it often"
         );
     }
 
