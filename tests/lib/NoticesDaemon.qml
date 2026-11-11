@@ -8,6 +8,7 @@
 // gone, as the daemon does, so a test sees what a change remakes. A test
 // waits for `told` to count up before reading what the change made. A
 // check copies it beside the test with Watch.js.
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
