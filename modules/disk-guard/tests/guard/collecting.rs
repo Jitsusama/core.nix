@@ -119,7 +119,7 @@ impl Store {
                  if [ -e {listed} ]; then while [ -e {slow_list} ]; do sleep 0.05; done; fi\n\
                  : > {listed}\n\
                  [ -e {broken} ] && {{ echo 'error: a temporary file went' >&2; exit 1; }}\n\
-                 for p in {store}/*; do [ -e \"$p/meta\" ] || continue\n\
+                 for p in {store}/*; do [ -e \"$p/meta\" ] || [ -e \"$p/disk.img\" ] || continue\n\
                    [ -e \"$p/alive\" ] && [ ! -e {stale} ] || echo \"$p\"\n\
                  done\n\
                  rm -f {stale}; exit 0\n",
@@ -141,11 +141,21 @@ impl Store {
                  case \"$1 $2\" in\n\
                  'path-info --json') [ \"$3\" = --offline ] || exit 9; shift 3\n\
                    printf '{{'; sep=''\n\
-                   for p in \"$@\"; do read t s < \"$p/meta\"\n\
+                   for p in \"$@\"; do\n\
+                     [ -e \"$p/meta\" ] || {{ printf '%s\"%s\":null' \"$sep\" \"$p\"; sep=,; continue; }}\n\
+                     read t s < \"$p/meta\"\n\
                      printf '%s\"%s\":{{\"narSize\":%s,\"registrationTime\":%s,\"references\":[]}}' \
                        \"$sep\" \"$p\" \"$s\" \"$t\"; sep=,\n\
                    done; printf '}}' ;;\n\
-                 'store delete') shift 2; echo \"delete $*\" >> {log}\n\
+                 'store delete') shift 2\n\
+                   if [ \"$1\" = --offline ]; then shift; else\n\
+                     for p in \"$@\"; do [ -e \"$p/meta\" ] && continue\n\
+                       echo \"refused $*\" >> {log}\n\
+                       echo \"error: unable to download 'https://cache.nixos.org/${{p##*/}}.narinfo': \
+                         Could not resolve hostname\" >&2; exit 1\n\
+                     done\n\
+                   fi\n\
+                   echo \"delete $*\" >> {log}\n\
                    for p in \"$@\"; do [ -e \"$p/alive\" ] || [ -e \"$p/held\" ] || continue\n\
                      echo \"error: Cannot delete path '$p' since it is still alive.\" >&2; exit 1\n\
                    done; rm -r \"$@\" ;;\n\
@@ -394,6 +404,35 @@ fn garbage_a_running_process_has_open_is_left_for_a_later_pass() {
         .collect();
     assert_eq!(deletes, [format!("delete {}", free.display())]);
     assert!(open.exists(), "a process has it open");
+}
+
+#[test]
+fn what_nix_never_registered_goes_with_the_dead_in_a_delete_that_asks_no_substituter() {
+    // Asked to delete a path it never registered, Nix looks it up in each
+    // substituter first; the system unit has no network, so the whole
+    // delete failed, and from 14:55 on 11 November a laptop's guard freed
+    // nothing from its store for hours.
+    let store = Store::new();
+    let dead = store.dead("aaa-dead", 10.0 * DAY, 4096);
+    let killed = store.root.join("store/bbb-killed-image");
+    fs::create_dir_all(&killed).unwrap();
+    fs::write(killed.join("disk.img"), vec![1u8; 8192]).unwrap();
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    let senses = CALM;
+    step_later_until(&store, &mut guard, 2.0 * 3600.0, &senses, |store, _| {
+        store
+            .log()
+            .iter()
+            .any(|line| line.starts_with("delete") || line.starts_with("refused"))
+    });
+    let log = store.log();
+    assert!(
+        !log.iter().any(|line| line.starts_with("refused")),
+        "a delete went to the substituters: {log:?}"
+    );
+    step_later_until(&store, &mut guard, 2.0 * 3600.0, &senses, |_, _| {
+        !dead.exists() && !killed.exists()
+    });
 }
 
 #[test]
