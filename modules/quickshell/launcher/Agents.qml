@@ -114,16 +114,38 @@ Provider {
 
     // The daemon's rows of Agents, each record held by its key, its fields
     // under `row` (Y2YBTS's ready-rows.md), watched whether or not the
-    // launcher's open, so it opens on rows already held.
+    // launcher's open, so it opens on rows already held. Shut, the watch
+    // is paced (`shutPace`): the daemon holds back what moves and tells
+    // it all in one line a pace, since a spend side ticking or a session
+    // turning to listen moved a row about every three seconds, each line
+    // waking the shut shell for nothing it shows (RO9YDD, 21 lines in 60 s
+    // on 2026-11-11). Asked again once the opening's next frame is drawn,
+    // the same watch is told at once what it held back, never every row
+    // whole, so an opening draws from rows at most a pace old and is
+    // brought up to now a frame later, its fill not waiting on the line.
     readonly property var rowsKind: rowsLink.item
+    readonly property int shutPace: 10000
     LazyLoader {
         id: rowsLink
         active: !!Quickshell.env("XDG_RUNTIME_DIR")
 
         Daemon {
+            id: agentsRows
+
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
             kind: ["row", "summary"]
-            watching: ({ place: "agents" })
+            watching: provider.opened() ? ({ place: "agents" })
+                : ({ place: "agents", every: provider.shutPace })
+            onWatchingChanged: {
+                const asking = () => {
+                    if (agentsRows.wire !== null && agentsRows.watched)
+                        agentsRows.watchAll();
+                };
+                if (provider.opened() && provider.launcher)
+                    provider.launcher.afterFrame(asking);
+                else
+                    asking();
+            }
             ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
             answersWhole: true
             onHeard: (changed, gone) => provider.placed(changed, gone)
