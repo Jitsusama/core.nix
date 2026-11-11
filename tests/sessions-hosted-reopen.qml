@@ -13,21 +13,13 @@ import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Expect.js" as Expect
+import "Watch.js" as Watch
 
 ShellRoot {
     id: root
 
     property string stage: "listed"
-
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
-    }
-
-    function fail(message) {
-        console.warn(`FAIL ${message}`);
-        Qt.callLater(() => Qt.exit(1));
-    }
 
     function find(address) {
         return Sessions.running.find(session => session.address === address);
@@ -83,7 +75,7 @@ ShellRoot {
     Component.onCompleted: windowsTell({ records: [windowRecord(90, "firefox", 40)] })
 
     function never(one, cwd) {
-        root.fail(`${one.id} was looked for in ${cwd}, as a pi to start`);
+        Expect.fail(`${one.id} was looked for in ${cwd}, as a pi to start`);
     }
 
     function check() {
@@ -101,7 +93,7 @@ ShellRoot {
             else if (stage === "left")
                 left();
         } catch (error) {
-            fail(error.message);
+            Expect.fail(error.message);
         }
     }
 
@@ -111,7 +103,7 @@ ShellRoot {
         const viewed = find("VIEWED");
         if (!viewed)
             return;
-        expect("one hosted here keeps the node's words to view it",
+        Expect.expect("one hosted here keeps the node's words to view it",
             JSON.stringify(viewed.attach) === JSON.stringify(viewing("s-viewed")),
             JSON.stringify(viewed));
         stage = "opening";
@@ -127,12 +119,12 @@ ShellRoot {
         const spawned = viewerSpawns("s-viewed");
         if (spawned.length === 0)
             return;
-        expect("its viewer opens by the node's words, held, without the focus",
+        Expect.expect("its viewer opens by the node's words, held, without the focus",
             spawned[0].startsWith("env -u XDG_ACTIVATION_TOKEN -u DESKTOP_STARTUP_ID ")
             && spawned[0].includes("MYCELIUM_APP_ID=pi-hosted.s-viewed ")
             && spawned[0].includes("mycelium --realm harbour hold -- "
                 + viewing("s-viewed").join(" ")), spawned[0]);
-        expect("niri is told where it opens: the monitor's empty workspace",
+        Expect.expect("niri is told where it opens: the monitor's empty workspace",
             JSON.stringify(opensOn("s-viewed")) === JSON.stringify([{
                 app_id: "pi-hosted.s-viewed", reference: { Id: 41 }, column: 1 }]),
             JSON.stringify(Niri.acts));
@@ -155,16 +147,16 @@ ShellRoot {
         const unserved = Sessions.keptPlaces["s-unserved"];
         if (!unserved || (Sessions.reopening?.queue.length ?? 0) > 0)
             return;
-        expect("one no host serves yet has its place kept, on the next empty workspace",
+        Expect.expect("one no host serves yet has its place kept, on the next empty workspace",
             unserved.workspace === 42 && unserved.column === 1, JSON.stringify(unserved));
-        expect("one kept nowhere opens nothing and keeps nothing",
+        Expect.expect("one kept nowhere opens nothing and keeps nothing",
             viewerSpawns("s-placeless").length === 0
             && Sessions.keptPlaces["s-placeless"] === undefined,
             JSON.stringify(Sessions.keptPlaces));
-        expect("no pi started, one viewer opened", viewerSpawns("s-viewed").length === 1
+        Expect.expect("no pi started, one viewer opened", viewerSpawns("s-viewed").length === 1
             && !Niri.spawns.some(command => / pi( |$)/.test(command)
                 || command.includes("s-unserved")), Niri.spawns.join("\n"));
-        expect("its viewer holds where it opened, and nothing took the focus",
+        Expect.expect("its viewer holds where it opened, and nothing took the focus",
             !Niri.acts.some(act => act.MoveWindowToWorkspace || act.MoveColumnToIndex
                 || act.FocusWindow || act.FocusWorkspace || act.FocusMonitor
                 || act.FocusColumnLast), JSON.stringify(Niri.acts));
@@ -172,7 +164,7 @@ ShellRoot {
         // told with a new digest, since the launcher is shut.
         joelOn(42);
         stage = "joel";
-        tell({ changed: [Object.assign(hosted("s-second", "SECOND"),
+        Watch.tell(root.watch, { changed: [Object.assign(hosted("s-second", "SECOND"),
             { told: "0000000000000001" })] });
     }
 
@@ -189,9 +181,9 @@ ShellRoot {
         const second = Sessions.keptPlaces["s-second"];
         if (!second)
             return;
-        expect("one bound for Joel's workspace is kept there", second.workspace === 42,
+        Expect.expect("one bound for Joel's workspace is kept there", second.workspace === 42,
             JSON.stringify(second));
-        expect("and opens nothing while he's there", viewerSpawns("s-second").length === 0,
+        Expect.expect("and opens nothing while he's there", viewerSpawns("s-second").length === 0,
             Niri.spawns.join("\n"));
         stage = "left";
         joelOn(40);
@@ -200,11 +192,11 @@ ShellRoot {
     function left() {
         if (viewerSpawns("s-second").length === 0)
             return;
-        expect("once he leaves, it opens where it was kept",
+        Expect.expect("once he leaves, it opens where it was kept",
             JSON.stringify(opensOn("s-second")) === JSON.stringify([{
                 app_id: "pi-hosted.s-second", reference: { Id: 42 }, column: 1 }]),
             JSON.stringify(Niri.acts));
-        expect("and is kept no more", Sessions.keptPlaces["s-second"] === undefined,
+        Expect.expect("and is kept no more", Sessions.keptPlaces["s-second"] === undefined,
             JSON.stringify(Sessions.keptPlaces));
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
@@ -219,14 +211,9 @@ ShellRoot {
         onTriggered: root.check()
     }
 
-    // The node's end of the shell's watch of sessions, so it can tell more.
-    property var answering: null
-    property var watchId: null
-
-    function tell(change) {
-        answering.write(`${JSON.stringify(Object.assign({ id: root.watchId }, change))}\n`);
-        answering.flush();
-    }
+    // The shell's watch of sessions, as it asked the node, so it can be
+    // told more.
+    property var watch: null
 
     // A stand-in for the machine's node, over the daemon interface, holding
     // the one session its host serves at first.
@@ -240,8 +227,7 @@ ShellRoot {
                     const ask = JSON.parse(line);
                     let answer = { id: ask.id, version: 1, domain: "node", state: "running" };
                     if (ask.ask === "watch" && ask.kind === "session") {
-                        root.answering = asked;
-                        root.watchId = ask.id;
+                        root.watch = { id: ask.id, socket: asked };
                         answer = { id: ask.id, records: [root.hosted("s-viewed", "VIEWED")] };
                     } else if (ask.ask === "watch") {
                         answer = { id: ask.id, records: [] };
@@ -256,7 +242,7 @@ ShellRoot {
     Timer {
         running: true
         interval: 50000
-        onTriggered: root.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
+        onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
             + JSON.stringify(Sessions.keptPlaces))
     }
 }

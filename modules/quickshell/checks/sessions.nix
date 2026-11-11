@@ -209,30 +209,7 @@
     let
       # Joel's window on the monitor's first workspace, and the empty one
       # niri keeps last; the test makes more as windows open there.
-      niri = singleton "Niri.qml" ''
-        property var workspaces: ({
-          "40": { id: 40, idx: 1, output: "DP-4", is_focused: true, active_window_id: 90 },
-          "41": { id: 41, idx: 2, output: "DP-4", is_focused: false, active_window_id: null }
-        })
-        property var windows: ({
-          "90": { id: 90, pid: 900, workspace_id: 40, opened: "firefox",
-            layout: { pos_in_scrolling_layout: [1, 1] } }
-        })
-        property int revision: 0
-        property var current: null
-        property var focused: null
-        property var acts: []
-        property var spawns: []
-        signal windowOpenedOrChanged(var window)
-        function act(request) { acts = acts.concat([request]); }
-        function request(asked, answer) {}
-        function workspace(id) {
-          if (id !== undefined)
-            return workspaces[id] ?? null;
-          return Object.values(workspaces).find(one => one.is_focused) ?? null;
-        }
-        function spawn(command) { spawns = spawns.concat([command.join(" ")]); }
-      '';
+      niri = ../tests/stand-ins/hosted-reopen-niri.qml;
       options = singleton "Options.qml" ''
         readonly property var sounds: ({ wants: "", player: "" })
       '';
@@ -248,6 +225,8 @@
       '';
       report = singleton "Report.qml" "function say(text) {}";
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
     pkgs.runCommandLocal "a-hosted-viewer-reopens-where-it-was" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
@@ -263,6 +242,8 @@
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions-hosted-reopen.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
