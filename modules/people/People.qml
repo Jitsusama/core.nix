@@ -95,6 +95,38 @@ Provider {
                 provider.unanswered = false;
             }
         }
+        onHeard: (changed, gone) => provider.nameAll(changed, gone)
+    }
+    // Who the daemon has named, by key, as their name and addresses, to
+    // tell a change to who someone is from a change to how they stand.
+    // Plain, so keeping it notifies nothing.
+    readonly property var namesHeld: ({})
+    // Counts each change to who the daemon names, for a binding asking
+    // who an address is (whoIs), so a sender or a guest drawn before
+    // People answered is named once it does (Y2YBTS, 2026-11-10); how
+    // they stand changes far more often, and isn't counted, so it
+    // remakes none of those rows.
+    property int namesRevision: 0
+    function nameAll(changed, gone) {
+        let renamed = false;
+        for (const key of changed) {
+            const person = lister.held[key]?.person;
+            if (!person)
+                continue;
+            const named = JSON.stringify([person.name, person.emails]);
+            if (namesHeld[key] !== named) {
+                namesHeld[key] = named;
+                renamed = true;
+            }
+        }
+        for (const key of gone) {
+            if (key in namesHeld) {
+                delete namesHeld[key];
+                renamed = true;
+            }
+        }
+        if (renamed)
+            namesRevision += 1;
     }
     // Whether the people daemon has been silent a second, so home says so:
     // a restart or a reconnect answers within it, and saying so at once
@@ -511,7 +543,10 @@ Provider {
     // with no row made: for a count of a meeting's guests or a call's name
     // (Calendar.qml, Transcripts.qml), which made each one's whole row; null
     // when no source knows them.
+    // It reads namesRevision, so a binding asking follows who's named.
     function whoIs(email) {
+        if (namesRevision < 0)
+            return null;
         return merged().byEmail[String(email ?? "").trim().toLowerCase()] ?? null;
     }
 
