@@ -1,6 +1,6 @@
 """Root's a-call-is-on reads an account's PipeWire, and says a call only while one records.
 
-tests/calls.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
+calls.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the tests prove. Each test asks for Joel's sound running as a
 fixture, and one that starts a call ends it, so any test runs alone with `-k`.
 """

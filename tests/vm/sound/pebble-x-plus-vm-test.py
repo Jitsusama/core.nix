@@ -1,6 +1,6 @@
 """Tones measured through a Pebble X Plus's tuning in a virtual machine, and on headphones.
 
-tests/pebble-x-plus.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+pebble-x-plus.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. Each test asks for the state it starts from
 as a fixture: Joel's session with the tones made and the tuning running, and the tones as the
 speakers hear them with the tuning stopped, which the others are measured against. So any test

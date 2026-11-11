@@ -1,8 +1,9 @@
 """A call in Joel's PipeWire is heard by call-transcripts and written down, both sides in order.
 
-tests/call-transcripts.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the tests prove. The call is held once for the module, since
-Parakeet on the VM's CPU takes a while to hear it, and each test reads what that call left.
+call-transcripts.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the tests prove. The call is held once
+for the module, since Parakeet on the VM's CPU takes a while to hear it, and each test reads what
+that call left.
 """
 
 from __future__ import annotations

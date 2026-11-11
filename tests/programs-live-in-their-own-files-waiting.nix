@@ -56,9 +56,9 @@
   "modules/unlisted/checks.nix" = 1;
   "modules/zathura/checks.nix" = 4;
   "modules/zoxide/checks.nix" = 2;
-  "tests/call-transcripts.nix" = 1;
+  "tests/vm/sound/call-transcripts.nix" = 1;
   "tests/desktop.nix" = 4;
-  "tests/dictation-chord.nix" = 1;
+  "tests/vm/sound/dictation-chord.nix" = 1;
   "tests/ir-camera.nix" = 1;
   "tests/lib/qemu-after-its-sockets.nix" = 1;
   "tests/vm-first.nix" = 1;

@@ -1,9 +1,10 @@
 """Dictation tells its watchers it's listening only once the microphone sounds.
 
-tests/dictation-listening.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the tests prove. The service runs in alice's account beside her
-PipeWire, with nothing to transcribe with. Each test watches the service afresh, so any test runs
-alone with `-k`; the test with a microphone makes its own and takes it away again.
+dictation-listening.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the tests prove. The service runs in
+alice's account beside her PipeWire, with nothing to transcribe with. Each test watches the service
+afresh, so any test runs alone with `-k`; the test with a microphone makes its own and takes it away
+again.
 """
 
 from __future__ import annotations

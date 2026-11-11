@@ -1,8 +1,8 @@
 """A microphone in Joel's PipeWire is offered noise-cancelled, heard only while it's recorded.
 
-tests/noise-cancelled.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the tests prove. The noise-cancelled program is started once
-for the module, and each test records from what it offers.
+noise-cancelled.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the tests prove. The noise-cancelled
+program is started once for the module, and each test records from what it offers.
 """
 
 from __future__ import annotations

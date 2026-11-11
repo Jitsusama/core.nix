@@ -30,11 +30,11 @@ let
   # fixture.
   values = pkgs.writeText "speakers-values.json" (builtins.toJSON { inherit speakers headphones; });
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "speakers";
 
   nodes.machine = {
-    imports = [ ../hardware/dell-xps-14-da14260/sound/speakers.nix ];
+    imports = [ ../../../hardware/dell-xps-14-da14260/sound/speakers.nix ];
 
     users.users.joel.isNormalUser = true;
     environment.systemPackages = [

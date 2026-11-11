@@ -21,8 +21,8 @@
 # call-transcripts-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
-  dictation = pkgs.callPackage ../modules/dictation/package.nix { };
-  model = pkgs.callPackage ../modules/dictation/parakeet.nix { };
+  dictation = pkgs.callPackage ../../../modules/dictation/package.nix { };
+  model = pkgs.callPackage ../../../modules/dictation/parakeet.nix { };
   # The session's reader for Markdown, noting where it was shown and what.
   reader = pkgs.writeShellApplication {
     name = "stand-in-reader";
@@ -39,7 +39,7 @@ let
     text = ''
       exec ${
         pkgs.python3.withPackages (python: [ python.dbus-fast ])
-      }/bin/python3 ${./stand-in-notices.py} "$@"
+      }/bin/python3 ${../../stand-in-notices.py} "$@"
     '';
   };
   summarizer = pkgs.writeShellApplication {
@@ -72,7 +72,7 @@ let
         sox weather.wav $out/other.wav pad 4 4
       '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "call-transcripts";
 
   nodes.machine = {

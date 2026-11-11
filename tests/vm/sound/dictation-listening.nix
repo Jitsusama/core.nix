@@ -6,7 +6,7 @@
 # loads Whisper only to transcribe, and what's heard here is silence, which
 # it says rather than transcribes. The tests are dictation-listening-vm-test.py.
 { self, pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "dictation-listening";
 
   nodes.machine = {

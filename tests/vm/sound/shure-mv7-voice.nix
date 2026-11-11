@@ -11,11 +11,11 @@
 # at that level comes up the full 12. The headset should be heard as played.
 # The script is shure-mv7-voice-vm-test.py.
 { pkgs }:
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shure-mv7-voice";
 
   nodes.machine = {
-    imports = [ ../modules/shure-mv7/nixos.nix ];
+    imports = [ ../../../modules/shure-mv7/nixos.nix ];
 
     users.users.joel.isNormalUser = true;
     environment.systemPackages = [ pkgs.sox ];

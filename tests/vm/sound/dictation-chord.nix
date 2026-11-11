@@ -34,7 +34,7 @@ let
             time.sleep(0.5)
       '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "dictation-chord";
 
   nodes.machine = {

@@ -12,6 +12,7 @@ They are grouped by what they prove, a folder an area:
 | Folder   | Holds                                                                |
 | -------- | -------------------------------------------------------------------- |
 | `guide/` | the guide's sticks, installs and recovery, and Secure Boot           |
+| `sound/` | calls, dictation, and each microphone's and speaker's tuning         |
 
 The VM tests not yet grouped are still in `../`, and move into a folder
 here as their owners free them. Shared helpers are in `../lib/`, and
