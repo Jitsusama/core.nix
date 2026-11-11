@@ -132,7 +132,7 @@ Provider {
             id: agentsRows
 
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-            kind: ["row", "summary", "recent", "landed", "landed-days"]
+            kind: ["row", "summary", "recent", "landed", "landed-days", "closed"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             onWatchingChanged: {
@@ -177,6 +177,8 @@ Provider {
     property int placings: 0
     // Says Recent's records moved, so only Recent is made again.
     property int recentMoves: 0
+    // Says the closed orchestrators' records moved.
+    property int closedMoves: 0
 
     // Takes what the daemon said moved: each row's key gone or changed let
     // go, and each changed put back where its order places it. A drawer or
@@ -195,6 +197,8 @@ Provider {
             recentMoves += 1;
         if (moved.some(key => String(key).startsWith("landed")))
             landedMoves += 1;
+        if (moved.some(key => String(key).startsWith("closed:")))
+            closedMoves += 1;
         if (!moved.some(rowKey))
             return;
         for (const key of moved) {
@@ -230,8 +234,20 @@ Provider {
         const rows = placing.keys.filter(key => !held[key]?.row?.held?.fold)
             .map(key => rowOf(key, held)).filter(row => row !== null);
         const orchestrators = source("orchestrators");
-        return rows.concat((orchestrators?.closed ?? [])
-            .map(one => closedRow(one, orchestrators)));
+        if (!orchestrators)
+            return rows;
+        return rows.concat(shutOrchestrators.map(one => closedRow(one, orchestrators)));
+    }
+
+    // The closed orchestrators, as the daemon serves them (closed.rs): each
+    // the harness lists that no running or parked session answers to, the
+    // one last live first, with what reopening it needs.
+    readonly property var shutOrchestrators: {
+        void closedMoves;
+        const held = rowsKind?.held ?? {};
+        return Order.sorted(Object.keys(held).filter(key => key.startsWith("closed:"))
+            .map(key => held[key]), Order.smaller(one => one.order ?? 0))
+            .map(one => one.closed);
     }
 
     // The session a row is of, by its address, running or parked.
@@ -277,35 +293,28 @@ Provider {
     function memberNames() {
         void placings;
         const held = rowsKind?.held ?? {};
-        const closed = source("orchestrators")?.closed ?? [];
         return placing.keys.filter(key => !held[key]?.row?.held?.fold)
             .map(key => held[key].row.name)
-            .concat(closed.map(one => closedName(one)),
+            .concat(shutOrchestrators.map(one => one.name),
                 [toReopen, landed, recent].filter(row => row !== null).map(row => row.name));
     }
 
-    // A closed orchestrator's name: what the harness calls it, short first.
-    function closedName(one) {
-        return one.short || one.title || one.address;
-    }
-
     // A closed orchestrator's row: its glyph muted, as one paused is, its
-    // name in text, "closed" at its right with what its whole orchestration
-    // spent today when that's anything, its quest's title as its note, and
-    // Return reopening it where it left off. One whose folder is gone says
-    // so in alert, and starts afresh in its quest's start folder
+    // name in text (the harness's short name first), "closed" at its right
+    // with what its whole orchestration spent when the daemon says it, which
+    // it doesn't while the screen is shared, its quest's title as its note,
+    // and Return reopening it where it left off. One whose folder is gone
+    // says so in alert, and starts afresh in its quest's start folder
     // (Orchestrators.qml's goneFrom), or, with none, steps in to its talks.
     function closedRow(one, orchestrators) {
-        const family = one.quest && !Quiet.sharing ? SpendWatch.families[one.quest] ?? null
-            : null;
         const items = SessionRow.side(word("closed"),
-            family ? word("allOf", { spent: family.all }) : "");
+            one.spent ? word("allOf", { spent: one.spent }) : "");
         const gone = orchestrators.goneFrom(one);
         const row = member({
             thing: true,
             key: `orchestrator:${one.address}`,
             kind: SessionRow.KIND,
-            name: closedName(one),
+            name: one.name,
             also: Fuzzy.prepare(`${one.address} ${one.quest ?? ""} ${one.title ?? ""}`),
             glyph: Theme.glyph.agent,
             hue: SessionRow.hue("off"),
@@ -625,7 +634,7 @@ Provider {
                 if (session)
                     Sessions.goTo(session);
             }
-        }, one.short || one.title || one.address, "reopen", {
+        }, one.name, "reopen", {
             done: () => up() !== undefined || Sessions.parked.some(its),
             within: Sessions.startsWithin
         });

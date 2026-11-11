@@ -144,7 +144,6 @@
       mkdir -p launcher state/quest-workflow
       echo '{"orchestrators":[{"address":"A003","quest":"QEST-A","title":"A"}]}' \
         > state/quest-workflow/orchestrators.json
-      echo '{"quests":[]}' > state/quest-workflow/quests.json
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       ${copied [
         "AgentSources.qml"

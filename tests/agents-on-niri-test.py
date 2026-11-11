@@ -218,10 +218,17 @@ def shell() -> Iterator[Shell]:
     SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
+    # It serves the harness's quests, as the account's node does (modules/mycelium/home.nix),
+    # which say how each closed orchestrator reopens.
+    serves = logs / "serves.json"
+    quest = {"file": str(WORKFLOW / "quests.json"), "records": "quests", "key": "id"}
+    serves.write_text(json.dumps({"quest": quest}))
     with (logs / "mycelium.log").open("w") as log:
         # The node is the store's own, which the check names.
         node = subprocess.Popen(  # noqa: S603
-            [os.environ["MYCELIUM"], "--realm", REALM, "node"], stdout=log, stderr=log
+            [os.environ["MYCELIUM"], "--realm", REALM, "node", "--serves", str(serves)],
+            stdout=log,
+            stderr=log,
         )
     deadline = time.monotonic() + 30
     while not NODE.exists():

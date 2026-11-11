@@ -218,7 +218,6 @@
   "launcher/NowGroups.js" = [ "launcher/Order.js" ];
   "launcher/Orchestrators.qml" = [
     "launcher/Order.js"
-    "launcher/SessionRow.js"
   ];
   "launcher/PastNotices.qml" = [
     "Fuzzy.js"
