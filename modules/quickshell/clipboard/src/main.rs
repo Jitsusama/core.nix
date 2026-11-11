@@ -39,8 +39,8 @@
 //! `"into": "terminal"` or `"plain"`, puts it there and then presses the
 //! paste keys for the window the launcher closed over: Ctrl+Shift+V for a
 //! terminal, whose Ctrl+V is a key of its own, and Ctrl+V anywhere else.
-//! Without `"into"`, they're the keys of the window niri says has the
-//! focus under the launcher as the paste is asked, and with none, the copy
+//! Without `"into"`, they're the keys of the focused workspace's active
+//! window as the paste is asked, and with none, the copy
 //! is only put on the clipboard, with nowhere to paste it.
 //! They're pressed through the compositor's virtual keyboard, once niri
 //! says the launcher's layer has let go of the keys, so they reach the
@@ -280,33 +280,51 @@ fn let_go(answer: &str) -> Option<bool> {
     }))
 }
 
-/// What niri says has the focus: a window, which takes these keys, or
-/// nothing.
+/// What the keys go back to as the launcher lets go of them: a window, by
+/// its id, or nothing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Focus {
-    Window(Keys),
+    Window(u64),
     Nowhere,
 }
 
-/// What niri's answer to `FocusedWindow` says has the focus: none when it
-/// isn't an answer to that.
-fn focused(answer: &str) -> Option<Focus> {
+/// What niri's answer to `Workspaces` says the keys go back to: the
+/// focused workspace's active window. niri says no window is focused
+/// while the launcher holds the keys, so its focused window can't say.
+/// None when it isn't an answer to that.
+fn active(answer: &str) -> Option<Focus> {
     let answer: Value = serde_json::from_str(answer).ok()?;
-    let window = answer.get("Ok")?.get("FocusedWindow")?;
-    if window.is_null() {
-        return Some(Focus::Nowhere);
-    }
+    let workspaces = answer.get("Ok")?.get("Workspaces")?.as_array()?;
+    let focused = workspaces
+        .iter()
+        .find(|workspace| workspace.get("is_focused").and_then(Value::as_bool) == Some(true));
+    Some(
+        match focused.and_then(|workspace| workspace.get("active_window_id")?.as_u64()) {
+            Some(id) => Focus::Window(id),
+            None => Focus::Nowhere,
+        },
+    )
+}
+
+/// The keys window `id` takes, from niri's answer to `Windows`: none when
+/// it isn't an answer to that or doesn't hold the window.
+fn keys_of(answer: &str, id: u64) -> Option<Keys> {
+    let answer: Value = serde_json::from_str(answer).ok()?;
+    let windows = answer.get("Ok")?.get("Windows")?.as_array()?;
+    let window = windows
+        .iter()
+        .find(|window| window.get("id").and_then(Value::as_u64) == Some(id))?;
     let app = window.get("app_id").and_then(Value::as_str).unwrap_or("");
-    Some(Focus::Window(if TERMINALS.contains(&app) {
+    Some(if TERMINALS.contains(&app) {
         Keys::Terminal
     } else {
         Keys::Plain
-    }))
+    })
 }
 
 /// Asks niri one question, `ask` as its socket takes it, and reads its
 /// answer with `read`.
-fn asked_niri<T>(socket: &Path, ask: &[u8], read: fn(&str) -> Option<T>) -> Option<T> {
+fn asked_niri<T>(socket: &Path, ask: &[u8], read: impl FnOnce(&str) -> Option<T>) -> Option<T> {
     let mut stream = UnixStream::connect(socket).ok()?;
     stream.set_read_timeout(Some(LETTING_GO)).ok()?;
     stream.write_all(ask).ok()?;
@@ -319,8 +337,13 @@ fn asked_niri<T>(socket: &Path, ask: &[u8], read: fn(&str) -> Option<T>) -> Opti
 /// with no window focused to paste into. With no niri to ask, or no answer
 /// from it, Ctrl+V, as most windows take.
 fn under(niri: Option<&Path>) -> Option<Keys> {
-    match niri.and_then(|niri| asked_niri(niri, b"\"FocusedWindow\"\n", focused)) {
-        Some(Focus::Window(keys)) => Some(keys),
+    let Some(niri) = niri else {
+        return Some(Keys::Plain);
+    };
+    match asked_niri(niri, b"\"Workspaces\"\n", active) {
+        Some(Focus::Window(id)) => Some(
+            asked_niri(niri, b"\"Windows\"\n", |answer| keys_of(answer, id)).unwrap_or(Keys::Plain),
+        ),
         Some(Focus::Nowhere) => None,
         None => Some(Keys::Plain),
     }
@@ -884,10 +907,11 @@ impl State {
         };
         let pressing = self.pressing.clone();
         thread::spawn(move || {
-            // Asked before the launcher lets go, since niri names the window
-            // under it while it holds the keys, and an ask after waits behind
-            // niri drawing, which held a paste's keys 119 ms on a builder
-            // (2026-11-11).
+            // Asked before the launcher lets go, since an ask after waits
+            // behind niri drawing, which held a paste's keys 119 ms on a
+            // builder (2026-11-11). The workspace's active window is asked,
+            // since niri says no window is focused while the launcher holds
+            // the keys, which left a paste into kitty with nowhere to go.
             let Some(keys) = keys.or_else(|| under(niri.as_deref())) else {
                 let _ = reply.send(json!({ "copied": true }));
                 return;
@@ -1725,28 +1749,33 @@ mod tests {
     }
 
     #[test]
-    fn the_window_niri_says_is_focused_says_its_keys() {
-        let window = |app: &str| {
-            format!("{{\"Ok\":{{\"FocusedWindow\":{{\"id\":7,\"app_id\":\"{app}\"}}}}}}")
-        };
-        assert_eq!(
-            focused(&window("foot")),
-            Some(Focus::Window(Keys::Terminal))
-        );
-        assert_eq!(
-            focused(&window("com.mitchellh.ghostty")),
-            Some(Focus::Window(Keys::Terminal))
-        );
-        assert_eq!(
-            focused(&window("firefox")),
-            Some(Focus::Window(Keys::Plain))
-        );
-        assert_eq!(
-            focused("{\"Ok\":{\"FocusedWindow\":null}}"),
-            Some(Focus::Nowhere)
-        );
-        assert_eq!(focused("{\"Ok\":{\"Layers\":[]}}"), None);
+    fn the_keys_go_back_to_the_focused_workspaces_active_window() {
+        let workspaces = json!({ "Ok": { "Workspaces": [
+            { "id": 1, "is_focused": false, "active_window_id": 3 },
+            { "id": 2, "is_focused": true, "active_window_id": 7 }
+        ] } });
+        assert_eq!(active(&workspaces.to_string()), Some(Focus::Window(7)));
+        let empty = json!({ "Ok": { "Workspaces": [
+            { "id": 1, "is_focused": false, "active_window_id": 3 },
+            { "id": 2, "is_focused": true, "active_window_id": null }
+        ] } });
+        assert_eq!(active(&empty.to_string()), Some(Focus::Nowhere));
+        assert_eq!(active("{\"Ok\":{\"Layers\":[]}}"), None);
         assert_eq!(under(None), Some(Keys::Plain));
+    }
+
+    #[test]
+    fn a_window_says_its_keys_by_its_program() {
+        let windows = json!({ "Ok": { "Windows": [
+            { "id": 3, "app_id": "firefox" },
+            { "id": 7, "app_id": "foot" },
+            { "id": 8, "app_id": "com.mitchellh.ghostty" }
+        ] } })
+        .to_string();
+        assert_eq!(keys_of(&windows, 7), Some(Keys::Terminal));
+        assert_eq!(keys_of(&windows, 8), Some(Keys::Terminal));
+        assert_eq!(keys_of(&windows, 3), Some(Keys::Plain));
+        assert_eq!(keys_of(&windows, 9), None, "a window niri doesn't list");
     }
 
     #[test]
