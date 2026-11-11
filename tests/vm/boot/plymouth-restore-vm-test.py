@@ -1,9 +1,9 @@
 """The boot screen says the machine is being restored while a hibernation's image is read.
 
-tests/plymouth-restore.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the test proves. The disk is made on the first boot, since
-a test's empty disk can't be made beforehand, and opened by its passphrase at the theme's ask
-on every start after.
+plymouth-restore.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. The disk is made on the
+first boot, since a test's empty disk can't be made beforehand, and opened by its passphrase at the
+theme's ask on every start after.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ HELD = 600
 # How fast the disk reads, in bytes a second, until the empty track is shot: slow
 # enough that the kernel fills none of it in the meantime, which takes a 350th of the image.
 CRAWL = 64 * 1024
-# The QEMU device of the larger screen, as tests/plymouth-restore.nix names it.
+# The QEMU device of the larger screen, as plymouth-restore.nix names it.
 LARGE = "large"
 # The least run of a colour that can be the track, in pixels: longer than a letter's stroke
 # of that colour, should a picture have one.

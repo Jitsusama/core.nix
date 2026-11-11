@@ -23,7 +23,7 @@ let
   passphrase = "4815";
   # The first is the console the test driver reads; the second is larger in
   # both directions, so the bar has to follow the canvas Plymouth centres
-  # on each, as tests/plymouth-screens.nix has it.
+  # on each, as plymouth-screens.nix has it.
   small = {
     width = 1280;
     height = 800;
@@ -33,7 +33,7 @@ let
     height = 1200;
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "plymouth-restore";
   enableOCR = true;
   # The base role sets nixpkgs' own settings.

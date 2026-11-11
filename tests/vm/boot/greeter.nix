@@ -39,7 +39,7 @@ let
     exec "$@"
   '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "greeter";
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
