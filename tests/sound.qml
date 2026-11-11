@@ -147,22 +147,38 @@ ShellRoot {
 
     // Shut, a device's parts asked for again with nothing moved, as its
     // spots are a minute after each closing (Launcher.qml's
-    // spotsFreshened), make none of them again; a volume moving makes them
-    // again; and shown, they're made as they're asked for.
+    // spotsFreshened), make none of them again; nor does its beginning to
+    // run, which gives its node a period and a latency no part says; a
+    // fact said of its card makes its facts alone again; and shown,
+    // they're made as they're asked for.
     function partsKept() {
         shutLauncher.wanting = false;
-        deskSpeakers.audio = { volume: 0.4, muted: false };
+        const properties = deskSpeakers.properties;
+        const card = { "device.bus": "usb", "alsa.id": "Desk", "alsa.device": "0" };
+        deskSpeakers.properties = card;
+        shutSound.facts = { "Desk:out": [{ name: "offers", value: "48 kHz" }] };
         const first = shutSound.verbs(deskSpeakers);
         const before = shutSound.tally.rows;
         const again = shutSound.verbs(deskSpeakers);
         expect("shut, with nothing moved, its parts are made no more",
-            shutSound.tally.rows === before && again === first && first.length > 0,
+            shutSound.tally.rows === before && again === first && first.length > 1,
             `${shutSound.tally.rows - before} made of ${first.length}`);
-        deskSpeakers.audio = { volume: 0.6, muted: false };
-        const moved = shutSound.verbs(deskSpeakers);
-        expect("a volume moving makes them again",
-            shutSound.tally.rows > before && moved !== first,
-            `${shutSound.tally.rows - before} made`);
+        deskSpeakers.properties = Object.assign({}, card, { "api.alsa.period-size": "512",
+            "node.max-latency": "16384/48000" });
+        const running = shutSound.verbs(deskSpeakers);
+        expect("nor as it begins to run", shutSound.tally.rows === before && running === first,
+            `${shutSound.tally.rows - before} made of ${first.length}`);
+        shutSound.facts = { "Desk:out": [{ name: "playing", value: "48 kHz" },
+            { name: "offers", value: "48 kHz" }] };
+        const told = shutSound.verbs(deskSpeakers);
+        const facts = told.filter(part => part.key.startsWith("fact:"));
+        const others = told.filter(part => !facts.includes(part));
+        expect("a fact said of its card makes its facts alone again",
+            shutSound.tally.rows - before === 2 && facts.length === 2
+            && others.length > 0 && others.every(part => first.includes(part)),
+            `${shutSound.tally.rows - before} made, ${facts.length} facts`);
+        deskSpeakers.properties = properties;
+        shutSound.facts = ({});
         shutLauncher.wanting = true;
         const shown = shutSound.tally.rows;
         shutSound.verbs(deskSpeakers);
