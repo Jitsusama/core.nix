@@ -577,7 +577,18 @@ impl Way {
                 && ours.is_some_and(|ours| ours.queued)
                 && let Some(plateau) = self.plateau
             {
-                self.plateau = Some(plateau.min(carried));
+                // The line is under the plateau only if, over the seconds
+                // the queue built, it took less than the hold: the cut's
+                // own second is already slowed by a cut before it, and a
+                // burst at the hold says nothing of the line. Taken from
+                // that second, bursts on 11 November ratcheted the
+                // plateau from 11,371 to 5,992 in 130 s.
+                let most = self
+                    .carrying
+                    .iter()
+                    .map(|&(_, c)| c)
+                    .fold(carried, f64::max);
+                self.plateau = Some(plateau.min(most / HOLD));
             }
             self.elsewhere = None;
             // Only the line sets what got through while something of ours
@@ -778,9 +789,19 @@ impl Controller {
         let Some(vpn) = seen.vpn_ms else {
             return 0.0;
         };
-        let base = self.vpn_base.map_or(vpn, |b| vpn.min(b + VPN_RISE_MS * dt));
+        let queued = seen.up_ours.filter(|ours| ours.in_vpn || ours.vpn_queued);
+        // The base follows the path up only while the VPN's CAKE holds
+        // nothing: rising under load, it rose from 29 to 55 ms on 11
+        // November, and took a standing queue for the path. A path that
+        // moved under load is learned again once the guard lets go.
+        let rise = if queued.is_some() {
+            0.0
+        } else {
+            VPN_RISE_MS * dt
+        };
+        let base = self.vpn_base.map_or(vpn, |b| vpn.min(b + rise));
         self.vpn_base = Some(base);
-        let Some(ours) = seen.up_ours.filter(|ours| ours.in_vpn || ours.vpn_queued) else {
+        let Some(ours) = queued else {
             return 0.0;
         };
         let probes = seen.up_delay_ms.unwrap_or(0.0) + seen.down_delay_ms.unwrap_or(0.0);
@@ -855,6 +876,9 @@ impl Controller {
             if way.misbehaving(at) {
                 way.reset();
                 self.returns += 1;
+                // A queue no cut drains may be a VPN's path that moved,
+                // which its base, held under load, would not follow.
+                self.vpn_base = None;
             }
         }
         if self.given_up() {
@@ -1859,6 +1883,87 @@ mod tests {
             ..quiet(11_400.0, 300.0)(at)
         });
         assert!(near(limits.up, 11_400.0), "the upload was cut: {limits:?}");
+    }
+
+    // As in the trace on 11 November: held over a router that queues the
+    // VPN's flow, a burst fills it now and then for a few seconds. Each
+    // cut lowered the plateau to what got through in the cut's second,
+    // from 11,371 to 5,992 in 130 s, and the stay saved 2,620.
+    #[test]
+    fn a_burst_in_the_router_doesn_t_ratchet_the_plateau_down() {
+        let mut c = Controller::from_learned(
+            Learned {
+                base: Some(12_000.0),
+                plateau: Some(10_000.0),
+            },
+            Learned::default(),
+        );
+        let mut at = 0.0;
+        while at < 300.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let burst = (20.0..23.0).contains(&(at % 30.0));
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(10_000.0),
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(if burst { 150.0 } else { 30.0 }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau >= 9_900.0, "ratcheted to {plateau}");
+    }
+
+    /// A second over a router behind the VPN, its CAKE holding a queue or
+    /// not, and the VPN's round trip.
+    fn through_the_vpn(vpn_queued: bool, vpn_ms: f64) -> impl Fn(f64) -> Seen {
+        move |at| Seen {
+            up_ours: Some(Ours {
+                queued: vpn_queued,
+                in_vpn: vpn_queued,
+                vpn_queued,
+                waiting: true,
+                ..Ours::default()
+            }),
+            vpn_ms: Some(vpn_ms),
+            ..quiet(11_400.0, 300.0)(at)
+        }
+    }
+
+    // In the same trace the base rose a millisecond a second under load,
+    // from 29 to 55, though the least heard kept coming back to 29: a
+    // standing queue of 20 ms was counted as the path.
+    #[test]
+    fn the_vpn_s_base_rises_only_while_its_cake_holds_nothing() {
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.0, through_the_vpn(true, 30.0));
+        run(&mut c, 1.0, 21.0, through_the_vpn(true, 50.0));
+        assert_eq!(
+            c.vpn_base().map(f64::round),
+            Some(30.0),
+            "a standing queue was taken for the path"
+        );
+        run(&mut c, 21.0, 41.0, through_the_vpn(false, 50.0));
+        assert_eq!(
+            c.vpn_base().map(f64::round),
+            Some(50.0),
+            "the path itself moved"
+        );
+    }
+
+    #[test]
+    fn a_vpn_path_that_moved_is_learned_again_once_the_guard_lets_go() {
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.0, through_the_vpn(true, 30.0));
+        run(&mut c, 1.0, 80.0, through_the_vpn(true, 90.0));
+        assert_eq!(c.vpn_base().map(f64::round), Some(90.0));
     }
 
     /// Steps a controller whose link carries many uploads, enough that our
