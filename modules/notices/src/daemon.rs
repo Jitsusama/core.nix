@@ -309,8 +309,13 @@ fn split(said: &[String]) -> (Vec<Action>, Option<String>) {
 mod tests {
     use super::*;
 
+    /// A state of its own, in a folder named for this file as well as
+    /// the case: every file's cases run at once in one process, so a
+    /// folder named by the case and the process alone was judged.rs's
+    /// quiet case's too, and this one emptied it as that read it.
     fn state(name: &str) -> State {
-        let folder = std::env::temp_dir().join(format!("notices-{name}-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("notices-daemon-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         State::new(

@@ -172,7 +172,8 @@ mod tests {
     use super::*;
 
     fn folder(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("notices-{name}-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("notices-store-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         folder

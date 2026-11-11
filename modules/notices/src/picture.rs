@@ -106,7 +106,8 @@ mod tests {
     use super::*;
 
     fn folder(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("notices-{name}-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("notices-picture-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a folder");
         folder
     }
