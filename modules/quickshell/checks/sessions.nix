@@ -38,7 +38,7 @@
   # after the one in use's and to it once it's back, and each window that
   # reopens itself beside those kept with it, and begins the next session
   # only while the machine queue says there's room, as tests/places.qml
-  # holds Places.js to it in Qt's own engine.
+  # holds Places.js and Viewers.js to it in Qt's own engine.
   reopening-finds-each-screen =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -46,6 +46,7 @@
     pkgs.runCommandLocal "reopening-finds-each-screen" { } ''
       cp ${../../../tests/places.qml} places.qml
       cp ${../Places.js} Places.js
+      cp ${../Viewers.js} Viewers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -115,6 +116,7 @@
       cp ${../Hearing.js} Hearing.js
       cp ${../Waiting.js} Waiting.js
       cp ${../Places.js} Places.js
+      cp ${../Viewers.js} Viewers.js
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions.qml} shell.qml
@@ -184,9 +186,64 @@
       cp ${../Hearing.js} Hearing.js
       cp ${../Waiting.js} Waiting.js
       cp ${../Places.js} Places.js
+      cp ${../Viewers.js} Viewers.js
       cp ${waiting} WaitingOnYou.qml
       cp ${report} Report.qml
       cp ${../../../tests/sessions-behind-the-lock.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${notices} Notices.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # Reopen Them All opens only the viewer of a session pi's host brought
+  # back, quietly where the last boot kept it (tests/sessions-hosted-reopen.qml),
+  # with the node and niri stood in.
+  a-hosted-viewer-reopens-where-it-was =
+    let
+      # Joel's window on the monitor's first workspace, and the empty one
+      # niri keeps last; the test makes more as windows open there.
+      niri = ../tests/stand-ins/hosted-reopen-niri.qml;
+      options = singleton "Options.qml" ''
+        readonly property var sounds: ({ wants: "", player: "" })
+      '';
+      quiet = singleton "Quiet.qml" ''
+        property bool on: false
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        function mark(id, read) {}
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
+      report = singleton "Report.qml" "function say(text) {}";
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
+    pkgs.runCommandLocal "a-hosted-viewer-reopens-where-it-was" { } ''
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
+      cp ${../Sessions.qml} Sessions.qml
+      cp ${../SessionWindows.js} SessionWindows.js
+      cp ${../PiSource.qml} PiSource.qml
+      cp ${../PiSource.js} PiSource.js
+      cp ${../Daemon.qml} Daemon.qml
+      cp ${../Hearing.js} Hearing.js
+      cp ${../Waiting.js} Waiting.js
+      cp ${../Places.js} Places.js
+      cp ${../Viewers.js} Viewers.js
+      cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
+      cp ${../../../tests/sessions-hosted-reopen.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Watch.js} Watch.js
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml

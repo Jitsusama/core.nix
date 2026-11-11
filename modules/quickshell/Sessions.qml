@@ -35,6 +35,7 @@ import QtQuick
 import "PiSource.js" as Pi
 import "Places.js" as Places
 import "SessionWindows.js" as SessionWindows
+import "Viewers.js" as Viewers
 import "Waiting.js" as Waiting
 
 Singleton {
@@ -422,8 +423,11 @@ Singleton {
 
     // What the file says, keeping only the sessions it names whole: an id
     // safe to hand pi's command line and a folder to open in. One that ran
-    // hosted (`hosted`) is left out: its host's own unit brings it back, so
-    // reopening it would start it twice (N4S6OF, 2026-11-09).
+    // hosted (`hosted`) is kept, but only its viewer is ever opened: its
+    // host's own unit brings the conversation back, so starting it would
+    // start it twice (N4S6OF, 2026-11-09), while leaving it out lost its
+    // window and place (viewers 430 and 457 after the 11:06 boot on
+    // 2026-11-11; OSPHT4 [1a117a39]).
     function restoreOf(text) {
         let read = null;
         try {
@@ -447,7 +451,6 @@ Singleton {
             boot: typeof read.boot === "string" ? read.boot : "",
             sessions: read.sessions.filter(one => one !== null && typeof one === "object"
                 && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? "")) && Places.saysApart(one)
-                && one.hosted !== true
                 && (one.machine === undefined
                     ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
         };
@@ -481,9 +484,7 @@ Singleton {
     readonly property var lastBootOffered: Places.lastBoot(restoring, {
         boot: bootId,
         putOff: putOff,
-        here: running.concat(parked).filter(session => session.here)
-            .map(session => ({ id: session.presence.session,
-                quest: session.presence.questInfo?.id ?? session.presence.quest ?? "" }))
+        here: Viewers.backHere(running.concat(parked), arrangement[restoring.boot])
     })
     readonly property string lastBootIs: lastBootOffered.boot
     readonly property var lastBoot: lastBootOffered.sessions
@@ -570,6 +571,15 @@ Singleton {
     function reopen(lost, gone) {
         if (lost.machine !== undefined) {
             rejoin(lost);
+            return;
+        }
+        // A hosted one is gone to, which views it, since its host runs it.
+        if (lost.hosted === true) {
+            const session = root.hostedHere(lost.id);
+            if (session)
+                goTo(session);
+            else
+                console.info(`sessions: ${lost.id} not viewed, since no host serves it`);
             return;
         }
         lookFor([lost.cwd], there => {
@@ -1403,6 +1413,10 @@ Singleton {
             return;
         }
         reopening.queue = reopening.queue.slice(1);
+        if (next.one.hosted === true) {
+            reopenViewer(next);
+            return;
+        }
         // One already running or parked here is never begun again, as a
         // restart watch may have begun it meanwhile, since two pis on one
         // log would each write over the other.
@@ -1462,6 +1476,58 @@ Singleton {
             reopenPatience.restart();
         });
     }
+    // A hosted session's turn in the walk: its host brought the
+    // conversation back, so only its viewer opens, never its pi, at the
+    // place the boot kept, quietly, as any other reopened window does: it
+    // goes in the one walk, waited for and placed as theirs are, so the
+    // columns after it land beside it (Y2YBTS and KP0L6A, [342c50d4]). One
+    // whose viewer is open, or that the boot kept no place of, opens none.
+    // One whose host isn't serving it yet, or whose place is on the
+    // workspace Joel is on, where a window coming would catch his eye, has
+    // its place kept for viewKept, which opens it there once the host
+    // serves it and Joel is elsewhere, and the walk goes on.
+    function reopenViewer(next) {
+        const id = next.one.id;
+        const session = root.hostedHere(id);
+        const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
+            column: next.at.column, tile: next.at.tile ?? 1 } : null;
+        const into = at !== null ? root.opensOn(next.one, at, root.besideOf(reopening.placed))
+            : null;
+        if (session?.window || into === null) {
+            console.info(`sessions: ${id}'s viewer not opened, since `
+                + (session?.window ? "it is open" : `none was kept at ${root.keptSaid(at)}`));
+            reopenNext();
+            return;
+        }
+        const named = viewerOf(session?.presence);
+        const served = session !== null && Array.isArray(session.attach)
+            && session.attach.length > 0 && named !== "";
+        if (!served || Niri.workspaces[into.workspace]?.is_focused) {
+            keepPlaces(Object.assign({}, keptPlaces, { [id]: { workspace: into.workspace,
+                column: into.column, at: Date.now() } }));
+            console.info(`sessions: ${id}'s viewer waits for `
+                + `${served ? "Joel to leave" : "its host"}, kept at `
+                + `${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`);
+            reopenNext();
+            return;
+        }
+        reopening.begun.push(id);
+        console.info(`sessions: reopening ${id}'s viewer, kept at ${root.keptSaid(at)}, `
+            + `asked on ${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`);
+        reopening.waiting = { classed: named, at, opened: null, said: false,
+            away: next.at?.away ?? null, kept: next.kept ?? null, quiet: true,
+            quest: next.one.quest ?? "", from: next.one.from ?? "", id,
+            orchestratedBy: next.one.orchestratedBy ?? "" };
+        view(session, into);
+        reopenStartedAt = Date.now();
+        reopenPatience.restart();
+    }
+    // The session pi's host runs here as `id`, or null.
+    function hostedHere(id) {
+        return running.find(one => one.here && one.presence?.hosted
+            && one.presence.session === id) ?? null;
+    }
+
     // Whether Reopen Them All is about to open, opening or placing one, or
     // looking at the screens first, which any other move would misplace.
     // Not `placing`, which OpenBelow.qml's property of that name would
@@ -1772,8 +1838,9 @@ Singleton {
 
     // Views a hosted session in a new window of the sessions' kitty, by its
     // node's words, once until niri lists its window, as `attach` does;
-    // `into` a place kept for it (viewKept), which opens without the focus,
-    // or, for Go To, where niri opens one, focused, since Joel asked for it.
+    // `into` a place kept for it (viewKept, reopenViewer), which opens
+    // without the focus, or, for Go To, where niri opens one, focused,
+    // since Joel asked for it.
     function view(session, into) {
         const words = session.attach;
         const named = viewerOf(session.presence);
@@ -1829,7 +1896,7 @@ Singleton {
         const resting = root.resting.find(one => one.presence.session === id);
         const window = running.find(one => one.here && one.presence.session === id)?.window
             ?? (resting ? windowOf(resting, windows.pids, windows.opened) : null);
-        const place = /^[A-Za-z0-9-]+$/.test(id) ? Places.placeOf(window, Date.now()) : null;
+        const place = /^[A-Za-z0-9-]+$/.test(id) ? Viewers.placeOf(window, Date.now()) : null;
         if (place === null)
             return "no window to keep";
         keepPlaces(Object.assign({}, keptPlaces, { [id]: place }));
@@ -1838,13 +1905,13 @@ Singleton {
     }
     // Opens the viewer of each session kept that now runs hosted where it
     // was, never on the workspace Joel is on and never with his focus
-    // (Places.viewerPlace), and lets go of what's done or a day old
-    // (Places.viewersDue). Asked again as niri's focus moves, so one waiting
+    // (Viewers.viewerPlace), and lets go of what's done or a day old
+    // (Viewers.viewersDue). Asked again as niri's focus moves, so one waiting
     // for Joel to leave its workspace opens once he has.
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
             return;
-        const due = Places.viewersDue(keptPlaces, running, Date.now(), Niri.workspaces);
+        const due = Viewers.viewersDue(keptPlaces, running, Date.now(), Niri.workspaces);
         for (const one of due.open)
             view(one.session, one.into);
         if (Object.keys(due.kept).length !== Object.keys(keptPlaces).length)

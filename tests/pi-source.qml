@@ -80,6 +80,17 @@ QtObject {
             away.machine === "lantern" && away.attach[0] === "kitty"
                 && away.changed === Date.parse("2026-11-08T01:00:00Z"), JSON.stringify(away));
 
+        // One pi's host runs here keeps the words the node gives to view
+        // it, which Go To and Reopen Them All open its viewer by.
+        const viewing = ["mycelium", "--realm", "work", "attach", "--session", "s-host"];
+        const hosted = Pi.sorted({ "session:s-host": { state: "idle", standing: "running",
+            here: true, at: "2026-11-08T01:00:00Z", attach: viewing,
+            presence: presence("s-host", "A009", { hosted: { host: "work-background",
+                conversation: "s-host" } }) } }).live[0];
+        expect("one hosted here keeps the words to view it",
+            JSON.stringify(hosted.attach) === JSON.stringify(viewing),
+            JSON.stringify(hosted));
+
         const records = Pi.sessions(sorted, "skiff");
         const of = id => records.find(one => one["gen_ai.conversation.id"] === id);
         const states = ["s-busy", "s-asks", "s-away", "s-out", "s-nap", "s-done"]

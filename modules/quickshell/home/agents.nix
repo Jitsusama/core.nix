@@ -6,6 +6,7 @@
   "PiSource.js"
   "Sessions.qml"
   "SessionWindows.js"
+  "Viewers.js"
   "WaitingOnYou.qml"
   "Waiting.js"
   "launcher/SessionRow.js"

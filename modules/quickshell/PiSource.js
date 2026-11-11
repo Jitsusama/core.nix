@@ -37,8 +37,12 @@ function placed(key, session) {
         return { into: null, entry: null };
     }
     const window = session.window ?? null;
+    // One here keeps the words the node gives to view it, which for one pi's
+    // host holds are its presence's own, so Go To and Reopen Them All open
+    // its viewer; without them a hosted one here had none to open it by.
     if (session.here !== false) {
-        return { into: "live", entry: { file: id, presence, window, held: session.held ?? null } };
+        return { into: "live", entry: { file: id, presence, window, held: session.held ?? null,
+            attach: session.attach ?? null } };
     }
     const out = String(session.state ?? "").toLowerCase() === "unreachable";
     return { into: "live", entry: {
