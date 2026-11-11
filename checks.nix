@@ -1135,6 +1135,7 @@ gather (
     ./modules/neovim/checks.nix
     ./modules/network-revive/checks.nix
     ./modules/nftables/checks.nix
+    ./modules/night-shift/checks.nix
     ./modules/niri/checks.nix
     ./modules/nix-daemon/checks.nix
     ./modules/nix-offload/checks.nix
