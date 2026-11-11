@@ -9,15 +9,18 @@
 // a file in the drawings folder, named for when it was made, so saving
 // it in Inkscape keeps it there.
 //
-// Its Recent is the drawings Inkscape opened lately (`recentOf`), read
-// from the desktop's list of files opened lately, which Inkscape adds to
-// as it opens and saves each, once at start and again each time the list
-// changes, a change while the launcher is closed read as it next opens,
-// as the list programs share is (Recents.qml), and never on a timer or a
-// key. inkscape-drawings (drawings.sh) says which are still there, with
-// each one's weight and size, then, and again as Inkscape is stepped
-// into, once each time the launcher opens, so one deleted since is gone.
-// Each is the one row every surface shows of a file (Files.qml), keyed by
+// Its Recent is the drawings Inkscape opened lately (`recentOf`), from
+// the desktop's list of files opened lately, which Inkscape adds to as it
+// opens and saves each: inkscape-drawings (drawings.sh) says which are
+// still there, with each one's weight and size, run and held by the
+// programs daemon under the key its settings name (Listed.qml), so the
+// shell reads no file and starts no process for it (Joel, 2026-11-10: the
+// daemons are the data layer). It's read once as the shell starts, so
+// Inkscape's drawer in Programs says them, and again from the first step
+// into Inkscape in each opening, so one deleted since is gone, and never
+// on a timer or a key. The page still makes its rows from the lines, a
+// stopgap until the programs daemon serves Programs' ready rows (Thu
+// 11-12). Each is the one row every surface shows of a file (Files.qml), keyed by
 // its path, so the list programs share lists it once; its side says when
 // Inkscape last opened it, and its drawer (Inkscape.js's plate) where it
 // is, its size as its SVG says it, its weight and its path. Return opens
@@ -25,7 +28,6 @@
 // (`programFacts`).
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Inkscape.js" as Inkscape
 
@@ -58,22 +60,16 @@ Provider {
     readonly property var words: Inkscape.wordsOf(id => Words.of(id),
         (at, format) => Qt.formatDate(at, format))
 
-    // The drawings Inkscape opened lately, as the list said them, and
-    // those still there, as inkscape-drawings said them, each { path, at,
-    // size, extent }, newest first.
-    property var lately: []
+    // The drawings Inkscape opened lately still there, as
+    // inkscape-drawings said them, each { path, at, size, extent }, newest
+    // first.
     property var drawings: []
 
-    // Whether the launcher shows, which a change to the list is read
-    // while, and whether one came while it didn't.
+    // Whether the launcher shows; the next opening reads them again, as
+    // they may have changed since.
     readonly property bool showing: launcher?.open ?? false
-    property bool stale: false
 
     onShowingChanged: {
-        if (showing && stale) {
-            stale = false;
-            recentList.reload();
-        }
         if (!showing)
             lookedSince = false;
     }
@@ -85,72 +81,21 @@ Provider {
     property bool lookedSince: false
 
     onSteppedInChanged: {
-        if (!steppedIn || lookedSince)
-            return;
-        lookedSince = true;
-        // Read once the step is drawn (Launcher.qml's afterFrame), so its
-        // frame never waits on starting a process.
-        launcher.afterFrame(look);
+        if (steppedIn)
+            lookedSince = true;
     }
 
-    FileView {
-        id: recentList
-
-        path: provider.settings.recent ?? ""
-        printErrors: false
-        watchChanges: true
-        onFileChanged: {
-            if (provider.showing)
-                recentList.reload();
-            else
-                provider.stale = true;
-        }
-        onLoaded: provider.heard(recentList.text())
-        // No list yet names no drawing.
-        onLoadFailed: provider.heard("")
-    }
-
-    // What the list says, whose drawings are then looked at.
-    function heard(list) {
-        lately = Inkscape.opened(list);
-        look();
-    }
-
-    // Says which drawings are still there, once the one saying it now is
-    // done where it's saying it, so the last word always counts.
-    property bool again: false
-
-    function look() {
-        if (lately.length === 0) {
-            drawings = [];
-            changed();
-        } else if (listing.running) {
-            again = true;
-        } else {
-            listing.running = true;
-        }
-    }
-
-    Process {
+    // What inkscape-drawings printed, as the programs daemon holds it,
+    // asked for as the shell starts and from the first step in an opening.
+    Listed {
         id: listing
 
-        command: (provider.settings.list ?? []).concat([String(provider.most)],
-            provider.lately.map(one => one.path))
-        running: false
-        onExited: {
-            if (provider.again) {
-                provider.again = false;
-                listing.running = true;
-            }
-        }
-        stdout: StdioCollector {
-            id: listed
+        key: provider.settings.lately ?? ""
+        wanted: provider.lookedSince || !listing.read
 
-            onStreamFinished: {
-                provider.drawings = Inkscape.drawings(listed.text.split("\n")
-                    .filter(line => line !== ""), provider.lately, provider.most);
-                provider.changed();
-            }
+        onHeard: {
+            provider.drawings = Inkscape.drawings(listing.lines, provider.most);
+            provider.changed();
         }
     }
 
