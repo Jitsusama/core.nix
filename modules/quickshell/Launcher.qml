@@ -8456,6 +8456,10 @@ Scope {
             : homeKept;
         if (home.length === 0)
             return;
+        // Home found while shut, as the shell starts (warmNext), is kept as
+        // an opening's find is, so the first chord after a restart goes into
+        // its place alone rather than finding home again on its way.
+        homeKept = home;
         keeping = true;
         try {
             held = [];
