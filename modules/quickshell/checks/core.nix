@@ -69,6 +69,15 @@
             name = "the-launcher-lab-on-niri";
             tests = ../../../tests/launcher-lab-on-niri.py;
           };
+          frames = launcherOnNiri {
+            name = "the-launcher-frames-lab-on-niri";
+            tests = ../../../tests/frames-lab-on-niri.py;
+          };
+          profile = launcherOnNiri {
+            name = "the-launcher-profile-lab-on-niri";
+            tests = ../../../tests/profile-lab-on-niri.py;
+            given = [ "QMLPROFILER=${pkgs.kdePackages.qtdeclarative}/bin/qmlprofiler" ];
+          };
         };
       });
 
