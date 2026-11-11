@@ -239,6 +239,25 @@ def test_a_chord_into_a_place_finds_no_home_first(shell: Shell) -> None:
     assert searches == 1, f"opening into On searched {searches} times: {each[-1]}"
 
 
+def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
+    """Opened into a place by its chord, no other source makes rows as it opens.
+
+    The launcher was opened before the place's step was held, so for that instant it stood at
+    home and every source home names made its rows, put away at once: each Super+Tab reopening
+    made 35, of Capture, Today, Time and Agents (3TXW9E's measure, 2026-11-10).
+    """
+    before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+    shell.as_account(shell.ipc("collection", "windows"))
+    shell.launcher_ready()
+    after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+    made = {
+        name: rows - before.get(name, 0)
+        for name, rows in after.items()
+        if name != "windows" and rows > before.get(name, 0)
+    }
+    assert not made, f"opening into Windows, other sources made rows: {made}"
+
+
 def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     """Reopened as the closing's spots come due, the kept opening makes none before its frame.
 
