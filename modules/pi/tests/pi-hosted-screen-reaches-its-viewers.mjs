@@ -3,7 +3,8 @@
 // the host's clipboard, a viewer who joins late is sent the images already
 // on the screen, every frame is drawn within its terminal's render scope,
 // the external editor opens where the viewer who asked
-// is, through its host, or is refused when its host can't, and an
+// is, through its host, or is refused when its host can't, a quit asks its
+// host first, while the key that asked is still in hand, and an
 // extension's own component, overlays too, says it waits on the person.
 // The real methods run against fake runtimes and a fake terminal; no TTY,
 // model request, editor or extension is started. Arguments name the
@@ -378,4 +379,43 @@ it("ordinary pi reports an extension's component only as the extension says", as
   await shown(mode, { overlay: true, blocked: { kind: "question", message: "Pick" } });
   await shown(mode);
   assert.deepEqual(calls(), [["extension-dialog", undefined]]);
+});
+
+// A hosted screen whose host answers each quit it is asked about with `asked`.
+function quittingScreen(asked) {
+  const { mode } = screen();
+  const exits = [];
+  mode.stop = mock.fn();
+  mode.pendingUserInputs = [];
+  mode.options.hosted.onExit = async (code) => exits.push(code);
+  mode.options.hosted.quit = mock.fn(() => asked);
+  return { mode, exits, quit: mode.options.hosted.quit };
+}
+
+it("a host can see this pi asks it before a hosted quit", () => {
+  assert.equal(InteractiveMode.hostedQuit, true);
+});
+
+for (const holds of [true, false]) {
+  const told = holds ? "stops" : "runs on";
+  it(`a hosted screen asks its host before it quits, and ${told} as told`, async () => {
+    const answer = Promise.withResolvers();
+    const { mode, exits, quit } = quittingScreen(answer.promise);
+    const quitting = mode.shutdown();
+    // Asked before shutdown's first await, so the host still knows whose key it was.
+    assert.equal(quit.mock.callCount(), 1, "the host was asked at once");
+    assert.equal(mode.stop.mock.callCount(), 0, "nothing stopped before the host answered");
+    answer.resolve(holds);
+    await quitting;
+    assert.equal(mode.stop.mock.callCount(), holds ? 1 : 0);
+    assert.deepEqual(exits, holds ? [0] : []);
+  });
+}
+
+it("a hosted screen already quitting asks its host nothing more", async () => {
+  const { mode, exits, quit } = quittingScreen(Promise.resolve(true));
+  await mode.shutdown();
+  await mode.shutdown();
+  assert.equal(quit.mock.callCount(), 1);
+  assert.deepEqual(exits, [0]);
 });

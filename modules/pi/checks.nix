@@ -378,8 +378,7 @@ in
       '';
 
   # A hosted pi's screen stays in its own conversation: quitting or a crash
-  # ends only that screen and what it was doing, a quit waits on its host's
-  # yes and runs on without it, a stopped screen builds
+  # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
   # gave it, a suspend stops only the viewer that asked, every screen hears
   # a theme change, and ordinary pi keeps every path.
@@ -395,7 +394,8 @@ in
   # own: a copy reaches them, a viewer who joins late is sent the images on
   # the screen, every frame is drawn within its terminal's render scope, so
   # as the conversation it shows, the external editor opens where the viewer
-  # who asked is, and
+  # who asked is, a quit asks its host first, with the key that asked still
+  # in hand, and
   # an extension's own component says it waits on the person, so its host
   # can let a viewer attach to answer it.
   pi-hosted-screen-reaches-its-viewers =

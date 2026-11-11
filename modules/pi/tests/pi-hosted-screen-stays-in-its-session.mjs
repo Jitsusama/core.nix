@@ -1,6 +1,5 @@
 // The host-only InteractiveMode patch keeps a hosted screen inside its own
-// session: closing it never ends the process, it asks its host first and
-// carries on when the host says the quit doesn't hold, a stopped screen sends no
+// session: closing it never ends the process, a stopped screen sends no
 // more of its first words and builds nothing an extension asks of it, a
 // suspend stops only the viewer that asked, every screen hears a theme
 // change, and a closed screen disposes what an extension put on it.
@@ -108,7 +107,6 @@ it("stopping a screen stops its theme listener", () => {
 
 it("the host can check patch version before constructing a screen", () => {
   assert.equal(InteractiveMode.hostedLifecycleVersion, 1);
-  assert.equal(InteractiveMode.hostedQuit, true, "the host can see this pi asks before a quit");
   assert.throws(
     () => new InteractiveMode(undefined, { hosted: { onExit: async () => undefined } }),
     (error) => error.message === "Hosted interactive mode requires an independent terminal",
@@ -334,35 +332,6 @@ it("quitting one hosted screen leaves its sibling alive and notifies once", asyn
   assert.deepEqual(second.exits, []);
   assert.equal(second.mode.stop.mock.callCount(), 0);
   assert.equal(second.mode.isShuttingDown, false);
-});
-
-for (const holds of [true, false]) {
-  const told = holds ? "stops" : "runs on";
-  it(`a hosted screen asks its host before it quits, and ${told} as told`, async () => {
-    forbidProcessExit();
-    const { mode, exits } = screen();
-    const asked = Promise.withResolvers();
-    mode.options.hosted.quit = mock.fn(() => asked.promise);
-    const quitting = mode.shutdown();
-    // Asked before shutdown's first await, so the host still knows whose key it was.
-    assert.equal(mode.options.hosted.quit.mock.callCount(), 1, "the host was asked at once");
-    assert.equal(mode.stop.mock.callCount(), 0, "nothing stopped before the host answered");
-    asked.resolve(holds);
-    await quitting;
-    assert.equal(mode.stop.mock.callCount(), holds ? 1 : 0);
-    assert.deepEqual(exits, holds ? [{ code: 0, error: undefined }] : []);
-    assert.equal(mode.isShuttingDown, holds);
-  });
-}
-
-it("a hosted screen already quitting asks its host nothing more", async () => {
-  forbidProcessExit();
-  const { mode, exits } = screen();
-  mode.options.hosted.quit = mock.fn(async () => true);
-  await mode.shutdown();
-  await mode.shutdown();
-  assert.equal(mode.options.hosted.quit.mock.callCount(), 1);
-  assert.deepEqual(exits, [{ code: 0, error: undefined }]);
 });
 
 it("closing a waiting screen releases its input loop without prompting", {
