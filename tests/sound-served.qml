@@ -11,8 +11,9 @@
 // inside its row, steps into its choices, a choice's Return asking the
 // daemon to move it, as its option does; and its Use, Muted and Volume,
 // served, lead its parts in Sound's order, Muted's act named Unmute once
-// it's muted, the Volume its drawer's, and each Return asking the daemon.
-// (tests/sound.qml holds the parts and drawers made here.) It exits 0 once every case holds, and otherwise 1,
+// it's muted, the Volume its drawer's, and each Return asking the daemon;
+// and where each program's stream is sent is the daemon's targets record,
+// a send asking it once a stream. (tests/sound.qml holds the parts and drawers made here.) It exits 0 once every case holds, and otherwise 1,
 // saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
@@ -455,6 +456,24 @@ ShellRoot {
             const ask = root.acted[2];
             expect("its Return asks the daemon to unmute it", ask.act === "mute"
                 && ask.muted === false, JSON.stringify(ask));
+            tell({ key: "targets:default", kind: "targets",
+                targets: { 93: deskSpeakers.name } });
+            when("the targets heard", () => sound.targets["93"] === deskSpeakers.name, sending);
+        });
+    }
+
+    // A program's streams sent to a device ask the daemon once a stream
+    // whose id is pipewire's, none spawned.
+    function sending() {
+        const spotify = { name: "Spotify", streams: [{ id: 93 }, { id: 94 }, { id: -1 }] };
+        sound.send(deskSpeakers, spotify, deskSpeakers);
+        when("the sends asked", () => root.acted.length === 5, () => {
+            const sends = JSON.stringify(root.acted.slice(3)
+                .map(ask => [ask.act, ask.key, ask.target]));
+            const meant = [["send", "stream:93", deskSpeakers.name],
+                ["send", "stream:94", deskSpeakers.name]];
+            expect("each stream is sent, an ask of the daemon each",
+                sends === JSON.stringify(meant), sends);
             Qt.exit(0);
         });
     }
