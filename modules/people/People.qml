@@ -168,6 +168,26 @@ Provider {
         merging.stale = true;
         rowsOfEveryone.stale = true;
         heardRevision += 1;
+        Qt.callLater(provider.lentMoved);
+    }
+
+    // A row People lends another place (personOf), as a mail's sender or a
+    // meeting's guest, says how they stood as it was made, and stayed so
+    // while shown (Y2YBTS, 2026-11-10). So while one shows, each place held
+    // above it is told its rows changed as anyone's stand might have, and
+    // asks for them again, the launcher pacing it; with none shown, or the
+    // launcher shut, nothing is told and nothing made.
+    function lentMoved() {
+        const launcher = provider.launcher;
+        const steps = launcher?.open ? launcher.held ?? [] : [];
+        const lent = step => step.row.from !== provider && (step.rows ?? [])
+            .some(row => row.component === "person" && row.person !== undefined);
+        if (!steps.some(lent))
+            return;
+        const holders = steps.map(step => step.row.from)
+            .filter((from, at, all) => !!from && from !== provider && all.indexOf(from) === at);
+        for (const holder of holders)
+            holder.changed();
     }
     // Counts each change heard, for a binding that reads what's made.
     property int heardRevision: 0
