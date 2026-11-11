@@ -285,7 +285,7 @@ mod tests {
                 2,
                 "",
                 "warp: reconnect isn't a word warp knows\n\
-                 usage: warp [connect | disconnect] [--json]\n"
+                 usage: warp [connect | disconnect] [--json] | warp serve SOCKET\n"
             )
         );
         let two = run(&args(&["connect", "disconnect"]), &Contract::whole());

@@ -323,6 +323,7 @@ onLinux {
       warpCli = pkgs.writeShellScript "warp-cli" ''
         exec ${lib.getExe pkgs.bash} ${../../tests/warp-cli-stand-in.sh} "$@"
       '';
+      warp = lib.getExe (pkgs.callPackage ../warp/package.nix { });
     in
     launcherOnNiri {
       name = "the-launcher-answers-whats-typed-on-niri";
@@ -335,9 +336,7 @@ onLinux {
         }"
         "WARP_CONTRACT=${../warp/contract}"
         "WARP=${pkgs.writeShellScript "warp-serve" ''
-          WARP_CLI=${warpCli} exec ${
-            lib.getExe (pkgs.callPackage ../warp/package.nix { })
-          } serve "$@"
+          WARP_CLI=${warpCli} exec ${warp} serve "$@"
         ''}"
       ];
       shell.launcher.providers.warp = {
