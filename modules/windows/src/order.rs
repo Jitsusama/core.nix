@@ -22,9 +22,10 @@
 //!
 //! niri also moves the focus off a window whose workspace leaves the
 //! focused screen, so the window Joel had focused as the screens changed
-//! is focused again once his workspaces are back. niri lists the
-//! workspaces before it says where the focus went, so as the screens
-//! change the focus heard is still his.
+//! is focused again once his workspaces are back, unless he focused
+//! another while they moved. niri lists the workspaces before it says
+//! where the focus went, so as the screens change the focus heard is
+//! still his.
 
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
@@ -206,31 +207,69 @@ pub fn next(kept: &[u64], workspaces: &[Value]) -> Option<Value> {
 /// window Joel had focused focused again. A move niri refuses, or doesn't
 /// answer, is said in the journal and ends the moves.
 pub fn put_back(niri: &Path, putting: Option<Putting>) {
-    let Some(Putting { kept, focus }) = putting else {
+    let Some(putting) = putting else {
         return;
     };
     let mine = NEWEST.fetch_add(1, Ordering::SeqCst) + 1;
     let niri: PathBuf = niri.to_owned();
-    std::thread::spawn(move || {
-        move_back(&niri, &kept, mine);
-        // niri keeps each screen's active workspace through the moves, so
-        // the focus goes back once, after them, even where a newer putting
-        // back took over the moves.
-        let Some(window) = focus else {
-            return;
-        };
-        let again = json!({"Action": {"FocusWindow": {"id": window}}});
-        if let Some(why) = refused(&niri, &again) {
-            eprintln!("<4>niri didn't focus window {window} again as the screens changed: {why}");
-        }
-    });
+    std::thread::spawn(move || putting_back(&niri, &putting, &NEWEST, mine));
+}
+
+/// One putting back, while `mine` is the `newest`: the moves, then the
+/// focus. niri keeps each screen's active workspace through the moves, so
+/// the focus goes back once, after them. Where the focus is before them
+/// is where niri put it as the screens changed, so one elsewhere after
+/// them is Joel's own press, which stays, as does the focus of a newer
+/// putting back that took over the moves (Y2YBTS, 11 November 2026).
+fn putting_back(niri: &Path, putting: &Putting, newest: &AtomicU64, mine: u64) {
+    let put = putting.focus.map_or(Focus::Unsaid, |_| focused(niri));
+    move_back(niri, &putting.kept, newest, mine);
+    let Some(window) = putting.focus else {
+        return;
+    };
+    let now = focused(niri);
+    if put == Focus::Unsaid || now == Focus::Unsaid {
+        eprintln!(
+            "<4>niri didn't say where its focus was, so window {window} wasn't focused again"
+        );
+        return;
+    }
+    if newest.load(Ordering::SeqCst) != mine || (now != Focus::Nowhere && now != put) {
+        return;
+    }
+    let again = json!({"Action": {"FocusWindow": {"id": window}}});
+    if let Some(why) = refused(niri, &again) {
+        eprintln!("<4>niri didn't focus window {window} again as the screens changed: {why}");
+    }
+}
+
+/// Where niri's focus is, as it says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Focus {
+    /// niri didn't say.
+    Unsaid,
+    /// No window is focused.
+    Nowhere,
+    /// This window is.
+    On(u64),
+}
+
+/// Where niri's focus is now.
+fn focused(niri: &Path) -> Focus {
+    let Some(answer) = answer(niri, &json!("FocusedWindow")) else {
+        return Focus::Unsaid;
+    };
+    match answer.get("Ok").and_then(|ok| ok.get("FocusedWindow")) {
+        None => Focus::Unsaid,
+        Some(window) => window["id"].as_u64().map_or(Focus::Nowhere, Focus::On),
+    }
 }
 
 /// Moves the workspaces into the order kept, one at a time, until they're
 /// in it or a newer putting back than `mine` comes.
-fn move_back(niri: &Path, kept: &[u64], mine: u64) {
+fn move_back(niri: &Path, kept: &[u64], newest: &AtomicU64, mine: u64) {
     for _ in 0..MOVES {
-        if NEWEST.load(Ordering::SeqCst) != mine {
+        if newest.load(Ordering::SeqCst) != mine {
             return;
         }
         let Some(listed) = answer(niri, &json!("Workspaces")) else {

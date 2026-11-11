@@ -35,17 +35,113 @@ fn settled(kept: &[u64], screens: Screens) -> Vec<(String, Vec<u64>)> {
         let Some(one) = next(kept, &listed(&shown)) else {
             return now;
         };
-        let asked = &one["Action"]["MoveWorkspaceToIndex"];
-        let id = asked["reference"]["Id"].as_u64().unwrap_or_default();
-        let index = usize::try_from(asked["index"].as_u64().unwrap_or(1)).unwrap_or(1) - 1;
-        for (_, ids) in &mut now {
-            if let Some(at) = ids.iter().position(|each| *each == id) {
-                ids.remove(at);
-                ids.insert(index, id);
-            }
-        }
+        moved(&mut now, &one);
     }
     panic!("the workspaces were never in order: {now:?}");
+}
+
+/// Each screen's workspaces as niri has them once it makes this move.
+fn moved(now: &mut [(String, Vec<u64>)], one: &Value) {
+    let asked = &one["Action"]["MoveWorkspaceToIndex"];
+    let id = asked["reference"]["Id"].as_u64().unwrap_or_default();
+    let index = usize::try_from(asked["index"].as_u64().unwrap_or(1)).unwrap_or(1) - 1;
+    for (_, ids) in now {
+        if let Some(at) = ids.iter().position(|each| *each == id) {
+            ids.remove(at);
+            ids.insert(index, id);
+        }
+    }
+}
+
+/// What a stand-in niri holds: each screen's workspaces, the window
+/// focused, a window Joel presses once the first move is made, and each
+/// window it was asked to focus.
+#[derive(Default)]
+struct Held {
+    screens: Vec<(String, Vec<u64>)>,
+    focused: Option<u64>,
+    pressed: Option<u64>,
+    focusing: Vec<u64>,
+}
+
+/// A stand-in for niri's socket, answering the asks a putting back makes,
+/// one a connection, as niri does, from what it holds.
+struct Niri {
+    socket: PathBuf,
+    held: std::sync::Arc<std::sync::Mutex<Held>>,
+}
+
+impl Niri {
+    fn new(test: &str, screens: Screens, focused: Option<u64>) -> Niri {
+        let socket = std::env::temp_dir().join(format!("order-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        let listening = std::os::unix::net::UnixListener::bind(&socket).expect("niri's socket");
+        let held = std::sync::Arc::new(std::sync::Mutex::new(Held {
+            screens: each(screens),
+            focused,
+            ..Held::default()
+        }));
+        let serving = held.clone();
+        std::thread::spawn(move || {
+            for stream in listening.incoming().map_while(Result::ok) {
+                let mut said = String::new();
+                let mut lines = BufReader::new(&stream);
+                if lines.read_line(&mut said).is_err() {
+                    continue;
+                }
+                let asked: Value = serde_json::from_str(&said).unwrap_or_default();
+                let answer = Niri::answer(&mut serving.lock().expect("niri's state"), &asked);
+                let _ = writeln!(&stream, "{answer}");
+            }
+        });
+        Niri { socket, held }
+    }
+
+    fn answer(held: &mut Held, asked: &Value) -> Value {
+        if asked == "Workspaces" {
+            let shown: Vec<(&str, &[u64])> = held
+                .screens
+                .iter()
+                .map(|(output, ids)| (output.as_str(), ids.as_slice()))
+                .collect();
+            return json!({"Ok": {"Workspaces": listed(&shown)}});
+        }
+        if asked == "FocusedWindow" {
+            return json!({"Ok": {"FocusedWindow": held.focused.map(|id| json!({"id": id}))}});
+        }
+        if let Some(id) = asked["Action"]["FocusWindow"]["id"].as_u64() {
+            held.focusing.push(id);
+            held.focused = Some(id);
+        } else {
+            moved(&mut held.screens, asked);
+            if let Some(window) = held.pressed.take() {
+                held.focused = Some(window);
+            }
+        }
+        json!({"Ok": "Handled"})
+    }
+
+    /// What it holds once a putting back of `kept`, to focus `focus`
+    /// again, is done, while it's the newest unless `overtaken`.
+    fn after(&self, kept: &[u64], focus: Option<u64>, overtaken: bool) -> (Option<u64>, Vec<u64>) {
+        let newest = AtomicU64::new(1);
+        let putting = Putting {
+            kept: kept.to_vec(),
+            focus,
+        };
+        if overtaken {
+            newest.store(2, Ordering::SeqCst);
+        }
+        putting_back(&self.socket, &putting, &newest, 1);
+        let held = self.held.lock().expect("niri's state");
+        (held.focused, held.focusing.clone())
+    }
+}
+
+impl Drop for Niri {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.socket);
+    }
 }
 
 fn order_of(screens: Screens, at: Instant) -> Order {
@@ -293,6 +389,41 @@ fn a_window_joel_focuses_while_the_order_settles_stays_focused() {
         (came.and_then(|put| put.focus), home.map(|put| put.focus)),
         (Some(1019), Some(None)),
         "a window was focused again other than as the screens changed"
+    );
+}
+
+#[test]
+fn the_window_joel_had_is_focused_again_once_his_workspaces_are_back() {
+    let niri = Niri::new(
+        "refocus",
+        &[("DP-1", &[19, 2, 101]), ("eDP-1", &[102])],
+        Some(1019),
+    );
+    assert_eq!(
+        niri.after(&[2, 19], Some(1002), false),
+        (Some(1002), vec![1002]),
+        "the window Joel had wasn't focused again"
+    );
+}
+
+#[test]
+fn a_window_joel_focuses_between_the_moves_stays_focused() {
+    let niri = Niri::new("pressed", &[("DP-1", &[19, 5, 2, 101])], Some(1019));
+    niri.held.lock().expect("niri's state").pressed = Some(1005);
+    assert_eq!(
+        niri.after(&[2, 5, 19], Some(1002), false),
+        (Some(1005), vec![]),
+        "a window Joel focused during the moves was undone"
+    );
+}
+
+#[test]
+fn a_putting_back_a_newer_one_took_over_focuses_nothing() {
+    let niri = Niri::new("overtaken", &[("DP-1", &[19, 2, 101])], Some(1019));
+    assert_eq!(
+        niri.after(&[2, 19], Some(1002), true),
+        (Some(1019), vec![]),
+        "an older putting back focused a window after a newer one"
     );
 }
 
