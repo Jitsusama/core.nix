@@ -145,10 +145,28 @@ Singleton {
         return Waiting.owners(questKind?.answered ? questKind.held : null, [quest])[quest];
     }
 
-    // Joel's word on an item, "done" or "notNow", kept at once.
+    // Joel's word on an item, "done" or "notNow", shown at once and kept
+    // by the to-do daemon, which writes settled.json from then on (Y2YBTS,
+    // 2026-11-10), so the shell writes no file for it. One the daemon
+    // can't keep, as while it's down or for an item it doesn't hold, is
+    // written here as before, so nothing he said is lost.
     function settle(item, how) {
         settled = Waiting.settle(settled, item, how, Date.now());
-        settledFile.setText(JSON.stringify(settled));
+        const word = settled;
+        toDo.ask({ ask: "act", act: how, item: identity(item) }, said => {
+            if (said?.done !== true)
+                settledFile.setText(JSON.stringify(word));
+        });
+    }
+
+    // The to-do daemon, asked only to keep Joel's word, so never watched
+    // here: what waits on him is heard above as it was.
+    Daemon {
+        id: toDo
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/to-do.sock`
+        kind: "to-do"
+        live: false
     }
 
     FileView {
