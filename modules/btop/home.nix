@@ -19,6 +19,11 @@
 # (escape-backs-out.patch). Left and Right choose what
 # the processes are sorted by, that way along their columns.
 #
+# btop speaks Vim's keys beside its own (modules/keys/language.toml): j and k
+# choose the process below and above, g and G the first and the last, and h
+# and l the sort column, as the arrows do. That moves killing to K and its
+# own list of keys to H, as btop's vim keys have them; ? still shows it.
+#
 # While it runs, btop names the terminal's window btop, keeping the title
 # it had on the terminal's stack and putting it back as it quits
 # (names-its-window.patch), so the launcher knows to list btop's keys over
@@ -40,12 +45,20 @@ let
   keys =
     grouped "processes" [
       {
-        chord = "Up";
+        chord = "k";
         does = "The process above";
       }
       {
-        chord = "Down";
+        chord = "j";
         does = "The process below";
+      }
+      {
+        chord = "g";
+        does = "The first process";
+      }
+      {
+        chord = "Shift+g";
+        does = "The last process";
       }
       {
         chord = "Return";
@@ -56,11 +69,11 @@ let
         does = "Back out a step";
       }
       {
-        chord = "Left";
+        chord = "h";
         does = "Sort by the column to the left";
       }
       {
-        chord = "Right";
+        chord = "l";
         does = "Sort by the column to the right";
       }
       {
@@ -84,7 +97,7 @@ let
         does = "End the chosen process";
       }
       {
-        chord = "k";
+        chord = "Shift+k";
         does = "Kill the chosen process";
       }
       {
@@ -226,6 +239,8 @@ in
       theme_background = false;
       clock_format = "";
       show_battery = false;
+      # Vim's keys beside btop's own, as the comment above says.
+      vim_keys = true;
     };
   };
 }
