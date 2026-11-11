@@ -273,26 +273,23 @@ function reach(record, place) {
 }
 
 // How an update a machine was asked for ended, as the report says it,
-// from what `mycelium update` printed: its node's answer,
-// `{"Ok": {"Updated": ending}}` with the ending its updater said, or
-// `{"Err": why}`. "skiff updated to c0ffee1", "skiff was on main
+// from its node's answer to the daemon interface's `update` ask,
+// `{"updated": ending}` with the ending its updater said, or
+// `{"error": {"message": why}}`, or null when the node went before it
+// answered. "skiff updated to c0ffee1", "skiff was on main
 // already", "skiff didn't update" or "skiff refused the update";
 // anything else, an answer that never came included, is why it couldn't
 // be asked, as the node said it.
-function updateEnded(name, text, said) {
-    let answer = null;
-    try {
-        answer = JSON.parse(text);
-    } catch (_error) {
-        answer = null;
-    }
-    const step = String(answer?.Ok?.Updated?.step ?? "");
-    const commit = String(answer?.Ok?.Updated?.commit ?? "").slice(0, SHORT_COMMIT);
+function updateEnded(name, answer, said) {
+    const step = String(answer?.updated?.step ?? "");
+    const commit = String(answer?.updated?.commit ?? "").slice(0, SHORT_COMMIT);
     const key = step === "done" && commit === "" ? "updated:done:bare" : `updated:${step}`;
     if (step !== "" && said[key] !== undefined) {
         return filled(said, key, { name, commit });
     }
-    const why = typeof answer?.Err === "string" ? answer.Err : filled(said, "unanswered");
+    const refused = answer?.error?.message;
+    const why = typeof refused === "string" && refused !== "" ? refused
+        : filled(said, "unanswered");
     return filled(said, "notUpdated", { name, why });
 }
 
