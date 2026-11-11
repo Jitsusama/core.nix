@@ -19,6 +19,12 @@
 //! change, so one changing screens while the order settles is put in its
 //! place too. Each move is made from what niri lists just before it, so a
 //! workspace moved meanwhile never leaves a move made for where it was.
+//!
+//! niri also moves the focus off a window whose workspace leaves the
+//! focused screen, so the window Joel had focused as the screens changed
+//! is focused again once his workspaces are back. niri lists the
+//! workspaces before it says where the focus went, so as the screens
+//! change the focus heard is still his.
 
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
@@ -44,6 +50,14 @@ const MOVES: usize = 64;
 
 /// Which putting back is the newest: an older one stops at its next move.
 static NEWEST: AtomicU64 = AtomicU64::new(0);
+
+/// What one putting back puts back: the order kept, and the window Joel
+/// had focused as the screens changed, if any, to focus again after.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Putting {
+    pub kept: Vec<u64>,
+    pub focus: Option<u64>,
+}
 
 /// The workspaces' order, and what it was kept with.
 #[derive(Debug, Default)]
@@ -87,10 +101,17 @@ fn placed(workspaces: &[Value]) -> Vec<Placed<'_>> {
 }
 
 impl Order {
-    /// Hears the workspaces niri lists now, and gives the order they're
-    /// to be put back in: none unless the screens holding them changed
-    /// since it was kept, or a workspace changed screens while it settles.
-    pub fn heard(&mut self, workspaces: &[Value], now: Instant) -> Option<Vec<u64>> {
+    /// Hears the workspaces niri lists now, with the window focused, and
+    /// gives what's to be put back: none unless the screens holding them
+    /// changed since the order was kept, or a workspace changed screens
+    /// while it settles. Only the screens changing focuses a window again,
+    /// so a window Joel focuses while the order settles stays focused.
+    pub fn heard(
+        &mut self,
+        workspaces: &[Value],
+        focused: Option<u64>,
+        now: Instant,
+    ) -> Option<Putting> {
         let listed = placed(workspaces);
         let screens: BTreeSet<String> = listed.iter().map(|one| one.screen.to_owned()).collect();
         let mut held: Vec<(u64, String)> = listed
@@ -106,7 +127,11 @@ impl Order {
         let settling = self.settling.is_some_and(|until| now < until);
         if came || (settling && moved) {
             self.settling = Some(now + SETTLING);
-            return Some(self.kept.clone());
+            let focus = focused.filter(|_| came);
+            return Some(Putting {
+                kept: self.kept.clone(),
+                focus,
+            });
         }
         if settling {
             // Held until the workspaces rest, so the shell's taking them
@@ -177,35 +202,52 @@ pub fn next(kept: &[u64], workspaces: &[Value]) -> Option<Value> {
 
 /// Puts the workspaces back in the order kept, on a thread of its own so
 /// no event waits on it: each move made from what niri lists just before
-/// it, until they're in order or a newer putting back comes. One niri
-/// refuses, or doesn't answer, is said in the journal and ends it.
-pub fn put_back(niri: &Path, kept: Option<Vec<u64>>) {
-    let Some(kept) = kept else {
+/// it, until they're in order or a newer putting back comes, and then the
+/// window Joel had focused focused again. A move niri refuses, or doesn't
+/// answer, is said in the journal and ends the moves.
+pub fn put_back(niri: &Path, putting: Option<Putting>) {
+    let Some(Putting { kept, focus }) = putting else {
         return;
     };
     let mine = NEWEST.fetch_add(1, Ordering::SeqCst) + 1;
     let niri: PathBuf = niri.to_owned();
     std::thread::spawn(move || {
-        for _ in 0..MOVES {
-            if NEWEST.load(Ordering::SeqCst) != mine {
-                return;
-            }
-            let Some(listed) = answer(&niri, &json!("Workspaces")) else {
-                eprintln!("<4>niri didn't list the workspaces to put them back in order");
-                return;
-            };
-            let workspaces = listed["Ok"]["Workspaces"]
-                .as_array()
-                .map_or(&[][..], Vec::as_slice);
-            let Some(one) = next(&kept, workspaces) else {
-                return;
-            };
-            if let Some(why) = refused(&niri, &one) {
-                eprintln!("<4>niri didn't put a workspace back in its place ({one}): {why}");
-                return;
-            }
+        move_back(&niri, &kept, mine);
+        // niri keeps each screen's active workspace through the moves, so
+        // the focus goes back once, after them, even where a newer putting
+        // back took over the moves.
+        let Some(window) = focus else {
+            return;
+        };
+        let again = json!({"Action": {"FocusWindow": {"id": window}}});
+        if let Some(why) = refused(&niri, &again) {
+            eprintln!("<4>niri didn't focus window {window} again as the screens changed: {why}");
         }
     });
+}
+
+/// Moves the workspaces into the order kept, one at a time, until they're
+/// in it or a newer putting back than `mine` comes.
+fn move_back(niri: &Path, kept: &[u64], mine: u64) {
+    for _ in 0..MOVES {
+        if NEWEST.load(Ordering::SeqCst) != mine {
+            return;
+        }
+        let Some(listed) = answer(niri, &json!("Workspaces")) else {
+            eprintln!("<4>niri didn't list the workspaces to put them back in order");
+            return;
+        };
+        let workspaces = listed["Ok"]["Workspaces"]
+            .as_array()
+            .map_or(&[][..], Vec::as_slice);
+        let Some(one) = next(kept, workspaces) else {
+            return;
+        };
+        if let Some(why) = refused(niri, &one) {
+            eprintln!("<4>niri didn't put a workspace back in its place ({one}): {why}");
+            return;
+        }
+    }
 }
 
 /// Why niri didn't do one request, or none where it did.
