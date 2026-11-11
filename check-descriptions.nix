@@ -1717,8 +1717,9 @@
     hidden one, with their remotes and one's files as git lists them, hidden ones but not what
     it ignores, as each is asked, reads when zoxide's database saw each folder, ssh's config
     and known hosts, and the ssh lines of zsh's history as each is asked, reads what a program
-    has open as it's asked, asks what a file shows of one file-preview it keeps, again only once the file changed, follows a data folder through each
-    link a switch replaces, and refuses an ask or a kind it doesn't know
+    has open as it's asked, and a list its program tells of again only once told it changed, asks
+    what a file shows of one file-preview it keeps, again only once the file changed, follows a
+    data folder through each link a switch replaces, and refuses an ask or a kind it doesn't know
   '';
   programs-passes-clippy = ''
     clippy finds nothing in the programs daemon or its tests
