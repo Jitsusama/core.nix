@@ -9,9 +9,12 @@
 // act is said shown by the first frame begun after its refresh; and an
 // opening says its parts slowest first, and weighs the foot's verbs only
 // once the words or the face have changed, and each row's keys once for
-// what's typed, the steps and the mode.
+// what's typed, the steps and the mode. What was presented is said by
+// place, each change timed from the earliest line not yet drawn
+// (launcher/Presented.js).
 import QtQuick
 import "Pacing.js" as Pacing
+import "Presented.js" as Presented
 import "Wanted.js" as Wanted
 
 QtObject {
@@ -231,6 +234,41 @@ QtObject {
             names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
     }
 
+    // A daemon's changes are timed from the first line the draw shows,
+    // and said a place a line as the launcher closes (Y2YBTS, 2026-11-11).
+    function presenting(failures) {
+        const first = Presented.heard({}, "quests", 1000);
+        const later = Presented.heard(first, "quests", 1100);
+        check(failures, "a change waiting on a draw is timed from its first line",
+            later.quests, 1000);
+        check(failures, "which an earlier line still moves back",
+            Presented.heard(later, "quests", 900).quests, 900);
+        const both = Presented.heard(later, "windows", 1200);
+        check(failures, "each place waits apart", JSON.stringify(both),
+            '{"quests":1000,"windows":1200}');
+        check(failures, "a place drawn waits no more",
+            JSON.stringify(Presented.drawn(both, "quests")), '{"windows":1200}');
+        check(failures, "nor is what waited changed", JSON.stringify(both),
+            '{"quests":1000,"windows":1200}');
+
+        const took = Presented.took([{ from: 0, at: 30 }, { from: 0, at: 80.4 },
+            { from: 10, at: 60 }]);
+        check(failures, "a set's median", took.median, 50);
+        check(failures, "its slowest", took.slowest, 80);
+        check(failures, "and how many within 50 ms, 50 itself among them", took.within, 2);
+        const said = Presented.changesSaid([
+            { place: "windows", from: 100, at: 130 },
+            { place: "quests", from: 0, at: 70 },
+            { place: "windows", from: 200, at: 290 }
+        ]);
+        check(failures, "a line a place, by name", said.join("\n"),
+            "launcher: 1 change in quests presented a median 70 ms from the line, "
+            + "the slowest 70 ms, 0 within 50 ms\n"
+            + "launcher: 2 changes in windows presented a median 30 ms from the line, "
+            + "the slowest 90 ms, 1 within 50 ms");
+        check(failures, "none presented says nothing", Presented.changesSaid([]).length, 0);
+    }
+
     function run() {
         const failures = [];
         const every = 250;
@@ -307,6 +345,7 @@ QtObject {
             Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within), false);
 
         framing(failures);
+        presenting(failures);
         wanting(failures);
         waking(failures);
         opening(failures);

@@ -372,6 +372,7 @@ let
       cp ${notices} Notices.qml
       cp ${./Location.qml} Location.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       mkdir -p $XDG_RUNTIME_DIR/whereabouts root/etc
@@ -1350,9 +1351,10 @@ onLinux {
   # never two refreshes closer than that however the first was asked for, and
   # a source's rows are wanted only where they're shown or searched, and a
   # key's act is said shown by the first frame begun after its refresh, and
-  # an opening weighs the foot's verbs only once its words or face change, as
-  # tests/pacing.qml holds launcher/Pacing.js and launcher/Wanted.js to it in
-  # Qt's own engine.
+  # an opening weighs the foot's verbs only once its words or face change,
+  # and a daemon's changes are said presented by place, as tests/pacing.qml
+  # holds launcher/Pacing.js, launcher/Presented.js and launcher/Wanted.js
+  # to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1361,6 +1363,7 @@ onLinux {
       cp ${../../tests/pacing.qml} pacing.qml
       cp ${./launcher/Order.js} Order.js
       cp ${./launcher/Pacing.js} Pacing.js
+      cp ${./launcher/Presented.js} Presented.js
       cp ${./launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -1962,6 +1965,7 @@ onLinux {
       mkdir -p root/run/user/1000/disk-guard root/run/disk-guard
       cd shell
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Watchers.qml} Watchers.qml
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
@@ -2023,6 +2027,7 @@ onLinux {
     touch runtime/leds/test::kbd_backlight/brightness_hw_changed
     cp ${./Lights.qml} Lights.qml
     cp ${./Daemon.qml} Daemon.qml
+    cp ${./Hearing.js} Hearing.js
     cp ${../../tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
@@ -2088,6 +2093,7 @@ onLinux {
       cp ${./SpendWatch.qml} SpendWatch.qml
       cp ${./SpendWatch.js} SpendWatch.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${../../tests/spend.qml} shell.qml
       cp ${../../tests/spend-told.qml} told.qml
       cp ${../../tests/lib/Expect.js} Expect.js
@@ -2109,7 +2115,8 @@ onLinux {
   # (daemon-roster.sh), started, stopped and started again by
   # tests/daemon.qml; and over one connection, records of two kinds from a
   # daemon holding both, and kinds told as the mycelium node tells them
-  # (daemon-kinds.py). The stand-ins are in modules/quickshell/tests/stand-ins.
+  # (daemon-kinds.py); and a line's handlers read when it was heard
+  # (Hearing.js). The stand-ins are in modules/quickshell/tests/stand-ins.
   the-desktop-holds-a-daemons-records =
     let
       people = pkgs.callPackage ../people/package.nix { };
@@ -2123,6 +2130,7 @@ onLinux {
         "command": ["${lib.getExe pkgs.bash}", "${./tests/stand-ins/daemon-roster.sh}"]}]}
       EOF
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${../../tests/daemon.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
@@ -2154,6 +2162,7 @@ onLinux {
       substitute ${./tests/stand-ins/taken-texts.json} texts.json --subst-var-by shots "$PWD/shots"
       printf '[{"name": "taken", "folders": ["%s"]}]' "$PWD/shots" > sources.json
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Taken.qml} Taken.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${../../tests/taken.qml} shell.qml
@@ -2222,6 +2231,7 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -2285,6 +2295,7 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/talks.qml} shell.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./AgentSources.qml} AgentSources.qml
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
@@ -2425,6 +2436,7 @@ onLinux {
         mkdir -p launcher runtime/daemons root/run/user/1000 && chmod 700 runtime
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Daemon.qml} Daemon.qml
+        cp ${./Hearing.js} Hearing.js
         cp ${./Watchers.qml} Watchers.qml
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -2531,6 +2543,7 @@ onLinux {
       ''
         mkdir -p launcher runtime/daemons && chmod -R 700 runtime
         cp ${./Daemon.qml} Daemon.qml
+        cp ${./Hearing.js} Hearing.js
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./ProgramGlyphs.js} ProgramGlyphs.js
@@ -2575,6 +2588,7 @@ onLinux {
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/lib/Watch.js} Watch.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./PiSource.js} PiSource.js
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
@@ -2614,6 +2628,7 @@ onLinux {
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/lib/Watch.js} Watch.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./PiSource.js} PiSource.js
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
@@ -2991,6 +3006,7 @@ onLinux {
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Music.js} Music.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
@@ -3223,6 +3239,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-finds-the-runs" { } ''
       mkdir launcher
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -3316,6 +3333,7 @@ onLinux {
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/HeldWindows.js} launcher/HeldWindows.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${./launcher/Capture.qml} launcher/Capture.qml
       cp ${./launcher/Previewer.qml} launcher/Previewer.qml
@@ -3359,6 +3377,7 @@ onLinux {
       cp ${./Niri.qml} Niri.qml
       cp ${./NiriRecords.js} NiriRecords.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/niri-focus.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -3384,6 +3403,7 @@ onLinux {
       mkdir -p launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -3520,6 +3540,7 @@ onLinux {
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js
       cp ${waiting} WaitingOnYou.qml
@@ -3588,6 +3609,7 @@ onLinux {
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Waiting.js} Waiting.js
       cp ${./Places.js} Places.js
       cp ${waiting} WaitingOnYou.qml
@@ -3685,6 +3707,7 @@ onLinux {
       cp ${../../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../tuple/TuplePeople.qml} TuplePeople.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/people.qml} shell.qml
@@ -3754,6 +3777,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/words.json} launcher/words.json
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./launcher/Placed.js} launcher/Placed.js
       cp ${../google/Documents.qml} launcher/Documents.qml
       cp ${../google/Drive.qml} Drive.qml
@@ -4077,6 +4101,7 @@ onLinux {
       cp ${laptop} laptop.json
       cp ${./ConnectedKeyboards.qml} ConnectedKeyboards.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${../../tests/keyboard.qml} shell.qml
       cp ${./KeyboardLayout.qml} KeyboardLayout.qml
       cp ${./KeyboardLayer.qml} KeyboardLayer.qml
@@ -4561,6 +4586,7 @@ onLinux {
         "Waiting.js" = ./Waiting.js;
         "PiSource.js" = ./PiSource.js;
         "Daemon.qml" = ./Daemon.qml;
+        "Hearing.js" = ./Hearing.js;
         "Expect.js" = ../../tests/lib/Expect.js;
         "shell.qml" = ../../tests/waiting-kept.qml;
         "Sessions.qml" = singleton "Sessions.qml" ''
@@ -5010,6 +5036,7 @@ onLinux {
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
       cp ${../chrome/ChromeDownloads.js} launcher/ChromeDownloads.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       cp ${./launcher/Listed.qml} launcher/Listed.qml
       cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${../zathura/ZathuraProgram.qml} launcher/ZathuraProgram.qml
@@ -5110,6 +5137,7 @@ onLinux {
     pkgs.runCommandLocal "the-desktop-hears-tuples-call" { } ''
       cp ${../tuple/Tuple.qml} Tuple.qml
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./Hearing.js} Hearing.js
       # The copied link Tuple offers to join is read from the shell's one
       # watcher of the clipboard.
       cp ${./Copied.qml} Copied.qml

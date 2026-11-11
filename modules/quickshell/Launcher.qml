@@ -61,6 +61,7 @@ import "Finding.js" as Finding
 import "Glide.js" as Glide
 import "Confirm.js" as Confirm
 import "Changes.js" as Changes
+import "Hearing.js" as Hearing
 import "QueryKeys.js" as QueryKeys
 import "ModeMarks.js" as ModeMarks
 import "Reading.js" as Reading
@@ -74,6 +75,7 @@ import "launcher/Steady.js" as Steady
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Presented.js" as Presented
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -4502,6 +4504,12 @@ Scope {
     // each source heard is made again once, in the order heard.
     property var refreshing: []
     function refreshed(source) {
+        // A change told from a daemon's line is timed from it, on the
+        // monotonic clock, to the frame niri presents with it (Hearing.js).
+        const line = Hearing.heardAt();
+        if (open && line > 0)
+            updatesWaiting = Presented.heard(updatesWaiting, source.settings.name,
+                line + KeyTimes.now() - Date.now());
         // A collection's note is read as the corpus is joined, so a source
         // saying it changed marks it stale even when its things are the
         // same.
@@ -4718,6 +4726,8 @@ Scope {
         });
         if (done.some(one => one.shown))
             reshow(held.length);
+        for (const one of done)
+            updateDrawn(one.source.settings.name, one.shown);
         // Each a span of the opening (Traces.qml), saying which source
         // changed, how long its own work took by the shell's clock, and how
         // many rows the list held after (Y2YBTS, 2026-11-07).
@@ -6537,6 +6547,12 @@ Scope {
         // says them, as JSON.
         function keysLanded(): string {
             return JSON.stringify(root.keysLanded);
+        }
+
+        // Each daemon change shown since it opened, by its place, from its
+        // line and when niri presented it, on the monotonic clock, as JSON.
+        function updatesPresented(): string {
+            return JSON.stringify(root.updatesPresented);
         }
 
         // The command line over a viewer, by its name, where it is and the
@@ -8714,25 +8730,35 @@ Scope {
         });
     }
 
-    // How long a set of keys took, as the journal says it: how many, the
-    // median, the slowest and how many within Joel's 50 ms.
-    function keysTook(keys) {
-        const took = keys.map(one => Math.round(one.at - one.from)).sort((a, b) => a - b);
-        return {
-            count: took.length,
-            median: took[(took.length - 1) >> 1],
-            slowest: took[took.length - 1],
-            within: took.filter(ms => ms <= 50).length
-        };
+    // A daemon's change shown since the launcher opened, by its place, from
+    // the earliest line its draw showed to when niri presented it, for the
+    // check that sets it against niri's screen; said in the journal by
+    // place as it closes. A change drawn where nothing shows it is let go,
+    // since no frame carries it.
+    property var updatesWaiting: ({})
+    property var updatesPresented: []
+    function updateDrawn(place, shown) {
+        const from = updatesWaiting[place];
+        if (from === undefined)
+            return;
+        updatesWaiting = Presented.drawn(updatesWaiting, place);
+        if (shown && open)
+            presentedAwait(from, at => {
+                updatesPresented = updatesPresented.concat([{ place, from, at }])
+                    .slice(-keysKept);
+            });
     }
 
     function keysPresentedSaid() {
-        const first = keysTook(keysPresented);
-        const landed = keysTook(keysLanded);
+        const first = Presented.took(keysPresented);
+        const landed = Presented.took(keysLanded);
+        const updates = Presented.changesSaid(updatesPresented);
         keysPresented = [];
         keysLanded = [];
         keysGliding = [];
         keysGlided = [];
+        updatesPresented = [];
+        updatesWaiting = {};
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
         if (first.count > 0)
@@ -8743,6 +8769,8 @@ Scope {
             console.info(`launcher: ${landed.count} keys landed a median `
                 + `${landed.median} ms from the key, the slowest `
                 + `${landed.slowest} ms, ${landed.within} within 50 ms`);
+        for (const said of updates)
+            console.info(said);
     }
 
     // What a key changed in a place, presented: said when slow enough to

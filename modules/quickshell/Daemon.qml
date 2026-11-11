@@ -34,6 +34,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Hearing.js" as Hearing
 
 Scope {
     id: daemon
@@ -307,7 +308,19 @@ Scope {
     // for it.
     property int linesHeard: 0
 
+    // Each line is marked as heard from when it's read until all it set
+    // going has returned, so the launcher times a change from it
+    // (Hearing.js).
     function said(line) {
+        const was = Hearing.begun(Date.now());
+        try {
+            hear(line);
+        } finally {
+            Hearing.ended(was);
+        }
+    }
+
+    function hear(line) {
         linesHeard += 1;
         let answer;
         try {

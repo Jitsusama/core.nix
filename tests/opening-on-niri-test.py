@@ -14,10 +14,8 @@ so.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
-import signal
 import socket
 import time
 from datetime import timedelta
@@ -144,24 +142,6 @@ def presented_after(shell: Shell, nth: int) -> Json:
 
     shell.launcher_until(presented)
     return each[0]
-
-
-@contextlib.contextmanager
-def niri_held() -> Iterator[None]:
-    """Hold the nested niri stopped while what's done inside it runs, so it answers no frame."""
-    held = [
-        int(process.name)
-        for process in Path("/proc").iterdir()
-        if process.name.isdigit()
-        and (process / "cmdline").read_bytes().split(b"\0")[1:2] == [b"-c"]
-        and (process / "comm").read_text().strip() == "niri"
-    ]
-    assert len(held) == 1, f"there should be one niri to hold, not {held}"
-    os.kill(held[0], signal.SIGSTOP)
-    try:
-        yield
-    finally:
-        os.kill(held[0], signal.SIGCONT)
 
 
 def frames_once_kept(shell: Shell) -> int:
@@ -357,7 +337,7 @@ def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     for _ in range(REOPENINGS_TRIED):
         first = opened_from_kept(shell)
         began = shell.mark()
-        with niri_held():
+        with launcher_on_niri.niri_held():
             closed = time.monotonic()
             shell.as_account(shell.ipc("toggle"))
             # Home is kept a turn after the closing, before the next call can land.
