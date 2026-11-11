@@ -68,10 +68,12 @@ pub fn act(name: &str, said: &Value) -> Result<Act, Refused> {
         .to_owned();
     match name {
         "volume" => {
+            // No further than full, as the shell shows it: any process of
+            // the account can ask, and a volume of 10 would be 1,000%.
             let volume = said["volume"]
                 .as_f64()
-                .filter(|volume| *volume >= 0.0)
-                .ok_or_else(|| refused("bad-act", "a volume act says a volume of 0 or more"))?;
+                .filter(|volume| (0.0..=1.0).contains(volume))
+                .ok_or_else(|| refused("bad-act", "a volume act says a volume from 0 to 1"))?;
             Ok(Act::Volume {
                 key,
                 volume: share(volume),
@@ -188,10 +190,12 @@ mod tests {
     fn an_act_missing_what_it_needs_is_refused() {
         let code = |name: &str, said: Value| act(name, &said).map_err(|refused| refused.code);
         let below = json!({"key": "device:a", "volume": -1});
+        let above = json!({"key": "device:a", "volume": 10});
         assert_eq!(code("volume", json!({"key": "device:a"})), Err("bad-act"));
         assert_eq!(code("mute", json!({"key": "device:a"})), Err("bad-act"));
         assert_eq!(code("use", json!({"key": "window:1"})), Err("bad-act"));
         assert_eq!(code("volume", below), Err("bad-act"));
+        assert_eq!(code("volume", above), Err("bad-act"));
         assert_eq!(
             code("louder", json!({"key": "device:a"})),
             Err("unknown-act")
