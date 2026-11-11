@@ -30,6 +30,25 @@
       touch $out
     '';
 
+  # The words each daemon's tests are given are the vocabulary's own, as the
+  # account writes it (tests/daemon-words.py), so no daemon passes its tests
+  # on words Joel never reads. A daemon whose tests hold a slice of the
+  # vocabulary adds it here.
+  the-daemons-test-the-launchers-words =
+    let
+      words =
+        pkgs.writeText "words.json"
+          (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+    in
+    pkgs.runCommandLocal "the-daemons-test-the-launchers-words" { } ''
+      cp ${../../to-do/tests/words.json} to-do.json
+      cp ${../whereabouts/tests/words.json} whereabouts.json
+      cp ${../../windows/tests/screen-words.json} windows-screens.json
+      ${lib.getExe pkgs.python3} ${../../../tests/daemon-words.py} ${words} \
+        to-do.json whereabouts.json windows-screens.json
+      touch $out
+    '';
+
   # Every launcher verb names the command the : line runs it by, one the key
   # language has, with what follows it, and no two on a row alike
   # (tests/launcher-commands.py), as the account writes the vocabulary.

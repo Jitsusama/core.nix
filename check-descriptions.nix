@@ -2208,6 +2208,10 @@
     the console takes the account's terminal colours in its own order, whatever the theme, and a
     machine with no account keeps the kernel's
   '';
+  the-daemons-test-the-launchers-words = ''
+    every word a daemon's tests are given, To Do's, Location's and Screens', is the launcher's
+    vocabulary's own at the same place, and a changed, unknown or vanished word is refused
+  '';
   the-desktop-comes-first-in-its-session = ''
     niri and the shell sit first in session.slice, at ten times its other units' CPU weight,
     each with a hard memory floor that session.slice's own covers with a gibibyte to spare

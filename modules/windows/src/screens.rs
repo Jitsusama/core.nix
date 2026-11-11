@@ -330,7 +330,7 @@ mod tests {
             "the shell's acts read niri's whole record of the screen"
         );
         assert_eq!(rows[3]["key"], "row:displays:sleep");
-        assert_eq!(rows[3]["note"], "a key wakes them");
+        assert_eq!(rows[3]["note"], "a key wakes them \u{b7} hubs stay on");
     }
 
     #[test]
