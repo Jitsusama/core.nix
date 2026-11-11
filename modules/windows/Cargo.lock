@@ -41,6 +41,7 @@ name = "programs"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "ready-rows",
  "serde",
  "serde_json",
 ]
