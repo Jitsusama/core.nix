@@ -51,9 +51,10 @@
       cp ${../../slack/tests/words.json} slack.json
       cp ${../../wifid/daemon/tests/words.json} wifid.json
       cp ${../../people/tests/words.json} people.json
+      cp ${../../agents/tests/words.json} agents.json
       ${lib.getExe pkgs.python3} ${../../../tests/daemon-words.py} ${words} \
         to-do.json whereabouts.json windows-screens.json machine.json slack.json wifid.json \
-        people.json
+        people.json agents.json
       touch $out
     '';
 

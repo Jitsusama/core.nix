@@ -10,6 +10,14 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_json::Value;
 
+/// The launcher's own words for what this crate's tests say, the entries
+/// they read copied whole from its vocabulary (tests/words.json), which
+/// the-daemons-test-the-launchers-words holds to words.json, so no test
+/// passes on words Joel never reads: Machine's had drifted in 11 places
+/// (#3367).
+#[cfg(test)]
+pub const LAUNCHERS: &str = include_str!("../tests/words.json");
+
 /// One thing's words, by their keys.
 #[derive(Debug, Default)]
 pub struct Said(HashMap<String, String>);
@@ -77,16 +85,6 @@ impl Said {
             })
             .collect();
         Ok(Self(names))
-    }
-
-    /// Words given outright, as a test gives only those it reads.
-    pub fn of(words: &[(&str, &str)]) -> Self {
-        Self(
-            words
-                .iter()
-                .map(|(key, word)| ((*key).to_owned(), (*word).to_owned()))
-                .collect(),
-        )
     }
 
     /// The words a key says, or none, as the launcher says nothing for

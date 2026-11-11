@@ -231,14 +231,7 @@ mod tests {
     use super::*;
 
     fn words() -> Said {
-        Said::of(&[
-            ("full", "{share}% full"),
-            ("contextOf", "{used} of {limit}"),
-            ("turnTook", "{took} · {out} out"),
-            ("firstToken", "{took} first token"),
-            ("tokensOf", "{sent} in · {out} out"),
-            ("cacheRead", "{share}% read"),
-        ])
+        Said::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read")
     }
 
     fn usage() -> Value {

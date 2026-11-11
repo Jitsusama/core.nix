@@ -347,30 +347,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::said::Said;
 
     fn words() -> Words {
-        Words {
-            agents: Said::of(&[
-                ("allOf", "{spent} in all"),
-                ("contextOf", "{used} of {limit}"),
-            ]),
-            names: Said::of(&[
-                ("step", "Doing"),
-                ("wants", "Needs You For"),
-                ("last-landing", "Last Landing"),
-                ("spent", "Spent Today"),
-                ("own", "Its Own"),
-                ("under", "Its Sessions"),
-                ("budget", "Budget"),
-                ("context", "Context"),
-                ("rebuilt", "Context Rebuilt"),
-                ("task", "Quest"),
-                ("machine", "Machine"),
-                ("works", "Working On"),
-            ]),
-            ..Words::default()
-        }
+        Words::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read")
     }
 
     fn no_needs(_: &str) -> Vec<String> {

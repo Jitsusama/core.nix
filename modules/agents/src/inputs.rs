@@ -326,23 +326,11 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::said::Said;
 
     fn inputs() -> Inputs {
         let mut inputs = Inputs {
-            words: Words {
-                agents: Said::of(&[
-                    ("working", "working"),
-                    ("listening", "listening"),
-                    ("workingCount", "{count} working"),
-                    ("today", "{spent} today"),
-                    ("allOf", "{spent} in all"),
-                    ("needsCount", "1 needs you"),
-                ]),
-                machine: Said::default(),
-                wants: Said::of(&[("question", "needs you")]),
-                names: Said::of(&[("spent", "Spent Today")]),
-            },
+            words: Words::from_vocabulary(crate::said::LAUNCHERS)
+                .expect("the launcher's words read"),
             spend: Some(json!({"agentsToday": "$214", "sessions": {"s-p": "$4"},
                 "families": {"QEST-O": {"all": "$9"}}})),
             orchestrators: Some(json!({"orchestrators": [

@@ -364,20 +364,7 @@ mod tests {
     use super::*;
 
     fn words() -> Words {
-        Words {
-            agents: Said::of(&[
-                ("working", "working"),
-                ("listening", "listening"),
-                ("paused", "paused"),
-                ("inLine", "{place} in line"),
-                ("under", "under {address}"),
-                ("allOf", "{spent} in all"),
-                ("full", "{share}% full"),
-            ]),
-            machine: Said::of(&[("on", "on {machine}"), ("away", "{machine}, out of reach")]),
-            wants: Said::of(&[("question", "needs you"), ("approval", "needs your yes")]),
-            names: Said::default(),
-        }
+        Words::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read")
     }
 
     struct Given {
