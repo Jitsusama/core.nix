@@ -340,6 +340,12 @@ pub fn lets_its_command_in(settings: &str) -> Option<bool> {
 /// What Joel reads while 1Password hasn't let the launcher in.
 pub const LET_IN: &str = "1Password asks you to let the launcher in";
 
+/// What Joel reads while op hasn't been asked since the manager started
+/// or the app opened, so nothing is asking him yet: the manager never runs
+/// op on its own, and whether 1Password lets the launcher in is known only
+/// once he asks (2026-11-10, a restart read as 1Password asking him).
+pub const UNASKED: &str = "1Password is asked as you next open Passwords";
+
 /// What Joel reads while 1Password keeps its command out, by the setting's
 /// own name and where the app has it, so he can find it there.
 pub const KEPT_OUT: &str =
@@ -352,13 +358,46 @@ pub const CLOSED: &str = "1Password is closed, and Unlock opens it";
 /// What Joel reads while the app is being opened for his ask.
 pub const OPENING: &str = "1Password is opening, to let the launcher in";
 
+/// What op last said of its leave since the manager started or the app
+/// last opened: nothing yet, since nothing asked it; that 1Password keeps
+/// it out until Joel lets it in; or that it answered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Leave {
+    Unasked,
+    Out,
+    In,
+}
+
+impl Leave {
+    /// As an atomic holds it.
+    #[must_use]
+    pub const fn byte(self) -> u8 {
+        match self {
+            Self::Unasked => 0,
+            Self::Out => 1,
+            Self::In => 2,
+        }
+    }
+
+    /// From what an atomic holds; anything else is nothing asked yet.
+    #[must_use]
+    pub const fn of(byte: u8) -> Self {
+        match byte {
+            1 => Self::Out,
+            2 => Self::In,
+            _ => Self::Unasked,
+        }
+    }
+}
+
 /// How the manager stands, from what it knows of 1Password: whether the
 /// app keeps its command out, whether the app is open (`None` where
-/// nothing says), and whether op has let it in since.
+/// nothing says), and what op said of its leave since.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stands {
     KeptOut,
     Closed,
+    Unasked,
     LetIn,
     Answering,
 }
@@ -366,15 +405,18 @@ pub enum Stands {
 impl Stands {
     /// The setting comes first, since nothing else helps while it's off;
     /// then the app, since op can't prompt without it; then op's leave.
-    pub fn of(kept_out: bool, open: Option<bool>, let_in: bool) -> Self {
+    #[must_use]
+    pub fn of(kept_out: bool, open: Option<bool>, leave: Leave) -> Self {
         if kept_out {
             Self::KeptOut
         } else if open == Some(false) {
             Self::Closed
-        } else if let_in {
-            Self::Answering
         } else {
-            Self::LetIn
+            match leave {
+                Leave::Unasked => Self::Unasked,
+                Leave::Out => Self::LetIn,
+                Leave::In => Self::Answering,
+            }
         }
     }
 
@@ -383,6 +425,7 @@ impl Stands {
         match self {
             Self::KeptOut => json!({"state": "refused", "reason": KEPT_OUT}),
             Self::Closed => json!({"state": "signed-out", "reason": CLOSED}),
+            Self::Unasked => json!({"state": "signed-out", "reason": UNASKED}),
             Self::LetIn => json!({"state": "signed-out", "reason": LET_IN}),
             Self::Answering => json!({"state": "answering"}),
         }
@@ -425,10 +468,18 @@ mod tests {
 
     #[test]
     fn the_setting_stands_before_the_app_and_the_app_before_the_leave() {
-        assert_eq!(Stands::of(true, Some(false), true), Stands::KeptOut);
-        assert_eq!(Stands::of(false, Some(false), true), Stands::Closed);
-        assert_eq!(Stands::of(false, Some(true), true), Stands::Answering);
-        assert_eq!(Stands::of(false, None, false), Stands::LetIn);
+        assert_eq!(Stands::of(true, Some(false), Leave::In), Stands::KeptOut);
+        assert_eq!(Stands::of(false, Some(false), Leave::In), Stands::Closed);
+        assert_eq!(Stands::of(false, Some(true), Leave::In), Stands::Answering);
+        assert_eq!(Stands::of(false, None, Leave::Out), Stands::LetIn);
+        assert_eq!(Stands::of(false, None, Leave::Unasked), Stands::Unasked);
+        for leave in [Leave::Unasked, Leave::Out, Leave::In] {
+            assert_eq!(
+                Leave::of(leave.byte()),
+                leave,
+                "{leave:?} is held as itself"
+            );
+        }
         assert_eq!(
             Stands::Closed.said(),
             json!({"state": "signed-out", "reason": CLOSED})

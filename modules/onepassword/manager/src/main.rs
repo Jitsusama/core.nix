@@ -34,14 +34,14 @@
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use inotify::{Inotify, WatchMask};
 use onepassword_manager::{
-    LET_IN, OPENING, Stands, account, entry, in_account, lets_its_command_in, passwords, period,
-    reason, settings_file, value,
+    LET_IN, Leave, OPENING, Stands, UNASKED, account, entry, in_account, lets_its_command_in,
+    passwords, period, reason, settings_file, value,
 };
 use serde_json::{Map, Value, json};
 
@@ -63,13 +63,13 @@ fn main() {
     let known = Arc::new(Known {
         open: Mutex::new(open),
         changed: Condvar::new(),
-        let_in: AtomicBool::new(false),
+        leave: AtomicU8::new(Leave::Unasked.byte()),
     });
     // Watched before it first says how it stands, so nothing changing
     // between the two goes unsaid.
     let kept = kept_out(settings.as_deref());
     watch(settings.clone(), opened, &known, (kept, open));
-    say(&Stands::of(kept, open, false).said());
+    say(&Stands::of(kept, open, Leave::Unasked).said());
     let mut manager = Manager {
         op: given.op,
         known,
@@ -138,14 +138,22 @@ struct Known {
     open: Mutex<Option<bool>>,
     /// Told each time `open` changes, for an ask waiting on the app.
     changed: Condvar,
-    /// Whether op has answered since the app last opened, so its leave is
-    /// live.
-    let_in: AtomicBool,
+    /// What op said of its leave since the app last opened, so whether
+    /// it's live.
+    leave: AtomicU8,
 }
 
 impl Known {
     fn open(&self) -> Option<bool> {
         *self.open.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn leave(&self) -> Leave {
+        Leave::of(self.leave.load(Ordering::SeqCst))
+    }
+
+    fn set_leave(&self, leave: Leave) {
+        self.leave.store(leave.byte(), Ordering::SeqCst);
     }
 }
 
@@ -212,12 +220,12 @@ fn watch(
             was = now;
             *known.open.lock().unwrap_or_else(PoisonError::into_inner) = now.1;
             known.changed.notify_all();
-            // A closed app's leave goes with it.
+            // A closed app's leave goes with it, and one opened again
+            // hasn't been asked.
             if now.1 == Some(false) {
-                known.let_in.store(false, Ordering::SeqCst);
+                known.set_leave(Leave::Unasked);
             }
-            let let_in = known.let_in.load(Ordering::SeqCst);
-            say(&Stands::of(now.0, now.1, let_in).said());
+            say(&Stands::of(now.0, now.1, known.leave()).said());
         }
         eprintln!("<4>stopped watching 1Password's settings and app");
     });
@@ -293,7 +301,7 @@ impl Manager {
             }
             Err(failed) => self.failed(&failed),
         };
-        if self.known.let_in.load(Ordering::SeqCst) && !answer.contains_key("error") {
+        if self.known.leave() == Leave::In && !answer.contains_key("error") {
             answer.insert("state".to_owned(), json!("answering"));
         }
         answer.insert("id".to_owned(), id);
@@ -313,7 +321,11 @@ impl Manager {
             return answer;
         }
         let kept = kept_out(self.settings.as_deref());
-        let said = match Stands::of(kept, self.known.open(), true) {
+        let said = match Stands::of(kept, self.known.open(), Leave::In) {
+            // Refused before op ran says that nothing asked it yet.
+            Stands::Answering if failed.signed_out && self.known.leave() == Leave::Unasked => {
+                Stands::Unasked.said()
+            }
             Stands::Answering if failed.signed_out => Stands::LetIn.said(),
             Stands::Answering => json!({"state": "refused", "reason": failed.reason}),
             other => other.said(),
@@ -376,13 +388,19 @@ impl Manager {
     /// Whether op may run for this ask: Joel's own, or once op has let
     /// the launcher in and its leave is live.
     fn may(&self, joels: bool) -> Result<(), Failed> {
-        if joels || self.known.let_in.load(Ordering::SeqCst) {
+        let leave = self.known.leave();
+        if joels || leave == Leave::In {
             Ok(())
         } else {
             Err(Failed {
                 signed_out: true,
                 stands: true,
-                reason: LET_IN.to_owned(),
+                reason: (if leave == Leave::Unasked {
+                    UNASKED
+                } else {
+                    LET_IN
+                })
+                .to_owned(),
             })
         }
     }
@@ -541,7 +559,7 @@ impl Manager {
             let _ = writing.join();
         }
         if ran.status.success() {
-            self.known.let_in.store(true, Ordering::SeqCst);
+            self.known.set_leave(Leave::In);
             return Ok(String::from_utf8_lossy(&ran.stdout).into_owned());
         }
         let said = reason(&String::from_utf8_lossy(&ran.stderr));
@@ -556,7 +574,7 @@ impl Manager {
         .iter()
         .any(|word| lowered.contains(word));
         if signed_out {
-            self.known.let_in.store(false, Ordering::SeqCst);
+            self.known.set_leave(Leave::Out);
         }
         Err(Failed {
             signed_out,
