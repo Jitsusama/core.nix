@@ -313,7 +313,12 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
         }));
     }
     if !emails.is_empty() {
-        acts.push(json!({"key": "verb:calendar:guests", "step": "guests", "emails": emails}));
+        acts.push(json!({
+            "key": "verb:calendar:guests",
+            "step": "guests",
+            "emails": emails,
+            "count": guests_counted(meeting),
+        }));
     }
     if !meeting.attachments.is_empty() {
         acts.push(json!({
@@ -348,6 +353,21 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
         acts.push(json!({"key": "verb:calendar:link", "copy": link, "side": side}));
     }
     acts
+}
+
+/// How many are on a meeting besides Joel, each address once in any
+/// case: every source People reads gives one address a person, so each
+/// address is one person whether or not People knows them yet (XY9H5C,
+/// 2026-11-11), and the count needs no one's row.
+#[must_use]
+pub fn guests_counted(meeting: &Meeting) -> usize {
+    let mut addresses: Vec<String> = guest_emails(meeting)
+        .iter()
+        .map(|email| email.to_lowercase())
+        .collect();
+    addresses.sort();
+    addresses.dedup();
+    addresses.len()
 }
 
 /// The addresses of those on a meeting besides Joel: who holds it, unless

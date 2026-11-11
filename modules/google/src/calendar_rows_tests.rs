@@ -484,3 +484,45 @@ fn a_series_says_how_it_repeats_as_one_would() {
         "past the fifth, which day is said as a figure"
     );
 }
+
+#[test]
+fn guests_count_each_address_once_and_who_holds_it_unless_joel_does() {
+    let guest = |email: Option<&str>| Guest {
+        name: String::new(),
+        email: email.map(str::to_owned),
+        answer: Answer::Waiting,
+    };
+    let mut meeting = one("guested", MONDAY);
+    meeting.holds = false;
+    meeting.organizer = Some(Person {
+        name: "Ada Lovelace".into(),
+        email: Some("ada@example.com".into()),
+    });
+    meeting.guests = vec![
+        guest(Some("grace@example.com")),
+        guest(Some("Grace@Example.com")),
+        guest(Some("stranger@example.com")),
+        guest(None),
+    ];
+    assert_eq!(
+        super::guests_counted(&meeting),
+        3,
+        "not Ada, Grace once in any case, and the stranger, a room with no address left out"
+    );
+    let rows = meetings(&[meeting.clone()], &[], MONDAY, &zone(), &words());
+    let guests = rows[0]["acts"]
+        .as_array()
+        .and_then(|acts| acts.iter().find(|act| act["key"] == "verb:calendar:guests"))
+        .cloned();
+    assert_eq!(
+        guests.map(|act| act["count"].clone()),
+        Some(json!(3)),
+        "the Guests act didn't carry its count"
+    );
+    meeting.holds = true;
+    assert_eq!(
+        super::guests_counted(&meeting),
+        2,
+        "one Joel holds didn't count its guests alone"
+    );
+}
