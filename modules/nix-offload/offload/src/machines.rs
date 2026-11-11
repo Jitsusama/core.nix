@@ -272,13 +272,15 @@ fn stand_ins(second: &Path, vm: &[PathBuf], at: u64) -> (Vec<String>, Vec<String
     (second, vm)
 }
 
-/// How the builder beside `line` names stands, keeping it in `kept`:
-/// whether it's left out, having failed its proofs or with its store
-/// full, saying so as that changes. Where root's prover writes `root`,
-/// that says, since only an account the daemon trusts can prove a builder
-/// beside; elsewhere it's proven here when due, with `nix`.
+/// How the builder beside `line` names stands, keeping it in `kept`,
+/// which goes on from how `earlier` said it stood: whether it's left out,
+/// having failed its proofs, with its store full or with no proof yet,
+/// saying so as that changes. Where root's prover writes `root`, that
+/// says, since only an account the daemon trusts can prove a builder
+/// beside; elsewhere it's proven here when due, with `nix`. One unproven
+/// waits for its first proof, a few seconds, since its store may be full.
 fn kept_beside(
-    kept: &mut Vec<(String, Keeper)>,
+    (kept, earlier): (&mut Vec<(String, Keeper)>, &[Health]),
     line: &str,
     (nix, root): (&str, &Path),
     now: Instant,
@@ -287,7 +289,12 @@ fn kept_beside(
         .iter()
         .position(|(kept, _)| kept == line)
         .unwrap_or_else(|| {
-            kept.push((line.to_owned(), Keeper::of(&proof::named(line))));
+            let named = proof::named(line);
+            let health = earlier
+                .iter()
+                .find(|health| health.builder == named)
+                .map_or_else(|| Health::of(&named), Clone::clone);
+            kept.push((line.to_owned(), Keeper::going_on(health)));
             kept.len() - 1
         });
     let keeper = &mut kept[index].1;
@@ -324,7 +331,7 @@ fn kept_beside(
         }
         _ => {}
     }
-    keeper.health.left_out()
+    keeper.health.left_out() || state == State::Unproven
 }
 
 fn seconds() -> u64 {
@@ -494,6 +501,9 @@ pub struct Machines {
     telling: Option<PathBuf>,
     /// Each builder beside's proofs, by its line.
     kept: Vec<(String, Keeper)>,
+    /// How each builder beside stood when the lender before this one last
+    /// said, once `going_on_from` gives it.
+    earlier: Vec<Health>,
     /// The nix the builders beside are proven through.
     nix: String,
     /// Where root's prover says how the builders beside stand.
@@ -537,6 +547,7 @@ impl Machines {
             named: Named::Nothing,
             telling: None,
             kept: Vec::new(),
+            earlier: Vec::new(),
             nix: "nix".to_owned(),
             root: PathBuf::from(proof::STANDING),
             freeing_from: None,
@@ -592,6 +603,13 @@ impl Machines {
             telling: program,
             ..self
         }
+    }
+
+    /// Going on from `earlier`, how each builder beside stood when the
+    /// lender before this one last said, until its own proofs say.
+    #[must_use]
+    pub fn going_on_from(self, earlier: Vec<Health>) -> Self {
+        Self { earlier, ..self }
     }
 
     /// With `nix` to prove the builders beside through.
@@ -769,7 +787,12 @@ impl Machines {
         let mut beside: Vec<&str> = Vec::new();
         for builder in &self.beside {
             if answers(&builder.address)
-                && !kept_beside(&mut self.kept, &builder.line, (&self.nix, &self.root), now)
+                && !kept_beside(
+                    (&mut self.kept, &self.earlier),
+                    &builder.line,
+                    (&self.nix, &self.root),
+                    now,
+                )
             {
                 beside.push(builder.line.as_str());
             }
@@ -987,6 +1010,20 @@ mod tests {
     // second machine for the same work, is named to every build while it
     // answers, for its big work alone as a lent one is, and never beside
     // the standing builders, which take only what asks for them.
+    /// How a builder beside `line` names stood, passing with room, as the
+    /// lender before said: one unproven is named nowhere.
+    fn passed(line: &str) -> Vec<Health> {
+        let mut health = Health::of(&proof::named(line));
+        health.heard(
+            proof::Proven {
+                passed: true,
+                free: Some(proof::FLOOR),
+            },
+            10,
+        );
+        vec![health]
+    }
+
     #[test]
     fn a_builder_beside_is_named_to_every_build_for_its_big_work_while_it_answers() {
         let dir = tempfile::tempdir().expect("a folder");
@@ -1008,7 +1045,8 @@ mod tests {
                 address,
                 line: "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark".to_owned(),
             }],
-        );
+        )
+        .going_on_from(passed("ssh-ng://work"));
         let read = |path| fs::read_to_string(path).expect("read");
         machines.show(Some(Lending {
             line: "ssh-ng://lent",
@@ -1051,6 +1089,7 @@ mod tests {
             vec![],
         )
         .beside(alone.clone(), vec![])
+        .going_on_from(passed("ssh-ng://work"))
         .read_from(Some(standing.clone()), Some(beside.clone()));
         let read = |path| fs::read_to_string(path).expect("read");
         machines.show(None);
@@ -1381,14 +1420,14 @@ mod tests {
         let ending = Instant::now() + Duration::from_secs(5);
         // No prover of root's writes here, so the builder is proven through `nix`.
         let proving = (nix, Path::new("/nonexistent/nix-offload-standing.json"));
-        let mut dropped = kept_beside(kept, line, proving, now);
+        let mut dropped = kept_beside((kept, &[]), line, proving, now);
         // One just kept has heard no proof yet.
         let unheard = |kept: &Vec<(String, Keeper)>| {
             heard(kept) == before || heard(kept) == Some((None, None, 0, None))
         };
         while unheard(kept) && Instant::now() < ending {
             std::thread::sleep(Duration::from_millis(10));
-            dropped = kept_beside(kept, line, proving, now);
+            dropped = kept_beside((kept, &[]), line, proving, now);
         }
         assert_ne!(heard(kept), before, "no proof ended");
         dropped
@@ -1564,6 +1603,57 @@ mod tests {
         );
         machines.show(None);
         assert_eq!(read(&alone), format!("{line}\n"), "back once it has room");
+        drop(listening);
+    }
+
+    // On 11 November a full builder beside read as unproven to each lender
+    // started again, so it was named, and took builds, until its first
+    // proof ended.
+    #[test]
+    fn a_lender_started_again_names_no_builder_beside_before_its_proof() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let nix = nix_in(dir.path());
+        fs::write(dir.path().join("status"), "0").expect("write");
+        fs::write(dir.path().join("free"), (proof::FLOOR * 2).to_string()).expect("write");
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let line = "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark";
+        let mut full = Health::of(&proof::named(line));
+        full.heard(
+            proof::Proven {
+                passed: true,
+                free: Some(proof::FLOOR - 1),
+            },
+            10,
+        );
+        let lender = |earlier: Vec<Health>, name: &str| {
+            Machines::new(
+                dir.path().join(format!("{name}-machines")),
+                dir.path().join(format!("{name}-with-standing")),
+                dir.path().join(format!("{name}-store")),
+                dir.path().join(format!("{name}-lending")),
+                vec![],
+            )
+            .beside(
+                dir.path().join(format!("{name}-beside")),
+                vec![Standing {
+                    address: address.clone(),
+                    line: line.to_owned(),
+                }],
+            )
+            .going_on_from(earlier)
+            .proving_with(&nix)
+        };
+        let read = |name: &str| fs::read_to_string(dir.path().join(name)).expect("read");
+        let mut again = lender(vec![full], "again");
+        again.show(None);
+        assert_eq!(read("again-beside"), "", "full, as the last lender said");
+        assert_eq!(read("again-machines"), "", "nor named to every build");
+        let health = again.beside_health().expect("builders beside");
+        assert_eq!(health[0].state(), State::Full, "its health goes on");
+        let mut fresh = lender(vec![], "fresh");
+        fresh.show(None);
+        assert_eq!(read("fresh-beside"), "", "unproven, so it may be full");
         drop(listening);
     }
 

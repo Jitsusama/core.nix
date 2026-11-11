@@ -187,7 +187,7 @@ use cloud::Place;
 use decide::{Hours, Restart, Tick};
 use journal::{Event, Ran};
 use machines::Machines;
-use proof::{Keeper, State};
+use proof::{Health, Keeper, State};
 
 /// How long a builder may take to be ready before it's given up on.
 const READY: Duration = Duration::from_mins(15);
@@ -1924,6 +1924,12 @@ fn stand(standing: Option<PathBuf>, beside: Option<PathBuf>) -> bool {
         read(&standing),
     )
     .beside(BESIDE.into(), read(&beside))
+    .going_on_from(
+        proof::earlier(&Path::new(DIR).join(proof::HEALTH), "beside")
+            .iter()
+            .filter_map(Health::from_json)
+            .collect(),
+    )
     .for_anything(ANYTHING.into())
     .read_from(standing, beside);
     while !ENDING.load(Ordering::SeqCst) {

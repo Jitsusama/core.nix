@@ -121,7 +121,9 @@ pub enum State {
     Failing,
     /// Its last `FAILS` proofs failed, so it's left out.
     Dropped,
-    /// Its last proof passed, but its store has less than `FLOOR` free.
+    /// The last of its proofs that passed found less than `FLOOR` free in
+    /// its store, and fewer than `FAILS` have failed since: a failure says
+    /// nothing of room, so it's no reason to send it builds again.
     Full,
 }
 
@@ -174,10 +176,10 @@ impl Health {
 
     pub fn state(&self) -> State {
         match (self.failures, self.last_success) {
-            (0, None) => State::Unproven,
-            (0, Some(_)) if self.free.is_some_and(|free| free < FLOOR) => State::Full,
-            (0, Some(_)) => State::Passing,
             (failures, _) if failures >= FAILS => State::Dropped,
+            _ if self.free.is_some_and(|free| free < FLOOR) => State::Full,
+            (0, None) => State::Unproven,
+            (0, Some(_)) => State::Passing,
             _ => State::Failing,
         }
     }
@@ -268,8 +270,15 @@ pub struct Keeper {
 
 impl Keeper {
     pub fn of(builder: &str) -> Self {
+        Self::going_on(Health::of(builder))
+    }
+
+    /// A keeper that goes on from `earlier`, how its builder stood when
+    /// the keeper before it last wrote, so one started again doesn't name
+    /// a builder that was full or dropped before its own first proof ends.
+    pub fn going_on(earlier: Health) -> Self {
         Self {
-            health: Health::of(builder),
+            health: earlier,
             prover: Prover::default(),
         }
     }
@@ -688,6 +697,18 @@ pub fn standing_health(path: &Path, uri: &str, named: &str, now: u64) -> Option<
     )
 }
 
+/// The builders the health file at `path` last said under `list`, as
+/// each keeper wrote them, for keepers started again to go on from: on 11
+/// November a full builder beside read as unproven after each restart,
+/// and so took builds, until its first proof ended.
+pub fn earlier(path: &Path, list: &str) -> Vec<Value> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|said| said[list].as_array().cloned())
+        .unwrap_or_default()
+}
+
 /// Whether the builder `dir`'s lender keeps passed its last proof, no
 /// longer than `FRESH` before `now`.
 pub fn passes_in(dir: &Path, now: u64) -> bool {
@@ -774,7 +795,10 @@ mod tests {
             Some(FLOOR - 1),
             "a failure says nothing of room"
         );
-        assert_eq!(health.state(), State::Failing);
+        assert_eq!(health.state(), State::Full, "one failure leaves it full");
+        assert!(health.left_out(), "so it still takes no builds");
+        health.heard(false, 190);
+        assert_eq!(health.state(), State::Dropped, "two drop it");
         health.heard(
             Proven {
                 passed: true,
@@ -785,6 +809,35 @@ mod tests {
         assert_eq!(health.state(), State::Passing, "room again");
         assert!(!health.left_out(), "a builder at the floor takes builds");
         assert_eq!(health.json()["freeBytes"], FLOOR);
+    }
+
+    #[test]
+    fn a_keeper_started_again_goes_on_from_what_the_last_wrote() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let mut full = Health::of("work-linux");
+        full.heard(
+            Proven {
+                passed: true,
+                free: Some(FLOOR - 1),
+            },
+            10,
+        );
+        write(dir.path(), None, Some(&[full]), 20);
+        let said = earlier(&dir.path().join(HEALTH), "beside");
+        let health = said
+            .iter()
+            .find_map(Health::from_json)
+            .expect("the builder beside, read back");
+        let keeper = Keeper::going_on(health);
+        assert_eq!(
+            keeper.health.state(),
+            State::Full,
+            "full before its own first proof: {said:?}"
+        );
+        assert!(
+            earlier(&dir.path().join("none.json"), "beside").is_empty(),
+            "no file, nothing earlier"
+        );
     }
 
     #[test]
