@@ -3311,8 +3311,11 @@ Scope {
     // each source's own wanted asks.
     function wants(source) {
         return Wanted.wanted({ cataloguing: cataloguing, open: open, held: held,
-            becoming: Object.values(becoming), typed: typed }, source);
+            becoming: Object.values(becoming), typed: typed, entering: entering }, source);
     }
+    // The place into() opens, from before the launcher opens until its
+    // step is held, so no source home names is wanted in between.
+    property var entering: null
 
     // A collection's matches with those picked before for what's typed
     // first, most picked first, the rest in their order.
@@ -7516,6 +7519,10 @@ Scope {
     // typed; - steps out to the search. A name no collection
     // has opens the search.
     function into(name) {
+        const source = collections.find(s => s.settings.name === name) ?? null;
+        // Unless home is to be found as it opens, with none kept yet, since
+        // the card's height is home's.
+        entering = open || homeKept.length > 0 ? source : null;
         // Opened by it, the place is shown rather than home (openingInto).
         openingInto = !open;
         open = true;
@@ -7534,7 +7541,6 @@ Scope {
             openedHere();
             return;
         }
-        const source = collections.find(s => s.settings.name === name);
         if (!source)
             return;
         held = [Object.assign(here(), {
@@ -7550,6 +7556,7 @@ Scope {
             },
             rows: []
         })];
+        entering = null;
         source.opened();
         restart("");
         // Every place opens on its first row, the same each time, so Joel
