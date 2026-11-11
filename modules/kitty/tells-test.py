@@ -2,9 +2,10 @@
 
 With no daemon listening, a change is said once on standard error and never
 raised into kitty. With one listening, each change kitty calls the watcher with
-is one `changed` ask naming kitty's list: a tab, a variable said, a window made,
-focused or closed; a resize of a window already there, and a window losing
-focus, as it does to the launcher opening, tell nothing.
+is one `changed` ask naming kitty's list and this kitty's process: loaded, a
+tab, a variable said, a window made, focused or closed; a resize of a window
+already there, and a window losing focus, as it does to the launcher opening,
+tell nothing.
 
 kitty runs its Python with asserts stripped, so each thing that has to hold
 says what was wrong as it ends the run, rather than asserting it.
@@ -49,9 +50,9 @@ def heard(daemon: socket.socket) -> list[object]:
 
 
 def main() -> None:
-    tells = watcher(sys.argv[1])
     with tempfile.TemporaryDirectory() as runtime:
         os.environ["XDG_RUNTIME_DIR"] = runtime
+        tells = watcher(sys.argv[1])
         tells.on_close(None, None, {})
         tells.on_tab_bar_dirty(None, None, {})
         if len(tells.unheard) != 1:
@@ -61,6 +62,7 @@ def main() -> None:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as daemon:
             daemon.bind(str(Path(runtime) / "daemons" / "programs.sock"))
             daemon.listen(16)
+            watcher(sys.argv[1])
             tells.on_tab_bar_dirty(None, None, {})
             tells.on_set_user_var(None, None, {"key": "neovim_server", "value": "/run/nvim"})
             tells.on_resize(None, None, {"old_geometry": SimpleNamespace(xnum=80)})
@@ -69,8 +71,8 @@ def main() -> None:
             tells.on_focus_change(None, None, {"focused": True})
             tells.on_close(None, None, {})
             asks = heard(daemon)
-    told = {"id": "kitty", "ask": "changed", "keys": [KITTY]}
-    if asks != [told] * 5:
+    told = {"id": "kitty", "ask": "changed", "keys": [KITTY], "from": os.getpid()}
+    if asks != [told] * 6:
         why = f"the watcher told {asks}"
         raise SystemExit(why)
 

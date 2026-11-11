@@ -12,6 +12,11 @@ kitty.conf names it with `watcher`, and kitty runs it on the thread it draws on,
 where nothing may hold kitty up: the socket is never waited on, and a daemon
 that isn't there, as on a Mac, is said once on kitty's standard error and passed
 over after.
+
+Each tell names this kitty by its process, and it tells once as kitty loads it,
+so the daemon knows which kitties tell: one started before its watcher never
+does, and its list is read as the launcher opens, as it was before (WCJQSG,
+2026-11-11: "a kitty that hasn't told is read the old way until it does").
 """
 
 import json
@@ -33,7 +38,8 @@ def tell() -> None:
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if not runtime:
         return
-    line = json.dumps({"id": "kitty", "ask": "changed", "keys": [KITTY]}) + "\n"
+    asked = {"id": "kitty", "ask": "changed", "keys": [KITTY], "from": os.getpid()}
+    line = json.dumps(asked) + "\n"
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as daemon:
             daemon.settimeout(0)
@@ -86,3 +92,7 @@ def on_set_user_var(_boss: object, _window: object, _data: dict[str, Any]) -> No
 def on_close(_boss: object, _window: object, _data: dict[str, Any]) -> None:
     """Tell of a window closed."""
     tell()
+
+
+# Loaded, as kitty starts or reloads its config, this kitty tells from now on.
+tell()

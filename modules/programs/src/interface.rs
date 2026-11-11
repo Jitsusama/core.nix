@@ -54,10 +54,12 @@ pub enum Ask {
         id: Value,
     },
     /// What a program says of these keys' lists: they changed, so each
-    /// is read again, at once where a watch names it.
+    /// is read again, at once where a watch names it; `from`, the process
+    /// saying so, tells of its own changes from now on.
     Changed {
         id: Value,
         keys: Vec<String>,
+        from: Option<u64>,
     },
     Health {
         id: Value,
@@ -133,6 +135,7 @@ pub fn ask(line: &str) -> Ask {
         "changed" => Ask::Changed {
             id,
             keys: keys.unwrap_or_default(),
+            from: said.get("from").and_then(Value::as_u64),
         },
         "health" => Ask::Health { id },
         _ => Ask::Unknown { id, ask: asked },
@@ -177,8 +180,19 @@ mod tests {
             ask(r#"{"id":4,"ask":"changed","keys":["listed:kitty:open","disk:nvme0n1"]}"#),
             Ask::Changed {
                 id: json!(4),
-                keys: vec!["listed:kitty:open".into()]
-            }
+                keys: vec!["listed:kitty:open".into()],
+                from: None,
+            },
+            "a key of another kind is left out, and no process said"
+        );
+        assert_eq!(
+            ask(r#"{"id":5,"ask":"changed","keys":["listed:kitty:open"],"from":2684}"#),
+            Ask::Changed {
+                id: json!(5),
+                keys: vec!["listed:kitty:open".into()],
+                from: Some(2684),
+            },
+            "the process telling is said by its id"
         );
     }
 

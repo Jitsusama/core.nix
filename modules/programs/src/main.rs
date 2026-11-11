@@ -96,6 +96,11 @@ struct Daemon {
     /// When each source's file had last changed as its list was read, so
     /// a change inotify hasn't said yet still counts.
     read_as_of: Vec<Option<SystemTime>>,
+    /// The processes each told list's last read named, and those that
+    /// have told this daemon they tell of their changes: a list naming
+    /// one that hasn't is read as each ask comes, as an untold one is.
+    listers: Vec<Vec<u64>>,
+    tellers: HashSet<u64>,
     /// The commands running now, and those asked for again meanwhile.
     running: HashSet<(usize, Run)>,
     again: HashSet<(usize, Run)>,
@@ -153,6 +158,8 @@ fn main() {
             mime: Mime::new(folders.clone()),
             stale: vec![true; sources.len()],
             read_as_of: vec![None; sources.len()],
+            listers: vec![Vec::new(); sources.len()],
+            tellers: HashSet::new(),
             running: HashSet::new(),
             again: HashSet::new(),
             commands: BTreeMap::new(),
@@ -407,6 +414,9 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
     match printed {
         Ok(printed) => {
             daemon.commands.insert(key, json!({"state": "answering"}));
+            if what == Run::List && source.told {
+                daemon.listers[at] = source::listers(&printed);
+            }
             let record = match what {
                 Run::List => Some(source::recent(source, &printed)),
                 Run::Opened => source::opened(source, &printed),
@@ -449,11 +459,17 @@ fn changed_at(source: &Source) -> Option<SystemTime> {
 }
 
 /// Whether a source's list is to be read again: it's asked and not told,
-/// or its file changed since it was last read, as inotify said or its
-/// time says, or it was told it changed.
+/// or told but naming a process that hasn't told yet, or its file changed
+/// since it was last read, as inotify said or its time says, or it was told
+/// it changed.
 fn due(shared: &Shared, daemon: &Daemon, at: usize) -> bool {
     let source = &shared.sources[at];
-    (source.asked && !source.told)
+    let untold = || {
+        daemon.listers[at]
+            .iter()
+            .any(|pid| !daemon.tellers.contains(pid))
+    };
+    (source.asked && (!source.told || untold()))
         || daemon.stale[at]
         || changed_at(source) != daemon.read_as_of[at]
 }
@@ -691,7 +707,10 @@ fn answer(
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
             json!({"id": id, "unwatched": true})
         }
-        Ask::Changed { id, keys } => {
+        Ask::Changed { id, keys, from } => {
+            if let Some(from) = from {
+                lock(&shared.daemon).tellers.insert(from);
+            }
             told_changed(shared, &keys);
             json!({"id": id, "heard": keys})
         }

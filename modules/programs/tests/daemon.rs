@@ -377,6 +377,46 @@ fn a_told_list_is_read_again_only_once_its_program_says_it_changed() {
 }
 
 #[test]
+fn a_told_list_naming_a_process_that_never_told_is_read_as_each_ask_comes() {
+    let running = Running::new("untold");
+    let reads = || {
+        std::fs::read_to_string(running.path("lists/open-reads"))
+            .map_or(0, |text| text.lines().count())
+    };
+    let key = "listed:terminal:open";
+    // Two terminals, as two kitties: one started before its watcher, which
+    // never tells, and one that does.
+    std::fs::write(running.path("lists/open"), "7\tone\n8\ttwo\n").unwrap();
+    let mut client = running.client();
+    let get = |client: &mut Client, id: u64| {
+        client.ask(&json!({"id": id, "ask": "get", "keys": [key]}));
+    };
+    get(&mut client, 1);
+    get(&mut client, 2);
+    assert_eq!(
+        reads(),
+        2,
+        "a list of processes that never told was held as told"
+    );
+    client.ask(&json!({"id": 3, "ask": "changed", "keys": [key], "from": 8}));
+    get(&mut client, 4);
+    get(&mut client, 5);
+    assert_eq!(
+        reads(),
+        4,
+        "a list naming a process that never told wasn't read as each ask came"
+    );
+    client.ask(&json!({"id": 6, "ask": "changed", "keys": [key], "from": 7}));
+    get(&mut client, 7);
+    get(&mut client, 8);
+    assert_eq!(
+        reads(),
+        5,
+        "once every process it names tells, it's read only once told"
+    );
+}
+
+#[test]
 fn a_pages_own_list_is_read_only_as_its_key_is_watched() {
     let running = Running::new("listed");
     let mut client = running.client();
