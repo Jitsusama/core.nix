@@ -419,6 +419,17 @@ ShellRoot {
         return into;
     }
 
+    // Every text under an item, shown or not, in the order its children
+    // stand, so two readings tell whether it was made again.
+    function textItemsOf(item, into) {
+        for (const child of item.children) {
+            if (typeof child.text === "string" && child.truncated !== undefined)
+                into.push(child);
+            textItemsOf(child, into);
+        }
+        return into;
+    }
+
     // The face of every piece of text under an item, shown or not, in the
     // order its children stand, so two readings compare piece by piece.
     function facesUnder(item, into) {
@@ -1280,6 +1291,29 @@ ShellRoot {
             expect("a chord is measured as it's drawn",
                 Math.abs(chordHints.advance("Super+\u21b5", "next time")
                     - (chords[3].to - chords[0].from)) < 1, said(chords));
+            // The foot's keys are a new list at every key the selected row
+            // changes, and how many fit changes with the row, so a hint
+            // more or fewer keeps those already drawn and says their words
+            // in them: remaking every hint was 10 ms of each key's frame
+            // under load (2026-11-11).
+            const chordsWere = textItemsOf(chordHints, []);
+            const wordsOf = () => drawn(chordHints, []).map(t => t.text);
+            const keptOf = now => chordsWere.filter(text => !now.includes(text)).length;
+            chordHints.keys = [["Super+\u21b5", "next time"], ["Ctrl+-", "smaller"],
+                ["Esc", "close"]];
+            const grown = textItemsOf(chordHints, []);
+            expect("a key more says every key's words", JSON.stringify(wordsOf())
+                === JSON.stringify(["Super", "+", "\u21b5", "next time", "Ctrl", "+", "-",
+                    "smaller", "Esc", "close"]), JSON.stringify(wordsOf()));
+            expect("in the hints already drawn", keptOf(grown) === 0,
+                `${keptOf(grown)} of ${chordsWere.length} texts made again`);
+            chordHints.keys = [["Super+\u21b5", "next time"], ["Ctrl++", "larger"]];
+            const shrunk = textItemsOf(chordHints, []);
+            expect("and a key fewer says theirs", JSON.stringify(wordsOf())
+                === JSON.stringify(["Super", "+", "\u21b5", "next time", "Ctrl", "+", "+",
+                    "larger"]), JSON.stringify(wordsOf()));
+            expect("in them too", keptOf(shrunk) === 0,
+                `${keptOf(shrunk)} of ${chordsWere.length} texts made again`);
             // A key is measured once a face, since the foot weighs every
             // listed row's keys as the rows change; another face measures
             // it afresh, so a key is never held at a width it isn't drawn.

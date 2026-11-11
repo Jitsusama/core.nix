@@ -102,17 +102,38 @@ Row {
         font.weight: hints.level.weight
     }
 
+    // One place a key, each hint reading its key by its place: the foot's
+    // keys are a new list at every key the selected row changes, and how
+    // many fit changes with the row, and a Repeater given a new list, or a
+    // new count, makes every hint again, which was 10 ms of each key's
+    // frame under load (2026-11-11). So the places grow and shrink only by
+    // the difference, and those kept say their new words.
+    ListModel {
+        id: places
+    }
+    function placed() {
+        const wanted = hints.keys.length;
+        if (places.count > wanted)
+            places.remove(wanted, places.count - wanted);
+        while (places.count < wanted)
+            places.append({ at: places.count });
+    }
+    onKeysChanged: placed()
+    Component.onCompleted: placed()
+
     Repeater {
-        model: hints.keys
+        model: places
 
         Item {
             id: hint
 
-            required property var modelData
             required property int index
 
-            readonly property string key: modelData[0] ?? ""
-            readonly property string word: modelData[1] ?? ""
+            // This one's key, its word and their colours.
+            readonly property var told: hints.keys[index] ?? []
+            readonly property string key: told[0] ?? ""
+            readonly property string word: told[1] ?? ""
+            readonly property var parts: hints.partsOf(key)
 
             width: Math.max(said.implicitWidth, hints.widths[index] ?? 0)
             height: said.implicitHeight
@@ -147,15 +168,17 @@ Row {
                 Row {
                     spacing: Theme.space.rung.tie
 
+                    // By how many, so a key of as many parts says its new
+                    // ones in the texts already drawn.
                     Repeater {
-                        model: hints.partsOf(hint.key)
+                        model: hint.parts.length
 
                         Text {
-                            required property string modelData
+                            required property int index
 
-                            text: modelData
+                            text: hint.parts[index] ?? ""
                             textFormat: Text.PlainText
-                            color: hint.modelData[2] ?? Theme.text
+                            color: hint.told[2] ?? Theme.text
                             font.family: hints.level.family
                             font.pointSize: hints.level.pointSize
                             font.weight: hints.level.weight
@@ -173,7 +196,7 @@ Row {
                     visible: hint.word !== ""
                     text: hint.word
                     textFormat: Text.PlainText
-                    color: hint.modelData[3] ?? Theme.muted
+                    color: hint.told[3] ?? Theme.muted
                     font.family: hints.level.family
                     font.pointSize: hints.level.pointSize
                     font.weight: hints.level.weight
