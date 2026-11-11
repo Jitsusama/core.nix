@@ -2444,6 +2444,11 @@
     placed where its order puts it without sorting the rest, the same record again changing
     nothing, and a window gone let go
   '';
+  the-launcher-places-the-time-only-when-now-is-wanted = ''
+    an opening into a place that shows none of For You's rows places no time or date, so makes
+    none of Time's or Today's rows, until Now's rows are wanted, and an opening onto them places
+    them once
+  '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
     and holds its Recent, newest first, each row timed and noting its kind and size, and Liked
