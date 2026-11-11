@@ -32,14 +32,14 @@ pub fn subtests_of(check: &str) -> Vec<&str> {
     check.split(JOINED).skip(1).collect()
 }
 
-/// `test` narrowed to the subtests that failed in every one of `logs`, the
-/// head's failed runs of it, or `test` itself when no subtest failed in
-/// all of them or the name would be too long. A subtest failing in only
-/// some of them is as likely flaky as broken, and a search on it would
-/// blame whichever merge its flake fell on.
+/// `test` narrowed to the subtests that failed in every one of `runs`, what
+/// `failed_in` read from the head's failed runs of it, or `test` itself
+/// when no subtest failed in all of them or the name would be too long. A
+/// subtest failing in only some of them is as likely flaky as broken, and
+/// a search on it would blame whichever merge its flake fell on.
 #[must_use]
-pub fn narrowed(test: &str, logs: &[String]) -> String {
-    let mut each = logs.iter().map(|log| failed_in(log));
+pub fn narrowed(test: &str, runs: &[BTreeSet<String>]) -> String {
+    let mut each = runs.iter().cloned();
     let Some(first) = each.next() else {
         return test.to_owned();
     };
@@ -58,42 +58,57 @@ pub fn narrowed(test: &str, logs: &[String]) -> String {
     }
 }
 
-/// The subtests pytest says failed in a run's log, each by its function's
-/// name, a parametrised one's parameters dropped, since run-subtests picks
-/// by name.
-fn failed_in(log: &str) -> BTreeSet<String> {
-    log.lines()
-        .filter_map(|line| line.split_once("FAILED ").map(|(_, rest)| rest))
-        .filter_map(|rest| rest.split_whitespace().next())
-        .filter_map(|path| path.rsplit_once(JOINED).map(|(_, name)| name))
-        .map(|name| name.split('[').next().unwrap_or(name))
-        .filter(|name| {
-            name.starts_with("test_") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        })
-        .map(str::to_owned)
+/// The subtests pytest says failed in a run's log, read a line at a time,
+/// each by its function's name, a parametrised one's parameters dropped,
+/// since run-subtests picks by name.
+#[must_use]
+pub fn failed_in(log: impl IntoIterator<Item = impl AsRef<str>>) -> BTreeSet<String> {
+    log.into_iter()
+        .filter_map(|line| failed_on(line.as_ref()).map(str::to_owned))
         .collect()
+}
+
+/// The subtest one line of a log says failed, if it says one did.
+fn failed_on(line: &str) -> Option<&str> {
+    let (_, rest) = line.split_once("FAILED ")?;
+    let (_, name) = rest.split_whitespace().next()?.rsplit_once(JOINED)?;
+    let name = name.split('[').next().unwrap_or(name);
+    (name.starts_with("test_") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .then_some(name)
 }
 
 /// Whether a narrowed run's log says pytest selected none of its subtests:
 /// a commit from before they were written, which can't have broken them,
 /// though `vm_pytest` fails the run all the same.
 #[must_use]
-pub fn none_selected(log: &str) -> bool {
-    log.lines().any(|line| line.contains(" / 0 selected"))
+pub fn none_selected(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
+    log.into_iter()
+        .any(|line| line.as_ref().contains(" / 0 selected"))
 }
 
 /// Whether a narrowed run's log says the commit has no `subtests` to
 /// build, from before 29 October, so the whole test runs there instead.
 #[must_use]
-pub fn unbuildable(log: &str) -> bool {
-    log.contains("does not provide attribute") && log.contains("subtests")
+pub fn unbuildable(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
+    let (mut missing, mut subtests) = (false, false);
+    for line in log {
+        let line = line.as_ref();
+        missing |= line.contains("does not provide attribute");
+        subtests |= line.contains("subtests");
+    }
+    missing && subtests
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn run(failed: &[&str]) -> String {
+    /// What a search reads from a run whose log says `failed` failed.
+    fn run(failed: &[&str]) -> BTreeSet<String> {
+        failed_in(log(failed).lines())
+    }
+
+    fn log(failed: &[&str]) -> String {
         let lines = failed.iter().map(|name| {
             format!(
                 "vm-test-run-desktop-looks> FAILED vm-pytest-ab/desktop-looks-vm-test.py::{name} \
@@ -137,7 +152,7 @@ mod tests {
             "vm-x",
             "no subtest failed in both"
         );
-        let unnamed = vec!["machine: must succeed: false\n".to_owned(); 2];
+        let unnamed = vec![failed_in("machine: must succeed: false\n".lines()); 2];
         assert_eq!(
             narrowed("vm-x", &unnamed),
             "vm-x",
@@ -170,16 +185,16 @@ mod tests {
     #[test]
     fn a_run_that_selected_no_subtest_and_a_commit_without_subtests_are_told() {
         let none = "collected 18 items / 18 deselected / 0 selected\n";
-        assert!(none_selected(none), "pytest selected nothing");
+        assert!(none_selected(none.lines()), "pytest selected nothing");
         assert!(
-            !none_selected("collected 20 items / 19 deselected / 1 selected\n"),
+            !none_selected("collected 20 items / 19 deselected / 1 selected\n".lines()),
             "one ran"
         );
         let old = "error: flake 'github:o/r/c' does not provide attribute \
                    'legacyPackages.x86_64-linux.subtests'";
-        assert!(unbuildable(old), "the commit has no subtests");
+        assert!(unbuildable(old.lines()), "the commit has no subtests");
         assert!(
-            !unbuildable("error: builder failed"),
+            !unbuildable("error: builder failed".lines()),
             "a failure of the run itself"
         );
     }
