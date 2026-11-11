@@ -540,7 +540,7 @@ pub fn spark(values: &[f64], least: f64) -> Vec<f64> {
     let most = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let fewest = values.iter().copied().fold(f64::INFINITY, f64::min);
     let span = least.max(most - fewest);
-    let floor = (most + fewest) / 2.0 - span / 2.0;
+    let floor = f64::midpoint(most, fewest) - span / 2.0;
     values.iter().map(|value| (value - floor) / span).collect()
 }
 
