@@ -865,7 +865,7 @@ def test_slack_is_asked_about_a_person_through_the_people_daemon_alone(
     try:
         desktop.as_account(f"touch {signed_in}")
         # Someone Slack doesn't know, once it's signed in.
-        ways(4321, lambda reads: "Write in Slack · not in Slack" in reads)
+        ways(4321, lambda reads: "Write in Slack · no one at this address" in reads)
         step_into(1234)
         # Write in Slack leads the ways to reach them from the first rows,
         # dimmed until Slack answers and lit there.
