@@ -1110,6 +1110,11 @@ fn kept_loop(shared: &Shared, root: &Root) {
         // first answer and each get alone.
         return;
     };
+    // A file written after a watch was answered but before the kernel's
+    // watch began would be heard by neither, so what's there is read once
+    // now, telling only the kinds watched: a test that keeps itself awake
+    // just after watching waited the whole of its patience for it.
+    heard(shared, &KEPT);
     loop {
         let names = written.wait(KEPT_LOOKS_AGAIN);
         let locks = names
