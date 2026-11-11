@@ -169,11 +169,23 @@ pub struct Seen {
 /// holds a queue, whether connections on the link have data waiting to
 /// go, and what TCP sent again.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is one reading of the queues, kept by name in status.json and replays"
+)]
 pub struct Ours {
     pub queued: bool,
     /// Whether the only queue that stood was a VPN's riding the link,
     /// which sends at most its share of the link's rate.
     pub in_vpn: bool,
+    /// Whether a VPN's CAKE riding the link held a queue, whatever the
+    /// link's did.
+    #[serde(default)]
+    pub vpn_queued: bool,
+    /// How long the link's CAKE kept what it held, in ms: a wait of ours,
+    /// which the VPN's flow takes too before it reaches the router.
+    #[serde(default)]
+    pub link_wait_ms: u64,
     pub waiting: bool,
     /// What TCP sent again over the last second, in kbit/s. A router held
     /// past what it carries drops the rest flow by flow, and what it
@@ -188,11 +200,13 @@ pub struct Ours {
 impl Ours {
     /// Whose the upload's queue was, from how many reads of the link's
     /// CAKE and of the VPNs' riding it found a queue, of how many read:
-    /// one held in most reads stood, and what TCP sent again and our
-    /// queues dropped, in kbit/s. None before anything was read.
+    /// one held in most reads stood, how long the link's kept what it held,
+    /// in ms, and what TCP sent again and our queues dropped, in kbit/s.
+    /// None before anything was read.
     pub fn from_reads(
         link: (u32, u32),
         vpn: (u32, u32),
+        link_wait_ms: u64,
         waiting: bool,
         (resent, dropped): (u64, u64),
     ) -> Option<Self> {
@@ -200,6 +214,8 @@ impl Ours {
         (link.1 > 0).then_some(Self {
             queued: stood(link) || stood(vpn),
             in_vpn: stood(vpn) && !stood(link),
+            vpn_queued: stood(vpn),
+            link_wait_ms,
             waiting,
             resent,
             dropped,
@@ -728,19 +744,23 @@ impl Controller {
     /// queue: then the VPN sends as fast as it's let, and what it fills is
     /// the upload's. With our CAKE holding nothing, the VPN's flow is
     /// filled by what the shaper doesn't hold, and cutting drains none of
-    /// it. With the link's CAKE holding one, the VPN's flow waits in it,
-    /// ours, which the link's own rate already settles.
+    /// it. With the link's CAKE holding one too, the VPN's flow waits in
+    /// it, ours, which the link's own rate settles, so that wait comes
+    /// off: it was a few ms in the trace on 11 November, beside a median
+    /// 33 ms in the router, and counting nothing while the link's CAKE
+    /// held any left that queue to grow.
     fn hidden(&mut self, seen: &Seen, dt: f64) -> f64 {
         let Some(vpn) = seen.vpn_ms else {
             return 0.0;
         };
         let base = self.vpn_base.map_or(vpn, |b| vpn.min(b + VPN_RISE_MS * dt));
         self.vpn_base = Some(base);
-        if !seen.up_ours.is_some_and(|ours| ours.in_vpn) {
+        let Some(ours) = seen.up_ours.filter(|ours| ours.in_vpn || ours.vpn_queued) else {
             return 0.0;
-        }
+        };
         let probes = seen.up_delay_ms.unwrap_or(0.0) + seen.down_delay_ms.unwrap_or(0.0);
-        (vpn - base - probes - VPN_MARGIN_MS).max(0.0)
+        let link = crate::rate::float(ours.link_wait_ms);
+        (vpn - base - probes - link - VPN_MARGIN_MS).max(0.0)
     }
 
     /// Take in a moment, and give what each direction is held to.
@@ -899,14 +919,19 @@ mod tests {
 
     #[test]
     fn a_vpn_s_queue_is_ours_and_said_to_be_its() {
-        let vpn = Ours::from_reads((0, 5), (4, 5), true, (0, 0));
+        let vpn = Ours::from_reads((0, 5), (4, 5), 0, true, (0, 0));
         assert_eq!(vpn.map(|o| (o.queued, o.in_vpn)), Some((true, true)));
-        let link = Ours::from_reads((3, 5), (4, 5), true, (90, 40));
+        let link = Ours::from_reads((3, 5), (4, 5), 6, true, (90, 40));
         assert_eq!(link.map(|o| (o.queued, o.in_vpn)), Some((true, false)));
+        assert_eq!(
+            link.map(|o| (o.vpn_queued, o.link_wait_ms)),
+            Some((true, 6)),
+            "the VPN's queue stood beside the link's, which kept it 6 ms"
+        );
         assert_eq!(link.map(|o| (o.resent, o.dropped)), Some((90, 40)));
-        let none = Ours::from_reads((1, 5), (0, 0), true, (0, 0));
+        let none = Ours::from_reads((1, 5), (0, 0), 0, true, (0, 0));
         assert_eq!(none.map(|o| (o.queued, o.in_vpn)), Some((false, false)));
-        assert_eq!(Ours::from_reads((0, 0), (5, 5), true, (0, 0)), None);
+        assert_eq!(Ours::from_reads((0, 0), (5, 5), 0, true, (0, 0)), None);
     }
 
     #[test]
@@ -1577,6 +1602,22 @@ mod tests {
     /// VPN waits in it. The agents offer far more than the line, so our
     /// CAKE holds a queue whenever the VPN is held under what they offer.
     fn behind_a_buffering_router(c: &mut Controller, to: f64, line: f64) -> Buffered {
+        behind_a_buffering_router_beside(c, to, line, None)
+    }
+
+    /// As `behind_a_buffering_router`, with the link's CAKE holding a
+    /// queue of `link_ms` too, when it's given, as it did in most seconds
+    /// of the trace on 11 November: the link's own wait, a few ms, which
+    /// the VPN's flow waits in before it reaches the router. Then the link
+    /// carries its whole rate, the VPN's flow and what goes round it, and
+    /// the router queues all of it in the VPN's flow, as there the VPN
+    /// carries nearly everything.
+    fn behind_a_buffering_router_beside(
+        c: &mut Controller,
+        to: f64,
+        line: f64,
+        link_ms: Option<f64>,
+    ) -> Buffered {
         const OFFERED: f64 = 40_000.0;
         let buffer = line * 5.0;
         let (mut backlog, mut sent, mut queue) = (0.0_f64, Vec::new(), Vec::new());
@@ -1584,14 +1625,19 @@ mod tests {
         while at < to {
             let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
             let vpn = (rate * crate::qdisc::VPN_SHARE).min(OFFERED);
-            let filled = backlog + (vpn - line) * 0.1;
+            let carried = if link_ms.is_some() {
+                rate.min(OFFERED)
+            } else {
+                vpn
+            };
+            let filled = backlog + (carried - line) * 0.1;
             // What the full buffer can't take is dropped, and TCP sends it
             // again.
             let overflow = (filled - buffer).max(0.0) / 0.1;
             backlog = filled.clamp(0.0, buffer);
             let queue_ms = backlog / line * 1_000.0;
             if at >= to - 60.0 {
-                sent.push(vpn);
+                sent.push(carried);
                 queue.push(queue_ms);
             }
             #[expect(
@@ -1599,18 +1645,21 @@ mod tests {
                 clippy::cast_sign_loss,
                 reason = "a positive rate far under u64's range"
             )]
-            let resent = overflow as u64;
+            let (resent, link_wait_ms) = (overflow as u64, link_ms.map_or(0, |ms| ms as u64));
+            let vpn_queued = vpn < OFFERED;
             c.step(&Seen {
                 at_s: at,
-                up_kbit: vpn,
+                up_kbit: carried,
                 up_ours: Some(Ours {
-                    queued: vpn < OFFERED,
-                    in_vpn: vpn < OFFERED,
+                    queued: vpn_queued || link_ms.is_some(),
+                    in_vpn: vpn_queued && link_ms.is_none(),
+                    vpn_queued,
+                    link_wait_ms,
                     waiting: true,
                     resent,
                     ..Ours::default()
                 }),
-                vpn_ms: Some(30.0 + queue_ms),
+                vpn_ms: Some(30.0 + link_ms.unwrap_or(0.0) + queue_ms),
                 ..quiet(0.0, 300.0)(at)
             });
             at += 0.1;
@@ -1651,6 +1700,54 @@ mod tests {
             seen.longest_ms < 250.0,
             "a probe kept Joel's call waiting {} ms: {seen:?}",
             seen.longest_ms
+        );
+    }
+
+    // The link's CAKE holding a few ms of its own doesn't hide the router's
+    // queue for the VPN's flow: in the trace on 11 November it did in 99
+    // of 119 seconds, the VPN's round trip ran a median 33 ms over its
+    // least, and the controller counted none of it.
+    #[test]
+    fn the_vpn_s_queue_in_the_router_is_cut_while_the_link_s_cake_holds_one_too() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(12_500.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let seen = behind_a_buffering_router_beside(&mut c, 180.0, 10_000.0, Some(5.0));
+        assert!(
+            (8_000.0..=10_000.0).contains(&seen.sent),
+            "the VPN sent at {} on a 10000 line: {seen:?}",
+            seen.sent
+        );
+        assert!(
+            seen.queue_ms < 15.0,
+            "Joel's call waited {} ms in the router: {seen:?}",
+            seen.queue_ms
+        );
+    }
+
+    // The link's own wait is ours, and the link's rate settles it: cutting
+    // for it would only fill our CAKE further.
+    #[test]
+    fn the_link_s_own_wait_isn_t_taken_for_the_router_s() {
+        let mut c = Controller::new(None, None);
+        flow_queued(&mut c, 0.0, 20.0, |_| 12_000.0);
+        let before = c.up.limit();
+        let limits = run(&mut c, 20.0, 30.0, |at| Seen {
+            up_ours: Some(Ours {
+                queued: true,
+                vpn_queued: true,
+                link_wait_ms: 40,
+                waiting: true,
+                ..Ours::default()
+            }),
+            vpn_ms: Some(if at < 21.0 { 30.0 } else { 70.0 }),
+            ..quiet(11_400.0, 300.0)(at)
+        });
+        assert!(
+            near(limits.up, 11_400.0),
+            "the upload was cut for the link's own wait: {limits:?}, from {before:?}"
         );
     }
 
