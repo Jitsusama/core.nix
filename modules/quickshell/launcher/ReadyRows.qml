@@ -303,12 +303,15 @@ Scope {
 
     // An act as a row of its own, among a row's verbs.
     function actRow(key, one) {
+        const said = Ready.actWorded(one,
+            { name: Words.name(one.key), glyph: Words.glyph(one.key) }, Theme.glyph);
         return maker.thing({
             key: one.key,
             what: "",
             verb: verbOf(one),
-            name: Words.name(one.key),
-            glyph: Words.glyph(one.key),
+            name: said.name,
+            glyph: said.glyph,
+            side: said.side,
             hue: "action",
             stays: one.step === "rows",
             now: leaving(one).now,

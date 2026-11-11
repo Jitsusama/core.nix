@@ -221,6 +221,13 @@ QtObject {
             ["agent", { code: "f198" }, "absent", { code: "" }, { code: "zz" }, null]
                 .map(glyph => Ready.glyphOf(glyph, roles)),
             ["A", "\uf198", "", "", "", ""]);
+        const worded = { name: "Mark It Read", glyph: "R" };
+        Expect.same("an act is said in its key's words where it's served none",
+            Ready.actWorded(acts[0], worded, roles),
+            { name: "Mark It Read", glyph: "R", side: "" });
+        Expect.same("and in its own where it is", Ready.actWorded({ key: "verb:notice:reply",
+            name: "Reply", glyph: "agent", side: "slack.com" }, worded, roles),
+            { name: "Reply", glyph: "A", side: "slack.com" });
         const asking = { key: "verb:notice:open", ask: { ask: "invoke", id: 4 }, token: true };
         Expect.same("an ask that takes a token is sent with it",
             Ready.tokened(asking, "abc"), { ask: "invoke", id: 4, token: "abc" });

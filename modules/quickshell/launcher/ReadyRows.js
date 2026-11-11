@@ -292,6 +292,18 @@ function tokened(act, token) {
         ? Object.assign({}, act.ask, { token }) : null;
 }
 
+// An act's row as it's said: the name, glyph and side it's served with
+// where the daemon words it itself, as a notice's offer in its sender's
+// words or its Read once read, else `worded`, its key's words.json name
+// and glyph, with nothing at its side. `roles` are the theme's glyphs.
+function actWorded(act, worded, roles) {
+    return {
+        name: typeof act.name === "string" && act.name !== "" ? act.name : worded.name,
+        glyph: act.glyph === undefined ? worded.glyph : glyphOf(act.glyph, roles),
+        side: typeof act.side === "string" ? act.side : ""
+    };
+}
+
 // The verb the foot says for an act: words.json's for its key, `worded`,
 // else the one every act of its form says.
 function verbOf(act, worded) {
