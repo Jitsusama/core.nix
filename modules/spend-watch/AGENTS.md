@@ -16,13 +16,16 @@ shell's daemon interface (`src/interface.rs`): a session's figures, a
 quest's, a row, a report and its words, a budget and the budget a session
 drew on each one record, and after each pass only those that changed, so
 the shell remakes only what a pass moved and watches each kind only while
-it draws it. The socket takes the shell's acts too (`src/acts.rs`): `run`
-does what a row offers, going to a session or starting its sign-in through
-niri, and `expect` marks its finding expected, each named by the row's key
-so the socket runs only what a pass put in a row. The bar's piece acts the
-same way, naming an action of `status.json` by its `key`. The files stay for pi,
-the command line and the checks, and for the shell while the socket isn't
-there.
+it draws it. The launcher's rows are told ready too (`src/ready.rs`), in
+the form every daemon serves its rows in (`../ready-rows`): each worded
+from the launcher's words.json, which the config names as `vocabulary`,
+and spaced, so the launcher only places and draws them. The socket takes
+the shell's acts too (`src/acts.rs`): `run` does what a row offers, going
+to a session or starting its sign-in through niri, and `expect` marks its
+finding expected, each named by the row's key so the socket runs only what
+a pass put in a row. The bar's piece acts the same way, naming an action
+of `status.json` by its `key`. The files stay for pi, the command line and
+the checks, and for the shell while the socket isn't there.
 [`home.nix`][1] renders its config and runs it; the [contract][2] says what a
 feed speaks.
 

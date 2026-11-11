@@ -62,6 +62,9 @@ let
     registry = cfg.paths.registry;
     quests = cfg.paths.quests;
     state = cfg.paths.state;
+    # The launcher's own words, so the rows the daemon serves ready say
+    # what the launcher would (src/ready.rs).
+    vocabulary = "${../quickshell/launcher/words.json}";
     feeds = lib.mapAttrsToList (
       name: feed:
       {
