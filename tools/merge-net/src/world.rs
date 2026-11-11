@@ -147,16 +147,42 @@ impl Real {
         .map(|_| ())
     }
 
+    /// Cut `branch` from `base`, make `change` in the checkout, commit it
+    /// as `message`, and give the commit.
+    fn cut(
+        &self,
+        branch: &str,
+        base: &str,
+        message: &str,
+        change: &dyn Fn() -> Result<(), String>,
+    ) -> Result<String, String> {
+        self.git(&["checkout", "--quiet", "--force", "-B", branch, base])?;
+        change()?;
+        let (subject, rest) = message.split_once("\n\n").unwrap_or((message, ""));
+        let mut commit = vec!["commit", "--quiet", "-m", subject];
+        if !rest.is_empty() {
+            commit.extend(["-m", rest]);
+        }
+        self.git(&commit)?;
+        self.git(&["rev-parse", "HEAD"])
+    }
+
     /// Merge main's newest head into `branch`, at `sha` and cut from
     /// `cut_from`, and push it, giving main's newest head and the branch's
     /// commit. Main may move in the minutes a change's checks take, and a
     /// merge in them may have fixed what the change is for, or changed what
-    /// it meets.
+    /// it meets. A change to the quarantine list alone that meets another
+    /// there is cut again from the newest head instead, since it's made
+    /// from the list as it finds it: on 10 November the net's quarantine of
+    /// vm-desktop-says-what-happens passed its checks at 22:01 and never
+    /// landed, because #2996 had taken a test off the list meanwhile.
     fn onto_newest(
         &self,
         branch: &str,
         cut_from: &str,
         sha: String,
+        message: &str,
+        change: &dyn Fn() -> Result<(), String>,
     ) -> Result<(String, String), String> {
         self.git(&["fetch", "--quiet", "origin", &self.branch])?;
         let newest = self.git(&["rev-parse", &self.followed()])?;
@@ -164,10 +190,16 @@ impl Real {
             return Ok((newest, sha));
         }
         let merging = format!("Merge {} into {branch}", short(&newest));
-        self.git(&["merge", "--quiet", "--no-edit", "-m", &merging, &newest])
-            .inspect_err(|_| {
-                let _ = self.git(&["merge", "--abort"]);
-            })?;
+        if let Err(why) = self.git(&["merge", "--quiet", "--no-edit", "-m", &merging, &newest]) {
+            let _ = self.git(&["merge", "--abort"]);
+            let changed = self.git(&["diff", "--name-only", cut_from, &sha])?;
+            if !changed.lines().all(|file| file == QUARANTINE) {
+                return Err(why);
+            }
+            let again = self.cut(branch, &newest, message, change)?;
+            self.git(&["push", "--quiet", "--force", "origin", branch])?;
+            return Ok((newest, again));
+        }
         self.git(&["push", "--quiet", "origin", branch])?;
         let merged = self.git(&["rev-parse", "HEAD"])?;
         Ok((newest, merged))
@@ -187,20 +219,12 @@ impl Real {
         title: &str,
         body: &str,
         still: &dyn Fn(&str, &str) -> Result<bool, String>,
-        change: impl FnOnce() -> Result<(), String>,
+        change: &dyn Fn() -> Result<(), String>,
     ) -> Result<Merged, String> {
         let followed = self.followed();
         self.git(&["fetch", "--quiet", "origin", &self.branch])?;
         let cut_from = self.git(&["rev-parse", &followed])?;
-        self.git(&["checkout", "--quiet", "--force", "-B", branch, &cut_from])?;
-        change()?;
-        let (subject, rest) = message.split_once("\n\n").unwrap_or((message, ""));
-        let mut commit = vec!["commit", "--quiet", "-m", subject];
-        if !rest.is_empty() {
-            commit.extend(["-m", rest]);
-        }
-        self.git(&commit)?;
-        let sha = self.git(&["rev-parse", "HEAD"])?;
+        let sha = self.cut(branch, &cut_from, message, change)?;
         self.git(&["push", "--quiet", "--force", "-u", "origin", branch])?;
         let log = self
             .state
@@ -235,7 +259,7 @@ impl Real {
                 ),
             );
         }
-        let (newest, sha) = self.onto_newest(branch, &cut_from, sha)?;
+        let (newest, sha) = self.onto_newest(branch, &cut_from, sha, message, change)?;
         if !still(&newest, &sha).map_err(|why| format!("{why}, {}", log.display()))? {
             return Err(format!("{DROPPED}, {}", log.display()));
         }
@@ -617,7 +641,7 @@ impl World for Real {
             &format!("Revert {what}, Which Breaks {}", bad.test),
             &body,
             still,
-            || {
+            &|| {
                 let mut reverting = vec!["revert", "--no-commit"];
                 if merge {
                     reverting.extend(["-m", "1"]);
@@ -645,7 +669,7 @@ impl World for Real {
             &format!("Quarantine {test} Until Its Owner Mends It"),
             &body,
             &|_, _| Ok(true),
-            || {
+            &|| {
                 let mut list = fs::read_to_string(&path)
                     .ok()
                     .and_then(|text| serde_json::from_str::<Value>(&text).ok())
@@ -895,10 +919,17 @@ fn run(command: &mut Command) -> Result<String, String> {
         .output()
         .map_err(|error| format!("running {}: {error}", command.get_program().display()))?;
     if !ran.status.success() {
+        // git's merge, told to be quiet, says a conflict on its output
+        // alone, and a failure that says nothing can't be told from another.
+        let said = String::from_utf8_lossy(&ran.stderr).trim().to_owned();
+        let said = if said.is_empty() {
+            String::from_utf8_lossy(&ran.stdout).trim().to_owned()
+        } else {
+            said
+        };
         return Err(format!(
-            "{} failed: {}",
-            command.get_program().display(),
-            String::from_utf8_lossy(&ran.stderr).trim()
+            "{} failed: {said}",
+            command.get_program().display()
         ));
     }
     Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
@@ -1208,5 +1239,138 @@ mod tests {
             "with nothing marked, its last lines"
         );
         fs::remove_file(&log).unwrap();
+    }
+
+    #[test]
+    fn a_failure_that_says_nothing_on_its_errors_says_what_it_printed() {
+        let why = run(Command::new("sh").args(["-c", "echo CONFLICT in a; exit 1"]));
+        assert_eq!(
+            why,
+            Err("sh failed: CONFLICT in a".to_owned()),
+            "a failure printed only on its output was said as nothing"
+        );
+    }
+
+    /// Runs git in `repo` as someone, with no user's or system's config.
+    fn git_at(repo: &Path, arguments: &[&str]) -> String {
+        let ran = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(arguments)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .output()
+            .unwrap();
+        assert!(ran.status.success(), "git {arguments:?}: {ran:?}");
+        String::from_utf8_lossy(&ran.stdout).trim().to_owned()
+    }
+
+    /// Writes `list` as the quarantine list in `repo` and commits it there
+    /// as someone, giving the commit.
+    fn listed(repo: &Path, list: &Value) -> String {
+        let path = repo.join(QUARANTINE);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, serde_json::to_string_pretty(list).unwrap() + "\n").unwrap();
+        git_at(repo, &["add", QUARANTINE]);
+        git_at(repo, &["commit", "-qm", "listed"]);
+        git_at(repo, &["rev-parse", "HEAD"])
+    }
+
+    /// A net whose checkout is cloned from a repository of its own, with
+    /// main's quarantine list holding `held`, and the folder it's all in.
+    fn a_net(name: &str, held: &Value) -> (Real, PathBuf) {
+        let root = std::env::temp_dir().join(format!("merge-net-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let origin = root.join("origin.git");
+        let main = root.join("main");
+        fs::create_dir_all(&origin).unwrap();
+        git_at(&origin, &["init", "-q", "--bare", "-b", "main"]);
+        git_at(&root, &["clone", "-q", "origin.git", "main"]);
+        listed(&main, held);
+        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        let net = Real {
+            state: root.join("net"),
+            url: origin.display().to_string(),
+            system: "x86_64-linux".to_owned(),
+            booted: 0,
+            branch: "main".to_owned(),
+        };
+        fs::create_dir_all(&net.state).unwrap();
+        net.cloned().unwrap();
+        git_at(&net.checkout(), &["config", "user.name", "net"]);
+        git_at(&net.checkout(), &["config", "user.email", "net@t"]);
+        (net, root)
+    }
+
+    #[test]
+    fn a_quarantine_meeting_another_on_main_is_cut_again_from_the_newest() {
+        let (net, root) = a_net("recut", &json!([{"test": "kept"}, {"test": "mended"}]));
+        let main = root.join("main");
+        let path = net.checkout().join(QUARANTINE);
+        let change = || {
+            let mut list: Value =
+                serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            list.as_array_mut().unwrap().push(json!({"test": "broken"}));
+            fs::write(&path, serde_json::to_string_pretty(&list).unwrap() + "\n").unwrap();
+            net.git(&["add", QUARANTINE]).map(|_| ())
+        };
+        let cut_from = net.git(&["rev-parse", &net.followed()]).unwrap();
+        let branch = "merge-net/quarantine-broken";
+        let sha = net.cut(branch, &cut_from, "quarantine", &change).unwrap();
+        let newest = listed(&main, &json!([{"test": "kept"}]));
+        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        let landed = net.onto_newest(branch, &cut_from, sha, "quarantine", &change);
+        let (on, at) = landed.expect("a quarantine meeting another on main didn't land");
+        assert_eq!(on, newest, "it wasn't put on main's newest head");
+        assert_eq!(
+            net.git(&["rev-parse", &format!("{at}^")]).unwrap(),
+            newest,
+            "it wasn't cut again from main's newest head"
+        );
+        let list = net.git(&["show", &format!("{at}:{QUARANTINE}")]).unwrap();
+        assert_eq!(
+            tests_in(&serde_json::from_str(&list).unwrap()),
+            ["kept", "broken"],
+            "the list cut again lost main's change or its own"
+        );
+        assert_eq!(
+            git_at(&root.join("origin.git"), &["rev-parse", branch]),
+            at,
+            "what was cut again wasn't pushed"
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_change_beyond_the_list_meeting_another_on_main_says_where() {
+        let (net, root) = a_net("conflict", &json!([{"test": "kept"}]));
+        let main = root.join("main");
+        let path = net.checkout().join(QUARANTINE);
+        let other = net.checkout().join("other");
+        let change = || {
+            fs::write(&path, "[]\n").unwrap();
+            fs::write(&other, "o\n").unwrap();
+            net.git(&["add", QUARANTINE, "other"]).map(|_| ())
+        };
+        let cut_from = net.git(&["rev-parse", &net.followed()]).unwrap();
+        let branch = "merge-net/revert-x";
+        let sha = net.cut(branch, &cut_from, "revert", &change).unwrap();
+        listed(&main, &json!([{"test": "kept"}, {"test": "new"}]));
+        git_at(&main, &["push", "-q", "origin", "HEAD:main"]);
+        let landed = net.onto_newest(branch, &cut_from, sha.clone(), "revert", &change);
+        assert!(
+            landed.as_ref().is_err_and(|why| why.contains("CONFLICT")),
+            "a change beyond the list was cut again, or its conflict went unsaid: {landed:?}"
+        );
+        assert_eq!(
+            net.git(&["rev-parse", "HEAD"]).unwrap(),
+            sha,
+            "the merge that met a conflict wasn't undone"
+        );
+        fs::remove_dir_all(&root).unwrap();
     }
 }
