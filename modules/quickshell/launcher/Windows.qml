@@ -50,11 +50,12 @@ Provider {
     // with the daemon down it says so, rather than reading forever or
     // saying there are none (Daemon.qml's gone). The rows stay as last
     // listed through the gap, so the empty line speaks only when none
-    // ever were.
+    // ever were. An opening that waits for the answer (waiting) says it's
+    // still reading too, never that there are no other windows.
     readonly property bool silent: unanswered
     collection: Words.collection("windows", Object.assign({ searched: false },
         silent ? { empty: Words.of("windows", "silent").empty }
-            : daemon.answered ? {} : { empty: "\u2026" }))
+            : daemon.answered && !provider.waiting ? {} : { empty: "\u2026" }))
 
     // Whether the daemon has been silent a second, so it's said: a restart
     // or a reconnect answers within it, and saying so at once blinked it
@@ -111,12 +112,19 @@ Provider {
     // show`) ends before any answer can come, so it's offered the rows
     // held, as it was before; the next walk has what the answer said
     // (launcher-on-niri's terminal case, 2026-11-10).
+    // The rows are listed in the order held, which the watch of when each
+    // window was used keeps current while the launcher is shut (orderKept),
+    // so then the first frame offers them in the order used now.
+    readonly property bool waiting: !daemon.answeredThisWatch
+        && daemon.state !== "not answering" && !provider.orderKept
+        && provider.launcher?.open !== false
     function everything() {
         const heard = daemon.answeredThisWatch;
-        if (!heard && daemon.state !== "not answering" && provider.launcher?.open !== false)
+        if (provider.waiting)
             return [];
-        const others = things.filter(window => window.is !== "windows:this"
-            && (heard ? !window.focused : window.id !== Niri.current));
+        const others = provider.held.order.map(key => provider.kept[key])
+            .filter(window => window !== undefined
+                && (heard ? !window.focused : window.id !== Niri.current));
         const rest = others.slice(1);
         return others.slice(0, 1).concat(rest.filter(window => window.waiting),
             rest.filter(window => !window.waiting));
@@ -225,6 +233,97 @@ Provider {
         }
     }
 
+    // While the launcher is shut, when each window was used, and only
+    // that: told a line only as the focus moves to a window, never as one
+    // is retitled, resized or scrolled past, so the shut shell wakes once
+    // a focus move and makes no row, and the next opening's first frame
+    // lists the windows in the order used now. On Joel's shell, held from
+    // the last opening, Super+Tab then Return went to the window used
+    // last at that opening (vm-desktop-launcher-moves-windows,
+    // 2026-11-10). A window opened meanwhile is asked for whole and held,
+    // its row made only once the rows are wanted (relisted), so the shut
+    // launcher makes none (launcher-on-niri's shut case).
+    Daemon {
+        id: used
+
+        socket: daemon.socket
+        kind: "window"
+        watching: ({ fields: ["order"] })
+        live: !provider.wanted
+        answersWhole: true
+        onHeard: (changed, gone) => provider.heardUsed(changed, gone)
+        onTold: answer => provider.toldUsed(answer)
+        onStateChanged: {
+            if (state === "not answering")
+                provider.usedAnswered = false;
+        }
+    }
+    readonly property var usedDaemon: used
+    // Whether the order held is as current as that watch has said, with
+    // every window it named held whole.
+    property bool usedAnswered: false
+    property int asking: 0
+    readonly property bool orderKept: usedAnswered && asking === 0
+
+    function heardUsed(changed, gone) {
+        const windowsOnly = keys => keys.filter(key => key.startsWith("window:"));
+        const records = windowsOnly(changed).map(key => used.held[key])
+            .filter(record => record);
+        const unknown = HeldWindows.used(provider.held, records);
+        provider.reordered = provider.reordered || records.length > unknown.length;
+        letGo(windowsOnly(gone));
+        if (unknown.length > 0)
+            provider.askWhole(unknown);
+    }
+
+    // A whole answer says every window there is, so one held that it
+    // doesn't name closed while nothing watched. Its records come through
+    // the signal as a list Qt made, which Array.isArray doesn't know.
+    function toldUsed(answer) {
+        if (answer.id !== "all" || typeof answer.records?.length !== "number")
+            return;
+        const named = new Set(Array.from(answer.records, record => record?.key));
+        letGo(provider.held.order.filter(key => !named.has(key)));
+        provider.usedAnswered = true;
+    }
+
+    function letGo(keys) {
+        const went = keys.filter(key => key in provider.held.records);
+        if (went.length === 0)
+            return;
+        HeldWindows.take(provider.held, [], went);
+        remake([], went);
+    }
+
+    function askWhole(keys) {
+        provider.asking += 1;
+        used.find({ ask: "get", keys: keys }, answer => {
+            provider.asking -= 1;
+            if (answer === null) {
+                provider.usedAnswered = false;
+                return;
+            }
+            const records = (answer.records ?? [])
+                .filter(record => typeof record?.key === "string"
+                    && record.key.startsWith("window:"));
+            const taken = HeldWindows.take(provider.held, records, []);
+            if (provider.wanted) {
+                remake(taken, []);
+                return;
+            }
+            for (const key of taken)
+                provider.unmade[key] = true;
+        });
+    }
+    // The windows held whole while the rows weren't wanted, whose rows
+    // are made once they are, by key.
+    property var unmade: ({})
+    function madeAtLast() {
+        const keys = Object.keys(provider.unmade).filter(key => key in provider.held.records);
+        provider.unmade = {};
+        remake(keys, []);
+    }
+
     // A window waiting on Joel says so, which comes from Sessions rather
     // than the daemon, so only the rows whose waiting turned are made again.
     Connections {
@@ -233,7 +332,31 @@ Provider {
             provider.waitingTurned();
         }
     }
-    onWantedChanged: waitingTurned()
+    onWantedChanged: {
+        relisted();
+        waitingTurned();
+    }
+    // The rows listed again in the order held, once wanted, if the watch
+    // of when windows were used moved any while they weren't, so what
+    // reads the list whole (changedTo) has it as everything() offers it.
+    property bool reordered: false
+    function relisted() {
+        if (!provider.wanted)
+            return;
+        provider.madeAtLast();
+        if (!provider.reordered)
+            return;
+        provider.reordered = false;
+        provider.listed();
+    }
+    // The rows in the order held, This Window first. A window held whole
+    // while the rows weren't wanted has no row yet (unmade), so it's left
+    // out until it's made.
+    function listed() {
+        provider.things = (provider.thisOne.row ? [provider.thisOne.row] : [])
+            .concat(provider.held.order.map(key => provider.kept[key])
+                .filter(row => row !== undefined));
+    }
 
     // Takes what the daemon said, making again only the rows of windows
     // whose records differ, so a whole answer as the launcher opens makes
@@ -286,8 +409,7 @@ Provider {
             else if (key === provider.thisOne.key)
                 Object.assign(provider.thisOne, { key: "", row: null });
         }
-        provider.things = (provider.thisOne.row ? [provider.thisOne.row] : [])
-            .concat(provider.held.order.map(key => provider.kept[key]));
+        provider.listed();
     }
 
     // A window's names, as its record says them: its program's entry by id,

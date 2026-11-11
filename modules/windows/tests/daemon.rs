@@ -3,7 +3,9 @@
 //! socket systemd hands it; a watch is answered with every window named
 //! by its program, the one used last first; a retitle tells only its
 //! window, a focus moving only the two it moved between, and a resize
-//! nothing but a watch naming layouts; a window closed is told gone; an entry added names its
+//! nothing but a watch naming layouts; a watch of when windows were used
+//! hears no retitle, and only that of each window; a window closed is
+//! told gone; an entry added names its
 //! windows' program; niri gone and back describes the desktop again;
 //! and an ask or kind it doesn't know is refused.
 
@@ -295,6 +297,34 @@ fn a_resize_is_told_only_to_a_watch_naming_layouts() {
     assert!(
         !heard.contains(&"layout:10".to_owned()),
         "a watch naming no kind heard the resize: {heard:?}"
+    );
+}
+
+#[test]
+fn a_watch_of_when_windows_were_used_hears_no_retitle() {
+    let running = Running::new("used");
+    running.watching();
+    let mut client = running.daemon.client();
+    let said = client.ask(&json!({"id": 2, "ask": "watch", "kind": "window",
+        "fields": ["order"]}));
+    assert_eq!(
+        said["records"][0],
+        json!({"key": "window:10", "order": 1_000_000})
+    );
+    running.niri.says(&window(
+        11,
+        "Calendar - Google Chrome",
+        "google-chrome",
+        1,
+        2,
+        900,
+    ));
+    running.niri.says(&json!({"WindowFocusTimestampChanged": {
+        "id": 11, "focus_timestamp": {"secs": 1100, "nanos": 0}}}));
+    let said = client.heard();
+    assert_eq!(
+        said["changed"],
+        json!([{"key": "window:11", "order": 1_100_000}])
     );
 }
 

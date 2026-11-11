@@ -16,6 +16,11 @@ shell's main thread to walk every window, look each one's program up and
 make its row again, shut or open (Joel's shell, 2026-11-10: 657 window
 rows made in four minutes with the launcher shut).
 
+A watch may name `fields`, and is then told each record as its key and
+those fields alone, and only when one of them changed. The shell holds
+one on when each window was used while the launcher is shut, so Super+Tab's
+first frame lists them in that order, and a retitle wakes nothing.
+
 ## Every Figure, and Where It Shows
 
 | Kind                | Figures                                         | Where                         |

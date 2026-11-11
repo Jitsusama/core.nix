@@ -27,6 +27,11 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        // Whether the rows are kept from being made, as a shut launcher's are.
+        property bool hiding: false
+        function wants(provider) {
+            return !hiding;
+        }
     }
 
     Launcher.Windows {
@@ -200,11 +205,15 @@ ShellRoot {
             theLauncher.open = true;
             Expect.same("before the answer, no row of the last opening is offered",
                 names(windows.everything()), "");
+            Expect.same("and it says it's still reading, never that there are none",
+                windows.collection.empty, "\u2026");
             told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
                 Object.assign({}, draft, { order: 250000, focused: true }),
                 Object.assign({}, notes, { order: 220000 })] }, desktop(draft));
             Expect.same("once answered, the rows in the order used now",
                 names(windows.everything()), "Notes, Logbook");
+            Expect.same("and its empty line is its own again", windows.collection.empty,
+                "No other windows.");
             theLauncher.open = false;
             told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
                 Object.assign({}, draft, { order: 250000, focused: true }), notes] },
@@ -301,6 +310,52 @@ ShellRoot {
             windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             windows.quietFor();
             Expect.same("nor for a restart answered within the second", windows.noted(), "");
+
+            // While the launcher is shut, only when each window was used is
+            // told, on a watch of its own, so the opening's first frame
+            // offers the rows in the order used now, before the windows'
+            // own watch answers; a window opened meanwhile is asked whole.
+            const used = windows.usedDaemon;
+            const asked = [];
+            used.wire = { write: line => asked.push(JSON.parse(line)), flush: () => {} };
+            used.said(JSON.stringify({ id: "hello" }));
+            Niri.focused = 13;
+            Niri.revision += 1;
+            theLauncher.open = true;
+            Expect.same("before when windows were used is told, an opening offers none",
+                names(windows.everything()), "");
+            used.said(JSON.stringify({ id: "all", records: [
+                { key: "window:11", order: 200000 }, { key: "window:13", order: 300000 }] }));
+            Expect.same("told it, an opening offers the rows held before any answer",
+                names(windows.everything()), "Logbook");
+            const madeShut = windows.tally.rows;
+            used.said(JSON.stringify({ changed: [{ key: "window:14", order: 500000 }] }));
+            Expect.same("a window opened unheard is asked whole",
+                asked.filter(one => one.ask === "get").map(one => one.keys.join()).join(),
+                "window:14");
+            Expect.same("and until it comes, an opening offers none",
+                names(windows.everything()), "");
+            theLauncher.hiding = true;
+            used.said(JSON.stringify({ id: `find-${used.asked}`,
+                records: [window(14, "Ledger", 1, 500000, false, 3)] }));
+            Expect.same("the window asked whole while the rows aren't wanted makes no row",
+                windows.tally.rows - madeShut, 0);
+            used.said(JSON.stringify({ changed: [{ key: "window:15", order: 550000 }] }));
+            used.said(JSON.stringify({ id: `find-${used.asked}`,
+                records: [window(15, "Tally", 1, 550000, false, 3)] }));
+            used.said(JSON.stringify({ changed: [], gone: ["window:15"] }));
+            Expect.same("a window gone meanwhile lists no row for those not yet made",
+                windows.things.filter(row => row === undefined).length, 0);
+            theLauncher.hiding = false;
+            used.said(JSON.stringify({ changed: [{ key: "window:11", order: 600000 }] }));
+            Niri.focused = 11;
+            Niri.revision += 1;
+            Expect.same("the focus moved unheard, the rows are in the order used now",
+                names(windows.everything()), "Ledger, Notes");
+            Expect.same("and only the window opened had its row made",
+                windows.tally.rows - madeShut, 1);
+            theLauncher.open = false;
+            used.wire = null;
 
             // Only the newest wanted waits while file-preview starts, so one
             // it replaces is asked again when its drawer is next shown.

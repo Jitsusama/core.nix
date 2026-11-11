@@ -113,6 +113,31 @@ function take(held, records, gone) {
     return differ;
 }
 
+// Takes when windows were used, as a watch of `order` alone tells it
+// while the launcher is shut, placing each window held where it now goes
+// and making nothing else, so the next opening lists them in the order
+// used now. Answers the keys it doesn't hold, windows opened since, whose
+// whole records are asked for.
+function used(held, records) {
+    const unknown = [];
+    for (const record of records) {
+        const was = held.records[record.key];
+        if (was === undefined) {
+            unknown.push(record.key);
+            continue;
+        }
+        if (was.order === record.order) {
+            continue;
+        }
+        unlist(held, record.key);
+        const now = Object.assign({}, was, { order: record.order });
+        held.records[record.key] = now;
+        held.windows[record.key] = asWindow(now);
+        held.order.splice(placeOf(held, now), 0, record.key);
+    }
+    return unknown;
+}
+
 // The workspaces a window on this one could go to, from the daemon's
 // records by key (`said`): the others on its screen, in the order the
 // desktop record lists that screen's, so nothing is sorted and no window
