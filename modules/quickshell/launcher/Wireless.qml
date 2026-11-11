@@ -542,6 +542,28 @@ Provider {
     readonly property var all: !on ? [] : Ready.inside(ready.keys, ready.held, "")
         .filter(key => ready.served(key)?.kind === "network").map(key => ready.rowAt(key))
     property var allTold: []
+
+    // What a network's spots are made of, so a closing makes again only
+    // the parts of a network that changed (Launcher.qml's heldSpots): its
+    // served row with its strength left out, and each part inside it by
+    // its key, name and acts, never a figure, since the signal moves every
+    // scan and the parts' spots don't show it. Joel's closing at 14:36 on
+    // 2026-11-11 made Wi-Fi's 17 rows again. Null for a row not made of a
+    // network now, so it's made again. Wireless's figures served ready as
+    // parts, apart from their values, would end it.
+    function spotsStampOf(thing) {
+        if (ready.stampOf(thing) === null)
+            return null;
+        const key = ready.madeOf[thing.key];
+        const row = ready.served(key);
+        const steady = Object.assign({}, row, { glyph: null, side: null,
+            held: Object.assign({}, row.held, { strength: null }) });
+        const parts = Ready.inside(ready.keys, ready.held, key).map(one => {
+            const part = ready.served(one);
+            return [one, part?.name ?? "", (part?.acts ?? []).map(act => act.key ?? "")];
+        });
+        return JSON.stringify([steady, parts]);
+    }
     onAllChanged: {
         if (all.length === allTold.length && all.every((row, at) => row === allTold[at]))
             return;

@@ -47,6 +47,7 @@
   "launcher/Seen.js"
   "launcher/Pacing.js"
   "launcher/Presented.js"
+  "launcher/Spots.js"
   "launcher/Wanted.js"
   "launcher/Standing.js"
   "launcher/Steady.js"

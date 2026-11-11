@@ -112,7 +112,7 @@ Scope {
     onActiveChanged: {
         if (active)
             return;
-        for (const store of [made, drawers, ticking, clocked, repeats]) {
+        for (const store of [made, madeOf, drawers, ticking, clocked, repeats]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -167,11 +167,25 @@ Scope {
         return Ready.rowOf(held[key]);
     }
 
+    // Which record each row made was made of, by the row's key, for its
+    // stamp. A plain object, so writing it as a row's made notifies nothing.
+    readonly property var madeOf: ({})
+
+    // What a row made here and its parts are made of (ReadyRows.js's
+    // stampOf), for a place's spotsStampOf: null for a row not the one
+    // made of its record now, so a row left from before is never kept.
+    function stampOf(row) {
+        const key = madeOf[row?.key];
+        return key !== undefined && made[key] === row ? Ready.stampOf(keys, held, key) : null;
+    }
+
     // What the place made of the row of `key`, made now if not yet.
     function rowAt(key) {
         if (!(key in made)) {
             const row = served(key);
             made[key] = row ? ready.make(row, key) : null;
+            if (made[key])
+                madeOf[made[key].key] = key;
             if (key in ticking)
                 clocked[key] = clockSaid(row);
         }

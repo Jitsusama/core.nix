@@ -316,6 +316,27 @@ def test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go(shell: S
     assert built == 0, f"the letter built {built} of the {drawn} rows it drew"
 
 
+def test_a_first_search_after_a_restart_makes_no_spots_on_its_key(shell: Shell) -> None:
+    """Opened as the shell starts, before its spots are made, no key makes them.
+
+    The first search of three letters made every spot when none were made yet: the first "bat"
+    of a shell's life spent 82 ms making them, every later one 0 to 1 (Y2YBTS's lab,
+    2026-11-11). Now they're made after the opening's frames, in slices.
+    """
+    since = shell.mark()
+    shell.restart()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    said, _ = shell.said_since(since)
+    assert not any(line.startswith(SPOTS_MADE_SHUT[0]) for line in said), (
+        f"the spots were made before the launcher opened, so nothing's tried: {said}"
+    )
+    shell.type_in("bat")
+    shell.reported("spots made after frames in ", lambda _: True, since)
+    said, _ = shell.said_since(since)
+    assert "spots made on a key" not in said, f"a key made the spots: {said}"
+
+
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
     """Open into the place by its chord, and give the rows each other source made meanwhile.
 

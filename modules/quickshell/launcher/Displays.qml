@@ -804,6 +804,25 @@ Provider {
     // level, a lux or a warmth's figure, which move while nothing else
     // does. modules/windows' display kind takes this over, serving the
     // screens' rows ready, by 12 November.
+    // And what one thing's spots are made of, so a change to one screen
+    // makes only its parts again as the launcher closes (Launcher.qml's
+    // heldSpots): its served rows (ReadyRows.stampOf), and for a screen
+    // whether it holds the light, the sensor and warmth, and its facts;
+    // never a level. Joel's closing at 14:36 on 2026-11-11 made all 87 of
+    // Displays' rows again. The display kind serving the parts ready ends
+    // it too.
+    function spotsStampOf(thing) {
+        const served = ready.stampOf(thing);
+        const name = served === null ? undefined
+            : ready.served(ready.madeOf[thing.key])?.held?.output;
+        const output = name === undefined ? undefined : outputs[name];
+        if (output === undefined)
+            return served;
+        return JSON.stringify([served, backlit(output),
+            light === null ? false : light.connector ?? "", roomSensor !== null,
+            warmth === null ? null : warmth.seesColour === true,
+            (facts[name] ?? []).map(fact => `${fact.name}:${fact.value === ""}`)]);
+    }
     property string spotsStamp: JSON.stringify([ready.placings,
         light === null ? false : light.connector ?? "", roomSensor !== null,
         warmth === null ? null : warmth.seesColour === true,

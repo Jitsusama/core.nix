@@ -11,10 +11,12 @@
 // once the words or the face have changed, and each row's keys once for
 // what's typed, the steps and the mode. What was presented is said by
 // place, each change timed from the earliest line not yet drawn
-// (launcher/Presented.js).
+// (launcher/Presented.js). A closing makes again only the spots of the
+// things whose stamp moved (launcher/Spots.js).
 import QtQuick
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
+import "Spots.js" as Spots
 import "Wanted.js" as Wanted
 
 QtObject {
@@ -348,6 +350,46 @@ QtObject {
         check(failures, "no keys say nothing", Presented.keysSaid("presented", [], true), "");
     }
 
+    // Joel's closing at 14:36 on 2026-11-11 made Sound's 111 rows and
+    // Displays' 87 again for a change to one device or one screen, since a
+    // collection was made whole once its source changed.
+    function spotting(failures) {
+        let makes = [];
+        const make = thing => {
+            makes.push(thing.key);
+            return [`${thing.key}/scale`, `${thing.key}/refresh`];
+        };
+        const stampOf = thing => thing.stamp;
+        const screens = [{ key: "left", stamp: "1x" }, { key: "right", stamp: "1x" }];
+        const first = Spots.eachKept(undefined, screens, stampOf, make);
+        check(failures, "the first making makes every thing", makes.join(), "left,right");
+        check(failures, "and counts them", first.made, 2);
+        check(failures, "its spots are each thing's, in order",
+            Spots.spotsOf(screens, first.kept).join(),
+            "left/scale,left/refresh,right/scale,right/refresh");
+
+        makes = [];
+        const moved = [{ key: "left", stamp: "1x" }, { key: "right", stamp: "1.5x" }];
+        const second = Spots.eachKept(first.kept, moved, stampOf, make);
+        check(failures, "a closing after one thing changed makes only it", makes.join(),
+            "right");
+        check(failures, "and keeps the other's spots as they were",
+            second.kept.left === first.kept.left, true);
+
+        makes = [];
+        const gone = Spots.eachKept(second.kept, [moved[0]], stampOf, make);
+        check(failures, "a thing gone makes nothing", makes.length, 0);
+        check(failures, "and is let go", Object.keys(gone.kept).join(), "left");
+
+        makes = [];
+        Spots.eachKept(first.kept, screens, null, make);
+        check(failures, "a source saying no stamp makes every thing, as before", makes.join(),
+            "left,right");
+        makes = [];
+        Spots.eachKept(first.kept, [{ key: "left", stamp: null }], stampOf, make);
+        check(failures, "and so does a thing whose stamp is null", makes.join(), "left");
+    }
+
     function run() {
         const failures = [];
         const every = 250;
@@ -431,6 +473,7 @@ QtObject {
         felt(failures);
         weighing(failures);
         weighingPlaces(failures);
+        spotting(failures);
 
         for (const failure of failures)
             console.warn(failure);

@@ -233,6 +233,21 @@ function inside(keys, held, parent) {
     return keys.filter(key => (rowOf(held[key])?.parent ?? "") === parent);
 }
 
+// What the row of `key` and its parts are made of, as text: its record,
+// the drawer it names apart, and the records of the rows inside it, which
+// are its parts where it steps in. The same text says its parts are as they
+// were, so a closing keeps their spots (Spots.js); null where it holds no
+// row.
+function stampOf(keys, held, key) {
+    const row = rowOf(held[key]);
+    if (row === null) {
+        return null;
+    }
+    const drawer = typeof row.drawer === "string" ? held[row.drawer] ?? null : null;
+    const parts = inside(keys, held, key).map(one => held[one]);
+    return JSON.stringify([held[key], drawer].concat(parts));
+}
+
 // The drawer a row serves: its own, or, where it names one by key, the
 // drawer the record beside it holds, `{ key: "drawer:<place>:<id>", kind:
 // "drawer", drawer }`, so a drawer served apart changes without its row.
