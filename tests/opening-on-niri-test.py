@@ -64,9 +64,9 @@ SETTLING_S = 2
 FRESHENING = timedelta(seconds=75)
 
 # The sources that make rows as any opening begins, by a handler of their own on the launcher's
-# open rather than as they're wanted: Now retimes, which makes Time's and Today's rows, Agents
-# remakes its own rows (Agents.qml's opened) and Capture reads what was taken (2026-11-11).
-MADE_AS_ANY_OPENS = frozenset({"time", "today", "agents", "capture"})
+# open rather than as they're wanted: Capture reads what was taken (2026-11-11). Now's retime
+# and Agents' own rows did too, until #3111 and #3112 put them off until they're read.
+MADE_AS_ANY_OPENS = frozenset({"capture"})
 
 # How long the closed launcher's frame count must hold to count as having drawn what it kept:
 # keeping home says so before the pixel left on the screen draws it, which a loaded builder

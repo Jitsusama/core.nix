@@ -127,6 +127,10 @@ QtObject {
             read({ held: [{ row: { from: people } }] }), false);
         check(failures, "though in a place that reads them they are",
             read({ held: [{ row: { from: now } }] }), true);
+        check(failures, "nor opening into another place before its step is held",
+            read({ entering: people }), false);
+        check(failures, "though opening into one that reads them they are",
+            read({ entering: now }), true);
         const warming = { saysAtHome: false, warming: true };
         check(failures, "shut, one warming for home is", wanted({ open: false }, warming), true);
         check(failures, "and no other", wanted({ open: false }, people), false);

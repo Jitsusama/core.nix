@@ -59,7 +59,9 @@ function readAt(stands, readers) {
     if (!stands.open) {
         return false;
     }
-    return stands.held.length === 0 || readers.some(one => one !== null && wanted(stands, one));
+    // Opening into a place, nothing is held yet but home isn't shown either.
+    return (stands.held.length === 0 && !stands.entering)
+        || readers.some(one => one !== null && wanted(stands, one));
 }
 
 // The order a kept opening's sources wake in, a few a frame, rather than

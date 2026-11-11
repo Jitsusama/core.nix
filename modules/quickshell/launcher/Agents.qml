@@ -87,7 +87,8 @@ Provider {
             return opened();
         return Wanted.readAt({ cataloguing: launcher.cataloguing, open: launcher.open,
             held: launcher.held, becoming: Object.values(launcher.becoming ?? {}),
-            typed: launcher.typed }, [provider, source("now")]);
+            typed: launcher.typed, entering: launcher.entering ?? null },
+            [provider, source("now")]);
     }
 
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
