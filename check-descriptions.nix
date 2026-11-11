@@ -2558,6 +2558,20 @@
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
     boot, and says each as the agent source contract's record, leaving out what pi didn't say
   '';
+  pi-agent-proxy-passes-clippy = ''
+    clippy finds nothing in pi-agent-proxy or its tests, the SSH agent a fenced pi command reaches,
+    which signs only logins to the hosts it's told of
+  '';
+  pi-agent-proxy-runs-only-with-machines = ''
+    pi's SSH agent proxy runs only where it's given machines, never on a Mac, started by the first ssh
+    that asks on a socket only the account reaches, told of those hosts and the agents behind it
+  '';
+  pi-agent-proxy-signs-only-logins = ''
+    pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it
+    names, one it's told of, signed the session; with no session, another host, a forged binding,
+    a commit, another session or key, or a forwarded agent, nothing reaches the agent behind, and
+    it never adds, removes or locks keys
+  '';
   pi-spawner-passes-clippy = ''
     clippy finds nothing in pi-spawner or its tests, which starts pi's shell commands for it from
     a process small enough to start them cheaply

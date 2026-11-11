@@ -151,6 +151,12 @@ let
   homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
   further = lib.attrNames (lib.attrByPath [ "jitsusama" "mycelium" "alsoJoins" ] { } config);
 
+  # The fence's SSH agent, run only where it has hosts to sign logins to.
+  # It depends on the hosts alone, since the upstreams' default looks at
+  # which sockets are declared, these among them.
+  agentProxy = pkgs.callPackage ./agent-proxy/package.nix { };
+  proxied = pkgs.stdenv.hostPlatform.isLinux && config.jitsusama.pi.agentProxy.machines != [ ];
+
   # Each plan's small, quick model, for answers that take a second or two.
   quickModels = {
     pi = "anthropic/claude-haiku-4-5";
@@ -201,6 +207,31 @@ in
       Each `git:` one is installed by pi-packages, which follows its branch
       and swaps each new commit in whole, and pi is given its current link.
     '';
+  };
+
+  options.jitsusama.pi.agentProxy = {
+    machines = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... builder" ];
+      description = ''
+        The host keys, as OpenSSH public keys, of the machines a fenced pi
+        command may log in to through pi-agent-proxy (agent-proxy/src).
+        With none, no proxy runs and fenced commands reach no SSH agent.
+      '';
+    };
+    upstreams = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = lib.optional (config.systemd.user.sockets ? agent-signing) "%t/agent-signing.sock";
+      defaultText = lib.literalExpression ''[ "%t/agent-signing.sock" ], where the agents' key is served, else [ ]'';
+      description = ''
+        The agents' sockets, `%t` for the runtime folder, whose keys the
+        proxy lists and signs logins with. Only the agents' own by default:
+        the person's key asks a confirmation on every signature, so an agent
+        that offered it while they were away would hold every other
+        signature until they came back.
+      '';
+    };
   };
 
   options.jitsusama.pi.chime = lib.mkOption {
@@ -318,6 +349,10 @@ in
             && lib.elem config.jitsusama.pi.claude.realm further;
         message = "jitsusama.pi.claude.realm names no realm of jitsusama.mycelium.alsoJoins.";
       }
+      {
+        assertion = proxied -> config.jitsusama.pi.agentProxy.upstreams != [ ];
+        message = "jitsusama.pi.agentProxy.machines names machines, but no agent's socket is given in jitsusama.pi.agentProxy.upstreams to sign their logins with.";
+      }
     ];
 
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
@@ -354,6 +389,39 @@ in
         pkgs.landrun
         pkgs.bubblewrap
       ];
+
+    # The one SSH agent the agent fence lets in, at %t/pi-agent.sock: it
+    # signs, with the agents' key, only logins to the hosts named in
+    # jitsusama.pi.agentProxy.machines, each proved by the machine's own
+    # signature over the session (agent-proxy/src/bind.rs). Started by the
+    # first ssh that asks; every refusal says why in the journal.
+    systemd.user.sockets.pi-agent-proxy = lib.mkIf proxied {
+      Unit.Description = "The SSH agent pi's fenced commands reach, signing only logins to the hosts it's told of";
+      Socket = {
+        ListenStream = "%t/pi-agent.sock";
+        SocketMode = "0600";
+        Service = "pi-agent-proxy.service";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+    systemd.user.services.pi-agent-proxy = lib.mkIf proxied {
+      Unit = {
+        Description = "The SSH agent pi's fenced commands reach, signing only logins to the hosts it's told of";
+        Requires = [ "pi-agent-proxy.socket" ];
+        After = [ "pi-agent-proxy.socket" ];
+      };
+      Service.ExecStart = lib.escapeShellArgs (
+        [
+          (lib.getExe agentProxy)
+          "--hosts"
+          "${pkgs.writeText "pi-agent-proxy-hosts" (lib.concatLines config.jitsusama.pi.agentProxy.machines)}"
+        ]
+        ++ lib.concatMap (socket: [
+          "--upstream"
+          socket
+        ]) config.jitsusama.pi.agentProxy.upstreams
+      );
+    };
 
     # On the Claude plan every pi starts on it: the provider is one of the
     # extensions pi finds by itself, so the package list pi keeps is left

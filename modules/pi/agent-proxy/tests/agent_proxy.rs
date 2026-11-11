@@ -1,0 +1,419 @@
+//! The proxy as ssh reaches it: the real program on a socket of its own,
+//! a fake agent behind it that signs whatever reaches it, and host keys
+//! made for each test, so every refusal is seen not to reach the agent.
+
+use std::fs;
+use std::io::{Read, Write};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use signature::Signer;
+use ssh_key::private::Ed25519Keypair;
+use ssh_key::public::KeyData;
+use ssh_key::{PublicKey, Signature};
+
+const FAILURE: u8 = 5;
+const SUCCESS: u8 = 6;
+const REQUEST_IDENTITIES: u8 = 11;
+const IDENTITIES_ANSWER: u8 = 12;
+const SIGN_REQUEST: u8 = 13;
+const SIGN_RESPONSE: u8 = 14;
+const ADD_IDENTITY: u8 = 17;
+const EXTENSION: u8 = 27;
+
+/// The key the fake agent holds, as a wire blob.
+const LOGIN_KEY: &[u8] =
+    b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+fn string(out: &mut Vec<u8>, bytes: &[u8]) {
+    out.extend_from_slice(&u32::try_from(bytes.len()).expect("short").to_be_bytes());
+    out.extend_from_slice(bytes);
+}
+
+fn send(stream: &mut UnixStream, body: &[u8]) {
+    let length = u32::try_from(body.len()).expect("short");
+    stream
+        .write_all(&length.to_be_bytes())
+        .expect("the length is sent");
+    stream.write_all(body).expect("the body is sent");
+}
+
+fn receive(stream: &mut UnixStream) -> Option<Vec<u8>> {
+    let mut length = [0; 4];
+    stream.read_exact(&mut length).ok()?;
+    let mut body = vec![0; usize::try_from(u32::from_be_bytes(length)).expect("fits")];
+    stream.read_exact(&mut body).ok()?;
+    Some(body)
+}
+
+/// A host key made from `seed`, with its wire blob.
+fn host(seed: u8) -> (Ed25519Keypair, Vec<u8>) {
+    let keypair = Ed25519Keypair::from_seed(&[seed; 32]);
+    let blob = PublicKey::from(KeyData::Ed25519(keypair.public))
+        .to_bytes()
+        .expect("a host key encodes");
+    (keypair, blob)
+}
+
+/// `host`'s signature over `session`, as a session binding carries it.
+fn signed(host: &Ed25519Keypair, session: &[u8]) -> Vec<u8> {
+    let signature: Signature = host.try_sign(session).expect("the host signs");
+    Vec::try_from(signature).expect("a signature encodes")
+}
+
+/// A `session-bind@openssh.com` request.
+fn bind(host_blob: &[u8], session: &[u8], signature: &[u8], forwarding: bool) -> Vec<u8> {
+    let mut body = vec![EXTENSION];
+    string(&mut body, b"session-bind@openssh.com");
+    string(&mut body, host_blob);
+    string(&mut body, session);
+    string(&mut body, signature);
+    body.push(u8::from(forwarding));
+    body
+}
+
+/// A login, as ssh asks its agent to sign one.
+fn login(session: &[u8], key: &[u8]) -> Vec<u8> {
+    let mut data = Vec::new();
+    string(&mut data, session);
+    data.push(50);
+    string(&mut data, b"joel");
+    string(&mut data, b"ssh-connection");
+    string(&mut data, b"publickey");
+    data.push(1);
+    string(&mut data, b"ssh-ed25519");
+    string(&mut data, key);
+    data
+}
+
+/// A request to sign `data` with `key`.
+fn sign(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut body = vec![SIGN_REQUEST];
+    string(&mut body, key);
+    string(&mut body, data);
+    body.extend_from_slice(&0u32.to_be_bytes());
+    body
+}
+
+/// The proxy, the fake agent behind it and how often that agent signed.
+struct Proxy {
+    child: Child,
+    socket: PathBuf,
+    signed: Arc<AtomicUsize>,
+    dir: PathBuf,
+}
+
+impl Proxy {
+    /// A proxy told of the hosts in `hosts`, one OpenSSH key a line.
+    fn start(name: &str, hosts: &str) -> Self {
+        let dir =
+            std::env::temp_dir().join(format!("pi-agent-proxy-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("a folder for the test");
+        let upstream = dir.join("upstream.sock");
+        let signed = Arc::new(AtomicUsize::new(0));
+        fake_agent(&upstream, Arc::clone(&signed));
+        fs::write(dir.join("hosts"), hosts).expect("the hosts file is written");
+        let socket = dir.join("proxy.sock");
+        let child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+            .arg("--hosts")
+            .arg(dir.join("hosts"))
+            .arg("--upstream")
+            .arg(&upstream)
+            .arg("--socket")
+            .arg(&socket)
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("the proxy starts");
+        let started = Instant::now();
+        while !socket.exists() {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "the proxy never bound its socket"
+            );
+            // A short poll for the socket the proxy binds as it starts.
+            thread::sleep(Duration::from_millis(5));
+        }
+        Proxy {
+            child,
+            socket,
+            signed,
+            dir,
+        }
+    }
+
+    fn client(&self) -> UnixStream {
+        UnixStream::connect(&self.socket).expect("a client reaches the proxy")
+    }
+
+    fn signatures(&self) -> usize {
+        self.signed.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for Proxy {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// An agent at `path` holding `LOGIN_KEY`, signing whatever reaches it.
+fn fake_agent(path: &Path, signed: Arc<AtomicUsize>) {
+    let listener = UnixListener::bind(path).expect("the fake agent binds");
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.expect("the fake agent takes each client");
+            let signed = Arc::clone(&signed);
+            thread::spawn(move || {
+                while let Some(request) = receive(&mut stream) {
+                    let mut answer = Vec::new();
+                    match request.first() {
+                        Some(&REQUEST_IDENTITIES) => {
+                            answer.push(IDENTITIES_ANSWER);
+                            answer.extend_from_slice(&1u32.to_be_bytes());
+                            string(&mut answer, LOGIN_KEY);
+                            string(&mut answer, b"login key");
+                        }
+                        Some(&SIGN_REQUEST) => {
+                            signed.fetch_add(1, Ordering::SeqCst);
+                            answer.push(SIGN_RESPONSE);
+                            string(&mut answer, b"the agent's signature");
+                        }
+                        _ => answer.push(FAILURE),
+                    }
+                    send(&mut stream, &answer);
+                }
+            });
+        }
+    });
+}
+
+fn hosts_file(keys: &[&Ed25519Keypair]) -> String {
+    let mut text = String::from("# the hosts the fence may log in to\n\n");
+    for key in keys {
+        let line = PublicKey::from(KeyData::Ed25519(key.public))
+            .to_openssh()
+            .expect("a host key writes");
+        text.push_str(&line);
+        text.push('\n');
+    }
+    text
+}
+
+#[test]
+fn lists_the_keys_of_the_agents_behind_it() {
+    let (allowed, _) = host(1);
+    let proxy = Proxy::start("lists", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+
+    send(&mut client, &[REQUEST_IDENTITIES]);
+    let answer = receive(&mut client).expect("an answer");
+
+    let mut expected = vec![IDENTITIES_ANSWER];
+    expected.extend_from_slice(&1u32.to_be_bytes());
+    string(&mut expected, LOGIN_KEY);
+    string(&mut expected, b"login key");
+    assert_eq!(answer, expected, "the agent's one key, with its comment");
+}
+
+#[test]
+fn signs_a_login_to_a_session_its_allowed_host_signed() {
+    let (allowed, blob) = host(1);
+    let proxy = Proxy::start("signs", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+    let session = b"session one";
+
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&allowed, session), false),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![SUCCESS]),
+        "the binding is taken"
+    );
+    send(&mut client, &sign(LOGIN_KEY, &login(session, LOGIN_KEY)));
+    let answer = receive(&mut client).expect("an answer");
+
+    let mut expected = vec![SIGN_RESPONSE];
+    string(&mut expected, b"the agent's signature");
+    assert_eq!(
+        answer, expected,
+        "the agent's signature comes back as it gave it"
+    );
+    assert_eq!(proxy.signatures(), 1, "the agent signed once");
+}
+
+#[test]
+fn refuses_to_sign_with_no_session_bound() {
+    let (allowed, _) = host(1);
+    let proxy = Proxy::start("unbound", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+
+    send(
+        &mut client,
+        &sign(LOGIN_KEY, &login(b"session one", LOGIN_KEY)),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "no session, no signature"
+    );
+    assert_eq!(proxy.signatures(), 0, "the agent was never asked");
+}
+
+#[test]
+fn refuses_a_host_it_is_not_told_of() {
+    let (allowed, _) = host(1);
+    let (other, other_blob) = host(2);
+    let proxy = Proxy::start("other-host", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+    let session = b"session two";
+
+    send(
+        &mut client,
+        &bind(&other_blob, session, &signed(&other, session), false),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the binding is refused"
+    );
+    send(&mut client, &sign(LOGIN_KEY, &login(session, LOGIN_KEY)));
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the login is refused"
+    );
+    assert_eq!(proxy.signatures(), 0, "the agent was never asked");
+}
+
+#[test]
+fn refuses_an_allowed_host_named_for_a_session_it_did_not_sign() {
+    let (allowed, blob) = host(1);
+    let (other, _) = host(2);
+    let proxy = Proxy::start("forged", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+    // Another host's session, passed off as the allowed host's.
+    let session = b"a session with another host";
+
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&other, session), false),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "a forged binding is refused"
+    );
+    send(&mut client, &sign(LOGIN_KEY, &login(session, LOGIN_KEY)));
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "its login is refused"
+    );
+    assert_eq!(proxy.signatures(), 0, "the agent was never asked");
+}
+
+#[test]
+fn refuses_anything_but_a_login_to_the_bound_session() {
+    let (allowed, blob) = host(1);
+    let proxy = Proxy::start("not-a-login", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+    let session = b"session one";
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&allowed, session), false),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![SUCCESS]),
+        "the binding is taken"
+    );
+
+    let mut commit = b"SSHSIG".to_vec();
+    string(&mut commit, b"git");
+    let mut other_key = LOGIN_KEY.to_vec();
+    other_key[20] = b'b';
+    let asks = [
+        ("a commit's signature", sign(LOGIN_KEY, &commit)),
+        (
+            "a login to another session",
+            sign(LOGIN_KEY, &login(b"session two", LOGIN_KEY)),
+        ),
+        (
+            "a login naming another key",
+            sign(LOGIN_KEY, &login(session, &other_key)),
+        ),
+    ];
+    for (what, ask) in asks {
+        send(&mut client, &ask);
+        assert_eq!(
+            receive(&mut client),
+            Some(vec![FAILURE]),
+            "{what} is refused"
+        );
+    }
+    assert_eq!(proxy.signatures(), 0, "the agent was never asked");
+}
+
+#[test]
+fn refuses_a_session_reached_through_a_forwarded_agent() {
+    let (allowed, blob) = host(1);
+    let proxy = Proxy::start("forwarded", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+    let session = b"session one";
+
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&allowed, session), true),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "a forwarding binding is refused"
+    );
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&allowed, session), false),
+    );
+    receive(&mut client);
+    send(&mut client, &sign(LOGIN_KEY, &login(session, LOGIN_KEY)));
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "nothing is signed on it after"
+    );
+    assert_eq!(proxy.signatures(), 0, "the agent was never asked");
+}
+
+#[test]
+fn refuses_to_change_the_agents_behind_it() {
+    let (allowed, _) = host(1);
+    let proxy = Proxy::start("changes", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+
+    for (what, kind) in [
+        ("adding a key", ADD_IDENTITY),
+        ("locking", 22),
+        ("removing every key", 19),
+    ] {
+        send(&mut client, &[kind, 0, 0, 0, 0]);
+        assert_eq!(
+            receive(&mut client),
+            Some(vec![FAILURE]),
+            "{what} is refused"
+        );
+    }
+}

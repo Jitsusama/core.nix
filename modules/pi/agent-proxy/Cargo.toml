@@ -1,0 +1,23 @@
+# The SSH agent a fenced pi command reaches, signing only logins to the
+# hosts it's told of (src/main.rs says why and how).
+[package]
+name = "pi-agent-proxy"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Reading a host key and checking what it signed, for the hosts a
+# session binds to (src/bind.rs).
+ssh-key = { version = "0.6", default-features = false, features = [
+  "std",
+  "ed25519",
+  "ecdsa",
+  "p256",
+  "p384",
+  "p521",
+  "rsa",
+] }
+# The trait a host key checks a signature through (src/bind.rs).
+signature = "2"
