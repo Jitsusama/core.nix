@@ -128,20 +128,65 @@ pub fn rows(described: &Described, words: &Words) -> Vec<Value> {
     }
     if described.radio {
         for network in networks(described) {
-            rows.push(network_row(&network, signing, words));
+            rows.push(with_acts(&network, signing, words));
         }
     }
-    let radio = if described.radio {
+    let mut radio = radio_row(described.radio, words);
+    radio["acts"] = json!([{
+        "key": "wifi:radio",
+        "ask": {"ask": "act", "act": "radio", "on": !described.radio},
+        "becomes": radio_row(!described.radio, words),
+    }]);
+    rows.push(radio);
+    rows
+}
+
+/// The radio's row, Wi-Fi Off while it's on.
+fn radio_row(on: bool, words: &Words) -> Value {
+    let radio = if on {
         &words.radio_on
     } else {
         &words.radio_off
     };
-    rows.push(json!({
+    json!({
         "key": key("radio"), "row": "wifi:radio", "place": PLACE, "kind": "radio",
         "name": radio.name, "glyph": radio.glyph, "hue": "machine", "depth": 0, "side": [],
-        "held": {"on": described.radio},
-    }));
-    rows
+        "held": {"on": on},
+    })
+}
+
+/// A network's row with its acts, each the ask that does it and the row
+/// it becomes once done, in wifid's words, so the shell draws the change
+/// at once and words nothing (launcher/Becoming.js). Joining asks for a
+/// password or an account on the way, so the shell asks it itself.
+fn with_acts(network: &Network, signing: Option<&str>, words: &Words) -> Value {
+    let mut row = network_row(network, signing, words);
+    let ask = |act: &str| json!({"ask": "act", "act": act, "network": network.name});
+    let mut acts = Vec::new();
+    if network.connected {
+        let left = Network {
+            connected: false,
+            ..network.clone()
+        };
+        acts.push(json!({"key": "verb:wifi-leave", "ask": ask("leave"),
+            "becomes": network_row(&left, None, words)}));
+    }
+    // Nix keeps what it declares, so only a rebuild trusts or forgets it.
+    if let Some(kept) = network.kept.filter(|kept| !kept.declared) {
+        let mut trusting = ask("trust");
+        trusting["trusted"] = json!(!kept.trusted);
+        let mut trusted = row.clone();
+        trusted["held"]["trusted"] = json!(!kept.trusted);
+        acts.push(json!({"key": "verb:wifi-trust", "ask": trusting, "becomes": trusted}));
+        let forgotten = Network {
+            kept: None,
+            ..network.clone()
+        };
+        acts.push(json!({"key": "verb:wifi-forget", "ask": ask("forget"),
+            "becomes": network_row(&forgotten, signing, words)}));
+    }
+    row["acts"] = json!(acts);
+    row
 }
 
 fn key(id: &str) -> String {
@@ -549,6 +594,60 @@ mod tests {
         let rows = rows(&off, &words());
         assert_eq!(names(&rows), ["Wi-Fi On"]);
         assert_eq!(rows[0]["held"]["on"], false);
+    }
+
+    fn act<'a>(row: &'a Value, key: &str) -> &'a Value {
+        row["acts"]
+            .as_array()
+            .and_then(|acts| acts.iter().find(|act| act["key"] == key))
+            .unwrap_or(&Value::Null)
+    }
+
+    #[test]
+    fn leaving_the_network_joined_becomes_its_row_as_one_saved() {
+        let rows = rows(&described(), &words());
+        let leave = act(&rows[0], "verb:wifi-leave");
+        assert_eq!(
+            leave["ask"],
+            json!({"ask": "act", "act": "leave", "network": "Lantern"})
+        );
+        assert_eq!(
+            leave["becomes"]["side"],
+            json!([{"said": "saved"}, {"said": "3 of 4 bars"}])
+        );
+        assert_eq!(leave["becomes"]["held"]["connected"], false);
+        assert_eq!(act(&rows[1], "verb:wifi-leave"), &Value::Null);
+    }
+
+    #[test]
+    fn a_network_saved_here_is_trusted_and_forgotten_as_its_row_says() {
+        let rows = rows(&described(), &words());
+        let trust = act(&rows[1], "verb:wifi-trust");
+        assert_eq!(trust["ask"]["trusted"], false);
+        assert_eq!(trust["becomes"]["held"]["trusted"], false);
+        let forget = act(&rows[1], "verb:wifi-forget");
+        assert_eq!(forget["ask"]["act"], "forget");
+        assert_eq!(forget["becomes"]["side"], json!([{"said": "2 of 4 bars"}]));
+        assert_eq!(forget["becomes"]["held"]["known"], false);
+        // One never met, or one Nix declares, has neither.
+        assert_eq!(rows[2]["acts"], json!([]));
+        let mut declared = described();
+        declared.saved[1].declared = true;
+        let rows = super::rows(&declared, &words());
+        assert_eq!(act(&rows[1], "verb:wifi-forget"), &Value::Null);
+    }
+
+    #[test]
+    fn the_radio_s_act_turns_it_the_other_way() {
+        let rows = rows(&described(), &words());
+        let radio = rows.last().expect("a radio row");
+        let turn = act(radio, "wifi:radio");
+        assert_eq!(
+            turn["ask"],
+            json!({"ask": "act", "act": "radio", "on": false})
+        );
+        assert_eq!(turn["becomes"]["name"], "Wi-Fi On");
+        assert_eq!(turn["becomes"]["held"]["on"], false);
     }
 
     #[test]

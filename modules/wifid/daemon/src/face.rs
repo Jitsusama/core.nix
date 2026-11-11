@@ -15,6 +15,9 @@
 //! sees its own words. wifid runs as root, so it reads no path outside the
 //! store, and reads each once: the rows made in one vocabulary are made
 //! once a change, whoever watches them.
+//!
+//! What a row's acts ask comes back on the same connection, as an `act`
+//! ask (acts.rs), so the shell acts without starting anything.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -26,7 +29,9 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
+use crate::acts;
 use crate::rows::{self, Orders, Words};
+use crate::service::Ask;
 use crate::state::State;
 
 /// The interface's version this speaks.
@@ -81,18 +86,21 @@ pub struct Face {
     /// Where vocabularies are read from, the Nix store but in tests.
     store: PathBuf,
     vocabularies: Mutex<HashMap<PathBuf, Vocabulary>>,
+    /// Where wifid's main loop takes what a row's act asks.
+    asks: mpsc::Sender<Ask>,
 }
 
 impl Face {
-    pub fn new(state: watch::Receiver<State>) -> Arc<Face> {
-        Face::within(state, PathBuf::from(STORE))
+    pub fn new(state: watch::Receiver<State>, asks: mpsc::Sender<Ask>) -> Arc<Face> {
+        Face::within(state, PathBuf::from(STORE), asks)
     }
 
-    fn within(state: watch::Receiver<State>, store: PathBuf) -> Arc<Face> {
+    fn within(state: watch::Receiver<State>, store: PathBuf, asks: mpsc::Sender<Ask>) -> Arc<Face> {
         Arc::new(Face {
             state,
             store,
             vocabularies: Mutex::new(HashMap::new()),
+            asks,
         })
     }
 
@@ -271,6 +279,13 @@ impl Connection {
                     .collect();
                 Some(json!({"id": id, "records": records}))
             }
+            // Answered as the main loop gets to it, while the connection
+            // asks on.
+            "act" => {
+                let asks = self.face.asks.clone();
+                tokio::spawn(acts::act(asks, id.clone(), said, self.told.clone()));
+                None
+            }
             "unwatch" => {
                 if let Some(watch) = self.watches.remove(&id.to_string()) {
                     watch.abort();
@@ -367,7 +382,7 @@ fn unkept(said: &Value) -> Option<String> {
 }
 
 /// An error answer, by the interface's codes.
-fn error(id: &Value, code: &str, message: &str) -> Value {
+pub(crate) fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
 }
 
@@ -432,7 +447,8 @@ mod tests {
         let (sending, state) = watch::channel(state);
         let root = store.path().canonicalize().expect("the store is there");
         let words = words.to_string_lossy().into_owned();
-        (Face::within(state, root), sending, store, words)
+        let (asks, _) = mpsc::channel(1);
+        (Face::within(state, root, asks), sending, store, words)
     }
 
     fn connect(face: &Arc<Face>) -> Client {
@@ -452,6 +468,22 @@ mod tests {
             .iter()
             .map(|row| row["key"].as_str().unwrap_or_default().to_owned())
             .collect()
+    }
+
+    #[tokio::test]
+    async fn an_act_on_the_socket_is_done_by_the_main_loop() {
+        let (_state, state) = watch::channel(State::default());
+        let (asks, mut taken) = mpsc::channel(1);
+        let face = Face::within(state, PathBuf::from(STORE), asks);
+        let mut client = connect(&face);
+        client
+            .ask(json!({"id": 9, "ask": "act", "act": "scan"}))
+            .await;
+        let Some(Ask::Scan { done }) = taken.recv().await else {
+            panic!("the main loop was asked no scan");
+        };
+        done.send(Ok(())).expect("answered");
+        assert_eq!(client.heard().await, json!({"id": 9, "done": true}));
     }
 
     #[tokio::test]
