@@ -399,6 +399,16 @@ run's `building on` line names it. The lab gives the change between sides;
 what Joel feels is read from his machine's journal, `launcher: opening
 presented N ms from the chord`, after the switch that carries it.
 
+A step into a place is timed beside them by `test_each_step_is_timed`, run
+alone with `PYTEST_ADDOPTS = "-k each_step"`: it opens home, types each
+place's name and steps in with Return, round after round, and prints each
+step's presented time with its own line from the shell, which splits the
+step's showing into the rows new to the list and their laying out.
+`LAB_STEPS` names the places, by the names home lists them by, and
+`LAB_WINDOWS` how many windows are open. Over 40 windows, laying out the
+new rows was most of a step's showing: 10 to 49 ms into Windows' 39 rows
+and 37 to 93 ms into Emoji's 1914 (2026-11-11).
+
 ### Virtual Machines
 
 Each boots a machine under QEMU, which takes minutes, so each covers what only
