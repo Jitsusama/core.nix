@@ -1,24 +1,26 @@
-// The keyboard's layer, as a keyboard's watcher writes it to keyboard-layer
-// in the runtime directory (modules/ergodox/nixos.nix): the layer's name,
-// and whether it's locked there rather than held by a key. The file says "-"
-// while no board is plugged in, and with no watcher, as on a Mac, there's
-// no file and no layer.
+// The keyboard's layer, as a board's watcher writes it to keyboard-layer in
+// the runtime directory (modules/ergodox/nixos.nix), told by the machine
+// daemon as it's written (modules/machine/src/keyboards.rs), so the shell
+// reads no file for it: the layer's name, and whether it's locked there
+// rather than held by a key. There's no layer while no board is plugged
+// in, with no watcher, as on a Mac, or while the daemon isn't answering.
 pragma Singleton
 import Quickshell
-import Quickshell.Io
 import QtQuick
 
 Singleton {
-    readonly property string line: file.loaded ? file.text().split("\n")[0].trim() : ""
-    readonly property bool present: line !== "" && line !== "-"
-    readonly property bool locked: present && line.endsWith(" locked")
-    readonly property string name: locked ? line.slice(0, -" locked".length) : present ? line : ""
+    readonly property var said: daemon.revision >= 0 ? daemon.held["layer:keyboard"] ?? null
+        : null
+    readonly property bool present: said !== null
+    readonly property bool locked: present && said.locked === true
+    readonly property string name: present ? String(said.name ?? "") : ""
 
-    FileView {
-        id: file
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/keyboard-layer`
-        printErrors: false
-        watchChanges: true
-        onFileChanged: reload()
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "layer"
+        keptThroughGap: false
+        answersWhole: true
     }
 }

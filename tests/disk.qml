@@ -1,6 +1,7 @@
 // Drives the disk piece (modules/quickshell/pieces/Disk.qml) through
-// Quickshell itself, over status files written where the test tells the
-// piece the guards write theirs, with niri stood in for: healthy disks are
+// Quickshell itself, over status files written where the guards write
+// theirs on a machine of the check's own (MACHINE_ROOT), which the machine
+// daemon tells the piece, with niri stood in for: healthy disks are
 // shown but not true, a filling disk says how much is free and the pass
 // that left it short but asks for nothing, a nearly full one is a warning
 // that still asks for nothing, a critically full one wants Joel with
@@ -27,6 +28,7 @@ ShellRoot {
     id: root
 
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
+    readonly property string machineRoot: Quickshell.env("MACHINE_ROOT")
     readonly property real gib: 2 ** 30
     readonly property real now: Date.now() / 1000
 
@@ -206,8 +208,6 @@ ShellRoot {
     Disk {
         id: piece
         settings: ({
-            account: `${root.runtime}/account.json`,
-            machine: `${root.runtime}/machine.json`,
             accountUnit: ["cat", `${root.runtime}/account-unit`],
             machineUnit: ["cat", `${root.runtime}/machine-unit`]
         })
@@ -228,21 +228,26 @@ ShellRoot {
         printErrors: false
     }
 
-    FileView {
-        id: account
-        path: `${root.runtime}/account.json`
-        printErrors: false
+    // Says what each guard said, or leaves a file nothing parses where it
+    // was, written beside and renamed into place as the guards write
+    // theirs: a FileView's write can make a file new by linking it in,
+    // which says only that it was made, and the daemon, as it should,
+    // waits for one written whole. The case is waited on once both are.
+    Process {
+        id: writer
+
+        onExited: {
+            root.left = 100;
+            waiting.start();
+        }
     }
 
-    FileView {
-        id: machine
-        path: `${root.runtime}/machine.json`
-        printErrors: false
-    }
-
-    // Says what a guard said, or leaves a file nothing parses where it was.
-    function write(file, said) {
-        file.setText(said ?? "");
+    function write(account, machine) {
+        writer.command = ["sh", "-c", 'printf %s "$1" > "$2.writing" && mv "$2.writing" "$2"'
+            + ' && printf %s "$3" > "$4.writing" && mv "$4.writing" "$4"', "write",
+            account ?? "", `${root.machineRoot}/run/user/1000/disk-guard/status.json`,
+            machine ?? "", `${root.machineRoot}/run/disk-guard/status.json`];
+        writer.running = true;
     }
 
     function begin() {
@@ -252,14 +257,11 @@ ShellRoot {
         accountUnit.setText(step.accountUnit ?? running);
         machineUnit.setText(step.machineUnit ?? running);
         // A guard's words may be reckoned as its case begins.
-        write(account, typeof step.account === "function" ? step.account() : step.account);
-        write(machine, step.machine);
-        left = 100;
-        waiting.start();
+        write(typeof step.account === "function" ? step.account() : step.account, step.machine);
     }
 
-    // Quickshell reads the files in the background, so each case waits for
-    // the piece to hold, for five seconds at most.
+    // The daemon tells the piece what was written over its socket, so each
+    // case waits for the piece to hold, for five seconds at most.
     Timer {
         id: waiting
         interval: 50

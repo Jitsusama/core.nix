@@ -6,9 +6,10 @@
 //! the machine most, its sensors, thermal zones and cooling, each power
 //! supply, how it sleeps, its firmware, the screen's backlight and the
 //! room's light, the brightness and warmth the backlight program
-//! steers the built-in screen to, who has each camera open, and Keep
-//! Awake's locks and the power profile (kept.rs), each a record whose
-//! figures are
+//! steers the built-in screen to, who has each camera open, Keep Awake's
+//! locks and the power profile (kept.rs), and the keyboards connected,
+//! caps lock, a board's layer and what key-counts has tallied of each
+//! keyboard, each a record whose figures are
 //! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
@@ -32,7 +33,9 @@
 //! program's files are heard as it writes them while their kinds are
 //! watched, so a switch turned in the launcher reads turned within a
 //! frame, not at the next second's read, and so are the cameras' holders,
-//! so a program opening a camera is said as it does. Keep Awake's files and the
+//! so a program opening a camera is said as it does, and the keyboards'
+//! watchers' files, so caps lock is lit on the screen as it is on the
+//! board. Keep Awake's files and the
 //! machine's chosen profile are heard as they're written, and
 //! power-profiles-daemon as it says it changed, from the daemon's start,
 //! since the shell watches them while the launcher's shut: neither is
@@ -68,9 +71,9 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, boot, camera, clock_ms, disk, firmware, heat, heat_rows, kept, light, memory, now_ms,
-    power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree, units, using,
-    written::Written,
+    Root, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, kept, keyboards, light,
+    memory, now_ms, power_rows, processor, rounded, rows, sleep, status, steered, supply,
+    telemetry, tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -99,7 +102,17 @@ const LEEWAY: Duration = Duration::from_millis(50);
 /// The kinds read as their files are written (`heard_loop`), never on
 /// the second.
 const STEERED: [&str; 2] = ["brightness", "warmth"];
-const HEARD: [&str; 3] = ["brightness", "warmth", "camera"];
+const KEYBOARDS: [&str; 2] = ["keyboards", "capslock"];
+const HEARD: [&str; 8] = [
+    "brightness",
+    "warmth",
+    "camera",
+    "keyboards",
+    "capslock",
+    "layer",
+    "counts",
+    "status",
+];
 /// How often a watch on files heard looks to see whether it's still
 /// wanted, once every folder is watched.
 const RESTING: Duration = Duration::from_secs(60);
@@ -206,12 +219,19 @@ struct Reader {
     steered: Option<steered::Files>,
     /// The session's runtime folder, where Keep Awake leaves its files.
     runtime: Option<String>,
+    /// Where a board's watcher says its layer, or none for a session with
+    /// no runtime folder.
+    layer: Option<String>,
+    /// The watchers whose status files are read, and the heartbeat each
+    /// was last heard at.
+    watchers: Vec<status::Watcher>,
+    statuses: status::Kept,
 }
 
 impl Reader {
     /// Reads the kinds of these that are heard as their files are
     /// written (`HEARD`).
-    fn heard(&self, kinds: &HashSet<String>) -> Vec<Value> {
+    fn heard(&mut self, kinds: &HashSet<String>) -> Vec<Value> {
         let wants = |kind: &str| kinds.contains(kind);
         let mut records = Vec::new();
         if let Some(files) = self.steered.as_ref() {
@@ -224,6 +244,26 @@ impl Reader {
         }
         if wants("camera") {
             records.extend(camera::cameras(&self.root));
+        }
+        if wants("keyboards") {
+            records.push(keyboards::connected(&self.root));
+        }
+        if wants("capslock") {
+            records.push(keyboards::capslock(&self.root));
+        }
+        if wants("layer") {
+            records.extend(keyboards::layer(&self.root, self.layer.as_deref()));
+        }
+        if wants("counts") {
+            records.extend(counts::boards(&self.root));
+        }
+        if wants("status") {
+            records.extend(self.statuses.records(
+                &self.root,
+                &self.watchers,
+                Instant::now(),
+                status::since_epoch(),
+            ));
         }
         records
     }
@@ -477,6 +517,7 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || profile_loop(&shared));
     }
+    hear_keyboards_and_watchers(&shared, &root);
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
@@ -507,6 +548,45 @@ fn worded(words: Option<&str>, numbers: Option<&str>) -> Option<Words> {
     let numbers = numbers.and_then(read).unwrap_or(Value::Null);
     let mark = |name: &str| numbers[name].as_str().unwrap_or("").to_owned();
     Some(Words::new(&vocabulary, &mark("group"), &mark("point")))
+}
+
+/// Hears the keyboards' lights, the layer and the key counts, and the
+/// watchers' status, each as its files are written.
+fn hear_keyboards_and_watchers(shared: &Arc<Shared>, root: &Root) {
+    {
+        let shared = Arc::clone(shared);
+        let folders = vec![root.path(keyboards::LIGHTS)];
+        std::thread::spawn(move || heard_loop(&shared, &KEYBOARDS, &folders, keyboards::names));
+    }
+    {
+        let shared = Arc::clone(shared);
+        let folders = vec![root.path(counts::FOLDER)];
+        std::thread::spawn(move || heard_loop(&shared, &["counts"], &folders, counts::names));
+    }
+    if let Some(folder) = keyboards::layer_file()
+        .as_deref()
+        .and_then(|file| std::path::Path::new(file).parent())
+        .map(|folder| root.path(&folder.to_string_lossy()))
+    {
+        let shared = Arc::clone(shared);
+        let folders = vec![folder];
+        std::thread::spawn(move || {
+            heard_loop(&shared, &["layer"], &folders, keyboards::names_the_layer);
+        });
+    }
+    let shared = Arc::clone(shared);
+    let folders = lock(&shared.reader)
+        .watchers
+        .iter()
+        .map(|watcher| root.path(&watcher.folder))
+        .collect::<Vec<_>>();
+    std::thread::spawn(move || {
+        let due = |shared: &Shared| {
+            let reader = lock(&shared.reader);
+            reader.statuses.due(&reader.watchers)
+        };
+        heard_until(&shared, &["status"], &folders, status::names, due);
+    });
 }
 
 /// What every thread shares, holding nothing yet, reading under `root`
@@ -550,6 +630,9 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             runtime: std::env::var("XDG_RUNTIME_DIR")
                 .ok()
                 .filter(|folder| !folder.is_empty()),
+            layer: keyboards::layer_file(),
+            watchers: status::of_session(),
+            statuses: status::Kept::default(),
         }),
         woken: Condvar::new(),
     }
@@ -1039,12 +1122,25 @@ fn light_loop(shared: &Shared, root: &Root) {
 
 /// Hears the files of these kinds in these folders as they're written
 /// while the kinds are watched, and tells what changed at once: the
-/// backlight program's, and the cameras' holders'. They're read at no
+/// backlight program's, the cameras' holders', and the keyboards'
+/// watchers'. They're read at no
 /// other time but a watch's first answer and a get. They're read once more
 /// as the watch on them begins, so one written since the first answer is
 /// said all the same. With the last watch the files are let be, so an
 /// idle machine is woken by none of their writes.
 fn heard_loop(shared: &Shared, kinds: &[&str], folders: &[PathBuf], ours: impl Fn(&str) -> bool) {
+    heard_until(shared, kinds, folders, ours, |_| None);
+}
+
+/// As `heard_loop`, and read again too when `due` says, as a watcher's
+/// status is when its heartbeat is late, though nothing was written.
+fn heard_until(
+    shared: &Shared,
+    kinds: &[&str],
+    folders: &[PathBuf],
+    ours: impl Fn(&str) -> bool,
+    due: impl Fn(&Shared) -> Option<Instant>,
+) {
     let kinds: HashSet<String> = kinds.iter().map(|kind| (*kind).to_owned()).collect();
     let watching = |daemon: &Daemon| watched(daemon).iter().any(|kind| kinds.contains(kind));
     loop {
@@ -1072,8 +1168,13 @@ fn heard_loop(shared: &Shared, kinds: &[&str], folders: &[PathBuf], ours: impl F
             // of them watched, only to see whether the watch has ended,
             // which can wait, since a file heard while nothing watches
             // tells nobody.
-            let heard = written.wait(if written.looking() { EVERY } else { RESTING });
-            if heard.iter().any(|name| name.is_empty() || ours(name)) {
+            let resting = if written.looking() { EVERY } else { RESTING };
+            let wait = due(shared).map_or(resting, |at| {
+                resting.min(at.saturating_duration_since(Instant::now()))
+            });
+            let heard = written.wait(wait);
+            let late = due(shared).is_some_and(|at| at <= Instant::now());
+            if late || heard.iter().any(|name| name.is_empty() || ours(name)) {
                 read(shared, &kinds, &[]);
             }
         }

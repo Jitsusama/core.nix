@@ -1,5 +1,7 @@
 // Drives the launcher's Lag (modules/quickshell/launcher/Waits.qml) through
-// Quickshell itself, over lag-watch's status file as it writes one: while
+// Quickshell itself, over lag-watch's status file as it writes one, which
+// the machine daemon tells the shell over a machine of the check's own
+// (MACHINE_ROOT): while
 // the processor held the desktop up, "lag" says so in lag-watch's words, then
 // offers to show what's using the processor, which goes there from the top,
 // then says how fast the desktop answers in plain words, and how hard heavy
@@ -44,19 +46,34 @@ ShellRoot {
     }
 
     // Writes lag-watch's status as it does, whole, then goes on with what
-    // follows once it's on the disk.
+    // follows once the daemon has told it.
     Process {
         id: writer
+    }
 
-        property var then: null
+    // What follows a write, and the end of the window it waits to be told.
+    property var then: null
+    property real ended: 0
 
-        onExited: Qt.callLater(() => root.run(writer.then))
+    Connections {
+        target: Watchers
+
+        function onLagChanged() {
+            if (root.then !== null && Watchers.lag?.ended === root.ended) {
+                const then = root.then;
+                root.then = null;
+                Qt.callLater(() => root.run(then));
+            }
+        }
     }
 
     function write(window, then) {
-        writer.then = then;
-        writer.command = ["sh", "-c", 'printf %s "$1" > "$2.tmp" && mv "$2.tmp" "$2"', "write",
-            said(window), `${Quickshell.env("XDG_RUNTIME_DIR")}/lag-watch/status.json`];
+        const text = said(window);
+        root.ended = JSON.parse(text).ended;
+        root.then = then;
+        writer.command = ["sh", "-c", 'mkdir -p "${2%/*}" && printf %s "$1" > "$2.tmp"'
+            + ' && mv "$2.tmp" "$2"', "write", text,
+            `${Quickshell.env("MACHINE_ROOT")}/run/user/1000/lag-watch/status.json`];
         writer.running = true;
     }
 
@@ -70,8 +87,9 @@ ShellRoot {
     }
 
     function said(window) {
+        // Each window ends later than the one before, so each is told.
         return JSON.stringify(Object.assign({
-            ended: Date.now() / 1000,
+            ended: Math.max(Date.now() / 1000, root.ended + 1),
             seconds: 10,
             band: "busy",
             niri: { p50_ms: 0.3, p99_ms: 0.4 },

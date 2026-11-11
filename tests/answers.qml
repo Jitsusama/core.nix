@@ -2432,54 +2432,32 @@ QtObject {
             { builtIn: true, said: cameraWords }).facts[0].value,
             "on \u00b7 2 h 5 min since start");
 
-        // The keyboards in the kernel's list of input devices, as the
-        // laptop's and an ErgoDox's read, with the hotkeys and keyd's own
-        // keyboard left out, and the ErgoDox's second keyboard, its keypad's
-        // on the same USB device, listed as the one board it is.
-        const keyboardsListed = [
-            "I: Bus=0011 Vendor=0001 Product=0001 Version=ab83",
-            "N: Name=\"AT Translated Set 2 keyboard\"",
-            "P: Phys=isa0060/serio0/input0",
-            "S: Sysfs=/devices/platform/i8042/serio0/input/input0",
-            "U: Uniq=",
-            "H: Handlers=sysrq kbd event0 leds ",
-            "B: EV=120013",
-            "B: LED=7",
-            "",
-            "I: Bus=0019 Vendor=0000 Product=0006 Version=0000",
-            "N: Name=\"Video Bus\"",
-            "P: Phys=LNXVIDEO/video/input0",
-            "S: Sysfs=/devices/pci0000:00/acpi.video_bus.0/input/input2",
-            "H: Handlers=kbd event1 ",
-            "",
-            "I: Bus=0003 Vendor=3297 Product=4974 Version=0111",
-            "N: Name=\"ZSA Technology Labs ErgoDox EZ\"",
-            "P: Phys=usb-0000:00:14.0-3.4/input0",
-            "S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4/3-3.4:1.0/"
+        // The keyboards connected, the laptop's and an ErgoDox's, as the
+        // machine daemon lists them from the kernel's list of input devices
+        // (modules/machine/src/keyboards.rs, whose tests say which it
+        // leaves out).
+        const keyboardsFound = [{
+            name: "AT Translated Set 2 keyboard",
+            phys: "isa0060/serio0/input0",
+            sysfs: "/devices/platform/i8042/serio0/input/input0",
+            uniq: "",
+            handlers: "sysrq kbd event0 leds ",
+            bus: "0011",
+            vendor: "0001",
+            product: "0001",
+            leds: 7
+        }, {
+            name: "ZSA Technology Labs ErgoDox EZ",
+            phys: "usb-0000:00:14.0-3.4/input0",
+            sysfs: "/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4/3-3.4:1.0/"
                 + "0003:3297:4974.0001/input/input5",
-            "U: Uniq=",
-            "H: Handlers=sysrq kbd leds event4 ",
-            "B: LED=1f",
-            "",
-            "I: Bus=0003 Vendor=3297 Product=4974 Version=0111",
-            "N: Name=\"ZSA Technology Labs ErgoDox EZ Keyboard\"",
-            "P: Phys=usb-0000:00:14.0-3.4/input2",
-            "S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4/3-3.4:1.2/"
-                + "0003:3297:4974.0003/input/input8",
-            "U: Uniq=",
-            "H: Handlers=sysrq kbd leds event7 ",
-            "B: LED=1f",
-            "",
-            "I: Bus=0003 Vendor=0fac Product=0ade Version=0000",
-            "N: Name=\"keyd virtual keyboard\"",
-            "S: Sysfs=/devices/virtual/input/input42",
-            "H: Handlers=sysrq kbd event12 leds rfkill ",
-            "B: LED=1ff",
-            ""
-        ].join("\n");
-        const keyboardsFound = Keyboards.keyboards(keyboardsListed);
-        machine("the keyboards", keyboardsFound.map(device => device.name),
-            ["AT Translated Set 2 keyboard", "ZSA Technology Labs ErgoDox EZ"]);
+            uniq: "",
+            handlers: "sysrq kbd leds event4 ",
+            bus: "0003",
+            vendor: "3297",
+            product: "4974",
+            leds: 31
+        }];
         const [keyboardsLaptop, keyboardsErgodox] = keyboardsFound;
         machine("how each is joined", keyboardsFound.map(device => Keyboards.joined(device)),
             ["built in", "on USB"]);
@@ -2548,22 +2526,24 @@ QtObject {
         machine("a held board's layers", Keyboards.layerChoices(keyboardsLayers, "Numb", false)
             .map(choice => `${choice.layer} ${choice.index}`), ["Punk 1", "Numb 2"]);
 
-        // What key-counts tallied, as its file says it: the board's keys
-        // on two layers, some under modifiers, the two shifts one key, and
-        // the laptop's apart.
-        const counts = "board\tlayer\tmodifiers\tkey\tpresses\tholds\n"
-            + "ergodox\tcoal\t-\te\t9100\t0\n"
-            + "ergodox\tcoal\t-\tspace\t5000\t40\n"
-            + "ergodox\tcoal\tctrl\ta\t900\t0\n"
-            + "ergodox\tnumb\t-\tkp1\t800\t0\n"
-            + "ergodox\tcoal\t-\tleftshift\t2000\t2000\n"
-            + "ergodox\tcoal\t-\trightshift\t1200\t1200\n"
-            + "ergodox\tnumb\tshift\tcode193\t1000\t0\n"
-            + "laptop\tbase\t-\tj\t70\t0\n";
+        // What key-counts tallied of the board, as the machine daemon sums
+        // it (modules/machine/src/counts.rs, whose tests sum it from the
+        // file): its keys on two layers, some under modifiers.
+        const counts = {
+            key: "counts:ergodox", kind: "counts", board: "ergodox",
+            presses: 20000, holds: 3240,
+            most: [{ name: "e", presses: 9100 }, { name: "space", presses: 5000 },
+                { name: "shift", presses: 3200 }, { name: "f23", presses: 1000 },
+                { name: "a", presses: 900 }],
+            layers: [{ name: "coal", presses: 18200 }, { name: "numb", presses: 1800 }],
+            modified: 1900,
+            modifiers: [{ name: "shift", presses: 1000 }, { name: "ctrl", presses: 900 }],
+            began_s: 1793898549
+        };
         // The theme's faces, by the key map's spelling, as Shortcuts.qml
         // gives them (modules/theme/keys.nix).
         const keyFaces = { shift: { text: "\u21e7" }, f23: { text: "Copilot", wide: false } };
-        const tally = KeyCounts.board(counts, "ergodox", keyFaces);
+        const tally = KeyCounts.board(counts, keyFaces);
         machine("a board's presses and holds", [tally.presses, tally.holds], [20000, 3240]);
         machine("the keys pressed most, as a chord draws them", tally.most,
             [{ key: "E", presses: 9100 }, { key: "Space", presses: 5000 },
@@ -2579,10 +2559,10 @@ QtObject {
         ]);
         machine("the keys under their heading", KeyCounts.most(tally, keyNamed).slice(0, 2),
             [{ heading: "[most]" }, { keys: [["E"]], value: "9.1k" }]);
-        machine("a board with nothing counted", [KeyCounts.board(counts, "other", keyFaces),
+        machine("a board with nothing counted", [KeyCounts.board(null, keyFaces),
             KeyCounts.facts(null, keyNamed, ""), KeyCounts.most(null, keyNamed)], [null, [], []]);
         machine("counts short", [870, 9100, 12400].map(KeyCounts.short), ["870", "9.1k", "12k"]);
-        machine("counting began", KeyCounts.since("1793898549\n", keyWords,
+        machine("counting began", KeyCounts.since(counts.began_s, keyWords,
             new Date(2026, 10, 7)), "since 5 Nov");
         machine("counting began in another year", KeyCounts.since("1762362549", keyWords,
             new Date(2026, 10, 7)), "since 5 Nov 2025");

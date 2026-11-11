@@ -6,7 +6,7 @@
 // as the id itself, as "calculator:hex" would, so a typo on either side
 // fails here rather than on screen. The time is told with tzdata's zones
 // kept beside it, a character with Unicode's names, a network with no
-// lookups, and Waits reads what lag-watch would write. Currency names its
+// lookups, and Waits hears what the machine daemon would tell of lag-watch. Currency names its
 // parts by the currencies alone, so it builds no id to check. The time
 // here and the date share no part, since the clock is Time's and the
 // calendar Date's (VKCF3Z's ruling, 2026-10-30: "Nothing repeats"), and

@@ -1827,8 +1827,9 @@ onLinux {
       touch $out
     '';
 
-  # The disk piece reads the guards' status files as tests/disk.qml writes
-  # them, through Quickshell itself, with niri stood in for.
+  # The disk piece hears the guards' status files as tests/disk.qml writes
+  # them, through Quickshell itself and the machine daemon over a machine of
+  # the check's own, with niri stood in for.
   the-disk-piece-reads-the-guards =
     let
       niri = pkgs.writeText "Niri.qml" ''
@@ -1845,24 +1846,30 @@ onLinux {
       # The piece says sizes and folders as a file does, from the shell's
       # folder above its own, so it's laid in pieces/ as the shell has it,
       # where the lint reads the whole shell.
-      mkdir -p runtime shell/launcher shell/pieces && chmod 700 runtime
+      mkdir -p runtime/daemons shell/launcher shell/pieces && chmod 700 runtime
+      mkdir -p root/run/user/1000/disk-guard root/run/disk-guard
       cd shell
+      cp ${./Daemon.qml} Daemon.qml
+      cp ${./Watchers.qml} Watchers.qml
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
       cp ${./Files.qml} Files.qml
       cp ${./pieces/Piece.qml} pieces/Piece.qml
       cp ${./pieces/Disk.qml} pieces/Disk.qml
       cp ${./pieces/Drawers.js} pieces/Drawers.js
-      cp ${./pieces/StatusFile.qml} pieces/StatusFile.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
+      export MACHINE_ROOT=$TMPDIR/root FONTCONFIG_FILE=${noFonts}
+      XDG_RUNTIME_DIR=/run/user/1000 \
+        ${lib.getExe machine} "$TMPDIR/runtime/daemons/machine.sock" "$MACHINE_ROOT" &
+      daemon=$!
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      kill "$daemon"
       touch $out
     '';
 
@@ -1887,11 +1894,14 @@ onLinux {
 
   # The keyboard's backlight is heard when its firmware changes it, over a
   # folder laid out as the kernel's lights are, through Quickshell itself.
+  # Kept in Nix because each line lays a light, copies a file Nix gives it
+  # beside the cases, or sets what Quickshell runs them with.
   the-keyboard-light-is-heard = pkgs.runCommandLocal "the-keyboard-light-is-heard" { } ''
     mkdir -p runtime/leds/test::kbd_backlight runtime/leds/input0::capslock && chmod 700 runtime
     echo 3 > runtime/leds/test::kbd_backlight/max_brightness
     touch runtime/leds/test::kbd_backlight/brightness_hw_changed
     cp ${./Lights.qml} Lights.qml
+    cp ${./Daemon.qml} Daemon.qml
     cp ${../../tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
@@ -2338,12 +2348,15 @@ onLinux {
 
   # The launcher's Lag says what's slowing the desktop in plain words and
   # what to do about it (tests/waits.qml), over lag-watch's status file as
-  # it writes one, the test writing it in turn.
+  # it writes one, the test writing it in turn and the machine daemon
+  # telling it over a machine of the check's own.
   the-launcher-says-why-the-desktop-lags =
     pkgs.runCommandLocal "the-launcher-says-why-the-desktop-lags" { }
       ''
-        mkdir -p launcher runtime/lag-watch && chmod 700 runtime
+        mkdir -p launcher runtime/daemons root/run/user/1000 && chmod 700 runtime
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Daemon.qml} Daemon.qml
+        cp ${./Watchers.qml} Watchers.qml
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./ProgramGlyphs.js} ProgramGlyphs.js
@@ -2354,9 +2367,13 @@ onLinux {
         cp ${./launcher/words.json} launcher/words.json
         cp ${../../tests/waits.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-        export FONTCONFIG_FILE=${noFonts}
+        export MACHINE_ROOT=$PWD/root FONTCONFIG_FILE=${noFonts}
+        XDG_RUNTIME_DIR=/run/user/1000 \
+          ${lib.getExe machine} "$PWD/runtime/daemons/machine.sock" "$MACHINE_ROOT" &
+        daemon=$!
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml
+        kill "$daemon"
         touch $out
       '';
 
@@ -2364,13 +2381,16 @@ onLinux {
   # calculator's bases, the time's, today's, the waits', a hardware
   # address's, a network's and a character's, name every part as the
   # vocabulary does (tests/part-names.qml), with tzdata's zones and
-  # Unicode's names kept and lag-watch's last ten seconds written here.
+  # Unicode's names kept and lag-watch's last ten seconds stood in for, as
+  # the machine daemon would tell them.
   the-launcher-names-the-parts-it-builds =
     pkgs.runCommandLocal "the-launcher-names-the-parts-it-builds" { }
       ''
-        mkdir -p launcher runtime/lag-watch && chmod 700 runtime
-        echo '{"trouble":[],"niri":{"p50_ms":4,"p99_ms":21},"band":"calm","ended":0}' \
-          > runtime/lag-watch/status.json
+        mkdir -p launcher runtime && chmod 700 runtime
+        cp ${singleton "Watchers.qml" ''
+          property var lag: ({ trouble: [], niri: { p50_ms: 4, p99_ms: 21 }, band: "calm",
+            ended: 0 })
+        ''} Watchers.qml
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./ProgramGlyphs.js} ProgramGlyphs.js
@@ -3936,6 +3956,8 @@ onLinux {
   # description of the board, locked on Numb, with niri, the shortcuts and
   # the shell's lights stood in for. Unplugged, as the kernel's list and
   # keyboard-lights' say, the laptop's own layout, keyd's, takes its place.
+  # The machine daemon tells the keyboards and the layer from its files,
+  # under a root of its own.
   the-launcher-finds-the-keyboards-keys =
     let
       firmware = import ../ergodox/firmware.nix pkgs {
@@ -3965,12 +3987,14 @@ onLinux {
           (import ../keyd/layout.nix { inherit lib; }).environment.etc."keyboard/layout.json".text;
     in
     pkgs.runCommandLocal "the-launcher-finds-the-keyboards-keys" { } ''
-      mkdir -p runtime config/ergodox launcher && chmod 700 runtime
-      echo "Numb locked" > runtime/keyboard-layer
-      printf '1\n9\n' > runtime/keyboards
+      mkdir -p runtime/daemons config/ergodox launcher && chmod 700 runtime
+      mkdir -p root/proc/bus/input root/run/keyboard-lights root/run/user/1000
+      echo "Numb locked" > root/run/user/1000/keyboard-layer
+      printf '1\n9\n' > root/run/keyboard-lights/keyboards
       cp ${firmware}/shell.json config/ergodox/layout.json
       cp ${laptop} laptop.json
       cp ${./ConnectedKeyboards.qml} ConnectedKeyboards.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/keyboard.qml} shell.qml
       cp ${./KeyboardLayout.qml} KeyboardLayout.qml
       cp ${./KeyboardLayer.qml} KeyboardLayer.qml
@@ -3991,10 +4015,14 @@ onLinux {
       cp ${shortcuts} Shortcuts.qml
       cp ${lights} Lights.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
-      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export MACHINE_ROOT=$TMPDIR/root LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
+      XDG_RUNTIME_DIR=/run/user/1000 \
+        ${lib.getExe machine} "$TMPDIR/runtime/daemons/machine.sock" "$MACHINE_ROOT" &
+      daemon=$!
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      kill "$daemon"
       touch $out
     '';
 

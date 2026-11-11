@@ -7,10 +7,12 @@
 //! disk's file systems are found through what's mapped over it; the
 //! brightness and warmth the backlight program steers the screen to are
 //! told as it writes them, as are Keep Awake's locks and the machine's
-//! chosen profile; who has each camera is told as its file is; a charge
-//! limit set is told before it's answered; Heat's rows are made for a
-//! watch of their place and told as they move; and an ask, act or kind
-//! it doesn't know is refused.
+//! chosen profile; who has each camera is told as its file is; the
+//! keyboards, caps lock and a board's layer are told as their watchers
+//! write them; a watcher's status is told as it writes it, and silent
+//! once its heartbeat is late; a charge limit set is told before it's
+//! answered; Heat's rows are made for a watch of their place and told as
+//! they move; and an ask, act or kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -821,10 +823,15 @@ fn powers_rows_are_made_for_its_watch_and_move_with_its_limit() {
 fn the_screens_light_and_the_rooms_are_said_as_they_move() {
     let running = Running::new("light");
     let root = running.root();
+    // Each written whole, beside it and then renamed, as sysfs reads
+    // whole: a file truncated and then written could be read empty
+    // between the two, and told as a room with no light.
     let write = |path: &str, text: &str| {
         let file = root.join(path);
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(file, text).unwrap();
+        let writing = file.with_extension("writing");
+        std::fs::write(&writing, text).unwrap();
+        std::fs::rename(writing, file).unwrap();
     };
     write("sys/class/backlight/panel/brightness", "60\n");
     write("sys/class/backlight/panel/max_brightness", "100\n");
@@ -950,6 +957,115 @@ fn keep_awakes_locks_and_the_chosen_profile_are_told_as_theyre_written() {
     // On battery, follow.sh writes its new choice in place.
     std::fs::write(root.join("run/power-profile/wanted"), "balanced\n").unwrap();
     assert_eq!(client.changed("profile:main")["wanted"], "balanced");
+}
+
+#[test]
+fn the_keyboards_caps_lock_and_a_boards_layer_are_told_as_their_watchers_write() {
+    let running = Running::new("keyboards");
+    let root = running.root();
+    let lights = root.join("run/keyboard-lights");
+    let runtime = root.join("run/user/1000");
+    std::fs::create_dir_all(root.join("proc/bus/input")).unwrap();
+    std::fs::create_dir_all(&runtime).unwrap();
+    let board = "I: Bus=0003 Vendor=3297 Product=4975 Version=0111\n\
+        N: Name=\"ZSA Technology Labs ErgoDox EZ\"\n\
+        P: Phys=usb-0000:00:14.0-2/input0\n\
+        S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.0/input/input12\n\
+        U: Uniq=\n\
+        H: Handlers=sysrq kbd leds event12\n\
+        B: LED=1f\n";
+    let mut client = running.client();
+    // Nothing yet from either watcher, as on a machine just booted.
+    let said = client.ask(&json!({
+        "id": "all", "ask": "watch", "kind": ["keyboards", "capslock", "layer"],
+    }));
+    assert_eq!(
+        record(&said["records"], "keyboards:connected")["listed"],
+        json!([])
+    );
+    assert_eq!(record(&said["records"], "capslock:keyboard")["on"], false);
+    // A board plugged in: the kernel lists it, and the watcher's list,
+    // written beside and renamed over, says it holds one more.
+    std::fs::write(root.join("proc/bus/input/devices"), board).unwrap();
+    std::fs::create_dir_all(&lights).unwrap();
+    std::fs::write(lights.join("keyboards.new"), "12\n").unwrap();
+    std::fs::rename(lights.join("keyboards.new"), lights.join("keyboards")).unwrap();
+    let listed = &client.changed("keyboards:connected")["listed"];
+    assert_eq!(listed[0]["vendor"], "3297");
+    // Caps lock, written in place as the watcher writes it.
+    std::fs::write(lights.join("capslock"), "1\n").unwrap();
+    assert_eq!(client.changed("capslock:keyboard")["on"], true);
+    std::fs::write(runtime.join("keyboard-layer"), "Numb locked\n").unwrap();
+    let layer = client.changed("layer:keyboard");
+    assert_eq!(
+        (&layer["name"], &layer["locked"]),
+        (&json!("Numb"), &json!(true))
+    );
+    // Unplugged, the board's watcher says "-", and there's no layer.
+    std::fs::write(runtime.join("keyboard-layer"), "-\n").unwrap();
+    assert_eq!(client.gone(), [json!("layer:keyboard")]);
+}
+
+#[test]
+fn what_key_counts_tallied_is_told_as_it_writes_its_counts_again() {
+    let running = Running::new("counts");
+    let folder = running.root().join("var/lib/key-counts");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "counts"}));
+    assert_eq!(said["records"], json!([]), "nothing counted yet");
+    // Written beside and renamed over, as key-counts writes it.
+    let write = |presses: u32| {
+        std::fs::create_dir_all(&folder).unwrap();
+        let text = format!(
+            "board\tlayer\tmodifiers\tkey\tpresses\tholds\n\
+             ergodox\tcoal\t-\te\t{presses}\t0\n"
+        );
+        std::fs::write(folder.join("counts.new"), text).unwrap();
+        std::fs::rename(folder.join("counts.new"), folder.join("counts.tsv")).unwrap();
+    };
+    write(12);
+    assert_eq!(client.changed("counts:ergodox")["presses"], 12);
+    write(13);
+    assert_eq!(client.changed("counts:ergodox")["presses"], 13);
+}
+
+#[test]
+fn a_watchers_status_is_told_as_it_writes_it_and_said_silent_once_its_heartbeat_is_late() {
+    let running = Running::new("status");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "status"}));
+    assert_eq!(said["records"], json!([]), "no watcher has written yet");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    // Written beside and renamed into place, as every watcher writes it.
+    let write = |folder: &str, text: String| {
+        let folder = running.root().join(folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join(".writing"), text).unwrap();
+        std::fs::rename(folder.join(".writing"), folder.join("status.json")).unwrap();
+    };
+    write(
+        "run/disk-guard",
+        format!(r#"{{"heartbeat": {now}, "at": {now}, "filesystems": []}}"#),
+    );
+    let guard = client.changed("status:disk-guard-machine");
+    assert_eq!(
+        guard["said"],
+        json!({"filesystems": []}),
+        "told without its beats"
+    );
+    assert_eq!(guard["silent"], false);
+    // A window that ended two seconds short of lag-watch's thirty, and
+    // nothing after it, so only its deadline can say it silent.
+    let ended = now - 28.0;
+    write(
+        "run/user/1000/lag-watch",
+        format!(r#"{{"ended": {ended}, "trouble": []}}"#),
+    );
+    assert_eq!(client.changed("status:lag-watch")["silent"], false);
+    assert_eq!(client.changed("status:lag-watch")["silent"], true);
 }
 
 #[test]

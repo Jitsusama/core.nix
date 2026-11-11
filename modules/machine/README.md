@@ -198,13 +198,33 @@ units, or named here as left out with the reason.
 | `profile:main`  | the profile power-profiles-daemon is on, those it offers | Session's Power Profile, judging a pick |
 |                 | each program's hold, why performance is slowed | nothing yet; the profile's drawer next  |
 |                 | what the machine chose, follow.sh's `wanted` | Now's Power Profile, set by hand or not   |
+| `keyboards:connected` | each keyboard the kernel lists, as it says it | Keyboards, the layout's map, Layer |
+| `capslock:keyboard` | whether caps lock is on                  | the margin's caps lock, a prompt's warning |
+| `layer:keyboard` | the board's layer, whether it's locked there | Layer, Keyboard's layers, the map        |
+| `counts:<board>` | its presses and holds, the keys pressed most, each layer's and modifiers' presses, when counting began | a keyboard's drawer |
+| `status:<watcher>` | what its status file says, but its heartbeat; whether it's gone silent | the margin's Lag and Disk, Waits |
 
 `brightness` and `warmth` are the backlight program's (modules/backlight),
 which writes them whole in its files, and `camera` is each camera's file
 in /run/camera-holders, which modules/v4l2loopback and
-modules/usb-camera-holders write whole. All three are heard as they're
-written while watched, through inotify, and read at no other time. Keep Awake's
-locks are the files its services leave in the runtime folder
+modules/usb-camera-holders write whole. `keyboards` and `capslock` are
+the keyboard-lights watcher's (modules/quickshell/nixos.nix), the kernel's
+list of input devices read again each time the watcher's list of the
+keyboards it holds changes, since the kernel's file can't be watched; and
+`layer` is the ErgoDox's watcher's (modules/ergodox), in the session's
+runtime folder. `counts` is key-counts' file (modules/key-counts), written
+beside and renamed over a minute after a key is pressed, summed for each
+board here so the shell sums nothing. `status` is the status file each
+watcher writes whole and renames into place: lag-watch's
+(`status:lag-watch`) and each disk guard's, the account's
+(`status:disk-guard`) and the machine's (`status:disk-guard-machine`).
+Its heartbeat is left out, so a write saying only that it's still
+running tells nobody anything, and a watcher is said silent once no
+heartbeat has come for its silence (30 seconds for lag-watch, 120 for a
+guard), counted on the clock a suspend stops. All of them are heard as
+they're written while watched, through inotify, and read at no other
+time, but for a status read again once its watcher's silence runs out.
+Keep Awake's locks are the files its services leave in the runtime folder
 (modules/quickshell/home.nix), and the machine's choice is follow.sh's
 file in `/run/power-profile` (modules/power-profiles-daemon): both are
 heard through inotify from the daemon's start, and power-profiles-daemon
