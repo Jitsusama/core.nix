@@ -9452,6 +9452,9 @@ Scope {
                         words: root.holdsWords || !!root.asking
                         editsWords: root.holdsWords && root.selected?.names === true
                         awake: root.open
+                        // Shut, it takes no key niri sent before it heard
+                        // the launcher let them go (Prompt's taking).
+                        taking: root.cardUp
                         fade: Options.caret.fade
                         stopsAfter: Options.caret.stopsAfter
                         wait: Options.keyTiming.wait

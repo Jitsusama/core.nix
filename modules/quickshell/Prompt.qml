@@ -222,6 +222,18 @@ Item {
     property int wait: 300
     // Whether the caret blinks: while the line is on screen and modal.
     property bool awake: true
+    // Whether it takes keys at all: one it doesn't is dropped, every key
+    // alike. A key niri sent just before it heard the launcher let the
+    // keys go reached the line as it shut, and a second Return 200 ms
+    // after :q's stepped into home's first row where Joel couldn't see it
+    // (ZINAWZ, 2026-11-11: "→ Now" took 643 ms to its frame, unseen).
+    property bool taking: true
+    function dropped(event) {
+        if (taking)
+            return false;
+        event.accepted = true;
+        return true;
+    }
     // Says how far an aside may run, so a long one never crowds what's typed
     // or where Joel is: the path's steps and room to type come first, and
     // the aside has all they leave. With the aside first, a step into a
@@ -1298,14 +1310,18 @@ Item {
         // to its table here, or Escape would close the launcher from
         // insert, where it only leaves for normal, and Tab would complete
         // rather than move.
-        Keys.onReturnPressed: event => prompt.modal ? prompt.tabled(event)
-            : prompt.returned(event)
-        Keys.onEnterPressed: event => prompt.modal ? prompt.tabled(event)
-            : prompt.returned(event)
-        Keys.onTabPressed: event => prompt.modal ? prompt.tabled(event) : prompt.completed()
-        Keys.onEscapePressed: event => prompt.modal ? prompt.tabled(event) : prompt.cancelled()
+        Keys.onReturnPressed: event => prompt.dropped(event) ? undefined
+            : prompt.modal ? prompt.tabled(event) : prompt.returned(event)
+        Keys.onEnterPressed: event => prompt.dropped(event) ? undefined
+            : prompt.modal ? prompt.tabled(event) : prompt.returned(event)
+        Keys.onTabPressed: event => prompt.dropped(event) ? undefined
+            : prompt.modal ? prompt.tabled(event) : prompt.completed()
+        Keys.onEscapePressed: event => prompt.dropped(event) ? undefined
+            : prompt.modal ? prompt.tabled(event) : prompt.cancelled()
         onCursorPositionChanged: prompt.rest()
         Keys.onPressed: event => {
+            if (prompt.dropped(event))
+                return;
             // A key whose release comes late, past the repeat delay, while
             // the shell is busy, repeats as if held
             // (modules/keyboard/repeat.nix). No field here wants a

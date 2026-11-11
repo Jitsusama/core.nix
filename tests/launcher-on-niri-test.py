@@ -2495,6 +2495,37 @@ def test_a_daemons_change_niri_holds_back_is_presented_late(
     )
 
 
+# How soon after :q's Return a second one is sent, before niri hears the launcher let the keys
+# go: 50 and 150 ms both reached the shut launcher on a builder, Joel's 200 ms on his laptop.
+LATE_RETURN_S = 0.05
+
+# How long the late Return is given to land, which it does within a frame of being sent.
+LATE_LANDS_S = 0.5
+
+
+def test_a_return_sent_as_it_shuts_takes_no_step(shell: Shell) -> None:
+    """A Return niri sends just after :q's, as the launcher shuts, takes no step, unseen.
+
+    Shut from Network, a second Return stepped into home's first row, Now, while nothing showed
+    it, and was timed to whatever frame came next: "\u2192 Now" took 643 ms to its frame
+    (Joel's journal, 2026-11-11 09:38:51).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("network", selecting="network")
+    shell.step_in()
+    shell.normal()
+    shell.send_chars(":q")
+    since = shell.mark()
+    shell.as_account(f"wtype -k Return; sleep {LATE_RETURN_S}; wtype -k Return")
+    shell.launcher_closed()
+    # Nothing says a key was dropped, so the late one is given its time to land.
+    time.sleep(LATE_LANDS_S)
+    said = shell.log.read_bytes()[since:].decode(errors="replace")
+    stepped = [line for line in said.splitlines() if '"\u2192 ' in line]
+    assert stepped == [], f"the shut launcher took a step: {stepped}"
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()
