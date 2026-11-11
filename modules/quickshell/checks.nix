@@ -271,6 +271,8 @@ let
           "PYTHONPATH=${checked}"
           # Machine's answers come from its daemon, as the account's do.
           "MACHINE=${lib.getExe machine}"
+          # And the words it says Machine's rows in, as the account's has.
+          "MACHINE_WORDS=${./launcher/words.json}"
           # The windows come from theirs, hearing the nested niri.
           "WINDOWS=${lib.getExe windows}"
         ]
