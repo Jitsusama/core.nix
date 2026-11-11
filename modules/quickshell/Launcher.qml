@@ -8539,9 +8539,13 @@ Scope {
             }
 
             // A click before an opening's first frame is drawn fills it in
-            // first, then reaches the row beneath as it would have.
+            // first, then reaches the row beneath as it would have. It fills
+            // the bands, not the card's content: the content is as tall as
+            // what it holds, this included, so filling that held the card at
+            // its tallest, and a card kept on a screen that then shrank ran
+            // off its foot (vm-desktop-says-what-happens, 2026-11-10).
             MouseArea {
-                anchors.fill: parent
+                anchors.fill: cardBands
                 z: 1
                 enabled: root.opening
                 onPressed: mouse => {
@@ -8564,6 +8568,8 @@ Scope {
             // From the frame's inside edge to its other, since every band
             // reaches it, each standing its ink on the card's columns.
             Column {
+                id: cardBands
+
                 x: -card.inset
                 width: card.contentWidth + 2 * card.inset
 
