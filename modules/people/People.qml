@@ -353,6 +353,15 @@ Provider {
             return listedRows.rows;
         keepingBegun(keptListed);
         const rows = listed.map(person => {
+            // One the daemon listed comes with their row ready, kept while
+            // their record is the one it last told, which it tells anew
+            // only when they changed: so nothing about them is written out
+            // again to find it the same, and nothing of the row is worded
+            // here.
+            const record = person.stood ? lister.held[`person:${person.key}`] : null;
+            if (record?.row)
+                return keptOr(keptListed, person.key, record,
+                    () => made(person, person.stood, factsOf(person), record.row));
             const stood = person.stood ?? standOf(person);
             return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
                 () => made(person, stood, person.stood ? factsOf(person) : null));
@@ -385,16 +394,18 @@ Provider {
     // A person's row: their name, how they stand, their first address,
     // and Return the first way a source reaches them, asked as it's used,
     // so a row made for a search costs no source anything until then.
-    function made(person, stood, facts) {
+    // One the daemon listed is drawn as its ready row says (`ready`).
+    function made(person, stood, facts, ready) {
         const row = member({
-            key: `person:${person.key}`,
+            key: ready?.key ?? `person:${person.key}`,
             component: "person",
-            name: person.name,
+            name: ready?.name ?? person.name,
             person: person,
-            glyph: stood.favourite ? Theme.glyph.favourite : Theme.glyph.person,
-            hue: "person",
-            side: stood.said,
-            note: person.name === person.email ? "" : person.email,
+            glyph: ready ? Theme.glyph[ready.glyph]
+                : stood.favourite ? Theme.glyph.favourite : Theme.glyph.person,
+            hue: ready?.hue ?? "person",
+            side: ready?.side ?? stood.said,
+            note: ready?.note ?? (person.name === person.email ? "" : person.email),
             nested: true,
             later: true,
             verb: "more",
