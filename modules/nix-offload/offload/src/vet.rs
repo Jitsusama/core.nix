@@ -98,9 +98,13 @@ pub fn vetted(described: &Value, pinned: &Pinned) -> Result<String, String> {
         .ok_or_else(|| "says nothing of when it started".to_owned())
 }
 
-/// How long after its making an instance may first start: its first boot
-/// came six seconds after its insert on 10 November.
-const BOOTS_WITHIN: i64 = 120;
+/// How long after its making an instance may first start. Its first start
+/// is the end of the insert that makes it, which took six seconds on 10
+/// November and 2 minutes 26 seconds twice on 11 November, when root
+/// refused both builders for it. Ten minutes, as long as `lines` waits to
+/// read the audit log again, costs nothing: a stop and start, or a reset,
+/// within it still shows in the log, read at first trust and at the reread.
+const BOOTS_WITHIN: i64 = 600;
 
 /// Whether the instance `described` last started at its first boot, soon
 /// after it was made; why not otherwise. Asked at first trust, it catches
@@ -501,6 +505,14 @@ mod tests {
             )),
             Ok(()),
             "a first boot was refused"
+        );
+        assert_eq!(
+            started_once(&made(
+                "2026-11-11T08:08:34.249-08:00",
+                "2026-11-11T08:10:59.391-08:00"
+            )),
+            Ok(()),
+            "a first boot at the end of a slow insert was refused"
         );
         for (was, is) in [
             (
