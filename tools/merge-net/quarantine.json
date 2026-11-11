@@ -82,5 +82,12 @@
     "owner_pr": 3245,
     "reason": "failed, then passed, at a8f3aaed8fa7",
     "test": "the-desktop-reads-the-spend-watch"
+  },
+  {
+    "at": 1794429423,
+    "commit": "63b99b2e5874987ad6c126c75708b984795976e0",
+    "owner_pr": 3349,
+    "reason": "failed, then passed, at 63b99b2e5874",
+    "test": "vm-desktop-looks"
   }
 ]
