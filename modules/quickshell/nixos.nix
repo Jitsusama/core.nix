@@ -10,7 +10,9 @@
 # take Joel to the conversation or tab it was about. The patch
 # (activation-token.patch says how) asks the compositor for one tied to the
 # click or key that chose the action, and sends it first, as version 1.2 of
-# the notifications specification has it. A FileView told not to print
+# the notifications specification has it. It lets the shell's QML ask for
+# one too, to hand a notices server of its own that has no window to ask
+# with. A FileView told not to print
 # errors still warned of a file that opened and then refused to be read,
 # as sysfs files do, so fileview-quiet.patch keeps it to its word. A
 # FileView watching a file lost it for good once the file's directory went

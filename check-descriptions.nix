@@ -2943,6 +2943,10 @@
   the-desktop-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks
   '';
+  the-shell-is-given-a-token-on-niri = ''
+    the shell's QML asks niri for an activation token through Quickshell.activationToken and is
+    given one rather than nothing
+  '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
