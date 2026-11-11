@@ -16,7 +16,7 @@ use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
 use crate::drive::{Document, Is};
-use crate::rows::fill;
+use crate::rows::{fill, opens};
 
 /// What a drawer's eyebrow joins its parts with, as every run of figures
 /// is joined (docs/design.md).
@@ -269,7 +269,7 @@ fn row(document: &Document, place: &str, words: &Words) -> Value {
         "side": side,
         "drawer": format!("drawer:{place}:{}", document.id),
         "acts": [
-            {"key": kind.open, "open": document.link},
+            opens(kind.open, &document.link),
             {"key": kind.link, "copy": document.link},
         ],
         "held": {"link": document.link, "viewed": document.viewed, "mime": document.mime},
@@ -310,8 +310,18 @@ fn drawer(document: &Document, title: &str, drives: &[Document], words: &Words) 
     let mut eyebrow: Vec<String> = vec![place(document, drives, words)];
     eyebrow.extend(kind_of(document, words));
     eyebrow.retain(|part| !part.is_empty());
+    // Its parts too, so the drawer gives way by whole parts, where it is
+    // the last to go; and set as written, since a drive or a folder is a
+    // name from the world, never re-cased (VKCF3Z, 2026-11-06).
+    let items: Vec<Value> = eyebrow
+        .iter()
+        .enumerate()
+        .map(|(at, said)| json!({"said": said, "keep": eyebrow.len() - at}))
+        .collect();
     json!({
         "eyebrow": eyebrow.join(BETWEEN),
+        "eyebrowItems": items,
+        "eyebrowNames": true,
         "title": title,
         "facts": facts,
         "body": document.about.clone().unwrap_or_default(),

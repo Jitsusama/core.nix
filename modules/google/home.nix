@@ -132,6 +132,16 @@ in
       google-mail =
         program "Mail" "Mail in the Google account" "https://mail.google.com/"
         // making "Write a Mail" "https://mail.google.com/mail/u/0/?view=cm&fs=1";
+      # What every link the google daemon serves opens through, the act's
+      # `in` (src/rows.rs), so the launcher opens a document, a mail or a
+      # call in Google's window, and offers none while this is gone.
+      # Hidden, since it's no program of its own to start.
+      google-opens = {
+        name = "Google";
+        comment = "Opens a Google page in its own window";
+        exec = "${lib.getExe opens} %u";
+        noDisplay = true;
+      };
     }
     // lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
       # Each makes a new one through its own create page, which docs.new

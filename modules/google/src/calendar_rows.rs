@@ -25,7 +25,7 @@ use crate::calendar::{Answer, Guest, Meeting, Person};
 pub use crate::calendar_words::Words;
 use crate::calendar_words::{COMMA, month, repeated, weekday};
 use crate::compose;
-use crate::rows::fill;
+use crate::rows::{fill, opens};
 
 /// How soon before its start Return on a meeting joins its call rather
 /// than showing it: ten minutes (Calendar.js's `TAKES_OVER`).
@@ -279,12 +279,12 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
     let id = &meeting.id;
     let mut acts = Vec::new();
     if let Some(link) = &meeting.link {
-        acts.push(json!({"key": "verb:calendar:join", "open": link}));
+        acts.push(opens("verb:calendar:join", link));
     }
     let emails = guest_emails(meeting);
     let writing = compose::writing(&emails, &meeting.title, &[]);
     if !writing.is_empty() {
-        acts.push(json!({"key": "verb:calendar:write", "open": writing}));
+        acts.push(opens("verb:calendar:write", &writing));
     }
     acts.push(json!({"key": "verb:calendar:see", "step": "see"}));
     // Only a call is written down, and call-transcripts says whether it was.
