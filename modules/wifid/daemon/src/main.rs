@@ -33,6 +33,7 @@ mod lookup;
 mod network;
 mod nl80211;
 mod page;
+mod parts;
 mod radio;
 mod rfkill;
 mod rows;
@@ -393,7 +394,7 @@ async fn follow(
 /// it answers nobody.
 async fn answer(wifi: Wifi) -> Result<(), Box<dyn Error>> {
     let service::Handed { varlink, rows } = service::handed()?;
-    let face = Face::new(wifi.state.clone(), wifi.asks.clone());
+    let face = Face::new(wifi.state.clone(), wifi.asks.clone(), wifi.watching.clone());
     let rows = async move {
         let Some(listener) = rows else {
             eprintln!("<4>systemd passed no rows socket, so the launcher draws no Wi-Fi");

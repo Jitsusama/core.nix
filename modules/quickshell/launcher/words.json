@@ -10857,6 +10857,33 @@
       }
     },
     {
+      "id": "wifi:figures",
+      "in": "wifi",
+      "said": {
+        "dbm": "{n} dBm",
+        "db": "{n} dB",
+        "mbps": "{n} Mb/s",
+        "mhz": "{n} MHz",
+        "ms": "{n} ms",
+        "s": "{n} s",
+        "us": "{n} \u00b5s",
+        "tu": "{n} TU",
+        "percent": "{n}%",
+        "wifi": "Wi-Fi {n}",
+        "mcs": "MCS {n}",
+        "in": "{said} in",
+        "out": "{said} out",
+        "on": "on",
+        "off": "off",
+        "short": "short",
+        "long": "long",
+        "unread": "not read yet",
+        "ghz2": "2.4 GHz",
+        "ghz5": "5 GHz",
+        "ghz6": "6 GHz"
+      }
+    },
+    {
       "id": "wifi:card",
       "in": "wifi",
       "name": "Card {n}"
@@ -10865,7 +10892,10 @@
       "id": "wifi:signal",
       "in": "wifi",
       "name": "Signal",
-      "term": "Network/signal"
+      "term": "Network/signal",
+      "said": {
+        "shown": "while it's shown"
+      }
     },
     {
       "id": "wifi:antenna",
@@ -10880,33 +10910,54 @@
     {
       "id": "wifi:beacons",
       "in": "wifi:signal",
-      "name": "Access Point's Beacons"
+      "name": "Access Point's Beacons",
+      "said": {
+        "note": "how loud the access point says it is, on average"
+      }
     },
     {
       "id": "wifi:interval",
       "in": "wifi:signal",
-      "name": "Beacon Interval"
+      "name": "Beacon Interval",
+      "said": {
+        "note": "{n} time units of 1.024 ms"
+      }
     },
     {
       "id": "wifi:dtim",
       "in": "wifi:signal",
-      "name": "DTIM Period"
+      "name": "DTIM Period",
+      "said": {
+        "every": "every beacon",
+        "one": "one beacon in {n}",
+        "note": "says what's held for a card asleep, every {ms} ms",
+        "asleep": "says what's held for a card asleep"
+      }
     },
     {
       "id": "wifi:margin",
       "in": "wifi:signal",
-      "name": "Over the Noise"
+      "name": "Over the Noise",
+      "said": {
+        "noise": "the noise at {n} dBm"
+      }
     },
     {
       "id": "wifi:power",
       "in": "wifi:signal",
-      "name": "Transmit Power"
+      "name": "Transmit Power",
+      "said": {
+        "note": "what this card sends at"
+      }
     },
     {
       "id": "wifi:speed",
       "in": "wifi",
       "name": "Speed",
-      "term": "Network/speed"
+      "term": "Network/speed",
+      "said": {
+        "expected": "{n} Mb/s expected"
+      }
     },
     {
       "id": "wifi:in",
@@ -10923,33 +10974,57 @@
     {
       "id": "wifi:expected",
       "in": "wifi:speed",
-      "name": "Expected"
+      "name": "Expected",
+      "said": {
+        "note": "what the card expects to get through, after the air's own overhead"
+      }
     },
     {
       "id": "wifi:generation",
       "in": "wifi:speed",
-      "name": "Generation"
+      "name": "Generation",
+      "said": {
+        "4": "802.11n, high throughput",
+        "5": "802.11ac, very high throughput",
+        "6": "802.11ax, high efficiency",
+        "7": "802.11be, extremely high throughput",
+        "older": "older",
+        "stream": "{n} stream",
+        "streams": "{n} streams"
+      }
     },
     {
       "id": "wifi:coding",
       "in": "wifi:speed",
-      "name": "Coding"
+      "name": "Coding",
+      "said": {
+        "note": "how densely it packs each signal; higher is faster"
+      }
     },
     {
       "id": "wifi:streams",
       "in": "wifi:speed",
       "name": "Streams",
-      "term": "Network/stream"
+      "term": "Network/stream",
+      "said": {
+        "note": "carried side by side, each on antennas of its own"
+      }
     },
     {
       "id": "wifi:guard",
       "in": "wifi:speed",
-      "name": "Guard Interval"
+      "name": "Guard Interval",
+      "said": {
+        "note": "the pause between symbols; shorter is faster, longer rides out echoes"
+      }
     },
     {
       "id": "wifi:dcm",
       "in": "wifi:speed",
-      "name": "DCM"
+      "name": "DCM",
+      "said": {
+        "note": "each symbol sent twice, apart, at half the rate, to ride out a weak signal"
+      }
     },
     {
       "id": "wifi:width",
@@ -10965,28 +11040,47 @@
     {
       "id": "wifi:preamble",
       "in": "wifi:speed",
-      "name": "Preamble"
+      "name": "Preamble",
+      "said": {
+        "note": "the header each frame opens with at the oldest rates; short is quicker"
+      }
     },
     {
       "id": "wifi:slot",
       "in": "wifi:speed",
-      "name": "Slot Time"
+      "name": "Slot Time",
+      "said": {
+        "note": "how long a card waits between tries for the air; short is quicker"
+      }
     },
     {
       "id": "wifi:wmm",
       "in": "wifi:speed",
-      "name": "WMM"
+      "name": "WMM",
+      "said": {
+        "note": "calls and video sent ahead of downloads and backups"
+      }
     },
     {
       "id": "wifi:retries",
       "in": "wifi:speed",
-      "name": "Retries"
+      "name": "Retries",
+      "said": {
+        "none": "none",
+        "some": "{retries} sent again \u00b7 {failed} never sent",
+        "note": "since it connected"
+      }
     },
     {
       "id": "wifi:carried",
       "in": "wifi",
       "name": "Traffic",
-      "term": "Network/traffic"
+      "term": "Network/traffic",
+      "said": {
+        "note": "since it connected",
+        "packet": "{count} packet",
+        "packets": "{count} packets"
+      }
     },
     {
       "id": "wifi:received",
@@ -11003,32 +11097,56 @@
     {
       "id": "wifi:idle",
       "in": "wifi:carried",
-      "name": "Idle For"
+      "name": "Idle For",
+      "said": {
+        "note": "since a frame last came or went"
+      }
     },
     {
       "id": "wifi:retried",
       "in": "wifi:retries",
-      "name": "Sent Again"
+      "name": "Sent Again",
+      "said": {
+        "note": "frames the access point didn't answer at first"
+      }
     },
     {
       "id": "wifi:failed",
       "in": "wifi:retries",
-      "name": "Never Sent"
+      "name": "Never Sent",
+      "said": {
+        "note": "frames given up on"
+      }
     },
     {
       "id": "wifi:missed",
       "in": "wifi:retries",
-      "name": "Beacons Missed"
+      "name": "Beacons Missed",
+      "said": {
+        "note": "the access point's beacons not heard"
+      }
     },
     {
       "id": "wifi:dropped",
       "in": "wifi:retries",
-      "name": "Dropped Coming In"
+      "name": "Dropped Coming In",
+      "said": {
+        "note": "frames that came in and were thrown away"
+      }
     },
     {
       "id": "wifi:protection",
       "in": "wifi",
-      "name": "Protection"
+      "name": "Protection",
+      "said": {
+        "none": "none",
+        "open": "anyone near can read what it sends",
+        "guarded": "{who}, {strength}",
+        "strong": "strong",
+        "good": "good",
+        "broken": "broken",
+        "weak": "weak"
+      }
     },
     {
       "id": "wifi:standard",
@@ -11038,22 +11156,40 @@
     {
       "id": "wifi:proof",
       "in": "wifi:protection",
-      "name": "Connected By"
+      "name": "Connected By",
+      "said": {
+        "note": "how a card proves it may connect",
+        "or": "or"
+      }
     },
     {
       "id": "wifi:cipher",
       "in": "wifi:protection",
-      "name": "Encryption"
+      "name": "Encryption",
+      "said": {
+        "note": "what a card's own traffic is sent with"
+      }
     },
     {
       "id": "wifi:group",
       "in": "wifi:protection",
-      "name": "Encryption to All"
+      "name": "Encryption to All",
+      "said": {
+        "note": "what's sent to every card at once is sent with"
+      }
     },
     {
       "id": "wifi:frames",
       "in": "wifi:protection",
-      "name": "Management Frames"
+      "name": "Management Frames",
+      "said": {
+        "off": "unprotected",
+        "optional": "protected if the card can",
+        "required": "always protected",
+        "mine": "this card's are protected",
+        "notMine": "this card's aren't",
+        "note": "which stops anyone taking a card off it"
+      }
     },
     {
       "id": "wifi:connected",
@@ -11063,33 +11199,59 @@
     {
       "id": "wifi:heard",
       "in": "wifi",
-      "name": "Access Points"
+      "name": "Access Points",
+      "said": {
+        "each": "{n} on {band}",
+        "bands": "{bands} GHz",
+        "ghz2": "2.4",
+        "ghz5": "5",
+        "ghz6": "6"
+      }
     },
     {
       "id": "wifi:point",
       "in": "wifi:heard",
-      "name": "{band}, Channel {channel}"
+      "name": "{band}, Channel {channel}",
+      "said": {
+        "side": "{signal} dBm \u00b7 ~{estimate} Mb/s",
+        "connected": "connected",
+        "fastest": "fastest"
+      }
     },
     {
       "id": "wifi:estimate",
       "in": "wifi:point",
       "name": "Speed",
-      "term": "Network/speed"
+      "term": "Network/speed",
+      "said": {
+        "side": "about {n} Mb/s",
+        "note": "how fast a card would get on with it"
+      }
     },
     {
       "id": "wifi:busy",
       "in": "wifi:point",
-      "name": "Busy"
+      "name": "Busy",
+      "said": {
+        "note": "of the time, as it says"
+      }
     },
     {
       "id": "wifi:stations",
       "in": "wifi:point",
-      "name": "On It"
+      "name": "On It",
+      "said": {
+        "note": "cards it says are on it"
+      }
     },
     {
       "id": "wifi:heard-ago",
       "in": "wifi:point",
-      "name": "Last Heard"
+      "name": "Last Heard",
+      "said": {
+        "now": "just now",
+        "ago": "{n} s ago"
+      }
     },
     {
       "id": "wifi:fastest",

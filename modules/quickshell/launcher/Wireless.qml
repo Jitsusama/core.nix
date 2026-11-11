@@ -128,7 +128,11 @@ Provider {
 
         socket: "/run/wifid/rows"
         kind: "row"
-        watching: ({ place: "wifi", words: provider.settings.words ?? "" })
+        watching: ({
+                place: "wifi",
+                words: provider.settings.words ?? "",
+                numbers: provider.settings.numbers ?? ""
+            })
         answersWhole: true
         onHeard: (changed, gone) => provider.take(changed, gone)
     }

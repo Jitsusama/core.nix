@@ -24,7 +24,8 @@ pub enum Form {
     /// shell's own calendar, as the day an ended quest was last touched.
     Day,
     /// How long it's lasted since, the largest two of days, hours and
-    /// minutes, "3 d 2 h", as the machine's uptime.
+    /// minutes, "3 d 2 h", as the machine's uptime or how long a Wi-Fi
+    /// card's been connected.
     Lasted,
 }
 
@@ -46,6 +47,12 @@ impl Form {
 /// A time to be said in a form, at milliseconds since 1970.
 pub fn at(ms: i64, form: Form) -> Value {
     json!({ "at": ms, "as": form.name() })
+}
+
+/// A time worded into words of its own, where they hold `{time}`, as a
+/// note's "since {time}" is: the time said once, never beside itself.
+pub fn said(ms: i64, form: Form, words: &str) -> Value {
+    json!({ "at": ms, "as": form.name(), "said": words })
 }
 
 /// A meeting's time, said as "now", "in 12 min" or "yesterday 15:00",
@@ -73,6 +80,11 @@ mod tests {
         assert_eq!(
             forms,
             ["came", "opened", "moment", "dated", "ago", "day", "lasted"]
+        );
+        assert_eq!(
+            said(5, Form::Moment, "since {time}"),
+            json!({ "at": 5, "as": "moment", "said": "since {time}" }),
+            "a time in words of its own carries them"
         );
         assert_eq!(
             at(5, Form::Came),

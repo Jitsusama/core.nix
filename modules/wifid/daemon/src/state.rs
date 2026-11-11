@@ -16,6 +16,9 @@ use crate::link::Link;
 use crate::network::Security as Kind;
 use crate::store;
 
+/// How many of a card's signal reads are kept, as many as a spark draws.
+const SEEN: usize = 20;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct State {
     /// By link index, which stays the same while the card is there.
@@ -38,6 +41,10 @@ pub struct State {
     /// What each card's driver last read of its link, by the card's name,
     /// while the shell asks for a network in detail.
     polled: BTreeMap<String, Polled>,
+    /// The signal each card's driver read at each of those polls, in dBm,
+    /// the newest last, as many as a spark draws: so the signal's graph
+    /// holds only what was read while someone looked.
+    seen: BTreeMap<String, Vec<i32>>,
     /// The access point each card is joined to, by the card's name, as a
     /// path in wpa_supplicant.
     at: BTreeMap<String, String>,
@@ -365,10 +372,23 @@ impl State {
     /// Takes in what a card's driver read of its link, or that nobody asks
     /// any more.
     pub fn polled(&mut self, card: &str, polled: Option<Polled>) {
-        match polled {
-            Some(polled) => self.polled.insert(card.into(), polled),
-            None => self.polled.remove(card),
+        let Some(polled) = polled else {
+            self.polled.remove(card);
+            self.seen.remove(card);
+            return;
         };
+        if let Some(signal) = polled.signal {
+            let seen = self.seen.entry(card.into()).or_default();
+            seen.push(signal);
+            let over = seen.len().saturating_sub(SEEN);
+            seen.drain(..over);
+        }
+        self.polled.insert(card.into(), polled);
+    }
+
+    /// The signal each card's read since someone looked, newest last.
+    pub fn seen(&self) -> &BTreeMap<String, Vec<i32>> {
+        &self.seen
     }
 
     /// Takes in the access point a card is joined to, or that it's joined
@@ -383,6 +403,7 @@ impl State {
     /// Lets go of every card's reading, as nobody asks any more.
     pub fn unpolled(&mut self) {
         self.polled.clear();
+        self.seen.clear();
     }
 
     /// The cards on a network, by name, which are those worth polling.

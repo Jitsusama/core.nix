@@ -267,6 +267,10 @@ STRAY_UNITS = [
     (re.compile(r"(\d|\}) a second\b"), "a rate is written in Hz"),
 ]
 
+# Names cased as their own, which open a side word as they're written:
+# a network's generation reads "Wi-Fi 6".
+PROPER = {"Wi-Fi"}
+
 # A verb of two words is a turn, which says the way it goes, or one whose
 # second word is part of it ("log out", "go to"), as the launcher's foot
 # keeps it whole (Launcher.qml's `phrasal`).
@@ -305,9 +309,11 @@ def unsaid(vocabulary: Entry) -> list[str]:
         if key == "name" and text[:1].isdigit():
             out.append(f"{thing}'s name {text!r} reads its value first.")
         # An initialism keeps its capitals ("LE Audio", "USB"), its own too
-        # ("WARP's measure"), so only a word cased as a name is refused.
+        # ("WARP's measure"), and a name of its own its case ("Wi-Fi 6"),
+        # so only a word cased as a name is refused.
         first = text.split()[0].removesuffix("'s") if text.strip() else ""
-        if key == "said" and text[:1].isupper() and not first.isupper():
+        named_so = first.isupper() or first in PROPER
+        if key == "said" and text[:1].isupper() and not named_so:
             out.append(f"{thing} says {text!r} beside it with a capital, as no value starts.")
         # What a drawer tells is a sentence of its own, read as one.
         if key == "tells" and not (text[:1].isupper() and text.endswith(".")):
@@ -362,7 +368,7 @@ REFUSED_COMMAND: Entry = {"id": "bad:command", "start": "", "form": "ip", "says"
 # What sits beside each rule's edge and isn't refused: a program's name
 # hidden, or inside another word; a name with its value after; units as
 # the launcher writes them; an initialism at the start of a side word; and
-# a turn, the one verb of two words; and forgetting in either ending glyph.
+# a name of its own; a turn, the one verb of two words; and forgetting in either ending glyph.
 ALLOWED: Entry = {
     "things": [
         {"id": "good:depth", "name": "Colour Depth", "said": "10 bit", "hidden": ["niri"]},
@@ -379,6 +385,7 @@ ALLOWED: Entry = {
             "verb": "turn off",
             "states": {"wired": {"said": "USB 3", "verb": "copy"}},
         },
+        {"id": "good:generation", "name": "Generation", "said": "Wi-Fi {n}"},
         {"id": "good:tells", "name": "Lid", "tells": {"shut": "Closed since {time}."}},
         {"id": "good:forget", "name": "Forget It", "verb": "forget", "glyph": "dismiss"},
         {"id": "good:clear", "name": "Forget the Clipboard", "verb": "forget", "glyph": "forget"},

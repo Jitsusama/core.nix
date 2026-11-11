@@ -1995,9 +1995,17 @@ in
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";
                     }
-                    # The words wifid says Wi-Fi's rows in.
+                    # The words and number settings wifid says Wi-Fi's
+                    # rows in, each a file in the store, since wifid
+                    # reads nothing else.
                     // lib.optionalAttrs (provider.source == "wifi") {
                       words = "${launcherWords}";
+                      numbers = "${pkgs.writeText "numbers.json" (
+                        builtins.toJSON {
+                          group = provider.group or "";
+                          point = provider.point or "";
+                        }
+                      )}";
                     }
                     # A colour is told against the theme's own pigments.
                     // lib.optionalAttrs (provider.source == "colours") {
