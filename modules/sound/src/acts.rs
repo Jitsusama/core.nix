@@ -188,10 +188,12 @@ mod tests {
     fn an_act_missing_what_it_needs_is_refused() {
         let code = |name: &str, said: Value| act(name, &said).map_err(|refused| refused.code);
         let below = json!({"key": "device:a", "volume": -1});
+        let above = json!({"key": "device:a", "volume": 10});
         assert_eq!(code("volume", json!({"key": "device:a"})), Err("bad-act"));
         assert_eq!(code("mute", json!({"key": "device:a"})), Err("bad-act"));
         assert_eq!(code("use", json!({"key": "window:1"})), Err("bad-act"));
         assert_eq!(code("volume", below), Err("bad-act"));
+        assert_eq!(code("volume", above), Err("bad-act"));
         assert_eq!(
             code("louder", json!({"key": "device:a"})),
             Err("unknown-act")
