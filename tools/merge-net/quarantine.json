@@ -75,5 +75,12 @@
     "owner_pr": 3176,
     "reason": "failed, then passed, at 6e396fae765b",
     "test": "vm-desktop-launcher-finds-by-name"
+  },
+  {
+    "at": 1794410568,
+    "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
+    "owner_pr": 3176,
+    "reason": "failed, then passed, at 6e396fae765b",
+    "test": "vm-desktop-looks-plates"
   }
 ]
