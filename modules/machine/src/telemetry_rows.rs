@@ -314,7 +314,10 @@ mod tests {
             ("0%", "nothing holds it back now"),
             "it stands, so the rows under it never move"
         );
-        assert!(idle.inside.is_empty());
+        assert!(
+            idle.inside.is_empty(),
+            "nothing holding it back names no core"
+        );
         heard.heard(Some(json!({ "heldBack": [], "clusters": [
             { "cpus": "1", "heldBack": [{ "by": "current", "share": 0.25 }] }
         ] })));
