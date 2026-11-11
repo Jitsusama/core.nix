@@ -361,7 +361,7 @@ mod tests {
         );
         let quieter = keyed(&made, "row:sound:desk:volume:quieter");
         assert_eq!(quieter["acts"][0]["ask"]["volume"], 0.45);
-        assert!(quieter["acts"][0]["ask"].get("muted").is_none());
+        assert_eq!(quieter["acts"][0]["ask"].get("muted"), None);
         let half = keyed(&made, "row:sound:desk:volume:50%");
         assert_eq!(half["thing"], "verb:sound-to-50%");
         assert_eq!(half["name"], "Volume to 50%");
@@ -374,7 +374,11 @@ mod tests {
         speakers["chosen"] = json!(true);
         speakers["muted"] = json!(true);
         let made = served(&[speakers], &words());
-        assert!(made.iter().all(|row| row["key"] != "row:sound:desk:use"));
+        let keys: Vec<&Value> = made.iter().map(|row| &row["key"]).collect();
+        assert!(
+            !keys.contains(&&json!("row:sound:desk:use")),
+            "the chosen device offered to use: {keys:?}"
+        );
         let muting = keyed(&made, "row:sound:desk:mute");
         assert_eq!(muting["side"], json!([{"said": "yes"}]));
         assert_eq!(muting["glyph"], "silent");
@@ -403,9 +407,12 @@ mod tests {
     // Louder and Quieter keep to whole steps, from nothing to full.
     #[test]
     fn a_volume_steps_whole_steps_within_its_bounds() {
-        assert!((stepped(0.42, STEP) - 0.45).abs() < 1e-9);
-        assert!((stepped(0.98, STEP) - 1.0).abs() < 1e-9);
-        assert!(stepped(0.02, -STEP).abs() < 1e-9);
+        let up = stepped(0.42, STEP);
+        assert!((up - 0.45).abs() < 1e-9, "0.42 louder is {up}, not 0.45");
+        let full = stepped(0.98, STEP);
+        assert!((full - 1.0).abs() < 1e-9, "0.98 louder is {full}, not 1");
+        let none = stepped(0.02, -STEP);
+        assert!(none.abs() < 1e-9, "0.02 quieter is {none}, not 0");
         assert_eq!(decibels(0.0), "-\u{221e} dB");
         assert_eq!(decibels(1.2), "+4.8 dB");
     }
