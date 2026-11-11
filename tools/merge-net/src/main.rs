@@ -361,22 +361,39 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         );
         return Ok(ExitCode::FAILURE);
     }
-    if let Some(why) = turn::waits(
-        &commit,
-        &lines(&git(&["diff", "--name-only", &main, &commit])?),
-    ) {
-        eprintln!("{why}");
-        return Ok(ExitCode::FAILURE);
-    }
     let on_main = |base: &str| holds(base, &main);
     if !ready::built_there(&ready::record(&commit), &on_main) {
         return by_change(&commit, &main, &on_main);
     }
-    println!(
-        "ready: {} sits on origin's main and changed-checks built what it named there",
-        short(&commit)
-    );
-    Ok(ExitCode::SUCCESS)
+    let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
+    Ok(passed(
+        &[&commit],
+        &files,
+        &format!(
+            "ready: {} sits on origin's main and changed-checks built what it named there",
+            short(&commit)
+        ),
+    ))
+}
+
+/// Whether a change merging on the runs at `passes`, newest first, waits
+/// for an earlier gate sharing one of its `files`, which it says.
+fn waits(passes: &[&str], files: &[String]) -> bool {
+    let why = turn::waits(passes, files);
+    if let Some(why) = &why {
+        eprintln!("{why}");
+    }
+    why.is_some()
+}
+
+/// A change ready on the runs at `passes`, as `ready` says, once no
+/// earlier gate sharing its `files` still runs.
+fn passed(passes: &[&str], files: &[String], ready: &str) -> ExitCode {
+    if waits(passes, files) {
+        return ExitCode::FAILURE;
+    }
+    println!("{ready}");
+    ExitCode::SUCCESS
 }
 
 /// Whether `commit`, a head on `main` with no run of its own, is ready by
@@ -435,7 +452,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
-            println!(
+            let said = format!(
                 "ready: {} sits on origin's main, and changed-checks built what it named at \
                  {} and {}, the same change, so a clean rebase needs no third run though main \
                  has since moved {}; the net tests it after it merges",
@@ -444,7 +461,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 short(&earlier),
                 shared.join(", ")
             );
-            return Ok(ExitCode::SUCCESS);
+            return Ok(passed(&[&newest, &earlier], &files, &said));
         }
         // Main renamed or deleted a path one side names, which neither
         // run saw, so it runs again as a change checked once would.
@@ -452,16 +469,16 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     }
     match before {
         ready::Before::Clean(checked) => {
-            println!(
+            let said = format!(
                 "ready: {} sits on origin's main, and changed-checks built what it named at \
                  {}, the same change, whose files main hasn't moved since",
                 short(commit),
                 short(&checked)
             );
-            return Ok(ExitCode::SUCCESS);
+            return Ok(passed(&[&checked], &files, &said));
         }
         ready::Before::Shares(checked, shared) => {
-            if let Some(said) = lists_say(commit, &shared) {
+            if let Some(said) = lists_say(commit, &shared, &|| waits(&[commit, &checked], &files)) {
                 return Ok(said);
             }
             eprintln!(
@@ -545,11 +562,15 @@ fn status() -> ExitCode {
 
 /// What lists say of `commit`, when every file it shares with main's moves
 /// is a list each change adds to: whether each holds there with its own
-/// check passed, saying which way it went. None when some file isn't one.
-fn lists_say(commit: &str, shared: &[String]) -> Option<ExitCode> {
+/// check passed, saying which way it went, and holding a ready one back
+/// while it `waits` its turn. None when some file isn't one.
+fn lists_say(commit: &str, shared: &[String], waits: &dyn Fn() -> bool) -> Option<ExitCode> {
     let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]).unwrap_or_default();
     match lists::lists(shared, &ready::record(commit), &quarantine) {
         lists::Lists::Need(need) if need.is_empty() => {
+            if waits() {
+                return Some(ExitCode::FAILURE);
+            }
             println!(
                 "ready: {} sits on origin's main, and main moved only lists of its ({}), whose \
                  own checks passed there",
