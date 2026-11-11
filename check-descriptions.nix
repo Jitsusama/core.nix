@@ -1627,8 +1627,8 @@
   '';
   pi-hosted-loads-where-a-link-points = ''
     pi built with the host's patches, applied exactly, loads a linked extension through the file
-    its link points at now, so once the link moves and the copy it first loaded is gone, a reload
-    loads the new copy and its own helpers, still known by the link
+    its link points at now, so once the link moves, a reload loads the new copy and its own helpers,
+    still known by the link, whether the copy it first loaded is gone or still there
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and

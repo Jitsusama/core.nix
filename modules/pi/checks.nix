@@ -368,7 +368,8 @@ in
   '';
 
   # A hosted pi loads a linked extension through where its link points now,
-  # so a reload after a harness update moved the link loads the new copy.
+  # so once the link an extension is found through moves, a reload loads the
+  # new copy and its own helpers, whether the old copy is gone or not.
   pi-hosted-loads-where-a-link-points =
     pkgs.runCommandLocal "pi-hosted-loads-where-a-link-points" { }
       ''

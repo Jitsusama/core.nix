@@ -1,8 +1,9 @@
 // pi as the host runs it loads a linked extension through the file its link
-// points at now: once a harness update moves the link and the copy it first
-// loaded is gone, a reload loads the new copy and that copy's own helpers.
-// Ordinary pi, which never outlives a harness update, imports the link as
-// given, and a host's import of it failed with ENOENT on the old copy's helper.
+// points at now: once the link an extension is found through moves, a reload
+// loads the new copy with that copy's own helpers, whether the copy it first
+// loaded is gone or still there. Unpatched, a reload resolves the helpers
+// through the first copy, failing with ENOENT once it's gone and mixing the
+// new entry with the old helpers while it stays.
 // Run as: node THIS PI_ROOT, the built package's pi-monorepo folder.
 import assert from "node:assert/strict";
 import {
@@ -29,12 +30,10 @@ const loaderModule = [
 assert.ok(loaderModule, `no extension loader under ${root}`);
 const { clearExtensionCache, loadExtensions } = await import(pathToFileURL(loaderModule).href);
 
-const folder = mkdtempSync(join(tmpdir(), "pi-hosted-link-"));
-// Each copy names itself through a helper beside it, imported as its built
-// name, as the harness's extensions and Shopify's proxy import their own, so
-// a load that resolved the helper through the gone copy fails rather than
-// passing on the entry alone.
-const copy = (name) => {
+// Each copy names itself through a helper beside it, imported by its built
+// name, as linked extensions import their own, so a load that resolved the
+// helper through the first copy shows it rather than passing on the entry.
+const copy = (folder, name) => {
   const where = join(folder, "copies", name);
   mkdirSync(where, { recursive: true });
   writeFileSync(join(where, "helper.ts"), `export const copy = ${JSON.stringify(name)};\n`);
@@ -50,28 +49,35 @@ const copy = (name) => {
   );
   return where;
 };
-const link = join(folder, "extensions", "linked");
-mkdirSync(join(folder, "extensions"));
-// The entry as pi's discovery names it, through the link.
-const entry = join(link, "index.ts");
 const commandsOf = (loaded) => loaded.extensions.flatMap((one) => [...one.commands.keys()]);
 
-symlinkSync(copy("first"), link);
-const before = await loadExtensions([entry], folder);
-assert.deepEqual(before.errors, [], "the first copy didn't load through its link");
-assert.deepEqual(commandsOf(before), ["from-first"]);
+// Loads an extension through its link, moves the link in one rename to a
+// second copy, removing the first when asked, and loads it again, as a
+// reload does, with an empty extension cache.
+const reloadAfterTheLinkMoves = async ({ firstGoes }) => {
+  const folder = mkdtempSync(join(tmpdir(), "pi-hosted-link-"));
+  const link = join(folder, "extensions", "linked");
+  mkdirSync(join(folder, "extensions"));
+  // The entry as pi's discovery names it, through the link.
+  const entry = join(link, "index.ts");
+  symlinkSync(copy(folder, "first"), link);
+  const before = await loadExtensions([entry], folder);
+  assert.deepEqual(before.errors, [], "the first copy didn't load through its link");
+  assert.deepEqual(commandsOf(before), ["from-first"]);
 
-// A harness update: the link moves to the new copy in one rename and the old
-// copy goes, as a package swap removes the versions no pi runs. A reload
-// starts with an empty extension cache.
-symlinkSync(copy("second"), `${link}.next`);
-renameSync(`${link}.next`, link);
-rmSync(join(folder, "copies", "first"), { recursive: true });
-clearExtensionCache();
+  symlinkSync(copy(folder, "second"), `${link}.next`);
+  renameSync(`${link}.next`, link);
+  if (firstGoes) rmSync(join(folder, "copies", "first"), { recursive: true });
+  clearExtensionCache();
+  const after = await loadExtensions([entry], folder);
+  rmSync(folder, { recursive: true, force: true });
+  return { after, entry };
+};
 
-const after = await loadExtensions([entry], folder);
-assert.deepEqual(after.errors, [], "the moved link's copy didn't load once the first was gone");
-assert.deepEqual(commandsOf(after), ["from-second"]);
-assert.equal(after.extensions[0].path, entry, "the extension is no longer known by its link");
-
-rmSync(folder, { recursive: true, force: true });
+for (const firstGoes of [true, false]) {
+  const { after, entry } = await reloadAfterTheLinkMoves({ firstGoes });
+  const which = firstGoes ? "once the first copy was gone" : "while the first copy stayed";
+  assert.deepEqual(after.errors, [], `the moved link's copy didn't load ${which}`);
+  assert.deepEqual(commandsOf(after), ["from-second"], `the reload ran old code ${which}`);
+  assert.equal(after.extensions[0].path, entry, "the extension is no longer known by its link");
+}
