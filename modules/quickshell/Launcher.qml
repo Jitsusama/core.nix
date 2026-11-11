@@ -117,9 +117,14 @@ Scope {
     readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
         (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - Theme.space.beat)
             / rowTall)))
-    // How tall the card is but for its rows: the line, its hairline and the
-    // foot, which no screen changes.
-    readonly property real cardChrome: card.height - listBox.height
+    // How tall the card is but for its rows: its frame, the line and its
+    // hairline, the ties either side of the rows, and the foot and its
+    // hairline, which no screen changes. Summed from its parts rather than
+    // read off the card, whose height follows the rows a layout late, so
+    // how many rows fit never reads itself (the net, 2026-11-10: Qt warned
+    // of a binding loop for rows at bf0d237ec).
+    readonly property real cardChrome: 2 * Theme.border + 2 * card.above + headTall
+        + Theme.border + 2 * Theme.space.rung.tie + Theme.border + statusLine.tall
     // How tall the drawer stands in the card's place: down to the rows'
     // end, so the foot stays in sight under it, saying how to come back.
     readonly property real rowsEnd: Theme.border + headTall + Theme.border
@@ -7105,7 +7110,10 @@ Scope {
                 // And its sides, on a screen this wide.
                 left: root.cardLeft,
                 right: root.cardLeft + root.width,
-                across: root.screenHere ? root.screenHere.width : 0
+                across: root.screenHere ? root.screenHere.width : 0,
+                // Its height but for its rows, as summed and as drawn.
+                chrome: root.cardChrome,
+                drawn: card.height - listBox.height
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
             // Whether Space ? lists the keys in the drawer, and whether
@@ -7941,6 +7949,8 @@ Scope {
         spotsFreshened.stop();
         leavingLater.stop();
         opening = true;
+        // Asked once opening, as the card's size follows what it shows.
+        openSizedAtAsk = drawnAsAsked();
         keysHeld = false;
         openMark.setText("open\n");
         prompt.take();
@@ -7951,17 +7961,20 @@ Scope {
         afterFrame(openShown);
     }
 
-    // Shut, the surface is a pixel square (its implicit size), so an
-    // opening grows it, and niri answers the new size on this thread. A
-    // frame can be swapped before that answer is taken, one Joel never
-    // sees: filled in on it, the thread was held for seconds before the
-    // card stood at its size (Joel, 2026-11-10 15:10: "focus leaves my
-    // current window right when I hit the key combo", the card 7 s
-    // later). So the fill waits for two frames drawn at the size asked,
-    // the second begun after the first was given to niri, or 20 frames at
-    // most, so a size niri never gives can't hold it.
+    // An opening whose rows changed the card's height grows or shrinks the
+    // surface, and niri answers the new size on this thread. A frame can
+    // be swapped before that answer is taken, one Joel never sees: filled
+    // in on it, the thread was held for seconds before the card stood at
+    // its size (Joel, 2026-11-10 15:10: "focus leaves my current window
+    // right when I hit the key combo", the card 7 s later). So the fill
+    // waits for two frames drawn at the size asked, the second begun after
+    // the first was given to niri, or 20 frames at most, so a size niri
+    // never gives can't hold it. One already at its size as it was asked
+    // for, as the surface keeps it while closed, moves in its first frame,
+    // so that one is filled in.
     property int openFramesSized: 0
     property int openFramesWaited: 0
+    property bool openSizedAtAsk: false
     // When its first frame was swapped, so its drawing is that frame's
     // own, and the frames waited for niri's size are said apart as sizing.
     property real openFirstDrawn: -1
@@ -7982,9 +7995,13 @@ Scope {
     function openShown(begun, frame) {
         if (!opening)
             return;
-        openFramesSized = drawnAsAsked() ? openFramesSized + 1 : 0;
+        const sized = drawnAsAsked();
+        openFramesSized = sized ? openFramesSized + 1 : 0;
+        // Resized after all, it waits for niri's answer as any other does.
+        openSizedAtAsk = openSizedAtAsk && sized;
         // The first frame at its size is the first Joel can see the card
-        // in, which the fill's second frame is drawn a frame after.
+        // in: the fill's own when the card was already at its size, else
+        // the one a frame before the fill.
         if (openFramesSized === 1)
             presentedSized(frame);
         openFramesWaited += 1;
@@ -7992,10 +8009,14 @@ Scope {
             openFirstDrawn = KeyTimes.now();
             openFirstMade = tallies();
         }
-        if (openFramesSized < 2 && openFramesWaited < 20) {
+        if (openFramesSized < (openSizedAtAsk ? 1 : 2) && openFramesWaited < 20) {
             afterFrame(openShown);
             return;
         }
+        // One never answered at its size is filled anyway, rather than
+        // left shut, and said, since it shows at a size it wasn't asked.
+        if (openFramesSized === 0)
+            Report.say(`filled an opening not at its size, after ${openFramesWaited} frames`);
         openDrawn();
         filled("frame");
     }
@@ -8565,10 +8586,17 @@ Scope {
     }
 
     // Mapped all along, so opening makes no surface and draws no first
-    // frame before niri hands over the keys. While closed it's one pixel at
-    // the screen's top edge rather than the card's size, since niri draws a
-    // surface kept out of screencasts (config.kdl) as a black box the size
-    // of the whole surface, shown or not.
+    // frame before niri hands over the keys. It keeps the card's size while
+    // closed, so an opening moves it rather than growing it: grown from a
+    // pixel, each opening waited on niri's configure and new buffers before
+    // a frame at its size, 100 to 150 ms past its own work on Joel's laptop
+    // (2026-11-10). Closed, it sits up and left of the screen but for its
+    // last pixel, since niri draws a surface kept out of screencasts
+    // (config.kdl) as a black box the size of the whole surface, shown or
+    // not, so a screencast shows that pixel as the one-pixel surface did.
+    // Wholly off the screen, niri answered its frames once a second, and Qt,
+    // waiting on each, took the surface for hidden and drew it again as it
+    // was answered, a frame a second for as long as it stayed closed.
     PanelWindow {
         id: surface
 
@@ -8580,10 +8608,12 @@ Scope {
         anchors.top: true
         anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: root.cardUp ? root.cardTop - card.reach : 0 // qmllint disable unqualified
-        margins.left: root.cardUp ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
-        implicitWidth: root.cardUp ? root.width + root.drawerBeside + 2 * card.reach : 1
-        implicitHeight: root.cardUp ? card.height + 2 * card.reach : 1
+        margins.top: root.cardUp ? root.cardTop - card.reach // qmllint disable unqualified
+            : 1 - implicitHeight
+        margins.left: root.cardUp ? root.cardLeft - card.reach // qmllint disable unqualified
+            : 1 - implicitWidth
+        implicitWidth: root.width + root.drawerBeside + 2 * card.reach
+        implicitHeight: card.height + 2 * card.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         mask: !root.cardUp ? nowhere : root.drawerOut ? cardAndDrawer : card.area

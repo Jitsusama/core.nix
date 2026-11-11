@@ -44,6 +44,23 @@ SPOTS_LATER = timedelta(milliseconds=500)
 # within SPOTS_LATER fails it.
 REOPENINGS_TRIED = 3
 
+# How long niri leaves a surface wholly off the screen before it answers a frame of its: once
+# a second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
+UNANSWERED_MS = 900
+
+# How long a window opening is given to reach the closed shell, which hears niri's events
+# within a few milliseconds of each.
+SETTLING_S = 2
+
+# How long a closing's spots are given to be freshened: a minute after they're made
+# (Launcher.qml's spotsFreshened), and room for a loaded builder.
+FRESHENING = timedelta(seconds=75)
+
+# How long the closed launcher's frame count must hold to count as having drawn what it kept:
+# keeping home says so before the pixel left on the screen draws it, which a loaded builder
+# shows a frame late, and well inside the half second before a closing makes its spots.
+KEPT_DRAWN = timedelta(milliseconds=200)
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -119,6 +136,21 @@ def niri_held() -> Iterator[None]:
         os.kill(held[0], signal.SIGCONT)
 
 
+def frames_once_kept(shell: Shell) -> int:
+    """Wait until home is kept and drawn, and give how many frames the launcher drew by then."""
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    drawn = shell.frames()
+    quiet = time.monotonic()
+    giving_up = quiet + 5
+    while time.monotonic() - quiet < KEPT_DRAWN.total_seconds():
+        assert time.monotonic() < giving_up, "closed, the launcher kept drawing"
+        # Polled, since a frame says nothing as it swaps but the count it adds to.
+        time.sleep(0.05)
+        if (now := shell.frames()) != drawn:
+            drawn, quiet = now, time.monotonic()
+    return drawn
+
+
 def settled(shell: Shell) -> Json:
     """Wait until the launcher's rows have held still, and give the rows it shows then."""
     assert shell.held_still(), "the launcher never held still after it opened"
@@ -142,9 +174,12 @@ def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> 
     """Kept at one scale and opened at a larger, the card fits inside the screen it opens on.
 
     The kept card was drawn at the height it was kept at, so kept at 1 and opened at 1.5, its
-    foot ran 30 px off the bottom (vm-desktop-says-what-happens, 2026-11-10).
+    foot ran 30 px off the bottom (vm-desktop-says-what-happens, 2026-11-10). How many rows fit
+    reads the card's height but for its rows, and read from the card's height as it followed
+    them, Qt warned of a loop for rows (the net, 2026-11-10, at bf0d237ec).
     """
     before = shell.showing()["card"]
+    since = shell.mark()
     shell.as_account("niri msg output winit scale 2")
     try:
         shell.launcher_until(lambda shown: shown["card"]["screen"] < before["screen"])
@@ -152,6 +187,10 @@ def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> 
         opened_from_kept(shell)
         card = shell.showing()["card"]
         assert card["foot"] < card["screen"], f"kept at 1, opened at 2, it's off the bottom: {card}"
+        assert card["chrome"] == card["drawn"], f"its rows were fitted to a card it isn't: {card}"
+        warned = shell.log.read_text(errors="replace")[since:].splitlines()
+        looped = [line for line in warned if "Binding loop" in line]
+        assert not looped, f"refitting, it looped: {looped}"
     finally:
         shell.as_account("niri msg output winit scale 1")
 
@@ -295,3 +334,55 @@ def test_keys_typed_as_it_opens_land_and_are_found(shell: Shell) -> None:
     opening = each[-1]
     assert opening.get("kept"), f"the opening wasn't drawn from what was kept: {opening}"
     assert opening.get("filledBy") in {"frame", "key"}, f"nothing filled it in: {opening}"
+
+
+def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:
+    """Kept at the card's size while closed, an opening moves it and fills on its first frame.
+
+    Grown from a pixel, every opening waited for niri to answer its new size and for a second
+    frame at it, 100 to 150 ms past its own work on Joel's laptop (2026-11-10). Closed, it's
+    off the screen but for a pixel, and wholly off it, niri answered its frames only once a
+    second, so an opening that waited on a frame drawn there took most of a second to its own.
+    """
+    opening = opened_from_kept(shell)
+    assert opening["frames"] == 1, f"the kept opening waited on niri's size: {opening}"
+    assert opening["took"] < UNANSWERED_MS, f"the opening waited on a frame unanswered: {opening}"
+
+
+def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> None:
+    """Closed, the launcher draws no frame as a window opens and closes.
+
+    Kept at the card's size wholly off the screen, it drew a frame a second: niri answered each
+    only after a second, and Qt took the surface for hidden until then and drew it again once
+    shown, so a pixel of it stays on the screen.
+    """
+    drawn = frames_once_kept(shell)
+    window = shell.opened("Godwit Notes")
+    try:
+        # The span measured, for the window's events to reach the shell, not a wait for an end.
+        time.sleep(SETTLING_S)
+    finally:
+        shell.close(window)
+    # The same span, for its closing.
+    time.sleep(SETTLING_S)
+    assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
+
+
+def test_the_closed_launcher_draws_nothing_as_it_lets_its_closing_go(shell: Shell) -> None:
+    """Closed inside a place, the launcher draws no frame as it lets go of what the closing held.
+
+    A closing lets its steps go a quarter of a second after it (leaveSteps), makes its spots
+    half a second after it, and their figures a minute after that, each while the card is off
+    the screen but for a pixel, where nothing it draws is seen. Counted from once home is
+    kept and drawn, since putting it back follows the closing at once.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    since = shell.mark()
+    shell.close_launcher()
+    drawn = frames_once_kept(shell)
+    shell.reported("spots made while closed ", lambda _: True, since)
+    shell.reported("spots freshened while closed ", lambda _: True, since, FRESHENING)
+    assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
