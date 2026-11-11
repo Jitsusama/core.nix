@@ -48,8 +48,12 @@
 //! `{ group, point }`): a watch of kind `row` or `head` with `place`
 //! `heat` has the sensors, zones, cooling and processor read as their
 //! own watch would, one with `place` `power` the supplies, and one with
-//! `place` `firmware` fwupd, and each read makes that place's rows again
-//! and tells only those that changed.
+//! `place` `firmware` fwupd, and one with `place` `machine` the memory and
+//! the boot (`machine_rows.rs`), and each read makes that place's rows
+//! again and tells only those that changed.
+//! Machine's are made again as the programs using the memory are read
+//! too, though watching its rows doesn't read them, since that reads
+//! every process's files: the shell watches `using` while it's looked at.
 //! The processor's own telemetry is asked only while Heat's are watched.
 //! Handed no words, it makes no rows.
 //!
@@ -77,8 +81,8 @@ use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_o
 use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, firmware, firmware_rows, heat, heat_rows,
-    kept, keyboards, light, memory, now_ms, power_rows, processor, rounded, rows, sleep, status,
-    steered, supply, telemetry, tree, units, using, written::Written,
+    kept, keyboards, light, machine_rows, memory, now_ms, power_rows, processor, rounded, rows,
+    sleep, status, steered, supply, telemetry, tree, units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -137,6 +141,9 @@ const KEPT_LOOKS_AGAIN: Duration = Duration::from_secs(10);
 struct Place {
     name: &'static str,
     sources: &'static [&'static str],
+    /// Kinds whose reads make its rows again, though watching them
+    /// doesn't read them.
+    heard: &'static [&'static str],
 }
 
 impl Place {
@@ -153,16 +160,27 @@ impl Place {
 const HEAT: Place = Place {
     name: "heat",
     sources: &["sensor", "zone", "cooling", "processor"],
+    heard: &[],
 };
 const POWER: Place = Place {
     name: "power",
     sources: &["supply"],
+    heard: &[],
 };
 const FIRMWARE: Place = Place {
     name: "firmware",
     sources: &["firmware"],
+    heard: &[],
 };
-const PLACES: [Place; 3] = [HEAT, POWER, FIRMWARE];
+const MACHINE: Place = Place {
+    name: "machine",
+    sources: &["memory", "boot"],
+    heard: &["using"],
+};
+const PLACES: [Place; 4] = [HEAT, POWER, FIRMWARE, MACHINE];
+/// How lately the programs must have been read for Machine's rows to say
+/// them: two reads' time, so one read a little late doesn't lose them.
+const USING_FRESH: Duration = Duration::from_secs(2);
 /// How long to wait before asking the processor's telemetry again once
 /// it couldn't be reached, as on a machine with none.
 const TELEMETRY_AGAIN: Duration = Duration::from_secs(30);
@@ -787,6 +805,7 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
         acting,
         words,
         telemetry,
+        read_at,
         ..
     } = daemon;
     let Some(words) = words.as_ref() else {
@@ -797,6 +816,20 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
     }
     if place == FIRMWARE {
         return firmware_rows::read(&held_of(held, "firmware"), acting, words);
+    }
+    if place == MACHINE {
+        let using = held_of(held, "using");
+        let fresh = read_at
+            .get("using")
+            .is_some_and(|at| at.elapsed() < USING_FRESH);
+        let memory = held.get("memory:main");
+        let boot = held_of(held, "boot").into_iter().next();
+        let said = machine_rows::Held {
+            memory,
+            boot: boot.as_ref(),
+            using: fresh.then_some(using.as_slice()),
+        };
+        return machine_rows::read(said, clock_ms(), words);
     }
     let (sensors, zones, cooling) = (
         held_of(held, "sensor"),
@@ -929,7 +962,11 @@ fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], place
         }
     }
     for place in PLACES {
-        let read = place.sources.iter().any(|kind| kinds.contains(*kind));
+        let read = place
+            .sources
+            .iter()
+            .chain(place.heard)
+            .any(|kind| kinds.contains(*kind));
         let wanted = places.contains(&place) || makes(&daemon, place);
         if read && wanted && daemon.words.is_some() {
             let (remade, unmade) = made(&mut daemon, place);

@@ -1,11 +1,11 @@
 // What the launcher's machine answers make of the machine daemon's records
 // (modules/machine), in plain JavaScript so a check can run it in Qt's own
 // engine, as the shell does: which cores are maxed, where the processor's
-// time went, what the memory is kept by, the caches and memory modules
-// alike counted once, what a disk's controller warns of, which disk is the
+// time went, what a disk's controller warns of, which disk is the
 // machine's, what held the processor back and what kept it from resting
-// as its own telemetry says, and the processor's own sensor among its
-// chip's. Machine.qml says the figures.
+// as its own telemetry says, the processor's own sensor among its chip's,
+// and a row the daemon serves ready, as Machine.qml draws it. Machine.qml
+// says the figures.
 .pragma library
 .import "Numbers.js" as Numbers
 
@@ -148,80 +148,41 @@ function spent(time, guest) {
         }));
 }
 
-// What the memory is kept by, from /proc/meminfo's fields in bytes, as
-// Kept By's parts are listed, biggest first: programs' own memory, files
-// kept from the disk (the page cache, less what's shared, which the
-// kernel counts in it), what programs share, the kernel's own, buffers
-// for the disk, and what waits to be written. Each { id, bytes }, for
-// those the kernel says.
-function keptBy(info) {
-    if (!info) {
-        return [];
-    }
-    const has = field => typeof info[field] === "number";
-    const sum = fields => fields.filter(has).reduce((all, field) => all + info[field], 0);
-    const parts = [];
-    if (has("AnonPages")) {
-        parts.push({ id: "programs", bytes: info.AnonPages });
-    }
-    if (has("Cached")) {
-        parts.push({ id: "files", bytes: Math.max(0, info.Cached - (info.Shmem ?? 0)) });
-    }
-    if (has("Shmem")) {
-        parts.push({ id: "shared", bytes: info.Shmem });
-    }
-    if (has("Slab") || has("KernelStack") || has("PageTables")) {
-        parts.push({
-            id: "kernel",
-            bytes: sum(["Slab", "KernelStack", "PageTables", "SecPageTables", "Percpu", "VmallocUsed"])
-        });
-    }
-    if (has("Buffers")) {
-        parts.push({ id: "buffers", bytes: info.Buffers });
-    }
-    if (has("Dirty") || has("Writeback")) {
-        parts.push({ id: "unwritten", bytes: sum(["Dirty", "Writeback"]) });
-    }
-    return parts.sort((a, b) => b.bytes - a.bytes);
+// A served row's side as the launcher says it (ready-rows.md's Times),
+// since nothing that reads the clock is worded by a daemon: each item's
+// words, and a time by its form, `lasted` as `told.lasted` says the
+// seconds counted up from it and any other as `told.moment` says when,
+// set into the item's own words where it has some ("up {when}").
+function sideSaid(side, now, told) {
+    const said = item => {
+        if (item?.at === undefined) {
+            return item?.said ?? "";
+        }
+        const when = item.as === "lasted" ? told.lasted(Math.max(0, now - item.at) / 1000)
+            : told.moment(item.at, now);
+        return String(item.said ?? "{when}").replace("{when}", when);
+    };
+    return (side ?? []).map(said).filter(part => part !== "").join(" \u00b7 ");
 }
 
-// What zswap holds, from /proc/meminfo: the pages it keeps as they were,
-// in what they take compressed, and how many times smaller; null where
-// it holds nothing or the kernel doesn't say.
-function compressed(info) {
-    const stored = info?.Zswapped ?? 0;
-    const pool = info?.Zswap ?? 0;
-    if (stored <= 0 || pool <= 0) {
-        return null;
-    }
-    return { stored, pool, ratio: stored / pool };
-}
-
-// The memory modules, those alike as one: each kind of module, how many
-// there are, and where they sit. A field the firmware leaves blank is
-// left out, never guessed.
-function modules(listed) {
-    const alike = [];
-    const fields = ["type", "speed", "size", "manufacturer", "part"];
-    for (const module of Array.isArray(listed) ? listed : []) {
-        const said = {};
-        for (const field of fields.concat(["locator"])) {
-            said[field] = String(module?.[field] ?? "").trim();
-        }
-        const same = alike.find(one => fields.every(field => one[field] === said[field]));
-        if (same) {
-            same.count += 1;
-            if (!same.locators.includes(said.locator) && said.locator !== "") {
-                same.locators.push(said.locator);
-            }
-        } else {
-            alike.push(Object.assign(said, {
-                count: 1,
-                locators: said.locator === "" ? [] : [said.locator]
-            }));
-        }
-    }
-    return alike;
+// What a row the daemon serves ready (the crate's wrapped form, its
+// fields under `row`) is drawn with: the key the surfaces know it by,
+// its name, side and graph as served, what Copy copies, its glyph's
+// theme role and its hue. It's Machine.qml's until the launcher reads
+// served rows itself (ReadyRows.qml).
+function served(record, now, told) {
+    const row = record?.row ?? {};
+    const copy = (row.acts ?? []).find(act => act.key === "verb:copy")?.copy;
+    return {
+        key: row.thing ?? row.row ?? "",
+        name: row.name ?? "",
+        side: sideSaid(row.side, now, told),
+        graph: row.graph,
+        note: row.note ?? "",
+        copy: copy ?? "",
+        glyph: row.glyph ?? "",
+        hue: row.hue ?? "machine"
+    };
 }
 
 // What an NVMe disk's controller warns of, by the bits of its critical

@@ -577,6 +577,40 @@ fn heats_rows_are_made_for_its_watch_and_told_as_they_move() {
     assert_eq!(warmer["row"]["side"][0]["said"], "85.0 \u{b0}C");
 }
 
+#[test]
+fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
+    let words = json!({ "things": [
+        { "id": "machine:memory", "name": "Memory", "glyph": "memory",
+            "said": { "head": "{used} used, {share}" } },
+        { "id": "machine:memory:using", "name": "Using It" },
+        { "id": "machine:uptime", "name": "Uptime", "said": { "head": "up {when}" } }
+    ] });
+    let running = Running::worded("machine-rows", &words);
+    let mut client = running.client();
+    let said =
+        client.ask(&json!({"id": "machine", "ask": "watch", "kind": "row", "place": "machine"}));
+    let records = &said["records"];
+    let memory = &record(records, "row:machine:memory")["row"];
+    assert_eq!(memory["side"][0]["said"], "8.19 GB used, 50%");
+    assert_eq!(
+        record(records, "row:machine:uptime")["row"]["side"][0],
+        json!({ "at": 1_700_000_000_000_i64, "as": "lasted", "said": "up {when}" }),
+        "how long it's been up is a time the shell words"
+    );
+    // Watching Machine's rows reads no process, so Using It holds its
+    // place until something asks for the programs.
+    let using = &record(records, "row:machine:memory:using")["row"];
+    assert_eq!(using["side"][0]["said"], "\u{2026}");
+    let mut programs = running.client();
+    programs.ask(&json!({"id": "using", "ask": "watch", "kind": "using"}));
+    let named = client.changed("row:machine:memory:using");
+    let side = named["row"]["side"][0]["said"].as_str().unwrap_or_default();
+    assert!(
+        side.starts_with("kitty "),
+        "the program using most: {named}"
+    );
+}
+
 /// A battery, a charger and a USB-C port with a charger in it, and the
 /// kernel's counts of the machine's sleeps.
 fn power(root: &Path) {

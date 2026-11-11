@@ -46,8 +46,8 @@ listed change, since some answer every read through slow firmware.
 
 ## Ready Rows
 
-Heat's, Power's and Firmware's rows and headlines are made here, ready for the
-launcher, in the one form every daemon serves them in: each a
+Heat's, Power's, Firmware's and Machine's own rows and headlines are made
+here, ready for the launcher, in the one form every daemon serves them in: each a
 `row:<place>:<id>` record of kind `row`, its row under `row` naming what
 it shows as its `thing` (`power:limit`), and the headline a
 `head:<place>` record of kind `head`. A watch names its place,
@@ -64,12 +64,19 @@ of its Charge Limit's choices asks the `charge-limit` act. Firmware's
 are made from what fwupd says, asked once a minute while they're
 watched; an act that can't be taken back holds one `sure` row a step
 in that asks it, and while an act goes its row says so, then how it
-ended until the launcher shuts. They're said
+ended until the launcher shuts. Machine's
+(`place` `machine`) are made from the memory and the boot: the Memory
+and each of its parts, and the Uptime, which travels as a time the
+shell words (`lasted`, and Started a `moment`). Using It names the
+programs only while something watches `using`, since that reads every
+process's files, and holds its place saying it's still reading
+otherwise. They're said
 in the launcher's words and number settings,
 handed on the command line (`--words`, `--numbers`) by home.nix from the
 launcher's own; handed none, it makes no rows.
-[`src/heat_rows.rs`][heat-rows], [`src/power_rows.rs`][power-rows] and
-[`src/firmware_rows.rs`][firmware-rows] make them,
+[`src/heat_rows.rs`][heat-rows], [`src/power_rows.rs`][power-rows],
+[`src/firmware_rows.rs`][firmware-rows] and
+[`src/machine_rows.rs`][machine-rows] make them,
 [`src/rows.rs`][rows] places and graphs them, and
 [`src/words.rs`][words] words them.
 
@@ -341,5 +348,6 @@ service's runtime folder, is looked for again every 10 seconds.
 [firmware-rows]: src/firmware_rows.rs
 [heat-rows]: src/heat_rows.rs
 [power-rows]: src/power_rows.rs
+[machine-rows]: src/machine_rows.rs
 [rows]: src/rows.rs
 [words]: src/words.rs

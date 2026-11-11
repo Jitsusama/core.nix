@@ -3,8 +3,10 @@
 // running over the sandbox's own /proc: Machine's place holds the
 // processors' place before the daemon answers, and asks it; then the
 // processors', memory's and uptime's headlines are the daemon's, and
-// make none of their parts; the programs using the machine aren't asked
-// for until the processor's parts are stepped into, and then are. It exits 0
+// make none of their parts, the memory's and the uptime's from the rows
+// it serves ready; the programs using the machine aren't asked for until
+// the processor's parts are stepped into, and then are, the memory's
+// served Using It naming them once they're read. It exits 0
 // once every case holds, and otherwise 1, saying which case didn't.
 import Quickshell
 import QtQuick
@@ -110,12 +112,12 @@ ShellRoot {
         interval: 100
         repeat: true
         onTriggered: {
-            if (machine.processor() === null || machine.record("memory:main") === null
-                || machine.bootRecord() === null) {
+            if (machine.processor() === null || machine.memory().asking
+                || machine.uptime().asking) {
                 if (--left > 0)
                     return;
                 stop();
-                root.fail(new Error("the daemon never said the processor, memory and boot"));
+                root.fail(new Error("the daemon never said the processor, memory and uptime"));
                 return;
             }
             stop();
@@ -131,7 +133,8 @@ ShellRoot {
             expect("the processors' headline", /^\d+% busy$/.test(processors.headline),
                 processors.headline);
             expect("the memory's headline", / used, \d+%$/.test(memory.headline), memory.headline);
-            expect("the uptime's headline", /^up /.test(uptime.headline), uptime.headline);
+            expect("the uptime's headline", /^up \d+ (d|h|min)\b/.test(uptime.headline),
+                uptime.headline);
             expect("both say they have parts", processors.parted && memory.parted,
                 `${processors.parted} ${memory.parted}`);
             expect("the headlines asked for no programs", !machine.usingWanted, "they did");
@@ -168,10 +171,53 @@ ShellRoot {
                 const using = parts.find(row => row.name === "Using It");
                 root.expect("the programs using it", using !== undefined && using.side !== "\u2026",
                     parts.map(row => `${row.name} ${row.side}`).join(", "));
-                Qt.callLater(() => Qt.exit(0));
+                root.servedParts();
             } catch (error) {
                 root.fail(error);
             }
+        }
+    }
+
+    // The memory's and the uptime's parts are the rows the daemon serves
+    // inside theirs, in their words' order, the uptime's start a moment
+    // worded here.
+    function servedParts() {
+        try {
+            const memory = machine.memory().rows.map(row => row.name);
+            expect("the memory's parts, used first", memory[0] === "Used"
+                && memory.includes("Every Count"), memory.join(", "));
+            const uptime = machine.uptime().rows;
+            const started = uptime.find(row => row.name === "Started");
+            expect("the uptime's start, said as a moment",
+                started !== undefined && /\d\d:\d\d$/.test(started.side),
+                uptime.map(row => `${row.name} ${row.side}`).join(", "));
+            servedUsing.start();
+        } catch (error) {
+            fail(error);
+        }
+    }
+
+    // The programs read, the daemon makes the memory's Using It again
+    // naming them; it's waited for, as the place is remade as they're
+    // read.
+    Timer {
+        id: servedUsing
+
+        property int left: 100
+
+        interval: 100
+        repeat: true
+        onTriggered: {
+            const using = machine.memory().rows.find(row => row.name === "Using It");
+            if (using === undefined || using.side === "\u2026") {
+                if (--left > 0)
+                    return;
+                stop();
+                root.fail(new Error(`the memory's Using It never named them: ${using?.side}`));
+                return;
+            }
+            stop();
+            Qt.callLater(() => Qt.exit(0));
         }
     }
 }
