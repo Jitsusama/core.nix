@@ -566,7 +566,7 @@ fn listing(
 }
 
 /// Who it is, and since when, as the shell's daemon interface opens.
-fn hello(daemon: &Daemon, id: Value) -> Value {
+fn hello(daemon: &Daemon, id: &Value) -> Value {
     json!({
         "id": id, "version": VERSION, "domain": "people", "state": "answering",
         "since": daemon.since, "sources": standings(daemon),
@@ -577,7 +577,7 @@ fn hello(daemon: &Daemon, id: Value) -> Value {
 /// watch's answer is.
 fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -> Option<Value> {
     Some(match asked {
-        Ask::Hello { id } => hello(&lock(shared), id),
+        Ask::Hello { id } => hello(&lock(shared), &id),
         Ask::Get { id, keys, patience } => get(shared, &id, &keys, patience),
         Ask::Known { id, keys } => json!({"id": id, "records": lock(shared).book.known(&keys)}),
         Ask::List { id, limit, listed } => {
