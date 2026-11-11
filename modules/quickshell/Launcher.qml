@@ -7824,7 +7824,7 @@ Scope {
             screenHere = focusedScreen;
             trials.closed();
             spotsLater.restart();
-            if (unready.length > 0)
+            if (unlooked.length > 0 || unready.length > 0)
                 readying.start();
         }
     }
@@ -8231,6 +8231,8 @@ Scope {
     function unopened() {
         opening = false;
         spotsLater.restart();
+        if (unlooked.length > 0 || unready.length > 0)
+            readying.start();
         openAsked = -1;
         openMark.setText("closed\n");
         afterFramesDue();
@@ -8720,21 +8722,37 @@ Scope {
     // makes ready to match when first searched, and which a restart
     // forgets: each switch's first search of two letters made them, up to
     // 968 ms of "ol", nearly all People, Quests and notices
-    // (launcher-trials.json, 2026-10-29 and 30). They're made a few
-    // milliseconds at a time, so nothing else the shell draws waits on
-    // them, and left while it's open, for the search to make what it needs.
+    // (launcher-trials.json, 2026-10-29 and 30). They're made a
+    // collection a turn, then a few milliseconds at a time, so nothing else
+    // the shell draws waits on them, and left while it's open or opening,
+    // for the search to make what it needs. Looked through all at once, as
+    // the start's timer came due over Joel's first opening, notices made
+    // 942 rows and quests 1,084 in the 3 s after its frame (2RCBOJ,
+    // 2026-11-10, 21:29).
+    property var unlooked: []
     property var unready: []
+    property var lookedTook: ({})
 
     function textsMadeClosed() {
-        const rows = [];
         // Not one searched only once stepped into, as Emoji is, whose
         // thousands would be kept for a search that may never come.
-        for (const source of collections.filter(one => one.collection.searched !== false)) {
-            for (const row of source.looksThrough())
-                rows.push({ from: source, row: row });
-        }
-        unready = rows;
-        readying.start();
+        unlooked = collections.filter(one => one.collection.searched !== false);
+        unready = [];
+        lookedTook = {};
+        if (!(open || opening))
+            readying.start();
+    }
+
+    // One collection's texts gathered, timed as each source's turn is.
+    function lookThroughNext() {
+        const source = unlooked.shift();
+        const began = KeyTimes.now();
+        for (const row of source.looksThrough())
+            unready.push({ from: source, row: row });
+        lookedTook[source.settings?.name ?? ""] = KeyTimes.now() - began;
+        if (unlooked.length === 0)
+            console.info("launcher: looked through the searched collections a turn each"
+                + wokenSaid(lookedTook));
     }
 
     Timer {
@@ -8746,8 +8764,12 @@ Scope {
     }
 
     function readySome() {
-        if (open) {
+        if (open || opening) {
             readying.stop();
+            return;
+        }
+        if (unlooked.length > 0) {
+            lookThroughNext();
             return;
         }
         const until = Date.now() + 4;
