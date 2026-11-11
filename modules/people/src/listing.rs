@@ -227,16 +227,6 @@ fn bare(name: &str) -> bool {
     name.is_empty() || name.contains('@')
 }
 
-/// A record as a search answers it, with the row it's found as and the
-/// drawer the row names.
-pub fn found(record: &Record, sources: &[(String, Option<Stands>)], named: &Named) -> Value {
-    let mut said = record.json();
-    let one = person(record, sources);
-    said["row"] = one.found();
-    said["drawer"] = drawer::drawer(&one, record, sources, named)["drawer"].take();
-    said
-}
-
 /// A record as one person, by its sources in the order they're consulted,
 /// each with how it says anyone stands.
 pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
@@ -495,7 +485,7 @@ impl Told {
                         "key": person.key, "kind": LISTING, "person": person.json(),
                         "sources": record.sources,
                     }),
-                    drawer::drawer(person, record, sources, named),
+                    drawer::drawer(person, record, sources, named, book.standings()),
                 ]
             })
             .collect();
@@ -509,7 +499,7 @@ impl Told {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// The launcher's vocabulary as far as People's words go.
@@ -584,7 +574,9 @@ mod tests {
         ]
     }
 
-    fn record(key: &str, entries: &[(&str, Value)]) -> Record {
+    /// A person's record holding each source's entry, as drawer.rs's
+    /// tests take it too.
+    pub(crate) fn record(key: &str, entries: &[(&str, Value)]) -> Record {
         let mut record = Record::of(key.to_owned(), 0);
         for (source, entry) in entries {
             record.sources.insert((*source).to_owned(), entry.clone());

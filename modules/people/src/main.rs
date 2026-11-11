@@ -50,7 +50,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use people::drawer::{self, Named};
-use people::listing::{self, Stands, Told};
+use people::listing::{Stands, Told};
 use people::{Ask, Book, Heard, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -250,7 +250,7 @@ fn run(shared: &Shared, source: &Source) {
                     let mut daemon = lock(shared);
                     let stood = standings(&daemon);
                     daemon.book.restarted(&source.name);
-                    tell_standings(&daemon, &stood);
+                    tell_standings(&mut daemon, &stood);
                     if let Some(input) = child.stdin.take() {
                         daemon.inputs.insert(source.name.clone(), input);
                     }
@@ -279,7 +279,7 @@ fn run(shared: &Shared, source: &Source) {
                 daemon
                     .book
                     .stand(&source.name, Standing::Refused("it stopped".to_owned()));
-                tell_standings(&daemon, &stood);
+                tell_standings(&mut daemon, &stood);
                 shared.1.notify_all();
             }
             Err(why) => {
@@ -352,7 +352,7 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
             }
         }
     }
-    tell_standings(&daemon, &stood);
+    tell_standings(&mut daemon, &stood);
     if back {
         daemon.put_off.remove(source);
         // Only those it hasn't said, since one it said may be all it can
@@ -395,11 +395,13 @@ fn watched(daemon: &Daemon) -> Vec<String> {
 /// `stood`, so a client hears a sign-in go or come as the source says so
 /// rather than at its next ask: a step-in waits on every source, and one
 /// that never answers would keep it from hearing for its whole patience.
-fn tell_standings(daemon: &Daemon, stood: &Value) {
+fn tell_standings(daemon: &mut Daemon, stood: &Value) {
     let standing = standings(daemon);
     if standing == *stood {
         return;
     }
+    // A listing's drawers say a source that's down, so they're told anew.
+    daemon.revision += 1;
     for watch in &daemon.watches {
         let _ = watch
             .told
@@ -593,7 +595,10 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 .book
                 .search(&words, limit)
                 .into_iter()
-                .map(|record| listing::found(record, &daemon.sources, &daemon.named))
+                .map(|record| {
+                    let standings = daemon.book.standings();
+                    drawer::found(record, &daemon.sources, &daemon.named, standings)
+                })
                 .collect();
             json!({"id": id, "records": records})
         }
