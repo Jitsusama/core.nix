@@ -150,3 +150,71 @@ const UNLISTED = {
 function unlisted(standing) {
     return standing === "" ? "" : UNLISTED[standing] ?? UNLISTED.unreachable;
 }
+
+// What the google daemon serves of a document Joel looked at lately, as
+// its ready row (src/document_rows.rs) says it, worded here only where it
+// says a time, by the clock, so no row changes on the daemon's side as a
+// minute turns (Y2YBTS's ready rows, "Times").
+
+// What a ready row's thing says before Drive's id (src/document_rows.rs).
+const THING = /^gdoc:/;
+
+// The document a ready row is of, as `documents` says one, for what opens
+// it and what Saves and a program's Recent read of it.
+function readyDocument(row) {
+    const held = row.held ?? {};
+    return {
+        id: String(row.thing ?? "").replace(THING, ""),
+        title: String(row.name ?? ""),
+        kind: String(row.kind ?? ""),
+        link: String(held.link ?? ""),
+        viewed: held.viewed ?? null,
+        mime: String(held.mime ?? "")
+    };
+}
+
+// What its row says at the right, as `beside` says it: the time it was
+// opened, the one time a document's side holds, or what it says.
+function readySide(row, now, said, opened) {
+    return (row.side ?? []).map(item => (item.at !== undefined
+        ? beside({ viewed: item.at }, now, said, opened) : String(item.said ?? "")))
+        .filter(part => part !== "").join(" \u00b7 ");
+}
+
+// Its acts, in the daemon's order, each `{ key, open }` with the link to
+// open or `{ key, copy }` with what to copy, however the daemon asks them.
+function readyActs(row) {
+    return (row.acts ?? []).map(act => {
+        const copy = act.copy ?? act.ask?.copy;
+        return copy !== undefined ? { key: String(act.key), copy: String(copy) }
+            : { key: String(act.key), open: String(act.open ?? act.ask?.open?.link ?? "") };
+    });
+}
+
+// Its drawer as Drawer.qml reads one, from the record the daemon made
+// ready: each fact `{ label, value }`, a time worded as a mail's moment,
+// one that identifies it said so, and its eyebrow giving way by whole
+// items from its end, where it is last to go, as DrivePlaces.js's drawn
+// gives it.
+function readyDrawer(drawer, now, said) {
+    const facts = (drawer.facts ?? []).map(fact => {
+        const told = {
+            label: String(fact.name ?? ""),
+            value: fact.at !== undefined ? Mail.moment(fact.at, now, said)
+                : String(fact.said ?? "")
+        };
+        if (fact.identifies) {
+            told.identifies = true;
+        }
+        return told;
+    }).filter(fact => fact.value !== "");
+    const parts = String(drawer.eyebrow ?? "").split(" \u00b7 ").filter(part => part !== "");
+    return {
+        title: String(drawer.title ?? ""),
+        facts,
+        body: String(drawer.body ?? ""),
+        eyebrow: parts.join(" \u00b7 "),
+        eyebrowItems: parts.map((part, at) => ({ said: part, keep: parts.length - at })),
+        eyebrowNames: true
+    };
+}

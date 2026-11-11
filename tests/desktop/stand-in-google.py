@@ -18,7 +18,9 @@ out of the mail that wants him, as Gmail would, and one read and then marked unr
 wants him once more. Lunch on Friday carries a menu, which a shell may ask to be fetched, to
 open, kept in the runtime folder's google-files, or to save, where the shell says or else in
 Downloads, said as fetched as the program says it. Joel looked at two documents lately: Ada's
-Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive. His sign-in grants Meet's
+Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive, each also served as
+Documents' ready row and drawer, as the daemon makes them, to a watch of their place. His
+sign-in grants Meet's
 scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg. His
 Drive holds a Trips folder, with an itinerary in it, the menu and the Quarterly Plan; Team
 Budget is shared with him, and the Team shared drive is empty. A shell may ask what a folder
@@ -169,28 +171,88 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
     }
 
 
-def kinds_of(asked: dict[str, object]) -> set[str] | None:
-    """Read the kinds a watch names, one or a list, or none for every kind."""
-    kind = asked.get("kind")
-    if isinstance(kind, str):
-        return {kind}
-    if isinstance(kind, list):
-        return {each for each in kind if isinstance(each, str)}
+# Each of a document's kinds as the daemon words it (src/document_rows.rs): its glyph, the
+# program whose acts open and copy it, and its kind in the drawer's eyebrow.
+DOCUMENT_KINDS = {
+    "document": ("googleDocument", "docs", "Document"),
+    "spreadsheet": ("googleSpreadsheet", "sheets", "Spreadsheet"),
+    "presentation": ("googlePresentation", "slides", "Presentation"),
+}
+# What a file of any other kind is, Drive's.
+DRIVE_FILE = ("path", "drive", "File")
+# How far apart rows' orders are told, as the ready-rows crate spaces them (src/order.rs).
+SPACING = 1024
+
+
+def document_row(document: dict[str, object], at: int) -> dict[str, object]:
+    """Give a document Joel opened lately as its ready row, as src/document_rows.rs makes it."""
+    key = str(document["id"])
+    glyph, program, _ = DOCUMENT_KINDS.get(str(document["kind"]), DRIVE_FILE)
+    viewed = document.get("viewed")
+    link = document["link"]
+    return {
+        "key": f"row:documents:{key}",
+        "thing": f"gdoc:{key}",
+        "place": "documents",
+        "kind": document["kind"],
+        "name": document["title"],
+        "glyph": glyph,
+        "hue": "program",
+        "depth": 0,
+        "side": [] if viewed is None else [{"at": viewed, "as": "opened", "keep": 1}],
+        "drawer": f"drawer:documents:{key}",
+        "acts": [
+            {"key": f"verb:{program}:open", "ask": {"open": {"link": link}}},
+            {"key": f"verb:{program}:link", "ask": {"copy": link}},
+        ],
+        "held": {"link": link, "viewed": viewed, "mime": document.get("mime", "")},
+        "order": (at + 1) * SPACING,
+    }
+
+
+def document_drawer(document: dict[str, object]) -> dict[str, object]:
+    """Give a document's drawer as src/document_rows.rs makes it, of what the stand-in holds."""
+    _, _, kind = DOCUMENT_KINDS.get(str(document["kind"]), DRIVE_FILE)
+    facts: list[dict[str, object]] = []
+    if document.get("changed") is not None:
+        facts.append({"name": "Changed", "at": document["changed"], "as": "moment"})
+    if document.get("owner"):
+        facts.append({"name": "Owner", "said": document["owner"]})
+    facts.append({"name": "ID", "said": document["id"], "identifies": True})
+    return {
+        "eyebrow": f"in My Drive \u00b7 {kind}",
+        "title": document["title"],
+        "facts": facts,
+        "body": "",
+    }
+
+
+def named_in(asked: object) -> set[str] | None:
+    """Read what a watch names of one field, one or a list, or none for all of them."""
+    if isinstance(asked, str):
+        return {asked}
+    if isinstance(asked, list):
+        return {each for each in asked if isinstance(each, str)}
     return None
 
 
 class Watch:
-    """One watch a shell holds: its id, the kinds it sees, and the shell it's told on."""
+    """One watch a shell holds: its id, what it sees, and the shell it's told on."""
 
-    def __init__(self, shell: socket.socket, id_: object, kinds: set[str] | None) -> None:
-        """Hold what the watch asked for."""
+    def __init__(self, shell: socket.socket, id_: object, asked: dict[str, object]) -> None:
+        """Hold what the watch asked for: its kinds, and the places of the rows it sees."""
         self.shell = shell
         self.id = id_
-        self.kinds = kinds
+        self.kinds = named_in(asked.get("kind"))
+        self.places = named_in(asked.get("place"))
 
     def sees(self, key: str) -> bool:
-        """Say whether a record is of a kind this watch asked for."""
-        return self.kinds is None or key.split(":", 1)[0] in self.kinds
+        """Say whether a record is one this watch asked for, a row or drawer by its place."""
+        kind, _, rest = key.partition(":")
+        place = rest.partition(":")[0]
+        return (self.kinds is None or kind in self.kinds) and (
+            kind not in {"row", "drawer"} or self.places is None or place in self.places
+        )
 
     def replaces(self, other: Watch) -> bool:
         """Say whether this watch is asked again on the same shell by the same id."""
@@ -455,6 +517,13 @@ class Account:
             for thing in cast("list[dict[str, object]]", state[things]):
                 key = f"{kind}:{thing['id']}"
                 made[key] = {"key": key, "kind": kind, "heard": self.heard, kind: thing}
+        # Documents' rows and drawers, made ready as the daemon makes them once it has words.
+        documents = cast("list[dict[str, object]]", state["documents"])
+        for at, document in enumerate(documents):
+            row = document_row(document, at)
+            made[str(row["key"])] = {"key": row["key"], "kind": "row", "row": row}
+            key = str(row["drawer"])
+            made[key] = {"key": key, "kind": "drawer", "drawer": document_drawer(document)}
         account = {name: state[name] for name in ("unread", "fetched", "meet", "drive")} | {
             "standing": state["account"]
         }
@@ -492,7 +561,7 @@ class Account:
                     "sources": {"google": "signed-out" if SIGNED_OUT else "answering"},
                 }
             if asked.get("ask") == "watch":
-                watch = Watch(shell, id_, kinds_of(asked))
+                watch = Watch(shell, id_, asked)
                 self.watches = [one for one in self.watches if not watch.replaces(one)]
                 records = [record for key, record in self.said.items() if watch.sees(key)]
                 # Sent before the watch is added, so no change comes before it.
