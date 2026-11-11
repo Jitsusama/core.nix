@@ -1321,6 +1321,10 @@ BUDGETED = {
         ),
     ],
     "quiet": [spend_line("today", "Today", "spending")],
+    # The keys listed, in the order spend-watch ranks them (collection.rs's ranked): with no
+    # findings, how things stand; and the summary's, which leave today's out.
+    "shown": ["today", "budgets"],
+    "summaryRows": ["budgets"],
 }
 
 
@@ -1437,6 +1441,89 @@ BUDGETS = {
 }
 
 
+def stroke(window: Json) -> Json:
+    """Give a window's meter as spend-watch's drawers.rs does: how near, warning from its warn."""
+    near = window["nearest"]
+    return {"shape": "stroke", "values": [min(max(near, 0.0), 1.0)], "warn": near >= window["warn"]}
+
+
+def window_facts(window: Json, *, standing: bool, resets: bool) -> list[Json]:
+    """Give a window's facts as drawers.rs's window_facts does, a share's without its standing."""
+    said = window["said"]
+    shown = (
+        ("state", said["state"], True),
+        ("standing", window["standing"], standing and window["unit"] != "share"),
+        ("resets", said["resets"], resets),
+        ("override", said["ends"], True),
+        ("changed", said["changed"], True),
+        ("read", said["read"], True),
+        ("warns", said["warns"], True),
+    )
+    return [
+        {"id": fact, "value": value} | ({"figure": stroke(window)} if fact == "standing" else {})
+        for fact, value, shows in shown
+        if shows and value
+    ]
+
+
+def budget_drawn(budget: Json) -> Json:
+    """Give a budget's drawer as drawers.rs's budget does: its windows, then what it spent."""
+    windows = budget["allowances"]
+    facts = [
+        {
+            "id": "",
+            "label": window["label"],
+            "value": window["said"]["brief"] or window["standing"] or "not read yet",
+            "figure": stroke(window),
+        }
+        for window in windows
+    ]
+    if len(windows) == 1:
+        resets = not windows[0]["said"]["brief"]
+        facts += window_facts(windows[0], standing=False, resets=resets)
+    said = budget["said"]
+    providers = said.get("providers") or " \u00b7 ".join(budget["providers"])
+    more = (("spent", said["spent"]), ("worth", said["worth"]), ("reading", said["reading"]))
+    facts += [
+        {"id": fact, "value": value} for fact, value in (*more, ("providers", providers)) if value
+    ]
+    return {"eyebrow": said["what"] or budget["words"], "title": budget["label"], "facts": facts}
+
+
+def window_drawn(budget: Json, window: Json) -> Json:
+    """Give a window's drawer as drawers.rs's window does, named for the budget it's in."""
+    return {
+        "eyebrow": f"in {budget['label']} \u00b7 window",
+        "title": window["label"],
+        "names": True,
+        "facts": window_facts(window, standing=True, resets=True),
+    }
+
+
+def drawn_by(line: Json, drawers: dict[str, Json]) -> Json:
+    """Give a row, and the rows behind it, the drawer of the budget or window it names."""
+    made = {**line}
+    if "rows" in line:
+        made["rows"] = [drawn_by(one, drawers) for one in line["rows"]]
+    if line.get("budget") in drawers:
+        made["drawn"] = drawers[line["budget"]]
+    return made
+
+
+def with_drawers(collection: Json, budgets: Json) -> Json:
+    """Give a collection's budget, window and cap rows their drawers, as spend-watch lays them.
+
+    Its collection.rs serves each drawer ready on its row from how the budget stands, as
+    budgets.json says it, and a cap's is the window's it is.
+    """
+    drawers: dict[str, Json] = {}
+    for budget in budgets["budgets"]:
+        drawers[f"budget:{budget['name']}"] = budget_drawn(budget)
+        for window in budget["allowances"]:
+            drawers[f"budget:{budget['name']}:{window['name']}"] = window_drawn(budget, window)
+    return collection | {"now": [drawn_by(line, drawers) for line in collection["now"]]}
+
+
 def written(desktop: Desktop, name: str, what: Json) -> None:
     """Write one of spend-watch's files whole, as its daemon does, renaming it into place."""
     # Its words have apostrophes, so the JSON is quoted for the shell whole.
@@ -1496,7 +1583,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
     Joel's scales.
     """
     written(desktop, "budgets.json", BUDGETS)
-    written(desktop, "collection.json", BUDGETED)
+    written(desktop, "collection.json", with_drawers(BUDGETED, BUDGETS))
     try:
         for scale in at_each_scale:
             named = scale.replace(".", "-")
