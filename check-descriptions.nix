@@ -151,9 +151,9 @@
     put off, then those another machine carried here, newest first, never put off
   '';
   a-shut-launcher-makes-no-document-rows = ''
-    the launcher's Documents make no row while it's shut, as the clock's minute passes or a
-    document comes, then hold every document once it opens, made once, and keep them, making none,
-    once it's shut again
+    the launcher's Documents make no row while it's shut, as the clock's minute passes or the
+    google daemon tells a row, then hold every document once it opens, made once in the daemon's
+    order, and keep them, making none, once it's shut again
   '';
   a-silent-hub-is-driven-as-one-stream = ''
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a

@@ -3701,9 +3701,10 @@ onLinux {
     '';
 
   # The launcher's Documents make no row while it's shut, however the clock
-  # and Drive move, and make them once as it opens (tests/documents.qml),
-  # through the real Drive.qml, with Google's account, the clock, the mail
-  # and the saves stood in.
+  # and the google daemon's rows move, and make them once as it opens, in
+  # the daemon's order (tests/documents.qml), through the real Drive.qml
+  # and Daemon.qml, with Google's account, the clock, the mail and the
+  # saves stood in.
   a-shut-launcher-makes-no-document-rows =
     let
       # Kept in Nix because it only stands in for what Drive.qml reads of
@@ -3737,6 +3738,8 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/words.json} launcher/words.json
+      cp ${./Daemon.qml} Daemon.qml
+      cp ${./launcher/Placed.js} launcher/Placed.js
       cp ${../google/Documents.qml} launcher/Documents.qml
       cp ${../google/Drive.qml} Drive.qml
       cp ${../google/Drive.js} Drive.js
