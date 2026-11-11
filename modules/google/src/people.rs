@@ -1,10 +1,10 @@
 //! Everyone Joel's meetings and mail name, as a People source the people
 //! daemon runs (google-people, src/bin): each who held or was asked to a
 //! meeting from a month ago to a week on, and each who sent mail that
-//! wants him, with when each thing with them was, as the shell's
-//! Google.js `people` finds them. The daemon then lists and orders them
-//! with everyone else's people, rather than the shell doing it on its GUI
-//! thread at every change (modules/people/src/listing.rs).
+//! wants him, with when each thing with them was. The daemon then holds,
+//! lists and orders them with everyone else's people, and the shell reads
+//! them from it (GoogleSource.qml's `daemonHolds`), rather than merging
+//! them on its GUI thread at every change (modules/people/src/listing.rs).
 
 use std::collections::BTreeMap;
 
@@ -39,7 +39,7 @@ fn text<'a>(thing: &'a Value, field: &str) -> &'a str {
 /// Everyone the daemon's records name, by address in lower case: the
 /// meetings held in the month before today, then those from today to a
 /// week on, each by its start, then the mail that wants Joel, newest
-/// first, so the first name given anyone is the one the shell gave.
+/// first, so anyone named in both is named as their meeting names them.
 pub fn people(records: &BTreeMap<String, Value>) -> BTreeMap<String, Met> {
     let mut found: BTreeMap<String, Met> = BTreeMap::new();
     let mut add = |email: &str, name: &str, span: (i64, i64)| {

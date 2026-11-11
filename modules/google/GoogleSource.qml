@@ -1,7 +1,10 @@
 // Google as one of People's sources (PersonSource.qml): everyone Joel's
 // meetings and mail name, each who held or was asked to a meeting from a
-// month ago to a week on and each who sent mail that wants him (Google.js's
-// people). With no account there's nobody. Its main act writes them a
+// month ago to a week on and each who sent mail that wants him, which
+// google-people tells the people daemon (src/people.rs), so the daemon
+// holds them and People reads them from it (`daemonHolds`), never merging
+// them on the GUI thread at each mail or meeting. With no account there's
+// nobody. Its main act writes them a
 // new mail in Mail's window; their next meeting is the first with them
 // not yet over, their Unread the mail they sent that wants him, and their
 // Recent the meetings with them over in the last month and the mail he
@@ -18,9 +21,7 @@ import QtQuick
 PersonSource {
     id: source
 
-    // Those Joel met in the last month too, so whoever his Recent holds a
-    // meeting with can be found.
-    people: Google.people(Google.held.concat(Calendar.meetings), Mail.mail)
+    daemonHolds: true
 
     function acts(person, provider) {
         const address = person.emails[0] ?? "";

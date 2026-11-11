@@ -364,8 +364,8 @@ QtObject {
             "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com");
         check("no new mail to nobody", Mail.writing([""], ""), "");
 
-        // Everyone the meetings and mail name, for People, by address, each
-        // with when what's with them is.
+        // Whether a meeting or a mail is with someone, for a person's next
+        // meeting, Unread and Recent (GoogleSource.qml).
         const minute = 60 * 1000;
         const standupWith = {
             start: lunch.at + 61 * minute, end: lunch.at + 91 * minute,
@@ -373,14 +373,6 @@ QtObject {
             guests: [{ name: "Grace Hopper", email: "grace@example.com", answer: "no" },
                 { name: "Room 4", email: null, answer: "yes" }]
         };
-        const alan = { address: "alan@example.com", from: "Alan", at: lunch.at - minute };
-        const meetingSpan = { from: standupWith.start, to: standupWith.end };
-        check("who the meetings and mail name", Google.people([standupWith], [lunch, alan]), [
-            { emails: ["ada@example.com"], name: "Ada Lovelace",
-                spans: [meetingSpan, { from: lunch.at, to: lunch.at }] },
-            { emails: ["grace@example.com"], name: "Grace Hopper", spans: [meetingSpan] },
-            { emails: ["alan@example.com"], name: "Alan", spans: [{ from: alan.at, to: alan.at }] }
-        ]);
         check("a meeting with them", Google.withThem(standupWith, ["grace@example.com"]), true);
         check("mail from them", Google.withThem(lunch, ["ada@example.com"]), true);
         check("nothing with a stranger", Google.withThem(standupWith, ["x@example.com"]), false);

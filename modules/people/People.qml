@@ -19,7 +19,7 @@
 // Their details, every address and each source's facts, are in the
 // drawer beside the row.
 //
-// A source the people daemon holds (`daemonHolds`, as Tuple's) is read from
+// A source the people daemon holds (`daemonHolds`, as Tuple's and Google's) is read from
 // the daemon, never held whole here: only those it lists with nothing
 // typed, watched as they change, and those a search finds, asked of the
 // daemon as each text is typed. Holding Tuple's 7,731 contacts here made
@@ -27,7 +27,7 @@
 // (2026-10-31, 09:31).
 //
 // Long because it still merges and ranks the people of the sources the
-// daemon doesn't hold yet, Google's and Slack's; what works on plain values
+// daemon doesn't hold yet, Slack's; what works on plain values
 // lives apart, in Person.js, Recent.js and Zones.js. It shrinks as the
 // daemon takes those over, by Fri 13 Nov.
 import qs
@@ -132,6 +132,9 @@ Provider {
         }
         if (renamed)
             namesRevision += 1;
+        // Who the daemon told whoIs of is asked again once anything's
+        // heard, since what told the listing anew may have told them too.
+        unlisted.by = {};
     }
     // Whether the people daemon has been silent a second, so home says so:
     // a restart or a reconnect answers within it, and saying so at once
@@ -201,8 +204,15 @@ Provider {
         const steps = launcher?.open ? launcher.held ?? [] : [];
         const lent = step => step.row.from !== provider && (step.rows ?? [])
             .some(row => row.component === "person" && row.person !== undefined);
-        if (!steps.some(lent))
-            return;
+        if (steps.some(lent))
+            heldAboveChanged();
+    }
+    // Tells each place held above People's that its rows changed, so it
+    // asks for them again, the launcher pacing it; with the launcher shut,
+    // nothing.
+    function heldAboveChanged() {
+        const launcher = provider.launcher;
+        const steps = launcher?.open ? launcher.held ?? [] : [];
         const holders = steps.map(step => step.row.from)
             .filter((from, at, all) => !!from && from !== provider && all.indexOf(from) === at);
         for (const holder of holders)
@@ -284,9 +294,13 @@ Provider {
                 const email = Person.address(entry.email || addressOf(record.key));
                 const id = String(entry.id ?? "");
                 const recent = entry.recent === true;
+                // When each thing with them was, as Google's say, so one
+                // listed here is listed by it (listedHere).
+                const spans = entry.spans ?? [];
                 people[name].push(email !== ""
-                    ? { emails: [email], name: entry.name ?? "", recent: recent }
-                    : { emails: [], id: id, name: entry.name ?? "", recent: recent });
+                    ? { emails: [email], name: entry.name ?? "", recent: recent, spans: spans }
+                    : { emails: [], id: id, name: entry.name ?? "", recent: recent,
+                        spans: spans });
                 stands[name][email !== "" ? email : `${name}:${id}`] = source.stood(entry);
             }
         }
@@ -363,10 +377,9 @@ Provider {
                 // says anything new of them, so each search's answer remakes
                 // none it found before; and let go once no answer holds it.
                 // The rest are merged here from what QML sources hold, until
-                // the daemon holds them too: Google's people from meetings
-                // and mail (GoogleSource.qml) by Fri 13 Nov 12:00, and
-                // Slack's facts, which #3045 serves, with People's drawers
-                // by Thu 12 Nov 18:00.
+                // the daemon holds them too: Slack's people and facts, which
+                // slack-people serves (#3045), with People's drawers by Thu
+                // 12 Nov 18:00.
                 const record = readyFor(person);
                 return record ? keptOr(made.keeping, person.key, record, () => provider.made(
                     person, Person.standing(person, []), null, record.row), heardAlike)
@@ -627,7 +640,63 @@ Provider {
     function whoIs(email) {
         if (namesRevision < 0)
             return null;
-        return merged().byEmail[String(email ?? "").trim().toLowerCase()] ?? null;
+        const address = String(email ?? "").trim().toLowerCase();
+        return merged().byEmail[address] ?? unlistedOf(address);
+    }
+
+    // Those the daemon holds and doesn't list, as a guest seen only at a
+    // meeting still to come, by address, as whoIs asked after them: each
+    // asked of the daemon once, with every other address asked in the
+    // same turn, and null until it answers, when namesRevision says so.
+    // One it doesn't hold is asked again the next time, so someone it
+    // learns of later is named. Plain, so keeping it notifies nothing.
+    readonly property var unlisted: ({ by: {}, due: [] })
+    function unlistedOf(address) {
+        const kept = unlisted;
+        if (address in kept.by)
+            return kept.by[address];
+        if (heldBy.length === 0 || address === "")
+            return null;
+        kept.by[address] = null;
+        kept.due.push(address);
+        if (kept.due.length === 1)
+            Qt.callLater(askUnlisted);
+        return null;
+    }
+    function askUnlisted() {
+        const kept = unlisted;
+        const by = kept.by;
+        const due = kept.due;
+        kept.due = [];
+        // Known asks no source, as a step-in would ask Slack about each.
+        book.find({ ask: "known", kind: "person", keys: due.map(one => `person:${one}`) },
+            answer => {
+                const records = (answer?.records ?? []).filter(record => !record.gone);
+                const daemon = fromDaemon(records);
+                const persons = Person.merged(heldBy.map(name => ({
+                    name: name,
+                    people: daemon.people[name]
+                })));
+                let named = false;
+                for (const person of persons) {
+                    for (const one of person.emails) {
+                        if (by[one] === null && by === kept.by) {
+                            by[one] = person;
+                            named = true;
+                        }
+                    }
+                }
+                for (const one of due) {
+                    if (by[one] === null)
+                        delete by[one];
+                }
+                // A meeting stepped into counted its guests as it was made,
+                // before the daemon answered, so it's told to count again.
+                if (named) {
+                    namesRevision += 1;
+                    heldAboveChanged();
+                }
+            });
     }
 
     // Their next meeting, drawn as a meeting is everywhere, the soonest any

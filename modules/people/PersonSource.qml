@@ -41,7 +41,7 @@
 // whose stands are keyed "<its name>:<id>", their key. `woken` is asked
 // each time the launcher opens, for a source that only follows what it
 // knows while someone might look. A source whose program the people
-// daemon runs and says everyone to, as Tuple's does, `daemonHolds`: it gives
+// daemon runs and says everyone to, as Tuple's and Google's do, `daemonHolds`: it gives
 // no `people` or `stands` of its own, and People reads from the daemon
 // only those it lists and those a search finds, never everyone, asking
 // `stood` how each stands from what the source told the daemon of them.

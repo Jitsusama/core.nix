@@ -48,6 +48,12 @@ pub enum Ask {
         keys: Vec<String>,
         patience: u64,
     },
+    /// Records by key as they're held, asking no source, as the shell asks
+    /// who an address is that nothing it holds names.
+    Known {
+        id: Value,
+        keys: Vec<String>,
+    },
     /// Every record held, in the order heard, at most `limit`, or only
     /// those a source lists.
     List {
@@ -132,6 +138,10 @@ pub fn ask(line: &str) -> Ask {
             id,
             keys: keys().unwrap_or_default(),
             patience: said.get("patience").and_then(Value::as_u64).unwrap_or(0),
+        },
+        "known" => Ask::Known {
+            id,
+            keys: keys().unwrap_or_default(),
         },
         "list" => Ask::List {
             id,
@@ -533,6 +543,16 @@ impl Book {
 
     pub fn record(&self, key: &str) -> Option<&Record> {
         self.records.get(key)
+    }
+
+    /// The records held for these keys, as the shell reads them: who an
+    /// address is, as a meeting's guest whom nobody lists, asked of no
+    /// source, which a step-in would send every source to look up.
+    pub fn known(&self, keys: &[String]) -> Vec<Value> {
+        keys.iter()
+            .filter_map(|key| self.record(key))
+            .map(Record::json)
+            .collect()
     }
 
     /// Every record held, in the order each was first heard of.

@@ -5,7 +5,8 @@
 //! once back, as one that put someone off is, is asked again about
 //! everyone watched; one that stops is started again and asked again
 //! about everyone watched; a roster is searched and watched by who it
-//! lists; and an ask or kind it doesn't know is refused.
+//! lists; what's held is known by key with no source asked; and an ask
+//! or kind it doesn't know is refused.
 
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -476,6 +477,45 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
     assert_eq!(client.ask(&json!({"id": 9, "ask": "health"}))["people"], 2);
     let said = client.ask(&json!({"id": 10, "ask": "list", "listed": true}));
     assert_eq!(keys(&said), ["person:eli@example.com"]);
+}
+
+#[test]
+fn who_is_held_is_known_by_key_with_no_source_asked() {
+    let running = Running::with("known", &[("tuple", ROSTER), ("slack", KNOWING)]);
+    let mut client = running.client();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while client.ask(&json!({"id": 0, "ask": "health"}))["people"] != 3 {
+        assert!(Instant::now() < deadline, "the roster was never held");
+        // The roster's three lines land as the source starts, asked about
+        // again each 20 ms until the deadline.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let said = client.ask(&json!({"id": 1, "ask": "known",
+        "keys": ["person:Eli@Example.com", "person:nobody@example.com"]}));
+    let records = said["records"].as_array().expect("what's known is records");
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| &record["key"])
+            .collect::<Vec<_>>(),
+        [&json!("person:eli@example.com")],
+        "Eli, held though unlisted, and nobody for one never heard of: {said}"
+    );
+    assert_eq!(
+        records[0]["sources"]["tuple"]["name"], "Eli Fenwick",
+        "{said}"
+    );
+    // A step-in after it is told to every source, so had knowing asked
+    // Slack, its line would come before Grace's.
+    client.ask(
+        &json!({"id": 2, "ask": "get", "keys": ["person:grace@example.com"],
+        "patience": 5000}),
+    );
+    assert_eq!(
+        running.asked("slack"),
+        ["grace@example.com"],
+        "knowing who's held asked a source"
+    );
 }
 
 #[test]
