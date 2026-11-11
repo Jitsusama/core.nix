@@ -1,8 +1,9 @@
 // The session's notifications, a collection: everything that arrived,
 // newest first, as the notices daemon serves their rows ready
-// (modules/notices, row.rs; ReadyRows.qml), so nothing is sorted, merged
-// or worded here (Joel, 2026-11-10: "the daemons need to be the data
-// layer, and they need to serve the launcher"). It's no place of its
+// (modules/notices, row.rs; ReadyRows.qml), and found by it (search.rs),
+// so nothing is sorted, merged, matched or worded here (Joel, 2026-11-10:
+// "the daemons need to be the data layer, and they need to serve the
+// launcher"). It's no place of its
 // own: For You holds the unread under Desktop and the read in History,
 // each the daemon's place of that name, and "notices" asked from outside
 // leads there (Now.qml's leadsTo); here, a search with a match adds one
@@ -22,7 +23,6 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Notice.js" as Notice
-import "Order.js" as Order
 
 Provider {
     id: provider
@@ -86,8 +86,6 @@ Provider {
         const held = row.held ?? {};
         const said = String(held.said ?? "");
         const cut = said.indexOf("\n");
-        let whole = null;
-        let made = null;
         const one = ready.thing(row, key, {
             notice: held.id,
             count: typeof row.note === "string" ? row.note : "",
@@ -121,19 +119,14 @@ Provider {
             && typeof provider.launcher?.intoDrawer !== "function") {
             Object.assign(one, { verb: "more", now: false, later: false, stays: true,
                 targets: one.verbs, wordsId: undefined,
-                run: () => provider.launcher?.enter(made) });
+                run: () => provider.launcher?.enter(one) });
         }
         // Where Ctrl+] goes from it, as Vim follows a tag: its sender's own
         // row, among Programs (Applications.qml), or nowhere for a sender
         // no program is, as the daemon found its entry.
         one.follows = typeof held.entry === "string" && held.entry !== ""
             ? `program:${held.entry}` : "";
-        // What it said, made ready to match only once a search asks, as a
-        // row made afresh with its getter (Provider.gotten).
-        made = provider.gotten(one, {
-            also: () => whole ?? (whole = Fuzzy.kept(said.replace(/\s+/g, " ")))
-        });
-        return made;
+        return one;
     }
 
     // What d and y take of a notice: done with it while it's live, and
@@ -212,12 +205,9 @@ Provider {
         return lined(all().filter(row => sent(row.sender)), []);
     }
 
-    // Every notice's row, one list until the daemon's places move. A
-    // search goes on from the last one's matches only while it looks
-    // through the very list that one did (Provider's poolFor), and the
-    // daemon's rows() gives a new list each time: so each key looked
-    // through every notice, as "ba" spent 45 of its 63 ms on Joel's
-    // (2026-11-11).
+    // Every notice's row, one list until the daemon's places move, since
+    // the daemon's rows() gives a new list each time, for the program's
+    // own row, For You and everything a collection holds.
     readonly property var everyRow: ({ at: -1, rows: [] })
     function all() {
         if (everyRow.at !== mixed.placings) {
@@ -253,7 +243,10 @@ Provider {
             .filter(row => !!row), []);
     }
 
-    // Whether a text holds a word typed, as search finds it.
+    // Whether a text holds a word typed, as the daemon's search finds it,
+    // for the line of a notice's body its note is: worked out here only
+    // for the rows read, a screen's twenty, a stopgap until the daemon's
+    // answer says each found notice's line.
     function holds(text, word) {
         return Fuzzy.match(Fuzzy.prepare(text), [word], false).score >= 0;
     }
@@ -285,30 +278,75 @@ Provider {
         });
     }
 
-    // Found by its title, which names it and shows where, else by
-    // anything else it said, which its note shows the line of.
+    // The daemon finds the notices what's typed holds, by their titles,
+    // which name them and show where, else by anything else they said,
+    // closest first and newest first among equals (modules/notices'
+    // search.rs), and nothing is matched here: matching them in Qt's
+    // engine took 64 of the 89 ms "ca" spent on Joel's (2026-11-11).
+    // Its answer comes a moment after the key, which the launcher waits
+    // for a little (`awaits`, Launcher.qml's answersWaitedFor); until it
+    // comes, what's typed finds no notice, and once it does, the launcher
+    // is told it found more. An answer asked again since the notices
+    // changed is listed meanwhile, its rows as they are now.
     function search(typed) {
         const words = Fuzzy.words(typed);
-        const need = Fuzzy.letters(words);
-        const found = [];
-        const every = all();
-        for (const row of poolFor(every, typed)) {
-            if ((row.also.mask & need) !== need)
-                continue;
-            const byName = Fuzzy.match(row.prepared, words, false);
-            const m = byName.score >= 0 ? byName : Fuzzy.match(row.also, words, false);
-            if (m.score >= 0)
-                found.push({ score: m.score, grade: m.grade, row: row });
-        }
-        matchedIn(every, typed, found.map(f => f.row));
-        // The closest first, and newest first among equals, since a notice
-        // is wanted by when it came.
-        let finest = 3;
-        for (const f of found)
-            finest = Math.min(finest, f.grade);
-        const kept = Order.sorted(found.filter(f => f.grade === finest),
-            (a, b) => b.score - a.score || b.row.at - a.row.at);
-        return { rows: listed(kept.map(f => f.row), words), grade: finest };
+        const asked = words.join(" ");
+        answers.wanted = asked;
+        const kept = answers.kept.find(one => one.words === asked) ?? null;
+        if (kept === null || kept.at !== mixed.placings)
+            searchAsked(asked);
+        if (kept === null)
+            return { rows: [], grade: 3 };
+        all();
+        const rows = kept.keys.map(key => mixed.rowAt(key)).filter(row => row !== null);
+        return { rows: listed(rows, words), grade: rows.length > 0 ? 0 : 3 };
+    }
+
+    // Whether a search of these letters waits on the daemon's answer, asked
+    // now if it isn't yet: none is kept for them, and the daemon is there
+    // to ask.
+    function awaits(letters) {
+        const asked = Fuzzy.words(letters).join(" ");
+        answers.wanted = asked;
+        if (asked === "" || answers.kept.some(one => one.words === asked))
+            return false;
+        return searchAsked(asked);
+    }
+
+    // The daemon's answers to the last few searches, each with the place's
+    // placings when it was asked, so one from before a change is asked
+    // again; the words being asked, with theirs; and the words searched
+    // last, the only ones an answer is worth searching again for. The last
+    // few, so typing back over what was typed finds it at once.
+    readonly property var answers: ({ kept: [], asking: Object.create(null), wanted: "" })
+    readonly property int answersKept: 8
+
+    // Asks the daemon what `asked` finds, unless it's being asked already,
+    // and says whether an answer is coming. Named apart from Provider's
+    // `ask` and `answered`, which are a URL's.
+    function searchAsked(asked) {
+        if (asked in answers.asking)
+            return true;
+        const link = mixed.link;
+        if (!link || link.wire === null)
+            return false;
+        answers.asking[asked] = mixed.placings;
+        link.find({ ask: "search", words: asked }, answer => provider.searchAnswered(asked, answer));
+        return true;
+    }
+
+    // An answer is kept, and the launcher told it found more when it's for
+    // what was searched last. One the daemon couldn't give is let go, to be
+    // asked again by the next search.
+    function searchAnswered(asked, answer) {
+        const at = answers.asking[asked];
+        delete answers.asking[asked];
+        if (!Array.isArray(answer?.keys))
+            return;
+        answers.kept = answers.kept.filter(one => one.words !== asked)
+            .concat([{ words: asked, keys: answer.keys, at: at }]).slice(-answersKept);
+        if (answers.wanted === asked)
+            provider.foundMore(false);
     }
 
     function everything() {

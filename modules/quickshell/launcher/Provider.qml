@@ -86,6 +86,15 @@ Scope {
     // a key's search is when `fresh`, come so soon after the key that it
     // was hardly seen, else in place.
     signal foundMore(bool fresh)
+    // Whether its search of these letters waits on an answer it asks a
+    // daemon for, asked now if it isn't yet, so the launcher holds the
+    // key's list for it a moment (Launcher.qml's answersWaitedFor) and
+    // all of the key's rows land at once; it says so with foundMore once
+    // the answer comes. Asked of every source at home, and inside a
+    // place of the place's own.
+    function awaits(letters) {
+        return false;
+    }
     // A collection's things changed while it might be open.
     signal changed
 

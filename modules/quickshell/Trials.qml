@@ -65,7 +65,8 @@ Scope {
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
-                        : ""})` : "")
+                        : ""}`
+                    + `${parts.waited ? `, waiting ${parts.waited} on answers` : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + drawingApart(frame) : ""));
     }
