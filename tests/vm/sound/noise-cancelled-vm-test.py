@@ -232,9 +232,9 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
     joel: Joel, offered: dict[str, Any]
 ) -> None:
     """A clip played and another picked, each is named, and a cleaned pick is the default."""
-    assert offered
-    assert joel.ask({"id": 4, "ask": "act", "act": "play", "clip": "A"})["taken"]
-    assert joel.ask({"id": 5, "ask": "act", "act": "pick", "clip": "B"})["taken"]
+    assert offered["stage"] == "ready"
+    assert joel.ask({"id": 4, "ask": "act", "act": "play", "clip": "A"}) == {"id": 4, "taken": True}
+    assert joel.ask({"id": 5, "ask": "act", "act": "pick", "clip": "B"}) == {"id": 5, "taken": True}
     picked = joel.trial()
     cleaners = {"raw", "deepfilternet", "deepfilternet-gentle", "rnnoise"}
     assert picked["stage"] == "picked"
