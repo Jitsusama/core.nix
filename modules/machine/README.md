@@ -48,8 +48,9 @@ listed change, since some answer every read through slow firmware.
 
 Heat's and Power's rows and headlines are made here, ready for the
 launcher, in the one form every daemon serves them in: each a
-`row:<place>:<id>` record of kind `row`, its row under `row`, and the
-headline a `head:<place>` record of kind `head`. A watch names its place,
+`row:<place>:<id>` record of kind `row`, its row under `row` naming what
+it shows as its `thing` (`power:limit`), and the headline a
+`head:<place>` record of kind `head`. A watch names its place,
 `{"ask": "watch", "kind": ["row", "head"], "place": "heat"}`, and
 hears only that place's. While one does, the sensors, zones, cooling
 and processor are read together once a second as their own watch would

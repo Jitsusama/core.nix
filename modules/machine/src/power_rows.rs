@@ -981,7 +981,7 @@ mod tests {
         assert_eq!(charger["side"][0]["said"], "45.0 W on port 1");
         assert_eq!(charger["note"], "one USB-C port");
         let first = row(&ready, "row:power:port:1");
-        assert_eq!(first["row"], "power:port:1");
+        assert_eq!(first["thing"], "power:port:1");
         assert_eq!(first["parent"], "row:power:charger");
         assert_eq!(
             first["side"][0]["said"],
