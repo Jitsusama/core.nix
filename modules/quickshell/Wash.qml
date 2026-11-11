@@ -3,10 +3,10 @@
 // words' own Text, beneath its letters, so it moves as they read on. The
 // ink is the words' own (Launcher.qml's marked), since Qt draws a ground
 // only in rich text, and rich text won't end in an ellipsis as a row cut to
-// its room must. Each is made by a Loader only while there's something to
-// wash, so a row keeps none while nothing is found in it, and the Loader
-// lies beneath the letters (z: -1), since z orders an item only among its
-// siblings.
+// its room must. Each is made by a Loader once there's something to wash,
+// so a row nothing was found in keeps none, and kept while its words stand
+// (ReadsOn.qml), and the Loader lies beneath the letters (z: -1), since z
+// orders an item only among its siblings.
 pragma ComponentBehavior: Bound
 import QtQuick
 

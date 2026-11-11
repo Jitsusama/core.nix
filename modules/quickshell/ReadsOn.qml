@@ -36,6 +36,14 @@ Item {
     property string plain: text
     // Whether the words lie on the selection, whose wash is a shade past it.
     property bool washedSelected: false
+    // Whether its wash was made, so it's kept (the Loader below).
+    property bool washMade: false
+    // Set from the finds rather than as the wash loads, since its Loader's
+    // active reads it and a Loader's own load setting it loops.
+    onFindsChanged: {
+        if (finds.length > 0)
+            washMade = true;
+    }
     // Where it's washed in the words, each run's start, width and ground.
     readonly property var washed: wash.item ? (wash.item as Wash).laid : []
     // Said each time the words are back at their start, so a row with two
@@ -120,12 +128,15 @@ Item {
         font.variableAxes: room.level.variableAxes
         font.features: room.level.features
 
-        // Made only while there's a find to wash, beneath the letters.
+        // Made once there's a find to wash, beneath the letters, and kept
+        // while the words stand, washing nothing while nothing's found:
+        // a row's finds come and go with the keys typed, and making it
+        // again was 12 to 36 ms of a key's frame (prof6, 2026-11-11).
         Loader {
             id: wash
             anchors.fill: parent
             z: -1
-            active: room.finds.length > 0
+            active: room.washMade
             sourceComponent: Wash {
                 text: room.plain
                 runs: room.finds
@@ -145,6 +156,8 @@ Item {
     // the words rest.
     onScrollsChanged: room.scrolls ? room.read() : room.unread()
     Component.onCompleted: {
+        if (room.finds.length > 0)
+            room.washMade = true;
         if (room.scrolls)
             room.read();
     }
