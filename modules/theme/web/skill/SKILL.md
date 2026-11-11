@@ -478,6 +478,11 @@ destroyed by it" (2026-11-11).
   Name its chapters in the cast (a step, a stage, a verdict), set its
   columns to fit the measure in the kit's mono, and give it the controls
   below, a reduced-motion form and a twin of its transcript.
+- **A replay that's evidence is never trimmed.** Where it proves a run
+  happened as the page says, it stays whole and in real time: no output
+  cut, the printed timings as they were, and gaps over 2 s shortened only
+  in playing, with a note on the frame that says so. A secret in it is
+  masked where it stands, marked as masked, never cut out.
 - **A terminal replay is a player the reader drives.** It opens paused, at
   1×, and plays only when asked. Its speed always shows beside it and
   changes in steps (0.25×, 0.5×, 1×, 2×, 4×), so a reader slows what rushes
