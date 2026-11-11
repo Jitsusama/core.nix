@@ -13,14 +13,13 @@ pragma Singleton
 // nothing of Spend's. The whole file was read every 37 s before, about
 // 228 KB, and each of Spend's rows made again while it was shut
 // (2026-11-10). Agents' figures and today's are watched always, the
-// collection's rows and the budgets while the launcher is open, and the
-// reports and their words while Spend's rows are wanted. budgets.json
-// was read again each pass too, about 9 KB, while nothing drew it.
+// budgets while the launcher is open, and the reports and their words
+// while Spend's rows are wanted. budgets.json was read again each pass
+// too, about 9 KB, while nothing drew it.
 //
-// spend-watch ranks the rows, placing each in the lists it's shown in, so
-// none is ranked here, and each row brings its drawer ready. Spend still
-// makes its rows from these records until spend-watch serves them ready,
-// planned for 2026-11-12.
+// Spend's rows aren't held here: spend-watch serves them ready, ordered,
+// worded and with their drawers and acts, and Spend holds them as every
+// place does (launcher/Spend.qml, on ReadyRows.qml).
 //
 // While the socket isn't there, as before the daemon starts or in a check
 // that writes the file by hand, the file is read instead, when the watch
@@ -58,11 +57,6 @@ Singleton {
     // spent today, each "" until it's said.
     property string today: ""
     property string agentsToday: ""
-    // The collection's rows, each list as the daemon placed it: { now,
-    // shown, summary, quiet }, how things stand, every row listed, the
-    // summary's and those listed while shared, each row { key, line }, its
-    // record's key and the row as the daemon wrote it.
-    property var rows: ({ now: [], shown: [], summary: [], quiet: [] })
     // Each report by its id, and the words that name a period, a cut, and
     // the examples the field offers.
     property var reports: ({})
@@ -99,9 +93,8 @@ Singleton {
     readonly property bool down: fromFile && !known
     // Whether the file is watched, only while it's read, as a check asks.
     readonly property bool watchingFile: file.watchChanges
-    // Whether the rows, or the reports, are still being read for this
-    // opening, drawn from what was held meanwhile (Provider.stillReading).
-    readonly property bool rowsReading: !fromFile && listed.live && !listed.answeredThisWatch
+    // Whether the reports are still being read for this opening, drawn
+    // from what was held meanwhile (Provider.stillReading).
     readonly property bool reportsReading: !fromFile && reported.live
         && !reported.answeredThisWatch
 
@@ -195,13 +188,12 @@ Singleton {
         onHeard: (changed, gone) => root.heardFrom(spent, changed, gone)
     }
 
-    // The collection's rows, and the budgets its drawers and Agents' say,
-    // while the launcher is open.
+    // The budgets Agents' drawers say, while the launcher is open.
     Daemon {
         id: listed
 
         socket: root.socket
-        kind: ["row", "budget", "drew"]
+        kind: ["budget", "drew"]
         live: root.listing
         paced: root.paced
         answersWhole: true

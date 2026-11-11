@@ -1,18 +1,18 @@
 // Drives the launcher's collection of AI spend (launcher/Spend.qml) told by
 // spend-watch's socket rather than read from its file, through Quickshell
 // itself, over records cut from the collection spend-watch wrote beside
-// this, with a stand-in serving them as the daemon does. The socket's first
-// answer, saying what the collection and budgets files said with its keys
-// in another order, makes no row and leaves the budgets as they were, and
-// while the daemon is starting its figures are still being
-// read, said as its last run's, until it says it's answering; the file
-// isn't watched while the socket answers; a change to a session's
-// figure makes none of the rows and a change to one row makes that row
-// alone; going to a finding's session and marking it expected are asked
-// of the socket, spawning nothing, from the launcher's rows and the bar's
-// piece alike; and a watch that never answers is drawn from what's held while
-// it's still reading, with no row made twice. It exits 0 once every case
-// holds, and otherwise 1, saying which didn't.
+// this and a few rows served ready, with a stand-in serving them as the
+// daemon does, each place's rows to that place's watch. The socket's first
+// answer leaves the budgets as the files said them, and while the daemon
+// is starting its figures are still being read, said as its last run's,
+// until it says it's answering; the file isn't watched while the socket
+// answers; a change to a session's figure makes none of the rows and a
+// change to one row makes that row alone; going to a finding's session and
+// marking it expected are asked of the socket, spawning nothing, from the
+// launcher's rows and the bar's piece alike; and a watch that never answers
+// is drawn from what's held while it's still reading, with no row made
+// twice. (tests/spend-served.qml holds the rows against the real daemon.)
+// It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -39,9 +39,10 @@ ShellRoot {
         id: launcher
 
         property bool open: true
+        property bool wanting: true
 
         function wants(source) {
-            return true;
+            return wanting;
         }
 
         function afterFrame(then) {
@@ -78,16 +79,40 @@ ShellRoot {
     }
 
     // spend-watch's socket as its daemon serves it (its src/interface.rs):
-    // each watch told its kinds whole, and then only what changed, as
-    // `tell` says it. A kind in `silent` is never answered, as a daemon too
-    // slow to answer leaves it.
+    // each watch told its kinds whole, a row or a summary only of the place
+    // it names, and then only what changed, as `tell` says it. A kind in
+    // `silent` is never answered, as a daemon too slow to answer leaves it.
     property var served: ({})
     property var silent: []
     // The acts asked, each as its act and its row's key.
     property var acts: []
+    // Each connection watching, by what it hears: a kind, or a kind and
+    // the place it names, "row@spend".
     readonly property var watchers: ({})
     // What hello says, as the daemon says "starting" until its first pass.
     property string saying: "answering"
+
+    // A row served ready in Spend's place, as spend-watch's ready.rs lays
+    // one: `fields` over a row of `id` saying `side`.
+    function ready(id, side, fields) {
+        const key = `row:spend:${id}`;
+        return {
+            key: key, kind: "row",
+            row: Object.assign({
+                key: key, thing: `spend:${id}`, place: "spend", kind: id.split(":")[0],
+                order: 1024, name: "Today", glyph: "cost", hue: "voice", depth: 0,
+                side: [{ said: side }], acts: [{ key: "verb:copy", copy: `Today: ${side}` }],
+                held: {}
+            }, fields ?? {})
+        };
+    }
+
+    // What a record is heard by: its kind, and a row's or a summary's place.
+    function heardBy(record) {
+        const kind = Records.kindOf(record.key);
+        const place = record.row?.place ?? record.summary?.place;
+        return place === undefined ? kind : `${kind}@${place}`;
+    }
 
     // A value with every object's keys in the other order, as serde's
     // sorted keys are against the order the file was written in.
@@ -102,31 +127,35 @@ ShellRoot {
         return now;
     }
 
+    // Every connection watching anything, once each.
+    function connections() {
+        const all = [];
+        for (const heard of Object.keys(watchers)) {
+            for (const watcher of watchers[heard]) {
+                if (!all.includes(watcher))
+                    all.push(watcher);
+            }
+        }
+        return all;
+    }
+
     // Says the daemon is answering now, as its first pass tells each
     // connection watching.
     function passed() {
         saying = "answering";
-        const told = [];
-        for (const kind of Object.keys(watchers)) {
-            const watcher = watchers[kind];
-            if (told.includes(watcher))
-                continue;
-            told.push(watcher);
+        for (const watcher of connections()) {
             watcher.write(`${JSON.stringify({ id: "hello", state: "answering" })}\n`);
             watcher.flush();
         }
     }
 
-    function recordsOf(kinds) {
-        return Object.values(served).filter(record => kinds.includes(Records.kindOf(record.key)));
-    }
-
-    // Tells each watch of a record's kind that it changed.
+    // Tells each watch hearing a record that it changed.
     function tell(record) {
         served[record.key] = record;
-        const watcher = watchers[Records.kindOf(record.key)];
-        watcher.write(`${JSON.stringify({ id: "all", changed: [record], gone: [] })}\n`);
-        watcher.flush();
+        for (const watcher of watchers[heardBy(record)] ?? []) {
+            watcher.write(`${JSON.stringify({ id: "all", changed: [record], gone: [] })}\n`);
+            watcher.flush();
+        }
     }
 
     SocketServer {
@@ -140,16 +169,18 @@ ShellRoot {
             parser: SplitParser {
                 onRead: line => {
                     const ask = JSON.parse(line);
-                    const kinds = [].concat(ask.kind ?? []);
+                    const hears = [].concat(ask.kind ?? []).map(kind => ["row", "summary"]
+                        .includes(kind) && ask.place ? `${kind}@${ask.place}` : kind);
                     let answer = { id: ask.id, unwatched: true };
                     if (ask.ask === "hello")
                         answer = { id: ask.id, version: 1, domain: "spend", state: root.saying };
                     else if (ask.ask === "watch") {
-                        for (const kind of kinds)
-                            root.watchers[kind] = asked;
-                        if (kinds.some(kind => root.silent.includes(kind)))
+                        for (const heard of hears)
+                            root.watchers[heard] = (root.watchers[heard] ?? []).concat([asked]);
+                        if (hears.some(heard => root.silent.includes(heard)))
                             return;
-                        answer = { id: ask.id, records: root.recordsOf(kinds) };
+                        answer = { id: ask.id, records: Object.values(root.served)
+                            .filter(record => hears.includes(root.heardBy(record))) };
                     } else if (ask.ask === "act") {
                         root.acts.push(`${ask.act} ${ask.line}`);
                         answer = { id: ask.id, done: true };
@@ -198,12 +229,12 @@ ShellRoot {
         }
     }
 
-    // First what the file says, as the shell reads it while the socket
-    // isn't answering, so the socket's first answer can be held against it.
-    // The check puts what spend-watch wrote where it writes it.
+    // First what the files say, as the shell reads them while the socket
+    // isn't answering, so the socket's first answer can be held against
+    // them. The check puts what spend-watch wrote where it writes it.
     function begin() {
         until("the collection read from the file",
-            () => root.collected !== "" && spend.known && SpendWatch.fromFile
+            () => root.collected !== "" && SpendWatch.known && SpendWatch.fromFile
                 && Object.keys(SpendWatch.budgets).length > 0, stream);
     }
 
@@ -219,16 +250,17 @@ ShellRoot {
         served = {};
         for (const key of Object.keys(records))
             served[key] = turned(records[key]);
-        streamed = spend.tally.rows;
-        const first = spend.everything()[0];
+        served["row:spend:today"] = ready("today", "$4 \u00b7 usual");
+        served["summary:spend"] = { key: "summary:spend", kind: "summary", summary: {
+            place: "spend", said: "$4 today", headline: "Today: $4", rows: ["row:spend:today"]
+        } };
         Expect.expect("the file watched while it's read", SpendWatch.watchingFile, "unwatched");
         saying = "starting";
         daemon.active = true;
         until("the socket answering, starting", () => !SpendWatch.fromFile
-            && SpendWatch.lastRun && !SpendWatch.rowsReading && !SpendWatch.reportsReading, () => {
-            Expect.expect("the socket's answer, as the file's in another order, makes no row",
-                spend.everything()[0] === first && spend.tally.rows === streamed,
-                spend.tally.rows - streamed);
+            && SpendWatch.lastRun && !SpendWatch.reportsReading && spend.known, () => {
+            Expect.expect("its rows as served", spend.everything()[0]?.name === "Today",
+                spend.everything().map(row => row.name).join(", "));
             Expect.expect("the file unwatched while the socket answers", !SpendWatch.watchingFile,
                 "watched");
             Expect.expect("the budgets told as the file said them", Object.keys(budgets).length > 0
@@ -247,6 +279,7 @@ ShellRoot {
             spend.answer("spend").note === "Return copies the summary",
             spend.answer("spend").note);
         // Counted from here, since an answer asked makes its own rows.
+        spend.everything();
         streamed = spend.tally.rows;
         // Agents' figure, as each pass tells some session's.
         const session = Object.keys(served).find(key => Records.kindOf(key) === "session");
@@ -259,11 +292,10 @@ ShellRoot {
         spend.everything();
         Expect.expect("a session's figure changed makes none of the rows",
             spend.tally.rows === streamed, spend.tally.rows - streamed);
-        const row = Object.keys(served).find(key => key.startsWith("row:now:"));
-        const line = Object.assign({}, served[row].line, { side: "$1 \u00b7 told" });
-        tell(Object.assign({}, served[row], { line: line }));
+        tell(ready("today", "$1 \u00b7 told"));
         until("a row told",
-            () => SpendWatch.rows.now.some(one => one.line.side === "$1 \u00b7 told"), rowTold);
+            () => spend.served.served("row:spend:today")?.side[0].said === "$1 \u00b7 told",
+            rowTold);
     }
 
     function rowTold() {
@@ -278,19 +310,20 @@ ShellRoot {
     // spawns nothing for an act (2026-11-10).
     function acted() {
         const burn = "A burn in Aquifer";
-        // Listed last, since no row held has a place as high as the count
-        // of records.
-        tell({
-            key: "row:findings:finding:burn:s1", kind: "row", list: "findings", order: 0,
-            place: Object.keys(root.served).length,
-            line: {
-                key: "finding:burn:s1", name: burn, side: "alert", copy: `${burn}.`,
-                role: "alert", run: ["spend-watch", "go", "s1"], verb: "go to",
-                expect: ["spend-watch", "findings", "expect", "burn:s1"]
-            }
-        });
-        until("a finding told", () => spend.everything().some(row => row.name === burn), () => {
-            const found = spend.everything().find(row => row.name === burn);
+        const act = what => ({ ask: "act", act: what, line: "finding:burn:s1" });
+        // Listed first, as the daemon lists a finding that wants a look,
+        // and marking it expected behind it.
+        tell(ready("finding:burn:s1", "alert", {
+            order: 512, name: burn, glyph: "urgent", hue: "alert", held: { verb: "go to" },
+            acts: [{ key: "verb:spend:run", ask: act("run") }, { key: "verb:more", step: "rows" }]
+        }));
+        tell(ready("finding:burn:s1:expect", "", {
+            parent: "row:spend:finding:burn:s1", depth: 1, name: "It's Expected", glyph: "fine",
+            hue: "action", side: [], held: { verb: "expect" },
+            acts: [{ key: "verb:spend:expect", ask: act("expect") }]
+        }));
+        until("a finding told", () => spend.everything()[0]?.name === burn, () => {
+            const found = spend.everything()[0];
             found.run();
             found.verbs().find(row => row.name === "It's Expected").run();
             until("its acts asked", () => root.acts.length === 2, () => {
@@ -346,9 +379,9 @@ ShellRoot {
     function unanswered() {
         const made = spend.tally.rows;
         const rows = spend.everything();
-        launcher.open = false;
-        silent = ["row"];
-        launcher.open = true;
+        launcher.wanting = false;
+        silent = ["report"];
+        launcher.wanting = true;
         let ticks = 0;
         until("a watch left unanswered a while", () => ++ticks === 10, () => {
             Expect.expect("a watch never answered is still reading", spend.stillReading

@@ -3,7 +3,8 @@
 // and what SpendWatch.qml makes of them. collection.json and budgets.json,
 // read while the socket isn't there, are cut into the same records here,
 // so the shell holds one shape whichever told it and remakes only what
-// changed.
+// changed. Spend's rows aren't among them: spend-watch serves them ready
+// (launcher/Spend.qml, on ReadyRows.qml), with no file to stand in.
 
 // The kinds budgets.json is cut into; the rest are collection.json's.
 const budgetKinds = ["budget", "drew"];
@@ -66,27 +67,6 @@ function records(collection) {
     for (const [id, from] of [["all", "today"], ["agents", "agentsToday"]]) {
         cut[`day:${id}`] = { key: `day:${id}`, kind: "day", spent: collection[from] ?? null };
     }
-    const places = keys => {
-        const at = {};
-        (keys ?? []).forEach((key, place) => {
-            at[key] = place;
-        });
-        return at;
-    };
-    const shown = places(collection.shown);
-    const summed = places(collection.summaryRows);
-    for (const list of ["now", "findings", "more", "quiet"]) {
-        (collection[list] ?? []).forEach((line, order) => {
-            const key = `row:${list}:${line.key}`;
-            cut[key] = { key, kind: "row", list, order, line };
-            if (list !== "quiet" && line.key in shown) {
-                cut[key].place = shown[line.key];
-            }
-            if (list !== "quiet" && line.key in summed) {
-                cut[key].summed = summed[line.key];
-            }
-        });
-    }
     for (const id of ["periods", "cuts", "examples"]) {
         cut[`words:${id}`] = { key: `words:${id}`, kind: "words", words: collection[id] ?? [] };
     }
@@ -120,8 +100,6 @@ function touched(was, now) {
         return ["families"];
     case "day":
         return [idOf(record.key) === "all" ? "today" : "agentsToday"];
-    case "row":
-        return ["rows"];
     case "report":
         return ["reports"];
     case "words":
@@ -163,30 +141,6 @@ function made(held, property) {
         return String(held["day:all"]?.spent ?? "");
     case "agentsToday":
         return String(held["day:agents"]?.spent ?? "");
-    case "rows": {
-        // Each row put where the daemon placed it, so none is ranked
-        // here: today's in `now`, every row listed in `shown`, the
-        // summary's in `summary`, and those shown while shared in `quiet`.
-        const lists = { now: [], shown: [], summary: [], quiet: [] };
-        for (const record of of("row")) {
-            const row = { key: record.key, line: record.line };
-            if (record.list === "now" || record.list === "quiet") {
-                lists[record.list][record.order] = row;
-            }
-            if (typeof record.place === "number") {
-                lists.shown[record.place] = row;
-            }
-            if (typeof record.summed === "number") {
-                lists.summary[record.summed] = row;
-            }
-        }
-        // A place told before the rest of its list is, as a record let
-        // go before its list is told again, leaves no gap.
-        for (const list of Object.keys(lists)) {
-            lists[list] = lists[list].filter(row => row !== undefined);
-        }
-        return lists;
-    }
     case "reports":
         return byId("report", record => record.report);
     case "budgets":
