@@ -1598,7 +1598,8 @@
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
     already on the screen, and edits a draft, an extension's panel's too, in the external
     editor of the viewer that asked through its host, keeping the draft and saying why when
-    the edit fails and refusing it in place when the host can't
+    the edit fails and refusing it in place when the host can't, and asks its host before a
+    quit, at once, running on when the host says it doesn't hold
   '';
   pi-hosted-screen-stays-in-its-session = ''
     pi built with the host's patches, applied exactly, ends only a hosted screen when it quits
