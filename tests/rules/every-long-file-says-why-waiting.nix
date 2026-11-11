@@ -134,7 +134,6 @@
   "tests/program-controls.qml"
   "tests/query-keys.qml"
   "tests/rows.qml"
-  "tests/vm/guide/guide-install-vm-test.py"
   "tools/changed-checks/src/main.rs"
   "tools/changed-checks/tests/changed_checks.rs"
   "tools/merge-net/src/watch.rs"
