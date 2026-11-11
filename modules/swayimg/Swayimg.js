@@ -65,17 +65,16 @@ function folders(recent, skipped) {
     return each;
 }
 
-// What reads the files in these folders, a line each, when it last
-// changed in seconds since 1970 and its whole path, a tab between, without
-// going into the folders inside them or listing what's hidden, as
-// swayimg's gallery leaves those out. The launcher runs it without a
-// shell.
-function listing(within) {
-    return ["find"].concat(within, ["-maxdepth", "1", "-type", "f", "-not", "-name", ".*",
-        "-printf", "%T@\\t%p\\n"]);
+// The programs daemon's key for what's in a folder, which it reads itself
+// (modules/programs/src/folder.rs): its files, none inside folders in it
+// and none hidden, as swayimg's gallery leaves those out.
+function folderKey(folder) {
+    return `folder:${folder}`;
 }
 
-// What the listing printed, of the folders it read (`within`): how many
+// What the daemon said of the folders read (`within`), a file a line, when
+// it last changed in seconds since 1970, its size and its whole path, a
+// tab between: how many
 // pictures each holds, which pictures are there and each one's newest,
 // { within, counts, there, newest }, `counts` and `newest` by folder and
 // `there` by path, a newest { path, at } with `at` in milliseconds, as
@@ -90,7 +89,7 @@ function read(lines, within) {
     }
     for (const line of lines) {
         const tab = line.indexOf("\t");
-        const path = line.slice(tab + 1);
+        const path = line.slice(line.indexOf("\t", tab + 1) + 1);
         const at = Number(line.slice(0, tab)) * SECOND;
         const folder = folderOf(path);
         if (!(folder in counts && isPicture(path))) {

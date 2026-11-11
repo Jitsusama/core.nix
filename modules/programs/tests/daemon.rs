@@ -358,6 +358,43 @@ fn a_list_of_folders_is_read_with_no_command_and_again_as_a_file_comes() {
 }
 
 #[test]
+fn a_folder_named_by_its_key_is_read_as_its_watch_begins_and_as_a_file_comes() {
+    let running = Running::new("folder");
+    let pictures = running.path("pictures");
+    std::fs::create_dir_all(&pictures).unwrap();
+    std::fs::write(pictures.join("tidepool.jpg"), "pool").unwrap();
+    let key = format!("folder:{}", pictures.display());
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "folder", "keys": [key]}));
+    let count = |said: &Value| said["lines"].as_array().map_or(0, Vec::len);
+    let read = client.changed(&key);
+    assert_eq!(
+        read["path"],
+        json!(pictures.display().to_string()),
+        "a folder's record didn't say its path: {read}"
+    );
+    assert_eq!(
+        count(&read),
+        1,
+        "the folder's one picture wasn't said: {read}"
+    );
+    std::fs::write(pictures.join("cove.png"), "cove").unwrap();
+    let again = client.changed(&key);
+    assert_eq!(
+        count(&again),
+        2,
+        "a file made in the folder wasn't heard: {again}"
+    );
+    let missing = format!("folder:{}", running.path("gone").display());
+    let said = client.ask(&json!({"id": 2, "ask": "get", "keys": [missing]}));
+    assert_eq!(
+        said["records"][0]["lines"],
+        json!([]),
+        "a folder that isn't there didn't hold nothing: {said}"
+    );
+}
+
+#[test]
 fn what_a_program_has_open_is_read_as_its_asked() {
     let running = Running::new("opened");
     let mut client = running.client();

@@ -17,15 +17,16 @@
 //
 // Recent is read where Programs reads it (Applications.qml's Recents), so
 // these are the folders of the very pictures its Recent lists, kept up as
-// that list is. How many pictures each folder holds is read as swayimg is
-// stepped into, once each time the launcher opens, never on a timer. Its
+// that list is. How many pictures each folder holds is read by the
+// programs daemon as swayimg is stepped into and on each change while it's
+// held, never on a timer, so the shell starts no process for it. Its
 // drawer says when the newest screenshot was taken and how many there are
 // (`programFacts`), and each gallery's drawer is its folder's plate, as a
 // folder's is wherever a file's is: where it is, then its kind, the newest
 // picture previewed, its name, when it was taken or added, and how many
 // there are (Swayimg.js's `plate`).
 import qs
-import Quickshell.Io
+import Quickshell
 import QtQuick
 import "../FileFacts.js" as FileFacts
 import "Swayimg.js" as Swayimg
@@ -76,52 +77,52 @@ Provider {
         key: provider.keyOf(folder)
     }))
 
-    // Whether swayimg's own step is held, from Programs or from the top,
-    // and which folders were read since the launcher opened.
+    // Whether swayimg's own step is held, from Programs or from the top.
     readonly property bool steppedIn: (launcher?.open ?? false)
         && (launcher?.held ?? []).some(step => step.row?.key === `program:${provider.program}`)
-    property string readFor: ""
-    property var reading: []
+    // Whether Recent's folders are watched: from once the step is drawn
+    // (Launcher.qml's afterFrame), so its frame never waits on an answer,
+    // until it's left or the launcher closes.
+    property bool watchingFolders: false
 
-    // Read once the step is drawn (Launcher.qml's afterFrame), so its
-    // frame never waits on starting a process.
-    onSteppedInChanged: launcher.afterFrame(look)
-    onRecentFoldersChanged: look()
+    onSteppedInChanged: {
+        if (steppedIn)
+            launcher.afterFrame(() => provider.watchingFolders = provider.steppedIn);
+        else
+            watchingFolders = false;
+    }
 
-    // The folders are read as swayimg is stepped into, and again as
-    // Recent gains a folder while it's held, never otherwise.
-    function look() {
-        const asked = JSON.stringify(recentFolders);
-        if (!steppedIn || recentFolders.length === 0 || asked === readFor || listing.running)
+    // What's in Recent's folders, as the programs daemon reads them itself,
+    // as each watch of them begins and on each change while it's held, and
+    // never otherwise; a folder Recent gains while it's held is watched as
+    // it comes.
+    Daemon {
+        id: folders
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/programs.sock`
+        kind: "folder"
+        live: false
+        ahead: provider.watchingFolders ? provider.recentFolders.map(Swayimg.folderKey) : []
+
+        onHeard: provider.hear()
+    }
+
+    // What the folders said when last counted, so a watch begun again,
+    // whose whole answer says every folder anew, remakes no gallery when
+    // nothing in them changed.
+    property string heardAs: ""
+
+    // Counts the folders the daemon has said, leaving one it hasn't yet
+    // uncounted.
+    function hear() {
+        const within = recentFolders.filter(folder => Swayimg.folderKey(folder) in folders.held);
+        const lines = within.reduce((all, folder) => all.concat(
+            folders.held[Swayimg.folderKey(folder)].lines ?? []), []);
+        const said = JSON.stringify([within, lines]);
+        if (said === heardAs)
             return;
-        readFor = asked;
-        reading = recentFolders;
-        listing.running = true;
-    }
-
-    // The next opening reads them again, as they may have changed since.
-    Connections {
-        target: provider.launcher
-
-        function onOpenChanged() {
-            if (!provider.launcher.open)
-                provider.readFor = "";
-        }
-    }
-
-    Process {
-        id: listing
-
-        command: Swayimg.listing(provider.reading)
-        running: false
-        // A folder Recent gained while this read is read once it's done.
-        onExited: Qt.callLater(provider.look)
-        stdout: StdioCollector {
-            id: printed
-
-            onStreamFinished: provider.listed = Swayimg.read(printed.text.split("\n")
-                .filter(line => line !== ""), provider.reading)
-        }
+        heardAs = said;
+        listed = Swayimg.read(lines, within);
     }
 
     // How a gallery's count is said, and when the newest screenshot was
