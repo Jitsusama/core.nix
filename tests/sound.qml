@@ -1,16 +1,16 @@
 // Drives the launcher's Sound (modules/quickshell/launcher/Sound.qml)
-// through Quickshell itself, where it decides, over stand-in devices as
-// the sound server would give them, with what desk-facts would say of
-// their jacks and niri's workspaces on the machine's own panel alone: a
-// jack with nothing plugged into it isn't listed, and says so where it's
-// shown; one with headphones in is; a card starting or stopping to play
-// lists nothing again, since only its jack says whether it's listed;
-// speakers desk-facts says no jack of are; a display's output waits for a display; and a headset's microphone
-// isn't listened to while the headset plays music, since listening would
-// switch it to calls, though it is once it's in a call. The sandbox has no
-// sound server, so which device is in use, and which one is watched, can't
-// be stood in for here. It exits 0 once every case holds, and otherwise 1,
-// saying which case didn't.
+// through Quickshell itself, where it still makes a device's parts and
+// drawer, over stand-in devices as the sound server would give them: a
+// headset's microphone isn't listened to while the headset plays music,
+// since listening would switch it to calls, though it is once it's in a
+// call; a drawer says what the device is doing; and a device's parts are
+// kept while the launcher's shut and nothing they show moved. Which
+// devices are listed, and in what order, is the sound daemon's
+// (modules/sound's rows.rs), and Sound's rows as it serves them are held
+// in tests/sound-served.qml. The sandbox has no sound server, so which
+// device is in use, and which one is watched, can't be stood in for here.
+// It exits 0 once every case holds, and otherwise 1, saying which case
+// didn't.
 import qs
 import Quickshell
 import Quickshell.Services.Pipewire
@@ -48,12 +48,6 @@ ShellRoot {
         name: "usb-desk-speakers"
     }
 
-    Node {
-        id: deskMicrophone
-        name: "usb-desk-microphone"
-        isSink: false
-    }
-
     // The launcher as Sound asks it, shut, and whether Sound's rows are
     // wanted (Provider.qml's wanted).
     QtObject {
@@ -74,26 +68,6 @@ ShellRoot {
         serverNodes: [deskSpeakers]
     }
 
-    // A shell just started, shut, its rows first read before the sound
-    // server has said any device.
-    QtObject {
-        id: startedLauncher
-
-        property bool open: false
-        property bool wanting: false
-        readonly property var held: []
-
-        function wants(source) {
-            return wanting;
-        }
-    }
-
-    Launcher.Sound {
-        id: startedSound
-        launcher: startedLauncher
-        serverNodes: []
-    }
-
     // A device as the sound server gives one: its name, which way it goes,
     // its properties and its audio.
     function device(name, sink, properties) {
@@ -107,37 +81,17 @@ ShellRoot {
         };
     }
 
-    // The machine's own card, its headphones' jack its device 0, and an
-    // HDMI output on the same card that desk-facts says nothing of.
+    // The machine's own card, its headphones' jack its device 0.
     readonly property var headphones: device("alsa_output.pci.headphones", true,
         { "alsa.id": "PCH", "alsa.device": "0" })
     readonly property var speakers: device("alsa_output.pci.speakers", true,
         { "alsa.id": "PCH", "alsa.device": "1" })
-    readonly property var hdmi: device("alsa_output.pci.hdmi-stereo", true,
-        { "alsa.id": "PCH", "alsa.device": "3" })
     // WirePlumber's stand-in for a headset's microphone, carrying the
     // headset's profile, as the headset node beside it would say.
     function microphone(profile) {
         return device("bluez_input.AA:BB:CC:DD:EE:FF", false,
             { "bluez5.loopback": "true", "api.bluez5.profile": profile });
     }
-
-    function jack(plugged) {
-        return { "PCH,0:out": [{ name: "Plugged in", value: plugged }] };
-    }
-
-    // The same jack, its card now playing, as desk-facts says once sound
-    // starts through it.
-    function playingThrough(plugged) {
-        return { "PCH,0:out": [{ name: "Plugged in", value: plugged },
-            { name: "playing", value: "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)" }] };
-    }
-
-    // Each time whether the headphones are listed is worked out again, as
-    // Sound's devices are: a new object each time, so each time is heard.
-    property int listings: 0
-    readonly property var headphonesListed: ({ listed: sound.listed(headphones) })
-    onHeadphonesListedChanged: listings += 1
 
     // Quickshell hears Qt.exit only once the shell has loaded, so the cases
     // run just after.
@@ -155,25 +109,6 @@ ShellRoot {
     }
 
     function run() {
-        sound.facts = jack("nothing");
-        expect("an empty jack isn't listed", !sound.listed(headphones), "listed");
-        expect("an empty jack says so", sound.made(headphones).note
-            .includes(sound.said("unplugged")), sound.made(headphones).note);
-        expect("speakers with no jack are listed", sound.listed(speakers), "not listed");
-        expect("a display's output waits for a display", !sound.listed(hdmi), "listed");
-        sound.facts = jack("headphones");
-        expect("a jack with headphones in is listed", sound.listed(headphones), "not listed");
-        expect("and says nothing of being empty", !sound.made(headphones).note
-            .includes(sound.said("unplugged")), sound.made(headphones).note);
-        const before = listings;
-        sound.facts = playingThrough("headphones");
-        sound.facts = jack("headphones");
-        expect("a card starting and stopping lists nothing again", listings === before,
-            `listed ${listings - before} more times`);
-        sound.facts = playingThrough("nothing");
-        expect("its jack emptying does", listings > before && !sound.listed(headphones),
-            `listed ${listings - before} more times`);
-
         const playing = microphone("a2dp-sink");
         expect("a headset playing music would switch", sound.switches(playing), "it wouldn't");
         const unheard = sound.levelPart(playing);
@@ -186,32 +121,7 @@ ShellRoot {
             && heard.note === sound.said("level-in"), `${heard.side}, ${heard.note}`);
 
         drawers();
-        shut();
-        spotsMake();
         partsKept();
-        textsReadyShut();
-    }
-
-    // The rows whose texts are made ready while shut, a few seconds after
-    // the shell starts (Launcher.qml's textsMadeClosed), are those that
-    // stand then, and the ones listed once it opens, so the first search
-    // makes none. Read as first made, before the server said any device,
-    // they were none, and the first search made every device's text
-    // (vm-desktop-launcher-goes-places, 2026-11-11).
-    function textsReadyShut() {
-        expect("shut and started, it holds no device yet", startedSound.everything().length === 0,
-            `${startedSound.everything().length} rows`);
-        startedSound.serverNodes = [deskSpeakers, deskMicrophone];
-        const ready = startedSound.looksThrough();
-        expect("the rows looked through shut are the devices there are now",
-            ready.map(row => row.key).join(", ")
-                === "sound:usb-desk-speakers, sound:usb-desk-microphone",
-            ready.map(row => row.key).join(", "));
-        startedLauncher.wanting = true;
-        const shown = startedSound.everything();
-        expect("and they're the rows it lists once wanted",
-            shown.length === ready.length && shown.every((row, at) => row === ready[at]),
-            `${shown.length} listed of ${ready.length} ready`);
     }
 
     // Shut, a device's parts asked for again with nothing moved, as its
@@ -238,69 +148,6 @@ ShellRoot {
         shutSound.verbs(deskSpeakers);
         expect("shown, they're made as they're asked for", shutSound.tally.rows > shown,
             `${shutSound.tally.rows - shown} made`);
-    }
-
-    // What Sound's spots are made of holds while a volume or a mute moves,
-    // so a closing remakes none of them (Launcher.qml's spotsFrom), and
-    // moves once a device comes or goes.
-    function spotsMake() {
-        const made = shutSound.spotsStamp;
-        expect("it says what its spots are made of", typeof made === "string" && made !== "",
-            String(made));
-        deskSpeakers.audio = { volume: 0.9, muted: true };
-        deskMicrophone.audio = { volume: 0.1, muted: false };
-        expect("a volume and a mute moving leave it as it was", shutSound.spotsStamp === made,
-            shutSound.spotsStamp);
-        shutSound.serverNodes = [deskSpeakers];
-        expect("a device going changes it", shutSound.spotsStamp !== made,
-            shutSound.spotsStamp);
-        shutSound.serverNodes = [deskSpeakers, deskMicrophone];
-        expect("and coming back puts it back", shutSound.spotsStamp === made,
-            shutSound.spotsStamp);
-    }
-
-    // With the launcher shut, a volume moving, a device coming and niri's
-    // workspaces said again make none of Sound's rows, nor does a pick
-    // asking every collection what it holds (Launcher.qml's knowing): each
-    // made every device's row again, 137 in four minutes on Joel's shell
-    // (YQZGPC, 2026-11-10). Home's count reads the devices themselves, and
-    // Now's Volume borrows its device's row as it reads now. Wanted again,
-    // they're made once, as they stand, and then a device's volume moving
-    // remakes its own row alone.
-    function shut() {
-        const names = rows => rows.map(row => row.key).join(", ");
-        expect("wanted, it lists the device there is",
-            names(shutSound.everything()) === "sound:usb-desk-speakers",
-            names(shutSound.everything()));
-        shutLauncher.wanting = false;
-        const before = shutSound.tally.rows;
-        deskSpeakers.audio = { volume: 0.3, muted: false };
-        shutSound.serverNodes = [deskSpeakers, deskMicrophone];
-        Niri.workspaces = { "1": { id: 1, output: "eDP-1" } };
-        const held = shutSound.everything();
-        expect("shut, a volume, a device and niri moving make none of its rows",
-            shutSound.tally.rows === before && names(held) === "sound:usb-desk-speakers",
-            `${shutSound.tally.rows - before} made, holding ${names(held)}`);
-        expect("and home's count says them as they are",
-            shutSound.counted() === "1 out \u00b7 1 in", shutSound.counted());
-        const now = shutSound.rowNow("sound:usb-desk-speakers");
-        expect("a device's row borrowed elsewhere is made as it reads now",
-            now?.note.includes("30%") && shutSound.tally.rows === before + 1
-            && shutSound.rowNow("sound:gone") === undefined, now?.note);
-        const made = shutSound.tally.rows;
-        shutLauncher.wanting = true;
-        const wanted = shutSound.everything();
-        expect("wanted again, they're made once, as they stand",
-            names(wanted) === "sound:usb-desk-speakers, sound:usb-desk-microphone"
-            && wanted[0].note.includes("30%") && shutSound.tally.rows - made === 2,
-            `${shutSound.tally.rows - made} made, ${names(wanted)}: ${wanted[0]?.note}`);
-        const moved = shutSound.tally.rows;
-        deskMicrophone.audio = { volume: 0.7, muted: false };
-        const heard = shutSound.everything();
-        expect("wanted, a device's volume moving remakes its row alone",
-            heard[0] === wanted[0] && heard[1].note.includes("70%")
-            && shutSound.tally.rows - moved === 1,
-            `${shutSound.tally.rows - moved} made, ${heard[1]?.note}`);
     }
 
     // A device's drawer says where it is and which way it goes, then what

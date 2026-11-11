@@ -1651,12 +1651,6 @@ QtObject {
         machine("a level in decibels", [Sounds.decibels(1), Sounds.decibels(0.5),
             Sounds.decibels(0.35), Sounds.decibels(1.2), Sounds.decibels(0)],
             ["0 dB", "-18.1 dB", "-27.4 dB", "+4.8 dB", "-\u221e dB"]);
-        machine("what a jack has plugged in", Sounds.plugged([{ name: "codec", value: "CS42L45" },
-            { name: "plugged in", value: "headphones" }]), "headphones");
-        machine("a jack with nothing in it", Sounds.unplugged([{ name: "plugged in",
-            value: "nothing" }]), true);
-        machine("speakers have no jack", [Sounds.plugged([{ name: "amplifiers", value: "4" }]),
-            Sounds.unplugged(undefined)], ["", false]);
         // The machine's own are called what they are, by their port, and a
         // headset's microphone as its; any other keeps its own name.
         const soundOut = "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__";
@@ -1671,16 +1665,6 @@ QtObject {
         const usb = "alsa_input.usb-Shure_Inc_Shure_MV7-00.mono-fallback";
         machine("a microphone named as an output", [Sounds.called(usb, true),
             Sounds.called(usb, false)], ["its-microphone", ""]);
-        // A jack's "nothing" hides it only while desk-facts still runs to say
-        // otherwise; once it's gone, headphones may have come since.
-        const sturdyNothing = [{ name: "plugged in", value: "nothing" }];
-        machine("a jack hidden only while what's said is current",
-            [Sounds.hidden(sturdyNothing, true), Sounds.hidden(sturdyNothing, false),
-                Sounds.hidden([{ name: "plugged in", value: "headphones" }], true)],
-            [true, false, false]);
-        machine("whether desk-facts still runs", [Sounds.populated("populated 1\nfrozen 0\n"),
-            Sounds.populated("populated 0\nfrozen 0\n"), Sounds.populated(undefined)],
-            [true, false, false]);
         // pw-dump is given a card's object id, and nothing it could take for
         // an option or a pattern.
         machine("what pw-dump is given", ["65", 65, "--monitor", "65 -m", "alsa*", "", undefined]

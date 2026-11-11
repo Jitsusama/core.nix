@@ -2,8 +2,8 @@
 // outputs then inputs, the one chosen first in each, every glyph saying
 // what kind of device it is, its volume drawn as a bar and said in the
 // footer. A jack with nothing plugged into it, as the headphones' while
-// none are, isn't listed unless it's the one chosen, which says so, or
-// what's said of its jack can no longer be trusted to be current. Return
+// none are, isn't listed unless it's the one chosen, which says so. With
+// the sound daemon not answering, one row says so. Return
 // uses one, or mutes or unmutes the one chosen, and the right arrow holds
 // its parts, each named first and saying how it stands:
 //
@@ -30,15 +30,16 @@
 // recording; with a number, "volume 40", Return sets the output to it, and
 // unmutes it, since a level asked for is one to be heard.
 //
-// Everything comes from the sound server through Quickshell, so nothing is
-// asked and nothing is spawned, but for what a sound card says only to the
-// kernel: what it offers and runs at, its clock, USB speed and firmware,
-// and what its jacks have plugged in, which desk-facts writes to a file
-// (modules/desk-facts), and which the right arrow lists last, Return
-// copying one; and a card's ports, which Quickshell doesn't carry, so
-// pw-dump is asked for them once a device with several is stepped into. A
-// Level is read only while it's on screen, by Quickshell's own peak
-// monitor, in the shell's process.
+// Its rows are the sound daemon's (modules/sound), served ready over its
+// socket: which devices there's something to hear through, what each is
+// called, the glyph it wears, its bar and its note, in its order. Their
+// parts and drawers are still made here, from the sound server through
+// Quickshell, until the daemon serves them too by 13 November, so nothing
+// is spawned for them, but for what a sound card says only to the kernel:
+// what it offers and runs at, its clock, USB speed and firmware, which
+// desk-facts writes to a file (modules/desk-facts), and which the right
+// arrow lists last, Return copying one. A Level is read only while it's on
+// screen, by Quickshell's own peak monitor, in the shell's process.
 import qs
 import Quickshell
 import Quickshell.Bluetooth
@@ -73,11 +74,48 @@ Provider {
         return words;
     }
 
-    // A display plugged in besides the machine's own panel, which niri gives
-    // workspaces of its own. The sound server lists a sound card's display
-    // outputs whether or not anything is plugged in, so they wait for one.
-    readonly property bool displayed: Object.values(Niri.workspaces)
-        .some(workspace => workspace.output && !workspace.output.startsWith("eDP"))
+    // The daemon's rows of Sound, watched whether or not the launcher's
+    // open, so it opens on rows already held.
+    ReadyRows {
+        id: ready
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/sound.sock`
+        place: "sound"
+        make: (row, key) => provider.servedRow(row, key)
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+    }
+    // What the daemon serves, for a reader told of each change it hears.
+    readonly property alias served: ready
+    readonly property bool down: ready.state === "not answering"
+
+    Connections {
+        target: ready
+
+        // A jack, not a card starting to play, changes which port is in
+        // use, and the daemon serves its device's row anew when one does,
+        // saying whether anything's plugged in.
+        function onHeard(changed, gone) {
+            const watched = provider.porting;
+            if (watched && changed.includes(`row:sound:${watched.name}`))
+                provider.readPorts(watched);
+            provider.changed();
+        }
+    }
+
+    // The devices the daemon lists, by their node's name, in its order:
+    // outputs, then inputs, each A to Z by the name it gives them.
+    readonly property var listing: {
+        void ready.placings;
+        return ready.keys.map(key => ready.served(key)?.held?.node ?? "");
+    }
+
+    // Whether a device is listed, as the daemon decides from what its card
+    // says of the jack and display it plays through (modules/sound's
+    // rows.rs): a jack with nothing plugged in isn't, unless it's the one
+    // chosen, nor a display's output with no display.
+    function listed(node) {
+        return listing.includes(node.name);
+    }
 
     function display(node) {
         return /hdmi|displayport/i.test(`${node.name} ${node.description}`);
@@ -179,20 +217,6 @@ Provider {
         return node === (node.isSink ? Pipewire.defaultAudioSink : Pipewire.defaultAudioSource);
     }
 
-    // A device is listed while there's something to hear it through: a jack
-    // desk-facts says has nothing plugged in isn't, as the headphones
-    // aren't while none are, unless it's the one chosen, which says so, or
-    // what desk-facts said is no longer current (jacksCurrent), when it's
-    // listed rather than hidden. A display's output desk-facts says nothing
-    // of waits for a display.
-    function listed(node) {
-        const key = factKey(node, jacks);
-        const told = key === "" ? [] : jacks[key];
-        if (Sounds.plugged(told) !== "")
-            return !Sounds.hidden(told, jacksCurrent) || chosen(node);
-        return displayed || !display(node);
-    }
-
     // Its own short name, rather than the sound card's long one before it.
     function nicknamed(node) {
         // A node going away can have lost all three.
@@ -204,11 +228,17 @@ Provider {
     // ideas", and a headset's two rows said the same name. So the machine's
     // own are Built-in speakers, Built-in microphones and the Headphone
     // jack, and a headset's microphone is named as its (Sounds.js called).
+    // A noise-cancelled microphone is the one it hears, named for it, as the
+    // sound daemon names its row (modules/sound's rows.rs).
     function named(node) {
         const own = nicknamed(node);
         const shared = inputs.includes(node) && outputs.some(output => nicknamed(output) === own);
-        const called = Sounds.called(node.name, shared);
-        return called === "" ? own : Words.name(`sound:called:${called}`, "", { device: own });
+        const heard = String(node.name).replace(/^noise-cancelled\./, "");
+        const called = Sounds.called(heard, shared);
+        const name = called === "" ? own
+            : Words.name(`sound:called:${called}`, "", { device: own });
+        return heard === node.name ? name
+            : Words.name("sound:called:noise-cancelled", "", { device: name });
     }
 
     // What it is, from what the sound server knows of it, and for a
@@ -252,51 +282,60 @@ Provider {
         node.audio.muted = !node.audio.muted;
     }
 
-    // What a device's row says, each part of it as text, and its level as
-    // a share, which its bar draws.
+    // What a device says as its parts stand, each part as text and its
+    // level as a share, so its parts are made again only once one moves.
     function says(node) {
-        const note = [said("volume", { level: percent(node.audio.volume) })]
-            .concat(node.audio.muted ? [said("muted")] : [],
-                Sounds.hidden(factsOf(node), jacksCurrent) ? [said("unplugged")] : [],
-                switches(node) ? [said("to-calls")] : [])
-            .join(" \u00b7 ");
-        return [named(node), worn(node), chosen(node) ? said("chosen") : "", audible(node), note];
+        return [named(node), worn(node), chosen(node), audible(node), switches(node)];
     }
 
-    // Each device's row, kept while it's the same device saying the same,
-    // so a volume, a jack or a node moving remakes only its own device's
-    // row rather than every device's (Provider.qml's keptAlike).
-    readonly property var keeping: keeper()
-    function kept(node) {
-        const told = says(node);
-        return keptAlike(keeping, `sound:${node.name}`, [node].concat(told),
-            () => made(node, told));
+    // The sound server's node a served row stands for, as the server has
+    // it now, or undefined while it has none by that name.
+    function nodeOf(row) {
+        const name = row.held?.node;
+        return nodes.find(node => node.name === name);
     }
 
-    function made(node, told = says(node)) {
-        const [name, mark, side, level, note] = told;
-        // Return steps in, as every device's does, with its likeliest act
-        // first inside: using it, or for the one chosen, whether it's
-        // Muted. A Return that muted it would do the opposite as it
-        // flipped, an act hidden in the row (docs/design.md, a switch is
-        // one row).
-        const row = entering(member({
+    // A device's row as the daemon serves it. Return steps in, as every
+    // device's does, with its likeliest act first inside: using it, or for
+    // the one chosen, whether it's Muted (docs/design.md, a switch is one
+    // row). Its parts and drawer are made here from its node as they're
+    // asked for, until the daemon serves them too.
+    function servedRow(row, key) {
+        const inside = () => {
+            const node = provider.nodeOf(row);
+            return node?.audio ? provider.verbs(node) : [];
+        };
+        const made = ready.thing(row, key, {
             thing: true,
-            key: `sound:${node.name}`,
-            name: name,
-            glyph: mark,
-            hue: "machine",
-            side: side,
-            graph: bar(level),
-            note: note,
-            drawer: () => provider.drawerOf(node)
-        }), () => provider.verbs(node));
-        // Read as :setl asks, so a port read since it was drawn is one.
-        Object.defineProperty(row, "options", {
-            enumerable: true,
-            get: () => provider.deviceOptions(node)
+            verbs: inside,
+            targets: inside,
+            drawer: () => {
+                const node = provider.nodeOf(row);
+                return node ? provider.drawerOf(node) : null;
+            }
         });
-        return row;
+        // Read as :setl asks, so a port read since it was drawn is one.
+        Object.defineProperty(made, "options", {
+            enumerable: true,
+            get: () => {
+                const node = provider.nodeOf(row);
+                return node?.audio ? provider.deviceOptions(node) : ({});
+            }
+        });
+        return made;
+    }
+
+    // With the daemon not answering, one row says so, since none listed
+    // would read as the machine having no sound. Its socket is systemd's,
+    // so the next ask starts it again.
+    function downRow() {
+        return thing({
+            key: "sound:down",
+            name: Words.name("sound:down"),
+            note: said("down"),
+            glyph: Theme.glyph.caution,
+            hue: "warning"
+        });
     }
 
     // A device's own options, and a program's playing through it, which
@@ -354,81 +393,13 @@ Provider {
     // card it says nothing of, or no file at all, has no facts.
     property var facts: ({})
 
-    // What desk-facts says of each card's jack alone, which is all whether a
-    // device is listed reads. desk-facts says a card is playing as sound
-    // starts and stops, every few seconds while a call or a notice sounds,
-    // and every device was listed again each time, reading each sound
-    // node's properties, which Quickshell makes afresh at every read, even
-    // with the launcher closed. So this changes only as a jack's facts do.
-    property var jacks: ({})
-
-    onFactsChanged: {
-        const now = Sounds.jacks(facts);
-        if (JSON.stringify(now) !== JSON.stringify(jacks))
-            jacks = now;
-    }
-
     FileView {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/sound.json`
         watchChanges: true
         printErrors: false
-        onFileChanged: {
-            reload();
-            writer.reload();
-        }
+        onFileChanged: reload()
         onLoaded: provider.facts = provider.parsed(text())
         onLoadFailed: provider.facts = ({})
-    }
-
-    // Whether what desk-facts said of the jacks is current. It writes the
-    // file only when what it says changes, and holds no time, so an old
-    // file is no sign of an old fact; the sign is desk-facts itself having
-    // stopped without removing it, as it does when stopped, by crashing
-    // until systemd gives up on it. So its service's control group is
-    // watched, which the kernel says is populated while it runs and which
-    // goes when it's stopped, and the jacks are current until it's been
-    // gone longer than systemd takes to start it again.
-    property bool jacksCurrent: true
-    readonly property bool writing: Sounds.populated(writerSaid)
-    property string writerSaid: ""
-    readonly property string account: String(Quickshell.env("XDG_RUNTIME_DIR") ?? "")
-        .split("/").pop()
-
-    onWritingChanged: {
-        if (writing)
-            jacksCurrent = true;
-    }
-
-    FileView {
-        id: writer
-        path: `/sys/fs/cgroup/user.slice/user-${provider.account}.slice/user@${provider.account}`
-            + ".service/app.slice/desk-facts.service/cgroup.events"
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.writerSaid = text()
-        onLoadFailed: provider.writerSaid = ""
-    }
-
-    // desk-facts' service starts it again five seconds after it fails
-    // (RestartSec in modules/desk-facts/nixos.nix), so gone for twice that
-    // it isn't coming back of itself.
-    Timer {
-        id: writerGone
-        interval: 10000
-        running: !provider.writing
-        onTriggered: provider.jacksCurrent = false
-    }
-
-    // The group, once gone, can come again where nothing watches for it,
-    // so it's looked at again each time the launcher opens.
-    Connections {
-        target: provider.launcher
-
-        function onOpenChanged() {
-            if (provider.launcher.open)
-                writer.reload();
-        }
     }
 
     // What the kernel says of a device's card, by its key in the file, or
@@ -436,7 +407,7 @@ Provider {
     // ("MV7:in"); one with several, as the machine's own has its speakers,
     // headphones and displays, by its device's number too
     // ("sofsoundwire,2:out"), and whichever the file holds is the one.
-    function factKey(node, among) {
+    function factKey(node) {
         // Read once: Quickshell makes a node's properties afresh each time.
         const properties = node.properties;
         const card = properties["alsa.id"];
@@ -446,8 +417,7 @@ Provider {
         const device = properties["alsa.device"] ?? properties["api.alsa.pcm.device"];
         const keys = (device !== undefined ? [`${card},${device}:${way}`] : [])
             .concat([`${card}:${way}`]);
-        const known = among ?? facts;
-        return keys.find(each => known[each] !== undefined) ?? "";
+        return keys.find(each => facts[each] !== undefined) ?? "";
     }
 
     function factsOf(node) {
@@ -1186,8 +1156,6 @@ Provider {
 
     readonly property var porting: routed(watched) ? watched : null
     onPortingChanged: readPorts(porting)
-    // A jack, not a card starting to play, changes which port is in use.
-    onJacksChanged: readPorts(porting)
 
     // One read at a time (Sounds.portReads): a read asked while another
     // runs, as a jack changing or a port moved asks one, waits for it, and
@@ -1689,25 +1657,18 @@ Provider {
         }, () => rows);
     }
 
-    // By name, outputs before inputs. Which plays or listens is a choice,
-    // marked chosen where it stands, so choosing one never moves it
+    // In the daemon's order: by name, outputs before inputs, the one chosen
+    // where it stands, so choosing one never moves it
     // (RSCH-20261030-GB56HX: choices keep their natural order).
-    function ordered(nodes) {
-        return Order.sorted(nodes, Order.choices({ name: named }));
+    function ordered(among) {
+        return listing.map(name => among.find(node => node.name === name))
+            .filter(node => node !== undefined);
     }
 
-    // A device going away can be read once more before the lists drop it.
-    // Made only while they're wanted (Provider.qml's whileWanted), since a
-    // volume, a jack or niri's workspaces moving made every device's row
-    // again: 137 in four minutes with the launcher shut on Joel's shell
-    // (YQZGPC, 2026-11-10). Home's count reads the devices themselves.
-    readonly property var all: whileWanted("all", () => {
-        keepingBegun(keeping);
-        const rows = ordered(outputs).concat(ordered(inputs)).filter(node => !!node.audio)
-            .map(node => kept(node));
-        keptOnly(keeping);
-        return rows;
-    })
+    // The daemon's rows, as it serves them, made only while they're wanted
+    // (Provider.qml's whileWanted), each made again only as its record
+    // changes. Home's count reads the devices listed.
+    readonly property var all: whileWanted("all", () => down ? [downRow()] : ready.rows(""))
     onAllChanged: changed()
 
     // What its spots are made of (Launcher.qml's spotsFrom): each device
@@ -1716,8 +1677,8 @@ Provider {
     // it has parts for; never a volume, a level or how loud a program
     // plays, which move while nothing else does. Without it, every closing
     // made Sound's 77 to 80 spots again with nothing here changed (8N2CSC,
-    // 2026-11-10). A sound daemon takes this over, serving Sound's rows
-    // ready, by 13 November.
+    // 2026-11-10). The sound daemon takes this over as it serves their
+    // parts, by 13 November.
     property string spotsStamp: JSON.stringify(ordered(outputs).concat(ordered(inputs))
         .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
             switches(node), programsOf(node).map(program => program.name),
@@ -1726,16 +1687,15 @@ Provider {
             Array.from(node.audio.channels ?? []).length, carried(node),
             factsOf(node).map(fact => fact.name)]))
 
-    // A device's row as it reads now, for Now's Volume and Microphone,
+    // A device's row as it's served now, for Now's Volume and Microphone,
     // which borrow its drawer while Now is held and these rows aren't
-    // wanted: made then, or none for one that can no longer be read. Where
-    // they're wanted, or for a key no device has, the launcher looks in
-    // `all`, which is as it reads now while they are.
+    // wanted. Where they're wanted, or for a key no device has, the
+    // launcher looks in `all`, which is as it reads now while they are.
     function rowNow(key) {
-        if (provider.wanted)
+        if (provider.wanted || down || !key.startsWith("sound:"))
             return undefined;
-        const node = devices.find(one => `sound:${one.name}` === key);
-        return node === undefined ? undefined : node.audio ? made(node) : null;
+        const record = `row:sound:${key.slice("sound:".length)}`;
+        return ready.served(record) ? ready.rowAt(record) : undefined;
     }
 
     function search(typed) {

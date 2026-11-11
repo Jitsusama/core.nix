@@ -6000,7 +6000,8 @@
         "joined-usb": "USB",
         "joined-display": "display",
         "paused-at": "paused at {level}",
-        "balanced": "balanced"
+        "balanced": "balanced",
+        "down": "not answering"
       }
     },
     {
@@ -6120,6 +6121,16 @@
       "id": "sound:called:its-microphone",
       "in": "sound",
       "name": "{device} Microphone"
+    },
+    {
+      "id": "sound:called:noise-cancelled",
+      "in": "sound",
+      "name": "{device}, Noise Cancelled"
+    },
+    {
+      "id": "sound:down",
+      "in": "sound",
+      "name": "The Sound Daemon"
     },
     {
       "id": "sound:resolution",

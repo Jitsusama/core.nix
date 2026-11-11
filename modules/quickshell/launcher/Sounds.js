@@ -59,9 +59,6 @@ const APART = " \u00b7 ";
 // give it, so its gain in decibels is twenty times the log of the cube.
 const DECIBELS_CUBED = 60;
 const TENTHS = 10;
-// What desk-facts says a jack has plugged into it, and its word for none.
-const PLUGGED = "plugged in";
-const NOTHING = "nothing";
 // What a Bluetooth device's profile carries, as the vocabulary says it.
 const CARRIES = [[/^a2dp/, "music"], [/^(headset|hfp|hsp)/, "calls"], [/^bap/, "le-audio"]];
 // WirePlumber's stand-in for a headset's microphone says whose it is only
@@ -83,8 +80,6 @@ const HEADSET_INPUT = /^bluez_input\./;
 // A sound card's object id, as the sound server numbers it, and all pw-dump
 // is ever given: anything else could be taken for one of its options.
 const OBJECT_ID = /^[0-9]+$/;
-// A control group's events say whether anything still runs in it.
-const POPULATED = /^populated 1$/m;
 
 // What a smart filter's target says a device must have, by property:
 // { "node.name": "alsa_output…" }, or nothing when it says nothing.
@@ -328,24 +323,6 @@ function decibels(level) {
     return `${tenths > 0 ? "+" : ""}${tenths.toFixed(1)} dB`;
 }
 
-// What desk-facts says a device's jack has plugged into it ("nothing",
-// "headphones"), or "" for a device it says no jack of, such as speakers.
-function plugged(facts) {
-    const found = (facts ?? []).find((fact) => String(fact.name).toLowerCase() === PLUGGED);
-    return found ? String(found.value) : "";
-}
-
-// Each card's facts of its jack alone, by the same keys as all of them,
-// so what's plugged in is told apart from the rest desk-facts says, such
-// as whether the card is playing, which changes as sound starts and stops.
-function jacks(all) {
-    const each = {};
-    for (const key of Object.keys(all ?? {})) {
-        each[key] = (all[key] ?? []).filter((fact) => String(fact.name).toLowerCase() === PLUGGED);
-    }
-    return each;
-}
-
 // The vocabulary's word for what a device is called, by its node's name:
 // the machine's own by their port, a headset's microphone as its, or ""
 // for one whose own name says what it is. A microphone that shares its
@@ -358,23 +335,6 @@ function called(name, shared) {
         return found[1];
     }
     return HEADSET_INPUT.test(text) || shared === true ? "its-microphone" : "";
-}
-
-// Whether a device is a jack with nothing plugged into it, as the
-// headphones are while none are: its port is there, but nothing hears it.
-function unplugged(facts) {
-    return plugged(facts) === NOTHING;
-}
-
-// Whether a device is hidden for its jack: only while what's said of it is
-// current, since an old "nothing" would hide headphones plugged in since.
-function hidden(facts, current) {
-    return current && unplugged(facts);
-}
-
-// Whether a control group's events (cgroup.events) say a service still runs.
-function populated(text) {
-    return POPULATED.test(String(text ?? ""));
 }
 
 // What pw-dump is given to read a device's card: its card's object id,

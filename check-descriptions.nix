@@ -2022,15 +2022,16 @@
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
   '';
   sound-hears-only-what-can-be-heard = ''
-    the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
-    display, and never listens to a headset's microphone while it plays music; a device's drawer
+    the launcher's Sound lists the rows the sound daemon serves, in its order, each stepping into
+    its device's parts, made once as wanted and again only as its record changes, and never
+    listens to a headset's microphone while it plays music; a device's drawer
     says where it is and which way it goes, its state, its volume in decibels, its parts, how it
     keeps time while it runs (dropouts warned past none, load to three significant digits from
     its busy time over the cycle or warned as over 100% where it didn't finish, a follower in
     its driver's cycle), its format, the kernel's facts, and its priority and identifiers last,
     never whether it's muted nor its level; and channels at one level are balanced, a stereo
-    pair's otherwise named without front; and a device's volume moving remakes only its own
-    device's row
+    pair's otherwise named without front; and a device's row served anew remakes only its own
+    row
   '';
   sound-hears-pipewires-devices = ''
     the sound daemon makes each output and input PipeWire says a device and leaves out a program's
