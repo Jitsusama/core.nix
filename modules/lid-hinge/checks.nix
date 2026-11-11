@@ -12,7 +12,10 @@ onLinux {
   the-lid-shuts-when-the-hinge-agrees =
     pkgs.runCommandCC "the-lid-shuts-when-the-hinge-agrees" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
-        rustc --edition 2024 --test -D warnings -o tests ${./lid-hinge.rs}
+        # Its tests sit beside it, where its `#[path]` looks for them.
+        cp ${./lid-hinge.rs} lid-hinge.rs
+        cp ${./lid-hinge_tests.rs} lid-hinge_tests.rs
+        rustc --edition 2024 --test -D warnings -o tests lid-hinge.rs
         ./tests
         touch $out
       '';

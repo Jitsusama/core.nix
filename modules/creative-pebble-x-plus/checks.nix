@@ -15,7 +15,10 @@ onLinux {
   pebble-lights-follow-the-sound =
     pkgs.runCommandCC "pebble-lights-follow-the-sound" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
-        rustc --edition 2024 --test -D warnings -o tests ${./lights.rs}
+        # Its tests sit beside it, where its `#[path]` looks for them.
+        cp ${./lights.rs} lights.rs
+        cp ${./lights_tests.rs} lights_tests.rs
+        rustc --edition 2024 --test -D warnings -o tests lights.rs
         ./tests
         touch $out
       '';

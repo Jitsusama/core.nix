@@ -13,14 +13,29 @@ onLinux {
   # standard library alone, their tests included, held to clippyLints.
   rust-programs-pass-clippy =
     let
+      # A program whose tests sit in <name>_tests.rs beside it goes to the
+      # store with them, so its `#[path]` finds them there.
+      withTests =
+        program:
+        let
+          tests = dirOf program + "/${lib.removeSuffix ".rs" (baseNameOf program)}_tests.rs";
+          both = lib.fileset.toSource {
+            root = dirOf program;
+            fileset = lib.fileset.unions [
+              program
+              tests
+            ];
+          };
+        in
+        "${both}/${baseNameOf program}";
       programs = [
-        ../creative-pebble-x-plus/lights.rs
+        (withTests ../creative-pebble-x-plus/lights.rs)
         ../desk-facts/facts.rs
         ../disk-loss-panic/disk-loss-panic.rs
         ../ergodox/ergodox-watch.rs
         ../linux-id/pinentry.rs
         ../litra/litra.rs
-        ../lid-hinge/lid-hinge.rs
+        (withTests ../lid-hinge/lid-hinge.rs)
         ../mic-mute-light/mic-mute-light.rs
         ../quickshell/keyboard-lights.rs
         ../touchpad/click-strength.rs
