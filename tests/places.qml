@@ -1,11 +1,12 @@
 // Where Reopen Them All puts each session back, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The `reopening-finds-each-screen`
-// check copies modules/quickshell/Places.js beside this file and
+// check copies modules/quickshell/Places.js and Viewers.js beside this file and
 // runs `qml -platform offscreen places.qml`. Each case is one a boot or a
 // dock can make: the same monitor on another connector, a screen gone, and
 // a place kept before screens were named by what they are.
 import QtQuick
 import "Places.js" as Places
+import "Viewers.js" as Viewers
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -292,14 +293,14 @@ QtObject {
             presence: { session, quest: "QEST-HERE" } }, fields);
         const hostedHere = (session, window) => isHere(session, { window,
             presence: { session, hosted: { host: "work-background", conversation: session } } });
-        const backIds = (sessions, arranged) => Places.backHere(sessions, arranged)
+        const backIds = (sessions, arranged) => Viewers.backHere(sessions, arranged)
             .map(one => one.id);
         expect("a hosted one is back once its viewer is, or when it had none", backIds([
             isHere("plain"), hostedHere("viewless"), hostedHere("windowed", { id: 4 }),
             hostedHere("unkept"), isHere("elsewhere", { here: false })],
         { viewless: { workspace: 2 }, windowed: { workspace: 2 } }),
             ["plain", "windowed", "unkept"]);
-        expect("each back with its quest", Places.backHere([isHere("plain")], {}),
+        expect("each back with its quest", Viewers.backHere([isHere("plain")], {}),
             [{ id: "plain", quest: "QEST-HERE" }]);
         expect("with no places kept, each hosted one is back",
             backIds([hostedHere("viewless")], undefined), ["viewless"]);
@@ -373,12 +374,12 @@ QtObject {
         // once it runs hosted; one with no window, or none laid out yet,
         // keeps nothing.
         const laid = (workspace, column) => ({ id: 7, workspace, column, down: 1 });
-        expect("a window's place kept", Places.placeOf(laid(4, 3), 100),
+        expect("a window's place kept", Viewers.placeOf(laid(4, 3), 100),
             { workspace: 4, column: 3, at: 100 });
         expect("a window floating keeps its workspace alone",
-            Places.placeOf(laid(4, null), 100), { workspace: 4, column: null, at: 100 });
-        expect("no window keeps nothing", [Places.placeOf(null, 100),
-            Places.placeOf(laid(null, null), 100)], [null, null]);
+            Viewers.placeOf(laid(4, null), 100), { workspace: 4, column: null, at: 100 });
+        expect("no window keeps nothing", [Viewers.placeOf(null, 100),
+            Viewers.placeOf(laid(null, null), 100)], [null, null]);
 
         // Each kept place is one viewer to open once its session runs
         // hosted with words to view it by, and then kept no more; one whose
@@ -407,25 +408,25 @@ QtObject {
             6: workspace(6, 3, "eDP-1", 60), 7: workspace(7, 4, "eDP-1", 70),
             8: workspace(8, 5, "eDP-1", null),
             9: workspace(9, 1, "DP-2", 90), 10: workspace(10, 2, "DP-2", null) });
-        const due = Places.viewersDue(moving, [hosted("moved"), plain("moving"),
+        const due = Viewers.viewersDue(moving, [hosted("moved"), plain("moving"),
             hosted("viewed", laid(6, 2)), hosted("stale")], 10, screens);
         expect("the moved one's viewer opens where it was",
             due.open.map(one => [one.session.presence.session, one.into]),
             [["moved", { workspace: 4, column: 3 }]]);
         expect("only the one still moving stays kept", due.kept,
             { moving: { workspace: 5, column: 1, at: 0 } });
-        expect("one hosted with no words waits", Places.viewersDue(moving,
+        expect("one hosted with no words waits", Viewers.viewersDue(moving,
             [Object.assign(hosted("moved"), { attach: [] })], 10, screens).kept.moved,
             { workspace: 4, column: 3, at: 0 });
         expect("nothing kept, nothing to open",
-            Places.viewersDue({}, [hosted("moved")], 10, screens), { open: [], kept: {} });
+            Viewers.viewersDue({}, [hosted("moved")], 10, screens), { open: [], kept: {} });
 
         // A viewer never opens where Joel is, so it never takes his focus
         // or flashes beside him: on the workspace he's on it waits until he
         // leaves, and one whose workspace went with its window opens on the
         // empty workspace last on his screen, out of his sight.
         const place = (workspace, column) => ({ moved: { workspace, column, at: 0 } });
-        const opened = (kept, all) => Places.viewersDue(kept, [hosted("moved")], 10, all);
+        const opened = (kept, all) => Viewers.viewersDue(kept, [hosted("moved")], 10, all);
         expect("on Joel's workspace it waits", opened(place(9, 2), screens),
             { open: [], kept: place(9, 2) });
         expect("once he leaves, it opens there",

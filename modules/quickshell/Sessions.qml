@@ -35,6 +35,7 @@ import QtQuick
 import "PiSource.js" as Pi
 import "Places.js" as Places
 import "SessionWindows.js" as SessionWindows
+import "Viewers.js" as Viewers
 import "Waiting.js" as Waiting
 
 Singleton {
@@ -483,7 +484,7 @@ Singleton {
     readonly property var lastBootOffered: Places.lastBoot(restoring, {
         boot: bootId,
         putOff: putOff,
-        here: Places.backHere(running.concat(parked), arrangement[restoring.boot])
+        here: Viewers.backHere(running.concat(parked), arrangement[restoring.boot])
     })
     readonly property string lastBootIs: lastBootOffered.boot
     readonly property var lastBoot: lastBootOffered.sessions
@@ -1895,7 +1896,7 @@ Singleton {
         const resting = root.resting.find(one => one.presence.session === id);
         const window = running.find(one => one.here && one.presence.session === id)?.window
             ?? (resting ? windowOf(resting, windows.pids, windows.opened) : null);
-        const place = /^[A-Za-z0-9-]+$/.test(id) ? Places.placeOf(window, Date.now()) : null;
+        const place = /^[A-Za-z0-9-]+$/.test(id) ? Viewers.placeOf(window, Date.now()) : null;
         if (place === null)
             return "no window to keep";
         keepPlaces(Object.assign({}, keptPlaces, { [id]: place }));
@@ -1904,13 +1905,13 @@ Singleton {
     }
     // Opens the viewer of each session kept that now runs hosted where it
     // was, never on the workspace Joel is on and never with his focus
-    // (Places.viewerPlace), and lets go of what's done or a day old
-    // (Places.viewersDue). Asked again as niri's focus moves, so one waiting
+    // (Viewers.viewerPlace), and lets go of what's done or a day old
+    // (Viewers.viewersDue). Asked again as niri's focus moves, so one waiting
     // for Joel to leave its workspace opens once he has.
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
             return;
-        const due = Places.viewersDue(keptPlaces, running, Date.now(), Niri.workspaces);
+        const due = Viewers.viewersDue(keptPlaces, running, Date.now(), Niri.workspaces);
         for (const one of due.open)
             view(one.session, one.into);
         if (Object.keys(due.kept).length !== Object.keys(keptPlaces).length)

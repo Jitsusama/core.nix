@@ -6,7 +6,8 @@ in one column included, orchestrators first, and none is begun again when its or
 hands it over too; places kept on workspaces whose
 numbers have since gone or been taken by Joel's own puts each orchestration alone on a
 workspace of its own, moving nothing on screen; and a session one starts for another's tree
-opens with that tree, wherever Joel moved it, in title order after its orchestrator. Joel, after the
+opens with that tree, wherever Joel moved it, in title order after its orchestrator. One pi's host
+brought back comes back as its viewer alone, beside the windows kept with it. Joel, after the
 21:24 reboot on 2026-11-08 left 31 windows on the wrong workspaces: "i'm so confused, i don't
 like my operating system confusing me."
 
@@ -100,12 +101,15 @@ def presents(desktop: Desktop, session: str, address: str, said: dict[str, Any])
     )
 
 
-def kept_before(desktop: Desktop, places: dict[str, dict[str, Any]]) -> None:
+def kept_before(
+    desktop: Desktop, places: dict[str, dict[str, Any]], hosted: frozenset[str] = frozenset()
+) -> None:
     """Keep these sessions as the boot before left them, and start the shell anew to read them.
 
-    restore.json says what that boot left, as the harness writes it, and the shell's own
-    arrangement where each sat and whether it led others. The shell is stopped while they're
-    written, so its own keeping can't write over them, then started, as after a boot.
+    restore.json says what that boot left, as the harness writes it, those `hosted` ran in pi's
+    host, and the shell's own arrangement where each sat and whether it led others. The shell is
+    stopped while they're written, so its own keeping can't write over them, then started, as
+    after a boot.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session("ls -d ~/.local/state/quickshell/by-shell/*"),
@@ -120,7 +124,13 @@ def kept_before(desktop: Desktop, places: dict[str, dict[str, Any]]) -> None:
             "v": 1,
             "boot": "a-boot-before",
             "sessions": [
-                {"id": one, "cwd": "/home/jitsusama/reef", "title": one} for one in places
+                {
+                    "id": one,
+                    "cwd": "/home/jitsusama/reef",
+                    "title": one,
+                    **({"hosted": True} if one in hosted else {}),
+                }
+                for one in places
             ],
         },
     )
@@ -433,6 +443,108 @@ def test_a_session_started_for_another_tree_opens_with_it_in_title_order(
             " pkill -f 'sleep 60[0]'; pkill -f 'sleep infinit[y]'; true"
         )
         desktop.as_account("rm -rf ~/kelp")
+
+
+def test_a_hosted_session_comes_back_as_its_viewer_beside_its_kin(desktop: Desktop) -> None:
+    """Reopen Them All opens a hosted session's viewer alone, beside the window kept with it.
+
+    Its host brings the conversation back as the machine starts, so no pi is begun for it, and
+    its viewer opens quietly in its column, taking no focus. After the 11:06 boot on
+    2026-11-11 two hosted sessions got no window at all, since none was opened for them.
+    """
+    machine = desktop.machine
+    session = "01d4-hosted"
+    output = json.loads(desktop.as_account("niri msg --json focused-output"))["name"]
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/reef")
+    notes = desktop.opened("Notes", "sh -c 'sleep 600'")
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    empty = max(one["idx"] for one in spaces if one["output"] == output)
+    # The host, standing in for pi's own, and its presence for the conversation, naming the
+    # words that view it, as the harness's does. setsid -f returns before its fork runs, so
+    # the pid is looked for under a deadline.
+    host = desktop.as_account(
+        "setsid -f sleep 602 > /dev/null 2>&1;"
+        " timeout 10 sh -c \"until pgrep -n -f 'sleep 60[2]'; do sleep 0.1; done\""
+    ).strip()
+    ticks = desktop.as_account(f"awk '{{sub(/.*\\) /, \"\"); print $20}}' /proc/{host}/stat")
+    presence = {
+        "session": session,
+        "addresses": ["HOSTVW"],
+        "title": f"pi --session {session}",
+        "at": dt.datetime.now(dt.UTC).isoformat(),
+        "owner": {
+            "pid": int(host),
+            "bootId": desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip(),
+            "startTicks": int(ticks),
+            "startedAt": int(desktop.as_account("date +%s%3N")),
+        },
+        "hosted": {
+            "host": "harbour-attended",
+            "conversation": session,
+            "view": ["sleep", "603"],
+        },
+    }
+    reopen_all = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
+    try:
+        kept(desktop, f"{PI_PRESENCE}/hostvw.json", presence)
+        machine.wait_until_succeeds(
+            desktop.in_session(f"mycelium --realm harbour sessions | grep -qF '{session}'"),
+            timeout=dt.timedelta(seconds=60),
+        )
+        since = desktop.mark()
+        kept_before(
+            desktop,
+            {
+                "01d4-plain": {"output": output, "workspace": 1, "column": 1, "tile": 1},
+                session: {"output": output, "workspace": 1, "column": 2, "tile": 1},
+            },
+            frozenset({session}),
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session(f"qs ipc call launcher list | grep -qF {shlex.quote(reopen_all)}"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        ran = desktop.as_account(f"qs ipc call launcher run {shlex.quote(reopen_all)}")
+        assert '"error"' not in ran, ran
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(since)} | grep -qF 'sessions: reopening settled'"
+            ),
+            timeout=dt.timedelta(seconds=BACK),
+        )
+        # Its stand-in titles the plain one's window a moment after niri lays it out.
+        deadline = time.monotonic() + 60
+        while "01d4-plain" not in (back := sitting(desktop, "01d4-")):
+            assert time.monotonic() < deadline, f"the plain one never titled: {back}"
+            time.sleep(0.2)
+        viewers = [one for one in desktop.windows() if one["app_id"] == f"pi-hosted.{session}"]
+        assert len(viewers) == 1, f"not one viewer: {desktop.windows()}"
+        idx = {
+            one["id"]: one["idx"]
+            for one in json.loads(desktop.as_account("niri msg --json workspaces"))
+        }
+        viewer = viewers[0]
+        sits = (idx[viewer["workspace_id"]], *viewer["layout"]["pos_in_scrolling_layout"])
+        assert (back["01d4-plain"], sits) == ((empty, 1, 1), (empty, 2, 1)), (back, sits)
+        said = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(since)}"
+        )
+        assert f"reopening {session}'s viewer" in said, said
+        assert " moved from " not in said, said
+        begun = desktop.machine.execute(f"test -e /run/user/1000/pi-owner-{session}")[0]
+        assert begun != 0, "a pi was begun for the hosted session"
+        focused = json.loads(desktop.as_account("niri msg --json focused-window"))
+        assert focused["id"] == notes["id"], focused
+    finally:
+        desktop.launcher_left_closed()
+        nothing_kept(desktop)
+        desktop.as_account(
+            f"rm -f $XDG_RUNTIME_DIR/pi-stays $XDG_RUNTIME_DIR/pi-owner-01d4-*"
+            f" {PI_PRESENCE}/hostvw.json; pkill -f 'sleep 60[0-3]'; true"
+        )
+        desktop.as_account("rm -rf ~/reef")
 
 
 def sitting_space(desktop: Desktop, window: dict[str, Any]) -> str:
