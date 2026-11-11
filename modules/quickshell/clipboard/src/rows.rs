@@ -198,11 +198,12 @@ fn came(at: u128) -> Value {
 }
 
 /// What a row asks for when it's pasted and when it's copied, in the one
-/// verb order; the shell adds which keys the window under takes.
+/// verb order. Each shuts the launcher as it's asked, so a paste's keys go
+/// to the window under it, whose own keys the history presses.
 fn acts(id: u64) -> Value {
     json!([
-        { "key": "verb:copy:paste", "ask": { "ask": "paste", "copy": id } },
-        { "key": "verb:copy:copy", "ask": { "ask": "copy", "copy": id } }
+        { "key": "verb:copy:paste", "ask": { "ask": "paste", "copy": id }, "closes": true },
+        { "key": "verb:copy:copy", "ask": { "ask": "copy", "copy": id }, "closes": true }
     ])
 }
 
@@ -368,6 +369,8 @@ mod tests {
         );
         assert_eq!(row["held"]["reads"], "first\nsecond");
         assert_eq!(row["acts"][0]["ask"], json!({ "ask": "paste", "copy": 7 }));
+        assert_eq!(row["acts"][0]["closes"], true, "a paste shuts the launcher");
+        assert_eq!(row["acts"][1]["closes"], true, "and so does a copy");
         let one = text(8, 2_000, "one line", &words());
         assert_eq!(one["side"], json!([{ "at": 2_000, "as": "came" }]));
     }

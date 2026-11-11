@@ -4823,16 +4823,23 @@ Scope {
 
     function takenBack(one, why) {
         letGo([one.key]);
+        toldNot(one.name, one.act, why);
+        Report.say(`not become ${one.key}${why === "" ? "" : `: ${why}`}`);
+        refreshed(one.from);
+    }
+
+    // That an act on `name` wasn't done, `why` in the daemon's words, or
+    // with none, that it hasn't been yet: said now while the launcher is
+    // open, else as it next opens, as an act that shut it is told.
+    function toldNot(name, act, why) {
         const words = Words.field.becoming ?? {};
         const what = (why === "" ? words.late : words.refused) ?? "";
         tellOnOpen(Becoming.told({
             mark: Theme.glyph.failed,
-            what: what.replace("{object}", one.name)
-                .replace("{did}", (words.did ?? {})[one.act] ?? one.act),
+            what: what.replace("{object}", name)
+                .replace("{did}", (words.did ?? {})[act] ?? act),
             why: why === "" ? words.noAnswer ?? "" : why
         }, { what: Theme.alert, why: Theme.muted }), true);
-        Report.say(`not become ${one.key}${why === "" ? "" : `: ${why}`}`);
-        refreshed(one.from);
     }
 
     function letGo(keys) {

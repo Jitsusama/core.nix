@@ -10,9 +10,11 @@
 // selected (`picture`, its file). Return pastes the copy into the window
 // the launcher opened over: the history, asked for it by its number, puts
 // it back on the clipboard and, once the window has the keys again,
-// presses its paste keys for it, nothing of it waiting on the shell
-// (Pasting.qml, which Super+E's emoji paste through too, this the helper
-// it asks). With no window there, Return only copies, as the right arrow's
+// presses that window's paste keys for it, nothing of it waiting on the
+// shell: the act is asked as the history serves it, shutting the launcher
+// (ReadyRows.qml's shut), and a paste refused is told as the launcher next
+// opens. Super+E's emoji paste through Pasting.qml, this the helper it
+// asks. With no window there, Return only copies, as the right arrow's
 // Copy always does. Forget the Clipboard, the clipboard's last row while
 // there's something to forget and found by its words from anywhere, asks
 // the history to forget every copy, and what the clipboard holds with
@@ -42,6 +44,7 @@ Provider {
         place: "copies"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)
+        maker: provider
         drawn: provider.launcher?.open ?? false
         onHeard: (changed, gone) => provider.heard(changed, gone)
     }
@@ -96,13 +99,14 @@ Provider {
 
     things: all.length > 0 ? [forget] : []
 
-    // A copy's row, from the one the history serves: worded there, and
-    // given its acts here, through Pasting.qml, until ReadyRows does a
-    // row's acts itself.
+    // A copy's row, from the one the history serves: worded there, and its
+    // acts done as it serves them, by the reader every place's served rows
+    // share (ReadyRows.qml's thing), each shutting the launcher as it asks.
     function made(served, key) {
         const was = makings[key];
         if (was !== undefined && was.served === served) {
             was.row.side = ready.sideOf(served);
+            was.row.sideItems = ready.itemsOf(served);
             return was.row;
         }
         const held = served.held ?? {};
@@ -110,10 +114,8 @@ Provider {
         const fields = {
             thing: true,
             key: served.thing,
-            name: served.name,
             glyph: Theme.glyph[served.glyph] ?? Theme.glyph.clipboard,
-            hue: served.hue ?? "text",
-            side: ready.sideOf(served)
+            hue: served.hue ?? "text"
         };
         const kept = picture ? {
             id: held.id,
@@ -126,58 +128,48 @@ Provider {
         } : {
             text: held.text,
             // As it was copied, lines and all, which the row cuts short.
-            reads: held.reads,
-            // Copied while the launcher holds the keys, which the clipboard
-            // needs when the history has gone and Qt copies it.
-            now: true
+            reads: held.reads
         };
-        const row = member(Object.assign(fields, kept));
-        // A picture lives in the history alone, so without it there's
-        // nothing to copy.
-        const unhelped = picture ? () => {} : () => {
-            Quickshell.clipboardText = held.text;
-        };
+        const row = ready.thing(served, key, Object.assign(fields, kept));
+        if (row === null)
+            return null;
         makings[key] = { served, row };
-        return pastes(row, `${held.id}`, unhelped);
+        return withoutWindow(row, served, key);
     }
 
-    // A row that pastes on Return, and steps into Paste and Copy, or Copy
-    // alone with no window to paste into. Its verb follows, so the foot says
-    // which Return does. What names the copy to the helper, and unhelped
-    // copies it while the helper isn't there.
-    function pastes(row, what, unhelped) {
-        const copied = () => Pasting.copy(what, unhelped);
-        const pasted = () => Pasting.paste(what, unhelped);
-        row.run = pasted;
+    // A row as it reads with no window to paste into, where the history
+    // only copies it: Return says copy, and only Copy is among its verbs.
+    // What y takes are plain fields, rather than rows made searchable, since
+    // y over hundreds asks every row (Launcher.qml's actionsOf), and what y
+    // joins with other rows' copies is the text, for a copy that's one, and
+    // nothing for a picture, which y copies alone.
+    function withoutWindow(row, served, key) {
+        const copying = (served.acts ?? []).find(one => one.key === "verb:copy:copy");
+        const verbs = row.verbs;
+        const run = row.run;
+        // Said for the checks that wait on a paste, which program it went to.
+        row.run = () => {
+            const under = Pasting.under();
+            if (under !== null)
+                Report.say(`pastes into ${under.app_id ?? ""}`);
+            run();
+        };
         Object.defineProperty(row, "verb", {
             enumerable: true,
             get: () => Pasting.verb()
         });
-        // What y takes, as plain fields rather than a row made searchable,
-        // since y over hundreds asks every row (Launcher.qml's actionsOf).
-        row.operands = () => [{
-            key: "verb:copy:copy",
-            verb: Words.verb("verb:copy:copy"),
-            copies: row.text ?? "",
-            run: copied
-        }];
         row.verbs = () => {
-            const act = (id, run) => thing({
-                key: id,
-                verb: Words.verb(id),
-                name: Words.name(id),
-                glyph: Words.glyph(id),
-                hue: "action",
-                now: true,
-                run: run
-            });
-            // What y joins with other rows' copies: the text, for a copy
-            // that's one, and nothing for a picture, which y copies alone.
-            const copy = Object.assign(act("verb:copy:copy", copied),
-                { copies: row.text ?? "" });
-            return Pasting.under() === null ? [copy]
-                : [act("verb:copy:paste", pasted), copy];
+            const all = verbs();
+            return Pasting.under() === null
+                ? all.filter(one => one.key !== "verb:copy:paste") : all;
         };
+        row.targets = row.verbs;
+        row.operands = () => copying === undefined ? [] : [{
+            key: copying.key,
+            verb: Words.verb(copying.key),
+            copies: row.text ?? "",
+            run: () => ready.act(key, copying)
+        }];
         return row;
     }
 
