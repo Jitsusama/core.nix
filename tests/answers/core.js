@@ -193,6 +193,23 @@ function run(failures) {
     machine("seen in a place holding it before its condition holds it back",
         Seen.seen(opened({ category: { holds: ["energy", "heat"] } }), watcher, ["heat"]),
         true);
+    // Every provider that watches asks again on every key, over rows a
+    // whole place lists by the thousand, so what's found is read once
+    // for all of them rather than once each.
+    let rowsRead = 0;
+    const counted = Array.from({ length: 100 }, () => ({
+        get live() {
+            rowsRead += 1;
+            return undefined;
+        }
+    }));
+    const listing = opened({ matches: counted });
+    for (const provider of [watcher, {}, {}, {}, {}, {}]) {
+        Seen.seen(listing, provider, ["heat"]);
+    }
+    machine("what's found is read once for six providers asking", rowsRead, counted.length);
+    machine("what's found still says whose it is when read once",
+        Seen.seen(opened({ matches: [{ from: {} }, its] }), watcher, []), true);
     // What each camera says of itself, from sysfs and desk-facts.
     machine("a loopback's format at a fraction of frames",
         Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");
