@@ -449,21 +449,28 @@ QtObject {
         // happen").
         const within = 50;
         check(failures, "a change 10 ms after an act is its own",
-            Pacing.keyed(10, false, within), true);
+            Pacing.keyed(10, false, within, true), true);
         check(failures, "a change 10 ms after an arrow is no key's",
-            Pacing.keyed(10, true, within), false);
-        check(failures, "nor one 60 ms after an act", Pacing.keyed(60, false, within), false);
+            Pacing.keyed(10, true, within, true), false);
+        check(failures, "nor one 60 ms after an act",
+            Pacing.keyed(60, false, within, true), false);
+        // Only a place on screen as it changes is a key's: Runs changing
+        // just after a key in Emoji, with none of its rows shown, was timed
+        // as that key's act, and its refresh, drawing nothing, waited 631 ms
+        // for a frame something else drew (Joel's journal, 2026-11-11).
+        check(failures, "a change to a place not shown is no key's",
+            Pacing.keyed(10, false, within, false), false);
 
         // Counted from the key's work done, not its press, so a handler
         // slowed past `within` before it acts keeps the change it made.
         check(failures, "a change within a key's work comes no time after it",
             Pacing.sinceKey(1080, 1000, 900), 0);
         check(failures, "so a slow handler's act is its own",
-            Pacing.keyed(Pacing.sinceKey(1080, 1000, 900), false, within), true);
+            Pacing.keyed(Pacing.sinceKey(1080, 1000, 900), false, within, true), true);
         check(failures, "one after the work is timed from its end",
             Pacing.sinceKey(1090, 1000, 1070), 20);
         check(failures, "and one long after it is no key's",
-            Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within), false);
+            Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within, true), false);
 
         framing(failures);
         presenting(failures);
