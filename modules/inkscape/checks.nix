@@ -25,7 +25,7 @@ onLinux {
   # Inkscape's step in the launcher, its provider's as Applications.qml
   # holds it (tests/inkscape-program.qml), over Inkscape's desktop entry,
   # with niri and what's playing stood in, the shell's own watch of the
-  # clipboard over a wl-paste that says nothing, and the desktop's list of
+  # clipboard with no history to hear, and the desktop's list of
   # files opened lately as GLib writes it (tests/inkscape-recent.xbel),
   # recent-files adding one more as a program does, read by recent-files
   # and by the account's own inkscape-drawings over drawings made here,
@@ -104,9 +104,6 @@ onLinux {
         Name=Open a New Window
         Exec=inkscape
       '';
-      # The clipboard's watcher, which hears nothing, so the case sets
-      # each copy itself.
-      watch = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
       # What wl-paste gives of each copy the case sets.
       paste = pkgs.writeShellScript "paste" ''
         case $2 in
@@ -147,7 +144,6 @@ onLinux {
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
       cp ${../quickshell/Copied.qml} Copied.qml
       cp ${../quickshell/Copied.js} Copied.js
-      export PATH=${watch}/bin:$PATH
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
       mkdir -m 700 $XDG_RUNTIME_DIR

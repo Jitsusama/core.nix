@@ -30,8 +30,8 @@ machine, one path through each connection.
   niri, which every surface shares: a socket for asking and one hearing
   niri's events. The rest listen on D-Bus, PipeWire or a native helper's
   socket, and nothing spawns a process to ask. What the clipboard holds
-  now is heard once, through one `wl-paste --watch` (`Copied.qml`), which
-  everything acting on a copy reads rather than watching again.
+  now is said by the clipboard's history over its socket (`Copied.qml`),
+  which everything acting on a copy reads rather than watching again.
 - **Built once, then shown.** A surface is made at start and shown or hidden,
   so it's on screen the frame after its chord.
 - **Programs through niri.** The shell asks niri to start a program, never

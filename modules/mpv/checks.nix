@@ -25,7 +25,7 @@ onLinux {
   # mpv's step in the launcher, its provider's as Applications.qml holds it
   # (tests/mpv-program.qml), over mpv's desktop entry, with niri, the
   # shortcuts and what's playing stood in, the shell's own watch of the
-  # clipboard over a wl-paste that says nothing, and mpv-stopped by a
+  # clipboard with no history to hear, and mpv-stopped by a
   # script that counts its runs: its Recent merges each file mpv left by
   # when, newest first, with the shared list's, each once, none open now;
   # one stopped part way says "12:04 of 41:10 · 12 min ago" beside it and
@@ -90,9 +90,6 @@ onLinux {
         GenericName=Multimedia player
         Exec=mpv --player-operation-mode=pseudo-gui -- %U
       '';
-      # The clipboard's watcher, which hears nothing, so the case sets
-      # each copy itself.
-      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
     in
     pkgs.runCommandLocal "the-launcher-plays-on-where-mpv-stopped" { } ''
       mkdir -p launcher share/applications
@@ -118,7 +115,6 @@ onLinux {
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
       cp ${../quickshell/Copied.qml} Copied.qml
       cp ${../quickshell/Copied.js} Copied.js
-      export PATH=${paste}/bin:$PATH
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
       mkdir -m 700 $XDG_RUNTIME_DIR

@@ -219,6 +219,9 @@ Provider {
         } catch (e) {
             return;
         }
+        // What the clipboard holds now, which Copied.qml reads.
+        if (said.now !== undefined)
+            return;
         if (said.unpasted) {
             Pasting.missed();
             Report.say("never pasted");
