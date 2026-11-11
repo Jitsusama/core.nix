@@ -91,7 +91,7 @@ QtObject {
         const agents = { saysAtHome: true };
         const people = { saysAtHome: false };
         const at = fields => Object.assign({ cataloguing: false, open: true, held: [],
-            becoming: [], typed: "" }, fields);
+            becoming: [], typed: "", entering: null }, fields);
         const wanted = (fields, source) => Wanted.wanted(at(fields), source);
         check(failures, "closed, no source's rows are wanted", wanted({ open: false }, people),
             false);
@@ -132,6 +132,11 @@ QtObject {
         check(failures, "and no other", wanted({ open: false }, people), false);
         check(failures, "nor one home doesn't name",
             wanted({ open: false }, { saysAtHome: true, warming: true }), false);
+        check(failures, "opening into a place before its step is held, home's aren't",
+            wanted({ entering: agents }, people), false);
+        check(failures, "and the place's own are", wanted({ entering: agents }, agents), true);
+        check(failures, "nor while it's shut",
+            wanted({ open: false, entering: agents }, agents), false);
     }
 
     // A kept opening's sources wake in the order home's rows read them,

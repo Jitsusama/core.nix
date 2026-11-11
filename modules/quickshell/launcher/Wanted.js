@@ -12,7 +12,8 @@
 // the source whose rows it waits on, and what's `typed`. A source is
 // `asleep` while it waits its turn to wake as an opening fills in, and
 // `warming` while its home rows are made shut, so the first opening after
-// a start draws from what's kept.
+// a start draws from what's kept. The source a chord opens into is
+// `entering` until its step is held.
 function wanted(stands, source) {
     // Walked from outside, every row is read.
     if (stands.cataloguing) {
@@ -20,6 +21,15 @@ function wanted(stands, source) {
     }
     if (!(stands.open || source.warming)) {
         return false;
+    }
+    // Opened into a place, only that place is shown, from the opening's
+    // first moment: open before its step was held, the launcher stood at
+    // home for an instant, and every source home names made its rows for
+    // it, put away at once. Each Super+Tab reopening made 35 rows of
+    // Capture, Today, Time and Agents (3TXW9E's measure, 2026-11-10).
+    if (stands.entering) {
+        return source === stands.entering
+            || stands.becoming.some(one => one.from === source);
     }
     // Held, or with an act of its own waiting to be agreed, its rows are
     // read for what's shown and for what the act becomes.
