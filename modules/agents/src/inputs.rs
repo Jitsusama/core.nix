@@ -1,8 +1,9 @@
 //! Everything Agents' rows are made from, as each source last told it:
 //! the node's sessions and the machine's queue, the to-do daemon's
 //! to-dos, the windows daemon's windows, spend-watch's collection and
-//! budgets, the harness's list of orchestrators, and whether the shell
-//! says the screen is shared. Each
+//! budgets, the harness's list of orchestrators and of sessions to
+//! reopen, what Joel said of those, and whether the shell says the
+//! screen is shared. Each
 //! source changes its own part, and `made` makes every record from all of
 //! them.
 
@@ -13,6 +14,7 @@ use serde_json::Value;
 
 use crate::clock;
 use crate::drawer;
+use crate::reopen::{self, Kept};
 use crate::row::{self, Known, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Session};
@@ -38,6 +40,13 @@ pub struct Inputs {
     pub orchestrators: Option<Value>,
     /// Whether the screen is shared, so no amount is said.
     pub sharing: bool,
+    /// The harness's restore.json, or none.
+    pub restore: Option<Value>,
+    /// This boot, as Linux names it, which the last boot's sessions are
+    /// offered after.
+    pub boot: String,
+    /// What Joel said of the sessions to reopen.
+    pub kept: Kept,
 }
 
 impl Inputs {
@@ -128,6 +137,44 @@ impl Inputs {
         waiting.into_iter().map(|(_, _, title)| title).collect()
     }
 
+    /// Every session there is to reopen, by the sessions running or
+    /// parked here now. One pi's host runs is back only once its viewer
+    /// is open, or at once when the boot being restored kept no place of
+    /// its window, as Viewers.js's backHere says; until the shell's
+    /// arrangement is kept here (Fri 13 Nov), none is known kept, so each
+    /// is back at once, as the shell offered none before.
+    fn reopens(&self) -> Vec<Value> {
+        let viewing: HashSet<&str> = self
+            .windows
+            .records()
+            .filter_map(|(_, window)| window["opened"].as_str()?.strip_prefix("pi-hosted."))
+            .collect();
+        let arranged: HashSet<&str> = HashSet::new();
+        let here: Vec<reopen::Here> = self
+            .sessions
+            .records()
+            .filter(|(_, one)| {
+                let standing = one["standing"].as_str();
+                let id = one["presence"]["session"].as_str().unwrap_or("");
+                let hosted =
+                    !one["presence"]["hosted"].is_null() && one["presence"]["hosted"] != false;
+                one["here"] == true
+                    && matches!(standing, Some("running" | "parked"))
+                    && (!hosted || viewing.contains(id) || !arranged.contains(id))
+            })
+            .filter_map(|(_, one)| {
+                let presence = &one["presence"];
+                let id = presence["session"].as_str()?;
+                let quest = presence["questInfo"]["id"]
+                    .as_str()
+                    .or_else(|| presence["quest"].as_str())
+                    .unwrap_or("");
+                Some(reopen::Here { id, quest })
+            })
+            .collect();
+        reopen::offered(self.restore.as_ref(), &self.boot, &self.kept, &here)
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -188,6 +235,7 @@ impl Inputs {
             &summary::summary(&states, today_spent, &self.words.agents),
         )
         .with_drawers(drawers)
+        .with_reopens(self.reopens())
     }
 }
 
@@ -353,6 +401,33 @@ mod tests {
              "item": {"title": "Elsewhere", "quest": "QEST-B"}}
         ]}));
         assert_eq!(inputs.needs("QEST-O"), ["Now", "Later"]);
+    }
+
+    #[test]
+    fn the_last_boots_sessions_are_served_until_each_is_back_here() {
+        let mut inputs = inputs();
+        inputs.boot = "this-one".into();
+        inputs.restore = Some(json!({"boot": "the-last", "sessions": [
+            {"id": "s-o", "cwd": "/tmp"},
+            {"id": "s-gone", "cwd": "/tmp"},
+            {"id": "s-viewed", "cwd": "/tmp", "hosted": true}
+        ]}));
+        inputs.sessions.took(&json!({"changed": [
+            {"key": "session:v", "standing": "running", "here": true,
+             "presence": {"addresses": ["V"], "session": "s-viewed",
+                 "hosted": {"host": "attended"}}}
+        ]}));
+        let served = served(&inputs);
+        assert!(served.get("reopen:s-o").is_none(), "s-o runs here");
+        assert_eq!(
+            served.get("reopen:s-gone").map(|one| one["way"].clone()),
+            Some(json!("boot")),
+            "one not back is served as the last boot's"
+        );
+        assert!(
+            served.get("reopen:s-viewed").is_none(),
+            "one pi's host runs is back while no place of its window is kept"
+        );
     }
 
     #[test]

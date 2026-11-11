@@ -240,7 +240,9 @@ def shell() -> Iterator[Shell]:
             [os.environ["AGENTS"], "--vocabulary", os.environ["WORDS"], "--node", str(NODE),
              "--to-do", str(ROWS.parent / "to-do.sock"),
              "--windows", str(ROWS.parent / "windows.sock"), "--spend", str(SPEND),
-             "--orchestrators", str(WORKFLOW / "orchestrators.json"), "--socket", str(ROWS)],
+             "--orchestrators", str(WORKFLOW / "orchestrators.json"),
+             "--restore", str(WORKFLOW / "restore.json"),
+             "--kept", str(WORKFLOW / "reopen.json"), "--socket", str(ROWS)],
             stdout=log, stderr=log,
         )  # fmt: skip
     while not ROWS.exists():

@@ -56,6 +56,8 @@ pub struct Made {
     /// Each session's drawer, a whole record, sent only to a watch that
     /// names its key (drawer.rs).
     drawers: Vec<Value>,
+    /// Each session there is to reopen, a whole record (reopen.rs).
+    reopens: Vec<Value>,
 }
 
 impl Made {
@@ -63,6 +65,12 @@ impl Made {
     #[must_use]
     pub fn with_drawers(self, drawers: Vec<Value>) -> Self {
         Self { drawers, ..self }
+    }
+
+    /// The same, with every session there is to reopen beside its rows.
+    #[must_use]
+    pub fn with_reopens(self, reopens: Vec<Value>) -> Self {
+        Self { reopens, ..self }
     }
 }
 
@@ -144,6 +152,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         rows,
         summary,
         drawers: Vec::new(),
+        reopens: Vec::new(),
     }
 }
 
@@ -246,9 +255,9 @@ impl Served {
             SUMMARY.to_owned(),
             json!({"key": SUMMARY, "kind": "summary", "summary": made.summary}),
         );
-        for drawer in made.drawers {
-            if let Some(key) = drawer["key"].as_str() {
-                records.insert(key.to_owned(), drawer);
+        for whole in made.drawers.into_iter().chain(made.reopens) {
+            if let Some(key) = whole["key"].as_str() {
+                records.insert(key.to_owned(), whole);
             }
         }
         let gone = self
