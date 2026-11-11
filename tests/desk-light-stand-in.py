@@ -1,4 +1,4 @@
-"""A desk light made of uhid, for tests/desk-lights-vm-test.py to plug in and pull out.
+"""A desk light made of uhid, for tests/vm/devices/desk-lights-vm-test.py to plug in and pull out.
 
 The kernel's uhid makes a HID device of whatever a program describes. Given `litra`, this is a
 Litra Glow, with its USB ids and a Logitech long report. Given `pebble`, it's a Pebble X Plus's

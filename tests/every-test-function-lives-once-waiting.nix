@@ -48,7 +48,7 @@
   "tests/becoming.qml" = 1;
   "tests/bluetooth-disk-prompt-vm-test.py" = 1;
   "tests/bluetooth-pairing.qml" = 1;
-  "tests/calls-vm-test.py" = 1;
+  "tests/vm/sound/calls-vm-test.py" = 1;
   "tests/captured.qml" = 1;
   "tests/command-line.qml" = 1;
   "tests/daemon.qml" = 1;
@@ -121,10 +121,10 @@
   "tests/screens.qml" = 1;
   "tests/sessions-behind-the-lock.qml" = 3;
   "tests/sessions.qml" = 3;
-  "tests/shure-mv7-voice-vm-test.py" = 1;
+  "tests/vm/sound/shure-mv7-voice-vm-test.py" = 1;
   "tests/signing-vm-test.py" = 1;
   "tests/sound.qml" = 2;
-  "tests/speakers-vm-test.py" = 1;
+  "tests/vm/sound/speakers-vm-test.py" = 1;
   "tests/spend.qml" = 1;
   "tests/spotify-program.qml" = 2;
   "tests/stack.qml" = 1;
