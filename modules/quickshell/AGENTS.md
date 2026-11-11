@@ -95,6 +95,9 @@ machine, one path through each connection.
 - [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
   each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.
+- [`checks/`][checks-folder]: the shell's checks, one file a place, named
+  as the launcher names it. `checks.nix` lists each file by name, so only a
+  new place edits it, and two places' changes never share a file.
 
 ## QML
 
@@ -112,7 +115,7 @@ answers for rows made but clipped away.
 `quickshell-passes-qmllint` runs qmllint over the account's files, and any
 warning fails. It reads Quickshell's own type files, with three of their
 faults corrected, and leaves out two kinds of report that are gaps in those files
-rather than the shell; its comment in [`checks.nix`][checks] says which. A
+rather than the shell; its comment in [`checks/shell.nix`][checks] says which. A
 line qmllint still can't read because of them says so with a `qmllint
 disable` comment and the reason above it.
 
@@ -161,7 +164,8 @@ and compare its gallery with main's using `shots-changed`, as [testing][testing]
 says, looking at every picture it draws: a change to one surface can move
 another.
 
-[checks]: checks.nix
+[checks]: checks/shell.nix
+[checks-folder]: checks/
 [clipboard]: clipboard/
 [design]: ../../docs/design.md
 [desktop]: ../../tests/desktop.nix

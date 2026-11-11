@@ -37,7 +37,6 @@
   "modules/quickshell/Notifications.qml"
   "modules/quickshell/Prompt.qml"
   "modules/quickshell/Sessions.qml"
-  "modules/quickshell/checks.nix"
   "modules/quickshell/clipboard/src/main.rs"
   "modules/quickshell/home.nix"
   "modules/quickshell/launcher"
