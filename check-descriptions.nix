@@ -1403,7 +1403,8 @@
     the notices daemon judges each notice arriving by its sender's level and Quiet, keeps a thousand
     with none waiting dropped, tells a watch each as one record, says an act on the bus with the
     token first, never takes the name from another server, and keeps its history and ids over a
-    restart
+    restart; each notice's rows list its card's acts in its order, in three places each worded for
+    its list, signed as the desktop knows its sender
   '';
   notices-passes-clippy = ''
     clippy finds nothing in the notices daemon or its tests
@@ -1416,7 +1417,8 @@
   notices-starts-in-each-account = ''
     each graphical account's session starts the notices daemon from its socket, the bus starts it
     for a notice sent while it's down, it restarts with no start limit, and no QML of the shell
-    serves the notifications name besides; it reads the shell's levels, Quiet's file and its socket
+    serves the notifications name besides; it reads the shell's levels, Quiet's file, its socket,
+    the launcher's words and each program's mark
   '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes

@@ -1,3 +1,22 @@
 {
-  "answering": ["battery", "calendar", "camera", "pi", "recorder", "tokens"]
+  "answering": ["battery", "calendar", "camera", "pi", "recorder", "tokens"],
+  "senders": {
+    "slack": { "program": "slack", "hue": "person", "name": "Slack" },
+    "tuple": { "glyph": "call", "hue": "person", "name": "Tuple" },
+    "google chrome": { "program": "google-chrome", "hue": "program", "name": "Google Chrome" },
+    "chromium": { "program": "chromium", "hue": "program", "name": "Chromium" },
+    "niri": { "glyph": { "code": "f0e51" }, "hue": "machine", "name": "Desktop" },
+    "notify-send": { "glyph": { "code": "f0e51" }, "hue": "machine", "name": "Desktop" },
+    "pi": { "glyph": "agent", "hue": "program", "named": "agents" },
+    "waiting": { "glyph": "forYou", "hue": "program", "named": "on:waiting" },
+    "recorder": { "glyph": "recording", "hue": "machine", "name": "Capture" },
+    "camera": { "glyph": "camera", "hue": "machine", "name": "Camera" },
+    "calls": { "glyph": "call", "hue": "person", "named": "notices:calls" },
+    "calendar": { "glyph": "meeting", "hue": "person", "name": "Calendar" },
+    "timers": { "glyph": "timer", "hue": "machine", "named": "timers" },
+    "battery": { "glyph": "low", "hue": "machine", "named": "power" },
+    "tokens": { "glyph": "tokens", "hue": "program", "named": "spend" },
+    "firmware": { "glyph": "firmware", "hue": "machine", "named": "firmware" },
+    "google drive": { "program": "google-drive", "hue": "program", "name": "Google Drive" }
+  }
 }

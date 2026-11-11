@@ -85,6 +85,8 @@ fn folder(test: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("the test's folder is made");
     std::fs::write(folder.join("levels.json"), "{}").expect("the levels are written");
+    std::fs::write(folder.join("marks.json"), r#"{"slack": "f198"}"#)
+        .expect("the marks are written");
     folder
 }
 
@@ -102,6 +104,13 @@ fn notices(folder: &Path, bus: &Bus) -> Command {
         .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/senders.json"))
         .arg("--quiet")
         .arg(folder.join("quiet"))
+        .arg("--vocabulary")
+        .arg(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../quickshell/launcher/words.json"
+        ))
+        .arg("--marks")
+        .arg(folder.join("marks.json"))
         .env("DBUS_SESSION_BUS_ADDRESS", &bus.address);
     command
 }
@@ -258,6 +267,57 @@ fn a_notice_is_one_record_and_its_acts_are_said_on_the_bus() {
         again["error"]["code"], "not-open",
         "a closed card does nothing: {again}"
     );
+}
+
+#[test]
+fn desktop_keeps_a_notice_read_while_its_watched_then_lets_it_go() {
+    let folder = folder("desktop");
+    let bus = Bus::start(&folder);
+    let connection = bus.connect();
+    let daemon = Daemon::start(
+        &mut notices(&folder, &bus),
+        folder.join("notices.sock"),
+        folder.join("state"),
+    );
+    until("the daemon never took the name", || {
+        owner(&connection).is_some()
+    });
+    let (mut looking, asking) = (daemon.client(), RefCell::new(daemon.client()));
+    let watch = json!({"id": 1, "ask": "watch", "kind": "row", "place": "notices-desktop"});
+    looking.ask(&watch);
+    let id = notify(&connection, "Ana", &[], HashMap::new());
+    let desktop = format!("row:notices-desktop:{id}");
+    let unread = looking.changed(&desktop);
+    assert_eq!(
+        unread["row"]["side"].as_array().map(Vec::len),
+        Some(1),
+        "unread, its age alone: {unread}"
+    );
+    let card = got(&mut asking.borrow_mut(), 2, &format!("notice:{id}"));
+    assert_eq!(card["sender"]["name"], "kitty", "its card signed: {card}");
+    assert_eq!(card["body"]["plain"], "make finished");
+    let history = format!("row:notices-history:{id}");
+    assert!(
+        got(&mut asking.borrow_mut(), 3, &history).is_null(),
+        "unread, it's not History's"
+    );
+    asking
+        .borrow_mut()
+        .ask(&json!({"id": 4, "ask": "mark", "notices": [id], "read": true}));
+    let read = looking.changed(&desktop);
+    assert_eq!(
+        read["row"]["side"][0],
+        json!({"said": "read"}),
+        "read in place: {read}"
+    );
+    assert!(
+        !got(&mut asking.borrow_mut(), 5, &history).is_null(),
+        "and History's"
+    );
+    looking.ask(&json!({"id": 1, "ask": "unwatch"}));
+    until("Desktop never let it go", || {
+        got(&mut asking.borrow_mut(), 6, &desktop).is_null()
+    });
 }
 
 #[test]

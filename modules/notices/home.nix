@@ -32,6 +32,33 @@ let
       )
     )
   );
+  # The launcher's vocabulary, which each notice's rows are said in, as
+  # the machine has it; its own words where it has no shell.
+  launcher = config.jitsusama.quickshell.launcher or null;
+  words = pkgs.writeText "notices-words.json" (
+    builtins.toJSON (
+      if launcher == null then lib.importJSON ../quickshell/launcher/words.json else launcher.words
+    )
+  );
+  # Each program's own mark, by its id in lower case, as ProgramGlyphs.js's
+  # table says it for every program the launcher shows, with the machine's
+  # own over it, so a notice wears the mark its program's row does. The
+  # table is read line by line where it's written, never copied.
+  table = lib.pipe (builtins.readFile ../quickshell/ProgramGlyphs.js) [
+    (lib.splitString "\n")
+    (map (builtins.match " *\"?([^\":]+)\"?: \"([^\"]*)\","))
+    (builtins.filter (found: found != null))
+    (map (found: lib.nameValuePair (builtins.elemAt found 0) (builtins.elemAt found 1)))
+    lib.listToAttrs
+  ];
+  own = if launcher == null then { } else launcher.providers.applications.glyphs or { };
+  marks =
+    assert lib.assertMsg (
+      table ? slack && table ? pi
+    ) "ProgramGlyphs.js's table no longer reads as notices/home.nix reads it";
+    pkgs.writeText "notices-marks.json" (
+      builtins.toJSON (table // lib.mapAttrs' (id: lib.nameValuePair (lib.toLower id)) own)
+    );
 in
 lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
   systemd.user.services.notices = {
@@ -59,6 +86,10 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
         "${./senders.json}"
         "--quiet"
         "%t/quiet"
+        "--vocabulary"
+        "${words}"
+        "--marks"
+        "${marks}"
         "--shells"
         "%S/quickshell/by-shell"
       ];

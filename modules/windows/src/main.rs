@@ -22,7 +22,7 @@
 //! each workspace change, since niri says nothing of a screen itself.
 //! Handed none, it makes no rows.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::fd::FromRawFd;
@@ -33,12 +33,11 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use programs::notify::Notify;
 use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
-use windows::entries::Entries;
+use windows::entries::{self, Entries};
 use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, placed, tells, trimmed};
 use windows::screens;
 
@@ -156,15 +155,13 @@ fn main() {
         }),
         folders,
     });
-    match Notify::new() {
-        Ok(notify) => {
-            // The entries' folders are watched before niri is heard, so
-            // no change after the first reading goes unheard.
-            let heard = heard(&shared, &notify, looked);
-            let shared = Arc::clone(&shared);
-            std::thread::spawn(move || notice(&shared, &notify, &heard));
-        }
-        Err(why) => eprintln!("<4>inotify isn't there, so entries changing aren't heard: {why}"),
+    // The entries' folders are watched before niri is heard, so no change
+    // after the first reading goes unheard.
+    let following = Arc::clone(&shared);
+    if let Err(why) = entries::follow(&shared.folders, looked, move || {
+        entries_changed(&following);
+    }) {
+        eprintln!("<4>inotify isn't there, so entries changing aren't heard: {why}");
     }
     {
         let shared = Arc::clone(&shared);
@@ -374,60 +371,6 @@ fn entries_changed(shared: &Shared) {
     daemon.entries = entries;
     daemon.names.forget();
     refresh(&mut daemon);
-}
-
-/// What a watched folder is to this daemon.
-#[derive(Default)]
-struct Watched {
-    /// Whether it's a folder of entries, whose every change counts.
-    entries: bool,
-    /// The links in it that a data folder resolves through, by name, as
-    /// `current-system` in `/run`: replaced, the entries changed.
-    links: Vec<String>,
-}
-
-/// Watches every folder of entries, and each link a data folder is
-/// reached through, answering what each watch is.
-fn heard(shared: &Shared, notify: &Notify, looked: Vec<PathBuf>) -> HashMap<i32, Watched> {
-    let mut folders: HashMap<i32, Watched> = HashMap::new();
-    for folder in looked {
-        if let Some(watch) = notify.watch(&folder) {
-            folders.entry(watch).or_default().entries = true;
-        }
-    }
-    // On NixOS each data folder is a store path reached through a
-    // profile's links, so a switch says nothing in the folder itself: the
-    // link it replaces is heard instead.
-    for (folder, name) in shared
-        .folders
-        .iter()
-        .flat_map(|folder| xdg::links_toward(folder))
-    {
-        if let Some(watch) = notify.watch(&folder) {
-            let links = &mut folders.entry(watch).or_default().links;
-            if !links.contains(&name) {
-                links.push(name);
-            }
-        }
-    }
-    folders
-}
-
-/// Hears every change inotify says, for as long as the daemon runs.
-fn notice(shared: &Shared, notify: &Notify, folders: &HashMap<i32, Watched>) {
-    loop {
-        let Ok(changes) = notify.changes() else {
-            return;
-        };
-        let entries = changes.iter().any(|(watch, name)| {
-            folders
-                .get(watch)
-                .is_some_and(|watched| watched.entries || watched.links.contains(name))
-        });
-        if entries {
-            entries_changed(shared);
-        }
-    }
 }
 
 fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {

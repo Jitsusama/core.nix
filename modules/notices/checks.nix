@@ -18,14 +18,17 @@ onLinux {
   # watch as one record; an act on it is said on the bus as the
   # specification says, the token first; the name is never taken from
   # another server; and the history, its pictures and its ids outlive a
-  # restart.
+  # restart. Each notice's rows are its card's, in three places worded
+  # each for its list, signed as the desktop knows the sender.
   notices-holds-what-the-bus-says = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the notices daemon, its tests included.
   notices-passes-clippy = passesClippy "notices-passes-clippy" (pkgs.callPackage ./package.nix { });
   # Each graphical account's session starts the daemon, its socket wanted
   # from the start and the bus starting it for a notice sent while it's
   # down, and it's the notifications name's one server: the shell serves
-  # none of its own. It reads the shell's levels and Quiet's file.
+  # none of its own. It reads the shell's levels and Quiet's file, and the
+  # launcher's words and each program's mark, which its rows are said and
+  # signed in.
   notices-starts-in-each-account =
     let
       home = account graphical;
@@ -57,6 +60,8 @@ onLinux {
         && lib.hasInfix "Name=org.freedesktop.Notifications" named
         && lib.hasInfix "-notices-levels.json" started
         && lib.hasInfix "--quiet %t/quiet" started
+        && lib.hasInfix "-notices-words.json" started
+        && lib.hasInfix "-notices-marks.json" started
         && lib.hasInfix "--socket %t/daemons/notices.sock" started
         && socket.Socket.ListenStream == "%t/daemons/notices.sock"
         && service.Service.Restart == "always"
