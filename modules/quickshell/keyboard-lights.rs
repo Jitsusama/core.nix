@@ -88,9 +88,12 @@ fn only(bit: u16) -> [u64; 1] {
     [1 << bit]
 }
 
-/// What's been said, written in place so a reader never finds the file empty.
+/// What's been said, written in place so a reader never finds the file empty,
+/// and closed after each saying: the machine daemon hears a file as it's
+/// closed (modules/machine/src/written.rs), not at each write, which a file
+/// written whole would be heard at half done.
 struct Said {
-    file: File,
+    path: String,
     last: Option<bool>,
 }
 
@@ -100,10 +103,24 @@ impl Said {
             return;
         }
         let text: &[u8] = if on { b"1\n" } else { b"0\n" };
-        if self.file.write_at(text, 0).is_ok() {
+        if open(&self.path)
+            .and_then(|file| file.write_at(text, 0))
+            .is_ok()
+        {
             self.last = Some(on);
         }
     }
+}
+
+/// The file said in, kept rather than emptied, so a reader never finds it
+/// empty.
+fn open(path: &str) -> std::io::Result<File> {
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o644)
+        .open(path)
 }
 
 /// The keyboards held, by device number, where they're said, and what's
@@ -230,24 +247,15 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     let listed = std::env::args().nth(2);
-    // Kept rather than emptied, so a reader never finds it empty.
-    let file = match OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o644)
-        .open(&path)
-    {
-        Ok(file) => file,
-        Err(error) => {
-            eprintln!("{path}: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
+    // Opened once first, so a file it can't write is said at the start.
+    if let Err(error) = open(&path) {
+        eprintln!("{path}: {error}");
+        return ExitCode::FAILURE;
+    }
     let shared = Arc::new(Shared {
         held: Mutex::new(BTreeSet::new()),
         listed,
-        said: Mutex::new(Said { file, last: None }),
+        said: Mutex::new(Said { path, last: None }),
     });
 
     // A device appears before udev lets the input group read it, so a change

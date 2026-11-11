@@ -191,6 +191,22 @@ mod tests {
                 .contains(&"warmth".to_owned()),
             "a file written in place is heard"
         );
+        // Written over in place and closed, as the keyboard-lights watcher
+        // says caps lock, never emptied between.
+        {
+            use std::os::unix::fs::FileExt;
+            let file = fs::OpenOptions::new()
+                .write(true)
+                .open(folder.join("warmth"))
+                .unwrap();
+            file.write_at(b"1\n", 0).unwrap();
+        }
+        assert!(
+            written
+                .wait(Duration::from_secs(5))
+                .contains(&"warmth".to_owned()),
+            "a file written over in place is heard as it's closed"
+        );
         // A folder made later is watched from then, and said found.
         fs::create_dir_all(&later).unwrap();
         assert_eq!(written.wait(Duration::ZERO), [String::new()]);
