@@ -188,10 +188,10 @@ ShellRoot {
 
             // The same whole answer again, as the launcher opens, makes none.
             const counted = windows.tally.rows;
-            const kept = rowOf(12);
+            const draftRow = rowOf(12);
             told({ id: "all", records: [logbook, draft, notes] }, desktop(logbook));
             Expect.same("the same whole answer again makes no row", windows.tally.rows - counted, 0);
-            Expect.expect("and keeps each row", rowOf(12) === kept, names(windows.things));
+            Expect.expect("and keeps each row", rowOf(12) === draftRow, names(windows.things));
 
             // The focus moves from the logbook to the notes, as a click or a
             // key does: the daemon tells of both windows, and of the rest
@@ -204,7 +204,7 @@ ShellRoot {
                 desktop(movedTo));
             Expect.same("the one used last first still", names(windows.things),
                 "This Window, Notes, Logbook, Draft");
-            Expect.expect("a window whose focus didn't change kept", rowOf(12) === kept,
+            Expect.expect("a window whose focus didn't change kept", rowOf(12) === draftRow,
                 names(windows.things));
             Expect.same("only This Window and the two whose focus changed made again",
                 windows.tally.rows - counted, 3);

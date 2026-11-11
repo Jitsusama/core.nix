@@ -4773,6 +4773,8 @@ onLinux {
       cp ${../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
       cp ${./launcher/Previewer.qml} launcher/Previewer.qml
       cp ${./launcher/Captured.js} launcher/Captured.js
+      cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${../neovim/NeovimOpening.js} launcher/NeovimOpening.js
       cp ${../neovim/Neovim.js} launcher/Neovim.js
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
