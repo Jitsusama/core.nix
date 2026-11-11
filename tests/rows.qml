@@ -740,6 +740,31 @@ ShellRoot {
             texts.filter(t => t.text.includes("12")).length === 1, said(texts));
     }
 
+    // Every Text under an item saying these words, drawn or not.
+    function textsSaying(item, words, into) {
+        for (const child of item.children) {
+            if (child.text === words && child.truncated !== undefined)
+                into.push(child);
+            textsSaying(child, words, into);
+        }
+        return into;
+    }
+
+    // A row reused for another, as every row is on a step, lays out only
+    // what it draws: its chord's keys kept where it's given as many, each
+    // saying its new key, as a home row's Super+O becomes Super+E, and its
+    // side laid out once, never again for a count it doesn't show.
+    function reusedRowLaysOutWhatItDraws() {
+        const key = textItem(countedChord, "0");
+        countedChord.chord = [{ text: "Super" }, { text: "9" }];
+        const again = textItem(countedChord, "9");
+        expect("a row given as many keys keeps their Texts", key !== null && again === key,
+            `${key} then ${again}`);
+        const laid = textsSaying(saying, saying.side, []);
+        expect("a side said with no chord is laid out once", laid.length === 1,
+            `${laid.length} Texts say ${saying.side}`);
+    }
+
     // What the cursor row says of how it stands, on the row rather than in
     // the head: before what it says at its right, joined by the dot a mark
     // from each ink, as the status line joins its facts; on the inset with
@@ -1314,6 +1339,7 @@ ShellRoot {
             root.marksHold();
             root.markRehanded();
             root.countBeforeChord();
+            root.reusedRowLaysOutWhatItDraws();
             root.sayHolds();
             root.noteHolds();
             root.sideItemsHold();

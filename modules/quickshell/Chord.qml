@@ -26,12 +26,16 @@ Flow {
         font.pointSize: chord.level.pointSize
     }
 
+    // By how many keys, not the keys themselves: a Repeater given a new
+    // list makes each of its Texts again, even one alike, as a row reused
+    // for another, or refreshed, is; a count that stays the same keeps
+    // them, each reading its key anew.
     Repeater {
-        model: chord.keys
+        model: chord.keys.length
 
         Text {
-            required property var modelData
             required property int index
+            readonly property var modelData: chord.keys[index] ?? ({})
 
             // An icon's advance and its ink rarely agree, one drawing past
             // the other by a few pixels either way, so a wide part ends where
