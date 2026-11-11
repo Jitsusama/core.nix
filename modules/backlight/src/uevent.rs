@@ -3,7 +3,7 @@
 //!
 //! Two groups say it. The kernel's own (`KERNEL`) says it as it happens,
 //! before udev has run its rules, which is soon enough for a cable coming
-//! or going (monitor.rs). udev's (`UDEV`) says it again once its rules and
+//! or going (monitor/). udev's (`UDEV`) says it again once its rules and
 //! what they run are done, which a light sensor needs: its buffer is turned
 //! on by udev's rule (nixos.nix), so the kernel's word comes too early to
 //! find it (light.rs).
