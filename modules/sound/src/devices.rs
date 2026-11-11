@@ -22,6 +22,12 @@ pub enum Change {
         volumes: Option<Vec<f32>>,
         muted: Option<bool>,
     },
+    /// A card's properties, as it first appears or as they change: for
+    /// a Bluetooth one, what `BlueZ` says it is.
+    Card {
+        id: u32,
+        properties: BTreeMap<String, String>,
+    },
     /// A node, a card or the default metadata going away, by its id.
     Gone { id: u32 },
     /// A card saying which of its routes plays one of its profile's
@@ -54,6 +60,9 @@ pub struct Devices {
     /// The route each card plays each of its profile's devices through,
     /// by the card's id and the profile's device.
     routes: BTreeMap<(u32, i32), i32>,
+    /// What each card says it is, by its id: its form factor and icon,
+    /// as `BlueZ` gives a Bluetooth one's.
+    forms: BTreeMap<u32, String>,
 }
 
 /// One device as an act finds it.
@@ -122,8 +131,27 @@ impl Devices {
                 }
                 true
             }
+            Change::Card { id, properties } => {
+                let said = |key: &str| properties.get(key).map_or("", String::as_str);
+                let form = format!(
+                    "{} {}",
+                    said("device.form-factor"),
+                    said("device.icon-name")
+                );
+                let form = form.trim().to_owned();
+                if self.forms.get(&id).map_or("", String::as_str) == form {
+                    return false;
+                }
+                self.forms.insert(id, form);
+                self.nodes.values().any(|node| {
+                    node.properties
+                        .get("device.id")
+                        .is_some_and(|card| *card == id.to_string())
+                })
+            }
             Change::Gone { id } => {
                 self.routes.retain(|(card, _), _| *card != id);
+                self.forms.remove(&id);
                 self.nodes.remove(&id).is_some()
             }
             // A route changes no record: only how an act is done.
@@ -178,6 +206,16 @@ impl Devices {
         })
     }
 
+    /// What a node's card says it is, or "" where it says nothing.
+    fn form(&self, node: &Node) -> &str {
+        let card = node
+            .properties
+            .get("device.id")
+            .and_then(|id| id.parse().ok());
+        card.and_then(|card| self.forms.get(&card))
+            .map_or("", String::as_str)
+    }
+
     /// Each device as a record, keyed by its node's name, which a device
     /// keeps from one sound server to the next where its id doesn't.
     pub fn records(&self) -> Vec<Value> {
@@ -202,6 +240,7 @@ impl Devices {
                     "muted": node.muted,
                     "chosen": chosen.as_deref() == Some(name.as_str()),
                     "properties": node.properties,
+                    "form": self.form(node),
                 }))
             })
             .collect()
@@ -343,6 +382,42 @@ mod tests {
         devices.hear(Change::Gone { id: 7 });
         assert_eq!(routed(&devices), None);
         assert_eq!(devices.device("device:headphones"), None);
+    }
+
+    // What a card says it is, as BlueZ says a Bluetooth one is, reaches
+    // the records of the devices it plays, and only a change to it moves
+    // them.
+    #[test]
+    fn a_device_says_what_its_card_is() {
+        let mut devices = Devices::default();
+        let Change::Node { mut properties, .. } = node(40, "headphones", "Audio/Sink") else {
+            unreachable!("node says a node");
+        };
+        properties.insert("device.id".into(), "7".into());
+        devices.hear(Change::Node { id: 40, properties });
+        let card = |form: &str| Change::Card {
+            id: 7,
+            properties: BTreeMap::from([
+                ("device.form-factor".to_owned(), form.to_owned()),
+                ("device.icon-name".to_owned(), "audio-headphones".to_owned()),
+            ]),
+        };
+        assert!(
+            devices.hear(card("headphone")),
+            "a card saying what it is moves its device"
+        );
+        assert_eq!(devices.records()[0]["form"], "headphone audio-headphones");
+        assert!(
+            !devices.hear(card("headphone")),
+            "said again, it moves nothing"
+        );
+        let other = Change::Card {
+            id: 8,
+            properties: BTreeMap::new(),
+        };
+        assert!(!devices.hear(other), "a card playing no device moves none");
+        devices.hear(Change::Gone { id: 7 });
+        assert_eq!(devices.records()[0]["form"], "");
     }
 
     #[test]

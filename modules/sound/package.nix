@@ -1,7 +1,8 @@
 # The sound daemon, built from this directory, its tests run as it builds.
 # Its socket's tests ask it with a crate every daemon's tests share
-# (../daemon-client), so the source is cut from the modules folder
-# holding both, and built from this one. PipeWire's bindings are
+# (../daemon-client), and its rows take the form every daemon's do
+# (../ready-rows), so the source is cut from the modules folder holding
+# them all, and built from this one. PipeWire's bindings are
 # generated from its headers as they build, as dictation's are.
 {
   lib,
@@ -22,6 +23,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../daemon-client/Cargo.toml
       ../daemon-client/src
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
     ];
   };
   sourceRoot = "${src.name}/sound";

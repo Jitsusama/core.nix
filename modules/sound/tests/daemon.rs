@@ -82,8 +82,11 @@ fn with_no_server_there_are_no_devices_and_no_waiting() {
     assert_eq!(listed["records"], json!([]));
     let watched = client.ask(&json!({"id": 2, "ask": "watch", "kind": "device"}));
     assert_eq!(watched["records"], json!([]));
+    // Sound's rows, as the launcher watches its place's.
+    let rows = json!({"id": 4, "ask": "watch", "kind": "row", "place": "sound"});
+    assert_eq!(client.ask(&rows)["records"], json!([]));
     let health = client.ask(&json!({"id": 3, "ask": "health"}));
-    assert_eq!(health["watches"], 1);
+    assert_eq!(health["watches"], 2);
 }
 
 #[test]

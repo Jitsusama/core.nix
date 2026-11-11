@@ -312,6 +312,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ready-rows"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -435,6 +442,7 @@ version = "0.1.0"
 dependencies = [
  "daemon-client",
  "pipewire",
+ "ready-rows",
  "serde_json",
 ]
 
