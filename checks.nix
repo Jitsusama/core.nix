@@ -693,6 +693,7 @@ gather (
     ./modules/update-to-main/checks.nix
     ./modules/v4l2loopback/checks.nix
     ./modules/warp/checks.nix
+    ./modules/wezterm/checks.nix
     ./modules/wifid/checks.nix
     ./modules/windows/checks.nix
     ./modules/yubikey/checks.nix
