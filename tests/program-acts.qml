@@ -165,6 +165,7 @@ ShellRoot {
         settings: ({
             folder: root.src,
             openNow: Quickshell.env("OPEN_NOW"),
+            open: "listed:nvim:open",
             preview: [Quickshell.env("PREVIEWER")]
         })
     }
