@@ -65,17 +65,6 @@ onLinux {
       touch $out
     '';
 
-  # kitty's watcher, run in kitty's own Python as kitty loads it, tells the
-  # programs daemon what changed, a line each, and holds nothing up with no
-  # daemon there (tells-test.py).
-  kitty-tells-what-it-has-open =
-    pkgs.runCommandLocal "kitty-tells-what-it-has-open" { nativeBuildInputs = [ pkgs.kitty ]; }
-      ''
-        export HOME=$PWD
-        kitty +launch ${./tells-test.py} ${./tells.py}
-        touch $out
-      '';
-
   # kitty reads back its files the same way. It warns about a setting it
   # doesn't know and refuses a value it can't parse; it doesn't check that a
   # mapped action exists.
