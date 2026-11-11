@@ -14,6 +14,7 @@
 //! collection.json and budgets.json are still written whole for the
 //! command line, and for the shell while the socket isn't there.
 
+use crate::acts::{self, Doer};
 use crate::collection::Collection;
 use crate::records::{BUDGETS, KINDS, budget_records, cut, cut_budgets, kind_of, records};
 use crate::standing::Standing;
@@ -23,7 +24,7 @@ use std::io::{BufRead, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, SyncSender};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
@@ -63,6 +64,13 @@ pub enum Ask {
     UnknownKind {
         id: Value,
         kind: String,
+    },
+    /// Something to do of a line the collection holds, by its key
+    /// (`acts`).
+    Act {
+        id: Value,
+        act: String,
+        line: String,
     },
     /// An ask this doesn't know, or a line that isn't one.
     Unknown {
@@ -131,6 +139,11 @@ pub fn ask(line: &str) -> Ask {
         },
         "unwatch" => Ask::Unwatch { id },
         "health" => Ask::Health { id },
+        "act" => Ask::Act {
+            id,
+            act: said["act"].as_str().unwrap_or_default().to_owned(),
+            line: said["line"].as_str().unwrap_or_default().to_owned(),
+        },
         _ => Ask::Unknown { id, ask: asked },
     }
 }
@@ -171,6 +184,8 @@ pub struct Hub {
     held: Mutex<Held>,
     /// When the daemon started, in milliseconds since the epoch.
     since: u64,
+    /// What does an act, given once the daemon can.
+    doer: OnceLock<Doer>,
 }
 
 impl Hub {
@@ -178,6 +193,34 @@ impl Hub {
         Hub {
             held: Mutex::new(Held::default()),
             since,
+            doer: OnceLock::new(),
+        }
+    }
+
+    /// Gives the hub what does its acts; only the first is kept.
+    pub fn doing(&self, doer: Doer) {
+        let _ = self.doer.set(doer);
+    }
+
+    /// An act asked of the line `line` names, done off the lock, since
+    /// bringing a window forward waits on kitty and niri.
+    fn act(&self, id: &Value, act: &str, line: &str) -> Value {
+        let held = self
+            .lock()
+            .records
+            .values()
+            .find(|record| record["line"]["key"] == line)
+            .map(|record| record["line"].clone());
+        let doing = match acts::asked(act, line, held.as_ref()) {
+            Ok(doing) => doing,
+            Err(refusal) => return error(id, refusal.code, &refusal.message),
+        };
+        let Some(doer) = self.doer.get() else {
+            return error(id, "not-answering", "spend-watch can't act yet");
+        };
+        match doer(doing) {
+            Ok(()) => json!({"id": id, "done": true}),
+            Err(why) => error(id, "not-done", &why),
         }
     }
 
@@ -322,6 +365,9 @@ impl Hub {
         told: &SyncSender<String>,
         hangup: &Arc<UnixStream>,
     ) -> Option<Value> {
+        if let Ask::Act { id, act, line } = &asked {
+            return Some(self.act(id, act, line));
+        }
         let mut held = self.lock();
         Some(match asked {
             Ask::Hello { id } => json!({
@@ -367,6 +413,8 @@ impl Hub {
                 error(&id, "unknown-kind", &format!("no kind {kind} here"))
             }
             Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
+            // Answered above, off the lock.
+            Ask::Act { .. } => return None,
         })
     }
 }

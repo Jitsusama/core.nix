@@ -146,6 +146,31 @@ Provider {
         sharing: provider.sharing
     })
 
+    // Does what a row offers through the watch's socket, which spawns
+    // nothing; only while its rows are read from the file, with no socket
+    // to ask, is the command line run as it was. Starting the watch, which
+    // isn't there to ask, is the machine daemon's to do.
+    function act(what, key, command) {
+        const then = answer => {
+            if (answer === null)
+                Niri.spawn(command);
+        };
+        if (key === downLine.key)
+            machine.ask({ ask: "act", act: "restart-unit", unit: "spend-watch.service" }, then);
+        else
+            SpendWatch.act(what, key, then);
+    }
+
+    // The machine daemon, asked only to start the watch again; nothing of
+    // it is watched.
+    Daemon {
+        id: machine
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "unit"
+        live: false
+    }
+
     // A row as the daemon gave it, with what's behind it made only when
     // it's stepped into, since a month's cuts are hundreds of rows.
     function build(given) {
@@ -173,7 +198,7 @@ Provider {
             ? thing(Object.assign(fields, {
                 verb: given.verb || "run",
                 later: true,
-                run: () => Niri.spawn(given.run)
+                run: () => act("run", given.key, given.run)
             }))
             : copyRow(Object.assign(fields, { copy: report ? report.markdown : given.copy }));
         const nested = given.rows ?? [];
@@ -197,7 +222,7 @@ Provider {
                 verb: Words.verb("spend:expect"),
                 glyph: Theme.glyph.fine,
                 hue: "action",
-                run: () => Niri.spawn(given.expect)
+                run: () => act("expect", given.key, given.expect)
             }));
         if (doing.length + nested.length + inside.length > 0) {
             row.verbs = () => doing.concat(nested.map(build), inside.map(build));

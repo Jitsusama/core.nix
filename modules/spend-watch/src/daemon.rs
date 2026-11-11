@@ -6,8 +6,10 @@
 //! out how things stand, settles its findings, writes the shell's files
 //! and gives notices. Between, a heartbeat every thirty seconds says it
 //! still runs. A socket in the runtime directory answers `refresh`, and
-//! tells the shell the collection as it changes (`interface`).
+//! tells the shell the collection as it changes (`interface`), taking its
+//! acts on it (`acts`).
 
+use crate::acts::{self, Act, Doer};
 use crate::config::{Config, FeedConfig};
 use crate::feed::{self, Pace};
 use crate::findings::{Finding, Severity};
@@ -528,6 +530,27 @@ fn hold(config: &Config) -> Result<(), String> {
 
 /// The socket's hub, holding what the last run wrote until this run's
 /// first pass, which waits on reading pi's logs.
+/// What does the shell's acts: going to a session as the command line
+/// does, starting a program through niri, and marking a finding expected
+/// in a history of its own, as the command line does, with a refresh so
+/// the next pass shows it.
+fn doer(config: &Config, wake: Sender<Wake>) -> Doer {
+    let registry = config.registry.clone();
+    let history = config.history();
+    Box::new(move |act| match act {
+        Act::Go(session) => crate::go::go(&registry, &session),
+        Act::Launch(command) => acts::launch(&command),
+        Act::Expect(key) => {
+            let held = History::open(&history)?;
+            crate::findings::mark(&held, &key, time::now())?;
+            // Nobody waits on the refresh's answer: the act is done.
+            let (reply, _) = mpsc::channel();
+            let _ = wake.send(Wake::Asked("refresh".into(), reply));
+            Ok(())
+        }
+    })
+}
+
 fn hub(config: &Config) -> Result<Arc<Hub>, String> {
     let since = u64::try_from(jiff::Timestamp::now().as_millisecond()).unwrap_or_default();
     let hub = Arc::new(Hub::new(since));
@@ -548,6 +571,7 @@ pub fn run(config: &Config) -> Result<(), String> {
     let history = History::open(&config.history())?;
     let (wake, inbox): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     let hub = hub(config)?;
+    hub.doing(doer(config, wake.clone()));
     listen(&config.socket(), wake.clone(), Arc::clone(&hub))?;
     watch(config.clone(), wake.clone());
     tick(wake.clone());

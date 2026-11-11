@@ -176,6 +176,14 @@ Singleton {
 
     readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/spend-watch/socket`
 
+    // Asks the watch to do what a row offers, by the row's key: "run" what
+    // Return runs, or "expect" its finding, so the shell spawns nothing
+    // for it. `then` is given the answer, or null where the socket isn't
+    // there to ask, as while the rows are read from the file.
+    function act(what, line, then) {
+        spent.ask({ ask: "act", act: what, line: line }, then);
+    }
+
     // Agents' figures and today's, watched always.
     Daemon {
         id: spent
