@@ -84,14 +84,14 @@
   "tests/file-facts.qml" = 1;
   "tests/focus-on-niri-test.py" = 2;
   "tests/for-you-filter.qml" = 1;
-  "tests/gnome-keyring-vm-test.py" = 1;
+  "tests/vm/keys/gnome-keyring-vm-test.py" = 1;
   "tests/graphs.qml" = 1;
   "tests/keyboard.qml" = 1;
   "tests/key-map.qml" = 1;
   "tests/lately.qml" = 1;
   "tests/launcher_on_niri.py" = 2;
   "tests/launcher-on-niri-test.py" = 3;
-  "tests/linux-id-vm-test.py" = 1;
+  "tests/vm/keys/linux-id-vm-test.py" = 1;
   "tests/machine.qml" = 1;
   "tests/machines.qml" = 1;
   "tests/mpv-program.qml" = 2;
@@ -122,7 +122,7 @@
   "tests/sessions-behind-the-lock.qml" = 3;
   "tests/sessions.qml" = 3;
   "tests/vm/sound/shure-mv7-voice-vm-test.py" = 1;
-  "tests/signing-vm-test.py" = 1;
+  "tests/vm/keys/signing-vm-test.py" = 1;
   "tests/sound.qml" = 2;
   "tests/vm/sound/speakers-vm-test.py" = 1;
   "tests/spend.qml" = 1;
