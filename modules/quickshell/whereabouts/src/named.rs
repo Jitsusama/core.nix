@@ -160,24 +160,22 @@ pub enum Unfound {
     Nowhere,
 }
 
-/// Finds the place named, the likeliest first, on a thread of its own.
-pub async fn find(words: String) -> Result<Found, Unfound> {
-    tokio::task::spawn_blocking(move || {
-        let said = agent()
-            .get("https://geocoding-api.open-meteo.com/v1/search")
-            .query("name", &words)
-            .query("count", "1")
-            .query("language", "en")
-            .query("format", "json")
-            .call()
-            .ok()
-            .and_then(|mut answer| answer.body_mut().read_to_string().ok())
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .ok_or(Unfound::Unasked)?;
-        found(&said).ok_or(Unfound::Nowhere)
-    })
-    .await
-    .unwrap_or(Err(Unfound::Unasked))
+/// Finds the place named, the likeliest first, waiting on the web, so
+/// it's asked from a thread that may wait: the one serving the connection
+/// that asked, or `set` run by hand.
+pub fn find(words: &str) -> Result<Found, Unfound> {
+    let said = agent()
+        .get("https://geocoding-api.open-meteo.com/v1/search")
+        .query("name", words)
+        .query("count", "1")
+        .query("language", "en")
+        .query("format", "json")
+        .call()
+        .ok()
+        .and_then(|mut answer| answer.body_mut().read_to_string().ok())
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .ok_or(Unfound::Unasked)?;
+    found(&said).ok_or(Unfound::Nowhere)
 }
 
 /// The first place a geocoding answer gives, by its town and province as

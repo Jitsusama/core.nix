@@ -3,27 +3,36 @@
 //! interface (interface.rs). One record, `here:laptop`, says it whole: the
 //! position GeoClue last found or Joel set, what it's called and the zone
 //! it keeps, and beside it the zone the clock keeps and its last move.
-//! Each change is told to every watch at once, in one line, and nothing is
-//! read for an ask: everything said is already held.
+//! Given the launcher's words, Location's rows are held beside it, made
+//! again from what's known as it changes (rows.rs). Each change is told to
+//! every watch at once, in one line, only the records it changed and those
+//! it let go, and nothing is read for an ask: everything said is already
+//! held. Joel's word on where the laptop is, `set` or `again`, is an act
+//! that changes the pin (pin.rs), which the daemon then hears as it hears
+//! any change of it.
 //!
 //! Each connection is served on a thread of its own, its lines written by
 //! another, so a client that stops reading holds no other back; one with
 //! more than a few hundred lines unread is hung up on.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
 use crate::fix::Fix;
-use crate::interface::{Ask, HERE, VERSION, ask, error, kind_of};
+use crate::interface::{Ask, HERE, Narrowed, VERSION, ask, error};
+use crate::pin::{self, Unpinned};
+use crate::rows;
+use crate::words::Words;
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -53,6 +62,7 @@ struct Watch {
     connection: u64,
     id: Value,
     keys: Option<Vec<String>>,
+    narrowed: Narrowed,
     told: SyncSender<String>,
     /// Its connection, to hang up on once it stops reading.
     stream: Arc<UnixStream>,
@@ -62,15 +72,18 @@ impl Watch {
     fn wants(&self, key: &str) -> bool {
         match &self.keys {
             Some(keys) => keys.iter().any(|k| k == key),
-            None => kind_of(key).is_some(),
+            None => self.narrowed.holds(key),
         }
     }
 }
 
+/// Every record by its key, in the order its keys sort.
+type Records = BTreeMap<String, Value>;
+
 struct Held {
     known: Known,
-    /// The record as every watch was last told it.
-    said: Value,
+    /// Each record as every watch was last told it.
+    said: Records,
     watches: Vec<Watch>,
     /// When it started, in milliseconds since the epoch.
     since: u64,
@@ -79,13 +92,19 @@ struct Held {
 /// What every connection shares.
 pub struct Shared {
     held: Mutex<Held>,
+    /// The launcher's words, which Location's rows are worded from; none
+    /// serves no rows.
+    words: Option<Words>,
+    /// Where Joel's own word on where the laptop is kept; none where the
+    /// laptop isn't followed, which takes no word.
+    pin: Option<PathBuf>,
+    /// Woken each time the records change, for `turn` to look again at
+    /// when they next say something another way.
+    turned: Condvar,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
-    shared
-        .held
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    shared.held.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn now_ms() -> u64 {
@@ -121,9 +140,21 @@ pub fn record(known: &Known) -> Value {
     })
 }
 
+/// Every record made from what's known: here, and Location's rows where
+/// there are words to say them in.
+fn records(known: &Known, words: Option<&Words>, now: u64) -> Records {
+    let rows = words
+        .map(|words| rows::rows(known.here.as_ref(), known.clock_zone.as_deref(), words, now))
+        .unwrap_or_default();
+    std::iter::once(record(known))
+        .chain(rows)
+        .filter_map(|record| Some((record["key"].as_str()?.to_owned(), record)))
+        .collect()
+}
+
 impl Shared {
-    pub fn new(known: Known) -> Arc<Shared> {
-        let said = record(&known);
+    pub fn new(known: Known, words: Option<Words>, pin: Option<PathBuf>) -> Arc<Shared> {
+        let said = records(&known, words.as_ref(), now_ms());
         Arc::new(Shared {
             held: Mutex::new(Held {
                 known,
@@ -131,30 +162,113 @@ impl Shared {
                 watches: Vec::new(),
                 since: now_ms(),
             }),
+            words,
+            pin,
+            turned: Condvar::new(),
         })
     }
 
-    /// Changes what's known, and tells every watch the record if it
-    /// changed. A connection whose lines aren't being read is hung up on,
+    /// Changes what's known, and tells each watch the records it wants
+    /// that changed and those let go, telling a watch none of them
+    /// nothing. A connection whose lines aren't being read is hung up on,
     /// and its watches dropped, rather than told less than it asked for.
     pub fn change(&self, how: impl FnOnce(&mut Known)) {
         let mut held = lock(self);
         how(&mut held.known);
-        let now = record(&held.known);
-        if now == held.said {
+        let now = records(&held.known, self.words.as_ref(), now_ms());
+        let changed: Vec<&Value> = now
+            .iter()
+            .filter(|(key, record)| held.said.get(*key) != Some(*record))
+            .map(|(_, record)| record)
+            .collect();
+        let gone: Vec<&String> = held
+            .said
+            .keys()
+            .filter(|key| !now.contains_key(*key))
+            .collect();
+        if changed.is_empty() && gone.is_empty() {
             return;
         }
-        held.said = now;
-        let line = |id: &Value| json!({"id": id, "changed": [&held.said]}).to_string();
         let mut stuck = Vec::new();
-        for watch in held.watches.iter().filter(|watch| watch.wants(HERE)) {
-            if watch.told.try_send(line(&watch.id)).is_err() {
+        for watch in &held.watches {
+            let told: Vec<&&Value> = changed
+                .iter()
+                .filter(|record| record["key"].as_str().is_some_and(|key| watch.wants(key)))
+                .collect();
+            let let_go: Vec<&&String> = gone.iter().filter(|key| watch.wants(key)).collect();
+            if told.is_empty() && let_go.is_empty() {
+                continue;
+            }
+            let mut line = json!({"id": watch.id, "changed": told});
+            if !let_go.is_empty() {
+                line["gone"] = json!(let_go);
+            }
+            if watch.told.try_send(line.to_string()).is_err() {
                 stuck.push(watch.connection);
                 let _ = watch.stream.shutdown(Shutdown::Both);
             }
         }
+        held.said = now;
         held.watches
             .retain(|watch| !stuck.contains(&watch.connection));
+        self.turned.notify_all();
+    }
+
+    /// Joel's word on where the laptop is, answered once it's kept: `set`
+    /// waits on the web to find the town he named, so it's asked without
+    /// holding what every other connection reads. What it changes is told
+    /// as the pin is heard changing, as when it's changed by hand.
+    fn act(&self, id: &Value, act: &str, words: &str) -> Value {
+        let Some(pin) = self.pin.as_deref() else {
+            return error(id, "not-following", "the laptop isn't followed here");
+        };
+        let done = match act {
+            "again" => pin::again(pin).map_err(|why| ("refused", why.to_string())),
+            "set" if words.trim().is_empty() => Err(("bad-act", "set names no place".into())),
+            "set" => pin::set(pin, words.trim()).map_err(|unpinned| match unpinned {
+                Unpinned::Nowhere => ("nowhere", format!("no place is called {words}")),
+                Unpinned::Unasked => ("unasked", format!("couldn't ask where {words} is")),
+                Unpinned::Unkept(why) => ("refused", why),
+            }),
+            _ => Err(("unknown-act", format!("no act {act:?} here"))),
+        };
+        match done {
+            Ok(()) => json!({"id": id, "done": true}),
+            Err((code, message)) => error(id, code, &message),
+        }
+    }
+}
+
+/// Says each record again as it next says something another way though
+/// nothing else changed, as when it was found turns from how long ago to
+/// its day a day on, and otherwise sleeps until the records change: so it
+/// never wakes but to change something.
+pub fn turn(shared: &Shared) {
+    if shared.words.is_none() {
+        return;
+    }
+    let mut held = lock(shared);
+    loop {
+        let now = now_ms();
+        held = match rows::turns(held.known.here.as_ref(), now) {
+            Some(at) if at <= now => {
+                drop(held);
+                shared.change(|_| ());
+                lock(shared)
+            }
+            Some(at) => {
+                let until = Duration::from_millis(at - now);
+                shared
+                    .turned
+                    .wait_timeout(held, until)
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0
+            }
+            None => shared
+                .turned
+                .wait(held)
+                .unwrap_or_else(PoisonError::into_inner),
+        };
     }
 }
 
@@ -216,8 +330,16 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
     });
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
+        let asked = ask(&line);
+        let acted = match &asked {
+            Ask::Act { id, act, words } => Some(shared.act(id, act, words)),
+            _ => None,
+        };
         let mut held = lock(shared);
-        let answer = answer(&mut held, ask(&line), connection, &told, &hangup);
+        let answer = match acted {
+            Some(acted) => acted,
+            None => answer(&mut held, asked, connection, &told, &hangup),
+        };
         // Queued while the lock is held, so a change can't be queued before
         // the answer it follows; one that can't be queued is hung up on, as
         // a change would hang up on it.
@@ -253,22 +375,28 @@ fn answer(
     told: &SyncSender<String>,
     hangup: &Arc<UnixStream>,
 ) -> Value {
-    let whole = |held: &Held| vec![held.said.clone()];
+    let narrowed = |held: &Held, narrowed: &Narrowed| -> Vec<Value> {
+        held.said
+            .iter()
+            .filter(|(key, _)| narrowed.holds(key))
+            .map(|(_, record)| record.clone())
+            .collect()
+    };
     match asked {
         Ask::Hello { id } => json!({
             "id": id, "version": VERSION, "domain": "location", "state": "answering",
             "since": held.since, "sources": sources(&held.known),
         }),
         Ask::Get { id, keys } => {
-            let records: Vec<Value> = if keys.iter().any(|key| key == HERE) {
-                whole(held)
-            } else {
-                Vec::new()
-            };
+            let records: Vec<&Value> = keys.iter().filter_map(|key| held.said.get(key)).collect();
             json!({"id": id, "records": records})
         }
-        Ask::List { id } => json!({"id": id, "records": whole(held)}),
-        Ask::Watch { id, keys } => {
+        Ask::List { id, narrowed: by } => json!({"id": id, "records": narrowed(held, &by)}),
+        Ask::Watch {
+            id,
+            keys,
+            narrowed: by,
+        } => {
             // A watch asked again by its id replaces the one before.
             held.watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
@@ -276,17 +404,23 @@ fn answer(
                 connection,
                 id: id.clone(),
                 keys,
+                narrowed: by,
                 told: told.clone(),
                 stream: Arc::clone(hangup),
             };
-            let records = if watch.wants(HERE) {
-                whole(held)
-            } else {
-                Vec::new()
-            };
+            let records: Vec<&Value> = held
+                .said
+                .iter()
+                .filter(|(key, _)| watch.wants(key))
+                .map(|(_, record)| record)
+                .collect();
+            let records = json!(records);
             held.watches.push(watch);
             json!({"id": id, "records": records})
         }
+        // Answered by `act`, which waits on the web without holding what
+        // every connection reads, so it's never asked here.
+        Ask::Act { id, act, .. } => error(&id, "unknown-act", &format!("no act {act:?} here")),
         Ask::Unwatch { id } => {
             held.watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
@@ -347,18 +481,38 @@ mod tests {
         assert!(said["source"].is_null(), "a fix GeoClue named no source of");
     }
 
-    #[test]
-    fn a_change_that_changes_nothing_tells_nobody() {
-        let shared = Shared::new(Known::default());
+    /// A watch held on `shared`, narrowed so, and the lines it's told.
+    fn watching(
+        shared: &Shared,
+        id: &str,
+        narrowed: Narrowed,
+    ) -> (mpsc::Receiver<String>, UnixStream) {
         let (told, lines) = mpsc::sync_channel(QUEUED);
-        let (one, _two) = UnixStream::pair().unwrap();
-        lock(&shared).watches.push(Watch {
+        let (one, two) = UnixStream::pair().unwrap();
+        lock(shared).watches.push(Watch {
             connection: 1,
-            id: json!("all"),
+            id: json!(id),
             keys: None,
+            narrowed,
             told,
             stream: Arc::new(one),
         });
+        (lines, two)
+    }
+
+    fn kelpwater() -> Fix {
+        Fix::new(12.3457, -98.7654, 26_000.0, 1_790_000_000)
+            .unwrap()
+            .named(
+                Some("Kelpwater, Westmark".into()),
+                Some("America/Toronto".into()),
+            )
+    }
+
+    #[test]
+    fn a_change_that_changes_nothing_tells_nobody() {
+        let shared = Shared::new(Known::default(), None, None);
+        let (lines, _other) = watching(&shared, "all", Narrowed::default());
         shared.change(|known| known.clock_zone = None);
         assert!(
             lines.try_recv().is_err(),
@@ -368,5 +522,90 @@ mod tests {
         let line: Value = serde_json::from_str(&lines.try_recv().unwrap()).unwrap();
         assert_eq!(line["id"], "all");
         assert_eq!(line["changed"][0]["clock_zone"], "UTC");
+        assert!(line.get("gone").is_none(), "nothing was let go");
+    }
+
+    #[test]
+    fn a_watch_of_locations_rows_is_told_only_the_rows_that_changed() {
+        let shared = Shared::new(Known::default(), Some(crate::words::fixture()), None);
+        let place = Narrowed {
+            kinds: Some(vec!["row".into()]),
+            place: Some("location".into()),
+        };
+        let (rows, _other) = watching(&shared, "rows", place);
+        let (here, _another) = watching(
+            &shared,
+            "here",
+            Narrowed {
+                kinds: Some(vec!["here".into()]),
+                place: None,
+            },
+        );
+        shared.change(|known| known.here = Some(kelpwater()));
+        let line: Value = serde_json::from_str(&rows.try_recv().unwrap()).unwrap();
+        let keys: Vec<&str> = line["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|row| row["key"].as_str())
+            .collect();
+        assert!(
+            keys.contains(&"row:location:town"),
+            "the town is told: {keys:?}"
+        );
+        assert!(keys.contains(&"row:location:copy"), "Copy comes: {keys:?}");
+        assert!(
+            !keys.contains(&"row:location:set"),
+            "Set It by Hand, as it stood, isn't told again: {keys:?}"
+        );
+        assert!(
+            keys.iter().all(|key| key.starts_with("row:location:")),
+            "only Location's own place is told: {keys:?}"
+        );
+        let line: Value = serde_json::from_str(&here.try_recv().unwrap()).unwrap();
+        assert_eq!(line["changed"].as_array().unwrap().len(), 1, "{line}");
+        assert_eq!(line["changed"][0]["key"], HERE);
+
+        shared.change(|known| known.here = None);
+        let line: Value = serde_json::from_str(&rows.try_recv().unwrap()).unwrap();
+        assert!(
+            line["gone"]
+                .as_array()
+                .is_some_and(|gone| gone.contains(&json!("row:location:copy"))),
+            "Copy goes once nowhere is known: {line}"
+        );
+    }
+
+    #[test]
+    fn joels_word_is_refused_where_the_laptop_isnt_followed_or_says_nothing() {
+        let unfollowed = Shared::new(Known::default(), None, None);
+        assert_eq!(
+            unfollowed.act(&json!(1), "again", "")["error"]["code"],
+            "not-following"
+        );
+        let folder = std::env::temp_dir().join(format!("whereabouts-act-{}", std::process::id()));
+        let pin = folder.join("pin.json");
+        let followed = Shared::new(Known::default(), None, Some(pin.clone()));
+        assert_eq!(
+            followed.act(&json!(2), "set", "  ")["error"]["code"],
+            "bad-act"
+        );
+        assert_eq!(
+            followed.act(&json!(3), "wander", "")["error"]["code"],
+            "unknown-act"
+        );
+        std::fs::create_dir_all(&folder).unwrap();
+        kelpwater().by_hand().write(&pin).unwrap();
+        assert_eq!(
+            followed.act(&json!(4), "again", ""),
+            json!({"id": 4, "done": true})
+        );
+        assert!(!pin.exists(), "finding it again takes the pin away");
+        assert_eq!(
+            followed.act(&json!(5), "again", ""),
+            json!({"id": 5, "done": true}),
+            "no pin to take away is done too"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

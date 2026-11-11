@@ -29,20 +29,28 @@
 //! it is himself (`set`, from Now's Location): the town he names is found
 //! by the web (named.rs) and kept as PIN in the state folder, which the
 //! daemon says in place of anything GeoClue says until he asks it to find
-//! the laptop again (`again`), which takes the pin away. The daemon hears
-//! either at once, by inotify.
+//! the laptop again (`again`), which takes the pin away (pin.rs). Both are
+//! asks on the socket, which the launcher makes, and commands run by
+//! hand. The daemon hears either at once, by inotify.
 //!
-//!     whereabouts SOCKET ROOT [KEPT PIN MOVED]
+//! Given WORDS, the launcher's words.json, it serves Location's rows too,
+//! worded and ready to draw (rows.rs), so the launcher holds none of it.
+//!
+//!     whereabouts SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]
 //!     whereabouts set PIN WORDS
 //!     whereabouts again PIN
 
 mod clock;
+mod figures;
 mod fix;
 mod geoclue;
 mod interface;
 mod named;
 mod notify;
+mod pin;
+mod rows;
 mod serve;
+mod words;
 
 use std::error::Error;
 use std::fs;
@@ -50,7 +58,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde_json::json;
@@ -59,7 +67,9 @@ use zbus::Connection;
 
 use fix::{Fix, moved};
 use notify::Notify;
+use pin::Unpinned;
 use serve::{Known, Shared};
+use words::Words;
 
 /// How long a here still unnamed waits before its name is asked again.
 const AGAIN: Duration = Duration::from_mins(5);
@@ -70,10 +80,6 @@ const TRIES: u32 = 12;
 /// How long a GeoClue that refused or left waits before it's asked
 /// again, so a machine without one isn't kept busy asking.
 const GEOCLUE_AGAIN: Duration = Duration::from_mins(1);
-
-/// How near, in metres, a town Joel names is taken to be: the width of a
-/// town, which is as sure as its name makes it.
-const BY_HAND: f64 = 1_000.0;
 
 /// What `set` exits with when the place named couldn't be found, as
 /// sysexits.h numbers it: no such place, and no network to ask.
@@ -104,29 +110,40 @@ struct Files {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // The launcher's words, given last, for Location's rows.
+    let words = match args.iter().position(|arg| arg == "--words") {
+        Some(at) if at + 2 == args.len() => {
+            let path = args.pop().map(PathBuf::from);
+            args.pop();
+            path.as_deref().and_then(Words::in_file)
+        }
+        _ => None,
+    };
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let done = match args.as_slice() {
         ["set", pin, words @ ..] if !words.is_empty() => {
-            return set(Path::new(pin), &words.join(" ")).await;
+            return set(Path::new(pin), &words.join(" "));
         }
-        ["again", pin] => again(Path::new(pin)).map_err(Into::into),
+        ["again", pin] => pin::again(Path::new(pin))
+            .map(|()| println!("<6>here to be found again"))
+            .map_err(Into::into),
         ["set" | "again", ..] => Err("set and again each need a pin".into()),
-        [socket, root] => serve(Path::new(socket), Path::new(root), None).await,
+        [socket, root] => serve(Path::new(socket), Path::new(root), None, words).await,
         [socket, root, kept, pin, moved] => {
             let files = Files {
                 kept: PathBuf::from(kept),
                 pin: PathBuf::from(pin),
                 moved: PathBuf::from(moved),
             };
-            serve(Path::new(socket), Path::new(root), Some(files)).await
+            serve(Path::new(socket), Path::new(root), Some(files), words).await
         }
         _ => Err(Usage.into()),
     };
     match done {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.is::<Usage>() => {
-            eprintln!("<3>usage: whereabouts SOCKET ROOT [KEPT PIN MOVED]");
+            eprintln!("<3>usage: whereabouts SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]");
             eprintln!("<3>       whereabouts set PIN WORDS | again PIN");
             ExitCode::from(64)
         }
@@ -138,53 +155,25 @@ async fn main() -> ExitCode {
 }
 
 /// Finds the place Joel named and pins it, which the daemon says at once.
-async fn set(pin: &Path, words: &str) -> ExitCode {
-    let found = match named::find(words.to_owned()).await {
-        Ok(found) => found,
-        Err(named::Unfound::Nowhere) => {
-            eprintln!("<4>no place is called what was typed");
-            return ExitCode::from(NOWHERE);
-        }
-        Err(named::Unfound::Unasked) => {
-            eprintln!("<4>the place named couldn't be asked about");
-            return ExitCode::from(UNASKED);
-        }
-    };
-    let when = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs());
-    let Some(fix) = Fix::new(found.latitude, found.longitude, BY_HAND, when) else {
-        eprintln!("<3>the place found is nowhere on the Earth");
-        return ExitCode::FAILURE;
-    };
-    let fix = fix
-        .named(Some(found.place), found.zone)
-        .countried(found.country)
-        .by_hand();
-    let pinned = pin
-        .parent()
-        .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| fix.write(pin));
-    match pinned {
+fn set(pin: &Path, words: &str) -> ExitCode {
+    match pin::set(pin, words) {
         Ok(()) => {
             println!("<6>here set by hand");
             ExitCode::SUCCESS
         }
-        Err(error) => {
-            eprintln!("<3>{error}");
+        Err(Unpinned::Nowhere) => {
+            eprintln!("<4>no place is called what was typed");
+            ExitCode::from(NOWHERE)
+        }
+        Err(Unpinned::Unasked) => {
+            eprintln!("<4>the place named couldn't be asked about");
+            ExitCode::from(UNASKED)
+        }
+        Err(Unpinned::Unkept(why)) => {
+            eprintln!("<3>{why}");
             ExitCode::FAILURE
         }
     }
-}
-
-/// Takes the pin away, so the daemon says only what GeoClue finds.
-fn again(pin: &Path) -> io::Result<()> {
-    match fs::remove_file(pin) {
-        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-        _ => {}
-    }
-    println!("<6>here to be found again");
-    Ok(())
 }
 
 /// The pin Joel set, if any.
@@ -192,7 +181,12 @@ fn pinned(pin: &Path) -> Option<Fix> {
     fs::read_to_string(pin).ok().as_deref().and_then(Fix::read)
 }
 
-async fn serve(socket: &Path, root: &Path, files: Option<Files>) -> Result<(), Box<dyn Error>> {
+async fn serve(
+    socket: &Path,
+    root: &Path,
+    files: Option<Files>,
+    words: Option<Words>,
+) -> Result<(), Box<dyn Error>> {
     let localtime = root.join("etc/localtime");
     let listener = match serve::listen(socket) {
         Ok(listener) => listener,
@@ -202,16 +196,22 @@ async fn serve(socket: &Path, root: &Path, files: Option<Files>) -> Result<(), B
         }
     };
     let following = files.is_some();
-    let shared = Shared::new(Known {
+    let known = Known {
         clock_zone: clock::zone(&localtime),
         moved: files.as_ref().and_then(|files| clock::moved(&files.moved)),
         geoclue: following.then(|| json!({"state": "starting"})),
         names: following.then(|| json!({"state": "starting"})),
         here: None,
-    });
+    };
+    let pin = files.as_ref().map(|files| files.pin.clone());
+    let shared = Shared::new(known, words, pin);
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve::accept(&shared, &listener));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || serve::turn(&shared));
     }
     let (pins, pinned) = unbounded_channel();
     {
@@ -473,14 +473,14 @@ mod tests {
     }
 
     fn town(by_hand: bool) -> Fix {
-        let fix = Fix::new(12.3457, -98.7654, BY_HAND, 1_790_000_000).unwrap();
+        let fix = Fix::new(12.3457, -98.7654, pin::BY_HAND, 1_790_000_000).unwrap();
         if by_hand { fix.by_hand() } else { fix }
     }
 
     #[test]
     fn a_pin_taken_away_lets_its_here_go_and_asks_geoclue() {
         let files = files("taken");
-        let shared = Shared::new(Known::default());
+        let shared = Shared::new(Known::default(), None, None);
         town(true).write(&files.pin).unwrap();
         let mut last = None;
         assert!(
@@ -491,7 +491,7 @@ mod tests {
             last.as_ref().is_some_and(|fix| fix.hand),
             "the pin wasn't said: {last:?}"
         );
-        again(&files.pin).unwrap();
+        pin::again(&files.pin).unwrap();
         assert!(
             found_again(&shared, &files, &mut last),
             "GeoClue wasn't asked once the pin was taken away"
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn a_pin_heard_without_one_leaves_geoclues_here_and_asks_nothing() {
         let files = files("unpinned");
-        let shared = Shared::new(Known::default());
+        let shared = Shared::new(Known::default(), None, None);
         let mut last = Some(town(false));
         assert!(
             !found_again(&shared, &files, &mut last),

@@ -2,8 +2,10 @@
 //! GeoClue to ask: hello says it's location's; a watch is answered with
 //! where it kept the laptop and the clock's zone the root's link names;
 //! the link changed, clock-follows' move written, and a pin set and then
-//! taken away are each said to the watch as they happen; and a kind it
-//! doesn't keep is refused.
+//! taken away are each said to the watch as they happen; Location's rows,
+//! worded from the launcher's words, are told only to a watch of their
+//! place, and Find It Again, asked on the socket, takes the pin away and
+//! the row that asked it; and a kind it doesn't keep is refused.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -44,6 +46,8 @@ impl Running {
             .arg(folder.join("kept/here.json"))
             .arg(folder.join("state/pin.json"))
             .arg(folder.join("state/moved.json"))
+            .arg("--words")
+            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/words.json"))
             // Never the machine's own GeoClue, which would find where the
             // tests run and ask the web what's there.
             .env("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/nonexistent/bus")
@@ -177,6 +181,93 @@ fn a_pin_holds_until_it_is_taken_away() {
         !running.path("kept/here.json").exists(),
         "a here set by hand is never kept"
     );
+}
+
+/// The keys of the records an answer or a change holds.
+fn keys(said: &Value, field: &str) -> Vec<String> {
+    said[field]
+        .as_array()
+        .map(|records| {
+            records
+                .iter()
+                .filter_map(|record| record["key"].as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn locations_rows_are_told_only_to_a_watch_of_their_place() {
+    let running = Running::new("rows");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "r", "ask": "watch", "kind": "row", "place": "location"}));
+    let rows = keys(&said, "records");
+    assert!(rows.contains(&"row:location:town".to_owned()), "{said}");
+    assert!(
+        rows.iter().all(|key| key.starts_with("row:location:")),
+        "only Location's own place: {rows:?}"
+    );
+    let town = said["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["key"] == "row:location:town")
+        .unwrap();
+    assert_eq!(town["side"][0]["said"], "Kelpwater, Highreach", "{town}");
+    assert_eq!(town["parent"], "row:on:location");
+
+    let said = client.ask(&json!({"id": "h", "ask": "watch", "kind": "here"}));
+    assert_eq!(
+        keys(&said, "records"),
+        ["here:laptop"],
+        "a watch of here hears no rows"
+    );
+
+    let said = client.ask(&json!({"id": 1, "ask": "get", "keys": ["row:on:location"]}));
+    assert_eq!(said["records"][0]["name"], "Location", "{said}");
+}
+
+#[test]
+fn finding_it_again_takes_the_pin_and_its_row_away() {
+    let running = Running::new("again");
+    let mut client = running.client();
+    let pin = json!({
+        "v": 2, "latitude": 44.65, "longitude": -63.57, "accuracy": 1000.0, "when": 1_790_000_200,
+        "place": "Quaystead, Westmark", "zone": "America/Halifax", "hand": true,
+    });
+    written(&running.path("state/pin.json"), &pin);
+    client.ask(&json!({"id": "r", "ask": "watch", "kind": "row", "place": "location"}));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut held = keys(
+        &client.ask(&json!({"id": 1, "ask": "list", "kind": "row", "place": "location"})),
+        "records",
+    );
+    while !held.contains(&"row:location:again".to_owned()) {
+        assert!(
+            Instant::now() < deadline,
+            "a pin never offered Find It Again: {held:?}"
+        );
+        held = keys(&client.heard(), "changed");
+    }
+    // Sent rather than asked, since the row may be let go before the act
+    // is answered, and both are wanted.
+    client.send(&json!({"id": 2, "ask": "act", "act": "again"}));
+    let (mut done, mut gone) = (false, false);
+    while !(done && gone) {
+        assert!(
+            Instant::now() < deadline,
+            "done {done}, Find It Again gone {gone}"
+        );
+        let said = client.heard();
+        if said["id"] == 2 {
+            assert_eq!(said, json!({"id": 2, "done": true}));
+            assert!(!running.path("state/pin.json").exists(), "the pin stayed");
+            done = true;
+        }
+        gone |= said["gone"]
+            .as_array()
+            .is_some_and(|gone| gone.contains(&json!("row:location:again")));
+    }
 }
 
 #[test]
