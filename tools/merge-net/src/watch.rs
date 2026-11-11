@@ -27,6 +27,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use serde_json::{Value, json};
@@ -1027,7 +1028,22 @@ pub fn round_beside(
 }
 
 /// How long the quick look rests between looks at main's head.
-pub const QUICK_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
+const QUICK_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Look quickly at main's head, again and again, until the rounds are done.
+pub fn quick(world: &dyn World, state: &State, settler: &Settler, done: &AtomicBool) {
+    while !done.load(Ordering::Relaxed) {
+        if let Err(why) = quick_beside(world, state, settler) {
+            state.say(&format!("a quick look failed: {why}"));
+        }
+        let rested = std::time::Instant::now();
+        // Rested in short steps, so the rounds ending isn't kept waiting
+        // for the rest of a look's five minutes.
+        while rested.elapsed() < QUICK_EVERY && !done.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
+    }
+}
 
 /// One quick look: run the checks other than VM tests that main's head
 /// moved since the last head they ran at, beside the round, and search for

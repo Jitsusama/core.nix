@@ -9,15 +9,13 @@
 //! test that fails twice at a commit fails for real: the net finds which
 //! merge broke it, holds switching on it (`hold.json`), reverts it through
 //! a PR merged on its own checks, and writes a finding for its owner. A
-//! held test runs first at each new head, and its pass lifts the hold.
-//! Beside the rounds, a quick look every five minutes runs the checks other
-//! than VM tests that main's newest head moved, so a merge that breaks one
-//! is found in minutes rather than behind a round's VM tests. One
+//! held test runs first at each new head, and its pass lifts the hold. One
 //! that fails and then passes goes on the quarantine list
 //! (`quarantine.json`) instead, and nothing is reverted for it. It starts
 //! nothing while the machine is held or paused (`holds.rs`, `state.rs`).
-//! `watch.rs` says what a round does, `watch/settling.rs` how what it found
-//! settles beside the next, and `state.rs` what it keeps, and where.
+//! `watch.rs` says what a round does and what the quick look beside it runs
+//! every five minutes, `watch/settling.rs` how what they found settles
+//! beside the next, and `state.rs` what it keeps, and where.
 //!
 //! `merge-net needs`, on a branch, says whether its change runs VM tests
 //! before it merges, rather than after on the net, and which: a change to
@@ -163,7 +161,7 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
     let ended = std::thread::scope(|scope| {
         settler.start(scope);
         if !once {
-            scope.spawn(|| quick(&world, &state, &settler, &done));
+            scope.spawn(|| watch::quick(&world, &state, &settler, &done));
         }
         let ended = rounds(&world, &state, &start, &settler, once, follow.as_deref());
         done.store(true, Ordering::Relaxed);
@@ -222,21 +220,6 @@ fn rounds(
             return Ok(settler.leave(|| std::process::exit(0)));
         }
         std::thread::sleep(std::time::Duration::from_secs(rest));
-    }
-}
-
-/// Look quickly at main's head, again and again, until the rounds are done.
-fn quick(world: &Real, state: &State, settler: &watch::Settler, done: &AtomicBool) {
-    while !done.load(Ordering::Relaxed) {
-        if let Err(why) = watch::quick_beside(world, state, settler) {
-            state.say(&format!("a quick look failed: {why}"));
-        }
-        let rested = std::time::Instant::now();
-        // Rested in short steps, so the rounds ending isn't kept waiting
-        // for the rest of a look's five minutes.
-        while rested.elapsed() < watch::QUICK_EVERY && !done.load(Ordering::Relaxed) {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-        }
     }
 }
 
