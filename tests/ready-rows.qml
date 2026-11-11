@@ -165,6 +165,27 @@ QtObject {
             body: "Rows served ready.",
             eyebrow: "quest"
         });
+        // A budget's: its eyebrow names it as written, a fact says words,
+        // and one carries its meter.
+        const meter = { shape: "stroke", values: [0.4], warn: false };
+        Expect.same("a drawer naming the world keeps its meters and words", Ready.drawerOf({
+            eyebrow: "Personal",
+            eyebrowNames: true,
+            title: "This Week",
+            facts: [
+                { name: "Used", said: "$40 of $100", figure: meter },
+                { name: "Covers", said: "Personal work", words: true }
+            ]
+        }, now, said), {
+            title: "This Week",
+            facts: [
+                { label: "Used", value: "$40 of $100", figure: meter },
+                { label: "Covers", value: "Personal work", words: true }
+            ],
+            body: "",
+            eyebrow: "Personal",
+            eyebrowNames: true
+        });
     }
 
     function insides() {
@@ -259,6 +280,9 @@ QtObject {
         Expect.same("an ask done says nothing", Ready.refusal({ done: true }, words), "");
         Expect.same("one refused says the daemon's words",
             Ready.refusal({ error: { said: "not connected" } }, words), "not connected");
+        Expect.same("one refused with only a message for the journal says the launcher's",
+            Ready.refusal({ error: { code: "busy", message: "spend-watch can't act yet" } },
+                words), "couldn't");
         Expect.same("one refused unworded says the launcher's",
             Ready.refusal({ error: { code: "NotJoined" } }, words), "couldn't");
         Expect.same("one unanswered says so", Ready.refusal(null, words), "no answer");
