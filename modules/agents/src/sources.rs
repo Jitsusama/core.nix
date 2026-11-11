@@ -30,6 +30,10 @@ pub enum Heard {
     Files(Vec<PathBuf>),
     /// Whether the shell says the screen is shared.
     Sharing(bool),
+    /// Joel puts off the last boot's sessions, as the shell says.
+    PutOff,
+    /// Joel forgets one of the sessions to reopen, by pi's id for it.
+    Forget(String),
 }
 
 /// Where the files the rows are made from are kept.
@@ -41,14 +45,21 @@ pub struct Paths {
     pub budgets: PathBuf,
     /// The harness's list of orchestrators.
     pub orchestrators: PathBuf,
+    /// The harness's list of sessions to reopen.
+    pub restore: PathBuf,
+    /// What Joel said of those, which the daemon alone writes, so it's
+    /// read at the start rather than followed.
+    pub kept: PathBuf,
 }
 
 impl Paths {
+    /// The files followed.
     pub fn all(&self) -> Vec<PathBuf> {
         vec![
             self.spend.clone(),
             self.budgets.clone(),
             self.orchestrators.clone(),
+            self.restore.clone(),
         ]
     }
 }
@@ -90,6 +101,24 @@ impl Inputs {
                 }
             }
             Heard::Sharing(sharing) => self.sharing = sharing,
+            Heard::PutOff => {
+                self.kept.put_off = self.restore.as_ref().map_or(String::new(), |said| {
+                    said["boot"].as_str().unwrap_or("").to_owned()
+                });
+                self.keep(paths);
+            }
+            Heard::Forget(id) => {
+                self.kept.forget(&id, self.restore.as_ref());
+                self.keep(paths);
+            }
+        }
+    }
+
+    /// Writes what Joel said, saying when it can't, as the next start
+    /// would offer again what he put off or forgot.
+    fn keep(&self, paths: &Paths) {
+        if let Err(why) = self.kept.write(&paths.kept) {
+            eprintln!("agents: can't keep {}: {why}", paths.kept.display());
         }
     }
 
@@ -100,6 +129,8 @@ impl Inputs {
             self.budgets = file::read(path);
         } else if path == paths.orchestrators {
             self.orchestrators = file::read(path);
+        } else if path == paths.restore {
+            self.restore = file::read(path);
         }
     }
 }
@@ -112,16 +143,23 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::reopen::Kept;
+
+    fn paths_in(folder: &Path) -> Paths {
+        Paths {
+            spend: folder.join("collection.json"),
+            budgets: folder.join("budgets.json"),
+            orchestrators: folder.join("orchestrators.json"),
+            restore: folder.join("restore.json"),
+            kept: folder.join("agents").join("reopen.json"),
+        }
+    }
 
     #[test]
     fn what_each_source_says_changes_its_own_part() {
         let folder = std::env::temp_dir().join(format!("agents-sources-{}", std::process::id()));
         fs::create_dir_all(&folder).expect("a folder");
-        let paths = Paths {
-            spend: folder.join("collection.json"),
-            budgets: folder.join("budgets.json"),
-            orchestrators: folder.join("orchestrators.json"),
-        };
+        let paths = paths_in(&folder);
         fs::write(&paths.spend, r#"{"agentsToday": "$4"}"#).expect("the collection");
         fs::write(&paths.budgets, r#"{"sessions": {}}"#).expect("the budgets");
         let mut inputs = Inputs::default();
@@ -145,14 +183,37 @@ mod tests {
     }
 
     #[test]
+    fn what_joel_says_of_the_sessions_to_reopen_is_kept() {
+        let folder = std::env::temp_dir().join(format!("agents-kept-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let paths = paths_in(&folder);
+        fs::write(
+            &paths.restore,
+            r#"{"boot": "the-last", "sessions": [{"id": "01-a", "cwd": "/tmp"}]}"#,
+        )
+        .expect("the restore list");
+        let mut inputs = Inputs::default();
+        inputs.hear(Heard::Files(paths.all()), &paths);
+        inputs.hear(Heard::PutOff, &paths);
+        inputs.hear(Heard::Forget("01-a".into()), &paths);
+        let kept = Kept {
+            put_off: "the-last".into(),
+            forgotten: vec!["01-a".into()],
+        };
+        assert_eq!(
+            inputs.kept, kept,
+            "the boot offered put off, and the one forgotten"
+        );
+        assert_eq!(Kept::read(&paths.kept), kept, "written for the next start");
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
     fn the_files_are_handed_over_once_as_they_stand_at_the_start() {
         let folder = std::env::temp_dir().join(format!("agents-start-{}", std::process::id()));
         fs::create_dir_all(&folder).expect("a folder");
-        let paths = Paths {
-            spend: folder.join("collection.json"),
-            budgets: folder.join("budgets.json"),
-            orchestrators: folder.join("orchestrators.json"),
-        };
+        let paths = paths_in(&folder);
         let (to, heard) = mpsc::channel();
         follow_files(&paths, to).expect("the files are followed");
         let Ok(Heard::Files(first)) = heard.recv() else {

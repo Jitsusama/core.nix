@@ -4,7 +4,9 @@
 # waits on Joel, the windows daemon for when each session's window was
 # last used, spend-watch's collection for what each spent, and the
 # harness's list of orchestrators, and makes every row Agents shows from
-# all of it, worded from the launcher's own words.json. It serves them
+# all of it, worded from the launcher's own words.json. It serves the
+# sessions there are to reopen too, from the harness's restore.json,
+# keeping what Joel said of them in a file of its own. It serves them
 # over $XDG_RUNTIME_DIR/daemons/agents.sock in the shell's daemon
 # interface, each watch told only the rows that moved, so the launcher
 # holds and makes nothing of Agents (Joel, 2026-11-10: "the daemons need
@@ -46,6 +48,10 @@ lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && realm != null) {
         "%t/spend-watch/collection.json"
         "--orchestrators"
         "${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow/orchestrators.json"
+        "--restore"
+        "${config.xdg.stateHome}/pi/restore.json"
+        "--kept"
+        "${config.xdg.stateHome}/agents/reopen.json"
         "--socket"
         "%t/daemons/agents.sock"
       ];
