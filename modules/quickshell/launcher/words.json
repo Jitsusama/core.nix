@@ -516,8 +516,8 @@
       "said": {
         "down": "not answering",
         "lastFigures": "not answering · its last figures",
-        "lastRun": "the watch is still reading; these are its last run's figures",
-        "refused:not-answering": "the watch can't act yet",
+        "lastRun": "still reading · its last figures",
+        "refused:not-answering": "still reading",
         "refused:no-line": "no longer there",
         "refused:bad-act": "nothing to do"
       }
