@@ -134,7 +134,9 @@ Provider {
     }
     property var placed: []
     property var rowOf: ({})
-    readonly property var rows: placed.map(key => rowOf[key])
+    // Only the keys held, as take() sets rowOf before placed: between the
+    // two, a row that went is still placed but no longer held.
+    readonly property var rows: placed.filter(key => key in rowOf).map(key => rowOf[key])
     // Each network's row as made from what wifid last served of it, by
     // key, so a change remakes only the networks it names.
     property var madeOf: ({})
