@@ -1891,6 +1891,20 @@
     pair's otherwise named without front; and a device's volume moving remakes only its own
     device's row
   '';
+  sound-hears-pipewires-devices = ''
+    the sound daemon makes each output and input PipeWire says a device and leaves out a program's
+    stream, says a volume as the shell shows it, keeps it through a mute alone, marks chosen the
+    ones the default metadata names, lets go of a node gone, reads each channel's volume and the
+    mute from a Props, and with no sound server says PipeWire isn't answering, answers a list and
+    a watch with no devices rather than waiting, and refuses an ask or a kind it doesn't know
+  '';
+  sound-passes-clippy = ''
+    clippy finds nothing in the sound daemon or its tests
+  '';
+  sound-runs-beside-the-shell = ''
+    the shell brings the sound daemon, on the daemons' socket, which systemd holds whether or not
+    it runs, restarted by a switch
+  '';
   space-is-set-by-rung = ''
     no QML file of the shell's names a space by its step on the size scale, rather than by the
     rung of the space ladder it sits between, the beat or a level's pitch

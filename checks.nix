@@ -1304,6 +1304,7 @@ gather (
     ./modules/signing/checks.nix
     ./modules/slack/checks.nix
     ./modules/slices/checks.nix
+    ./modules/sound/checks.nix
     ./modules/spend-watch/checks.nix
     ./modules/spend-watch/feeds/claude/checks.nix
     ./modules/sudo/checks.nix
