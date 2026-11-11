@@ -7,9 +7,10 @@ slack-unreads' rounds would tell it; with none, Slack answers with nothing unrea
 as the daemon's records, slack-unread, slack-recent, slack-message and slack-account, the
 account saying it holds every message once slack-says.json lists any, and each conversation's
 row of Unread and Recent, row:<place>:<id>, as src/rows.rs serves it ready, its order its
-place, listed and watched, a watch of rows narrowed by its place, each watch told what changed
-and went and how Slack stands as that changes; each conversation is given a timestamp falling
-with its place, so the order a test lists them in is Slack's.
+place, and each message's row, newest first, with its drawer a record of its own, as
+src/message_rows.rs serves them, listed and watched, a watch of rows narrowed by its place,
+each watch told what changed and went and how Slack stands as that changes; each conversation
+is given a timestamp falling with its place, so the order a test lists them in is Slack's.
 Hello says how Slack stands, a search answers the Slack messages found for its words, and a
 get of a message's key answers the messages around it. Each search is written down in
 slack-searched beside the socket, one line of words each, so a test can count how often Slack
@@ -43,7 +44,7 @@ HELLOS = RUNTIME / "slack-hellos"
 SAYS = RUNTIME / "slack-says.json"
 # The kinds it holds: slack-message for each message wanting Joel, which Search Slack watches
 # too, to hear how Slack stands, and row for each conversation's row as the launcher shows it.
-KINDS = ("slack-unread", "slack-recent", "slack-account", "slack-message", "row")
+KINDS = ("slack-unread", "slack-recent", "slack-account", "slack-message", "row", "drawer")
 # A conversation's note by its kind, and what's beside one counted, in the launcher's words
 # (words.json's slack:conversation), as the daemon is handed them.
 NOTES = {
@@ -229,7 +230,50 @@ def messages(listed: list[dict[str, object]]) -> dict[str, dict[str, object]]:
             at = datetime.fromtimestamp(ended / 1000, tz=UTC).isoformat()
             message["done"] = {"how": done["how"], "at": at.replace("+00:00", "Z")}
         held[f"slack-message:{one['channel']}:{one['ts']}"] = message
+    newest = sorted(
+        held.values(), key=lambda one: (int(cast("int", one["at"])), str(one["ts"])), reverse=True
+    )
+    for place, message in enumerate(newest):
+        row, drawer = message_row(message, place)
+        held[str(row["key"])] = row
+        held[str(row["drawer"])] = drawer
     return held
+
+
+def message_row(one: dict[str, object], at: int) -> tuple[dict[str, object], dict[str, object]]:
+    """Give a message's row at its place, newest first, and its drawer, as src/message_rows.rs."""
+    id_ = f"{one['channel']}:{one['ts']}"
+    drawer = f"drawer:slack-messages:{id_}"
+    direct = str(one["channel"]).startswith("D")
+    acts = [
+        {"key": "verb:slack:message:open", "open": one["link"]},
+        {"key": "verb:slack:message:link", "copy": one["link"]},
+    ]
+    row = {
+        "key": f"row:slack-messages:{id_}",
+        "thing": f"slack:message:{id_}",
+        "place": "slack-messages",
+        "kind": "message",
+        "order": (at + 1) * SPACED,
+        "name": one["who"],
+        "glyph": "chat",
+        "hue": "program",
+        "depth": 0,
+        "side": [{"at": one["at"], "as": "came"}],
+        "note": one["first"],
+        "drawer": drawer,
+        "acts": acts,
+        "held": {name: one.get(name) for name in ("channel", "ts", "place", "mine", "at", "done")},
+    }
+    drawn = {
+        "eyebrow": "direct message" if direct else f"in {one['place']} \u00b7 message",
+        "eyebrowNames": not direct,
+        "title": one["who"],
+        "facts": [{"name": "Sent", "at": one["at"], "as": "moment"}],
+        "body": one["text"],
+        "prose": True,
+    }
+    return row, drawn
 
 
 def retell() -> None:

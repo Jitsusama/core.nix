@@ -85,12 +85,11 @@ Singleton {
     readonly property var recent: stands === "ok" ? recentHeld : []
     // Each message wanting him, done ones too, the newest first, while the
     // daemon holds every one; else null, and the conversations stand for
-    // them (SlackUnreads.js's messages). For You's Slack row lists those
-    // still to read, and its History those done (NewSlack.qml).
+    // them (SlackUnreads.js's messages). For You's Slack row counts those
+    // still to read, and lists the rows the daemon serves (SlackRows.qml).
     readonly property var messages: Unreads.messages(told, stands)
     readonly property var toRead: messages === null ? null
         : messages.filter(one => !Unreads.done(one))
-    readonly property var doneWith: messages === null ? null : messages.filter(Unreads.done)
 
     // Slack's notices still unread whose message was read in Slack, found
     // again only when the notices or the messages held change, as this
@@ -115,14 +114,4 @@ Singleton {
     }
     // Threads, which no message stands for, beside the messages.
     readonly property var unheld: Unreads.threads(conversations)
-
-    // A conversation's row's words, for the piece, which lives where
-    // SlackUnreads.js can't be imported.
-    function beside(one) {
-        return Unreads.beside(one);
-    }
-
-    function note(one) {
-        return Unreads.note(one);
-    }
 }

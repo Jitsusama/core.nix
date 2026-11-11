@@ -38,11 +38,13 @@ in
     "quickshell/launcher/people/Slack.js".source = ./Slack.js;
     # A Slack conversation's one row, which every surface showing one
     # takes (SlackConversation.qml), a message's, wherever it's listed
-    # (SlackMessage.qml), and what in Slack wants him, watched on Slack's
-    # daemon (SlackUnreads.qml).
+    # (SlackMessage.qml), what in Slack wants him, watched on Slack's
+    # daemon (SlackUnreads.qml), and For You's rows of it, as the daemon
+    # serves them (SlackRows.qml).
     "quickshell/SlackConversation.qml".source = ./SlackConversation.qml;
     "quickshell/SlackMessage.qml".source = ./SlackMessage.qml;
     "quickshell/SlackMessage.js".source = ./SlackMessage.js;
+    "quickshell/SlackRows.qml".source = ./SlackRows.qml;
     "quickshell/SlackUnreads.qml".source = ./SlackUnreads.qml;
     "quickshell/SlackUnreads.js".source = ./SlackUnreads.js;
   };

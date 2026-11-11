@@ -15,7 +15,9 @@
 // (SlackMessage.qml), then Threads, whose replies it doesn't hold, and
 // each read in Slack leaves by itself for For You's History (Joel,
 // 2026-11-08: "i shouldn't be required to mark a notice as read if I
-// looked at the slack message in slack").
+// looked at the slack message in slack"). Its rows, and History's, are
+// those Slack's daemon serves ready (SlackRows.qml); its count, who and
+// when are SlackUnreads'.
 import qs
 import QtQuick
 
@@ -31,15 +33,7 @@ Piece {
     value: SlackUnreads.value
     hint: SlackUnreads.hint
     context: SlackUnreads.context
-    rows: thing => (SlackUnreads.toRead ?? []).map(one => SlackMessage.row(one, thing))
-        .concat((SlackUnreads.toRead === null ? SlackUnreads.conversations : SlackUnreads.unheld)
-            .map(one => SlackConversation.row({
-                id: one.id,
-                name: one.name,
-                opens: one.link,
-                side: SlackUnreads.beside(one),
-                note: SlackUnreads.note(one)
-            }, thing)))
+    rows: thing => SlackRows.forYou(thing)
     lately: "slack"
     // Slack's timestamps are seconds, as text; a message's, milliseconds.
     came: (SlackUnreads.toRead ?? []).map(one => ({ who: one.who, at: one.at }))
@@ -48,8 +42,7 @@ Piece {
                 who: one.name,
                 at: one.latest ? Number(one.latest) * 1000 : null
             })))
-    finished: SlackUnreads.doneWith === null ? null : SlackUnreads.doneWith.map(one =>
-        Object.assign({}, one, { row: thing => SlackMessage.row(one, thing) }))
+    finished: SlackRows.finished
     actions: [{
         glyph: Theme.glyph.chat,
         name: "Show Slack",
