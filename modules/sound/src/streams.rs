@@ -2,14 +2,16 @@
 //! join each to a device or to a filter in front of one: each a `stream`
 //! record saying what it is, how loud it's set, whether it's muted and
 //! which nodes it's linked to, by their names, as Sound.qml read them from
-//! Quickshell's link groups. Words are the shell's, so a record holds the
-//! server's names and figures, never a sentence.
+//! Quickshell's link groups, and the format it moves its audio in. Words
+//! are the shell's, so a record holds the server's names and figures,
+//! never a sentence.
 
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
 use crate::devices::shown;
+use crate::levels::Format;
 
 /// Whether a node is a program's stream by its media class: one playing
 /// (true), one recording (false), or neither.
@@ -28,6 +30,8 @@ pub struct Stream {
     /// Each channel's volume as PipeWire holds it, a linear share.
     pub volumes: Vec<f32>,
     pub muted: bool,
+    /// The format it moves its audio in, while it's set up to move any.
+    pub format: Option<Format>,
 }
 
 impl Stream {
@@ -80,6 +84,15 @@ impl Streams {
         true
     }
 
+    /// Takes in the format a stream moves its audio in, answering whether
+    /// it changed.
+    pub fn format(&mut self, id: u32, format: Option<Format>) -> bool {
+        let Some(stream) = self.streams.get_mut(&id) else {
+            return false;
+        };
+        std::mem::replace(&mut stream.format, format) != stream.format
+    }
+
     /// Takes in a link, from the node it goes out of to the one it goes
     /// into.
     pub fn link(&mut self, id: u32, from: u32, to: u32) -> bool {
@@ -128,6 +141,9 @@ impl Streams {
                     "muted": stream.muted,
                     "properties": stream.properties,
                     "ends": ends,
+                    "format": stream.format.as_ref().map(|format| {
+                        json!({"rate": format.rate, "sample": format.sample})
+                    }),
                 }))
             })
             .collect()
@@ -216,5 +232,27 @@ mod tests {
         assert!(streams.gone(90), "a stream goes");
         assert_eq!(streams.records(names), Vec::<Value>::new());
         assert!(!streams.gone(100), "its link went with it");
+    }
+
+    // A stream says the format it moves its audio in while it has one,
+    // and is told of it again only as it changes.
+    #[test]
+    fn a_stream_says_its_format_while_it_has_one() {
+        let mut streams = Streams::default();
+        streams.node(90, stream("spotify", "Stream/Output/Audio", &[]));
+        let float = Format {
+            rate: 48_000,
+            sample: "F32LE".into(),
+        };
+        assert!(streams.format(90, Some(float.clone())), "a format is heard");
+        assert!(
+            !streams.format(90, Some(float)),
+            "the same format again changes nothing"
+        );
+        let said = &streams.records(names)[0]["format"];
+        assert_eq!(said, &json!({"rate": 48_000, "sample": "F32LE"}));
+        assert!(streams.format(90, None), "a format let go of is heard");
+        assert_eq!(streams.records(names)[0]["format"], Value::Null);
+        assert!(!streams.format(77, None), "no stream, no format");
     }
 }

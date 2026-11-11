@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::levels::Port;
+use crate::levels::{Format, Port};
 use crate::streams::Streams;
 
 /// A change the sound server said, as the daemon takes it in.
@@ -25,6 +25,9 @@ pub enum Change {
         volumes: Option<Vec<f32>>,
         muted: Option<bool>,
     },
+    /// The format a node moves its audio in, as its Format param says
+    /// it, or none once it isn't set up to move any.
+    Format { id: u32, format: Option<Format> },
     /// A card's properties, as it first appears or as they change: for
     /// a Bluetooth one, what `BlueZ` says it is.
     Card {
@@ -169,6 +172,8 @@ impl Devices {
                 }
                 true
             }
+            // Only a stream's is said yet, in its program's drawer.
+            Change::Format { id, format } => self.streams.format(id, format),
             Change::Card { id, properties } => {
                 let said = |key: &str| properties.get(key).map_or("", String::as_str);
                 let form = format!(

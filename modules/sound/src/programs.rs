@@ -3,7 +3,8 @@
 //! a row holding each program, its streams on the device grouped by the
 //! program they're of, A to Z by name; inside each, whether it's Muted,
 //! Louder and Quieter, where it Plays On or Records From, and its first
-//! stream's Sample Rate and Delay. A program's acts ask the daemon with
+//! stream's Sample Rate and Delay. Its row names its drawer, served beside
+//! it (drawer.rs). A program's acts ask the daemon with
 //! its streams' ids (acts.rs), so the shell runs nothing to do them.
 //!
 //! A program is named, and wears the mark, its desktop entry gives it,
@@ -13,6 +14,7 @@
 
 use serde_json::{Value, json};
 
+use crate::drawer;
 use crate::parts::{STEP, capitalised, stepped};
 use crate::rows::{APART, Device, PLACE, Words, bar, kind, percent};
 
@@ -34,10 +36,10 @@ const MILLISECONDS: f64 = 1000.0;
 const SIGNIFICANT: i32 = 3;
 
 /// One program's streams on a device, as its row says them.
-struct Program<'a> {
-    name: String,
+pub(crate) struct Program<'a> {
+    pub(crate) name: String,
     glyph: Value,
-    streams: Vec<&'a Value>,
+    pub(crate) streams: Vec<&'a Value>,
 }
 
 impl<'a> Program<'a> {
@@ -120,7 +122,7 @@ fn aimed_at(text: &str, at: usize) -> Option<(&str, &str, usize)> {
 /// Whether a filter stands in front of a device: one that puts itself
 /// there, aimed at it by what it asks a device to be, every one of which
 /// the device is. A target asking nothing aims at nothing.
-fn aims(filter: &Device, device: &Device) -> bool {
+pub(crate) fn aims(filter: &Device, device: &Device) -> bool {
     let wanted = aimed(filter.property("filter.smart.target"));
     filter.sink == device.sink
         && filter.property("filter.smart") == "true"
@@ -132,7 +134,7 @@ fn aims(filter: &Device, device: &Device) -> bool {
 
 /// The programs whose streams play through a device, or record from it,
 /// A to Z by name, each stream in the order the server numbered them.
-fn programs<'a>(
+pub(crate) fn programs<'a>(
     device: &Device,
     records: &'a [Value],
     devices: &[Device],
@@ -296,6 +298,7 @@ fn program_rows(device: &Device, program: &Program, around: &Around, parent: &st
         "key": key, "thing": thing, "kind": "program", "parent": parent, "depth": 2,
         "name": program.name, "glyph": program.glyph, "side": said(&side),
         "graph": bar(if hushed { 0.0 } else { program.loudest() }),
+        "drawer": drawer::key(device, &program.name),
         "acts": [{"key": "verb:more", "step": "rows"}], "held": held,
     }))];
     let asked = |act: &str, more: &Value| {
@@ -440,14 +443,14 @@ fn figures(stream: &Value, words: &Words, parent: &str, thing: &str) -> Vec<Valu
 }
 
 /// What a stream's "frames/rate" says, or none where it says no rate.
-fn fraction(text: &str) -> Option<(u32, u32)> {
+pub(crate) fn fraction(text: &str) -> Option<(u32, u32)> {
     let (frames, hertz) = text.split_once('/')?;
     let (frames, hertz) = (frames.trim().parse().ok()?, hertz.trim().parse().ok()?);
     (hertz > 0).then_some((frames, hertz))
 }
 
 /// A rate in kilohertz, a tenth where it isn't whole: "48 kHz", "44.1 kHz".
-fn kilohertz(hertz: u32) -> String {
+pub(crate) fn kilohertz(hertz: u32) -> String {
     if hertz.is_multiple_of(1000) {
         format!("{} kHz", hertz / 1000)
     } else {
@@ -461,7 +464,7 @@ fn kilohertz(hertz: u32) -> String {
     clippy::cast_possible_truncation,
     reason = "a figure's magnitude fits an i32"
 )]
-fn significant(value: f64) -> String {
+pub(crate) fn significant(value: f64) -> String {
     let magnitude = |value: f64| value.abs().log10().floor() as i32;
     if value.abs() < f64::MIN_POSITIVE {
         return "0".to_owned();

@@ -385,7 +385,7 @@ pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
 /// A microphone with the noise around it taken out is the one it hears,
 /// named for it (docs/glossary.md's noise cancelled), so it never reads
 /// as that microphone.
-fn named(device: &Device, devices: &[Device], words: &Words) -> String {
+pub(crate) fn named(device: &Device, devices: &[Device], words: &Words) -> String {
     let own = device.nicknamed();
     let shared = !device.sink
         && devices
@@ -500,6 +500,13 @@ pub(crate) mod tests {
             "nick": nick, "description": "", "sink": sink, "volume": 0.4,
             "muted": false, "chosen": false, "properties": properties, "form": "",
         })
+    }
+
+    /// The speakers, chosen, as the device programs play through.
+    pub(crate) fn speakers_chosen() -> Value {
+        let mut speakers = device("speakers", true, "Speakers", &json!({"device.api": "alsa"}));
+        speakers["chosen"] = json!(true);
+        speakers
     }
 
     fn names(rows: &[Value]) -> Vec<&str> {

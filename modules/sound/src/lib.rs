@@ -6,7 +6,8 @@
 //! into an act's ([`levels`]), how each act is done ([`acts`]), and
 //! Sound's rows, served ready for the launcher ([`rows`]), each device's
 //! parts inside it ([`parts`]), its programs among them ([`programs`]),
-//! each named by its desktop entry ([`naming`]), and how each running
+//! each named by its desktop entry ([`naming`]) and each program's drawer
+//! served beside its row ([`drawer`]), and how each running
 //! node keeps time, as PipeWire's profiler says it ([`timing`]).
 //!
 //! A device record names every figure as PipeWire says it, never a
@@ -14,6 +15,7 @@
 
 pub mod acts;
 pub mod devices;
+pub mod drawer;
 pub mod interface;
 pub mod levels;
 pub mod naming;

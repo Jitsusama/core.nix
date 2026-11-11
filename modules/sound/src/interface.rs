@@ -9,10 +9,11 @@ pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps: each device as PipeWire says
 /// it, each program's stream (streams.rs), each of Sound's rows served
-/// ready (rows.rs), where each program's stream is sent, as one
-/// `targets` record, and how each running node keeps time (timing.rs),
-/// read only while a watch wants it.
-pub const KINDS: [&str; 5] = ["device", "row", "stream", "targets", "timing"];
+/// ready (rows.rs), each program's drawer beside its row (drawer.rs),
+/// where each program's stream is sent, as one `targets` record, and how
+/// each running node keeps time (timing.rs), read only while a watch
+/// wants it.
+pub const KINDS: [&str; 6] = ["device", "drawer", "row", "stream", "targets", "timing"];
 
 /// The kind a key names: `device` for `device:alsa_output.pci`, `row`
 /// for `row:sound:alsa_output.pci`.
