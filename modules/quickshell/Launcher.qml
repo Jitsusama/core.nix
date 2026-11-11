@@ -10010,7 +10010,10 @@ Scope {
                             // and what's added.
                             function keep(rows) {
                                 const keys = rows.map(row => root.pairedId(row));
-                                const steps = RowsKept.steps(list.keptKeys, keys);
+                                // More rows moving than the card shows are
+                                // listed afresh, which reads each row in view
+                                // once, where each move read them again.
+                                const steps = RowsKept.steps(list.keptKeys, keys, root.rows);
                                 list.keptKeys = keys;
                                 if (steps.length === 0) {
                                     list.rows = rows;

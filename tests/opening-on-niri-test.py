@@ -87,6 +87,10 @@ PRESENTED_OPENINGS = 5
 # shows a frame late, and well inside the half second before a closing makes its spots.
 KEPT_DRAWN = timedelta(milliseconds=200)
 
+# How many rows down a case moves the cursor before a letter, so the letter has a row to take
+# it from.
+ROWS_DOWN = 3
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -443,6 +447,41 @@ def test_the_cursor_stays_on_its_row_as_home_fills_in(shell: Shell) -> None:
     on = moved[0]["keys"][1]
     after = settled(shell)
     assert after["keys"][after["at"]] == on, f"filled in, the cursor left {on}: {after}"
+
+
+def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
+    shell: Shell,
+) -> None:
+    """A first letter in a kept Emoji, ranking hundreds of its rows anew, starts on its first.
+
+    Those rows moved into place one at a time, each move reading the rows in view again, so the
+    letter's frame came 2.4 to 7.3 s after it (H6EDLC, 2026-11-11); listed afresh instead, the
+    selection stands on the first row found, drawn there rather than gliding, and the list
+    starts at its top and holds every row found.
+    """
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    settled(shell)
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    timed = latest(openings(shell))
+    shell.as_account(shell.ipc("collection", "emoji"))
+    filled_after(shell, timed)
+    settled(shell)
+    for _ in range(ROWS_DOWN):
+        shell.send_key("down")
+    shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
+    shell.send_chars("f")
+    shell.launcher_until(lambda shown: shown["typed"] == "f")
+    laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+    selection = laid["selection"]
+    assert selection is not None, f"the letter left no selection drawn: {laid['rows']}"
+    assert selection["y"] == selection["row"], f"the selection glided to its row: {selection}"
+    assert settled(shell)["at"] == 0, f"the letter left the cursor off the first row: {laid}"
+    laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+    assert laid["firstAt"] == 0, f"the list didn't start at its first row: {laid['firstAt']}"
+    found = cast("int", shell.showing()["count"])
+    assert laid["listed"] == found, f"it listed {laid['listed']} of the {found} rows found"
 
 
 def test_no_frame_flashes_as_home_fills_in(shell: Shell) -> None:
