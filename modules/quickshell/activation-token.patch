@@ -18,6 +18,12 @@ token, then sends ActivationToken and ActionInvoked, and closes the
 notification as before. With no handler, or no xdg_activation_v1 global,
 no token is sent and the action is invoked as it was.
 
+The shell's QML asks for one too, with Quickshell.activationToken(callback),
+for when another process serves notifications for the shell: the shell
+asks for the token as the click lands and hands it to that server with the
+action chosen, since a process with no window can't ask the compositor
+itself.
+
 ---
 diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
 index 4824965..3889f85 100644
@@ -91,6 +97,80 @@ index 0000000..a47b564
 +};
 +
 +} // namespace qs::core
+diff --git a/src/core/qmlglobal.cpp b/src/core/qmlglobal.cpp
+index 14991be..849c26a 100644
+--- a/src/core/qmlglobal.cpp
++++ b/src/core/qmlglobal.cpp
+@@ -8,9 +8,11 @@
+ #include <qguiapplication.h>
+ #include <qicon.h>
+ #include <qjsengine.h>
++#include <qjsvalue.h>
+ #include <qlist.h>
+ #include <qlogging.h>
+ #include <qobject.h>
++#include <qpointer.h>
+ #include <qprocess.h>
+ #include <qqmlcontext.h>
+ #include <qqmlengine.h>
+@@ -26,6 +28,7 @@
+ #include <unistd.h>
+ 
+ #include "../io/processcore.hpp"
++#include "activation.hpp"
+ #include "generation.hpp"
+ #include "iconimageprovider.hpp"
+ #include "instanceinfo.hpp"
+@@ -297,6 +300,21 @@ QVariant QuickshellGlobal::env(const QString& variable) { // NOLINT
+ 	return qEnvironmentVariable(vstr.data());
+ }
+ 
++void QuickshellGlobal::activationToken(const QJSValue& callback) {
++	if (!callback.isCallable()) {
++		qCritical() << "Quickshell.activationToken needs a function to call with the token";
++		return;
++	}
++
++	// The global goes with its engine as the shell reloads, and a callback into that
++	// engine would run against code that is gone.
++	auto global = QPointer(this);
++
++	qs::core::ActivationTokens::request([global, callback](const QString& token) {
++		if (global) callback.call({QJSValue(token)});
++	});
++}
++
+ void QuickshellGlobal::execDetached(QList<QString> command) {
+ 	QuickshellGlobal::execDetached(qs::io::process::ProcessContext(std::move(command)));
+ }
+diff --git a/src/core/qmlglobal.hpp b/src/core/qmlglobal.hpp
+index 5fe2aa9..21d456c 100644
+--- a/src/core/qmlglobal.hpp
++++ b/src/core/qmlglobal.hpp
+@@ -4,6 +4,7 @@
+ #include <qcontainerfwd.h>
+ #include <qhash.h>
+ #include <qjsengine.h>
++#include <qjsvalue.h>
+ #include <qlist.h>
+ #include <qobject.h>
+ #include <qqmlengine.h>
+@@ -240,6 +241,15 @@ public:
+ 	///
+ 	/// The popup can also be blocked by setting `QS_NO_RELOAD_POPUP=1`.
+ 	Q_INVOKABLE void inhibitReloadPopup() { this->mInhibitReloadPopup = true; }
++	/// Asks the windowing system for an activation token tied to the user's most
++	/// recent input, and calls `callback` with it, or with an empty string if none
++	/// could be made. A program handed the token may bring its window forward, as a
++	/// program acting on a notification's action does when another process serves
++	/// notifications for the shell.
++	///
++	/// The callback may run before this function returns, and never runs once the
++	/// shell has reloaded.
++	Q_INVOKABLE void activationToken(const QJSValue& callback);
+ 	/// Check if Quickshell's version is at least `major.minor` and the listed
+ 	/// unreleased features are available. If Quickshell is newer than the given version
+ 	/// it is assumed that all unreleased features are present. The unreleased feature list
 diff --git a/src/services/notifications/notification.cpp b/src/services/notifications/notification.cpp
 index d048bde..9ac0deb 100644
 --- a/src/services/notifications/notification.cpp

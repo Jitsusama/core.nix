@@ -405,6 +405,16 @@ onLinux {
     given = spawnedBy "Super+Shift+N";
   };
 
+  # The shell's QML is given an activation token by niri when it asks
+  # (tests/activation-token-on-niri.sh), as the notices daemon will need it
+  # to hand a program with an action chosen, having no window to ask with.
+  the-shell-is-given-a-token-on-niri = shellOnNiri {
+    name = "the-shell-is-given-a-token-on-niri";
+    away = 3600;
+    root = ../../tests/activation-token.qml;
+    command = "${lib.getExe pkgs.bash} ${../../tests/activation-token-on-niri.sh} quickshell logs";
+  };
+
   # A notice that comes while Joel's away waits, past the time its sender
   # gave it (tests/notices-wait-while-away.sh). Away after a second, so he
   # is before it comes.
