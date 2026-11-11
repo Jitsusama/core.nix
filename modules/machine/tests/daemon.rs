@@ -951,6 +951,24 @@ fn a_unit_the_shell_may_not_restart_is_refused() {
     assert_eq!(unnamed["error"]["code"], "bad-act", "{unnamed}");
 }
 
+// A screen's act that can't be taken is refused before logind or the
+// backlight program is asked, saying what it lacks.
+#[test]
+fn a_screens_act_missing_what_it_needs_is_refused() {
+    let running = Running::new("screen-acts");
+    let mut client = running.client();
+    let shareless = client.ask(&json!({"id": 1, "ask": "act", "act": "brightness"}));
+    assert_eq!(shareless["error"]["code"], "bad-act", "{shareless}");
+    let unlit = client.ask(&json!({"id": 2, "ask": "act", "act": "brightness",
+        "share": 50, "device": "acpi_video9"}));
+    assert_eq!(unlit["error"]["code"], "bad-act", "{unlit}");
+    let unsaid = client.ask(&json!({"id": 3, "ask": "act", "act": "night-light"}));
+    assert_eq!(unsaid["error"]["code"], "bad-act", "{unsaid}");
+    let unfollowed = client.ask(&json!({"id": 4, "ask": "act", "act": "follow-the-room",
+        "follows": "yes"}));
+    assert_eq!(unfollowed["error"]["code"], "bad-act", "{unfollowed}");
+}
+
 /// The shell a stand-in runs in, found on PATH as the build's own is,
 /// since a sandbox has no /bin/sh.
 fn shell() -> PathBuf {
