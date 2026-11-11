@@ -12,7 +12,9 @@
 //! write them; a watcher's status is told as it writes it, and silent
 //! once its heartbeat is late; a charge limit set is told before it's
 //! answered; Heat's rows are made for a watch of their place and told as
-//! they move; and an ask, act or kind it doesn't know is refused.
+//! they move; a firmware install is answered once fwupdmgr is done, the
+//! connection answering meanwhile and a second act refused as busy; and
+//! an ask, act or kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -240,16 +242,26 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, launcher: &[&str]) -> Running {
-        Running::started(test, launcher, None)
+        Running::started(test, launcher, None, &[])
     }
 
     /// Handed the launcher's `words`, and a comma and a full stop for its
     /// numbers.
     fn worded(test: &str, words: &Value) -> Running {
-        Running::started(test, &[], Some(words))
+        Running::started(test, &[], Some(words), &[])
     }
 
-    fn started(test: &str, launcher: &[&str], words: Option<&Value>) -> Running {
+    /// Started on its own with these in its environment as well.
+    fn with(test: &str, environment: &[(&str, &str)]) -> Running {
+        Running::started(test, &[], None, environment)
+    }
+
+    fn started(
+        test: &str,
+        launcher: &[&str],
+        words: Option<&Value>,
+        environment: &[(&str, &str)],
+    ) -> Running {
         let folder = std::env::temp_dir().join(format!("machine-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let root = folder.join("root");
@@ -284,6 +296,7 @@ impl Running {
             .env("XDG_RUNTIME_DIR", "/run/user/1000")
             .env_remove("XDG_STATE_HOME")
             .env("HOME", "/home/joel")
+            .envs(environment.iter().copied())
             .stderr(Stdio::null());
         Running {
             daemon: Daemon::start(&mut command, socket, folder),
@@ -741,6 +754,65 @@ fn a_unit_the_shell_may_not_restart_is_refused() {
     assert_eq!(refused["error"]["code"], "not-allowed", "{refused}");
     let unnamed = client.ask(&json!({"id": 2, "ask": "act", "act": "restart-unit"}));
     assert_eq!(unnamed["error"]["code"], "bad-act", "{unnamed}");
+}
+
+/// The shell a stand-in runs in, found on PATH as the build's own is,
+/// since a sandbox has no /bin/sh.
+fn shell() -> PathBuf {
+    let path = std::env::var_os("PATH").expect("the test has a PATH");
+    std::env::split_paths(&path)
+        .map(|folder| folder.join("sh"))
+        .find(|sh| sh.exists())
+        .expect("a shell is on PATH")
+}
+
+#[test]
+fn a_firmware_install_is_answered_once_done_and_the_connection_answers_meanwhile() {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::PermissionsExt;
+    let folder = std::env::temp_dir().join(format!("machine-install-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    // The stand-in for fwupdmgr says what it was asked, then waits until
+    // the test lets it end, so what's asked meanwhile is answered first.
+    let (said, go) = (folder.join("said"), folder.join("go"));
+    let fifo = std::ffi::CString::new(go.as_os_str().as_bytes()).unwrap();
+    // SAFETY: mkfifo reads only the path it's given, which is ours.
+    assert_eq!(
+        unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) },
+        0,
+        "the fifo is made"
+    );
+    let fwupdmgr = folder.join("fwupdmgr");
+    std::fs::write(
+        &fwupdmgr,
+        format!(
+            "#!{}\necho \"$*\" > {}\nread -r _ < {}\n",
+            shell().display(),
+            said.display(),
+            go.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fwupdmgr, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let running = Running::with(
+        "install",
+        &[("MACHINE_FWUPDMGR", &fwupdmgr.to_string_lossy())],
+    );
+    let mut client = running.client();
+    client.send(&json!({"id": 1, "ask": "act", "act": "firmware-install",
+        "device": "bios", "patience_s": 60}));
+    let busy = client.ask(&json!({"id": 2, "ask": "act", "act": "firmware-undo",
+        "attribute": "org.fwupd.hsi.Iommu"}));
+    assert_eq!(busy["error"]["code"], "busy", "{busy}");
+    let hello = client.ask(&json!({"id": 3, "ask": "hello", "version": 1}));
+    assert_eq!(hello["state"], "answering", "{hello}");
+    std::fs::write(&go, "go\n").unwrap();
+    assert_eq!(client.heard(), json!({"id": 1, "done": true}));
+    assert_eq!(
+        std::fs::read_to_string(&said).unwrap().trim(),
+        "update bios --assume-yes --no-reboot-check"
+    );
 }
 
 #[test]

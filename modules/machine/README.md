@@ -72,14 +72,30 @@ make them,
 
 `{"ask": "act", "act": <name>, ...}` is answered `{"done": true}` once
 done, or an error: `bad-act` for what this machine hasn't, `refused`
-where the kernel said no, and `unknown-act` for a name it doesn't know.
-What an act moved is read again before it's answered, so a watch hears
-the change first, never a second late.
+where the kernel or a service said no, in its words, `stopped` for a
+firmware act waited for past its `patience_s`, `busy` while another
+firmware act goes, and `unknown-act` for a name it doesn't know. What a
+charge limit moved is read again before it's answered, so a watch hears
+the change first, never a second late. A firmware act can wait minutes
+on fwupd or a polkit prompt, so each goes on a thread of its own, the
+connection answering the rest meanwhile, and fwupd is asked again as it
+ends.
 
-| Act            | Given                | What it does                                       |
-| -------------- | -------------------- | -------------------------------------------------- |
-| `charge-limit` | `supply`, `stop_pct` | stops charging there, starting 5 below where it can |
-| `restart-unit` | `unit`               | restarts a user unit the shell may, once queued    |
+| Act                | Given                      | What it does                                         |
+| ------------------ | -------------------------- | ---------------------------------------------------- |
+| `charge-limit`     | `supply`, `stop_pct`       | stops charging there, starting 5 below where it can  |
+| `firmware-install` | `device`, `patience_s`     | fwupdmgr puts in the update fwupd offers it, alone   |
+| `firmware-fix`     | `attribute`, `patience_s`  | fwupd fixes the security attribute fwupd names so    |
+| `firmware-undo`    | `attribute`, `patience_s`  | fwupd puts that fix back                             |
+| `firmware-setup`   | `patience_s`               | logind restarts into the firmware's own setup        |
+| `restart-unit`     | `unit`                     | restarts a user unit the shell may, once queued      |
+
+An install never restarts, which stays Joel's. It runs the fwupdmgr
+`MACHINE_FWUPDMGR` names, which the shell's home configuration hands the
+service, since fwupdmgr fetches and checks the update as fwupd's own
+client does; a machine without fwupd names none and installs nothing.
+The rest are asked over the system bus, letting polkit ask Joel where
+its rules say to.
 
 A charge limit's files are written in the order the kernel takes them,
 which refuses a start at or above the stop.
