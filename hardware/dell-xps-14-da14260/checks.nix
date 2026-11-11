@@ -22,7 +22,7 @@ let
   patched =
     source: patches: files:
     pkgs.runCommandLocal "patched-source" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
-      ${lib.getExe pkgs.bash} ${../../tests/patched-kernel-source.sh} ${source} ${
+      ${lib.getExe pkgs.bash} ${./tests/patched-kernel-source.sh} ${source} ${
         pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches)
       } $out ${lib.escapeShellArgs files}
     '';
@@ -263,7 +263,7 @@ in
         GST_REGISTRY = "registry.bin";
       }
       ''
-        python3 ${../../tests/camera-range.py} ramp ramp.nv12
+        python3 ${./tests/camera-range.py} ramp ramp.nv12
         # gst-launch takes each argument as one word, so the pipelines are
         # split at their spaces, which parses them as the relay's own
         # gst_parse_launch does.
@@ -271,7 +271,7 @@ in
         written=${lib.escapeShellArg "${pinned "relayed.nv12" caps} ! ${written} ! ${loopback} ! filesink location=written.nv12"}
         ${launch} -q $relayed 2> relayed.log || { cat relayed.log; exit 1; }
         ${launch} -q $written 2> written.log || { cat written.log; exit 1; }
-        python3 ${../../tests/camera-range.py} compare ramp.nv12 relayed.nv12 written.nv12
+        python3 ${./tests/camera-range.py} compare ramp.nv12 relayed.nv12 written.nv12
         touch $out
       '';
 
@@ -317,7 +317,7 @@ in
           machine
         ]
       }
-      ${lib.getExe pkgs.bash} ${../../tests/amps-have-every-dai-named.sh} ${machine} ${codec}
+      ${lib.getExe pkgs.bash} ${./tests/amps-have-every-dai-named.sh} ${machine} ${codec}
       touch $out
     '';
 
@@ -330,7 +330,7 @@ in
       driver = "drivers/platform/x86/dell/dell-wmi-base.c";
     in
     pkgs.runCommandLocal "dell-events-are-known" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-      python3 ${../../tests/dell-wmi-ignores-the-hourly-event.py} ${kernelSource [ driver ]}/${driver}
+      python3 ${./tests/dell-wmi-ignores-the-hourly-event.py} ${kernelSource [ driver ]}/${driver}
       touch $out
     '';
 
@@ -346,7 +346,7 @@ in
     pkgs.runCommandLocal "the-colour-camera-says-it-is-upside-down"
       { nativeBuildInputs = [ pkgs.python3 ]; }
       ''
-        python3 ${../../tests/ipu-bridge-knows-the-upside-down-sensor.py} \
+        python3 ${./tests/ipu-bridge-knows-the-upside-down-sensor.py} \
           ${kernelSource [ bridge ]}/${bridge}
         touch $out
       '';
@@ -368,7 +368,7 @@ in
           slider
         ]
       }
-      ${lib.getExe pkgs.bash} ${../../tests/platform-profiles-reach-the-legacy-file.sh} ${dell} ${slider}
+      ${lib.getExe pkgs.bash} ${./tests/platform-profiles-reach-the-legacy-file.sh} ${dell} ${slider}
       touch $out
     '';
 

@@ -13,6 +13,7 @@ comes from, and what's left.
 | `camera/`    | the colour and IR cameras' HAL, driver and pipeline              |
 | `sound/`     | the speakers' tuning and the microphones                        |
 | `programs/`  | the NPU's compiler, and patches to programs nixpkgs builds      |
+| `tests/`     | the scripts `checks.nix` runs, most reading the patched source  |
 
 A file belongs to the part it serves; one that serves only this
 laptop's kernel goes in `kernel/` whichever part it fixes.

@@ -123,44 +123,6 @@ let
     ${lib.getExe pkgs.bash} ${./tests/lib/qml-in-time.sh} ${pkgs.qt6.qtdeclarative} ${file}
   '';
 
-  # The line a kernel setting leaves in the finished configuration.
-  kernelConfigLine =
-    option: setting:
-    if setting ? freeform then
-      "CONFIG_${option}=${setting.freeform}"
-    else if setting.tristate == "n" then
-      "# CONFIG_${option} is not set"
-    else
-      "CONFIG_${option}=${setting.tristate}";
-
-  # The kernel's patches apply, its configuration resolves, and every setting
-  # in settings.nix is in the result: Kconfig quietly drops a setting whose
-  # dependencies aren't met. An optional setting also holds when the kernel
-  # doesn't offer its option at all. Only the configuration is built, in
-  # minutes; the kernel itself takes far longer than a check should
-  # (tests/kernel-settings-hold.sh).
-  kernelSettingsHold =
-    name: kernel:
-    let
-      # The kernel's own, as package.nix gave them, so a machine's theme
-      # colours are held as well as the settings every kernel shares.
-      settings = lib.mapAttrs (_option: setting: setting.content or setting) kernel.structuredExtraConfig;
-      # A setting's line in the configuration, its option, and whether it's
-      # optional, by tabs.
-      row =
-        option: setting:
-        lib.concatStringsSep "\t" [
-          (kernelConfigLine option setting)
-          option
-          (if setting.optional or false then "optional" else "required")
-        ];
-      rows = pkgs.writeText "${name}-settings" (lib.concatLines (lib.mapAttrsToList row settings));
-    in
-    pkgs.runCommandLocal name { } ''
-      ${lib.getExe pkgs.bash} ${./tests/kernel-settings-hold.sh} ${kernel.configfile} ${rows}
-      touch $out
-    '';
-
   # The machines most checks read, each evaluated once and shared, since an
   # evaluation is most of what a check costs.
   workstation = bareNixos [ self.nixosModules.workstation ];
@@ -482,8 +444,6 @@ let
       account
       neovimAt
       timedQml
-      kernelConfigLine
-      kernelSettingsHold
       workstation
       graphical
       macWorkstation
