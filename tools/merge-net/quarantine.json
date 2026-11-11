@@ -49,20 +49,6 @@
     "test": "vm-desktop-launcher-reads-mail"
   },
   {
-    "at": 1794404165,
-    "commit": "0e46e538021b57d13b4af66086da57d5db8f4fdf",
-    "owner_pr": 3108,
-    "reason": "has been broken since #3108, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "vm-desktop-opens-files"
-  },
-  {
-    "at": 1794406591,
-    "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
-    "owner_pr": 3208,
-    "reason": "has been broken since #3208 by a binding loop in Chord.qml, failing 2 of 2 at 6e396fae765b; its owner fixes it forward in #3234 and takes it off this list",
-    "test": "vm-desktop-launcher-moves-windows"
-  },
-  {
     "at": 1794408473,
     "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
     "owner_pr": 3201,

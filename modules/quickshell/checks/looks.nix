@@ -294,7 +294,16 @@
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
+      cat said
+      # A row reused for another lays itself out again, and a binding loop
+      # in a row's parts is warned of on Joel's desktop on every step that
+      # meets it, so one warned of here fails, as the desktop's own warnings
+      # case does. The prompt's asideRoom loop is the prompt's own, and its
+      # case is the prompt's.
+      if grep -E '@(Choice|Chord|Gutter|Mark|ReadsOn|Wash)\.qml.*Binding loop' said; then
+        exit 1
+      fi
       touch $out
     '';
 

@@ -40,10 +40,14 @@ Flow {
             // An icon's advance and its ink rarely agree, one drawing past
             // the other by a few pixels either way, so a wide part ends where
             // its ink does, and each + keeps the same distance from both its
-            // keys.
+            // keys. Any other key's width is left to its text: one bound to
+            // implicitWidth reads it before a kept key's new padding is laid
+            // out, and that read lays it out and changes the width being
+            // worked out, a binding loop.
             readonly property rect ink: face.tightBoundingRect(text)
-            leftPadding: index === 0 ? 0 : plus.width
-            width: modelData.wide ? leftPadding + ink.x + ink.width : implicitWidth
+            leftPadding: index === 0 ? 0
+                : modelData.after === true ? Theme.space.rung.tie : plus.width
+            width: modelData.wide ? leftPadding + ink.x + ink.width : undefined
             text: modelData.text
             color: chord.colour
             font.family: chord.level.family
@@ -54,13 +58,15 @@ Flow {
             // "+ 0"). Only in keys: a figure anywhere else keeps its zero.
             font.features: ({ cv01: 1 })
 
+            // Always a +, hidden after a key pressed before it: a kept key
+            // that changed its + to nothing changed the width read from it
+            // as that width was worked out, a binding loop.
             Text {
                 id: plus
-                visible: parent.index > 0
-                width: parent.modelData.after === true ? Theme.space.rung.tie
-                    : implicitWidth + 2 * Theme.space.rung.tie
+                visible: parent.index > 0 && parent.modelData.after !== true
+                width: implicitWidth + 2 * Theme.space.rung.tie
                 horizontalAlignment: Text.AlignHCenter
-                text: parent.modelData.after === true ? "" : "+"
+                text: "+"
                 color: chord.colour
                 font: parent.font
             }
