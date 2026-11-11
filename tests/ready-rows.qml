@@ -270,6 +270,21 @@ QtObject {
         Expect.same("an ask that takes none is sent as served", Ready.tokened(acts[0], "abc"),
             acts[0].ask);
         Expect.same("a row serving no acts offers none", Ready.actsOf({}), []);
+        // A document opens in Google's window, not the browser, so its
+        // open names the program it opens in (Y2YBTS, de23ba21).
+        const link = "https://docs.google.com/document/d/d1/edit";
+        const inGoogle = { key: "verb:docs:open", open: link, in: "google-opens" };
+        const inGone = { key: "verb:docs:open", open: link, in: "gone" };
+        const has = id => id === "google-opens";
+        Expect.same("an open in a program here is offered, one in a program gone isn't",
+            Ready.actsOf({ acts: [inGoogle, inGone] }, has).length, 1);
+        Expect.same("and it opens its link in that program, the link after its command",
+            Ready.opening(inGoogle, id => (has(id) ? ["/bin/google-opens"] : null)),
+            ["/bin/google-opens", link]);
+        Expect.same("never elsewhere, once its program's gone",
+            Ready.opening(inGone, () => null), null);
+        Expect.same("an open naming none opens as any link",
+            Ready.opening({ key: "verb:open", open: link }, () => null), ["xdg-open", link]);
         Expect.same("an act's verb is its words' where they say one",
             Ready.verbOf(acts[0], "disconnect"), "disconnect");
         Expect.same("else its form's", [1, 2, 3, 4].map(at => Ready.verbOf(acts[at], "")),

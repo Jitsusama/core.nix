@@ -41,6 +41,10 @@ Scope {
     // meanwhile. `paced` waits a watch begun by a key on the next frame.
     property bool live: true
     property var paced: null
+    // Whether what it held stays through a gap in the daemon, as
+    // Daemon.qml's: a place whose records may not be Joel's to see once
+    // it answers again, as Google's, lets them go.
+    property bool keptThroughGap: true
     // Whether what it makes is drawn now, so a row saying a time is said
     // again as the minute turns: the place's launcher open.
     property bool drawn: false
@@ -89,6 +93,7 @@ Scope {
             kind: ["row"].concat(ready.beside)
             watching: Object.assign({ place: ready.place }, ready.watching)
             answersWhole: true
+            keptThroughGap: ready.keptThroughGap
             live: ready.live
             paced: ready.paced
             ahead: ready.ahead
@@ -100,7 +105,7 @@ Scope {
     onActiveChanged: {
         if (active)
             return;
-        for (const store of [made, drawers, ticking]) {
+        for (const store of [made, drawers, ticking, clocked]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -124,6 +129,7 @@ Scope {
             if (key in drawers)
                 delete made[drawers[key]];
             delete made[key];
+            delete clocked[key];
             if (ticking[key] === "minute")
                 eachMinute -= 1;
             if (key in ticking)
@@ -157,8 +163,19 @@ Scope {
         if (!(key in made)) {
             const row = served(key);
             made[key] = row ? ready.make(row, key) : null;
+            if (key in ticking)
+                clocked[key] = clockSaid(row);
         }
         return made[key];
+    }
+
+    // What each row saying a time said of the clock as it was made, by key,
+    // so a turn of the clock makes again only the rows whose words it
+    // moved: a document opened two days ago reads the same all day, and
+    // every opening made all 27 of Joel's again (2026-11-10).
+    readonly property var clocked: ({})
+    function clockSaid(row) {
+        return `${sideOf(row)}\u0000${noteOf(row)}`;
     }
 
     // Every row of the place's own as the place made it, in the daemon's
@@ -279,13 +296,14 @@ Scope {
     // An ask that brings its sender forward with a token is done while the
     // launcher holds the keys, since niri gives one only then, and closes
     // it, as does going to a program, done once the launcher's gone, since
-    // niri focuses a window only then.
+    // niri focuses a window only then, and opening a link, so its window
+    // takes the keys, as a row's Return opening one does.
     function leaving(one) {
         const form = Ready.actForm(one);
         return {
             stays: one.step === "rows" || form === "ask" && one.token !== true,
             now: form === "ask" && one.token === true,
-            later: form === "go"
+            later: form === "go" || form === "open"
         };
     }
 
@@ -295,8 +313,15 @@ Scope {
     // serves it only where it found the program's entry.
     function actsOf(row) {
         const launcher = maker?.launcher;
-        return Ready.actsOf(row).filter(one => one.step !== "drawer"
-            || typeof launcher?.intoDrawer === "function");
+        return Ready.actsOf(row, id => DesktopEntries.byId(id) !== null)
+            .filter(one => one.step !== "drawer" || typeof launcher?.intoDrawer === "function");
+    }
+
+    // What a program a link opens in runs, by its desktop entry's id, as
+    // the launcher runs it (Provider.qml's command), or null where it's gone.
+    function commandOf(id) {
+        const entry = DesktopEntries.byId(id);
+        return entry && maker ? maker.command(entry) : null;
     }
 
     // The verb an act says, words.json's for its key.
@@ -334,10 +359,13 @@ Scope {
                 Quickshell.clipboardText = one.copy;
             alsoAsked(one);
             return;
-        case "open":
-            Niri.spawn(["xdg-open", one.open]);
+        case "open": {
+            const opening = Ready.opening(one, id => commandOf(id));
+            if (opening)
+                Niri.spawn(opening);
             alsoAsked(one);
             return;
+        }
         case "go": {
             // The entry's looked up here, at Return, never as rows are
             // made, and only where no window of it is open.
@@ -445,10 +473,16 @@ Scope {
         saidOn = today;
         if (eachMinute === 0 && !daily)
             return;
+        let moved = false;
         for (const key of Object.keys(ticking)) {
-            if (daily || ticking[key] === "minute")
-                delete made[key];
+            if (!(key in made) || (!daily && ticking[key] !== "minute"))
+                continue;
+            if (key in clocked && clocked[key] === clockSaid(served(key)))
+                continue;
+            delete made[key];
+            moved = true;
         }
-        placings += 1;
+        if (moved)
+            placings += 1;
     }
 }
