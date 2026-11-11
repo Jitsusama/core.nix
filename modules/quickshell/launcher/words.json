@@ -9438,7 +9438,7 @@
       "glyph": "chat",
       "said": {
         "looking": "looking in Slack",
-        "missing": "not in Slack"
+        "missing": "no one at this address"
       }
     },
     {

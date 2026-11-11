@@ -17,7 +17,7 @@
 //
 // Write in Slack never arrives late or moves under the keys: for someone
 // not yet looked up, it stands in its place dimmed, "looking in Slack",
-// lighting there when Slack answers, or saying "not in Slack" until the
+// lighting there when Slack answers, or saying "no one at this address" until the
 // launcher opens again. Someone already known not to be in Slack has no
 // such row (VKCF3Z, 8a0f14ea). With Slack's sign-in refused or missing,
 // or the daemon not answering, nothing stands in waiting.

@@ -34,8 +34,10 @@ pub struct Words {
     pub presence: String,
     /// "Time Zone", the fact of where their clock is.
     pub zone: String,
-    /// "not in Slack", said in Write in Slack's place for an address
-    /// Slack knows nobody by.
+    /// "no one at this address", said in Write in Slack's place, and as
+    /// the Slack fact, for an address Slack knows nobody by: "not in
+    /// Slack" beside the label Slack said Slack twice (VKCF3Z,
+    /// 2026-11-11).
     pub missing: String,
     /// "Conversation", the name of one whose newest message says nothing.
     pub conversation: String,
@@ -123,7 +125,8 @@ fn conversations(found: &Found, words: &Words) -> Vec<Value> {
 
 /// Their drawer's facts, each only while Slack says it, in the order
 /// Slack.js gave them: status, presence, then time zone; or, for an
-/// address Slack knows nobody by, that they're not in Slack.
+/// address Slack knows nobody by, that it knows no one there, where the
+/// status would stand, since the two never show together.
 fn facts(found: &Found, words: &Words) -> Vec<Value> {
     if found.id.is_none() {
         return vec![json!({"name": words.source, "said": words.missing})];
@@ -167,7 +170,7 @@ mod tests {
             status: "Status".into(),
             presence: "Presence".into(),
             zone: "Time Zone".into(),
-            missing: "not in Slack".into(),
+            missing: "no one at this address".into(),
             conversation: "Conversation".into(),
             glyph: "chat".into(),
             source: "Slack".into(),
@@ -233,7 +236,7 @@ mod tests {
         assert_eq!(said["acts"], json!([]));
         assert_eq!(
             said["facts"],
-            json!([{"name": "Slack", "said": "not in Slack"}])
+            json!([{"name": "Slack", "said": "no one at this address"}])
         );
         assert_eq!(said["conversations"], json!([]));
     }
@@ -311,7 +314,7 @@ mod tests {
             {"id": "slack:person:status", "name": "Status"},
             {"id": "slack:person:presence", "name": "Presence"},
             {"id": "slack:person:zone", "name": "Time Zone"},
-            {"id": WRITE, "said": {"looking": "looking in Slack", "missing": "not in Slack"}},
+            {"id": WRITE, "said": {"looking": "looking in Slack", "missing": "no one at this address"}},
             {"id": "slack:conversation", "name": "Conversation", "glyph": "chat"},
             {"id": "slack:person:source", "name": "Slack"},
             {"id": "slack:message", "said": {"you": "you"}}

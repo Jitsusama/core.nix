@@ -526,7 +526,7 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
     assert_eq!(
         (&ada[1]["facts"], &ada[1]["acts"]),
         (
-            &serde_json::json!([{"name": "Slack", "said": "not in Slack"}]),
+            &serde_json::json!([{"name": "Slack", "said": "no one at this address"}]),
             &serde_json::json!([])
         )
     );
