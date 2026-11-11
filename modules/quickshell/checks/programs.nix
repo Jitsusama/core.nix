@@ -243,9 +243,6 @@
       cp ${../launcher/Captured.js} launcher/Captured.js
       cp ${../launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${../launcher/Notice.js} launcher/Notice.js
-      cp ${../launcher/ReadyRows.qml} launcher/ReadyRows.qml
-      cp ${../launcher/ReadyRows.js} launcher/ReadyRows.js
-      cp ${../launcher/Interfaces.js} launcher/Interfaces.js
       cp ${../launcher/Ago.js} launcher/Ago.js
       cp ${../Words.qml} Words.qml
       cp ${../Files.qml} Files.qml
