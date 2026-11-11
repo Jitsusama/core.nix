@@ -183,6 +183,13 @@ pub fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
 }
 
+/// A refusal Joel reads: beside the code and what went wrong, `said`,
+/// his words for it, which the launcher says as they are (ready-rows.md's
+/// acts), so the shell words no refusal of its own.
+pub fn refused(id: &Value, code: &str, message: &str, said: &str) -> Value {
+    json!({"id": id, "error": {"code": code, "message": message, "said": said}})
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

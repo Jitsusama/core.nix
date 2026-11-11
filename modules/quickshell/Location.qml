@@ -121,8 +121,9 @@ Singleton {
     // Sets where the laptop is to the town Joel names, asked of
     // whereabouts, which finds it by the web and pins it, then says it as
     // here; nothing is run for it. A refusal is said as whereabouts words
-    // it, from the same vocabulary; only what's said while it's asked, and
-    // when it doesn't answer, are worded here.
+    // it for Joel, its `said` (ready-rows.md's acts), from the same
+    // vocabulary; only what's said while it's asked, and when it doesn't
+    // answer or says nothing he'd read, are worded here.
     function setByHand(words) {
         if (setting)
             return;
@@ -131,7 +132,7 @@ Singleton {
         daemon.ask({ ask: "act", act: "set", words: words }, said => {
             root.setting = false;
             root.told = said?.done === true ? ""
-                : said?.error?.message ?? root.phrase("unkept", words);
+                : said?.error?.said ?? root.phrase("unkept", words);
         });
     }
 

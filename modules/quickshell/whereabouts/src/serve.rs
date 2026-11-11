@@ -29,7 +29,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use crate::fix::Fix;
-use crate::interface::{Ask, HERE, Narrowed, VERSION, ask, error};
+use crate::interface::{Ask, HERE, Narrowed, VERSION, ask, error, refused};
 use crate::pin::{self, Unpinned};
 use crate::rows;
 use crate::words::Words;
@@ -223,37 +223,43 @@ impl Shared {
             return error(id, "not-following", "the laptop isn't followed here");
         };
         let done = match act {
-            "again" => pin::again(pin).map_err(|why| ("refused", why.to_string())),
-            "set" if words.trim().is_empty() => Err(("bad-act", "set names no place".into())),
+            "again" => pin::again(pin).map_err(|why| error(id, "refused", &why.to_string())),
+            "set" if words.trim().is_empty() => Err(error(id, "bad-act", "set names no place")),
             "set" => {
-                pin::set(pin, words.trim()).map_err(|unpinned| self.unpinned(&unpinned, words))
+                pin::set(pin, words.trim()).map_err(|unpinned| self.unpinned(id, &unpinned, words))
             }
-            _ => Err(("unknown-act", format!("no act {act:?} here"))),
+            _ => Err(error(id, "unknown-act", &format!("no act {act:?} here"))),
         };
         match done {
             Ok(()) => json!({"id": id, "done": true}),
-            Err((code, message)) => error(id, code, &message),
+            Err(refusal) => refusal,
         }
     }
 
-    /// Why the town Joel named wasn't pinned, as the launcher's foot says
-    /// it, in Location's words (the phrase's id where none were handed
-    /// over), so the shell words no refusal of its own. A pin that
-    /// couldn't be kept says why on the journal, which isn't his to read.
-    fn unpinned(&self, unpinned: &Unpinned, words: &str) -> (&'static str, String) {
-        let (code, phrase) = match unpinned {
-            Unpinned::Nowhere => ("nowhere", "nowhere"),
-            Unpinned::Unasked => ("unasked", "unasked"),
+    /// Why the town Joel named wasn't pinned: what went wrong, and as the
+    /// launcher's foot says it, in Location's words (the phrase's id where
+    /// none were handed over). A pin that couldn't be kept says why on the
+    /// journal too, which isn't his to read.
+    fn unpinned(&self, id: &Value, unpinned: &Unpinned, words: &str) -> Value {
+        let words = words.trim();
+        let (code, message, phrase) = match unpinned {
+            Unpinned::Nowhere => ("nowhere", format!("nothing is called {words:?}"), "nowhere"),
+            Unpinned::Unasked => (
+                "unasked",
+                format!("{words:?} couldn't be looked up"),
+                "unasked",
+            ),
             Unpinned::Unkept(why) => {
-                eprintln!("<4>the place found for {words:?} wasn't kept: {why}");
-                ("refused", "unkept")
+                let message = format!("the place found for {words:?} wasn't kept: {why}");
+                eprintln!("<4>{message}");
+                ("refused", message, "unkept")
             }
         };
         let said = self.words.as_ref().map_or_else(
             || phrase.to_owned(),
-            |said| said.said(phrase, &[("words", words.trim())]),
+            |said| said.said(phrase, &[("words", words)]),
         );
-        (code, said)
+        refused(id, code, &message, &said)
     }
 }
 
@@ -630,22 +636,39 @@ mod tests {
     #[test]
     fn a_town_not_pinned_is_refused_in_locations_words() {
         let worded = Shared::new(Known::default(), Some(crate::words::fixture()), None);
+        let id = json!(6);
+        let refusal = |code: &str, message: &str, said: &str| {
+            let error = json!({"code": code, "message": message, "said": said});
+            json!({"id": 6, "error": error})
+        };
         assert_eq!(
-            worded.unpinned(&Unpinned::Nowhere, " Kelpwater "),
-            ("nowhere", "no place is called Kelpwater".to_owned())
+            worded.unpinned(&id, &Unpinned::Nowhere, " Kelpwater "),
+            refusal(
+                "nowhere",
+                "nothing is called \"Kelpwater\"",
+                "no place is called Kelpwater"
+            )
         );
         assert_eq!(
-            worded.unpinned(&Unpinned::Unasked, "Kelpwater"),
-            ("unasked", "couldn't ask where Kelpwater is".to_owned())
+            worded.unpinned(&id, &Unpinned::Unasked, "Kelpwater"),
+            refusal(
+                "unasked",
+                "\"Kelpwater\" couldn't be looked up",
+                "couldn't ask where Kelpwater is"
+            )
         );
         assert_eq!(
-            worded.unpinned(&Unpinned::Unkept("read-only".into()), "Kelpwater"),
-            ("refused", "Kelpwater couldn't be set".to_owned())
+            worded.unpinned(&id, &Unpinned::Unkept("read-only".into()), "Kelpwater"),
+            refusal(
+                "refused",
+                "the place found for \"Kelpwater\" wasn't kept: read-only",
+                "Kelpwater couldn't be set"
+            )
         );
         let unworded = Shared::new(Known::default(), None, None);
         assert_eq!(
-            unworded.unpinned(&Unpinned::Nowhere, "Kelpwater"),
-            ("nowhere", "nowhere".to_owned()),
+            unworded.unpinned(&id, &Unpinned::Nowhere, "Kelpwater")["error"]["said"],
+            "nowhere",
             "with no words handed over, the phrase's id"
         );
     }
