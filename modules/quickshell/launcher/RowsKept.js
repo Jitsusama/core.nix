@@ -50,14 +50,33 @@ function staying(held, placeOf) {
     return stay;
 }
 
+// Whether two lists share no row, looking up the longer's in the
+// shorter's, so a step from home's 20 rows into Emoji's 1,924 reads each
+// once and makes nothing of them.
+function apart(was, now) {
+    const fewer = was.length <= now.length ? was : now;
+    const more = fewer === was ? now : was;
+    const held = new Set(fewer);
+    return !more.some(key => held.has(key));
+}
+
 // The steps that make `was` into `now`, done in order to a ListModel: the
 // rows gone, last first, as { remove, count }, so each place counts from
 // the rows still there; then each row in its place, as { move, to }, or
-// { insert, key }, one the list didn't hold. A row that moves is moved up
+// { insert, keys }, the rows in a run the list didn't hold, put in at
+// once. A step into Emoji lists 1,924 rows, which went in one at a time,
+// 16 to 20 ms in Qt's engine offscreen against a millisecond at once, after
+// 28 to 34 ms tagging and placing each, where nothing listed before stays
+// (2026-11-11). So two lists sharing no row are told apart first, in under
+// a millisecond, and take one step each way. A row that moves is moved up
 // into its place, or, in a staying row's way, down to just before the
 // next row listed after it now that stays or has already moved down, or
 // the end. None where the two are the same.
 function steps(was, now) {
+    if (apart(was, now)) {
+        return (was.length > 0 ? [{ remove: 0, count: was.length }] : [])
+            .concat(now.length > 0 ? [{ insert: 0, keys: now.slice() }] : []);
+    }
     const from = tagged(was);
     const into = tagged(now);
     const wanted = new Set(into);
@@ -77,7 +96,19 @@ function steps(was, now) {
     const placeOf = new Map(into.map((key, at) => [key, at]));
     const stay = staying(held, placeOf);
     const settled = new Set(stay);
+    const holds = new Set(held);
     for (let at = 0; at < into.length; at += 1) {
+        // A run of rows the list didn't hold goes in as one.
+        if (!holds.has(into[at])) {
+            let end = at + 1;
+            while (end < into.length && !holds.has(into[end])) {
+                end += 1;
+            }
+            done.push({ insert: at, keys: now.slice(at, end) });
+            held.splice(at, 0, ...into.slice(at, end));
+            at = end - 1;
+            continue;
+        }
         // Rows before a staying row's place that aren't yet in theirs
         // move, so it never does.
         while (stay.has(into[at]) && held[at] !== into[at]) {
@@ -92,12 +123,8 @@ function steps(was, now) {
             continue;
         }
         const below = held.indexOf(into[at], at + 1);
-        if (below >= 0) {
-            done.push({ move: below, to: at });
-            held.splice(below, 1);
-        } else {
-            done.push({ insert: at, key: now[at] });
-        }
+        done.push({ move: below, to: at });
+        held.splice(below, 1);
         held.splice(at, 0, into[at]);
     }
     return done;

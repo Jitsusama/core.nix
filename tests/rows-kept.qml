@@ -31,8 +31,8 @@ QtObject {
             } else if (step.move !== undefined) {
                 rows.splice(step.to, 0, ...rows.splice(step.move, 1));
             } else {
-                rows.splice(step.insert, 0, step.key);
-                drawn.push(step.key);
+                rows.splice(step.insert, 0, ...step.keys);
+                drawn.push(...step.keys);
             }
         }
         return { rows: rows.join(" "), drawn: drawn.join(" ") };
@@ -77,6 +77,15 @@ QtObject {
             RowsKept.steps(many, swapped).length, 2);
         Expect.same("and end where they're listed", done(many, swapped),
             { rows: swapped.join(" "), drawn: "" });
+        Expect.same("rows new to the list go in as one step a run",
+            RowsKept.steps("a b".split(" "), "x y a z b w v".split(" ")),
+            [{ insert: 0, keys: ["x", "y"] }, { insert: 3, keys: ["z"] },
+                { insert: 5, keys: ["w", "v"] }]);
+        // A step into Emoji lists 1,924 rows the list didn't hold, which
+        // went in one step each, each looked for among those held first.
+        const emoji = Array.from({ length: 1924 }, (_, at) => `emoji:${at}`);
+        Expect.same("a first list of many is one step", RowsKept.steps([], emoji),
+            [{ insert: 0, keys: emoji }]);
 
         // Lists drawn from a seeded sequence (Park and Miller's), the same
         // every run, each ending where it's listed and drawing only the

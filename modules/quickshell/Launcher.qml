@@ -9832,7 +9832,8 @@ Scope {
                                     if (step.move !== undefined)
                                         rowsKept.move(step.move, step.to, 1);
                                     else
-                                        rowsKept.insert(step.insert, { key: step.key });
+                                        rowsKept.insert(step.insert,
+                                            step.keys.map(key => ({ key })));
                                 }
                                 // Laid out now rather than at the next frame,
                                 // so the rows drawn stand where they will and
