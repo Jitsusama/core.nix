@@ -6343,6 +6343,35 @@ Scope {
     // (2026-11-01).
     readonly property bool cardSeen: cardUp || parting !== ""
 
+    // The steps the last opening took, let go once its card is gone, so
+    // the next opening finds home already there: Joel's opening after one
+    // closed two steps deep took 224 ms forgetting them, against 109 to
+    // 126 after one closed at home (Y2YBTS, 2026-11-10). Each is written
+    // only when it holds something, since every write of held sets off
+    // every binding that reads it, the same steps or not.
+    function leaveSteps() {
+        if (held.length > 0)
+            held = [];
+        if (jumpsBack.length > 0)
+            jumpsBack = [];
+        if (jumpsAhead.length > 0)
+            jumpsAhead = [];
+        if (tagsBack.length > 0)
+            forgetFollows();
+        prompt.forget();
+    }
+    // Long enough for the closing frame to be drawn first, so letting the
+    // steps go never holds the card on screen.
+    Timer {
+        id: leavingLater
+        interval: 250
+        onTriggered: root.leaveSteps()
+    }
+    onCardSeenChanged: {
+        if (!cardSeen)
+            leavingLater.restart();
+    }
+
     // What the closed card held, brought up to now as it opens. The
     // bindings holding it follow cardSeen only once the opening's handler
     // is done, and that handler reports what the foot says.
@@ -7137,8 +7166,9 @@ Scope {
                 note: row.note ?? "",
                 // The whole words drawn below the rows for it, if any.
                 reads: row.reads ?? "",
-                // What the drawer beside the rows shows of it, if anything.
-                drawer: row.drawer ?? null,
+                // What the drawer beside the rows shows of it, if anything,
+                // made as drawerOf makes it when the row makes it late.
+                drawer: (typeof row.drawer === "function" ? row.drawer() : row.drawer) ?? null,
                 // The keys the foot says for it, each a mark and its word.
                 told: root.keysFor(row).map(key => root.saidKey(key)),
                 // The key its side names where it ends something.
@@ -7637,18 +7667,20 @@ Scope {
             fading = false;
             parting = "";
             footCatchUp();
+            lap("catching up");
             footStage = 0;
-            factsWidest = {};
+            if (Object.keys(factsWidest).length > 0)
+                factsWidest = {};
             figuresStep = "";
-            held = [];
             homeDepth = 0;
             lastPlace = null;
-            jumpsBack = [];
-            jumpsAhead = [];
-            forgetFollows();
             listing = false;
             listedInDrawer = false;
-            prompt.forget();
+            // Left behind once the card is gone (leaveSteps), so an opening
+            // finds home already there and pays only for steps taken while
+            // shut.
+            leavingLater.stop();
+            leaveSteps();
             lap("forgetting");
             often = picks.counts();
             lap("counting");

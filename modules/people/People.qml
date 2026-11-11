@@ -392,21 +392,20 @@ Provider {
         // time everyone is made. A source's answer that comes later makes
         // everyone again, and so this row, which reads it then. A row is
         // kept while the person reads the same, so the time where they are
-        // is made again once its minute has passed.
+        // is made again once its minute has passed. A function the drawer
+        // calls (drawerOf) rather than a getter, which a copy of the row
+        // would read, merging everyone for their facts (Y2YBTS, 2026-11-10).
         let details = null;
         let detailsAt = -1;
-        Object.defineProperty(row, "drawer", {
-            enumerable: true,
-            get: () => {
-                const minute = Math.floor(Date.now() / 60000);
-                if (details === null || detailsAt !== minute) {
-                    const shown = facts ? Object.assign({}, person, { facts: facts() }) : person;
-                    details = Person.details(shown, zone => provider.there(zone));
-                    detailsAt = minute;
-                }
-                return details;
+        row.drawer = () => {
+            const minute = Math.floor(Date.now() / 60000);
+            if (details === null || detailsAt !== minute) {
+                const shown = facts ? Object.assign({}, person, { facts: facts() }) : person;
+                details = Person.details(shown, zone => provider.there(zone));
+                detailsAt = minute;
             }
-        });
+            return details;
+        };
         return Object.assign(row, {
             named: Fuzzy.letters([person.name.toLowerCase()]),
             mailed: Fuzzy.letters([person.emails.join(" ")])

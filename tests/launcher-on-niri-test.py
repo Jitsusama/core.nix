@@ -1039,6 +1039,24 @@ def test_a_first_letter_draws_only_the_rows_in_view(shell: Shell) -> None:
     assert drawn <= shown + 1, f"{drawn} rows drawn for a first letter where {shown} are shown"
 
 
+def test_a_launcher_closed_inside_a_place_is_home_before_it_opens(shell: Shell) -> None:
+    """Close the launcher inside Programs, and it lets the step go once the card is gone.
+
+    Joel's opening after one closed two steps deep spent 224 ms forgetting them, against 109 to
+    126 after one closed at home (2026-11-10), so the next opening finds home already there.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_closed()
+    shell.launcher_until(lambda shown: not shown["open"] and shown["held"] == [])
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == [] and "Programs" in shown["rows"])
+
+
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:
     """A step into Desktop or Machine and back builds no row, once one round has built them.
 

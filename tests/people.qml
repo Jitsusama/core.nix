@@ -121,12 +121,13 @@ ShellRoot {
                 // (2026-11-10).
                 expect("listed as the daemon lists them, with no one merged here",
                     people.merging.merges === 0, `${people.merging.merges} merges`);
-                // Everything a row's person holds read, as a whole copy
-                // reads it: a getter for their facts there merged everyone
-                // (Y2YBTS, 2026-11-10), so only their drawer reads facts.
-                const person = open[0].person;
-                for (const name of Object.getOwnPropertyNames(person))
-                    void person[name];
+                // Everything a row and its person hold read, as a whole
+                // copy reads it: a getter for their facts there, or for
+                // the row's drawer, merged everyone (Y2YBTS, 2026-11-10),
+                // so only a drawer shown reads facts.
+                for (const held of [open[0], open[0].person])
+                    for (const name of Object.getOwnPropertyNames(held))
+                        void held[name];
                 expect("reading someone listed merges no one", people.merging.merges === 0,
                     `${people.merging.merges} merges`);
                 expect("how each stands",
@@ -255,7 +256,7 @@ ShellRoot {
                 waiting?.run();
                 expect("and opens nothing while dimmed", Niri.spawned.length === 0,
                     Niri.spawned.join(" "));
-                const facts = open[0].drawer.facts.map(fact => `${fact.label}: ${fact.value}`);
+                const facts = open[0].drawer().facts.map(fact => `${fact.label}: ${fact.value}`);
                 expect("a source's facts are theirs, the time there after their zone",
                     facts[1] === "Team: Shell" && facts[2] === "Time Zone: Asia/Kolkata"
                         && /^Time There: \d\d:\d\d, 5 h 30 min ahead$/.test(facts[3]),
@@ -266,11 +267,10 @@ ShellRoot {
                 // Nor is anyone's drawer made with them: it's made when it's
                 // first shown, and kept for the minute its time there holds.
                 const eager = people.everyone().filter(row => {
-                    const drawer = Object.getOwnPropertyDescriptor(row, "drawer");
-                    if (!drawer || !drawer.get)
+                    if (typeof row.drawer !== "function")
                         return true;
-                    const shown = row.drawer;
-                    return row.drawer !== shown;
+                    const shown = row.drawer();
+                    return row.drawer() !== shown;
                 });
                 expect("no drawer made with everyone", eager.length === 0, names(eager));
                 // A person's insides ask every source, so Ctrl+]'s look for

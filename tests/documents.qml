@@ -4,8 +4,9 @@
 // the launcher shut, a minute passing and a document coming make no row,
 // though each row says when it was opened against the clock; opened, it
 // makes them once, holding every document; opened again, it makes only
-// those that changed; and shut again, it keeps the rows it made. It exits 0 once every case holds, and otherwise 1, saying
-// which didn't.
+// those that changed; and shut again, it keeps the rows it made. A copy
+// of a row makes no drawer. It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -58,8 +59,8 @@ ShellRoot {
             Expect.expect("nor a document coming", documents.tally.rows === shut,
                 documents.tally.rows - shut);
             standIn.open = true;
-            Expect.expect("opened, it holds every document", titles() === "Quarterly Plan, Roadmap",
-                titles());
+            Expect.expect("opened, it holds every document",
+                titles() === "Quarterly Plan, Roadmap", titles());
             Expect.expect("made once", documents.tally.rows - shut === 2, documents.tally.rows - shut);
             Expect.expect("and its program's Recent holds them",
                 documents.recentOf("google-docs").map(row => row.name).join(", ")
@@ -77,9 +78,15 @@ ShellRoot {
                 documents.tally.rows - opened);
             Expect.expect("as it reads now", titles() === "Quarterly Plan, Roadmap, Revised",
                 titles());
+            // A copy of a row reads all it holds, so a drawer it held as
+            // a getter would be made with every copy (Y2YBTS, 2026-11-10).
+            const copied = documents.things.map(row => Object.assign({}, row));
+            Expect.expect("a copy of every row makes no drawer",
+                copied.every(row => typeof row.drawer === "function"),
+                copied.map(row => typeof row.drawer).join(", "));
             Expect.expect("its drawer as it reads now",
-                documents.things[1].drawer.title === "Roadmap, Revised",
-                JSON.stringify(documents.things[1].drawer.title));
+                documents.things[1].drawer().title === "Roadmap, Revised",
+                JSON.stringify(documents.things[1].drawer().title));
             standIn.open = false;
             const closed = documents.tally.rows;
             Calendar.now += 60000;
