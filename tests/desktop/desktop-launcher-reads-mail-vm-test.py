@@ -466,7 +466,8 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
     Unread says how many to read and who, and lists every conversation unread, direct
     messages, mentions and Threads first, then the channels merely unread; For You's Slack row
     is its first three groups, so it neither counts nor lists a channel merely unread.
-    Recent lists the conversations Joel read last, newest first.
+    Recent lists the conversations Joel read last, newest first. Unread's and Recent's rows
+    are the daemon's, served ready and worded, and made each conversation's one row.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)

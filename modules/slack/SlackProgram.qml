@@ -12,10 +12,14 @@
 // beside it and who in its note, and steps in to each conversation
 // unread, direct messages, then channels mentioning him, then Threads,
 // then channels merely unread, of which Now's Slack row shows the first
-// three; Recent is the nine conversations he read last. Each is the one
-// row every surface shows of a conversation (SlackConversation.qml). What
-// stands is SlackUnreads.qml's, so this keeps nothing of its own.
+// three; Recent is the nine conversations he read last. Both lists are
+// Slack's daemon's, served ready in that order and worded
+// (src/rows.rs), and each is made the one row every surface shows of a
+// conversation (SlackConversation.qml's `served`). How Slack stands, and
+// Unread's count, are SlackUnreads.qml's, until the daemon serves Unread's
+// own row too, so this keeps nothing of its own.
 import qs
+import Quickshell
 import QtQuick
 import "Recent.js" as Recent
 
@@ -32,16 +36,27 @@ Provider {
     // unread or read changes.
     onNoteChanged: changed()
 
-    Connections {
-        target: SlackUnreads
+    // Unread's conversations and Recent's, as Slack's daemon serves them,
+    // each change telling Programs to draw them again.
+    ReadyRows {
+        id: unreadRows
 
-        function onUnreadChanged() {
-            provider.changed();
-        }
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack.sock`
+        place: "slack-unread"
+        maker: provider
+        make: (row, key) => SlackConversation.served(unreadRows, row, key)
+        drawn: provider.launcher?.open ?? false
+        onHeard: provider.changed()
+    }
+    ReadyRows {
+        id: recentRows
 
-        function onRecentChanged() {
-            provider.changed();
-        }
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack.sock`
+        place: "slack-recent"
+        maker: provider
+        make: (row, key) => SlackConversation.served(recentRows, row, key)
+        drawn: provider.launcher?.open ?? false
+        onHeard: provider.changed()
     }
 
     function programNote(asked) {
@@ -52,7 +67,7 @@ Provider {
         if (asked !== program)
             return [];
         if (SlackUnreads.stands === "ok")
-            return SlackUnreads.unread.length === 0 ? [] : [unread()];
+            return unreadRows.rows().length === 0 ? [] : [unread()];
         if (SlackUnreads.stands !== "signedOut")
             return [];
         const key = "verb:slack:sign-in";
@@ -68,7 +83,7 @@ Provider {
     }
 
     function recentOf(asked) {
-        return asked === program ? SlackUnreads.recent.map(conversation) : [];
+        return asked === program ? recentRows.rows() : [];
     }
 
     // Slack's Recent is this one's to give, so it stands while none is read.
@@ -89,21 +104,11 @@ Provider {
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "program",
-            heldNames: Recent.said(SlackUnreads.unread.map(one => one.name), false, {}).held,
+            heldNames: Recent.said(unreadRows.rows().map(one => one.name), false, {}).held,
             side: SlackUnreads.counted,
             ask: "which?",
             nested: true,
-            targets: () => SlackUnreads.unread.map(conversation)
+            targets: () => unreadRows.rows()
         });
-    }
-
-    function conversation(one) {
-        return SlackConversation.row({
-            id: one.id,
-            name: one.name,
-            opens: one.link,
-            side: SlackUnreads.beside(one),
-            note: SlackUnreads.note(one)
-        }, thing);
     }
 }

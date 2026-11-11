@@ -5,9 +5,11 @@ read last, each message wanting Joel and how it stands is the runtime folder's s
 { state, conversations, recent, messages }, which a test writes and then sends SIGHUP, as
 slack-unreads' rounds would tell it; with none, Slack answers with nothing unread. It's held
 as the daemon's records, slack-unread, slack-recent, slack-message and slack-account, the
-account saying it holds every message once slack-says.json lists any, listed and watched,
-each watch told what changed and went and how Slack stands as that changes; each conversation
-is given a timestamp falling with its place, so the order a test lists them in is Slack's.
+account saying it holds every message once slack-says.json lists any, and each conversation's
+row of Unread and Recent, row:<place>:<id>, as src/rows.rs serves it ready, its order its
+place, listed and watched, a watch of rows narrowed by its place, each watch told what changed
+and went and how Slack stands as that changes; each conversation is given a timestamp falling
+with its place, so the order a test lists them in is Slack's.
 Hello says how Slack stands, a search answers the Slack messages found for its words, and a
 get of a message's key answers the messages around it. Each search is written down in
 slack-searched beside the socket, one line of words each, so a test can count how often Slack
@@ -40,8 +42,20 @@ ANSWERS = RUNTIME / "slack-answers"
 HELLOS = RUNTIME / "slack-hellos"
 SAYS = RUNTIME / "slack-says.json"
 # The kinds it holds: slack-message for each message wanting Joel, which Search Slack watches
-# too, to hear how Slack stands.
-KINDS = ("slack-unread", "slack-recent", "slack-account", "slack-message")
+# too, to hear how Slack stands, and row for each conversation's row as the launcher shows it.
+KINDS = ("slack-unread", "slack-recent", "slack-account", "slack-message", "row")
+# A conversation's note by its kind, and what's beside one counted, in the launcher's words
+# (words.json's slack:conversation), as the daemon is handed them.
+NOTES = {
+    "dm": "a direct message",
+    "mention": "mentions you",
+    "thread": "replies in threads",
+    "unread": "a channel",
+    "channel": "a channel",
+}
+COUNTED = "{count} to read"
+# The order the ready-rows crate gives the first row of a place, and the room between two.
+SPACED = 1024
 # The daemon's word for how Slack stands, by what slack-says.json says.
 WORDS = {"ok": "answering", "signedOut": "signed-out", "unreachable": "refused"}
 # How often a held search looks for leave to answer, in seconds.
@@ -119,6 +133,7 @@ class Watch:
     line: Line
     id: object
     kinds: set[str]
+    places: set[str] | None = None
 
 
 @dataclass
@@ -154,12 +169,34 @@ def saying() -> tuple[str, dict[str, dict[str, object]]]:
                     thing["count"] = one["count"]
                 thing[field] = f"{1730000000 - place}.000100"
                 things[f"{kind}:{one['id']}"] = thing
+                row = conversation_row(kind, one, place)
+                things[str(row["key"])] = row
         things.update(messages(says.get("messages", [])))
     account: dict[str, object] = {"standing": state}
     if "messages" in says:
         account["messages"] = "whole"
     things["slack-account:slack"] = account
     return state, things
+
+
+def conversation_row(kind: str, one: dict[str, object], at: int) -> dict[str, object]:
+    """Give a conversation's row in Unread or Recent, at its place, as the daemon (src/rows.rs)."""
+    count = int(cast("int", one.get("count", 0)))
+    return {
+        "key": f"row:{kind}:{one['id']}",
+        "thing": f"slack:conversation:{one['id']}",
+        "place": kind,
+        "kind": one["kind"],
+        "order": (at + 1) * SPACED,
+        "name": one["name"],
+        "glyph": "chat",
+        "hue": "program",
+        "depth": 0,
+        "side": [{"said": COUNTED.replace("{count}", str(count))}] if count > 0 else [],
+        "note": NOTES.get(str(one["kind"]), ""),
+        "acts": [{"key": "verb:slack:open", "open": one["link"]}],
+        "held": {"id": one["id"], "count": count},
+    }
 
 
 def link(channel: str, ts: str) -> str:
@@ -220,10 +257,12 @@ def retell() -> None:
         stood = HELD.state
         HELD.state = state
         for watch in HELD.watches:
-            seen = [record for record in changed if record["kind"] in watch.kinds]
-            went = [key for key in gone if key.split(":", 1)[0] in watch.kinds]
-            if seen or went:
-                watch.line.say({"id": watch.id, "changed": seen, "gone": went})
+            told = [
+                record for record in changed if seen(watch.kinds, watch.places, str(record["key"]))
+            ]
+            went = [key for key in gone if seen(watch.kinds, watch.places, key)]
+            if told or went:
+                watch.line.say({"id": watch.id, "changed": told, "gone": went})
             if stood != state:
                 watch.line.say({"id": watch.id, "sources": {"slack": WORDS.get(state, "")}})
 
@@ -242,6 +281,23 @@ def kinds(said: dict[str, object]) -> set[str] | None:
     return named if named <= set(KINDS) else None
 
 
+def narrowed(said: dict[str, object]) -> set[str] | None:
+    """Give the places an ask narrows its rows to, one or a list, or None for every place."""
+    place = said.get("place")
+    if isinstance(place, str):
+        return {place}
+    if isinstance(place, list):
+        return {str(one) for one in place}
+    return None
+
+
+def seen(kinds: set[str], places: set[str] | None, key: str) -> bool:
+    """Say whether a watch of these kinds and places hears the record of `key`, as the daemon."""
+    kind, _, rest = key.partition(":")
+    place = rest.split(":", 1)[0]
+    return kind in kinds and (kind != "row" or places is None or place in places)
+
+
 def unknown(asked: object) -> dict[str, object]:
     """Refuse an ask of a kind it doesn't hold, as the daemon does."""
     return {"id": asked, "error": {"code": "unknown-kind", "message": "not one of Slack's"}}
@@ -253,13 +309,14 @@ def watch(said: dict[str, object], line: Line) -> dict[str, object] | None:
     watched = kinds(said)
     if watched is None:
         return unknown(asked)
+    places = narrowed(said)
     with HOLDING:
-        records = [record for record in HELD.records.values() if record["kind"] in watched]
+        records = [record for key, record in HELD.records.items() if seen(watched, places, key)]
         line.say({"id": asked, "records": records})
         HELD.watches = [
             each for each in HELD.watches if not (each.line is line and each.id == asked)
         ]
-        HELD.watches.append(Watch(line=line, id=asked, kinds=watched))
+        HELD.watches.append(Watch(line=line, id=asked, kinds=watched, places=places))
     return None
 
 
@@ -283,8 +340,9 @@ def listing(said: dict[str, object], _line: Line) -> dict[str, object]:
     listed = kinds(said)
     if listed is None:
         return unknown(said.get("id"))
+    places = narrowed(said)
     with HOLDING:
-        records = [record for record in HELD.records.values() if record["kind"] in listed]
+        records = [record for key, record in HELD.records.items() if seen(listed, places, key)]
     return {"id": said.get("id"), "records": records}
 
 
