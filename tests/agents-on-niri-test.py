@@ -23,7 +23,8 @@ this boot, its owner gone, stands alone in Recent, after Landed and before Start
 saying when it closed and where it ran. A folder the disk guard measured offers to talk to the
 session working in it, by its title and how it stands, and what Joel tells it reaches its inbox
 with the folder and its size. Shut, a session arriving with a landing makes none of Agents' rows,
-which show both once it opens.
+which show both once it opens, and a change to its rows isn't told the shell at once, but told it
+at once as it opens.
 
 Long because every case here shares one shell, its node and its sessions, started once a run,
 which cost more than all the cases, so splitting it would start them twice.
@@ -37,7 +38,7 @@ import re
 import socket
 import subprocess
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -858,3 +859,50 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: "Arrived" in shown["rows"])
+
+
+def agents_lines(shell: Shell) -> int:
+    """Give how many lines the shell has read of the agents daemon."""
+    return int(json.loads(shell.as_account(shell.ipc("linesHeard")))["agents"])
+
+
+def daemon_says(said: str) -> None:
+    """Wait until the agents daemon tells a watch of its own, told at once, Agents' summary."""
+    with socket.socket(socket.AF_UNIX) as rows:
+        rows.settimeout(10)
+        rows.connect(str(ROWS))
+        rows.sendall(b'{"id": 1, "ask": "watch", "kind": "summary"}\n')
+        lines = rows.makefile()
+        while True:
+            told = json.loads(lines.readline())
+            records = told.get("records", told.get("changed", []))
+            if any(said in record["summary"]["said"] for record in records):
+                return
+
+
+def test_a_shut_launcher_hears_agents_rows_once_a_pace_and_opening_is_told_at_once(
+    shell: Shell,
+) -> None:
+    """Shut, a change to Agents' rows isn't told the shell at once; opened, it's told it at once.
+
+    A spend side ticking or a session turning to listen moved a row about every three seconds,
+    each line waking Joel's shut shell for nothing it showed (RO9YDD, 21 lines in 60 s on
+    2026-11-11), so the shut launcher paces its watch at ten seconds.
+    """
+    shell.launcher_closed()
+    before = agents_lines(shell)
+    SPEND.write_text(json.dumps({"v": 2, "agentsToday": "$216"}))
+    daemon_says("$216 today")
+    # The span measured, for a line told at once to reach the shell, not a wait for it.
+    time.sleep(1)
+    heard = agents_lines(shell) - before
+    assert heard == 0, f"the shut shell heard {heard} lines of Agents' rows within a second"
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.launcher_until(
+        lambda shown: any(
+            thing["is"] == "collection:agents" and thing["reads"].endswith("$216 today")
+            for thing in shown["things"]
+        ),
+        timedelta(seconds=5),
+    )

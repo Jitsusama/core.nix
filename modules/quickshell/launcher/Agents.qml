@@ -1284,6 +1284,13 @@ Provider {
         return String(rowsKind?.held?.[summaryKey]?.summary?.said ?? "");
     }
 
+    // How many lines it has read of the agents daemon, for the check that
+    // the shut shell hears its rows only once a pace. Read only when
+    // asked, so nothing wakes for it.
+    function linesHeard(): int {
+        return rowsKind?.linesHeard ?? 0;
+    }
+
     // How its sessions stand together, at its row's right wherever it
     // stands, home included, while its sessions are named in its drawer
     // as every place's are (VKCF3Z, 2a429f67, dae7fb67). Found by its name,
