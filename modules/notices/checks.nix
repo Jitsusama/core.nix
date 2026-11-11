@@ -34,8 +34,16 @@ onLinux {
       # Home Manager keeps a unit's ExecStart as a list of its lines.
       started = lib.concatStringsSep " " (lib.toList service.Service.ExecStart);
       named = home.xdg.dataFile."dbus-1/services/org.freedesktop.Notifications.service".text;
-      # The shell's own QML, as its folder holds it.
-      shell = lib.concatMapStrings builtins.readFile (
+      # Whether any of the shell's own QML, as its folder holds it, serves
+      # notices. A plain replace, since hasInfix's regex overflows the
+      # stack on a file as long as the launcher's.
+      serves =
+        file:
+        let
+          text = builtins.readFile file;
+        in
+        builtins.replaceStrings [ "NotificationServer" ] [ "" ] text != text;
+      shellServes = lib.any serves (
         lib.filter (file: lib.hasSuffix ".qml" (toString file)) (
           lib.filesystem.listFilesRecursive ../quickshell
         )
@@ -52,6 +60,6 @@ onLinux {
         && lib.hasInfix "--socket %t/daemons/notices.sock" started
         && socket.Socket.ListenStream == "%t/daemons/notices.sock"
         && service.Service.Restart == "always"
-        && !lib.hasInfix "NotificationServer" shell
+        && !shellServes
       );
 }
