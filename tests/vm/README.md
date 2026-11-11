@@ -14,6 +14,7 @@ They are grouped by what they prove, a folder an area:
 | `guide/`   | the guide's sticks, installs and recovery, and Secure Boot         |
 | `sound/`   | calls, dictation, and each microphone's and speaker's tuning       |
 | `devices/` | desk speakers and lights, lids, idle sleep, USB wake and cameras   |
+| `network/` | Wi-Fi, the clock, names, mDNS, a network coming back, the shaper   |
 
 The VM tests not yet grouped are still in `../`, and move into a folder
 here as their owners free them. Shared helpers are in `../lib/`, and

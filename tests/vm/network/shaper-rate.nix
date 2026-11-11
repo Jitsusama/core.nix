@@ -17,7 +17,7 @@ let
   server = "192.168.2.3";
   connection = rate: "tbf rate ${rate} burst 32kbit limit 1000000";
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-rate";
 
   nodes.client = {

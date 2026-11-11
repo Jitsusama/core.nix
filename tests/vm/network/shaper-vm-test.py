@@ -1,10 +1,10 @@
 """Which of CAKE's tins each kind of traffic reaches, both ways, read from CAKE's own counts.
 
-tests/shaper.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. The counts are what CAKE says it sent, so a class
-that never reached its packets, a set left empty or a rule that matched the wrong depth, shows
-as bytes in the wrong tin. They are bytes, not packets: what arrives reaches the IFB merged by
-GRO, so a download's packet count says more about the merging than about the traffic.
+shaper.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. The counts are what CAKE says it sent, so a class
+that never reached its packets, a set left empty or a rule that matched the wrong depth, shows as
+bytes in the wrong tin. They are bytes, not packets: what arrives reaches the IFB merged by GRO, so
+a download's packet count says more about the merging than about the traffic.
 
 Each test asks for the state it starts from as a fixture: the connection up with its slices
 held, a WireGuard tunnel to the server, the default route moved to the client's other link,

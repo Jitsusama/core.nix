@@ -1,7 +1,7 @@
 """The Wi-Fi test's holds-on area.
 
 Here nothing that should leave the card on its network takes it off, and what's forgotten goes
-from everywhere. tests/wifi.nix runs this through pytest inside the driver
+from everywhere. tests/vm/network/wifi.nix runs this through pytest inside the driver
 (tests/lib/vm_pytest.py), and its opening comment says what the test proves. The tests run in
 the order written, each taking the machine on from where the one before left it, so one run
 alone with -k starts from Lantern joined and may not find what an earlier one set up. wifid as

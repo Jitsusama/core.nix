@@ -11,7 +11,7 @@ let
   # What the tests need from Nix, in one file, their `values` fixture.
   values = pkgs.writeText "clock-values.json" (builtins.toJSON { inherit silent; });
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "clock";
 
   nodes.server = {

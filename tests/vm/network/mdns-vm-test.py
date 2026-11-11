@@ -1,6 +1,6 @@
 """A machine on a trusted network finds another by its .local name, and nobody finds a stranger.
 
-tests/mdns.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
+mdns.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says which machine trusts the network. Each name is asked of mDNS alone, so
 the test network's /etc/hosts entries, which name every machine, answer nothing.
 """

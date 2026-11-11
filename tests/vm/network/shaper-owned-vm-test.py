@@ -1,10 +1,10 @@
 """Whether the shaper takes back an upload's queue that a router sharing it flow by flow hides.
 
-tests/shaper-owned.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. The router is the connection: HTB at 8 Mbit/s
-with fq_codel under it, whose queue delays no probe, as no flow but the one that fills it
-waits in it. The server counts what reaches each port, the jobs' and the app's, so a share is
-read where it lands rather than where it left.
+shaper-owned.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+and its opening comment says what the test proves. The router is the connection: HTB at 8 Mbit/s
+with fq_codel under it, whose queue delays no probe, as no flow but the one that fills it waits in
+it. The server counts what reaches each port, the jobs' and the app's, so a share is read where it
+lands rather than where it left.
 """
 
 from __future__ import annotations

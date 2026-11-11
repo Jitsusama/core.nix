@@ -18,7 +18,7 @@ let
     systemd.network.networks."40-eth1".networkConfig.MulticastDNS = "yes";
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "name-service";
   # The name service patches nsncd through an overlay.
   node.pkgsReadOnly = false;

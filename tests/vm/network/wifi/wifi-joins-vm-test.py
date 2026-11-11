@@ -1,7 +1,7 @@
 """The Wi-Fi test's joins area.
 
 Here the card joins the networks it's given, wifid tells the shell what it finds, and a network
-saved by the launcher is chosen first. tests/wifi.nix runs this through pytest inside the
+saved by the launcher is chosen first. tests/vm/network/wifi.nix runs this through pytest inside the
 driver (tests/lib/vm_pytest.py), and its opening comment says what the test proves. The tests
 run in the order written, each taking the machine on from where the one before left it, so one
 run alone with -k starts from the boot and may not find what an earlier one set up. wifid as the

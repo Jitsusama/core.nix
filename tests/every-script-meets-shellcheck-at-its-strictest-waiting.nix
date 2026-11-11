@@ -94,7 +94,7 @@
   "tests/lib/shell-folder-lint.sh" = 5;
   "tests/vm/devices/lid-hinge-stand-in-hinge.sh" = 1;
   "tests/nested-niri.sh" = 1;
-  "tests/network-revive-stand-in.sh" = 4;
+  "tests/vm/network/network-revive-stand-in.sh" = 4;
   "tests/notices-on-niri.sh" = 1;
   "tests/repository/docs-name-what-exists.sh" = 4;
   "tests/repository/every-folder-says-what-it-holds.sh" = 9;

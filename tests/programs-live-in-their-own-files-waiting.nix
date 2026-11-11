@@ -65,5 +65,5 @@
   "tests/vm/guide/canokeys.nix" = 1;
   "tests/vm/guide/guide-one-stick.nix" = 1;
   "tests/vm/guide/guide-writer.nix" = 2;
-  "tests/wifi.nix" = 2;
+  "tests/vm/network/wifi.nix" = 2;
 }

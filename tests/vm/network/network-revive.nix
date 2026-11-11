@@ -54,7 +54,7 @@ let
     // settings;
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "network-revive";
 
   nodes.machine = {

@@ -25,7 +25,7 @@ let
     script = "exec ${lib.getExe pkgs.socat} -u TCP-LISTEN:${toString port},fork,reuseaddr OPEN:/dev/null";
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-owned";
 
   nodes.client = {
