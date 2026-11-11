@@ -6358,6 +6358,7 @@ Scope {
         if (choice.now) {
             choice.run();
             lettingGo = true;
+            Report.say("let go of the keys");
             afterFrame(() => closedAfter(choice));
             return;
         }
@@ -7936,6 +7937,8 @@ Scope {
         const began = lapped;
         opening = false;
         markOpen(open);
+        if (!open)
+            Report.say("closing");
         keysHeld = filling && keysHeld;
         lettingGo = false;
         handing = null;

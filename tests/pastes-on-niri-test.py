@@ -14,7 +14,9 @@ terminal on its next pass, and here both are drawn in software, about 95 ms each
 shared with other builds, where the whole paste took from 0.3 to 0.6 s as its load changed
 (2026-11-10). So the whole paste is only said, and what's held is what the daemon owns: the
 paste lands while the shell is stopped, and the keys are pressed within 20 ms of the launcher
-letting go, as the daemon tells its journal each paste.
+letting go, as the daemon tells its journal each paste. The shell's journal holds the rest: the
+paste is asked, and the keys given back, before the closing's work runs, which took a paste's
+keys 91 ms on Joel's machine while it ran first (2026-11-10).
 """
 
 from __future__ import annotations
@@ -120,6 +122,27 @@ def launcher_let_go() -> bool:
     )
 
 
+def in_order(shell: Shell, since: int) -> None:
+    """Hold that the paste was asked, and the keys given back, before the closing's work ran.
+
+    By order in the shell's journal rather than by time, which a shared builder can't keep.
+    """
+    said: list[str] = []
+
+    def closed() -> bool:
+        nonlocal since
+        reports, since = shell.said_since(since)
+        said.extend(reports)
+        return "closing" in said
+
+    until(closed, "closed the launcher")
+    steps = ("pastes into foot", "let go of the keys", "closing")
+    missing = [step for step in steps if step not in said]
+    assert not missing, f"never said {missing}: {said}"
+    order = [said.index(step) for step in steps]
+    assert order == sorted(order), f"asked, let go and closed out of order: {said}"
+
+
 def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) -> None:
     """A paste lands in the terminal under, the shell held stopped, the daemon pressing at once."""
     reader = LOGS / "reader.py"
@@ -142,6 +165,7 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
     assert shell.showing()["selected"]["verb"] == "paste", shell.showing()["selected"]
 
     since = shell.mark()
+    returned = since
     subprocess.run(["wtype", "-k", "Return"], check=True)  # noqa: S607, the check gives wtype
     # wtype ends once niri has read its keys, so Return was pressed by now.
     pressed = time.monotonic()
@@ -182,4 +206,5 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
     )
     print(took)
     assert pressing < PRESSING, took
+    in_order(shell, returned)
     shell.as_account("niri msg action close-window")
