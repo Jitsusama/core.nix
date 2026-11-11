@@ -51,10 +51,13 @@ fn id_of(value: &Value) -> Option<u64> {
 /// A kitty window opened for a session is classed apart, with a number of
 /// its own (Sessions.qml's inSessions): pi-spawned for one another
 /// session started, so niri's rule opens it without taking the focus
-/// (modules/niri/config.kdl), and pi-session for the rest. Each is
-/// kitty's all the same to every list, and says it holds a session.
+/// (modules/niri/config.kdl), and pi-session for the rest. A hosted
+/// session's viewer is classed by pi's own session id instead, which
+/// stays the same as its host restarts (Sessions.qml's viewerOf), so it
+/// is pi-hosted and that id. Each is kitty's all the same to every list,
+/// and says it holds a session.
 pub fn app_of(opened: &str) -> (&str, bool) {
-    let session = ["pi-spawned", "pi-session"].iter().any(|class| {
+    let numbered = ["pi-spawned", "pi-session"].iter().any(|class| {
         opened.strip_prefix(class).is_some_and(|rest| {
             rest.is_empty()
                 || rest
@@ -62,7 +65,10 @@ pub fn app_of(opened: &str) -> (&str, bool) {
                     .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
         })
     });
-    if session {
+    let hosted = opened.strip_prefix("pi-hosted.").is_some_and(|id| {
+        !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    });
+    if numbered || hosted {
         ("kitty", true)
     } else {
         (opened, false)
@@ -751,11 +757,14 @@ mod tests {
     }
 
     #[test]
-    fn a_session_window_is_kittys_by_its_numbered_class_alone() {
+    fn a_session_window_is_kittys_by_its_class_alone() {
         assert_eq!(app_of("pi-spawned"), ("kitty", true));
         assert_eq!(app_of("pi-session.12"), ("kitty", true));
         assert_eq!(app_of("pi-session."), ("pi-session.", false));
         assert_eq!(app_of("pi-sessions"), ("pi-sessions", false));
+        assert_eq!(app_of("pi-hosted.0f3a-9C2b"), ("kitty", true));
+        assert_eq!(app_of("pi-hosted."), ("pi-hosted.", false));
+        assert_eq!(app_of("pi-hosted.a b"), ("pi-hosted.a b", false));
         assert_eq!(app_of("kitty"), ("kitty", false));
     }
 
