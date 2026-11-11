@@ -1,8 +1,10 @@
-# Joel's passwords, held ready for the shell and the command line: one
-# resident program that runs each password manager as a child and answers
-# over a socket in the shell's daemon interface, and the `passwords`
-# command that asks it (src/main.rs says how). An audit, run only when
-# Joel asks, hashes each password with ring's SHA-1 and asks Have I Been
+# Joel's passwords, held ready for the shell: one program the shell runs
+# as its own child, which runs each password manager as a child of its
+# own and answers over its standard input and output in the shell's
+# daemon interface, and the `passwords` command, which reaches it not
+# (src/main.rs says how). libc keeps its memory from the account's other
+# processes and ends it with the shell. An audit, run only when Joel
+# asks, hashes each password with ring's SHA-1 and asks Have I Been
 # Pwned's range of each hash's first five characters through ureq, the
 # client every other module here reaches the web with (src/audit.rs).
 [package]
@@ -13,6 +15,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+libc = "0.2"
 # The ready-row form every daemon shares: rows kept as last told with their
 # spaced order, and figures said as the launcher says them.
 ready-rows = { path = "../ready-rows" }

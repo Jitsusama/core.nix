@@ -1,9 +1,12 @@
-//! The daemon over its socket, with stand-in password managers of its own:
-//! a list holds every entry without a secret, even one a manager gives
-//! with its secrets left on; a get reads an entry in full, still without
-//! them; a held list or get asks no manager anything; a secret goes only
-//! to the client that asked to see it, or to the clipboard, cleared when
-//! its time is up; a one-time code says its period, and its detail gives
+//! The daemon over its standard input and output, as the shell runs it,
+//! with stand-in password managers of its own: a list holds every entry
+//! without a secret, even one a manager gives with its secrets left on; a
+//! get reads an entry in full, still without them; a held list or get asks
+//! no manager anything; a secret goes only to the ask for it, never to a
+//! watch, or to the clipboard, cleared when its time is up, and no copy is
+//! made while no copier is named; the daemon can't be read through /proc
+//! by the account's other processes, and ends once whatever ran it closes
+//! its end; a one-time code says its period, and its detail gives
 //! the code, never its seed; a manager signed out is said so and refuses
 //! a secret; a watch hears entries arrive; a watch of rows hears each
 //! entry's ready row, worded and without a secret, apart from the entries
@@ -107,19 +110,93 @@ fn a_held_list_or_get_asks_no_manager_anything() {
 }
 
 #[test]
-fn a_secret_goes_only_where_it_was_asked_for() {
+fn a_secret_goes_only_to_the_ask_for_it() {
     let running = Running::with("secret", &[("keeping", KEEPING)]);
+    let mut watching = running.client();
+    watching.say(&json!({"id": "w", "ask": "watch"}));
+    watching.hear();
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
     let shown = client.ask(&json!({"id": 2, "ask": "reveal", "key": "entry:keeping:gh"}));
     assert_eq!(shown["value"], "hunter2");
     assert_eq!(shown["detail"], "password");
-    let mut other = running.client();
-    holds_no_secret(&other.ask(&json!({"id": 1, "ask": "get", "keys": ["entry:keeping:gh"]})));
-    holds_no_secret(&other.ask(&json!({"id": 2, "ask": "search", "words": "git"})));
-    let health = other.ask(&json!({"id": 3, "ask": "health"}));
+    holds_no_secret(&client.ask(&json!({"id": 3, "ask": "get", "keys": ["entry:keeping:gh"]})));
+    holds_no_secret(&client.ask(&json!({"id": 4, "ask": "search", "words": "git"})));
+    let health = client.ask(&json!({"id": 5, "ask": "health"}));
     holds_no_secret(&health);
     assert_eq!(health["entries"], 3);
+    // Whatever else was said, the watch's lines among it, holds none.
+    for heard in watching.unheard() {
+        holds_no_secret(&heard);
+    }
+}
+
+#[test]
+fn no_copy_is_made_while_no_copier_is_named() {
+    let running = Running::with_env(
+        "uncopied",
+        &[("keeping", KEEPING)],
+        &[("PASSWORDS_COPIER", "")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("browser extension")),
+        "a refused copy didn't say what to use instead: {refused}"
+    );
+    holds_no_secret(&refused);
+    // Refused before any secret was read: the manager was asked no reveal.
+    let asked = running.asked_of("keeping");
+    assert!(
+        !asked.contains("reveal"),
+        "a secret was read to copy: {asked}"
+    );
+    assert!(!running.copied().exists(), "something was copied");
+}
+
+#[test]
+fn the_account_cant_read_the_daemon_through_proc() {
+    let running = Running::with("undumpable", &[("keeping", KEEPING)]);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "hello"}));
+    let proc = PathBuf::from(format!("/proc/{}", running.pid()));
+    // Its dumpable flag off, its own files are root's, which the account
+    // running it isn't, so it can read neither its environment nor its
+    // memory, and can't open its descriptors.
+    for each in ["environ", "mem", "fd/0"] {
+        let read = std::fs::File::open(proc.join(each));
+        assert!(
+            read.is_err(),
+            "/proc's {each} of the daemon could be opened"
+        );
+    }
+    let limits = std::fs::read_to_string(proc.join("limits")).unwrap_or_default();
+    assert!(
+        limits
+            .lines()
+            .any(|line| line.starts_with("Max core file size")
+                && line.split_whitespace().nth(4) == Some("0")),
+        "the daemon could write a core dump: {limits}"
+    );
+}
+
+#[test]
+fn the_daemon_ends_once_whatever_ran_it_closes_its_end() {
+    let mut running = Running::with("ends", &[("keeping", KEEPING)]);
+    running.client().ask(&json!({"id": 1, "ask": "hello"}));
+    running.close();
+    let started = std::time::Instant::now();
+    while !running.ended() {
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "the daemon outlived its channel"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 #[test]

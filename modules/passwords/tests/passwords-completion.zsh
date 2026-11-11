@@ -1,8 +1,8 @@
 # Completes passwords commands in a real zsh line editor, through zpty,
 # with the completion `passwords completion zsh` writes and the real
-# passwords, asking the daemon the check started, whose stand-in manager
-# logs each ask to $ASKED. It fails unless each start offers what it
-# should, and unless no Tab asked the manager anything. A completion here
+# passwords. It fails unless each start offers what it should, and offers
+# no command that reached an entry before the daemon answered the
+# launcher alone. A completion here
 # prints each match, a bar and how it's shown, between two NULs, and then
 # the shell exits, so it's read to the end. Only the matches are held to,
 # since how each is described is passwords' to change.
@@ -45,8 +45,7 @@ integer failed=0
 # What typing the words and Tab offers, one match to a line.
 offered() {
   local line said
-  zpty z env -i HOME=$here TERM=xterm ZDOTDIR=$here/dot PATH=$PATH \
-    PASSWORDS_SOCKET=$PASSWORDS_SOCKET zsh -d -i
+  zpty z env -i HOME=$here TERM=xterm ZDOTDIR=$here/dot PATH=$PATH zsh -d -i
   zpty -r z line '*ready*'
   zpty -w -n z "$1"$'\t'
   while zpty -r z line; do said+=$line; done
@@ -82,40 +81,9 @@ refuse() {
   done
 }
 
-# What the manager has been asked so far.
-asked_so_far() { cat $ASKED 2>/dev/null }
-# Fails if the manager was asked anything since what it had been asked.
-unasked() {
-  if [[ "$(asked_so_far)" != "$asked" ]]; then
-    print -r -- "A Tab asked the password manager something:"
-    diff <(print -r -- "$asked") <(asked_so_far)
-    failed=1
-  fi
-}
-
-asked=$(asked_so_far)
-expect 'passwords ' find list details show copy code let-in health audit keys help
-expect 'passwords a' audit
-expect 'passwords co' copy code
-# Nothing's held until something has been read, so no entry is offered.
-refuse 'passwords show ' GitHub
-unasked
-passwords list > /dev/null
-asked=$(asked_so_far)
-expect 'passwords show ' GitHub 'Bank\ Card' 'Door\ Codes'
-expect 'passwords code B' 'Bank\ Card'
-expect 'passwords details ' GitHub
-# GitHub is held only in summary, so its details aren't known yet.
-refuse 'passwords show GitHub ' password
-unasked
-passwords details GitHub > /dev/null
-asked=$(asked_so_far)
-expect 'passwords show GitHub ' username password 'one-time\ password'
-expect 'passwords copy Git' GitHub
-expect 'passwords let-in ' keeping
-expect 'passwords list -' --json
-expect 'passwords show GitHub -' --json
-expect 'passwords audit -' --json
-refuse 'passwords let-in keeping -' --json
-unasked
+expect 'passwords ' keys help
+refuse 'passwords ' find list details show copy code let-in health audit daemon
+expect 'passwords k' keys
+expect 'passwords keys -' --json
+refuse 'passwords help -' --json
 exit $failed
