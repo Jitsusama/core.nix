@@ -13,9 +13,10 @@
 //! once its heartbeat is late; a charge limit set is told before it's
 //! answered; Heat's rows are made for a watch of their place and told as
 //! they move; the processor's telemetry is asked only once it's watched,
-//! and what it hears becomes Held Back and Kept From Resting; a firmware install is answered once fwupdmgr is done, the
-//! connection answering meanwhile and a second act refused as busy; and
-//! an ask, act or kind it doesn't know is refused.
+//! and what it hears becomes Held Back and Kept From Resting; a firmware
+//! install is answered once fwupdmgr is done, the connection answering
+//! meanwhile and a second act refused as busy; and an ask, act or kind
+//! it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
