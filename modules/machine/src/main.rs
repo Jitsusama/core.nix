@@ -48,10 +48,10 @@
 //! `{ group, point }`): a watch of kind `row` or `head` with `place`
 //! `heat` has the sensors, zones, cooling and processor read as their
 //! own watch would, one with `place` `power` the supplies, and one with
-//! `place` `firmware` fwupd, and one with `place` `machine` the memory and
-//! the boot (`machine_rows.rs`), and each read makes that place's rows
-//! again and tells only those that changed.
-//! Machine's are made again as the programs using the memory are read
+//! `place` `firmware` fwupd, and one with `place` `machine` the processor,
+//! the memory and the boot (`machine_rows.rs`, `processor_rows.rs`), and
+//! each read makes that place's rows again and tells only those that
+//! changed. Machine's are made again as the programs using them are read
 //! too, though watching its rows doesn't read them, since that reads
 //! every process's files: the shell watches `using` while it's looked at.
 //! The processor's own telemetry is asked only while Heat's are watched.

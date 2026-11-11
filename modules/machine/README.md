@@ -65,8 +65,9 @@ are made from what fwupd says, asked once a minute while they're
 watched; an act that can't be taken back holds one `sure` row a step
 in that asks it, and while an act goes its row says so, then how it
 ended until the launcher shuts. Machine's
-(`place` `machine`) are made from the memory and the boot: the Memory
-and each of its parts, and the Uptime, which travels as a time the
+(`place` `machine`) are made from the processor, the memory and the
+boot: the Processor and each of its parts, from its Cores to its Model
+and caches, the Memory and each of its parts, and the Uptime, which travels as a time the
 shell words (`lasted`, and Started a `moment`). Using It names the
 programs only while something watches `using`, since that reads every
 process's files, and holds its place saying it's still reading
@@ -75,8 +76,9 @@ in the launcher's words and number settings,
 handed on the command line (`--words`, `--numbers`) by home.nix from the
 launcher's own; handed none, it makes no rows.
 [`src/heat_rows.rs`][heat-rows], [`src/power_rows.rs`][power-rows],
-[`src/firmware_rows.rs`][firmware-rows] and
-[`src/machine_rows.rs`][machine-rows] make them,
+[`src/firmware_rows.rs`][firmware-rows],
+[`src/machine_rows.rs`][machine-rows] and
+[`src/processor_rows.rs`][processor-rows] make them,
 [`src/rows.rs`][rows] places and graphs them, and
 [`src/words.rs`][words] words them.
 
@@ -349,5 +351,6 @@ service's runtime folder, is looked for again every 10 seconds.
 [heat-rows]: src/heat_rows.rs
 [power-rows]: src/power_rows.rs
 [machine-rows]: src/machine_rows.rs
+[processor-rows]: src/processor_rows.rs
 [rows]: src/rows.rs
 [words]: src/words.rs
