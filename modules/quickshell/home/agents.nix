@@ -2,6 +2,7 @@
 # joins every place's list; README.md says which list a file goes in.
 [
   "AgentSources.qml"
+  "Away.qml"
   "PiSource.qml"
   "PiSource.js"
   "Sessions.qml"

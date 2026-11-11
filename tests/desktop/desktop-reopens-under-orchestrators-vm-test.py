@@ -591,6 +591,8 @@ def test_a_shell_started_again_opens_no_viewer_kept_before_it(desktop: Desktop) 
     """
     machine = desktop.machine
     session = "01d5-kept"
+    # A window of Joel's, so niri keeps an empty workspace past his, as his screen had then.
+    desktop.opened("Notes", "sh -c 'sleep 608'")
     # The host, standing in for pi's own, as test_a_hosted_session_comes_back_... has it.
     host = desktop.as_account(
         "setsid -f sleep 606 > /dev/null 2>&1;"
@@ -645,7 +647,7 @@ def test_a_shell_started_again_opens_no_viewer_kept_before_it(desktop: Desktop) 
         assert session in still, still
     finally:
         kept(desktop, f"{shell}/kept-places.json", {})
-        desktop.as_account(f"rm -f {PI_PRESENCE}/keptvw.json; pkill -f 'sleep 60[67]'; true")
+        desktop.as_account(f"rm -f {PI_PRESENCE}/keptvw.json; pkill -f 'sleep 60[678]'; true")
 
 
 def hosted_here(desktop: Desktop, sessions: list[str]) -> None:
