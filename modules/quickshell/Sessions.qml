@@ -50,16 +50,25 @@ Singleton {
     // its record, the kitty window it runs in or null, the id its holder
     // keeps it by or null, the machine it runs on and whether that's this
     // one, the words that attach it from here or null, whether its
-    // machine can be reached, and when it last changed. This machine's
-    // first, the one whose window was used last first, then those with
-    // none; then those elsewhere, the one that changed last first.
+    // machine can be reached, and when it last changed. In inUse's order
+    // as it stood when they were last made, which the focus moving doesn't
+    // make again (SessionWindows.js), so what shows them in that order, or
+    // picks one by it, asks inUse itself.
     readonly property var running: {
-        // When a window was last used, in milliseconds, as its record says.
-        const when = window => window?.order ?? 0;
         const windows = niriWindows;
-        return live.map(record => shown(record, windows.pids, windows.opened))
-            .sort((a, b) => Number(b.here) - Number(a.here)
-                || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
+        return inUse(live.map(record => shown(record, windows.pids, windows.opened)));
+    }
+    // Sessions in the order they're shown and picked in: this machine's
+    // first, the one whose window was used last first, then those with
+    // none; then those elsewhere, the one that changed last first. When a
+    // window was used is read from the daemon's record as it is now, which
+    // the daemon changes in place, so nothing reading this is made again
+    // as the focus moves (Y2YBTS, 2026-11-10 [dda1b827]).
+    function inUse(sessions) {
+        const when = window => window ? windowsDaemon.held[window.key]?.order ?? window.order ?? 0
+            : 0;
+        return sessions.slice().sort((a, b) => Number(b.here) - Number(a.here)
+            || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
     }
     // Each session parked here (the harness's park-workflow): ended while
     // idle to give back its memory, until its holder starts it again in
@@ -938,7 +947,7 @@ Singleton {
                 .map(one => one.layout?.pos_in_scrolling_layout?.[0] ?? 0);
             return { workspace: there.id, column: Math.max(0, ...columns) + 1 };
         }
-        const others = root.running.filter(session => session.here
+        const others = root.inUse(root.running).filter(session => session.here
             && (session.window !== null || session.kitty !== null)
             && session.presence.session !== one.id);
         const asked = { from: one.from ?? "", quest: one.quest ?? "",
@@ -967,7 +976,7 @@ Singleton {
         // rather than the session left where it opened, on whatever
         // workspace Joel is on (P9R1KI, 2026-11-03: nine of ten builder
         // sessions landed there).
-        const others = root.running.filter(session => session.here
+        const others = root.inUse(root.running).filter(session => session.here
             && (session.window !== null || session.kitty !== null)
             && session.window?.id !== id && session.presence.session !== waiting.id);
         const kin = root.kinOf(others, waiting);
@@ -2202,11 +2211,10 @@ Singleton {
 
     // niri's windows by the process drawing them, each kitty's oldest first,
     // and by the app id each was opened with, the oldest of each, for
-    // `running`. They're made again only when a window comes, goes, moves
-    // or is used, rather than for every change to a session and looked
-    // through for every session, which with a hundred sessions made a
-    // hundred lists a change; a retitle, or the keys leaving a window,
-    // makes nothing again.
+    // `running`. They're made again only when a window comes, goes or
+    // moves, rather than for every change to a session and looked through
+    // for every session, which with a hundred sessions made a hundred lists
+    // a change; a retitle, or the focus moving, makes nothing again.
     property var niriWindows: ({ pids: {}, opened: {} })
     // The records `niriWindows` was made from, by key.
     property var windowsKept: ({})
