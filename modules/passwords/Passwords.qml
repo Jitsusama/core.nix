@@ -75,11 +75,13 @@ Provider {
     Daemon {
         id: daemon
 
-        // Never reached while the place is off, so a daemon an agent
-        // started by hand is never asked, and Joel's step in never has his
-        // manager let in a daemon every agent could then ask.
-        socket: provider.off ? ""
-            : `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/passwords.sock`
+        // The shell's own child, with no socket another process could
+        // reach, so what Joel's manager lets it read is the shell's alone.
+        // Never run while the place is off. It copies nothing unless a
+        // copier is named, which only the checks do until agents are
+        // fenced off the clipboard; null keeps one out of its environment.
+        command: provider.off ? [] : provider.settings.daemon ?? []
+        environment: ({ PASSWORDS_COPIER: provider.settings.copier ?? null })
         kind: "entry"
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
@@ -102,6 +104,12 @@ Provider {
     // can't have a password backdoor here"). It then holds one row, saying
     // so and opening the browser his manager's own extension fills in.
     readonly property bool off: settings.off === true
+    // Whether the launcher is walked from outside it, as `qs ipc call
+    // launcher run`, `doing` and `show` walk it for any process of the
+    // account's. While it is, the place holds no row and no act, and asks
+    // its daemon nothing, so only Joel's keys in the launcher reach an
+    // entry, a manager's let-in or a check.
+    readonly property bool outside: provider.launcher?.cataloguing === true
 
     // The manager whose browser extension fills sign-ins in, and that
     // browser, which the place offers while it's off; null where none has.
@@ -225,6 +233,8 @@ Provider {
     readonly property var all: {
         if (provider.off)
             return [provider.offRow];
+        if (provider.outside)
+            return [];
         const rows = everyone;
         const byKey = {};
         for (const row of rows)
@@ -293,7 +303,7 @@ Provider {
     // entry's health comes back on its record by the watch, and the answer
     // says only why it couldn't, if it couldn't.
     function checkEvery() {
-        if (checking || off)
+        if (checking || off || outside)
             return;
         checking = true;
         checkWhy = "";
@@ -602,7 +612,7 @@ Provider {
     // read it until it's cleared (Clearing.qml).
     function copySecret(key, detail, what) {
         const record = recordOf(key);
-        if (record === null)
+        if (record === null || outside)
             return;
         const copy = { key: key, title: Passwords.titleOf(record),
             detail: what, clears: 0, lapses: 0, period: 0 };
@@ -701,7 +711,7 @@ Provider {
     // before Return is (Launcher.qml's tellOnOpen): never nothing, as when
     // 1Password keeps its command out and no prompt ever comes.
     function letIn(manager) {
-        if (off)
+        if (off || outside)
             return;
         handOver();
         daemon.ask({ ask: "let-in", manager: manager.name, patience: 120000 }, answer => {
@@ -719,7 +729,7 @@ Provider {
     property bool listedThisTime: false
 
     function listAsked() {
-        if (listedThisTime || off)
+        if (listedThisTime || off || outside)
             return;
         listedThisTime = true;
         handOver();
@@ -734,7 +744,7 @@ Provider {
 
     function getAsked(key, asked) {
         const had = gotThisTime[key];
-        if (off || had === "asked" || (!asked && had === "rested"))
+        if (off || outside || had === "asked" || (!asked && had === "rested"))
             return;
         // Read in full already, from resting on it, so stepping in needs
         // nothing more.
@@ -844,6 +854,8 @@ Provider {
     function looksThrough() {
         if (off)
             return [offRow];
+        if (outside)
+            return [];
         return everyone.concat(attention, [checkRow]);
     }
 
@@ -917,6 +929,8 @@ Provider {
             return [];
         if (off)
             return [offRow];
+        if (outside)
+            return [];
         if (signedOut(manager)) {
             const key = "verb:passwords:let-in";
             return [thing({

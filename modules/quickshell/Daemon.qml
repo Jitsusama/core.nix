@@ -34,6 +34,13 @@ pragma ComponentBehavior: Bound
 // What was held stays held through a gap, and is replaced by what the
 // daemon says once it answers again, unless `keptThroughGap` says to let
 // it go.
+//
+// A daemon no other process may reach, as the passwords daemon is, has no
+// socket: given `command`, the shell runs it as its own child for as long
+// as the shell runs, and the same lines go over its standard input and
+// output. One that ends is started again on the same backoff as a socket
+// that refuses, and what it says on its standard error goes to the
+// shell's journal, which is why such a daemon says no secret there.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -42,8 +49,15 @@ import "Hearing.js" as Hearing
 Scope {
     id: daemon
 
-    // Its socket, as the daemon's unit makes it.
-    required property string socket
+    // Its socket, as the daemon's unit makes it, or empty for one the
+    // shell runs itself.
+    property string socket: ""
+    // The daemon the shell runs as its own child, asked over its standard
+    // input and output, for one with no socket; empty for one that has.
+    property var command: []
+    // What the child's environment adds, as a check names a copier.
+    property var environment: ({})
+    readonly property bool runsItself: command.length > 0
     // The kind of record it holds, or a list of kinds, as Google's daemon
     // holds meetings, mail, files and its account over one connection;
     // sent as given in both watches, and watched whole unless `watching`
@@ -92,6 +106,7 @@ Scope {
         }
         again.stop();
         link.active = false;
+        child.active = false;
         if (wire !== null)
             gone();
     }
@@ -268,7 +283,10 @@ Scope {
         if (wire === null)
             return;
         wire.write(`${JSON.stringify(said)}\n`);
-        wire.flush();
+        // A child's input is written as the event loop next runs, and
+        // has no flush of its own.
+        if (!runsItself)
+            wire.flush();
     }
 
     // Once connected: hello, what its rows are made of, every record of
@@ -397,6 +415,7 @@ Scope {
         if (answer === null || typeof answer !== "object")
             return;
         if (answer.id === "hello") {
+            refusals = 0;
             state = String(answer.state ?? "answering");
             sources = answer.sources ?? {};
             told(answer);
@@ -449,7 +468,7 @@ Scope {
     LazyLoader {
         id: link
 
-        active: daemon.connects
+        active: daemon.connects && !daemon.runsItself
 
         Socket {
             id: socket
@@ -499,7 +518,7 @@ Scope {
         path: daemon.socket
         preload: false
         printErrors: false
-        watchChanges: daemon.connects && daemon.wire === null
+        watchChanges: daemon.connects && !daemon.runsItself && daemon.wire === null
         // A socket just made is a daemon just started, so its tries count
         // afresh: one bound but not yet listening refuses the first, and
         // counted on from the tries its absence took, the next came 16 s
@@ -513,12 +532,47 @@ Scope {
         }
     }
 
+    // The daemon the shell runs, one process a run, made again once it
+    // ends, so a fresh one starts with nothing of the last.
+    LazyLoader {
+        id: child
+
+        active: daemon.connects && daemon.runsItself
+
+        Process {
+            id: running
+
+            command: daemon.command
+            environment: daemon.environment // qmllint disable incompatible-type
+            stdinEnabled: true
+            running: true
+            stdout: SplitParser {
+                onRead: line => daemon.said(line)
+            }
+            stderr: SplitParser {
+                onRead: line => console.warn(`${daemon.command[0]}: ${line}`)
+            }
+            // Its refusals are forgotten only once it answers hello, so
+            // one that ends at once waits longer each time it's started.
+            onStarted: {
+                daemon.wire = running;
+                daemon.greet();
+            }
+            onExited: code => {
+                console.warn(`${daemon.command[0]} ended with ${code}, so it starts again`);
+                daemon.gone();
+                daemon.tryAgain();
+            }
+        }
+    }
+
     function connectAgain() {
         again.stop();
         if (!connects)
             return;
-        link.active = false;
-        link.active = true;
+        const loader = runsItself ? child : link;
+        loader.active = false;
+        loader.active = true;
     }
 
     // Gone: said so, and every answer awaited given none. The watch went
