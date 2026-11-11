@@ -8,9 +8,9 @@ as the daemon's records, slack-unread, slack-recent, slack-message and slack-acc
 account saying it holds every message once slack-says.json lists any, and each conversation's
 row of Unread and Recent, row:<place>:<id>, as src/rows.rs serves it ready, its order its
 place, and each message's row, newest first, with its drawer a record of its own, as
-src/message_rows.rs serves them, listed and watched, a watch of rows narrowed by its place, each watch told what changed
-and went and how Slack stands as that changes; each conversation is given a timestamp falling
-with its place, so the order a test lists them in is Slack's.
+src/message_rows.rs serves them, listed and watched, a watch of rows narrowed by its place,
+each watch told what changed and went and how Slack stands as that changes; each conversation
+is given a timestamp falling with its place, so the order a test lists them in is Slack's.
 Hello says how Slack stands, a search answers the Slack messages found for its words, and a
 get of a message's key answers the messages around it. Each search is written down in
 slack-searched beside the socket, one line of words each, so a test can count how often Slack
@@ -233,8 +233,8 @@ def messages(listed: list[dict[str, object]]) -> dict[str, dict[str, object]]:
     newest = sorted(
         held.values(), key=lambda one: (int(cast("int", one["at"])), str(one["ts"])), reverse=True
     )
-    for at, message in enumerate(newest):
-        row, drawer = message_row(message, at)
+    for place, message in enumerate(newest):
+        row, drawer = message_row(message, place)
         held[str(row["key"])] = row
         held[str(row["drawer"])] = drawer
     return held

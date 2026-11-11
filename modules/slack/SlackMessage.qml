@@ -94,7 +94,7 @@ Singleton {
     // ReadyRows as every served row is, and this component's as `row`'s
     // is, so it's the one row of the message. The daemon serves its first
     // words as its note, which follow its name here as `row`'s do, given
-    // way by whole words, and its drawer apart, said whole as prose.
+    // way by whole words, and its drawer apart, its body prose as served.
     function served(ready, row, key) {
         return ready.thing(row, key, {
             what: "slack message",
@@ -105,11 +105,7 @@ Singleton {
             count: ready.noteOf(row),
             countWords: true,
             note: "",
-            later: true,
-            drawer: () => {
-                const drawn = ready.drawerOf(row);
-                return drawn === null ? null : Object.assign(drawn, { prose: true });
-            }
+            later: true
         });
     }
 

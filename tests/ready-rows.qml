@@ -186,6 +186,22 @@ QtObject {
             eyebrow: "Personal",
             eyebrowNames: true
         });
+        // A Slack message's: its body is prose, as served, and a drawer
+        // saying anything else of it isn't.
+        Expect.same("a drawer of prose says so", Ready.drawerOf({
+            title: "Ada Lovelace",
+            body: "can you check the build",
+            prose: true
+        }, now, said), {
+            title: "Ada Lovelace",
+            facts: [],
+            body: "can you check the build",
+            prose: true
+        });
+        Expect.same("only a drawer served as prose is", Ready.drawerOf({
+            title: "Ada Lovelace",
+            prose: "yes"
+        }, now, said), { title: "Ada Lovelace", facts: [], body: "" });
     }
 
     function insides() {

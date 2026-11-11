@@ -195,6 +195,11 @@ function drawerOf(drawer, now, said) {
     if (drawer.eyebrowNames === true) {
         drawn.eyebrowNames = true;
     }
+    // A body that's prose, a Slack message's, set as every drawer's
+    // sentences are (Drawer's `prose`), only where the daemon says so.
+    if (drawer.prose === true) {
+        drawn.prose = true;
+    }
     return drawn;
 }
 

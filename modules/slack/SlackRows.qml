@@ -12,7 +12,6 @@ import qs
 import Quickshell
 import QtQuick
 import "launcher" as Launcher
-import "launcher/ReadyRows.js" as Ready
 import "SlackUnreads.js" as Unreads
 
 Singleton {
