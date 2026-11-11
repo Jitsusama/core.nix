@@ -7,7 +7,8 @@
 // new window (Kitty.js); and the machines ~/.ssh/config and
 // ~/.ssh/known_hosts name, how often and when each was reached, their
 // order, their rows and drawers, the ssh that opens one, and the
-// repositories under ~/src in zoxide's order (KittyOpens.js). The
+// repositories under ~/src in zoxide's order (KittyOpens.js), as the
+// programs daemon reads each file they come from. The
 // `kitty-lists-its-tabs` check copies both, with the launcher's Ago.js,
 // beside this file and runs `qml -platform offscreen kitty-tabs.qml`.
 import QtQuick
@@ -405,22 +406,8 @@ QtObject {
         check("the repositories", Opens.repositories(found, visited),
             ["/src/c", "/src/d", "/src/a", "/src/b"]);
         check("none found", Opens.repositories("", visited), []);
-
-        // zoxide's database as od prints it, a byte a number: version 3,
-        // two folders, each its path, a score and when it was visited.
-        const le = (value, size) => Array.from({ length: size },
-            (_, index) => Math.floor(value / 256 ** index) % 256);
-        const folder = (bytes, seconds) => le(bytes.length, 8).concat(bytes,
-            [0, 0, 0, 0, 0, 0, 240, 63], le(seconds, 8));
-        const database = le(3, 4).concat(le(2, 8),
-            folder([47, 115, 47, 97], 1700000000), folder([47, 115, 47, 195, 169], 1700003600));
-        const printed = database.join(" ");
-        check("when zoxide saw each folder", Opens.visits(printed),
-            { "/s/a": 1700000000000, "/s/\u00e9": 1700003600000 });
-        check("another version's database", Opens.visits([4].concat(database.slice(1)).join(" ")),
-            {});
-        check("a database cut short", Opens.visits(database.slice(0, 30).join(" ")), {});
-        check("no database", Opens.visits(""), {});
+        check("the repositories by their folders",
+            Opens.repositories(["/src/a", "/src/c"].join("\n"), visited), ["/src/c", "/src/a"]);
 
         // A repository says when it, or a folder in it, was seen last, and
         // the folder holding it only where that isn't ~/src.

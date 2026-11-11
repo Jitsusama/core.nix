@@ -473,8 +473,8 @@ ShellRoot {
                 expect("and what it would say of none",
                     finding.empty === "No repositories under ~/src.", finding.empty);
                 const rows = finding.targets();
-                expect("the one whose git wrote last first, none past three folders", names(rows)
-                    === "alpha, beta, gamma", names(rows));
+                expect("the one whose git wrote last first, none past four folders or hidden",
+                    names(rows) === "alpha, beta, gamma", names(rows));
                 expect("how many said", finding.side === "3", finding.side);
                 expect("when its git wrote said", /ago|just now/.test(rows[0].side), rows[0].side);
                 const read = Object.keys(Launcher.Repositories.files);

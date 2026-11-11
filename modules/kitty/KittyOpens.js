@@ -1,5 +1,5 @@
 // What a new kitty window opens from Programs › kitty in the launcher
-// (Kitty.qml): one of the repositories fd finds under ~/src, most recent
+// (Kitty.qml): one of the repositories under ~/src, most recent
 // first, or ssh to one of the machines ~/.ssh/config and
 // ~/.ssh/known_hosts name, most used first, with the words each row says
 // and the command that opens it. Kept apart from the QML so Qt's own
@@ -17,8 +17,8 @@
 // refused rather than a machine reached; and a Host block's own
 // UserKnownHostsFile, whose keys aren't said, since each block may name
 // another. A repository is its path, as every folder is, and says when
-// zoxide last saw it, read from zoxide's own database, since `query`
-// prints only a score; that score is left out, since its frecency has no
+// zoxide last saw it, which the programs daemon reads from zoxide's own
+// database, since `query` prints only a score; that score is left out, since its frecency has no
 // unit Joel could read.
 //
 // Each figure of a machine is from a file read ahead of the launcher
@@ -28,19 +28,6 @@
 .import "Kitty.js" as Kitty
 
 const MILLISECONDS_A_SECOND = 1000;
-
-// zoxide's database, as bincode lays it out: a version, which this reads
-// only at 3, zoxide's since 0.8, then how many folders, each its path's
-// length and bytes, its score, eight bytes, and when it was last visited,
-// in seconds since 1970; each number little-endian, a count in eight
-// bytes.
-const ZOXIDE_VERSION = 3;
-const BYTE = 256;
-const WORD = 4;
-const LONG = 8;
-// A path's bytes are said as %xx for decodeURIComponent to read as UTF-8.
-const HEX = 16;
-const HEX_DIGITS = 2;
 
 // A line of ~/.ssh/config: a keyword, then its value after spaces or an
 // equals sign; and what a Host line's names are told apart by.
@@ -55,7 +42,7 @@ const HISTORY = /^: (\d+):\d+;(.*)$/;
 const BRACKETED = /^\[([^\]]+)\]:(\d+)$/;
 // The port ssh reaches when nothing names one.
 const SSH_PORT = "22";
-// The .git a repository's found by, as fd prints it.
+// The .git a repository's found by, where a line names it.
 const GIT = /\/?\.git\/?$/;
 
 // The kitty behind the kitty window niri focused last, which a new window
@@ -316,42 +303,6 @@ function machineDrawer(one, state, words) {
     };
 }
 
-// A little-endian number of `size` bytes at `at`.
-function numberAt(bytes, at, size) {
-    let value = 0;
-    for (let index = size - 1; index >= 0; index -= 1) {
-        value = value * BYTE + bytes[at + index];
-    }
-    return value;
-}
-
-// When zoxide last saw each folder, in milliseconds by its path, from its
-// database as `od -An -v -tu1` prints it, a byte a number; nothing from
-// a database of another version or one cut short.
-function visits(printed) {
-    const bytes = String(printed ?? "").trim().split(SPACES).filter(each => each !== "")
-        .map(Number);
-    const seen = {};
-    if (bytes.length < WORD + LONG || numberAt(bytes, 0, WORD) !== ZOXIDE_VERSION) {
-        return seen;
-    }
-    const count = numberAt(bytes, WORD, LONG);
-    let at = WORD + LONG;
-    for (let index = 0; index < count; index += 1) {
-        const length = numberAt(bytes, at, LONG);
-        const end = at + LONG + length + LONG + LONG;
-        if (end > bytes.length) {
-            return seen;
-        }
-        const encoded = bytes.slice(at + LONG, at + LONG + length)
-            .map(each => `%${each.toString(HEX).padStart(HEX_DIGITS, "0")}`).join("");
-        const when = numberAt(bytes, end - LONG, LONG);
-        seen[decodeURIComponent(encoded)] = when * MILLISECONDS_A_SECOND;
-        at = end;
-    }
-    return seen;
-}
-
 // A folder as Joel says it, from ~ where it's in his home.
 function fromHome(folder, home) {
     const inHome = home !== "" && (folder === home || folder.startsWith(`${home}/`));
@@ -374,8 +325,8 @@ function repositorySide(path, places, seen, when) {
         .join(" \u00b7 ");
 }
 
-// The repositories fd finds under ~/src, each by the folder holding its
-// .git: those zoxide knows first, in its order, where a visit to a folder
+// The repositories under ~/src, each by its folder or the folder holding
+// its .git: those zoxide knows first, in its order, where a visit to a folder
 // inside one counts as the repository's, then the rest by path.
 function repositories(found, visited) {
     const all = String(found ?? "").split("\n").map(line => line.replace(GIT, ""))

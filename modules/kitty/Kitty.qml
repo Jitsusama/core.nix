@@ -21,19 +21,23 @@
 //
 // A window opens through the kitty behind the window used last, as a new
 // OS window of it, or as a new kitty while none runs. Everything is read
-// ahead, as the shell starts and again as the launcher closes, and
-// ~/.ssh/config and ~/.ssh/known_hosts as they change: kitty's own state
-// through open-now, which asks every kitty at once, and is asked again as
-// kitty is stepped into for what changed since; fd for the repositories,
-// zoxide for their order and grep for the ssh lines of the history. So
-// each act is there from the first frame kitty's page draws, in its place, since a row that arrives once the page is drawn
-// joins its end until a key makes the list afresh (Y2YBTS, 2026-11-08).
-// What kitty says is read in Kitty.js, and the rest in KittyOpens.js.
+// by the programs daemon, over the one socket the shell holds open to it,
+// starting no command here (Joel, 2026-11-10: the daemons are the data
+// layer): as the shell starts and each time the launcher opens, kitty's
+// own state through open-now, which asks every kitty at once
+// (`listed:kitty:open`), the repositories under ~/src (Repositories.qml,
+// which Chrome's and Neovim's acts read too), when zoxide last saw each
+// folder, from its database, ~/.ssh/config and ~/.ssh/known_hosts, and
+// the ssh lines of zsh's history (modules/programs/src/visited.rs and
+// machines.rs). So each act is there by the time kitty's page draws, in
+// its place, since a row that arrives once the page is drawn joins its
+// end until a key makes the list afresh (Y2YBTS, 2026-11-08). What kitty
+// says is read in Kitty.js, and the rest in KittyOpens.js, still here
+// until Programs serves its own ready rows (Thu 11-12).
 pragma ComponentBehavior: Bound
 
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Kitty.js" as Kitty
 import "KittyOpens.js" as Opens
@@ -43,11 +47,8 @@ Provider {
 
     what: "tab"
 
-    // Whether kitty's own state was asked for since the launcher opened;
-    // what each read said is kept until it says it again.
-    property bool looked: false
+    // What each read said, kept until it says it again.
     property var kitties: []
-    property string found: ""
     property string visited: ""
     // When zoxide last saw each folder, in milliseconds by its path.
     property var visits: ({})
@@ -62,43 +63,92 @@ Provider {
         kitty: provider.settings.kitty ?? "kitty"
     })
 
-    // The launcher closed, so the next step into kitty asks kitty again,
-    // and the repositories and history are read for the next opening.
+    // The launcher opening reads everything again for what changed since,
+    // and its closing forgets the tabs closed meanwhile.
     Connections {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open) {
-                provider.looked = false;
-                provider.closed = [];
+            Repositories.opened(provider.launcher.open);
+            if (provider.launcher.open)
                 provider.readAhead();
-            }
+            else
+                provider.closed = [];
         }
     }
 
     Component.onCompleted: provider.readAhead()
-    // The settings name the programs each read runs, and may be given
-    // after the provider is made.
+    // The settings name the files each read is of, and may be given after
+    // the provider is made.
     onSettingsChanged: provider.readAhead()
 
-    function run(readers) {
-        for (const reader of readers) {
-            if ((reader.command[0] ?? "") !== "" && !reader.running)
-                reader.running = true;
+    // The daemon's key for each file read, by what's kept of it; none
+    // where the settings name no file.
+    readonly property var keys: {
+        const keyed = (kind, path) => (path ?? "") === "" ? [] : [`${kind}:${path}`];
+        return keyed("visited", provider.settings.zoxideData)
+            .concat(keyed("machines", provider.settings.ssh), keyed("reached",
+                provider.settings.history));
+    }
+
+    function readAhead() {
+        Repositories.want({ folder: provider.settings.src ?? "" }, false);
+        if (provider.keys.length > 0)
+            daemon.get(provider.keys, 0, answer => provider.read(answer !== null));
+    }
+
+    // What the daemon holds of each file now, kept as each page reads it.
+    function read(answered) {
+        if (!answered)
+            return;
+        const held = kind => Object.values(daemon.held).find(one => one.kind === kind);
+        const visited = held("visited")?.folders ?? [];
+        provider.visited = visited.map(one => one.path).join("\n");
+        provider.visits = visited.reduce((all, one) =>
+            Object.assign(all, { [one.path]: one.at }), {});
+        provider.config = held("machines")?.config ?? "";
+        provider.hosts = held("machines")?.hosts ?? "";
+        provider.history = (held("reached")?.lines ?? []).join("\n");
+        provider.heard();
+    }
+
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/programs.sock`
+        kind: "visited"
+        live: false
+
+        // Asked before the shell had reached it, as it starts, they're
+        // asked again once it answers.
+        onStateChanged: {
+            if (daemon.state === "answering")
+                provider.readAhead();
         }
     }
 
-    // kitty's own state is read ahead too, so Tabs has its place from the
-    // first frame, and asked again on opening for what changed since.
-    function readAhead() {
-        provider.run([listing, finding, ranking, dating, searching]);
+    // What open-now printed, as the programs daemon holds it under the
+    // key the settings name, read as the shell starts and each time the
+    // launcher opens.
+    Listed {
+        id: listing
+
+        key: provider.settings.open ?? ""
+        wanted: (provider.launcher?.open ?? false) || !listing.read
+
+        onHeard: {
+            provider.kitties = Kitty.heard(listing.lines.join("\n"));
+            provider.heard();
+        }
     }
 
-    function look() {
-        if (looked)
-            return;
-        looked = true;
-        provider.run([listing]);
+    // The repositories read arrive as they're read.
+    Connections {
+        target: Repositories
+
+        function onChanged() {
+            provider.heard();
+        }
     }
 
     // Each answer draws kitty's step again, once a frame however many come
@@ -109,119 +159,6 @@ Provider {
 
     function redraw() {
         provider.changed();
-    }
-
-    Process {
-        id: listing
-
-        command: [provider.settings.openNow ?? "", "kitty"]
-        stdout: StdioCollector {
-            id: listed
-
-            onStreamFinished: {
-                provider.kitties = Kitty.heard(listed.text);
-                provider.heard();
-            }
-        }
-    }
-
-    Process {
-        id: finding
-
-        command: [provider.settings.fd ?? "", "--hidden", "--type", "d", "--max-depth", "4",
-            "--prune", "^\\.git$", provider.settings.src ?? ""]
-        stdout: StdioCollector {
-            id: repositories
-
-            onStreamFinished: {
-                provider.found = repositories.text;
-                provider.heard();
-            }
-        }
-    }
-
-    Process {
-        id: ranking
-
-        command: (provider.settings.zoxide ?? "") === "" ? [] : [provider.settings.zoxide, "query",
-            "--list", "--sort-by", "last-accessed"]
-        stdout: StdioCollector {
-            id: ranked
-
-            onStreamFinished: {
-                provider.visited = ranked.text;
-                provider.heard();
-            }
-        }
-    }
-
-    // zoxide's database as od prints its bytes, for when each folder was
-    // visited, which zoxide's own query never says.
-    Process {
-        id: dating
-
-        command: (provider.settings.zoxideData ?? "") === "" ? [] : [provider.settings.od,
-            "-An", "-v", "-tu1", provider.settings.zoxideData]
-        stdout: StdioCollector {
-            id: dated
-
-            onStreamFinished: {
-                provider.visits = Opens.visits(dated.text);
-                provider.heard();
-            }
-        }
-    }
-
-    // Only the history's ssh lines, of however many it keeps.
-    Process {
-        id: searching
-
-        command: (provider.settings.history ?? "") === "" ? [] : [provider.settings.grep, "-a",
-            "-E", "^: [0-9]+:[0-9]+;\\s*(ssh|kitten ssh|kitty \\+kitten ssh)\\s",
-            provider.settings.history]
-        stdout: StdioCollector {
-            id: searched
-
-            onStreamFinished: {
-                provider.history = searched.text;
-                provider.heard();
-            }
-        }
-    }
-
-    FileView {
-        id: sshConfig
-
-        path: provider.settings.sshConfig ?? ""
-        printErrors: false
-        watchChanges: true
-        onFileChanged: sshConfig.reload()
-        onLoaded: {
-            provider.config = sshConfig.text();
-            provider.heard();
-        }
-        // One that isn't there names no machine.
-        onLoadFailed: {
-            provider.config = "";
-            provider.heard();
-        }
-    }
-
-    FileView {
-        id: knownHosts
-
-        path: provider.settings.knownHosts ?? ""
-        printErrors: false
-        watchChanges: true
-        onFileChanged: knownHosts.reload()
-        onLoaded: {
-            provider.hosts = knownHosts.text();
-            provider.heard();
-        }
-        onLoadFailed: {
-            provider.hosts = "";
-            provider.heard();
-        }
     }
 
     function niri() {
@@ -251,7 +188,6 @@ Provider {
     function programActs(program) {
         if (program !== "kitty")
             return [];
-        provider.look();
         return provider.repositoryAct().concat(provider.sshAct(), provider.tabsRow());
     }
 
@@ -272,7 +208,8 @@ Provider {
     }
 
     function repositoriesNow() {
-        return Opens.repositories(provider.found, provider.visited);
+        return Opens.repositories(Repositories.listed.map(one => one.path).join("\n"),
+            provider.visited);
     }
 
     function repositoryAct() {

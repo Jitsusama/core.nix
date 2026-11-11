@@ -4989,7 +4989,8 @@ onLinux {
         repository alpha origin git@github.com:Jitsusama/alpha.git 1700000900
         repository beta origin https://gitlab.com/someone/beta 1700000800
         repository gamma upstream https://github.com/NixOS/gamma.git 1700000700
-        repository far/away/too origin git@github.com:someone/too.git 1700000950
+        repository far/away/too/deep origin git@github.com:someone/deep.git 1700000950
+        repository .hidden/omega origin git@github.com:someone/omega.git 1700000960
         # A document outside them, for zathura's act.
         printf '%%PDF-1.4\n' > $HOME/report.pdf
       '';
