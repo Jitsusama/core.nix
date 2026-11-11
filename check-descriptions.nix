@@ -3837,7 +3837,7 @@
     only the one that filled swap, and pi's scopes share one slice weighted below a terminal's
   '';
   work-swaps-its-own-memory = ''
-    jobs is slowed past half of memory and agents' sessions past 40%, with no hard limit that
+    jobs is slowed past half of memory and agents' sessions past 51%, with no hard limit that
     would end their work
   '';
   work-yields-to-what-the-person-works-in = ''

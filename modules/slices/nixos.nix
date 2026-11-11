@@ -197,7 +197,15 @@ let
   # waited on memory 6.4% of the time rather than 3.6%. At 35% they waited
   # 11.9%, and Joel's slices gained nothing more. MemoryHigh slows the
   # sessions past it and never ends one.
-  agentsHigh = "40%";
+  # At 40%, though, the sessions sat at the ceiling on 11 November with
+  # 24 GiB free, holding 90 MiB of file cache, so even pi's own code came
+  # back from disk: one idle pi waited 52 s on a page read in. Raised to
+  # 51%, 32 GiB here, the sessions' disk swap-ins fell from 2,671 a second
+  # to 1,650 and their memory waits from 1.1% of the time to 0.3%, while
+  # app.slice's went from 0.034% to 0.023% and session.slice's from
+  # 0.015% to 0.003%. The hard floors below, not this ceiling, keep Joel's
+  # apps' room.
+  agentsHigh = "51%";
   account = "15%";
 
   # The system's own services a call or the desktop waits on keep a soft
