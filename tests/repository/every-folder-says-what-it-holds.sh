@@ -4,7 +4,8 @@
 # AGENTS.md, no entry file (a module, its checks, a package or its
 # default.nix, a crate's manifest or root, or a file named after the folder)
 # opening with a comment, no file beside it of its name doing the same
-# (backports.nix for backports/), no line of its own in its parent's README.md
+# (backports.nix for backports/, or a Rust module's screens.rs for the
+# screens/ holding its tests), no line of its own in its parent's README.md
 # or AGENTS.md opening with its name, and, at the top, no line of the map in
 # README.md or AGENTS.md, a table's row or a tree's line with a comment. A
 # folder named tests holds the tests of the folder it's in, so it says what it
@@ -80,7 +81,8 @@ says() {
     */*) parent_says "$folder" && return 0 ;;
     *) map_says "$folder" && return 0 ;;
   esac
-  for entry in "${entries[@]/#/$folder/}" "$folder/${folder##*/}.nix" "$folder.nix"; do
+  for entry in "${entries[@]/#/$folder/}" "$folder/${folder##*/}.nix" "$folder.nix" \
+    "$folder.rs"; do
     [ -f "$entry" ] || continue
     first=$(head -n 1 "$entry")
     case $first in
