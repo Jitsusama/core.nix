@@ -52,16 +52,20 @@ Scope {
     }
 
     // One key's search and the time to the frame that drew it, and what the
-    // search spent its time on. A key slow enough to feel is said in the
-    // journal too, with what was typed, so what's slow can be read as Joel
-    // types. Nothing asked for, such as a password, is ever timed.
-    function timed(searched, drawn, parts, typed) {
+    // search spent its time on, and then `frame`, how long it waited for the
+    // frame that drew it and how long drawing it took. A key slow enough to
+    // feel is said in the journal too, with what was typed, so what's slow
+    // can be read as Joel types. Nothing asked for, such as a password, is
+    // ever timed.
+    function timed(searched, drawn, parts, typed, frame) {
         trial = Trials.timed(trial, searched, drawn, parts);
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
                 + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each)},`
                     + ` rows ${parts.rows}, answers ${parts.answers}${composed(parts.composing)}`
-                    + `${parts.before ? `, before ${parts.before}` : ""})` : ""));
+                    + `${parts.before ? `, before ${parts.before}` : ""})` : "")
+                + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
+                    + " drawing it" : ""));
     }
 
     // A drawer's time from the work begun for it to the frame that drew it,
@@ -77,9 +81,13 @@ Scope {
     }
 
     // The answers' time, as the answers asked, the rows placed and the list
-    // shown, when the key said them.
+    // shown, when the key said them, its showing with how many rows were new
+    // to the list and how long laying them out took.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
+            + (parts.kept && parts.kept.fresh + parts.kept.laying > 0
+                ? ` (${parts.kept.fresh} rows new, ${parts.kept.laying}`
+                + " laying them out)" : "")
             : "";
     }
 
