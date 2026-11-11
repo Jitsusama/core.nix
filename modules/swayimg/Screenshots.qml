@@ -107,12 +107,21 @@ Provider {
         onHeard: provider.hear()
     }
 
+    // What the folders said when last counted, so a watch begun again,
+    // whose whole answer says every folder anew, remakes no gallery when
+    // nothing in them changed.
+    property string heardAs: ""
+
     // Counts the folders the daemon has said, leaving one it hasn't yet
     // uncounted.
     function hear() {
         const within = recentFolders.filter(folder => Swayimg.folderKey(folder) in folders.held);
         const lines = within.reduce((all, folder) => all.concat(
             folders.held[Swayimg.folderKey(folder)].lines ?? []), []);
+        const said = JSON.stringify([within, lines]);
+        if (said === heardAs)
+            return;
+        heardAs = said;
         listed = Swayimg.read(lines, within);
     }
 
