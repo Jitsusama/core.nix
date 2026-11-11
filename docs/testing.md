@@ -431,7 +431,12 @@ their parts, before, lists, rows and answers, as the key's line splits them.
 The profiler is asked for its trace while the shell still runs, since a
 shell stopped as it records sends none. The home it types into
 holds this niri's few windows and programs, where Joel's holds about a
-thousand rows, so its rows part runs smaller than his.
+thousand rows, so its rows part runs smaller than his. The lab's shell says
+its reports, which Joel's doesn't, and two are said on a key, about 3 ms
+of each key's time that his don't spend (2026-11-11): the change between
+sides holds, but a key's whole time is the lab's, not his. The builders'
+load moves a side's times by as much as twice between runs, so only sides
+that ran on one builder, one after the other, are compared.
 
 ### Virtual Machines
 
