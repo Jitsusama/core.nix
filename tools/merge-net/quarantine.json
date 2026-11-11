@@ -96,5 +96,12 @@
     "owner_pr": 3370,
     "reason": "failed, then passed, at 5b1b2d0a9c9c",
     "test": "vm-desktop-minds-the-margin"
+  },
+  {
+    "at": 1794437795,
+    "commit": "461743399d56dac959e8e102cd6c137100886045",
+    "owner_pr": 3363,
+    "reason": "failed, then passed, at 461743399d56",
+    "test": "the-launcher-answers-whats-typed-on-niri"
   }
 ]
