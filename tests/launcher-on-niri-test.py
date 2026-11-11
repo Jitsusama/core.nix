@@ -2161,6 +2161,60 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     assert seen - key["at"] <= within, (
         f"niri's screen showed the key {seen - key['at']:.0f} ms after the time said, past {within}"
     )
+    # A letter sets no glide going, so it landed at its first frame.
+    landed = json.loads(shell.as_account(shell.ipc("keysLanded")))
+    assert key in landed, f"the letter {key} didn't land at its first frame: {landed}"
+    shell.close_launcher()
+
+
+def test_a_key_that_glides_lands_once_its_glide_has_ended(shell: Shell) -> None:
+    """An arrow that glides the selection is seen only at the frame after its glide ends.
+
+    A highlight still moving isn't yet on its row, so a key that sets the glide going counts
+    as landed at the first frame niri presented once the glide ran its length (VKCF3Z,
+    2026-11-10): later than its first frame, and no sooner than its press and the glide.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("o")
+    shell.launcher_until(lambda shown: len(shown["rows"]) > 1)
+    # The letter's frame is presented first, so the arrow is the key after it.
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    typed = 0
+    while typed == 0 and time.monotonic() < deadline:
+        typed = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
+        time.sleep(launcher_on_niri.POLL)
+    since = shell.mark()
+    shell.send_key("down")
+    lasting: list[int] = []
+
+    def down_a_row(rest: str) -> bool:
+        *_, length, _ = rest.split()
+        lasting.append(int(length))
+        return True
+
+    shell.reported("glides ", down_a_row, since)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    first: list[Json] = []
+    landed: list[Json] = []
+    while not landed and time.monotonic() < deadline:
+        first = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        glided = {key["from"] for key in first[typed:]}
+        landed = [
+            key
+            for key in json.loads(shell.as_account(shell.ipc("keysLanded")))
+            if key["from"] in glided
+        ]
+        time.sleep(launcher_on_niri.POLL)
+    shell.close_launcher()
+    assert landed, f"the arrow never landed: {first}"
+    assert len(landed) == 1, f"the arrow landed more than once: {landed}"
+    key, there = first[typed], landed[0]
+    assert there["at"] > key["at"], f"the arrow landed at its first frame: {key}, {there}"
+    assert there["at"] - there["from"] >= lasting[-1], (
+        f"the arrow landed {there['at'] - there['from']:.0f} ms from its press,"
+        f" before its {lasting[-1]} ms glide ended"
+    )
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

@@ -5625,9 +5625,13 @@ Scope {
         const heard = KeyTimes.now();
         const pressed = KeyTimes.pressed();
         searchParts = null;
+        // What the glide it sets going is timed from, as the key is.
+        movingFrom = pressed > 0 ? pressed : heard;
         current = to;
+        movingFrom = 0;
         keyTimed(arrow, began, heard, pressed);
     }
+    property real movingFrom: 0
 
     // Vim's operators over the rows (QueryKeys.js reads them, Operators.js
     // says what each does to a row): d does each row's ending action, as
@@ -6495,6 +6499,12 @@ Scope {
         // niri presented it, on the monotonic clock, as JSON.
         function keysPresented(): string {
             return JSON.stringify(root.keysPresented);
+        }
+
+        // Each key presented where its glide came to rest, as keysPresented
+        // says them, as JSON.
+        function keysLanded(): string {
+            return JSON.stringify(root.keysLanded);
         }
 
         // The command line over a viewer, by its name, where it is and the
@@ -8301,19 +8311,72 @@ Scope {
     property var keysPresented: []
     function keyPresented(from, at) {
         keysPresented = keysPresented.concat([{ from, at }]).slice(-keysKept);
+        // A key that set no glide going stood where it went at its first
+        // frame, so it landed there.
+        if (!keysGlided.includes(from))
+            keysLanded = keysLanded.concat([{ from, at }]).slice(-keysKept);
     }
+
+    // Each key presented where the selection, and the list's scroll with
+    // it, came to rest: a key that set a glide going counts as seen only at
+    // the first frame niri presented once the glide ended, since the
+    // highlight still moving isn't yet on its row (VKCF3Z, 2026-11-10).
+    // Keys pressed while one glide runs all land as it ends, since none of
+    // their rows was stood on before.
+    property var keysLanded: []
+    // The presses whose glide runs now, and every press that glided since
+    // the launcher opened, by their press times.
+    property var keysGliding: []
+    property var keysGlided: []
+    function glideBegun() {
+        const pressed = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
+        if (pressed <= 0 || keysGliding.includes(pressed))
+            return;
+        // A held arrow keeps one glide going, so its presses are kept as
+        // many as the rest.
+        keysGliding = keysGliding.concat([pressed]).slice(-keysKept);
+        keysGlided = keysGlided.concat([pressed]).slice(-keysKept);
+    }
+    function glideEnded() {
+        const landing = keysGliding;
+        keysGliding = [];
+        if (landing.length === 0)
+            return;
+        presentedAwait(landing[0], at => {
+            keysLanded = keysLanded.concat(landing.map(from => ({ from, at })))
+                .slice(-keysKept);
+        });
+    }
+
+    // How long a set of keys took, as the journal says it: how many, the
+    // median, the slowest and how many within Joel's 50 ms.
+    function keysTook(keys) {
+        const took = keys.map(one => Math.round(one.at - one.from)).sort((a, b) => a - b);
+        return {
+            count: took.length,
+            median: took[(took.length - 1) >> 1],
+            slowest: took[took.length - 1],
+            within: took.filter(ms => ms <= 50).length
+        };
+    }
+
     function keysPresentedSaid() {
-        const took = keysPresented.map(one => Math.round(one.at - one.from))
-            .sort((a, b) => a - b);
+        const first = keysTook(keysPresented);
+        const landed = keysTook(keysLanded);
         keysPresented = [];
+        keysLanded = [];
+        keysGliding = [];
+        keysGlided = [];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
-        if (took.length === 0)
-            return;
-        const within = took.filter(ms => ms <= 50).length;
-        console.info(`launcher: ${took.length} keys presented a median `
-            + `${took[(took.length - 1) >> 1]} ms from the key, the slowest `
-            + `${took[took.length - 1]} ms, ${within} within 50 ms`);
+        if (first.count > 0)
+            console.info(`launcher: ${first.count} keys presented a median `
+                + `${first.median} ms from the key, the slowest `
+                + `${first.slowest} ms, ${first.within} within 50 ms`);
+        if (landed.count > 0)
+            console.info(`launcher: ${landed.count} keys landed a median `
+                + `${landed.median} ms from the key, the slowest `
+                + `${landed.slowest} ms, ${landed.within} within 50 ms`);
     }
 
     // What a key changed in a place, presented: said when slow enough to
@@ -9628,6 +9691,7 @@ Scope {
                                 picking.stop();
                                 const lasts = glide && to !== list.pickY ? list.lasting() : 0;
                                 if (lasts > 0) {
+                                    root.glideBegun();
                                     Report.say(`glides ${Math.round(list.pickY)} to `
                                         + `${Math.round(to)} in ${lasts} ms`);
                                     picking.duration = lasts;
@@ -9635,6 +9699,22 @@ Scope {
                                     picking.start();
                                 } else
                                     list.pickY = to;
+                            }
+
+                            // A glide has ended once neither the selection
+                            // nor the scroll moves, so the keys that set it
+                            // going are timed to the next frame (keysLanded).
+                            // Asked again once the handler that stopped it is
+                            // done, since a glide aimed anew stops and starts
+                            // in one go, and hasn't ended.
+                            readonly property bool gliding: picking.running || scrolling.running
+                            onGlidingChanged: {
+                                if (!gliding)
+                                    Qt.callLater(list.glideSettled);
+                            }
+                            function glideSettled() {
+                                if (!list.gliding)
+                                    root.glideEnded();
                             }
 
                             // Its duration is set by each glide (pick).
@@ -9735,6 +9815,7 @@ Scope {
                                     list.contentY = to;
                                     return;
                                 }
+                                root.glideBegun();
                                 list.aim = aim;
                                 scrolling.stop();
                                 scrolling.duration = lasts;

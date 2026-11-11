@@ -205,8 +205,9 @@ ShellRoot {
             expect("and the job's row is made again", queue.everything()[0] !== moved[0], "");
 
             Jobs.said = null;
+            // In the words every place's own row says it (VKCF3Z, 2026-11-10).
             expect("a queue that stopped saying says so",
-                queue.counted() === "the queue has stopped saying", queue.counted());
+                queue.counted() === "not answering", queue.counted());
         } catch (error) {
             root.fail(error.message);
             return;
