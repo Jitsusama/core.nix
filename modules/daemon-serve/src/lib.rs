@@ -7,6 +7,8 @@
 //!
 //! - `asks`: what a client's line asks, for a domain's own kinds.
 //! - `serve`: the records held, the socket, and what each ask is answered.
+//! - `watch`: what another daemon holds, followed as it moves.
 
 pub mod asks;
 pub mod serve;
+pub mod watch;
