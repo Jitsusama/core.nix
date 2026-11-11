@@ -55,7 +55,6 @@ import "../Hearing.js" as Hearing
 import "Ago.js" as Ago
 import "Neovim.js" as Neovim
 import "NeovimOpening.js" as Opening
-import "Repositories.js" as Repos
 
 Provider {
     id: provider
@@ -95,7 +94,7 @@ Provider {
     }
 
     Component.onCompleted: {
-        Repositories.want(provider.settings, false);
+        Repositories.want(provider.settings);
         Repositories.opened(provider.launcher?.open ?? false);
     }
 
@@ -282,7 +281,7 @@ Provider {
         Repositories.askFiles(folder);
         return (Repositories.files[folder] ?? []).map(file => Object.assign(
             Files.file(file.path, thing, [provider.opening(file.path, folder, 0, 0)]),
-            { side: Repos.within(file.path, folder) }));
+            { side: file.within }));
     }
 
     // Open the Copied Path, saying the path and its line as copied.

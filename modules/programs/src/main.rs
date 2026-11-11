@@ -48,7 +48,7 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
@@ -389,18 +389,22 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
 /// Reads each folder, repository, preview or file of kitty's a key names,
 /// on this thread,
 /// and keeps its record, watching a folder from the first time it's asked
-/// for, and asking a preview again only of a file changed since.
+/// for, and the repositories' folders each time they're read, as one is
+/// cloned, and asking a preview again only of a file changed since.
 fn read_named(shared: &Shared, keys: &[String]) {
     for key in keys {
         let record = if let Some(path) = folder::path_of(key) {
             lock(&shared.daemon)
                 .looked
-                .watch(shared.notify.as_ref(), key, path);
+                .watch(shared.notify.as_ref(), key, Path::new(path));
             folder::record(key, path)
-        } else if let Some(record) = repositories::record(key)
-            .or_else(|| visited::record(key))
-            .or_else(|| machines::record(key))
-        {
+        } else if let Some(read) = repositories::read(key) {
+            let mut daemon = lock(&shared.daemon);
+            for folder in &read.heard {
+                daemon.looked.watch(shared.notify.as_ref(), key, folder);
+            }
+            read.record
+        } else if let Some(record) = visited::record(key).or_else(|| machines::record(key)) {
             record
         } else if let Some(path) = preview::path_of(key) {
             if preview::current(lock(&shared.daemon).held.get(key), path) {

@@ -7,7 +7,7 @@
 //! is watched, and as each watch of it begins.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -31,25 +31,31 @@ pub fn record(key: &str, path: &str) -> Value {
     json!({"key": key, "kind": "folder", "path": path, "lines": lines})
 }
 
-/// The folders watched for their keys, by inotify's number for each.
+/// The folders watched for their keys, by inotify's number for each. A
+/// key can be heard by many folders, as the repositories under one are by
+/// each `.git` (repositories.rs), and a folder can be heard for many keys.
 #[derive(Debug, Default)]
 pub struct Looked {
     keys: HashMap<i32, Vec<String>>,
-    watching: HashSet<String>,
+    watching: HashSet<(String, PathBuf)>,
 }
 
 impl Looked {
-    /// Watches a key's folder, if it isn't yet and can be, as one that
-    /// isn't there yet can't: it's tried again as it's next asked for.
-    pub fn watch(&mut self, notify: Option<&Notify>, key: &str, path: &str) {
-        if self.watching.contains(key) {
+    /// Watches a folder for a key, if it isn't yet and can be, as one that
+    /// isn't there yet can't: it's tried again as the key is next read.
+    pub fn watch(&mut self, notify: Option<&Notify>, key: &str, path: &Path) {
+        let pair = (key.to_owned(), path.to_path_buf());
+        if self.watching.contains(&pair) {
             return;
         }
-        let Some(watch) = notify.and_then(|notify| notify.watch(Path::new(path))) else {
+        let Some(watch) = notify.and_then(|notify| notify.watch(path)) else {
             return;
         };
-        self.keys.entry(watch).or_default().push(key.to_owned());
-        self.watching.insert(key.to_owned());
+        let keys = self.keys.entry(watch).or_default();
+        if !keys.iter().any(|held| held == key) {
+            keys.push(key.to_owned());
+        }
+        self.watching.insert(pair);
     }
 
     /// The keys whose folder this watch is.
@@ -91,9 +97,36 @@ mod tests {
         let path = folder.to_string_lossy();
         let key = format!("folder:{path}");
         let mut looked = Looked::default();
-        looked.watch(Some(&notify), &key, &path);
-        looked.watch(Some(&notify), &key, &path);
+        looked.watch(Some(&notify), &key, &folder);
+        looked.watch(Some(&notify), &key, &folder);
         let watch = notify.watch(&folder).expect("the folder is watched");
         assert_eq!(looked.keys_of(watch), [key], "the folder's key, once");
+    }
+
+    #[test]
+    fn a_key_is_heard_by_each_of_its_folders() {
+        let notify = Notify::new().expect("inotify is there");
+        let one = std::env::temp_dir().join(format!("looked-one-{}", std::process::id()));
+        let two = std::env::temp_dir().join(format!("looked-two-{}", std::process::id()));
+        std::fs::create_dir_all(&one).unwrap();
+        std::fs::create_dir_all(&two).unwrap();
+        let mut looked = Looked::default();
+        looked.watch(Some(&notify), "repositories:/src", &one);
+        looked.watch(Some(&notify), "repositories:/src", &two);
+        looked.watch(Some(&notify), "folder:/two", &two);
+        let first = notify.watch(&one).expect("the first folder is watched");
+        let second = notify.watch(&two).expect("the second folder is watched");
+        assert_eq!(
+            looked.keys_of(first),
+            ["repositories:/src"],
+            "the first folder's key"
+        );
+        assert_eq!(
+            looked.keys_of(second),
+            ["repositories:/src", "folder:/two"],
+            "the second folder's two keys"
+        );
+        std::fs::remove_dir_all(&one).unwrap();
+        std::fs::remove_dir_all(&two).unwrap();
     }
 }

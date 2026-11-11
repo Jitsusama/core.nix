@@ -637,10 +637,10 @@ in
 
   # A program's act on a copy or on the repositories under ~/src shows only
   # while it can act, and opens what it says: what decides it, in Qt's own
-  # engine (tests/quick-acts.qml, over Copied.js, launcher/Repositories.js
-  # and Neovim's NeovimOpening.js and Neovim.js), then each program's
+  # engine (tests/quick-acts.qml, over Copied.js and Neovim's
+  # NeovimOpening.js and Neovim.js), then each program's
   # provider with the shell's one watcher of the clipboard, through
-  # Quickshell itself, over repositories made here and read once for both
+  # Quickshell itself, over repositories made here and served once for both
   # programs by the real programs daemon (launcher/Repositories.qml),
   # with niri and the clipboard's history stood in (tests/program-acts.qml).
   # Chrome's downloads are read from Chrome's ChromeDownloads.js in Qt's
@@ -738,7 +738,6 @@ in
       cd $TMPDIR/cases
       cp ${../../../tests/quick-acts.qml} quick-acts.qml
       ${copied [ "Copied.js" ]}
-      cp ${../launcher/Repositories.js} Repositories.js
       cp ${../../neovim/NeovimOpening.js} NeovimOpening.js
       cp ${../../chrome/ChromeDownloads.js} ChromeDownloads.js
       cp ${../../neovim/Neovim.js} Neovim.js

@@ -93,7 +93,7 @@ Provider {
     }
 
     function readAhead() {
-        Repositories.want({ folder: provider.settings.src ?? "" }, false);
+        Repositories.want({ folder: provider.settings.src ?? "" });
         if (provider.keys.length > 0)
             daemon.get(provider.keys, 0, answer => provider.read(answer !== null));
     }
