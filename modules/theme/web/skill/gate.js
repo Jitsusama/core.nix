@@ -94,8 +94,14 @@
   // The Keys list is on the page or opens on ?, and Escape closes it with
   // focus back where it was. An interface often draws it only once ? asks,
   // so a list not shown at load is asked for the way a reader asks.
-  const keysHeading = () =>
-    [...page.querySelectorAll("h2, h3")].find((heading) => named(heading) === "Keys");
+  // A page may keep a shut fold with a Keys group of its own mounted, ahead
+  // of the list ? opens, so the heading shown wins over the first in the page.
+  const keysHeading = () => {
+    const headed = [...page.querySelectorAll("h2, h3")].filter(
+      (heading) => named(heading) === "Keys",
+    );
+    return headed.find(shown) ?? headed[0];
+  };
   const shown = (element) => element?.isConnected === true && element.checkVisibility();
   const within = (holds) =>
     new Promise((answer) => {
