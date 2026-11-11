@@ -1560,7 +1560,10 @@ Provider {
             return act ? provider.foundAct(entry, act) : null;
         }).filter(row => row !== null);
     }
-    readonly property var acts: ownActs.concat(optedActs)
+    // Those opted in may be read before their own binding has run, as
+    // Applications is made beside the program that opts them in, and
+    // concat would list undefined as a row.
+    readonly property var acts: ownActs.concat(optedActs ?? [])
 
     // One of a program's acts as a row found from the top, by its own name
     // only, so typing a program's name doesn't list every act it has. It
