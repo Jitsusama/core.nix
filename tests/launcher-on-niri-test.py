@@ -2040,17 +2040,19 @@ def test_the_home_network_is_found_by_eeros_name_and_by_whats_on_it(shell: Shell
     """Typing eero finds the Home Network, and a device's name finds the device in it.
 
     Joel reaches his home network by the name on its boxes as by its own (QEST-20261111-PN2VZC),
-    and the place was found only by its name and its noun, so "eero" found nothing. The eero
-    daemon's stand-in holds the contract's network (tests/desktop/stand-in-eero.py), whose
-    console is named game console 1.
+    and the place was found only by its name and its noun, so "eero" found only a node whose
+    model says it. The eero daemon's stand-in holds the contract's network
+    (tests/desktop/stand-in-eero.py), whose console is named game console 1.
     """
     for typed, name in [("eero", "Home Network"), ("game console", "game console 1")]:
         shell.answer(typed)
-        # The wait ends before the loop moves on, so it reads this pass's name.
-        shell.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") == name  # noqa: B023
-        )
+        shell.launcher_until(functools.partial(selecting, name))
         shell.close_launcher()
+
+
+def selecting(name: str, shown: Json) -> bool:
+    """Say whether the launcher has the row so named selected."""
+    return bool((shown["selected"] or {}).get("name") == name)
 
 
 def test_a_held_arrow_makes_one_drawer_once_it_rests(shell: Shell) -> None:
