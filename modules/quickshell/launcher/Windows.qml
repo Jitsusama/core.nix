@@ -98,12 +98,23 @@ Provider {
     onThingsChanged: changedTo(things)
 
     // The window Joel's in is left out. Until this watch's first answer the
-    // rows are those the last opening made, and a window picked from them
-    // then moved the keys unheard, since the watch ended as the launcher
-    // closed; so niri's own word on where the keys are holds until the
-    // answer, or Super+Tab then Return would go to the window he's in.
+    // rows held are those the last opening made, in the order windows were
+    // used then, so none is offered: drawn, they kept that order once the
+    // answer came, as the launcher refreshes what's shown in place, and
+    // Super+Tab then Return went to the window used last at that opening
+    // rather than now (vm-desktop-launcher-moves-windows, 2026-11-10). The
+    // answer comes a frame after the opening's, into an empty list, in
+    // its order. While the daemon is down the rows held are all there is,
+    // said so (pressing), and the keys may have moved unheard since, so
+    // niri's own word on where they are holds, or Return would go to the
+    // window he's in. A terminal's walk of the shut launcher (`launcher
+    // show`) ends before any answer can come, so it's offered the rows
+    // held, as it was before; the next walk has what the answer said
+    // (launcher-on-niri's terminal case, 2026-11-10).
     function everything() {
         const heard = daemon.answeredThisWatch;
+        if (!heard && daemon.state !== "not answering" && provider.launcher?.open !== false)
+            return [];
         const others = things.filter(window => window.is !== "windows:this"
             && (heard ? !window.focused : window.id !== Niri.current));
         const rest = others.slice(1);
@@ -206,6 +217,12 @@ Provider {
         paced: provider.launcher
         answersWhole: true
         onHeard: (changed, gone) => provider.hear(changed, gone)
+        // The first answer offers the rows held (everything), though it
+        // may change none of them.
+        onAnsweredThisWatchChanged: {
+            if (answeredThisWatch)
+                provider.changed();
+        }
     }
 
     // A window waiting on Joel says so, which comes from Sessions rather

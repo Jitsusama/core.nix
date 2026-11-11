@@ -34,6 +34,9 @@ ShellRoot {
 
         launcher: theLauncher
         settings: ({ name: "windows" })
+        // How often it told the launcher its rows changed.
+        property int saidChanged: 0
+        onChanged: saidChanged += 1
     }
 
     Launcher.Capture {
@@ -168,20 +171,41 @@ ShellRoot {
                 "Workspace 2: tester \u00d72, foot; A new workspace: ");
             Expect.same("and hearing the workspaces makes no window's row", madeHearing, 0);
 
-            // Super+Tab, Return on Draft: the keys move as the launcher
-            // closes, unheard, so the next opening's rows still mark the
-            // logbook. Until the watch's answer, niri says where the keys
-            // are, and Return goes back to the logbook.
+            // Super+Tab, Return on Draft, then the notes used while the
+            // launcher is shut, all unheard, so the next opening's rows
+            // are in the order of the last. None is offered until the
+            // watch's answer: drawn, the launcher kept them in that order
+            // once it came, and Return went to the logbook.
             windows.windowsDaemon.answeredThisWatch = false;
             Niri.focused = 12;
             Niri.revision += 1;
-            Expect.same("before the answer, the window left is first",
+            // A terminal's walk of the shut launcher ends before any answer
+            // can come, so it's offered the rows held, as it was before.
+            Expect.same("a walk of the shut launcher is offered the rows held",
                 names(windows.everything()), "Logbook, Notes");
+            theLauncher.open = true;
+            Expect.same("before the answer, no row of the last opening is offered",
+                names(windows.everything()), "");
+            told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
+                Object.assign({}, draft, { order: 250000, focused: true }),
+                Object.assign({}, notes, { order: 220000 })] }, desktop(draft));
+            Expect.same("once answered, the rows in the order used now",
+                names(windows.everything()), "Notes, Logbook");
+            theLauncher.open = false;
             told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
                 Object.assign({}, draft, { order: 250000, focused: true }), notes] },
                 desktop(draft));
-            Expect.same("once answered, the rows say it", names(windows.everything()),
-                "Logbook, Notes");
+            // An answer that changes no row offers the rows held all the
+            // same, which the launcher hears of.
+            windows.windowsDaemon.answeredThisWatch = false;
+            const saidBefore = windows.saidChanged;
+            told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
+                Object.assign({}, draft, { order: 250000, focused: true }), notes] },
+                desktop(draft));
+            Expect.expect("an answer changing nothing still offers the rows",
+                names(windows.everything()) === "Logbook, Notes"
+                    && windows.saidChanged > saidBefore,
+                `${names(windows.everything())}; told ${windows.saidChanged - saidBefore}`);
             Niri.focused = 11;
             Niri.revision += 1;
             told({ id: "all", records: [logbook, draft, notes] }, desktop(logbook));
@@ -255,6 +279,8 @@ ShellRoot {
             Expect.same("and with none ever listed, the empty line", windows.collection.empty,
                 "Not answering.");
             Expect.same("while the rows stay as last listed", names(windows.things), listed);
+            Expect.same("and are offered, but the one niri says the keys are in",
+                names(windows.everything()), "Notes");
             windows.windowsDaemon.said(JSON.stringify({ id: "hello" }));
             Expect.same("and no more once it answers", windows.noted(), "");
             windows.windowsDaemon.gone();

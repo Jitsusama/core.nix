@@ -33,12 +33,5 @@
     "owner_pr": 2916,
     "reason": "failed, then passed, at 0d7ca1f2a8b2",
     "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
-    "at": 1794357690,
-    "commit": "e38290ad215a63c6b1734961de8adaede76fb862",
-    "owner_pr": 2900,
-    "reason": "broken since #2900, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "vm-desktop-launcher-moves-windows"
   }
 ]
