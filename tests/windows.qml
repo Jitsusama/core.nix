@@ -302,6 +302,42 @@ ShellRoot {
             windows.quietFor();
             Expect.same("nor for a restart answered within the second", windows.noted(), "");
 
+            // While the launcher is shut, only when each window was used is
+            // told, on a watch of its own, so the opening's first frame
+            // offers the rows in the order used now, before the windows'
+            // own watch answers; a window opened meanwhile is asked whole.
+            const used = windows.usedDaemon;
+            const asked = [];
+            used.wire = { write: line => asked.push(JSON.parse(line)), flush: () => {} };
+            used.said(JSON.stringify({ id: "hello" }));
+            Niri.focused = 13;
+            Niri.revision += 1;
+            theLauncher.open = true;
+            Expect.same("before when windows were used is told, an opening offers none",
+                names(windows.everything()), "");
+            used.said(JSON.stringify({ id: "all", records: [
+                { key: "window:11", order: 200000 }, { key: "window:13", order: 300000 }] }));
+            Expect.same("told it, an opening offers the rows held before any answer",
+                names(windows.everything()), "Logbook");
+            const madeShut = windows.tally.rows;
+            used.said(JSON.stringify({ changed: [{ key: "window:14", order: 500000 }] }));
+            Expect.same("a window opened unheard is asked whole",
+                asked.filter(one => one.ask === "get").map(one => one.keys.join()).join(),
+                "window:14");
+            Expect.same("and until it comes, an opening offers none",
+                names(windows.everything()), "");
+            used.said(JSON.stringify({ id: `find-${used.asked}`,
+                records: [window(14, "Ledger", 1, 500000, false, 3)] }));
+            used.said(JSON.stringify({ changed: [{ key: "window:11", order: 600000 }] }));
+            Niri.focused = 11;
+            Niri.revision += 1;
+            Expect.same("the focus moved unheard, the rows are in the order used now",
+                names(windows.everything()), "Ledger, Notes");
+            Expect.same("and only the window opened had its row made",
+                windows.tally.rows - madeShut, 1);
+            theLauncher.open = false;
+            used.wire = null;
+
             // Only the newest wanted waits while file-preview starts, so one
             // it replaces is asked again when its drawer is next shown.
             kept.asked = { "/a.png": true, "/b.png": true, "/c.png": true };
