@@ -127,7 +127,7 @@ ShellRoot {
     // Shut, a device's parts asked for again with nothing moved, as its
     // spots are a minute after each closing (Launcher.qml's
     // spotsFreshened), make none of them again; a volume moving makes them
-    // again, saying it; and shown, they're made as they're asked for.
+    // again; and shown, they're made as they're asked for.
     function partsKept() {
         shutLauncher.wanting = false;
         deskSpeakers.audio = { volume: 0.4, muted: false };
@@ -139,10 +139,9 @@ ShellRoot {
             `${shutSound.tally.rows - before} made of ${first.length}`);
         deskSpeakers.audio = { volume: 0.6, muted: false };
         const moved = shutSound.verbs(deskSpeakers);
-        const volume = moved.find(part => part.key === "sound:usb-desk-speakers:volume");
-        expect("a volume moving makes them again, saying it",
-            shutSound.tally.rows > before && moved !== first && volume?.side === "60%",
-            `${shutSound.tally.rows - before} made, saying ${volume?.side}`);
+        expect("a volume moving makes them again",
+            shutSound.tally.rows > before && moved !== first,
+            `${shutSound.tally.rows - before} made`);
         shutLauncher.wanting = true;
         const shown = shutSound.tally.rows;
         shutSound.verbs(deskSpeakers);
@@ -165,7 +164,6 @@ ShellRoot {
         card.audio.format = { rate: 48000, channels: 2, sample: "S32LE" };
         sound.facts = { "PCH,1:out": [{ name: "playing", value: "48 kHz \u00b7 32 bit" }] };
         const plate = sound.drawerOf(card);
-        const volume = plate.facts.find(fact => fact.label === "Volume");
         expect("a built-in output says so over its name, as it's written",
             plate.eyebrow === "built in \u00b7 output" && plate.eyebrowNames !== true,
             plate.eyebrow);
@@ -178,15 +176,14 @@ ShellRoot {
         // The kernel's fact is named by the launcher's vocabulary, which
         // there's none of here, so by its own name.
         // The graph moves the format the card already says, so it isn't
-        // said again.
+        // said again. Its Volume is served, so tests/sound-served.qml
+        // says it.
         expect("its state, its parts, the kernel's, then what it's known by",
-            labels === "State, Volume, Resolution, Playing, Priority, ALSA Device, Graph ID", said);
+            labels === "State, Resolution, Playing, Priority, ALSA Device, Graph ID", said);
         expect("what identifies it is marked so, its Graph ID last", plate.facts
             .filter(fact => fact.identifies).map(fact => fact.label).join(", ")
             === "ALSA Device, Graph ID", said);
         expect("its state is pipewire's word", plate.facts[0].value === "running", said);
-        expect("its volume says its decibels, its share being its row's",
-            volume?.value === Sounds.decibels(0.5), volume?.value);
         const levels = [Sounds.channelLevels(["Front Left", "Front Right"], ["100%", "100%"], "even"),
             Sounds.channelLevels(["Front Left", "Front Right"], ["100%", "80%"], "even"),
             Sounds.channelLevels(["Front Left", "Front Right", "Rear Left"], ["9%", "8%", "7%"],
@@ -194,8 +191,6 @@ ShellRoot {
         expect("channels at one level are balanced, a pair's otherwise named without front",
             levels.join("; ") === "even; left 100%, right 80%; "
             + "front left 9%, front right 8%, rear left 7%; ", levels.join("; "));
-        expect("and draws its share as a stroke", volume?.figure?.shape === "stroke"
-            && volume.figure.values[0] === 0.5, JSON.stringify(volume?.figure));
         const formats = node => sound.drawerOf(node).facts
             .filter(fact => fact.label.endsWith("Format") || fact.label === "Playing")
             .map(fact => `${fact.label}=${fact.value}`).join("; ");
