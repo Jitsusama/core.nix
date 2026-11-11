@@ -73,6 +73,9 @@ pub struct Follow {
     /// The network of the stay, and what each network met learned.
     network: String,
     known: Known,
+    /// When the shaper started, in ms since 1970: what was recorded before
+    /// it is no stay of its own.
+    from_ms: u64,
 }
 
 impl Follow {
@@ -88,6 +91,7 @@ impl Follow {
             last: None,
             network: UNKNOWN.into(),
             known,
+            from_ms: 0,
         }
     }
 
@@ -131,6 +135,13 @@ impl Follow {
                 self.rates = Rates::default();
                 return;
             }
+        }
+        // The stay's network is named from before the start, but nothing
+        // recorded then is stepped on: the shaper held nothing, so its
+        // guard would give up on rates nothing held, and the controller
+        // would learn from what no CAKE counted.
+        if sample.at() < self.from_ms {
+            return;
         }
         self.reading.take(sample);
         let ours = self
@@ -195,7 +206,7 @@ pub struct Live {
 impl Live {
     /// Starts at yesterday's file, so a stay begun before midnight is known
     /// from its first line, and from what each network learned, kept in
-    /// `kept`.
+    /// `kept`. Only what's recorded from `now` on is stepped on.
     pub fn new(folder: &Path, now: SystemTime, kept: &Path) -> Live {
         let yesterday = now.checked_sub(Duration::from_hours(24)).unwrap_or(now);
         let written: Known = fs::read_to_string(kept)
@@ -206,7 +217,10 @@ impl Live {
             folder: folder.to_path_buf(),
             file: (day_file(folder, yesterday), 0),
             partial: Vec::new(),
-            follow: Follow::new(written.clone()),
+            follow: Follow {
+                from_ms: ms(now),
+                ..Follow::new(written.clone())
+            },
             kept: kept.to_path_buf(),
             written,
             vpn: Probe::default(),
@@ -474,6 +488,42 @@ mod tests {
         );
     }
 
+    // On 11 November a shaper started at 13:17 stepped through two hours
+    // recorded while it was off: its guard gave up three times on a rate
+    // nothing held, so it held nothing for ten minutes, and a transfer
+    // across the home network taught the upload a base of 282 Mbit/s.
+    #[test]
+    fn a_start_steps_on_no_second_recorded_before_it() {
+        let home = Learned {
+            base: Some(11_000.0),
+            plateau: None,
+        };
+        let mut follow = Follow::new(Known::from([("home".to_string(), (home, home))]));
+        follow.from_ms = NOV3 + 20_000;
+        let mut lines = vec![pool(NOV3, Some("home"))];
+        for i in 0..100_u64 {
+            let at = NOV3 + 100 * (i + 1);
+            lines.push(
+                json!({"at": at, "reflector": "9.9.9.9", "operator": "Quad9", "out": 10.0,
+                       "back": 10.0, "rtt": 20.0, "rx": 1_000 * i, "tx": 3_750_000 * (i + 1)})
+                .to_string(),
+            );
+        }
+        for line in &lines {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        assert!(
+            follow.last.is_none(),
+            "stepped on a second before the start"
+        );
+        assert_eq!(
+            follow.controller.up.learned().base,
+            Some(11_000.0),
+            "learned from a stay the shaper wasn't in"
+        );
+        assert_eq!(follow.network, "home", "the stay's network wasn't named");
+    }
+
     #[test]
     fn a_silent_recorder_lets_its_link_go() {
         let follow = followed(&queued());
@@ -522,7 +572,9 @@ mod tests {
         let (half, other_half) = last.split_at(last.len() / 2);
         let path = crate::record::day_file(&folder, today);
         fs::write(&path, format!("{}\n{half}", rest.join("\n"))).expect("today's file");
-        let mut live = Live::new(&folder, today, &folder.join("learned.json"));
+        // The shaper started as the stay did.
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started, &folder.join("learned.json"));
         let first = live.poll(today).map(|(l, r)| (l.to_string(), r));
         assert!(
             first
@@ -557,7 +609,8 @@ mod tests {
             format!("{}\n", lines.join("\n")),
         )
         .expect("today's file");
-        let mut live = Live::new(&folder, today, &kept);
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started, &kept);
         live.see(
             "wlan0",
             Ours {

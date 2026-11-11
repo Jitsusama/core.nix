@@ -218,6 +218,11 @@ struct Shaped {
     drops: Option<u64>,
     dropped: u64,
     told_at: Option<Instant>,
+    /// The bytes the upload's CAKE had sent when last read, and when the
+    /// controller was last told: what crossed the line, apart from the
+    /// home network's traffic, which the link sends as well.
+    sent_bytes: u64,
+    sent_told: Option<u64>,
 }
 
 impl Shaped {
@@ -249,7 +254,8 @@ impl Shaped {
             json.and_then(|json| qdisc::shaped_bytes(&json))
                 .unwrap_or(0)
         };
-        (sent(up), sent(read(&self.ifb)))
+        self.sent_bytes = sent(up);
+        (self.sent_bytes, sent(read(&self.ifb)))
     }
 
     /// Whose the upload's queue has been since last asked: whether CAKE
@@ -264,7 +270,11 @@ impl Shaped {
         let dropped = std::mem::take(&mut self.dropped);
         let seconds = self.told_at.replace(now).map(|at| (now - at).as_secs_f64());
         let dropped = seconds.map_or(0, |s| segments_kbit(dropped, s));
+        let sent = seconds
+            .zip(self.sent_told.replace(self.sent_bytes))
+            .map(|(s, then)| bytes_kbit(self.sent_bytes.saturating_sub(then), s));
         oneway::Ours::from_reads(link, vpn, wait, waiting, (resent, dropped))
+            .map(|ours| oneway::Ours { sent, ..ours })
     }
 
     /// What the link sent and received since it was last counted, in
@@ -435,6 +445,8 @@ fn start(
         drops: None,
         dropped: 0,
         told_at: None,
+        sent_bytes: 0,
+        sent_told: None,
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
@@ -1165,7 +1177,12 @@ fn resent_kbit(last: &mut Option<(u64, Instant)>, now_count: Option<u64>, now: I
 
 /// What `segments` full-sized packets over `seconds` come to, in kbit/s.
 fn segments_kbit(segments: u64, seconds: f64) -> u64 {
-    let bits = segments * SEGMENT_BYTES * 8;
+    bytes_kbit(segments * SEGMENT_BYTES, seconds)
+}
+
+/// What `bytes` over `seconds` come to, in kbit/s.
+fn bytes_kbit(bytes: u64, seconds: f64) -> u64 {
+    let bits = bytes * 8;
     // A few hundred thousand kbit/s at most.
     #[expect(
         clippy::cast_possible_truncation,
