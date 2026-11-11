@@ -416,6 +416,23 @@ step's showing into the rows new to the list and their laying out.
 new rows was most of a step's showing: 10 to 49 ms into Windows' 39 rows
 and 37 to 93 ms into Emoji's 1914 (2026-11-11).
 
+A key is timed by the `keys-lab` beside it
+(`tests/launcher-keys-lab-on-niri.py`). It opens home round after round and
+types each of `LAB_WORDS` (Joel's `meet` and `om` unless given) a letter at
+a time, each once the one before is shown, and prints each key's line as the
+shell says it, then each part's median by key. The line splits a search's
+time before searching by what it set, and its rows by matching, ordering,
+making and spots, with how many choices were looked at, so the part a key
+spends on more than its letters is named. Its sides run as the openings'
+do. A run given `LAB_PROFILE = "1"; QS_GIVEN = "--debug 3768";` holds Qt's
+profiler on the shell and prints the bindings, handlers and functions that
+took the most of their own time in the launcher's searches and in each of
+their parts, before, lists, rows and answers, as the key's line splits them.
+The profiler is asked for its trace while the shell still runs, since a
+shell stopped as it records sends none. The home it types into
+holds this niri's few windows and programs, where Joel's holds about a
+thousand rows, so its rows part runs smaller than his.
+
 ### Virtual Machines
 
 Each boots a machine under QEMU, which takes minutes, so each covers what only

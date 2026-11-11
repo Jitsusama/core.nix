@@ -62,8 +62,10 @@ Scope {
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
                 + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each)},`
-                    + ` rows ${parts.rows}, answers ${parts.answers}${composed(parts.composing)}`
-                    + `${parts.before ? `, before ${parts.before}` : ""})` : "")
+                    + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
+                    + ` answers ${parts.answers}${composed(parts.composing)}`
+                    + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
+                        : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + drawingApart(frame) : ""));
     }
@@ -98,6 +100,24 @@ Scope {
                 ? ` (${parts.kept.fresh} rows new, ${parts.kept.laying}`
                 + ` laying them out${laid(parts.kept)})` : "")
             : "";
+    }
+
+    // The rows' time, where they took any: matching every choice looked at,
+    // ordering those found, making their rows and the spots and meanings
+    // beside them, so a slow key says which grows with what home holds.
+    function matched(rows, within) {
+        return rows > 0 && within ? ` (matching ${within.matching} of ${within.looked},`
+            + ` ordering ${within.ordering} of ${within.found}, making ${within.making},`
+            + ` spots ${within.spots})` : "";
+    }
+
+    // The time before the search, where it took any, by what was set: the
+    // search counted, what's typed, its words, then readying the rest a
+    // search needs, as a step's words and the ask, each with all that wakes
+    // on it.
+    function setting(parts) {
+        return parts ? ` (counting ${parts.counting}, typed ${parts.typed},`
+            + ` words ${parts.words}, readying ${parts.readying})` : "";
     }
 
     // The rows a laying drew, where it drew any.

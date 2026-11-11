@@ -139,9 +139,12 @@ class Shell:
 
     def launch(self, mode: str) -> None:
         """Start the shell alone, its log opened in this mode, and wait until it answers, closed."""
+        # What a lab gives the shell besides, as QS_GIVEN: `--debug 3768` opens it to Qt's
+        # profiler (tests/launcher-keys-lab-on-niri.py).
+        given = os.environ.get("QS_GIVEN", "").split()
         with self.log.open(mode) as log:
             self.process = subprocess.Popen(  # noqa: S603
-                ["qs", "-p", str(self.folder)],  # noqa: S607
+                ["qs", "-p", str(self.folder), *given],  # noqa: S607
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
