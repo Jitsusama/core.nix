@@ -3,12 +3,14 @@
 //! "‹microphone›, Noise Cancelled" (the glossary's noise cancelled).
 //!
 //! ```text
-//! noise-cancelled serve MODELS
-//! noise-cancelled clean MODELS < heard.f32 > cleaned.f32
+//! noise-cancelled serve MODELS [CLEANER]
+//! noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32
 //! ```
 //!
-//! The denoiser is `DeepFilterNet` 3, run by `OpenVINO` on the processor a
-//! 10 ms frame at a time (denoise.rs), from the graph in MODELS that
+//! CLEANER is deepfilternet, deepfilternet-gentle or rnnoise, and
+//! deepfilternet unless named (denoise.rs says what each does). The first
+//! two are `DeepFilterNet` 3, run by `OpenVINO` on the processor a 10 ms
+//! frame at a time, from the graph in MODELS that
 //! modules/noise-cancelled/model.nix exports.
 //!
 //! `serve` offers a source for each microphone PipeWire has (pipe.rs),
@@ -26,17 +28,23 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
-use denoise::{FRAME, Model};
+use denoise::{Cleaner, FRAME, Model};
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let done = match arguments.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        ["serve", models] => pipe::serve(Path::new(models)),
-        ["clean", models] => clean(Path::new(models)),
+        ["serve", models] => pipe::serve(Path::new(models), Cleaner::DeepFilterNet),
+        ["serve", models, cleaner] => {
+            Cleaner::named(cleaner).and_then(|cleaner| pipe::serve(Path::new(models), cleaner))
+        }
+        ["clean", models] => clean(Path::new(models), Cleaner::DeepFilterNet),
+        ["clean", models, cleaner] => {
+            Cleaner::named(cleaner).and_then(|cleaner| clean(Path::new(models), cleaner))
+        }
         _ => {
             eprintln!(
-                "usage: noise-cancelled serve MODELS\n       \
-                 noise-cancelled clean MODELS < heard.f32 > cleaned.f32"
+                "usage: noise-cancelled serve MODELS [CLEANER]\n       \
+                 noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32"
             );
             return ExitCode::from(2);
         }
@@ -52,7 +60,7 @@ fn main() -> ExitCode {
 
 /// Cleans standard input to standard output, a frame at a time, the last
 /// frame filled out with silence.
-fn clean(models: &Path) -> Result<(), String> {
+fn clean(models: &Path, with: Cleaner) -> Result<(), String> {
     let mut heard = Vec::new();
     std::io::stdin()
         .read_to_end(&mut heard)
@@ -63,7 +71,7 @@ fn clean(models: &Path) -> Result<(), String> {
         .iter()
         .map(|sample| f32::from_le_bytes(*sample))
         .collect();
-    let mut denoiser = Model::load(models)?.denoiser()?;
+    let mut denoiser = Model::load(models, with)?.denoiser()?;
     let mut cleaned = Vec::with_capacity(samples.len() * 4);
     for chunk in samples.chunks(FRAME) {
         let mut frame = [0.0; FRAME];

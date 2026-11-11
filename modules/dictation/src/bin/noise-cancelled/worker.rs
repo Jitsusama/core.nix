@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use rtrb::{Consumer, Producer};
 
-use crate::denoise::{Denoiser, FRAME, Model};
+use crate::denoise::{Cleaner, Denoiser, FRAME, Model};
 
 /// How long the model stays loaded once nothing records from a source.
 const UNUSED: Duration = Duration::from_mins(2);
@@ -62,13 +62,14 @@ pub struct Worker {
 }
 
 impl Worker {
-    /// Starts the thread, which reads the model from `models` when it's
+    /// Starts the thread, which cleans with `cleaner` and reads what it
+    /// needs from `models` when it's
     /// first needed.
-    pub fn start(models: PathBuf) -> Result<Self, String> {
+    pub fn start(models: PathBuf, cleaner: Cleaner) -> Result<Self, String> {
         let (asks, heard) = mpsc::channel();
         let handle = thread::Builder::new()
             .name("denoiser".into())
-            .spawn(move || run(&models, &heard))
+            .spawn(move || run(&models, cleaner, &heard))
             .map_err(|why| format!("the denoiser's thread wouldn't start: {why}"))?;
         Ok(Self {
             asks,
@@ -107,7 +108,7 @@ enum Loaded {
     Refused(Instant),
 }
 
-fn run(models: &std::path::Path, asks: &Receiver<Ask>) {
+fn run(models: &std::path::Path, cleaner: Cleaner, asks: &Receiver<Ask>) {
     let mut microphones: HashMap<u32, Microphone> = HashMap::new();
     let mut model = Loaded::No;
     let mut last_wanted = Instant::now();
@@ -135,7 +136,7 @@ fn run(models: &std::path::Path, asks: &Receiver<Ask>) {
             .any(|microphone| microphone.ends.shared.wanted.load(Ordering::Acquire));
         if wanted {
             last_wanted = Instant::now();
-            model = loaded(model, models);
+            model = loaded(model, models, cleaner);
         } else if matches!(model, Loaded::Yes(_)) && last_wanted.elapsed() > UNUSED {
             model = Loaded::No;
             eprintln!("noise-cancelled: the model let go");
@@ -152,13 +153,13 @@ fn run(models: &std::path::Path, asks: &Receiver<Ask>) {
 }
 
 /// The model, loading it unless it's loaded or was refused a moment ago.
-fn loaded(model: Loaded, models: &std::path::Path) -> Loaded {
+fn loaded(model: Loaded, models: &std::path::Path, cleaner: Cleaner) -> Loaded {
     match model {
         Loaded::Yes(_) => model,
         Loaded::Refused(when) if when.elapsed() < RETRY => model,
         Loaded::No | Loaded::Refused(_) => {
             let started = Instant::now();
-            match Model::load(models) {
+            match Model::load(models, cleaner) {
                 Ok(loaded) => {
                     eprintln!(
                         "noise-cancelled: the model loaded in {} ms",
