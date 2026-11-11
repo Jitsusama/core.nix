@@ -16,6 +16,7 @@ pub mod account;
 pub mod api;
 pub mod ask;
 pub mod calendar;
+pub mod calendar_inside;
 pub mod calendar_rows;
 pub mod calendar_words;
 pub mod compose;
