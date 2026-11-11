@@ -7951,6 +7951,22 @@ Scope {
     // The acts' and the showing's ms of the drawer shown last, said with its
     // making, then let go.
     property var drawerSplit: null
+    // Return's way into the selected row's drawer, for a row whose Return
+    // has nothing else to do, since every row's does something (Y2YBTS,
+    // 2026-11-10): its drawer out at once rather than after the
+    // selection's rest, so Return just after a step still finds it, then
+    // the keys in it, as Space and Right's drawer act give them. A ready
+    // row's drawer act names its row, which is the one selected.
+    function intoDrawer() {
+        if (!open || selected === null)
+            return;
+        drawerFollowDue = false;
+        drawerRow = selected;
+        drawerResting.stop();
+        drawerSettled();
+        if (drawerOut)
+            prompt.resume("page");
+    }
     // How long the selection rests before the drawer comes or goes.
     Timer {
         id: drawerResting
