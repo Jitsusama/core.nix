@@ -6,18 +6,17 @@
 // usb-camera-holders one for each USB camera while it's plugged in, named
 // for the camera and listing programs only while they stream. So the
 // cameras are the ones the machine names and whatever else the folder
-// holds, and a machine with neither has no piece. The files are replaced
-// whole as programs come and go, written beside and renamed over, so the
-// folder's one watch hears every change, and one reader reads every file
-// as it does; the folder stays from boot to shutdown, so the watch is
-// never lost and nothing is asked.
+// holds, and a machine with neither has no piece. The machine daemon
+// reads the folder as each file is renamed into place and tells each
+// camera's holders as a record (`camera:<name>`, modules/machine), over
+// the socket the shell holds, so nothing here is run or read to know
+// who's on camera, and nothing at all while nobody comes or goes.
 //
 // A holder is named by the program itself, so this says who has a camera,
 // not who may: it's for seeing at a glance, not for trusting.
 pragma ComponentBehavior: Bound
 import qs
-import Quickshell.Io
-import Qt.labs.folderlistmodel
+import Quickshell
 import QtQuick
 
 Piece {
@@ -36,31 +35,12 @@ Piece {
     }
 
     readonly property var configured: settings.holders ?? []
-    // The cameras with a file in the folder, listed again whenever the
-    // folder's model says it changed. A file being replaced is written
-    // beside it first, under its name and a number, and is no camera of its
-    // own; that file renamed onto a new camera's leaves the count as it
-    // was, and the model says so only as changed rows, so the count alone
-    // won't do. The list is kept when the names are the same, so nothing
-    // drawn from it is made again.
+    // The cameras with a file in the folder, as the daemon says them, kept
+    // when the names are the same so nothing drawn from them is made again.
     property var listed: []
-
-    function list() {
-        const names = [];
-        for (let i = 0; i < folder.count; i++) {
-            const name = folder.get(i, "fileName");
-            if (!/\.\d+$/.test(name))
-                names.push(name);
-        }
-        if (names.join("\n") !== listed.join("\n"))
-            listed = names;
-    }
     readonly property var names: [...new Set(configured.concat(listed))]
-
-    function changed() {
-        list();
-        read();
-    }
+    // Who holds each camera, by its name, kept as it was when nobody came
+    // or went, for the same reason.
     property var held: ({})
     readonly property var reading: names.map(name => ({
         name: called(name),
@@ -94,62 +74,29 @@ Piece {
     context: open.length > 1
         ? open.map(camera => `${camera.name}: ${camera.programs.join(", ")}`).join("; ") : ""
 
-    FolderListModel {
-        id: folder
-        folder: "file:///run/camera-holders"
-        showDirs: false
-        showDotAndDotDot: false
-        onRowsInserted: piece.changed()
-        onRowsRemoved: piece.changed()
-        onDataChanged: piece.changed()
-        onModelReset: piece.changed()
+    // Watched always, as the piece is: the daemon reads the folder only as
+    // a file is renamed into it, so being watched costs nothing while
+    // nobody comes or goes. A daemon not answering says nobody, rather
+    // than someone who may have gone.
+    Daemon {
+        id: holders
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "camera"
+        keptThroughGap: false
+        answersWhole: true
+        onHeard: piece.heard()
     }
 
-    // Every file in the folder read in one run, each after a record
-    // separator and its name on a line of its own, since a program's name
-    // may hold anything but that.
-    Process {
-        id: reader
-        command: ["sh", "-c", "for file in \"$1\"/*; do [ -f \"$file\" ] || continue;"
-            + " printf '\\036%s\\n' \"${file##*/}\"; cat \"$file\"; done", "sh",
-            "/run/camera-holders"]
-        onExited: {
-            if (piece.again) {
-                piece.again = false;
-                reader.running = true;
-            }
-        }
-        stdout: StdioCollector {
-            onStreamFinished: piece.heard(text)
-        }
-    }
-
-    // Asked to read while reading, so the last change always counts.
-    property bool again: false
-
-    function read() {
-        if (reader.running)
-            again = true;
-        else
-            reader.running = true;
-    }
-
-    Component.onCompleted: read()
-
-    // Who holds each camera, kept as it was when nobody came or went, so
-    // nothing drawn from it is made again.
-    function heard(text) {
+    function heard() {
         const next = {};
-        for (const part of text.split("\x1e")) {
-            const end = part.indexOf("\n");
-            if (end < 0)
-                continue;
-            const name = part.slice(0, end);
-            if (/\.\d+$/.test(name))
-                continue;
-            next[name] = part.slice(end + 1).split("\n").map(line => line.trim())
-                .filter(line => line !== "");
+        for (const key in holders.held) {
+            const camera = holders.held[key];
+            next[camera.name] = camera.programs ?? [];
         }
+        const names = Object.keys(next);
+        if (names.join("\n") !== listed.join("\n"))
+            listed = names;
         if (JSON.stringify(next) !== JSON.stringify(held))
             held = next;
     }

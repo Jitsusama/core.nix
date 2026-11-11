@@ -6,8 +6,9 @@
 //! watched; the programs are ranked by their share and their memory; a
 //! disk's file systems are found through what's mapped over it; the
 //! brightness and warmth the backlight program steers the screen to are
-//! told as it writes them; a charge limit set is told before it's
-//! answered; and an ask, act or kind it doesn't know is refused.
+//! told as it writes them; who has each camera is told as its file is;
+//! a charge limit set is told before it's answered; and an ask, act or
+//! kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -738,6 +739,31 @@ fn the_brightness_and_warmth_steered_are_told_as_theyre_written() {
     );
     let curve = &client.changed("brightness:built-in")["curve"];
     assert_eq!(curve[1], json!({"lux": 28.0, "level_ratio": 0.95}));
+}
+
+#[test]
+fn who_has_each_camera_is_told_as_its_file_is_written() {
+    let running = Running::new("camera");
+    let folder = running.root().join("run/camera-holders");
+    // Each written beside it under the writer's pid, then renamed, as the
+    // holders programs write them.
+    let write = |name: &str, text: &str| {
+        std::fs::create_dir_all(&folder).unwrap();
+        let writing = folder.join(format!("{name}.4120"));
+        std::fs::write(&writing, text).unwrap();
+        std::fs::rename(writing, folder.join(name)).unwrap();
+    };
+    let mut client = running.client();
+    // No folder yet, as before the first camera is plugged in.
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "camera"}));
+    assert_eq!(said["records"], json!([]));
+    write("obs", "");
+    assert_eq!(client.changed("camera:obs")["programs"], json!([]));
+    write("obs", "zoom\n");
+    assert_eq!(client.changed("camera:obs")["programs"], json!(["zoom"]));
+    // Unplugged, its file goes, and so does the camera.
+    std::fs::remove_file(folder.join("obs")).unwrap();
+    assert_eq!(client.gone(), [json!("camera:obs")]);
 }
 
 #[test]

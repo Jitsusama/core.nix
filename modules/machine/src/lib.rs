@@ -3,8 +3,9 @@
 //! of the kernel's files says, made into records ([`processor`],
 //! [`memory`], [`disk`], [`boot`], [`using`], [`tree`], [`heat`],
 //! [`supply`], [`sleep`], [`firmware`], [`light`], and what the backlight
-//! program steers the screen to, [`steered`], heard as it's written through
-//! [`written`]). Every file is read through
+//! program steers the screen to, [`steered`], and who has each camera open,
+//! [`camera`], both heard as they're written through [`written`]). Every
+//! file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before.
 //!
@@ -19,6 +20,7 @@
 #![recursion_limit = "256"]
 
 pub mod boot;
+pub mod camera;
 pub mod disk;
 pub mod firmware;
 pub mod heat;
