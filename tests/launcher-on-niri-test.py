@@ -2172,7 +2172,9 @@ def test_a_key_that_glides_lands_once_its_glide_has_ended(shell: Shell) -> None:
 
     A highlight still moving isn't yet on its row, so a key that sets the glide going counts
     as landed at the first frame niri presented once the glide ran its length (VKCF3Z,
-    2026-11-10): later than its first frame, and no sooner than its press and the glide.
+    2026-11-10): never before its first frame, and no sooner than its press and the glide. On
+    a builder slow enough that the first frame comes after the glide's length, the two are the
+    one frame, as a lent builder showed at 111 ms (RCTRF8, 2026-11-11).
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -2210,7 +2212,7 @@ def test_a_key_that_glides_lands_once_its_glide_has_ended(shell: Shell) -> None:
     assert landed, f"the arrow never landed: {first}"
     assert len(landed) == 1, f"the arrow landed more than once: {landed}"
     key, there = first[typed], landed[0]
-    assert there["at"] > key["at"], f"the arrow landed at its first frame: {key}, {there}"
+    assert there["at"] >= key["at"], f"the arrow landed before its first frame: {key}, {there}"
     assert there["at"] - there["from"] >= lasting[-1], (
         f"the arrow landed {there['at'] - there['from']:.0f} ms from its press,"
         f" before its {lasting[-1]} ms glide ended"
