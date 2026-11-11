@@ -42,13 +42,6 @@
     "test": "vm-desktop-opens-and-sets"
   },
   {
-    "at": 1794385456,
-    "commit": "44f5cb3df2f1cba34f44f4d894d85a3eabfdc469",
-    "owner_pr": 3079,
-    "reason": "has been broken since #3079, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "vm-apps-come-first"
-  },
-  {
     "at": 1794386792,
     "commit": "44f5cb3df2f1cba34f44f4d894d85a3eabfdc469",
     "owner_pr": 3102,

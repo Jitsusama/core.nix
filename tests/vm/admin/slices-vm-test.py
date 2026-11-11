@@ -106,7 +106,11 @@ class Account:
         )
 
     def sleeping(self, seconds: int) -> str:
-        """Give the process id of the sleep that waits the given seconds."""
+        """Give the process id of the sleep that waits the given seconds.
+
+        Each subtest's sleeps wait a number of seconds no other subtest's do, since one
+        left running would be found here too.
+        """
         return f"$(pgrep -xf '{self.sleep} {seconds}')"
 
     def cgroup_of(self, seconds: int) -> str:
@@ -272,9 +276,9 @@ def test_an_agents_run_naming_no_slice_stays_in_jobs(jobs: Account) -> None:
         "systemd-run -M alice@ --user --slice=jobs.slice --unit=asker"
         f" --expand-environment=no -p KillMode=process {jobs.bash} -c"
         f" 'echo $$ > {JOBS}/jobs.service/cgroup.procs;"
-        f" systemd-run --user --unit=bare {jobs.sleep} 1005; exec {jobs.sleep} infinity'"
+        f" systemd-run --user --unit=bare {jobs.sleep} 1015; exec {jobs.sleep} infinity'"
     )
-    jobs.wait_until_in(1005, "jobs.slice/.*bare.service$")
+    jobs.wait_until_in(1015, "jobs.slice/.*bare.service$")
 
 
 def test_a_service_nothing_named_a_slice_for_is_said_of_and_left(jobs: Account) -> None:
