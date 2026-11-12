@@ -371,7 +371,7 @@ fn asking_nobody(command: &mut Command) -> &mut Command {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::ffi::OsStr;
 
@@ -445,7 +445,7 @@ mod tests {
 
     const EVERY: Duration = Duration::from_secs(600);
 
-    fn at(commit: &str) -> Followed {
+    pub(crate) fn at(commit: &str) -> Followed {
         Followed::from([("core".to_owned(), commit.to_owned())])
     }
 
@@ -456,7 +456,7 @@ mod tests {
         }
     }
 
-    fn refused(why: &str) -> Line {
+    pub(crate) fn refused(why: &str) -> Line {
         Line::Refused {
             commit: None,
             why: why.to_owned(),

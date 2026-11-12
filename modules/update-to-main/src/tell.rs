@@ -44,28 +44,18 @@ impl Telling {
 
 #[cfg(test)]
 mod tests {
+    use crate::follow::tests::{at, refused};
     use crate::follow::{DROPPED_AGAIN, DROPPED_TRIES, FAILED_AGAIN, Follower};
     use crate::follows::Followed;
     use crate::line::Line;
     use crate::update::NEEDS_HOLD;
     use std::time::Instant;
 
-    fn at(commit: &str) -> Followed {
-        Followed::from([("core".to_owned(), commit.to_owned())])
-    }
-
     fn failed(why: &str, line: &str) -> Line {
         Line::Failed {
             commit: None,
             why: why.to_owned(),
             lines: vec![line.to_owned()],
-        }
-    }
-
-    fn refused(why: &str) -> Line {
-        Line::Refused {
-            commit: None,
-            why: why.to_owned(),
         }
     }
 
