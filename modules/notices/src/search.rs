@@ -6,7 +6,12 @@
 //! PastNotices.qml found them, and ranked by how well, then newest first,
 //! matched by the daemons' one matcher, Fuzzy.js's (ready-rows' fuzzy).
 //! Matching in Qt's engine was most of what a key spent on notices, 64 of
-//! the 89 ms "ca" took on Joel's own (2026-11-11).
+//! the 89 ms "ca" took on Joel's own (2026-11-11). A found notice whose
+//! row the notices place doesn't serve comes with its row, as ready-rows.md
+//! says a search's answer does, so the place need serve only a page: all
+//! 1,000 of Joel's rows were held for searches alone, about 11 MB of the
+//! shell's heap kept live in the lab (2026-11-12). Only those come, since
+//! one letter finds nearly every notice, about 1.5 MB to send a key.
 
 use std::collections::BTreeMap;
 
@@ -79,8 +84,14 @@ impl Searched {
     /// what's `typed` finds, best first and newest first among equals,
     /// with their grade, as the launcher's searches answer one. Every
     /// notice found is graded 0, as the launcher's matching grades every
-    /// match now.
-    pub fn answer(&mut self, notices: &[Notice], typed: &str) -> Value {
+    /// match now. Beside them, by key, the row of each found that's among
+    /// `unserved`, the notices place's rows its watch doesn't serve.
+    pub fn answer(
+        &mut self,
+        notices: &[Notice],
+        typed: &str,
+        unserved: &BTreeMap<String, Value>,
+    ) -> Value {
         let words = Typed::of(typed);
         let mut ready = std::mem::take(&mut self.ready);
         let mut found: Vec<(i32, i64, u32)> = Vec::new();
@@ -99,7 +110,14 @@ impl Searched {
             .iter()
             .map(|(_, _, id)| format!("row:{}:{id}", row::PLACE))
             .collect();
-        json!({ "keys": keys, "grade": if keys.is_empty() { 3 } else { 0 }, "words": typed })
+        let found: serde_json::Map<String, Value> = keys
+            .iter()
+            .filter_map(|key| Some((key.clone(), unserved.get(key)?.clone())))
+            .collect();
+        json!({
+            "keys": keys, "rows": found,
+            "grade": if keys.is_empty() { 3 } else { 0 }, "words": typed,
+        })
     }
 }
 
@@ -113,6 +131,10 @@ mod tests {
             "summary": summary, "body": body }),
         )
         .expect("a notice")
+    }
+
+    fn none() -> BTreeMap<String, Value> {
+        BTreeMap::new()
     }
 
     fn keys(answer: &Value) -> Vec<&str> {
@@ -130,7 +152,7 @@ mod tests {
             notice(1, "Cab", "starts in five minutes"),
         ];
         let mut searched = Searched::default();
-        let answer = searched.answer(&notices, "cab");
+        let answer = searched.answer(&notices, "cab", &none());
         assert_eq!(
             keys(&answer),
             ["row:notices:1", "row:notices:3", "row:notices:2"],
@@ -138,25 +160,59 @@ mod tests {
         );
         assert_eq!(answer["grade"], 0, "a match is graded 0: {answer}");
         assert_eq!(
-            keys(&searched.answer(&notices, "bart cab")),
+            keys(&searched.answer(&notices, "bart cab", &none())),
             ["row:notices:2"],
             "every word has to land, in its name or in what it said"
         );
-        let none = searched.answer(&notices, "zebra");
-        assert!(keys(&none).is_empty(), "nothing found: {none}");
-        assert_eq!(none["grade"], 3, "and graded as nothing found: {none}");
+        let nothing = searched.answer(&notices, "zebra", &none());
+        assert!(keys(&nothing).is_empty(), "nothing found: {nothing}");
+        assert_eq!(
+            nothing["grade"], 3,
+            "and graded as nothing found: {nothing}"
+        );
+    }
+
+    #[test]
+    fn a_notice_found_comes_with_its_row_only_where_the_watch_never_served_it() {
+        let notices = [
+            notice(3, "Cabinet delivered", ""),
+            notice(2, "Bart replied", "about the cab"),
+            notice(1, "Lunch", "at noon"),
+        ];
+        let unserved: BTreeMap<String, Value> = [2, 1]
+            .into_iter()
+            .map(|id| {
+                (
+                    format!("row:notices:{id}"),
+                    json!({ "name": format!("row {id}") }),
+                )
+            })
+            .collect();
+        let mut searched = Searched::default();
+        let answer = searched.answer(&notices, "cab", &unserved);
+        assert_eq!(
+            answer["rows"],
+            json!({ "row:notices:2": { "name": "row 2" } }),
+            "the unserved one found comes, and not the served or the unfound: {answer}"
+        );
+        let all_served = searched.answer(&notices, "cab", &none());
+        assert_eq!(
+            all_served["rows"],
+            json!({}),
+            "with every row served, none comes: {all_served}"
+        );
     }
 
     #[test]
     fn a_notice_said_again_is_matched_as_it_says_now_and_one_gone_is_let_go() {
         let mut searched = Searched::default();
-        searched.answer(&[notice(1, "Build", "it failed")], "fail");
-        let again = searched.answer(&[notice(1, "Build", "it passed")], "fail");
+        searched.answer(&[notice(1, "Build", "it failed")], "fail", &none());
+        let again = searched.answer(&[notice(1, "Build", "it passed")], "fail", &none());
         assert!(
             keys(&again).is_empty(),
             "what it said before isn't found: {again}"
         );
-        searched.answer(&[], "pass");
+        searched.answer(&[], "pass", &none());
         assert!(searched.ready.is_empty(), "a notice gone is let go");
     }
 

@@ -21,7 +21,7 @@
 //! - `quiet { sharing }`: whether the shell holds notices while Joel
 //!   shares his screen, which only the shell sees.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use serde_json::{Map, Value, json};
@@ -77,6 +77,9 @@ pub struct State {
     pub owed: Vec<Signal>,
     /// Every notice's texts made ready for the launcher's searches.
     searched: Searched,
+    /// The notices place's rows its watch doesn't serve, by key, as last
+    /// made, which a search answers with where it finds their notices.
+    unserved: BTreeMap<String, Value>,
 }
 
 impl State {
@@ -89,7 +92,14 @@ impl State {
             pictures,
             owed: Vec::new(),
             searched: Searched::default(),
+            unserved: BTreeMap::new(),
         }
+    }
+
+    /// Takes the notices place's rows its watch doesn't serve now, each
+    /// row by its key, for the searches answered from then on.
+    pub fn unserved(&mut self, rows: BTreeMap<String, Value>) {
+        self.unserved = rows;
     }
 
     /// Takes a notice sent over the bus, answering the id it's known by:
@@ -233,8 +243,11 @@ impl State {
                 done(false)
             }
             "search" => (
-                self.searched
-                    .answer(self.holding.notices(), said["words"].as_str().unwrap_or("")),
+                self.searched.answer(
+                    self.holding.notices(),
+                    said["words"].as_str().unwrap_or(""),
+                    &self.unserved,
+                ),
                 false,
             ),
             other => (refused("unknown-ask", &format!("no ask {other}")), false),
