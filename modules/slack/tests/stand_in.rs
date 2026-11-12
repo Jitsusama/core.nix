@@ -42,7 +42,11 @@ impl StandIn {
                 let Ok(mut stream) = stream else { continue };
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
                 let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
+                // A connection shut before it asks anything, as one the
+                // program opened as a test killed it, asked nothing.
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    continue;
+                }
                 let mut headers = Vec::new();
                 let mut length = 0;
                 loop {
