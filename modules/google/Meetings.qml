@@ -3,12 +3,10 @@
 // to a week on, so Programs › Calendar lists them after the program's own
 // acts, and a meeting's name finds it from anywhere. Each is the row the
 // google daemon serves ready (src/calendar_rows.rs), worded, ordered and
-// with its acts as rows inside it, held and made as every ready place's
-// are (ReadyRows.qml), so the shell only draws it and words its time.
-// Return joins its call from ten minutes before it starts until it ends,
-// and otherwise lists its acts, its details in the drawer beside it, as
-// the daemon serves the row again each minute. `next` is the next
-// meeting's row, which Now shows.
+// and with its drawer, held and made as every ready place's are
+// (ReadyRows.qml), so the shell only draws it and words its time, the
+// daemon serving it again each minute. `next` is the next meeting's row,
+// which Now shows.
 //
 // Calendar's Recent (recentOf, which Applications.qml asks every provider
 // that has it) is the meetings Joel held lately, newest first by when
@@ -16,12 +14,15 @@
 // saying at its side when it was held. It stands, "none" while it holds
 // nothing (keepsRecentOf), since the program keeps 30 days of them.
 //
-// Two of a meeting's acts are still the shell's, as the daemon names
-// (src/calendar_inside.rs): Move the Meeting's later times and one typed
-// there, which need Calendar.qml's clock and its reading of a typed time,
-// made here inside the row it serves (`kind: "move"`); and Open the
-// Transcript, which only call-transcripts knows, put after Show in
-// Calendar.
+// A meeting's Return and what's inside it are still Calendar.qml's
+// (Calendar.row's, as Now and Meet show it): Return joins its call from
+// ten minutes before it starts, and otherwise steps in to Show in
+// Calendar, and its acts are the shell's, since the rows the daemon serves
+// inside it (src/calendar_inside.rs) don't yet do all Calendar.qml's do:
+// its guests copy an address rather than stepping through to the person,
+// a document on it isn't the document's own row, and Move the Meeting and
+// Open the Transcript are the shell's alone. The google daemon takes those
+// next, guests and documents first, and then the meeting's acts are its.
 import qs
 import Quickshell
 import QtQuick
@@ -67,52 +68,34 @@ Provider {
 
     readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/google.sock`
 
-    // A row as `from` serves it, made a meeting's part of Calendar, so a
-    // program's Recent and Programs' counts find it, and every row inside
-    // made by the meeting's component. Move the Meeting holds the times
-    // Calendar.qml offers, and the meeting's own acts Open the Transcript
-    // after Show in Calendar.
+    // A meeting's row as `from` serves it, made a meeting's part of
+    // Calendar, so a program's Recent and Programs' counts find it, with
+    // Return and its acts Calendar.qml's, as it holds the meeting now.
     function made(from, row, key) {
-        const fields = { component: "meeting" };
-        if (row.kind === "meeting" || row.kind === "call")
+        const id = row.held?.id ?? "";
+        const meeting = Calendar.meeting(id) ?? Calendar.had.find(each => each.id === id) ?? null;
+        const fields = {
+            what: "meeting",
+            component: "meeting",
+            of: "program:google-calendar",
+            part: row.name ?? "",
+            today: row.today === true,
+            at: row.held?.start ?? 0
+        };
+        if (meeting) {
+            const joins = Calendar.joinable(meeting);
+            const acts = () => Calendar.acts(meeting, provider);
             Object.assign(fields, {
-                what: "meeting",
-                of: "program:google-calendar",
-                part: row.name ?? "",
-                today: row.today === true,
-                at: row.held?.start ?? 0,
-                verbs: () => provider.transcribed(from.inside(key), row),
-                targets: () => provider.transcribed(from.inside(key), row)
+                verb: Words.verb(joins ? "verb:calendar:join" : "verb:calendar:see"),
+                later: joins,
+                stays: !joins,
+                run: joins ? () => Calendar.join(meeting)
+                    : () => provider.launcher?.enter(Calendar.seeing(meeting, provider, row.name)),
+                verbs: acts,
+                targets: acts
             });
-        if (row.kind === "move") {
-            const meeting = Calendar.meeting(provider.meetingOf(row.parent));
-            if (meeting) {
-                const moving = Calendar.moving(meeting, provider);
-                Object.assign(fields, {
-                    verbs: moving.targets,
-                    targets: moving.targets,
-                    typed: moving.typed
-                });
-            }
         }
         return from.thing(row, key, fields);
-    }
-
-    // The id of the meeting a row inside is in, from its parent's key,
-    // `row:<place>:<id>`.
-    function meetingOf(parent) {
-        return String(parent ?? "").split(":").slice(2).join(":");
-    }
-
-    // A meeting's acts, with Open the Transcript after Show in Calendar
-    // once call-transcripts wrote its call down.
-    function transcribed(inside, row) {
-        const transcript = Calendar.transcribing({ id: row.held?.id ?? "" }, provider);
-        if (!transcript)
-            return inside;
-        const seeing = inside.findIndex(one => one.key.endsWith(":see"));
-        const after = seeing < 0 ? inside.length : seeing + 1;
-        return inside.slice(0, after).concat([transcript], inside.slice(after));
     }
 
     // Its rows, made only while the launcher is open or its rows are
