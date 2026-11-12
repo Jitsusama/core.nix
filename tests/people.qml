@@ -415,7 +415,16 @@ ShellRoot {
                 expect("tells the place a row was lent to, to ask for it again",
                     mailer.told > 0, `told ${mailer.told} times`);
                 launcher.held = [];
+                // Warmed shut as the shell starts, those listed are made
+                // then, so the first letter typed makes none of them: made
+                // by it, 121 rows held Joel's 15 ms (2026-11-11 23:10).
+                people.warming = true;
+                people.warming = false;
+                const warmed = people.tally.rows;
                 launcher.wanting = true;
+                void people.all;
+                expect("once warmed, wanting those listed makes no row",
+                    people.tally.rows === warmed, `${people.tally.rows - warmed} rows made`);
             }
         },
         {
