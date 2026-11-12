@@ -2002,8 +2002,8 @@
     the quests daemon runs in each account of a machine in a realm, following its node, its socket
     systemd's and restarted by a switch, and in none without a realm
   '';
-  quickshell-allocates-from-four-arenas = ''
-    the account's Quickshell unit holds jemalloc to four arenas, rather than one for each thread
+  quickshell-allocates-from-one-arena = ''
+    the account's Quickshell unit holds jemalloc to one arena, rather than one for each thread
   '';
   quickshell-compiles-every-file = ''
     Qt's own compiler compiles every file of the account's shell and the greeter without refusing or

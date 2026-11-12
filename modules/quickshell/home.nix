@@ -2565,14 +2565,16 @@ in
         # Quickshell allocates through jemalloc, which gives each of its 20 to
         # 30 threads an arena of its own (four for each CPU), and each arena
         # keeps the pages its thread freed for seconds before handing them
-        # back. Held to four, the threads share what's freed: in the lab, on
+        # back. Held to one, the threads share what's freed: in the lab, on
         # Joel's records scrambled, the shell's memory outside its JavaScript
-        # heap and its files sat 30 to 60 MB lower through every place opened
-        # and every search, at 114 to 141 MB against 159 to 202, and its
-        # openings and keys took as long as before (2026-11-12).
+        # heap and its files sat at 92 to 127 MB through every place opened
+        # and every search, against 114 to 141 with four arenas and 159 to
+        # 202 with one for each thread, and its openings and keys took as
+        # long as with four (2026-11-12). Four held Joel's lit shell at 150
+        # to 171 MB, against 190 to 200 before, so one follows it.
         Environment = [
           "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
-          "MALLOC_CONF=narenas:4"
+          "MALLOC_CONF=narenas:1"
         ];
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
