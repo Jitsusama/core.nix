@@ -175,7 +175,7 @@ mod tests {
     fn sources(quests: Vec<Quest>) -> Sources {
         Sources {
             quests,
-            host: "optimus".into(),
+            host: "here".into(),
             running: [10, 20].into(),
         }
     }
@@ -184,11 +184,11 @@ mod tests {
     fn a_quest_at_work_with_no_live_plan_is_counted() {
         let s = sources(vec![
             Quest {
-                readme: readme("active", &[("optimus", 10)]),
+                readme: readme("active", &[("here", 10)]),
                 plans: vec![plan("concluded")],
             },
             Quest {
-                readme: readme("active", &[("optimus", 20)]),
+                readme: readme("active", &[("here", 20)]),
                 plans: vec![plan("build")],
             },
         ]);
@@ -201,11 +201,11 @@ mod tests {
     fn a_quest_nobody_works_on_here_needs_no_plan() {
         let s = sources(vec![
             Quest {
-                readme: readme("active", &[("optimus", 99)]),
+                readme: readme("active", &[("here", 99)]),
                 plans: vec![],
             },
             Quest {
-                readme: readme("active", &[("penelope", 10)]),
+                readme: readme("active", &[("elsewhere", 10)]),
                 plans: vec![],
             },
         ]);
@@ -214,11 +214,8 @@ mod tests {
 
     #[test]
     fn every_session_of_a_quest_is_read() {
-        let text = readme("active", &[("penelope", 5), ("optimus", 20)]);
-        assert_eq!(
-            sessions(front(&text)),
-            vec![("penelope", 5), ("optimus", 20)]
-        );
+        let text = readme("active", &[("elsewhere", 5), ("here", 20)]);
+        assert_eq!(sessions(front(&text)), vec![("elsewhere", 5), ("here", 20)]);
     }
 
     #[test]
@@ -237,7 +234,7 @@ mod tests {
     fn only_a_top_level_status_says_a_quest_is_active() {
         assert!(active(&readme("active", &[])), "an active quest was not");
         assert!(
-            !active(&readme("concluded", &[("optimus", 10)])),
+            !active(&readme("concluded", &[("here", 10)])),
             "a session's status made a concluded quest active"
         );
     }
