@@ -37,6 +37,7 @@
 mod agents;
 mod asks;
 mod day;
+mod disk;
 mod feel;
 mod figures;
 mod follow;

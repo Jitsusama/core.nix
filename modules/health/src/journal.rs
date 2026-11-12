@@ -1,10 +1,21 @@
 //! One entry of the journal as `journalctl -o json` writes it, cut down to
 //! what the day is tallied by: when, how grave, which thing said it, and
-//! what it said.
+//! what it said; and the journalctl followers that read them.
+
+use std::io::{self, BufRead as _, BufReader};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::Sender;
+use std::thread;
 
 use serde_json::{Map, Value};
 
 use crate::asks::{self, Ask};
+
+/// The fields each entry is read by; journalctl always adds its time.
+const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
+                      _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT,\
+                      KERNEL_USEC,INITRD_USEC,USERSPACE_USEC,ASK_OUTCOME,ASK_SHOWN_MS,\
+                      ASK_ITEM_HASH,ASK_ARGV_HASH,ASK_AVOIDABLE";
 
 /// systemd's message for a unit whose restart is scheduled, the one line a
 /// restart always leaves, at a priority the warning reader doesn't see.
@@ -206,6 +217,75 @@ fn whose(fields: &Map<String, Value>) -> Whose {
     } else {
         Whose::Agents
     }
+}
+
+/// What each journal follower asks journalctl for.
+#[must_use]
+pub fn followed() -> Vec<Vec<String>> {
+    let asked = |words: &[&str]| words.iter().map(|word| (*word).to_owned()).collect();
+    vec![
+        // Warnings and graver.
+        asked(&["-p", "warning"]),
+        // What systemd and logind say only as information: a restart
+        // scheduled, the machine started or stopping, and a unit started,
+        // which the day keeps only for the disk's password.
+        vec![
+            format!("MESSAGE_ID={RESTART_SCHEDULED}"),
+            format!("MESSAGE_ID={STARTUP_FINISHED}"),
+            format!("MESSAGE_ID={SHUTTING_DOWN}"),
+            "+".to_owned(),
+            "_PID=1".to_owned(),
+            format!("MESSAGE_ID={UNIT_STARTED}"),
+        ],
+        // The launcher ready, after each start of the shell.
+        vec![
+            "SYSLOG_IDENTIFIER=quickshell".to_owned(),
+            format!("--grep={LAUNCHER_READY}"),
+        ],
+        // Each ask for a secret Joel answered, said only as information.
+        vec![format!("SYSLOG_IDENTIFIER={}", asks::IDENTIFIER)],
+        // The kernel's notices and information, which is where it says a
+        // USB device dropped or a PCIe link corrected itself; the day keeps
+        // only those and leaves the rest, about a thousand lines an hour.
+        asked(&["-k", "-p", "notice..info"]),
+    ]
+}
+
+/// Start one journalctl following from the day's start, its lines sent on,
+/// and a `None` when it ends.
+///
+/// # Errors
+///
+/// When journalctl can't start.
+pub fn spawn(asked: &[String], lines: Sender<Option<String>>) -> io::Result<()> {
+    let mut journalctl = Command::new("journalctl")
+        .args(["--follow", "--output=json", "--no-pager", "--since=today"])
+        .arg(format!("--output-fields={FIELDS}"))
+        .args(asked)
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let out = journalctl
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("no output"))?;
+    thread::spawn(move || {
+        let mut out = BufReader::new(out);
+        let mut line = Vec::new();
+        // A line that isn't UTF-8 is read as far as it goes; journalctl
+        // writes such a message as bytes, so it's rare.
+        while out.read_until(b'\n', &mut line).is_ok_and(|read| read > 0) {
+            if lines
+                .send(Some(String::from_utf8_lossy(&line).into_owned()))
+                .is_err()
+            {
+                break;
+            }
+            line.clear();
+        }
+        let _ = journalctl.wait();
+        let _ = lines.send(None);
+    });
+    Ok(())
 }
 
 #[cfg(test)]

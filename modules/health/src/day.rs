@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agents::Died;
 use crate::asks::Asks;
+use crate::disk::Disks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
 use crate::memory::Memory;
@@ -117,6 +118,10 @@ pub struct Day {
     /// on each start, so never resumed.
     #[serde(default)]
     pub asks: Asks,
+    /// Each filesystem's least free space and gravest band, as the disk
+    /// guards said them.
+    #[serde(default)]
+    pub disks: Disks,
 }
 
 /// The agents gone without parking: those at the last look, and every one
@@ -347,8 +352,8 @@ impl Day {
     }
 
     /// Take from a day kept before this run what the journals don't say
-    /// again: the sessions' tallies, how far each log was read, and the
-    /// memory the watched programs held.
+    /// again: the sessions' tallies, how far each log was read, the
+    /// memory the watched programs held, and the disks.
     pub fn resume(&mut self, kept: Self) {
         if kept.date != self.date {
             return;
@@ -356,6 +361,7 @@ impl Day {
         self.read = kept.read;
         self.memory = kept.memory;
         self.agents = kept.agents;
+        self.disks = kept.disks;
         self.things.extend(
             kept.things
                 .into_iter()
