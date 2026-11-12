@@ -917,6 +917,15 @@
       ]
     },
     {
+      "id": "tabs",
+      "name": "Tabs",
+      "noun": "tabs",
+      "glyph": "web",
+      "ask": "which tab?",
+      "empty": "No tabs open in Chrome.",
+      "none": "none open"
+    },
+    {
       "id": "emoji",
       "name": "Emoji",
       "noun": "emoji",

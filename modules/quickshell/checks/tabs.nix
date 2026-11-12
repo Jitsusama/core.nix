@@ -13,12 +13,13 @@
   ...
 }:
 {
-  # Each of Chrome's open pages the programs daemon serves is a row of the
-  # launcher's, named by its title and found by its site in the daemon's
-  # order, and its Return goes to the Chrome window it's in front of, else
-  # Chrome's newest (tests/tabs.qml), through the real ReadyRows.qml and
-  # Daemon.qml, with niri stood in. Each bookmark served is a row after
-  # them, found the same way, and its Return runs Chrome with its address.
+  # Chrome's open pages the programs daemon serves are the launcher's Tabs
+  # collection, each named by its title and found by its site, ranked as the
+  # daemon answers what's typed, and its Return goes to the Chrome window
+  # it's in front of, else Chrome's newest (tests/tabs.qml), through the real
+  # ReadyRows.qml and Daemon.qml, with niri stood in. Each bookmark served is
+  # a row of the main search, found the same way, and its Return runs Chrome
+  # with its address.
   a-chrome-tab-is-found-by-its-site-and-goes-to-its-window =
     let
       # Chrome's entry, which a bookmark opens through, shown here so the
