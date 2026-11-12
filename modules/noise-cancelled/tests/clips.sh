@@ -7,7 +7,11 @@
 raw=(-t f32 -r 48000 -c 1)
 
 # A clip's RMS amplitude, as sox measures it.
-rms() { sox "${raw[@]}" "$1" -n stat 2>&1 | awk -F: '/RMS +amplitude/ { print $2 + 0 }'; }
+rms() {
+  local stats
+  stats=$(sox "${raw[@]}" "$1" -n stat 2>&1)
+  awk -F: '/RMS +amplitude/ { print $2 + 0 }' <<<"$stats"
+}
 
 # Brings a clip to `level` RMS, in place.
 level() {
