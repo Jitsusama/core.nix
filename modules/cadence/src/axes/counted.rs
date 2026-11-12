@@ -234,7 +234,10 @@ pub fn keys(journal: &str) -> Vec<Reading> {
 /// opening and ending follow, held to design.md's 300 ms and 200 ms at the
 /// 99th percentile, as for keys; the windows daemon times them from the
 /// process starting and its last window gone, since niri never says the
-/// key that asked, so they are our side's.
+/// key that asked, so they are our side's. Restarts close the list, our
+/// side's too: a daemon serving again within a second of starting, from
+/// its own ready line, and the slowest unit a switch restarted back within
+/// 5 s, the specs the improvement system set for them (2026-11-11).
 #[must_use]
 pub fn responds(s: &Sources) -> Vec<Reading> {
     let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
@@ -299,6 +302,28 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
             200.0,
             "its last window closing",
         ),
+        Reading::new(
+            "the slowest daemon in a hundred to serve again {}",
+            figure("health.launches.ready.p99-ms"),
+            " ms",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(1_000.0))
+        .from("health's day file, from each program's ready line"),
+        Reading::new(
+            "the slowest restart in a switch {}",
+            figure("health.switch.restart.slowest-ms"),
+            " ms",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(5_000.0))
+        .detail(figure("health.switch.restart.median-ms").map(|median| {
+            format!(
+                "a median {}; timed from its stopping to its ready",
+                shown(median, " ms")
+            )
+        }))
+        .from("health's day file"),
     ]
 }
 
@@ -541,6 +566,9 @@ qml: launcher: drawer for "Firefox" took 80 ms to its frame
                 ("health.launches.opened.median-ms".to_owned(), 90.0),
                 ("health.launches.opened.slowest-ms".to_owned(), 1_300.0),
                 ("health.launches.ended.p99-ms".to_owned(), 150.0),
+                ("health.launches.ready.p99-ms".to_owned(), 1_065.0),
+                ("health.switch.restart.slowest-ms".to_owned(), 4_200.0),
+                ("health.switch.restart.median-ms".to_owned(), 900.0),
             ])),
             ..Sources::default()
         };
@@ -554,12 +582,19 @@ qml: launcher: drawer for "Firefox" took 80 ms to its frame
                 "time lost in the day's worst moments: no reading yet",
                 "the slowest program in a hundred to its first window 420 ms, at most 300 ms",
                 "the slowest program in a hundred to end once closed 150 ms, at most 200 ms",
+                "the slowest daemon in a hundred to serve again 1,065 ms, at most 1,000 ms",
+                "the slowest restart in a switch 4,200 ms, at most 5,000 ms",
             ]
         );
         assert_eq!(
             read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [false, true, false, true, false],
-            "only the shutdown and the openings are past their bars"
+            [false, true, false, true, false, true, false],
+            "only the shutdown, the openings and the daemons are past their bars"
+        );
+        assert_eq!(
+            read[6].detail.as_deref(),
+            Some("a median 900 ms; timed from its stopping to its ready"),
+            "a switch's restarts say their median and where they're timed from"
         );
         assert_eq!(
             read[3].detail.as_deref(),
