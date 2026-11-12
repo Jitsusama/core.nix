@@ -9,6 +9,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::day::{Badness, Boot, Day, Kind, Thing};
+use crate::feel;
 
 /// The kinds, in the order they're shown when as bad as each other.
 const KINDS: [Kind; 4] = [
@@ -21,10 +22,21 @@ const KINDS: [Kind; 4] = [
 /// How many of a kind's things, or a thing's signatures, are shown.
 const SHOWN: usize = 10;
 
+/// How many of the day's most painful interactions open `health`.
+const PAINS: usize = 3;
+
 /// The day, a line a kind, the worst kind first.
 #[must_use]
 pub fn day(day: &Day) -> String {
     let mut out = format!("health, {}{}\n", day.date, until(day.to));
+    for pain in day.feel.iter().take(PAINS) {
+        let _ = writeln!(
+            out,
+            "feel      {}, {}",
+            clock(pain.at * 1_000_000),
+            feel::said(pain)
+        );
+    }
     let mut kinds: Vec<(Kind, Vec<(&String, &Thing)>)> = KINDS
         .iter()
         .map(|&kind| (kind, worst_of(day, kind)))
@@ -361,6 +373,26 @@ mod tests {
             "nothing called nobody said a warning on 2026-11-12\n",
             "a name nothing has says so"
         );
+    }
+
+    #[test]
+    fn the_three_worst_pains_open_the_day() {
+        let mut felt = a_day();
+        felt.feel = (1..=4)
+            .map(|rank| feel::Pain {
+                trying: format!("program:p{rank}"),
+                seconds: 9.0,
+                rank,
+                ..feel::Pain::default()
+            })
+            .collect();
+        let shown = day(&felt);
+        let lines: Vec<&str> = shown.lines().collect();
+        assert!(lines[1].starts_with("feel      "), "{shown}");
+        assert!(lines[1].ends_with(", finding P1 took 9 s"), "{shown}");
+        assert!(lines[3].ends_with(", finding P3 took 9 s"), "{shown}");
+        assert!(!shown.contains("P4"), "three at most: {shown}");
+        assert!(!lines[4].starts_with("feel"), "then the kinds: {shown}");
     }
 
     #[test]

@@ -17,6 +17,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::day::{Day, Kind};
+use crate::feel;
 use crate::journal::{
     self, LAUNCHER_READY, Mark, RESTART_SCHEDULED, SHUTTING_DOWN, STARTUP_FINISHED, UNIT_STARTED,
 };
@@ -41,6 +42,7 @@ pub struct Follower {
     ends: BTreeMap<String, i64>,
     lid: Option<Looked>,
     lid_wrong: bool,
+    pains: Option<PathBuf>,
 }
 
 /// What the day calls a lid that's wrong.
@@ -60,6 +62,30 @@ impl Follower {
             ends: BTreeMap::new(),
             lid: None,
             lid_wrong: false,
+            pains: None,
+        }
+    }
+
+    /// Read how using the machine felt from the pain-points detector's
+    /// days in `pains`.
+    #[must_use]
+    pub fn feeling(self, pains: &Path) -> Self {
+        Self {
+            pains: Some(pains.to_owned()),
+            ..self
+        }
+    }
+
+    /// Take the day's pains as the detector ranks them now; it rewrites
+    /// its file every ten minutes.
+    pub fn feel(&mut self) {
+        let Some(pains) = &self.pains else {
+            return;
+        };
+        let feel = feel::read(pains, &self.day.date);
+        if feel != self.day.feel {
+            self.day.feel = feel;
+            self.changed = true;
         }
     }
 
@@ -189,6 +215,10 @@ pub fn follow(into: &Path) -> io::Result<()> {
         .output()?;
     let mut follower =
         Follower::new(&today, into, zone).knowing(ends_of(&String::from_utf8_lossy(&boots.stdout)));
+    // The detector keeps its days beside health's, in the account's state.
+    if let Some(state) = into.parent() {
+        follower = follower.feeling(&state.join("pain-points"));
+    }
     let (lines, read) = mpsc::channel();
     // Warnings and graver.
     spawn(&["-p", "warning"], lines.clone())?;
@@ -245,6 +275,7 @@ fn run(
         if at.saturating_duration_since(ticked) >= EVERY {
             ticked = at;
             follower.look_at_lid(look(), Timestamp::now().as_microsecond());
+            follower.feel();
             follower.write()?;
         }
     }
@@ -466,5 +497,29 @@ mod tests {
             .map(|said| said.example.as_str())
             .collect();
         assert_eq!(said, [LID_WRONG], "said the way Joel reads it");
+    }
+
+    #[test]
+    fn the_days_pains_are_kept_as_the_detector_ranks_them() {
+        let into = tempfile::tempdir().expect("a folder");
+        let pains = tempfile::tempdir().expect("the detector's folder");
+        let mut follower =
+            Follower::new("2026-11-12", into.path(), TimeZone::UTC).feeling(pains.path());
+        follower.feel();
+        follower.write().expect("nothing to write");
+        assert!(
+            !file_of(into.path(), "2026-11-12").exists(),
+            "no pains yet is no change"
+        );
+        fs::write(
+            pains.path().join("2026-11-12.jsonl"),
+            "{\"trying\":\"sound\",\"rank\":1}\n",
+        )
+        .expect("the detector's day");
+        follower.feel();
+        follower.write().expect("the day is written");
+        let feel = read(into.path(), "2026-11-12").feel;
+        assert_eq!(feel.len(), 1, "the pain kept: {feel:?}");
+        assert_eq!(feel[0].trying, "sound", "as the detector said it");
     }
 }

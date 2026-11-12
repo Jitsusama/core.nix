@@ -13,16 +13,19 @@
 //! Each half minute it looks at the lid, and counts as a device's fault a
 //! lid that reads shut while the laptop's own screen is on and its own keys
 //! are typed on, since every program believes the lid and none says so.
+//! And it keeps how using the machine felt: the day's most painful
+//! interactions, as the pain-points detector beside it ranks them.
 //! It keeps the day in `~/.local/state/health/<date>.json`.
 //!
-//! `health` reads that file: one line a kind, the worst first, naming its
-//! worst thing. `health services` lists a kind's worst things, and `health
+//! `health` reads that file: the day's three most painful interactions,
+//! then one line a kind, the worst first, naming its worst thing. `health services` lists a kind's worst things, and `health
 //! chrome` shows what each thing whose name holds the words kept saying.
 //! `health boot` breaks each boot into its stages.
 //! `--day 2026-11-12` reads another day. Health judges nothing; `cadence
 //! day` reads the day and holds it against the days before.
 
 mod day;
+mod feel;
 mod follow;
 mod journal;
 mod lid;

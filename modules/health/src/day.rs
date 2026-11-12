@@ -7,6 +7,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
 use crate::sign;
 
@@ -86,6 +87,10 @@ pub struct Day {
     /// Each boot that started or stopped in the day, by its id.
     #[serde(default)]
     pub boots: BTreeMap<String, Boot>,
+    /// How using the machine felt: the day's most painful interactions,
+    /// worst first, as the pain-points detector ranked them.
+    #[serde(default)]
+    pub feel: Vec<Pain>,
 }
 
 /// How one boot started and stopped, as far as the day saw it, each in

@@ -888,8 +888,9 @@
     line's repeats as one signature, counts a device dropped, reset or correcting its errors though
     the kernel says it only as information, times a boot to a ready launcher without the password's
     wait and a shutdown to its boot's last entry, counts once a lid reading shut while the laptop's
-    screen is on and its keys typed, keeps a day by kind and writes it every half minute however
-    busy the journals, and shows it a line a kind, the gravest first
+    screen is on and its keys typed, keeps the pain-points detector's ranking, keeps a day by kind
+    and writes it every half minute however busy the journals, and shows the three worst pains in
+    plain words, then a line a kind, the gravest first
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
