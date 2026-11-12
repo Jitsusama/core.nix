@@ -602,26 +602,22 @@ Scope {
     // An act as a row of its own, among a row's verbs, kept by `kept`
     // (ReadyRows.js's actKeys), its words by its own key.
     function actRow(key, one, kept) {
-        const said = Ready.actWorded(one,
-            { name: Words.name(one.key), glyph: Words.glyph(one.key) }, Theme.glyph);
-        return maker.thing({
+        const said = Ready.actWorded(one, { name: Words.name(one.key),
+            glyph: Words.glyph(one.key), actKey: Words.actKey(one.key) }, Theme.glyph);
+        // `said` gives its name, glyph and side, and the key normal does it
+        // by on its row, as Asks' r refuses (Launcher.qml's doKeyed).
+        return maker.thing(Object.assign({
             key: kept ?? one.key,
             wordsId: one.key,
             what: "",
             verb: verbOf(one),
-            name: said.name,
-            glyph: said.glyph,
-            side: said.side,
             hue: "action",
-            // The key normal does it by on its row, where its words give one,
-            // as Asks' r refuses (Launcher.qml's doKeyed).
-            actKey: Words.actKey(one.key),
             stays: one.step === "rows",
             now: Ready.leaving(one).now,
             later: Ready.leaving(one).later,
             copies: typeof one.copy === "string" ? () => one.copy : undefined,
             run: () => act(key, one)
-        });
+        }, said));
     }
 
     // Does an act the row of `key` serves: copies its words, opens its link

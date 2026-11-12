@@ -426,8 +426,9 @@ function tokened(act, token) {
         ? Object.assign({}, act.ask, { token }) : null;
 }
 
-// An act's row as it's said: `worded`, its key's words.json name and glyph,
-// with nothing at its side, but for words from outside the vocabulary, which
+// An act's row as it's said: `worded`, its key's words.json name, glyph and
+// act key, the one normal does it by on its row (none where its words give
+// none), with nothing at its side, but for words from outside the vocabulary, which
 // the daemon serves with it: a `name`, as a notice's offer in its sender's
 // words, a `side`, as a link's host, and a `glyph`, a role or `{ code }`. A
 // verb whose words are the launcher's has a key of its own instead (Y2YBTS,
@@ -436,7 +437,8 @@ function actWorded(act, worded, roles) {
     return {
         name: typeof act.name === "string" && act.name !== "" ? act.name : worded.name,
         glyph: act.glyph === undefined ? worded.glyph : glyphOf(act.glyph, roles),
-        side: typeof act.side === "string" ? act.side : ""
+        side: typeof act.side === "string" ? act.side : "",
+        actKey: worded.actKey ?? ""
     };
 }
 
