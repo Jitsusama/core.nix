@@ -1673,7 +1673,16 @@ works the same way everywhere.
   it, since connecting to one lets go of another. Return never calls
   someone or starts something new by itself: a call in Tuple's Recent
   goes in, Call Ada Again first, so Return twice rings her (VKCF3Z,
-  2026-11-08). A meeting joins on Return
+  2026-11-08). A row with nothing under it but acts never opens a step of
+  them (Joel, 2026-11-11: "we have a number of menu items that i open to
+  only see verb:copy ... if they have nothing under them, we shouldn't
+  open a submenu for them"). Return does its act, y copies it, and any
+  other act is named in its drawer and its foot by its key, so Return never
+  lands him on a list of verbs alone. Where the act mustn't happen on one
+  key, as a call or something new, the first Return arms it and the foot
+  says so, "↵ again calls Ada", and any other key lets it go; Return twice
+  still does it, with no list between. A check per place fails on a step
+  whose rows are all acts. A meeting joins on Return
   only from ten minutes before it starts, and
   before then goes in, Join first, so Joel is never made to join early
   (2026-10-26: "they force me to join, and what if I want to cancel");
@@ -1681,7 +1690,7 @@ works the same way everywhere.
   nothing more; one holding more, as the battery's answer or the
   weather's Rain, goes in, copying it a row inside: "rain" asked alone
   and Rain inside the weather work the same. Copy is never the first row
-  of a step, unless it's the only one, and is always the last. Return
+  of a step, and is always the last. Return
   closes the launcher only
   when its act takes Joel out of it: to a window, a program or a file, a
   call, or something copied to paste. An act that changes something (the
@@ -1882,6 +1891,20 @@ works the same way everywhere.
   own, plain text the clipboard's, and a picture a picture's. A picture's
   row is named by its size, and the picture itself shows in the drawer
   while it's selected, in its own shape with a part's corners.
+- **Every row says a little more beside it** (Joel, 2026-11-11: "i would
+  like to have side drawers for just about every item giving me more
+  details, not as much as if i opened it up, but enough to give me
+  slightly more than we could fit in the line and to reduce how often i
+  feel i need to dive in deeper. in fact, this is a concept that should
+  probably be universally applied"). Every row's drawer gives what its
+  line couldn't fit and a glance would want next, so he steps in less:
+  Weather's tonight and next days, Date's week, moon and season,
+  Location's how it knows, a disk's rate and when it fills, a person's
+  next meeting with him. It's a little more, never the place itself: a
+  handful of facts and a line of words, while the whole list stays
+  inside. A drawer that would only repeat its row is a row still missing
+  its facts, never a reason to show none. Now's rows come first, then
+  every place's, and a check per place fails on a row with no drawer.
 - **The drawer is the card continued** (Joel, 2026-10-28: "it should come
   out of the right side like a drawer, making sure it never passes the
   bound of the screen"). What a row has to show beyond its line (a
@@ -1967,9 +1990,11 @@ works the same way everywhere.
   only repeat the row is never shown (Joel, 2026-10-29: "we should
   never show the side panel when it is just repeating the currently
   selected text"). It's the same at home, in a search and in every
-  place; an act, a switch or a choice has none (Joel,
+  place, and a switch or a choice has one saying what it changes and
+  since when; only an act alone, which its row says whole, has none (Joel,
   2026-10-29: "the side drawer shows when it's not needed, and only
-  shows in certain places"). Between two things it stays and what it
+  shows in certain places"; and 2026-11-11, in Every Row Says a Little
+  More). Between two things it stays and what it
   shows changes in place; onto or off one it fades in place once the
   selection rests, so holding an arrow never flickers it. It's Vim's
   preview window, a split the keys go into: Ctrl+W l takes them in, or
