@@ -234,10 +234,14 @@ impl Inputs {
             .map(|(_, one)| Session(one))
             .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
             .collect();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
         landed::landed(
             self.landings.records().map(|(_, one)| one),
             &live,
             &self.read,
+            i64::try_from(now).unwrap_or(0),
         )
     }
 

@@ -174,6 +174,17 @@ fn tries(line: &str) -> bool {
     !line.trim().is_empty() && !line.split(['.', ';', ':', '?', '!']).any(says_nothing)
 }
 
+/// How long a landing asking Joel to try something waits in To Try, from
+/// when it landed: past it, it's still in Landed, but no longer counted
+/// as waiting on him. On 2026-11-11, 778 unread landings asked him to try
+/// something "after the next switch", from as far back as 8 Nov, and
+/// nobody tries 778 things; an ask he took too long on should go (Joel,
+/// 2026-11-11: "if it is no longer applicable because i took too long
+/// and things have changed, it should disappear"). A day holds about 50.
+/// It's weighed each time the rows are made, which a session changing
+/// does every few seconds.
+const TRY_FOR_MS: i64 = 24 * 60 * 60 * 1000;
+
 /// Who landed a landing, as its row and drawer say it.
 struct Lander {
     address: String,
@@ -212,7 +223,7 @@ impl Lander {
 }
 
 /// One landing, by the session that landed it.
-fn landing(lander: &Lander, one: &Value) -> (String, Option<i64>, Value) {
+fn landing(lander: &Lander, one: &Value, now: i64) -> (String, Option<i64>, Value) {
     let key = lander.key_of(one);
     let url = text(one, "url");
     let what = text(one, "what");
@@ -223,7 +234,7 @@ fn landing(lander: &Lander, one: &Value) -> (String, Option<i64>, Value) {
         "ref": text(one, "ref"),
         "what": if what.is_empty() { text(one, "ref") } else { what },
         "person": text(one, "person"),
-        "tries": tries(&text(one, "person")),
+        "tries": tries(&text(one, "person")) && at.is_some_and(|at| now - at < TRY_FOR_MS),
         "url": if url.starts_with("https://") { url } else { String::new() },
         "quest": text(one, "quest"),
         "repo": text(one, "repo"),
@@ -238,11 +249,14 @@ fn landing(lander: &Lander, one: &Value) -> (String, Option<i64>, Value) {
 /// carry, each once, worth Joel's reading. Each is a whole record, keyed
 /// by its landing's key, ordered by its time, newest first, saying when
 /// Joel read it (`read`), with the record of how many landed each day.
-/// Answers the keys held too, which Joel's reading is kept of.
+/// Answers the keys held too, which Joel's reading is kept of. Those
+/// asking him to try something wait in To Try a day from `now`, in
+/// milliseconds since 1970.
 pub fn landed<'a>(
     kept: impl Iterator<Item = &'a Value>,
     sessions: &[Session<'a>],
     read: &Reading,
+    now: i64,
 ) -> (Vec<Value>, HashSet<String>) {
     let by_id: HashMap<&str, &Session> = sessions
         .iter()
@@ -257,7 +271,7 @@ pub fn landed<'a>(
             .map_or_else(|| Lander::ended(one), |session| Lander::of(**session));
         held.insert(lander.key_of(one));
         if worth_reading(one) {
-            all.push(landing(&lander, one));
+            all.push(landing(&lander, one, now));
         }
     }
     for session in sessions {
@@ -271,7 +285,7 @@ pub fn landed<'a>(
         for one in landings {
             let key = lander.key_of(one);
             if held.insert(key) && worth_reading(one) {
-                all.push(landing(&lander, one));
+                all.push(landing(&lander, one, now));
             }
         }
     }
@@ -314,6 +328,43 @@ mod tests {
             "url": format!("https://example.org/{reference}")})
     }
 
+    /// The moment the tests' landings are read at, a day after the first
+    /// of them landed, so all of them ask what they ask.
+    fn now() -> i64 {
+        clock::ms_of(&json!("2026-11-11T12:00:00Z")).expect("a time")
+    }
+
+    #[test]
+    fn a_landing_waits_in_to_try_a_day_then_goes_quiet_in_landed() {
+        let landings = [
+            kept(
+                "s",
+                "o#1",
+                "2026-11-10T11:59:00Z",
+                "After the next switch, open Agents.",
+            ),
+            kept(
+                "s",
+                "o#2",
+                "2026-11-10T12:01:00Z",
+                "After the next switch, open Agents.",
+            ),
+        ];
+        let (records, _) = landed(landings.iter(), &[], &Reading::default(), now());
+        let tries: Vec<(&Value, &Value)> = records[..2]
+            .iter()
+            .map(|one| (&one["landed"]["ref"], &one["landed"]["tries"]))
+            .collect();
+        assert_eq!(
+            tries,
+            [
+                (&json!("o#2"), &json!(true)),
+                (&json!("o#1"), &json!(false))
+            ],
+            "newest first: what landed within the day still asks, the one before is only landed"
+        );
+    }
+
     fn keys(records: &[Value]) -> Vec<&str> {
         records
             .iter()
@@ -337,7 +388,7 @@ mod tests {
             kept("s-here", "r#2", "2026-11-11T10:00:00Z", ""),
             kept("s-gone", "r#1", "2026-11-10T09:00:00Z", "Try it."),
         ];
-        let (records, held) = landed(landings.iter(), &sessions, &Reading::default());
+        let (records, held) = landed(landings.iter(), &sessions, &Reading::default(), now());
         assert_eq!(
             keys(&records),
             [
@@ -379,7 +430,7 @@ mod tests {
             ),
             kept("s", "a quest note", "2026-11-11T04:00:00Z", ""),
         ];
-        let (records, held) = landed(landings.iter(), &[], &Reading::default());
+        let (records, held) = landed(landings.iter(), &[], &Reading::default(), now());
         assert_eq!(
             keys(&records),
             [
@@ -396,7 +447,7 @@ mod tests {
         let mut one = kept("s", "o#1", "2026-11-11T01:00:00Z", "");
         one["url"] = json!("file:///etc/passwd");
         one["what"] = json!("");
-        let (records, _) = landed([one].iter(), &[], &Reading::default());
+        let (records, _) = landed([one].iter(), &[], &Reading::default(), now());
         assert_eq!(records[0]["landed"]["url"], "", "no link but the web's");
         assert_eq!(
             records[0]["landed"]["what"], "o#1",
@@ -433,7 +484,7 @@ mod tests {
             ),
             kept("s", "o#5", "2026-11-11T05:00:00Z", ""),
         ];
-        let (records, _) = landed(landings.iter(), &[], &Reading::default());
+        let (records, _) = landed(landings.iter(), &[], &Reading::default(), now());
         let tries: Vec<&Value> = records[..5]
             .iter()
             .map(|one| &one["landed"]["tries"])
@@ -479,7 +530,7 @@ mod tests {
                 "Try it: open Agents. Nothing else changes.",
             ),
         ];
-        let (records, _) = landed(landings.iter(), &[], &Reading::default());
+        let (records, _) = landed(landings.iter(), &[], &Reading::default(), now());
         let tries: Vec<&Value> = records[..4]
             .iter()
             .map(|one| &one["landed"]["tries"])
@@ -501,7 +552,7 @@ mod tests {
         let mut read = Reading::default();
         read.at.insert("s o#2 2026-11-11T12:00:00Z".into(), Some(5));
         read.at.insert("s o#1 2026-11-10T12:00:00Z".into(), None);
-        let (records, _) = landed(landings.iter(), &[], &read);
+        let (records, _) = landed(landings.iter(), &[], &read, now());
         let said: Vec<&Value> = records.iter().map(|one| &one["landed"]["read"]).collect();
         assert_eq!(
             said[..3],
