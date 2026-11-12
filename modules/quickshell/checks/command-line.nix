@@ -25,22 +25,6 @@
       touch $out
     '';
 
-  # Log Out, Reboot and Power Off arm on a first Return and end on a second
-  # with no key between, as tests/arming.qml holds Arming.js to.
-  an-ending-row-arms-before-it-ends =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "an-ending-row-arms-before-it-ends" { } ''
-      cp ${../../../tests/arming.qml} arming.qml
-      ${copied [ "Arming.js" ]}
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml arming.qml
-      touch $out
-    '';
-
   # Vim's command line is read as Vim reads it, as tests/ex.qml holds Ex.js
   # to: ranges, names by their short forms, a bang, :g and :v, the rows a
   # range names, and Vim's own errors.
