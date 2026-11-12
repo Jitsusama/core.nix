@@ -16,4 +16,5 @@
   "pieces/HomeNetwork.js"
   "pieces/Piece.qml"
   "pieces/StatusFile.qml"
+  "pieces/WorkNetwork.js"
 ]

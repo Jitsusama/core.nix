@@ -511,6 +511,7 @@ let
     devices = ./pieces/Devices.qml;
     network = ./pieces/Network.qml;
     homeNetwork = ./pieces/HomeNetwork.qml;
+    workNetwork = ./pieces/WorkNetwork.qml;
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
     profile = ./pieces/Profile.qml;
@@ -1552,6 +1553,15 @@ in
         label = "home network";
         tier = "when";
         mark = "accessPoint";
+      };
+      # Only while something ails the link to work, from the warp daemon,
+      # beside the home network.
+      workNetwork = {
+        order = 42;
+        source = "workNetwork";
+        label = "work network";
+        tier = "when";
+        mark = "tunnel";
       };
       volume = {
         order = 50;

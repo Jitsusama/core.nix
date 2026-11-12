@@ -2099,6 +2099,54 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
         warp_forgotten(said)
 
 
+def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_is(
+    shell: Shell,
+) -> None:
+    """Now lists the Work Network while WARP's service is down, and drops it as it answers.
+
+    The margin holds a watch on how WARP stands always, so it's said with the launcher shut,
+    gone within seconds of healing (VKCF3Z, 2026-11-11). What each state says is
+    tests/work-network-ails.qml's; this is the wiring, warp to the margin to Now.
+    """
+    said = Path(os.environ["HOME"]) / "warp-cli"
+    contract = Path(os.environ["WARP_CONTRACT"])
+    said.mkdir()
+    shutil.copyfile(contract / "daemon-down.json", said / "status.error.json")
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.normal()
+        shell.step_in()
+        shell.launcher_until(
+            lambda shown: (
+                shown["path"][-1:] == ["Now"] and "not answering" in reading(shown, "Work Network")
+            )
+        )
+        # Its service back, the line goes, as the next status asked says so: dimmed where it
+        # stood while Now is looked at, so nothing moves under the cursor (Steady.js), and
+        # not there at all once Now opens afresh.
+        shutil.copyfile(contract / "status.json", said / "status.json")
+        (said / "status.error.json").unlink()
+        shell.launcher_until(
+            lambda shown: all(
+                thing["gone"]
+                for thing in shown["things"]
+                if thing["reads"].startswith("Work Network")
+            )
+        )
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.normal()
+        shell.step_in()
+        shell.launcher_until(
+            lambda shown: shown["path"][-1:] == ["Now"] and reading(shown, "Work Network") == ""
+        )
+        shell.close_launcher()
+    finally:
+        warp_forgotten(said)
+
+
 def warp_said(**settings: object) -> Path:
     """Write the contract's answers where the stand-in warp-cli reads them, settings changed.
 

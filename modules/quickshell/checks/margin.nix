@@ -56,6 +56,7 @@
           "battery"
           "devices"
           "homeNetwork"
+          "workNetwork"
           "volume"
           "tokens"
           "spend"
@@ -125,6 +126,25 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml home-network-ails.qml
+      touch $out
+    '';
+
+  # Now's Work Network piece says what ails the link to work, and nothing
+  # while Joel took it down himself or it's only coming up, as
+  # tests/work-network-ails.qml holds pieces/WorkNetwork.js to the states
+  # the warp daemon tells.
+  now-says-what-ails-the-work-network =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "now-says-what-ails-the-work-network" { } ''
+      cp ${../../../tests/work-network-ails.qml} work-network-ails.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "pieces/WorkNetwork.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml work-network-ails.qml
       touch $out
     '';
 
