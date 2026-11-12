@@ -6,22 +6,12 @@
 # the room that repository keeps, and pink noise, steady from end to end.
 # Each clip is levelled alike before it's scored, as Choose by Ear levels
 # its clips, since DNSMOS marks the same sound differently at each level.
-# Run as: $BASH every-cleaner-keeps-the-voice.sh NOISE_CANCELLED MODELS VOICE NOISE
+# Run as: $BASH every-cleaner-keeps-the-voice.sh CLIPS NOISE_CANCELLED MODELS VOICE NOISE
 set -euo pipefail
-program=$1 models=$2 voice=$3 noise=$4
-
-raw=(-t f32 -r 48000 -c 1)
-# A clip's RMS amplitude, as sox measures it.
-rms() { sox "${raw[@]}" "$1" -n stat 2>&1 | awk -F: '/RMS +amplitude/ { print $2 + 0 }'; }
-# Brings a clip to `level` RMS, in place.
-level() {
-  local now gain
-  now=$(rms "$1")
-  gain=$(echo "$2 / $now" | bc -l)
-  sox "${raw[@]}" "$1" "${raw[@]}" "$1.levelled" vol "$gain"
-  mv "$1.levelled" "$1"
-}
-score() { "$program" score "$models" <"$1"; }
+clips=$1 program=$2 models=$3 voice=$4 noise=$5
+# The library is handed in by its store path; shellcheck reads it from here.
+# shellcheck source=SCRIPTDIR/clips.sh
+source "$clips"
 mark() { jq -r ".$2" <<<"$1"; }
 
 sox "$voice" "${raw[@]}" voice.f32 remix 1

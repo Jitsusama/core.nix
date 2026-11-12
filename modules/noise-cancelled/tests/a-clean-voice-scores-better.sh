@@ -8,21 +8,12 @@
 # DNSMOS marks the same sound differently at different levels, so each clip
 # is brought to one level before it's scored, as Choose by Ear brings its
 # clips to one loudness before it scores them.
-# Run as: $BASH a-clean-voice-scores-better.sh NOISE_CANCELLED MODELS VOICE NOISE
+# Run as: $BASH a-clean-voice-scores-better.sh CLIPS NOISE_CANCELLED MODELS VOICE NOISE
 set -euo pipefail
-program=$1 models=$2 voice=$3 noise=$4
-
-raw=(-t f32 -r 48000 -c 1)
-# A clip's RMS amplitude, as sox measures it.
-rms() { sox "${raw[@]}" "$1" -n stat 2>&1 | awk -F: '/RMS +amplitude/ { print $2 + 0 }'; }
-# Brings a clip to `level` RMS, in place.
-level() {
-  local now gain
-  now=$(rms "$1")
-  gain=$(echo "$2 / $now" | bc -l)
-  sox "${raw[@]}" "$1" "${raw[@]}" "$1.levelled" vol "$gain"
-  mv "$1.levelled" "$1"
-}
+clips=$1 program=$2 models=$3 voice=$4 noise=$5
+# The library is handed in by its store path; shellcheck reads it from here.
+# shellcheck source=SCRIPTDIR/clips.sh
+source "$clips"
 
 sox "$voice" "${raw[@]}" voice.f32 remix 1
 seconds=$(soxi -D "$voice")
@@ -37,7 +28,7 @@ declare -A marks
 for clip in voice noisy cleaned; do
   level "$clip.f32" 0.1
   started=$EPOCHREALTIME
-  marks[$clip]=$("$program" score "$models" <"$clip.f32")
+  marks[$clip]=$(score "$clip.f32")
   took=$(echo "$EPOCHREALTIME - $started" | bc)
   # How long it takes, its model loading included, since Choose by Ear
   # scores four clips before it reveals them.

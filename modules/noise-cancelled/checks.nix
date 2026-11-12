@@ -78,7 +78,8 @@
         ];
       }
       ''
-        $BASH ${./tests/every-cleaner-keeps-the-voice.sh} ${dictation}/bin/noise-cancelled ${models} \
+        $BASH ${./tests/every-cleaner-keeps-the-voice.sh} ${./tests/clips.sh} \
+          ${dictation}/bin/noise-cancelled ${models} \
           ${model.source}/assets/clean_freesound_33711.wav \
           ${model.source}/assets/noise_freesound_573577.wav
         touch $out
@@ -101,7 +102,8 @@
         ];
       }
       ''
-        $BASH ${./tests/a-clean-voice-scores-better.sh} ${dictation}/bin/noise-cancelled ${models} \
+        $BASH ${./tests/a-clean-voice-scores-better.sh} ${./tests/clips.sh} \
+          ${dictation}/bin/noise-cancelled ${models} \
           ${model.source}/assets/clean_freesound_33711.wav \
           ${model.source}/assets/noise_freesound_573577.wav
         touch $out
