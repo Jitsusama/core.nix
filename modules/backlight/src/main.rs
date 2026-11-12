@@ -88,6 +88,7 @@ mod panel;
 mod screen;
 mod steer;
 mod switch;
+mod tonight;
 mod uevent;
 mod warmth;
 mod windowed;

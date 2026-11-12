@@ -107,6 +107,12 @@ impl Follow {
         self.share
     }
 
+    /// What the clock last said the evening leaves, though the share may
+    /// still wait for light to ease from.
+    pub fn clock(&self) -> f64 {
+        self.share
+    }
+
     /// The brightness the screen goes to in this light: what the curve
     /// asks for, dimmed in the evening, but never past what Joel set in
     /// that light in an evening, nor brighter for it than the day's.
@@ -677,6 +683,20 @@ mod tests {
         assert!(
             asks >= 0.7 - 1e-9,
             "after a restart the evening dimmed past 0.7 to {asks}"
+        );
+    }
+
+    #[test]
+    fn the_clock_s_evening_is_kept_while_no_light_is_heard() {
+        // 12 Nov, 01:25: with the lid shut and no light heard, the journal
+        // said the evening eased in at every minute's look.
+        let start = Instant::now();
+        let mut follow = Follow::new(curve(), true);
+        follow.dims(0.85, 0.8, start);
+        assert!(
+            (follow.clock() - 0.85).abs() < 1e-9,
+            "the clock's 0.85 was kept as {}",
+            follow.clock()
         );
     }
 
