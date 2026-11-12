@@ -85,6 +85,16 @@ pub const MEASURES: &[Measure] = &[
         bar: None,
         floor: 1.0,
     },
+    // A design whose pieces stand alone lets a change touch few files.
+    Measure {
+        key: "code.*.files-per-change",
+        axis: "organization",
+        evidence: HEALTH,
+        says: "median count of files a merged change touched",
+        unit: " files",
+        bar: None,
+        floor: 2.0,
+    },
 ];
 
 /// The figures in code-health's `{repo: {measure: figure}}`, as

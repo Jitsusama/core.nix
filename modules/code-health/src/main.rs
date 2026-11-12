@@ -73,6 +73,10 @@ fn main() -> ExitCode {
                                 health.figures.insert("shared-files", figure);
                                 health.named.insert("shared-files", named);
                             }
+                            if let Some((figure, named)) = merges::files_per_change(&merged) {
+                                health.figures.insert("files-per-change", figure);
+                                health.named.insert("files-per-change", named);
+                            }
                         }
                         Err(error) => eprintln!("code-health: {name}'s merges left out: {error}"),
                     }
