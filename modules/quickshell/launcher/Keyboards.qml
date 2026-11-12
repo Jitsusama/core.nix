@@ -2,7 +2,8 @@
 // "keyboard state", "connected keyboards" or "caps lock". The headline
 // says how many and whether caps lock is on; the rows are each keyboard by
 // name and how it's joined (built in, on USB or on Bluetooth), and each one
-// holds its parts, a step in by Return or the right arrow, named first as
+// with something to set holds its parts, a step in by Return or the right
+// arrow, one without saying them in its drawer alone, named first as
 // every part is: its Caps lock, Num lock and Scroll lock, as the lights it
 // has say; the Layer a board that has them is on (KeyboardLayer.qml), a
 // setting whose choices lock another or let it go; how a held key Repeats,
@@ -168,20 +169,39 @@ Provider {
     // Each keyboard connected now, its row as the answer lists it, kept
     // where Now finds a row a piece draws by (launcher/Now.qml's borrowed):
     // the Keyboard Layer is the board's.
+    // A keyboard with nothing to set, neither lights nor a layer, holds only
+    // readings, which its drawer says whole, so it never opens a step of
+    // them (docs/design.md, Acts in one order; Joel, 2026-11-11): Return
+    // copies its name, as y does.
     readonly property var all: {
         const found = ConnectedKeyboards.listed;
-        return found.map(device => thingRow({
-            thing: true,
-            key: `keyboards:${device.phys || device.name}`,
-            name: named(device),
-            side: Keyboards.joined(device),
-            glyph: Theme.glyph.keyboard,
-            // Everything it says, under the row (Keyboards.js's drawer),
-            // null until the read its first ask starts lands, a turn later,
-            // so a terminal asks again (Launcher.qml's drawerOf).
-            drawer: () => provider.drawerOf(device, Keyboards.lightHolder(found)),
-            drawerUnread: () => provider.drawerUnread(device)
-        }, () => provider.parts(device, Keyboards.lightHolder(found))));
+        const holder = Keyboards.lightHolder(found);
+        return found.map(device => {
+            const fields = {
+                thing: true,
+                key: `keyboards:${device.phys || device.name}`,
+                name: named(device),
+                side: Keyboards.joined(device),
+                glyph: Theme.glyph.keyboard,
+                // Everything it says, under the row (Keyboards.js's drawer),
+                // null until the read its first ask starts lands, a turn
+                // later, so a terminal asks again (Launcher.qml's drawerOf).
+                drawer: () => provider.drawerOf(device, holder),
+                drawerUnread: () => provider.drawerUnread(device)
+            };
+            return provider.sets(device, holder)
+                ? thingRow(fields, () => provider.parts(device, holder))
+                : copyRow(Object.assign({ hue: "machine", note: "" }, fields));
+        });
+    }
+
+    // Whether a keyboard has anything to set, as its parts would hold it:
+    // the laptop's lights, or a ZSA board's layer and lights, which only a
+    // board whose layout is known can be told.
+    function sets(device, holder) {
+        const laptop = holder !== null && device.phys === holder.phys
+            && device.name === holder.name;
+        return (laptop && laptopMost > 0) || (Keyboards.zsa(device) && KeyboardLayout.boarded);
     }
 
     function told() {
@@ -192,6 +212,15 @@ Provider {
         return {
             headline: `${count}, caps lock ${caps ? "on" : "off"}`,
             glyph: Theme.glyph.keyboard,
+            // A little more than its line, so it's stepped into less:
+            // each keyboard by name and how it's joined, then Caps Lock
+            // (docs/design.md, Every row says a little more beside it).
+            drawer: {
+                title: Words.name("keyboards"),
+                facts: found.map(device => ({ label: named(device),
+                    value: Keyboards.joined(device) })).concat([{ label: part("caps"),
+                    value: caps ? "on" : "off" }])
+            },
             rows: rows,
             note: "",
             live: provider
