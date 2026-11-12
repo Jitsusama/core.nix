@@ -47,6 +47,7 @@ mod refusals;
 mod score;
 mod spot;
 mod trial;
+mod ways;
 mod worker;
 
 use std::io::{Read, Write};
