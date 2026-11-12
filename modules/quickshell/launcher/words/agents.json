@@ -145,7 +145,7 @@
     },
     {
       "id": "verb:agents:landed:feedback",
-      "command": "say",
+      "command": "talk",
       "in": "agents:landed",
       "name": "Say What You Make of It",
       "verb": "say",
