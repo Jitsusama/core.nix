@@ -140,6 +140,12 @@ let
         # failed, which would tell Joel the host is down at every crash it
         # comes back from; once no restart comes, it fails as before.
         RestartMode = "direct";
+        # The commands its conversations run share its unit, so systemd's
+        # default, stopping the whole unit when the kernel kills any of them
+        # for memory, would park every conversation over one build. A plain
+        # pi outlives its command, and so does the host; the host's own death
+        # still restarts it.
+        OOMPolicy = "continue";
         # A host whose loop stops turning answers nobody yet stays active, so
         # once ready it pings from its own loop four times in each of these,
         # and one gone quiet for the whole of it is killed and restarted, to

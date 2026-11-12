@@ -6,7 +6,9 @@
 # makes one start stop pinging while it stays alive, as a host whose loop
 # is wedged does; one named crash makes every start fail once it's ready,
 # and one named refuse makes it exit 78 before it's ready, as a host does
-# when it refuses what it was given.
+# when it refuses what it was given. One named hog makes one start run a
+# command that takes a gigabyte, as a conversation's build might, which
+# writes how it ended to hog.status if it gets to.
 kind="${*: -1}"
 dir="$HOME/stand-in"
 mkdir -p "$dir"
@@ -22,6 +24,16 @@ while true; do
   # Only one start hangs, so the next comes back to a loop that turns.
   if mv "$dir/hang" "$dir/hung" 2>/dev/null; then
     exec sleep infinity
+  fi
+  if mv "$dir/hog" "$dir/hogged" 2>/dev/null; then
+    # tail holds a line until its newline, and /dev/zero never sends one.
+    # Its kill fails the pipeline, which would end the subshell unsaid.
+    (
+      status=0
+      # shellcheck disable=SC2312 # pipefail hands the pipeline tail's kill.
+      head -c 1G /dev/zero | tail -n 1 >/dev/null || status=$?
+      echo "${status}" >"$dir/hog.status"
+    ) &
   fi
   systemd-notify WATCHDOG=1
   sleep 1

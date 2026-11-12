@@ -1904,7 +1904,8 @@
     account's session where the harness is installed, run by the host's pi and its own node, ready
     once it says so, in agents.slice with its realm's environment and its folders first on its
     PATH, left stopped after refusing
-    what it was given and left running through a switch, watched by a two-minute watchdog,
+    what it was given and left running through a switch and through the kernel killing one of its
+    commands for memory, watched by a two-minute watchdog,
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none
   '';
@@ -4246,7 +4247,8 @@
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
     killed by the watchdog and started again once its loop stops pinging, and one that crashes
     at every start is started three times, then left failed with start-limit-hit, and one that
-    refuses what it was given is left down at once, each saying which host is down and why
+    refuses what it was given is left down at once, each saying which host is down and why, and
+    one whose command the kernel kills for memory stays up, unrestarted
   '';
   vm-pi-conversations-come-back = ''
     a realm's attended pi host, its unit as the module renders it on the harness's own host
