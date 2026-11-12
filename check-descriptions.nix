@@ -336,8 +336,8 @@
     tells the orchestrator above it when that session doesn't answer or is gone, tells an
     orchestrator of a session idle two hours by its log's last write, revives a crashed
     orchestrator while leaving one that was ended, marks each of Joel's axes past its bar
-    with its owner, and holds the figures health writes, a boot past 30 s and an unread yes to an
-    ask for a secret among them
+    with its owner, and holds the figures health writes, a boot past 30 s, an unread yes to an
+    ask for a secret and a disk past 90% used among them
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -902,7 +902,8 @@
     by their copies' ages and the day's most through a restart, counts an agent whose presence says
     busy or listening though its process is gone and keeps the day's deaths after their presences
     go, counts the asks for a secret shown, said yes to unread and asked again though said only as
-    information, keeps a day by kind and writes it with the figures cadence holds it to every half
+    information, keeps each disk's least free space and gravest band through a restart as the disk
+    guards say them and counts once a guard that stopped beating, keeps a day by kind and writes it with the figures cadence holds it to every half
     minute however busy the journals, and shows the three worst pains in plain words, pi's as
     pi's, then a line a kind, the gravest first
   '';

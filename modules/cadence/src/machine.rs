@@ -166,6 +166,16 @@ pub const MEASURES: &[Measure] = &[
         Some(0.0),
         10.0,
     ),
+    // Past 90% used, a tenth free, is where the disk guard's nearly-full
+    // band begins unless a machine sets its own.
+    measure(
+        "health.disk.most-used-percent",
+        "resources",
+        "the most of any disk in use",
+        "%",
+        Some(90.0),
+        5.0,
+    ),
 ];
 
 /// The part of health's day the day reads: the figures health works out
@@ -201,7 +211,7 @@ mod tests {
         let figures = figures(
             r#"{"date": "2026-11-12", "things": {},
                 "figures": {"boot.seconds": 27.0, "agents.died": 4, "unheard-of": 3,
-                "asks.unread-yeses": 1}}"#,
+                "asks.unread-yeses": 1, "disk.most-used-percent": 71.5}}"#,
         );
         assert_eq!(
             figures,
@@ -209,6 +219,7 @@ mod tests {
                 ("health.agents.died".to_owned(), 4.0),
                 ("health.asks.unread-yeses".to_owned(), 1.0),
                 ("health.boot.seconds".to_owned(), 27.0),
+                ("health.disk.most-used-percent".to_owned(), 71.5),
             ]),
             "a figure of health's was lost, or one no measure holds was kept"
         );

@@ -6,24 +6,21 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, BufRead as _, BufReader};
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::thread;
+use std::process::Command;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::agents;
-use crate::asks;
 use crate::day::{Day, Kind};
+use crate::disk;
 use crate::feel;
 use crate::figures;
-use crate::journal::{
-    self, LAUNCHER_READY, Mark, RESTART_SCHEDULED, SHUTTING_DOWN, STARTUP_FINISHED, UNIT_STARTED,
-};
+use crate::journal::{self, Mark};
 use crate::lid::{self, Looked};
 use crate::memory;
 use crate::sessions;
@@ -32,12 +29,6 @@ use crate::sessions;
 /// enough that what `health` shows is a moment old, seldom enough to cost
 /// nothing.
 const EVERY: Duration = Duration::from_secs(30);
-
-/// The fields each entry is read by; journalctl always adds its time.
-const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
-                      _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT,\
-                      KERNEL_USEC,INITRD_USEC,USERSPACE_USEC,ASK_OUTCOME,ASK_SHOWN_MS,\
-                      ASK_ITEM_HASH,ASK_ARGV_HASH,ASK_AVOIDABLE";
 
 /// The day being tallied, and where it's written.
 pub struct Follower {
@@ -52,6 +43,8 @@ pub struct Follower {
     sessions: Option<sessions::Reader>,
     proc: Option<PathBuf>,
     presences: Option<PathBuf>,
+    guards: Vec<PathBuf>,
+    guards_stopped: Vec<PathBuf>,
 }
 
 /// How much of the sessions' logs is read a tick, so a first start on a
@@ -61,6 +54,9 @@ const SESSIONS_A_TICK: u64 = 32 << 20;
 /// Where each pi session says it's there and what it's doing, under the
 /// account's home, as the harness's mesh keeps it.
 const PRESENCES: &str = ".local/state/pi/agentic-harness.pi/mesh-workflow/presence";
+
+/// What the day calls a disk guard that stopped.
+const GUARD_STOPPED: &str = "the disk guard stopped saying it's there";
 
 /// What the day calls a lid that's wrong.
 const LID_WRONG: &str = "the lid reads shut while the laptop's screen is on and its keys are typed";
@@ -83,7 +79,39 @@ impl Follower {
             sessions: None,
             proc: None,
             presences: None,
+            guards: Vec::new(),
+            guards_stopped: Vec::new(),
         }
+    }
+
+    /// Read the disks from the guards' status files in `statuses`.
+    #[must_use]
+    pub fn guarding(self, statuses: Vec<PathBuf>) -> Self {
+        Self {
+            guards: statuses,
+            ..self
+        }
+    }
+
+    /// Keep what the guards say of the disks at `at`. A guard found
+    /// stopped counts once as a service's fault, and again only after it
+    /// beats again.
+    pub fn guard(&mut self, at: i64) {
+        if self.guards.is_empty() || date_of(at, &self.zone) != self.day.date {
+            return;
+        }
+        let look = disk::look(&self.guards, at);
+        let before = self.day.disks.clone();
+        self.day.disks.saw(at, &look);
+        self.changed |= before != self.day.disks;
+        for stopped in &look.stopped {
+            if !self.guards_stopped.contains(stopped) {
+                self.day
+                    .fault("disk-guard", Kind::Services, GUARD_STOPPED, at);
+                self.changed = true;
+            }
+        }
+        self.guards_stopped = look.stopped;
     }
 
     /// Look for the agents that died among the sessions' presences.
@@ -334,7 +362,12 @@ pub fn follow(into: &Path) -> io::Result<()> {
     if let Some(state) = into.parent() {
         follower = follower.feeling(&state.join("pain-points"));
     }
-    follower = follower.minding(Path::new("/proc"));
+    // systemd gives every account's service its runtime folder, where the
+    // account's guard keeps its status.
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    follower = follower
+        .minding(Path::new("/proc"))
+        .guarding(disk::statuses(runtime.as_deref()));
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);
         follower = follower
@@ -348,40 +381,19 @@ pub fn follow(into: &Path) -> io::Result<()> {
         follower = follower.resuming(kept);
     }
     let (lines, read) = mpsc::channel();
-    // Warnings and graver.
-    spawn(&["-p", "warning"], lines.clone())?;
-    // What systemd and logind say only as information: a restart
-    // scheduled, the machine started or stopping, and a unit started,
-    // which the day keeps only for the disk's password.
-    spawn(
-        &[
-            &format!("MESSAGE_ID={RESTART_SCHEDULED}"),
-            &format!("MESSAGE_ID={STARTUP_FINISHED}"),
-            &format!("MESSAGE_ID={SHUTTING_DOWN}"),
-            "+",
-            "_PID=1",
-            &format!("MESSAGE_ID={UNIT_STARTED}"),
-        ],
-        lines.clone(),
+    // Counted from the list, so a follower added is waited on too.
+    let journals = journal::followed();
+    for asked in &journals {
+        journal::spawn(asked, lines.clone())?;
+    }
+    drop(lines);
+    run(
+        &mut follower,
+        &read,
+        journals.len(),
+        Instant::now,
+        lid::look,
     )?;
-    // The launcher ready, after each start of the shell.
-    spawn(
-        &[
-            "SYSLOG_IDENTIFIER=quickshell",
-            &format!("--grep={LAUNCHER_READY}"),
-        ],
-        lines.clone(),
-    )?;
-    // Each ask for a secret Joel answered, said only as information.
-    spawn(
-        &[&format!("SYSLOG_IDENTIFIER={}", asks::IDENTIFIER)],
-        lines.clone(),
-    )?;
-    // The kernel's notices and information, which is where it says a USB
-    // device dropped or a PCIe link corrected itself; the day keeps only
-    // those and leaves the rest, about a thousand lines an hour.
-    spawn(&["-k", "-p", "notice..info"], lines)?;
-    run(&mut follower, &read, 4, Instant::now, lid::look)?;
     Err(io::Error::other("the journal followers ended"))
 }
 
@@ -411,6 +423,7 @@ fn run(
             follower.look_at_lid(look(), wall);
             follower.mind(wall);
             follower.count_the_dead(wall);
+            follower.guard(wall);
             follower.feel();
             follower.hear(SESSIONS_A_TICK);
             follower.write()?;
@@ -419,373 +432,7 @@ fn run(
     follower.write()
 }
 
-/// Start one journalctl following from the day's start, its lines sent on,
-/// and a `None` when it ends.
-fn spawn(asked: &[&str], lines: Sender<Option<String>>) -> io::Result<()> {
-    let mut journalctl = Command::new("journalctl")
-        .args(["--follow", "--output=json", "--no-pager", "--since=today"])
-        .arg(format!("--output-fields={FIELDS}"))
-        .args(asked)
-        .stdout(Stdio::piped())
-        .spawn()?;
-    let out = journalctl
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("no output"))?;
-    thread::spawn(move || {
-        let mut out = BufReader::new(out);
-        let mut line = Vec::new();
-        // A line that isn't UTF-8 is read as far as it goes; journalctl
-        // writes such a message as bytes, so it's rare.
-        while out.read_until(b'\n', &mut line).is_ok_and(|read| read > 0) {
-            if lines
-                .send(Some(String::from_utf8_lossy(&line).into_owned()))
-                .is_err()
-            {
-                break;
-            }
-            line.clear();
-        }
-        let _ = journalctl.wait();
-        let _ = lines.send(None);
-    });
-    Ok(())
-}
-
+// The tests keep a file of their own, follow/tests.rs, so the follower
+// reads whole.
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A warning line at a moment in microseconds.
-    fn warning(at: i64) -> String {
-        format!(
-            r#"{{"__REALTIME_TIMESTAMP":"{at}","PRIORITY":"4","SYSLOG_IDENTIFIER":"people","MESSAGE":"slow"}}"#
-        )
-    }
-
-    /// 2026-11-12 at noon, UTC, in microseconds.
-    const NOON: i64 = 1_794_484_800_000_000;
-    const DAY: i64 = 86_400_000_000;
-
-    fn read(into: &Path, date: &str) -> Day {
-        let file = fs::read(file_of(into, date)).expect("the day was written");
-        serde_json::from_slice(&file).expect("the day's file is a day")
-    }
-
-    #[test]
-    fn a_day_is_written_only_once_something_changed() {
-        let into = tempfile::tempdir().expect("a folder");
-        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-        follower.write().expect("nothing to write");
-        assert!(
-            !file_of(into.path(), "2026-11-12").exists(),
-            "an untouched day isn't written"
-        );
-        follower.take(&warning(NOON)).expect("a line");
-        follower.write().expect("the day is written");
-        assert_eq!(
-            read(into.path(), "2026-11-12").things["people"].lines,
-            1,
-            "its line counted"
-        );
-        assert!(
-            fs::read_dir(into.path()).expect("the folder").count() == 1,
-            "nothing but the day is left behind"
-        );
-    }
-
-    #[test]
-    fn a_new_day_writes_the_old_and_starts_empty() {
-        let into = tempfile::tempdir().expect("a folder");
-        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-        follower.take(&warning(NOON)).expect("a line");
-        follower.take(&warning(NOON + 1)).expect("a line");
-        follower
-            .take(&warning(NOON + DAY))
-            .expect("the next day's line");
-        assert_eq!(
-            read(into.path(), "2026-11-12").things["people"].lines,
-            2,
-            "the old day whole"
-        );
-        follower.take(&warning(NOON)).expect("a late line");
-        follower.write().expect("the new day is written");
-        assert_eq!(
-            read(into.path(), "2026-11-13").things["people"].lines,
-            1,
-            "the new day starts empty, and a late line of a day done is left out"
-        );
-        assert_eq!(
-            read(into.path(), "2026-11-12").things["people"].lines,
-            2,
-            "the old day stays"
-        );
-    }
-
-    #[test]
-    fn a_line_that_isnt_an_entry_changes_nothing() {
-        let into = tempfile::tempdir().expect("a folder");
-        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-        follower.take("-- No entries --").expect("words");
-        follower.write().expect("nothing to write");
-        assert!(
-            !file_of(into.path(), "2026-11-12").exists(),
-            "nothing was taken"
-        );
-    }
-
-    #[test]
-    fn a_moment_is_dated_in_its_zone() {
-        assert_eq!(
-            date_of(NOON, &TimeZone::UTC),
-            "2026-11-12",
-            "noon is that day"
-        );
-        let west = TimeZone::fixed(jiff::tz::offset(-5));
-        assert_eq!(
-            date_of(NOON - 8 * 3_600_000_000, &west),
-            "2026-11-11",
-            "04:00 UTC is still the day before five hours west"
-        );
-    }
-
-    #[test]
-    fn a_shutdown_seen_is_timed_to_its_boots_end() {
-        let boots = r#"[{"index":-1,"boot_id":"old","first_entry":1,"last_entry":40000000},
-            {"index":0,"boot_id":"now","first_entry":41000000,"last_entry":99000000}]"#;
-        let ends = ends_of(boots);
-        assert_eq!(
-            ends.into_iter().collect::<Vec<_>>(),
-            vec![("old".to_owned(), 40_000_000)],
-            "only the boots before this one have ended"
-        );
-        let into = tempfile::tempdir().expect("a folder");
-        let mut follower =
-            Follower::new("1970-01-01", into.path(), TimeZone::UTC).knowing(ends_of(boots));
-        follower
-            .take(&format!(
-                r#"{{"__REALTIME_TIMESTAMP":"10000000","_BOOT_ID":"old","MESSAGE_ID":"{SHUTTING_DOWN}","MESSAGE":"System is rebooting."}}"#
-            ))
-            .expect("taken");
-        assert_eq!(
-            follower.day.boots["old"].shutdown(),
-            Some(30_000_000),
-            "from logind's line to the boot's last entry"
-        );
-    }
-
-    #[test]
-    fn a_busy_journal_still_ticks_every_half_minute() {
-        let into = tempfile::tempdir().expect("a folder");
-        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-        let (lines, read) = mpsc::channel();
-        for second in 0..9 {
-            lines
-                .send(Some(warning(NOON + second)))
-                .expect("a line sent");
-        }
-        lines.send(None).expect("its end sent");
-        // Each look at the clock finds ten seconds gone, so the lines come
-        // far faster than the half minute a quiet journal would wait.
-        let start = Instant::now();
-        let mut asked = 0;
-        let now = || {
-            asked += 1;
-            start + Duration::from_secs(10 * asked)
-        };
-        let mut looks = 0;
-        run(&mut follower, &read, 1, now, || {
-            looks += 1;
-            Looked::default()
-        })
-        .expect("the run");
-        assert!(
-            looks >= 3,
-            "looked {looks} times over ten lines a hundred seconds apart"
-        );
-    }
-
-    #[test]
-    fn a_lid_gone_wrong_is_a_devices_fault_once() {
-        let into = tempfile::tempdir().expect("a folder");
-        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-        let used = |keys| Looked {
-            shut: true,
-            screen_on: true,
-            keys,
-        };
-        for keys in 1..5 {
-            follower.look_at_lid(used(keys), NOON);
-        }
-        let open = Looked {
-            shut: false,
-            ..used(5)
-        };
-        follower.look_at_lid(open, NOON);
-        follower.look_at_lid(used(6), NOON);
-        follower.look_at_lid(used(7), NOON);
-        follower.write().expect("the day is written");
-        let lid = &read(into.path(), "2026-11-12").things["lid"];
-        assert_eq!(lid.kind, Some(Kind::Devices), "a lid is a device");
-        assert_eq!(lid.errors, 2, "once a time it went wrong: {lid:?}");
-        let said: Vec<&str> = lid
-            .signatures
-            .values()
-            .map(|said| said.example.as_str())
-            .collect();
-        assert_eq!(said, [LID_WRONG], "said the way Joel reads it");
-    }
-
-    #[test]
-    fn the_days_pains_are_kept_as_the_detector_ranks_them() {
-        let into = tempfile::tempdir().expect("a folder");
-        let pains = tempfile::tempdir().expect("the detector's folder");
-        let mut follower =
-            Follower::new("2026-11-12", into.path(), TimeZone::UTC).feeling(pains.path());
-        follower.feel();
-        follower.write().expect("nothing to write");
-        assert!(
-            !file_of(into.path(), "2026-11-12").exists(),
-            "no pains yet is no change"
-        );
-        fs::write(
-            pains.path().join("2026-11-12.jsonl"),
-            "{\"trying\":\"sound\",\"rank\":1}\n",
-        )
-        .expect("the detector's day");
-        follower.feel();
-        follower.write().expect("the day is written");
-        let feel = read(into.path(), "2026-11-12").feel;
-        assert_eq!(feel.len(), 1, "the pain kept: {feel:?}");
-        assert_eq!(feel[0].trying, "sound", "as the detector said it");
-    }
-
-    #[test]
-    fn memory_is_minded_and_kept_through_a_restart() {
-        let into = tempfile::tempdir().expect("a folder");
-        let proc = tempfile::tempdir().expect("a stand-in /proc");
-        fs::write(proc.path().join("uptime"), "100.0 1.0\n").expect("uptime");
-        let pi = proc.path().join("7");
-        fs::create_dir_all(&pi).expect("a pi");
-        fs::write(pi.join("cmdline"), "pi\0").expect("its command");
-        fs::write(pi.join("status"), "VmRSS:\t 2048 kB\nVmSwap:\t 0 kB\n").expect("status");
-        let fields = "S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 0 0 0";
-        fs::write(pi.join("stat"), format!("7 (pi) {fields}\n")).expect("stat");
-        let mut follower =
-            Follower::new("2026-11-12", into.path(), TimeZone::UTC).minding(proc.path());
-        follower.mind(NOON);
-        fs::remove_dir_all(&pi).expect("the pi ends");
-        follower.mind(NOON + 1);
-        follower.write().expect("the day is written");
-        let day = read(into.path(), "2026-11-12");
-        let held = &day.memory["pi"];
-        assert_eq!(held.copies, 0, "none running at the last look: {held:?}");
-        assert_eq!(
-            (held.most_kib, held.most_at),
-            (2_048, NOON),
-            "the day's most"
-        );
-
-        let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
-            .minding(proc.path())
-            .resuming(day);
-        again.mind(NOON + 2);
-        again.write().expect("the day is written again");
-        assert_eq!(
-            read(into.path(), "2026-11-12").memory["pi"].most_kib,
-            2_048,
-            "a restart keeps the day's most"
-        );
-    }
-
-    #[test]
-    fn a_death_of_the_day_is_kept_though_its_presence_goes() {
-        let into = tempfile::tempdir().expect("a folder");
-        let proc = tempfile::tempdir().expect("a stand-in /proc");
-        let presences = tempfile::tempdir().expect("the presences");
-        let presence = |session: &str, at: &str| {
-            let said = format!(
-                r#"{{"session":"{session}","state":"busy","at":"{at}","owner":{{"pid":9,"startTicks":1}}}}"#
-            );
-            fs::write(presences.path().join(format!("{session}.json")), said).expect("a presence");
-        };
-        presence("yesterday", "2026-11-11T23:00:00Z");
-        presence("today", "2026-11-12T11:00:00Z");
-        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
-            .minding(proc.path())
-            .counting_the_dead(presences.path());
-        follower.count_the_dead(NOON);
-        fs::remove_file(presences.path().join("today.json")).expect("revived");
-        follower.count_the_dead(NOON + 1);
-        follower.write().expect("the day is written");
-        let agents = read(into.path(), "2026-11-12").agents;
-        assert_eq!(
-            agents.gone.keys().collect::<Vec<_>>(),
-            ["yesterday"],
-            "gone at the last look"
-        );
-        assert_eq!(
-            agents.died.keys().collect::<Vec<_>>(),
-            ["today"],
-            "the day's death, kept after its presence went"
-        );
-    }
-
-    /// A failed bash call at a moment in microseconds, as pi logs it.
-    fn failed(at: i64) -> String {
-        format!(
-            r#"{{"type":"message","message":{{"role":"toolResult","toolName":"bash","isError":true,"timestamp":{},"content":[{{"type":"text","text":"error: no"}}]}}}}"#,
-            at / 1_000
-        )
-    }
-
-    #[test]
-    fn the_sessions_logs_are_read_on_and_never_twice() {
-        let into = tempfile::tempdir().expect("a folder");
-        let sessions = tempfile::tempdir().expect("the sessions' folder");
-        let folder = sessions.path().join("--home-joel-src-core.nix--");
-        fs::create_dir_all(&folder).expect("a place");
-        let log = folder.join("a.jsonl");
-        // A line from the day before, then one of the day and half a line;
-        // the day is today's, since only a log written to today is read.
-        let today = date_of(Timestamp::now().as_microsecond(), &TimeZone::UTC);
-        let noon = |at: i64| at + (Timestamp::now().as_microsecond() / DAY - NOON / DAY) * DAY;
-        fs::write(
-            &log,
-            format!(
-                "{}\n{}\n{{\"type",
-                failed(noon(NOON - DAY)),
-                failed(noon(NOON))
-            ),
-        )
-        .expect("a log of today");
-        let mut follower =
-            Follower::new(&today, into.path(), TimeZone::UTC).hearing(sessions.path());
-        follower.hear(1 << 20);
-        follower.hear(1 << 20);
-        follower.write().expect("the day is written");
-        let day = read(into.path(), &today);
-        let bash = &day.things["pi bash"];
-        assert_eq!(bash.kind, Some(Kind::Tools), "a tool's");
-        assert_eq!(bash.errors, 1, "the day's line, once: {bash:?}");
-        let kept = day.read[&log.to_string_lossy().into_owned()];
-        let written = fs::read(&log).expect("the log");
-        let whole = written
-            .iter()
-            .rposition(|&byte| byte == b'\n')
-            .expect("a line")
-            + 1;
-        assert_eq!(kept, whole as u64, "read to its last whole line");
-
-        let mut again = Follower::new(&today, into.path(), TimeZone::UTC)
-            .hearing(sessions.path())
-            .resuming(day);
-        again.hear(1 << 20);
-        again.write().expect("the day is written again");
-        assert_eq!(
-            read(into.path(), &today).things["pi bash"].errors,
-            1,
-            "a restart reads on from where the last run stopped"
-        );
-    }
-}
+mod tests;

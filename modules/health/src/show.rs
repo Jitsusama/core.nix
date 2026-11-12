@@ -10,6 +10,7 @@ use jiff::tz::TimeZone;
 
 use crate::agents::{self, Died};
 use crate::day::{Agents, Badness, Boot, Day, Kind, Thing};
+use crate::disk;
 use crate::feel;
 use crate::memory::{self, Memory};
 
@@ -80,6 +81,9 @@ pub fn day(day: &Day) -> String {
     }
     if let Some(line) = day.asks.said() {
         let _ = writeln!(out, "asks      {line}");
+    }
+    if let Some(line) = disk::said(&day.disks) {
+        let _ = writeln!(out, "disks     {line}");
     }
     for (name, held) in &day.memory {
         if held.most_kib > 0 {

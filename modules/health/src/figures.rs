@@ -10,8 +10,9 @@ use crate::show::KINDS;
 /// Each figure of the day, by its name: the slowest boot and shutdown in
 /// seconds, each kind's errors, the minutes lost in the day's worst
 /// moments, the most each watched program held, the agents that died, and
-/// the asks for a secret: shown, said yes to unread, asked again, avoidable.
-/// A kind with no errors is written as none, so its days have a median.
+/// the asks for a secret: shown, said yes to unread, asked again, avoidable;
+/// and the most any disk was in use, when a guard said any. A kind with no
+/// errors is written as none, so its days have a median.
 #[must_use]
 #[expect(
     clippy::cast_precision_loss,
@@ -52,6 +53,12 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         "asks.avoidable-percent".to_owned(),
         asks.avoidable_percent(),
     );
+    if !day.disks.filesystems.is_empty() {
+        figures.insert(
+            "disk.most-used-percent".to_owned(),
+            day.disks.most_used_percent(),
+        );
+    }
     figures
 }
 
@@ -69,6 +76,7 @@ mod tests {
     use super::*;
     use crate::agents::Died;
     use crate::day::{Kind, Thing};
+    use crate::disk::Filesystem;
     use crate::memory::Memory;
 
     #[test]
@@ -106,6 +114,14 @@ mod tests {
         day.agents.died.insert("s".into(), Died::default());
         day.asks.shown = 4;
         day.asks.again = 2;
+        day.disks.filesystems.insert(
+            "/".into(),
+            Filesystem {
+                size: 200,
+                least_free: 30,
+                ..Filesystem::default()
+            },
+        );
         let figures = of(&day);
         let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
@@ -118,6 +134,7 @@ mod tests {
                 figure("agents.died"),
                 figure("asks.shown"),
                 figure("asks.again"),
+                figure("disk.most-used-percent"),
             ),
             (
                 Some(27.0),
@@ -127,7 +144,8 @@ mod tests {
                 Some(30_720.0),
                 Some(1.0),
                 Some(4.0),
-                Some(2.0)
+                Some(2.0),
+                Some(85.0)
             ),
             "a figure wasn't worked out from the day's tally: {figures:?}"
         );
