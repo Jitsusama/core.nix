@@ -551,12 +551,17 @@ in
       # splash laid itself out and chose its size for it beside a monitor;
       # the third (shut-panel-left-out.patch) leaves it out while another
       # screen is there, reading the lid from ACPI's button module, loaded
-      # in the initrd below.
+      # in the initrd below. Attaching to the console told systemd to write
+      # a line a unit through plymouthd's terminal, over show_status below,
+      # and a shutdown whose splash and console stalled on a docked screen
+      # held PID 1 in that write for 29 s, so the fourth
+      # (status-left-alone.patch) leaves systemd's setting as it is.
       package = pkgs.plymouth.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
           ./frame-timer.patch
           ./statuses-kept.patch
           ./shut-panel-left-out.patch
+          ./status-left-alone.patch
         ];
       });
       theme = "jitsusama";
