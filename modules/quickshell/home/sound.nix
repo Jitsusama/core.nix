@@ -3,6 +3,8 @@
 [
   "Music.qml"
   "Music.js"
+  "NoiseCancelling.qml"
+  "launcher/ByEar.js"
   "launcher/Playing.qml"
   "launcher/Sounds.js"
   "launcher/Targets.js"

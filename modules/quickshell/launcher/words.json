@@ -6007,7 +6007,30 @@
         "joined-display": "display",
         "paused-at": "paused at {level}",
         "balanced": "balanced",
-        "down": "not answering"
+        "down": "not answering",
+        "cleaner-raw": "no noise cancelling",
+        "cleaner-deepfilternet": "DeepFilterNet, full",
+        "cleaner-deepfilternet-gentle": "DeepFilterNet, gentle",
+        "cleaner-rnnoise": "RNNoise",
+        "noise": "the cleaner calls hear the microphones through",
+        "by-ear": "a few seconds recorded, cleaned each way, heard blind and one picked",
+        "by-ear-starting": "starting",
+        "by-ear-recording": "recording",
+        "by-ear-cleaning": "cleaning",
+        "by-ear-ready": "ready to hear",
+        "by-ear-picked": "picked {clip}",
+        "by-ear-seconds": "{seconds} s",
+        "by-ear-left": "{seconds} s left",
+        "by-ear-speak": "speak as you would on a call, with the room as it is",
+        "by-ear-each": "with each cleaner, then shuffled as clips A to D",
+        "by-ear-playing": "playing",
+        "by-ear-blind": "its cleaner is said once one is picked",
+        "by-ear-chosen": "{clip} \u00b7 {cleaner}",
+        "by-ear-from-now": "calls hear {microphone} through it from now",
+        "by-ear-unchanged": "nothing changes: calls hear {microphone} as before",
+        "by-ear-the-microphone": "the microphone",
+        "by-ear-cost": "{share} of a core while cleaning",
+        "by-ear-down": "its socket starts it on the next ask"
       }
     },
     {
@@ -6153,6 +6176,76 @@
       "in": "sound",
       "name": "Profile",
       "term": "Machine/profile"
+    },
+    {
+      "id": "sound:noise",
+      "in": "sound",
+      "name": "Noise Cancelling"
+    },
+    {
+      "id": "sound:by-ear",
+      "in": "sound",
+      "name": "Choose by Ear",
+      "verb": "choose",
+      "glyph": "dictating"
+    },
+    {
+      "id": "sound:by-ear:record",
+      "in": "sound:by-ear",
+      "name": "Record",
+      "verb": "record",
+      "glyph": "recording",
+      "states": {
+        "again": {
+          "name": "Record Again",
+          "verb": "record again"
+        }
+      }
+    },
+    {
+      "id": "sound:by-ear:recording",
+      "in": "sound:by-ear",
+      "name": "Recording"
+    },
+    {
+      "id": "sound:by-ear:cleaning",
+      "in": "sound:by-ear",
+      "name": "Cleaning"
+    },
+    {
+      "id": "sound:by-ear:clip",
+      "in": "sound:by-ear",
+      "name": "Clip {clip}",
+      "verb": "play",
+      "glyph": "playing",
+      "states": {
+        "playing": {
+          "verb": "play again",
+          "glyph": "retry"
+        }
+      }
+    },
+    {
+      "id": "sound:by-ear:pick",
+      "in": "sound:by-ear:clip",
+      "name": "Pick",
+      "verb": "pick",
+      "glyph": "done"
+    },
+    {
+      "id": "sound:by-ear:picked",
+      "in": "sound:by-ear",
+      "name": "Picked"
+    },
+    {
+      "id": "sound:by-ear:refused",
+      "in": "sound:by-ear",
+      "name": "Not Now"
+    },
+    {
+      "id": "sound:by-ear:down",
+      "in": "sound:by-ear",
+      "name": "The Noise Cancelling Daemon"
     },
     {
       "id": "sound:rate",

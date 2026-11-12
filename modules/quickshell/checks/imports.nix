@@ -36,6 +36,7 @@
   "Mark.qml" = [ "MarkSize.js" ];
   "ModeMarks.js" = [ "QueryKeys.js" ];
   "Niri.qml" = [ "NiriRecords.js" ];
+  "NoiseCancelling.qml" = [ "launcher/ByEar.js" ];
   "NoticeKeys.js" = [ "LineEditing.js" ];
   "NoticeList.js" = [ "launcher/Order.js" ];
   "NoticeRow.qml" = [ "Columns.js" ];
@@ -101,6 +102,7 @@
     "launcher/Numbers.js"
     "launcher/Order.js"
   ];
+  "launcher/ByEar.js" = [ "launcher/Numbers.js" ];
   "launcher/Calculator.qml" = [ "launcher/Numbers.js" ];
   "launcher/Capture.qml" = [
     "FileFacts.js"
@@ -272,6 +274,7 @@
   "launcher/Showing.js" = [ "launcher/Order.js" ];
   "launcher/Sound.qml" = [
     "Fuzzy.js"
+    "launcher/ByEar.js"
     "launcher/Numbers.js"
     "launcher/Order.js"
     "launcher/Plate.js"

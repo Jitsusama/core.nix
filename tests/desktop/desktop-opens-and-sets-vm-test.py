@@ -357,6 +357,47 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.as_account(f"rm -f {listening}")
 
 
+def test_the_launchers_sound_chooses_noise_cancelling_by_ear(desktop: Desktop) -> None:
+    """A microphone's Choose by Ear records, plays a clip and picks another, by its daemon.
+
+    The noise-cancelled daemon stands in (stand-in-noise-cancelled.py), its clips in a known
+    order, so B is DeepFilterNet gentle. One path through the connection: the record held from
+    its socket, each act asked over it, and the record's change drawn; every case of each step
+    is tests/by-ear.qml's.
+    """
+    desktop.as_account("systemctl --user start noise-cancelled-stand-in.service")
+    sound_device(desktop, "microphone", "stand-in microphone")
+    desktop.launcher_until(sound_reads("Noise Cancelling", "no noise cancelling"))
+    desktop.down_to("Choose by Ear")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Record"])
+    desktop.machine.send_key("ret")
+    # Record becomes its count, then Record Again once the clips come after it.
+    clips = ["Clip A", "Clip B", "Clip C", "Clip D"]
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Record Again", *clips])
+    desktop.down_to("Clip A")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(sound_reads("Clip A", "playing"))
+    desktop.down_to("Clip B")
+    desktop.follow()
+    # A step in leads with Return's own act, as every row's does, then Pick.
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Play", "Pick"])
+    desktop.down_to("Pick")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Picked", *clips])
+    desktop.launcher_until(sound_reads("Picked", "B \u00b7 DeepFilterNet, gentle"))
+    desktop.launcher_until(sound_reads("Clip D", "no noise cancelling"))
+    # Leaving discards it, so the next opening starts afresh.
+    desktop.close_launcher()
+    sound_device(desktop, "microphone", "stand-in microphone")
+    desktop.launcher_until(sound_reads("Noise Cancelling", "DeepFilterNet, gentle"))
+    desktop.down_to("Choose by Ear")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Record"])
+    desktop.close_launcher()
+    desktop.as_account("systemctl --user stop noise-cancelled-stand-in.service")
+
+
 # A program's own Media and Sound, against a real player playing real
 # sound: mpv, through its MPRIS script, playing two tones in turn through
 # PipeWire to the speakers. What each act does is read back from the

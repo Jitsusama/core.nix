@@ -34,6 +34,7 @@
       mkdir -p launcher runtime && chmod 700 runtime
       ${copied [
         "Daemon.qml"
+        "NoiseCancelling.qml"
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"
@@ -52,6 +53,27 @@
       timeout 60 ${qs} -p shell.qml
       mkdir -p runtime/daemons
       timeout 60 ${qs} -p served.qml
+      touch $out
+    '';
+
+  # Choose by Ear's steps follow the noise-cancelled daemon's trial record:
+  # Record, its count, the clips heard blind with Return playing one and
+  # Pick a step in, every cleaner and its cost once one's picked, a refusal
+  # said plainly, the daemon not answering said, and leaving discarding
+  # anything but idle, as tests/by-ear.qml holds launcher/ByEar.js to
+  # records shaped as the trial protocol sends them.
+  choose-by-ear-walks-its-steps =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "choose-by-ear-walks-its-steps" { } ''
+      cp ${../../../tests/by-ear.qml} by-ear.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/ByEar.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml by-ear.qml
       touch $out
     '';
 

@@ -16,7 +16,12 @@
 //   several; its Channels; its Profile, over Bluetooth; its Hardware; and
 //   what the kernel says of its card.
 // - an input: the same, its Gain for a Volume, and the programs Recording
-//   from it for those Playing, its Voice processing for a Tuning.
+//   from it for those Playing, its Voice processing for a Tuning; then its
+//   Noise Cancelling, the cleaner the microphones run now, and Choose by
+//   Ear, the blind trial picking it: Record, then clips A to D, each
+//   played by Return with Pick a step in, then every clip's cleaner and
+//   its cost revealed (ByEar.js works each step out, and NoiseCancelling
+//   holds the trial). Leaving it, by Escape or by closing, discards it.
 //
 // A Bluetooth device's Codec and its link are Bluetooth's (Accessories.qml),
 // so they're said there, and Sound says only what its sound is for now,
@@ -48,6 +53,7 @@ import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "ByEar.js" as ByEar
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
@@ -640,7 +646,9 @@ Provider {
             made("level", [switches(node), node === metered ? heard : []],
                 () => levelPart(node)),
             volumePart(node), servedPart(node, programs),
-            made("filter", filtersSaid(node), () => filterPart(node)), portPart(node),
+            made("filter", filtersSaid(node), () => filterPart(node)),
+            made("noise", noiseSaid(node), () => noisePart(node)),
+            made("by-ear", noiseSaid(node), () => byEarPart(node)), portPart(node),
             servedPart(node, "channels"),
             servedPart(node, "profile"),
             made("hardware", hardwareSaid(node), () => hardwarePart(node))];
@@ -1145,6 +1153,131 @@ Provider {
     function switches(node) {
         return !!node && !node.isSink && Sounds.standIn(node.properties)
             && carried(node) === "music";
+    }
+
+    // Noise Cancelling and Choose by Ear, on each input but a noise-cancelled
+    // one, which is a cleaner's already: what the trial daemon says of them
+    // (NoiseCancelling.qml), each step worked out by ByEar.js and drawn here.
+    readonly property var soundSaid: Words.of("sound").said ?? {}
+
+    function cancels(node) {
+        return !node.isSink && !String(node.name).startsWith("noise-cancelled.");
+    }
+
+    // What the two parts say, by which they're made again.
+    function noiseSaid(node) {
+        const record = NoiseCancelling.record;
+        return cancels(node) ? [record?.running ?? null, record?.stage ?? null,
+            record?.picked?.clip ?? null, NoiseCancelling.state] : [];
+    }
+
+    function noisePart(node) {
+        if (!cancels(node))
+            return null;
+        const record = NoiseCancelling.record;
+        return figureRow({
+            key: `sound:${node.name}:noise`,
+            name: Words.name("sound:noise"),
+            side: ByEar.running(soundSaid, record, NoiseCancelling.state),
+            // A daemon not answering has no cleaner to copy.
+            copiesNothing: record === null,
+            note: said("noise")
+        });
+    }
+
+    // Choose by Ear: Return steps into the trial, saying how it stands.
+    function byEarPart(node) {
+        if (!cancels(node))
+            return null;
+        const row = entering(thing({
+            key: `sound:${node.name}:by-ear`,
+            name: Words.name("sound:by-ear"),
+            glyph: Words.glyph("sound:by-ear"),
+            hue: "action",
+            side: ByEar.standing(soundSaid, NoiseCancelling.record),
+            note: said("by-ear")
+        }), () => provider.byEarRows());
+        row.verb = Words.verb("sound:by-ear");
+        return row;
+    }
+
+    function byEarRows() {
+        return ByEar.rows(soundSaid, NoiseCancelling.record, NoiseCancelling.state, Date.now())
+            .map(row => provider.byEarRow(row));
+    }
+
+    // A step's row as ByEar.js lays it: an act asking the daemon on
+    // Return, a clip holding Pick a step in, or a figure, whose Return
+    // only closes, since what it says is no use pasted.
+    function byEarRow(row) {
+        const state = row.state ?? "";
+        const name = Words.name(row.id, state, row.fill);
+        if (!row.act)
+            return figureRow({
+                key: row.key,
+                name: name,
+                side: row.side,
+                note: row.note,
+                copiesNothing: true
+            });
+        const made = thing({
+            key: row.key,
+            name: name,
+            verb: Words.verb(row.id, state),
+            glyph: Words.glyph(row.id, state),
+            hue: "action",
+            stays: true,
+            side: row.side ?? "",
+            note: row.note ?? "",
+            run: () => provider.byEarAsk(row)
+        });
+        if (row.pick)
+            made.verbs = () => [provider.byEarRow(row.pick)];
+        return made;
+    }
+
+    // Asks the daemon what Return on a row does; a refusal is said in its
+    // plain words, and what follows is the record's to say. A Pick steps
+    // back out to the trial, whose clips it drops.
+    function byEarAsk(row) {
+        const asking = ByEar.asked(row);
+        if (asking !== null)
+            NoiseCancelling.act(asking, why => {
+                if (why)
+                    provider.refused(row.key, why);
+            });
+        if (row.back)
+            launcher?.back?.();
+    }
+
+    // Whether Choose by Ear's step is held, so leaving it, by Escape or by
+    // closing the launcher, discards the trial (ByEar.leaving).
+    readonly property bool choosing: {
+        const steps = launcher && launcher.open ? launcher.held ?? [] : [];
+        return steps.some(step => String(step?.row?.key ?? "").endsWith(":by-ear"));
+    }
+    onChoosingChanged: {
+        const asking = choosing ? null : ByEar.leaving(NoiseCancelling.record);
+        if (asking !== null)
+            NoiseCancelling.act(asking, null);
+    }
+
+    Connections {
+        target: NoiseCancelling
+
+        function onHeard() {
+            provider.changed();
+        }
+    }
+
+    // A recording's count, a quarter second at a time, so the second it
+    // shows turns over within a frame or so of the clock's; only while the
+    // trial's step is held.
+    Timer {
+        interval: 250
+        repeat: true
+        running: provider.choosing && NoiseCancelling.record?.stage === "recording"
+        onTriggered: provider.changed()
     }
 
     // Its Hardware, from what the sound server says of its card: the chip

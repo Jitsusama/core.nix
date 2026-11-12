@@ -268,8 +268,9 @@ STRAY_UNITS = [
 ]
 
 # Names cased as their own, which open a side word as they're written:
-# a network's generation reads "Wi-Fi 6".
-PROPER = {"Wi-Fi"}
+# a network's generation reads "Wi-Fi 6", and a cleaner "DeepFilterNet,
+# gentle" or "RNNoise", as their makers write them.
+PROPER = {"Wi-Fi", "DeepFilterNet", "RNNoise"}
 
 # A verb of two words is a turn, which says the way it goes, or one whose
 # second word is part of it ("log out", "go to"), as the launcher's foot
@@ -311,7 +312,7 @@ def unsaid(vocabulary: Entry) -> list[str]:
         # An initialism keeps its capitals ("LE Audio", "USB"), its own too
         # ("WARP's measure"), and a name of its own its case ("Wi-Fi 6"),
         # so only a word cased as a name is refused.
-        first = text.split()[0].removesuffix("'s") if text.strip() else ""
+        first = text.split()[0].removesuffix(",").removesuffix("'s") if text.strip() else ""
         named_so = first.isupper() or first in PROPER
         if key == "said" and text[:1].isupper() and not named_so:
             out.append(f"{thing} says {text!r} beside it with a capital, as no value starts.")

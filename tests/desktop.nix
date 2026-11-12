@@ -305,6 +305,12 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-eero.py);
 
+  # Stands in for the noise-cancelled daemon's trial, which would record
+  # and clean the microphone, on its socket (desktop/stand-in-noise-cancelled.py).
+  standInNoiseCancelled = pkgs.writers.writePython3 "stand-in-noise-cancelled" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-noise-cancelled.py);
+
   # The areas that walk Passwords, looks-programs, which shoots it, and
   # keeps-pace, which steps into it under load, whose 1Password's manager
   # asks a stand-in for 1Password's command, op, since no 1Password account
@@ -1146,6 +1152,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           ];
           Install.WantedBy = [ "default.target" ];
         };
+        # The noise-cancelled daemon's trial, as a stand-in the test starts
+        # when it walks Choose by Ear, so every other area's inputs say the
+        # daemon isn't answering, as a machine without it does. The real
+        # one records and cleans for seconds, shuffles its clips and would
+        # move the default microphone under every other subtest, so its
+        # socket isn't started here; its own VM test proves it
+        # (tests/vm/sound/noise-cancelled-vm-test.py).
+        systemd.user.sockets.noise-cancelled-trial.Install.WantedBy = lib.mkForce [ ];
+        systemd.user.services.noise-cancelled-stand-in.Service.ExecStart =
+          "${standInNoiseCancelled} %t/daemons/noise-cancelled.sock";
         # Firmware's fwupd isn't in the VM, and would have nothing to say.
         jitsusama.quickshell.launcher.providers.firmware = {
           enable = lib.mkForce true;
