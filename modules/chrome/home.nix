@@ -159,8 +159,10 @@ in
         asked = true;
         list = [ recentSites ];
         dated = true;
-        session = "${config.home.homeDirectory}/.config/google-chrome/Default";
-        host = openTabs != null;
+        session = {
+          profile = "${config.home.homeDirectory}/.config/google-chrome/Default";
+          host = openTabs != null;
+        };
       }
       // lib.optionalAttrs (openTabs != null) {
         go = [

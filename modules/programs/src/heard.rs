@@ -88,10 +88,10 @@ pub fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
     // until the daemon starts again, after the switch or the login that
     // follows; until then each step into it, and each get, reads it still.
     for (at, source) in shared.sources.iter().enumerate() {
-        let Some(profile) = &source.session else {
+        let Some(session) = &source.session else {
             continue;
         };
-        if let Some(watch) = notify.watch(&Path::new(profile).join("Sessions")) {
+        if let Some(watch) = notify.watch(&Path::new(&session.profile).join("Sessions")) {
             folders.entry(watch).or_default().sessions.push(at);
         }
     }

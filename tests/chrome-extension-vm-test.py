@@ -101,7 +101,8 @@ def test_the_launcher_hears_the_open_tabs_and_goes_to_or_closes_one(
     """The host lists Chromium's two pages, and Chrome's source goes to one, closes the other."""
     source = values["source"]
     assert {"go", "close"} <= source.keys(), f"the source found no host to act through: {source}"
-    assert source.get("host") is True, f"the source doesn't say to ask the host: {source}"
+    asking = source.get("session", {}).get("host")
+    assert asking is True, f"the source doesn't say to ask the host: {source}"
     minute = int(timedelta(minutes=1).total_seconds())
     # Run alone, nothing before it has waited for the machine to start, and
     # there's no Chromium to stop, which pkill fails on.

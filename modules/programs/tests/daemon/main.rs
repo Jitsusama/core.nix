@@ -125,7 +125,7 @@ fn fixture(folder: &Path) -> PathBuf {
             "list": ["sh", "-c", folders],
         },
         {"app": "mpv", "kind": "file", "opened": ["cat", at("lists/playing")]},
-        {"app": "chrome", "kind": "site", "session": at("chrome"), "host": true},
+        {"app": "chrome", "kind": "site", "session": {"profile": at("chrome"), "host": true}},
         // A list whose command fails, as one whose program isn't set up.
         {"app": "broken", "kind": "file", "list": ["false"]},
         {

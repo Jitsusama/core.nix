@@ -57,14 +57,21 @@ pub struct Source {
     /// The command printing what it has open now.
     #[serde(default)]
     pub opened: Vec<String>,
-    /// Chrome's profile folder, whose open pages this daemon reads itself
-    /// from its session file, with no command, as it's stepped into and
-    /// as the file changes while watched (`opened` gives way to it).
+    /// Chrome's session, whose open pages this daemon reads itself, with
+    /// no command, as it's stepped into and as the file changes while
+    /// watched (`opened` gives way to it).
     #[serde(default)]
-    pub session: Option<String>,
-    /// With `session`, whether Chrome's extension's host is asked first,
-    /// on its socket, since only the tabs it lists can be gone to or
-    /// closed; the file's are read where it isn't there or lists none.
+    pub session: Option<Session>,
+}
+
+/// Where a source's Chrome keeps what it has open.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct Session {
+    /// Its profile's folder, whose newest session file is read.
+    pub profile: String,
+    /// Whether its extension's host is asked first, on its socket, since
+    /// only the tabs it lists can be gone to or closed; the file's are
+    /// read where it isn't there or lists none.
     #[serde(default)]
     pub host: bool,
 }
@@ -236,11 +243,11 @@ const HOST: &str = "chrome-open-tabs.sock";
 /// lines a command would print, the host's tabs where it's asked and
 /// lists any, else the session file's; none for a source naming none.
 pub fn open_now(source: &Source) -> Option<Result<String, String>> {
-    let profile = source.session.as_deref()?;
+    let session = source.session.as_ref()?;
     let host = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|_| source.host)
+        .filter(|_| session.host)
         .map(|runtime| Path::new(&runtime).join(HOST));
-    let open = chrome_session::open::open(Path::new(profile), host.as_deref());
+    let open = chrome_session::open::open(Path::new(&session.profile), host.as_deref());
     Some(open.map(|tabs| tabs.iter().map(|tab| tab.line() + "\n").collect()))
 }
 

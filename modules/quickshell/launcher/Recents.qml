@@ -100,10 +100,10 @@ Scope {
     }
 
     // Whether a source says what its program has open now: by a command
-    // (`opened`), or, as Chrome's does, by the profile whose session the
-    // programs daemon reads itself (`session`).
+    // (`opened`), or, as Chrome's does, by the session the programs
+    // daemon reads itself (`session`).
     function tellsOpen(source) {
-        return (source?.opened ?? []).length > 0 || typeof source?.session === "string";
+        return (source?.opened ?? []).length > 0 || typeof source?.session?.profile === "string";
     }
 
     // What a program has open now, a line each, or none.
