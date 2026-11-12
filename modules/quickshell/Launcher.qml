@@ -3450,7 +3450,10 @@ Scope {
             // Nothing after its name, as no other row says there; what it
             // holds is named in its drawer (VKCF3Z, dae7fb67).
             count: "",
-            drawer: PlaceRow.drawer(title, members, placeSaid, collection.holding ?? ""),
+            // Holding none, its drawer says the place's own sentence for it,
+            // but only once read, since one not read may hold some.
+            drawer: PlaceRow.drawer(title, members, placeSaid, { holding: collection.holding ?? "",
+                empty: read ? collection.empty ?? "" : "" }),
             gap: gap,
             opens: name,
             from: source,

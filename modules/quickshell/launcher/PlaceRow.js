@@ -50,14 +50,22 @@ function run(names) {
 // "program", and what it holds by its members' own names, in its own
 // order, so one key shows what's inside without stepping in (VKCF3Z,
 // dae7fb67, 00ca9231). A place holding things of one kind, Keyboard's
-// keys or Programs' programs, says what they are in a sentence, `holding`,
-// rather than naming each. Null where it holds nothing to name.
-function drawer(name, names, eyebrow, holding = "") {
+// keys or Programs' programs, says what they are in a sentence,
+// `said.holding`, rather than naming each. Holding none, it says the
+// place's own sentence for that, `said.empty`, as Windows' "No other
+// windows.", so every row has a drawer giving a little more than its line
+// (Joel, 2026-11-11 22:00; Y2YBTS, 641b64f8). Null where it holds nothing
+// and has no such sentence, as a place not read yet.
+function drawer(name, names, eyebrow, said = {}) {
+    const holding = said.holding ?? "";
     if (holding !== "") {
         return { eyebrow, title: name, body: holding };
     }
-    return names.length === 0 ? null
-        : { eyebrow, title: name, body: run(names), runs: true };
+    if (names.length > 0) {
+        return { eyebrow, title: name, body: run(names), runs: true };
+    }
+    const empty = said.empty ?? "";
+    return empty === "" ? null : { eyebrow, title: name, body: empty };
 }
 
 // What a row being read again says, at its right and below its name, as a
