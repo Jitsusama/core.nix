@@ -8850,10 +8850,19 @@ Scope {
     // 35 (2026-11-11, read by the shell's pid). Home is held only once
     // they're kept. This is the one pass that makes rows while shut, once
     // a start: a source changing later is caught up by the chord's fill.
+    // An opening meanwhile puts it off until the launcher is shut again,
+    // where it carries on from the turn it reached: it stopped for good,
+    // so Joel's first chord 14 s after a start made 1,328 rows and took
+    // 1,024 ms to be presented (2026-11-12, 13:16). It begins once the
+    // shell's own start is done, about a second and a half after its
+    // configuration loads, rather than six: his chord 3 s after one found
+    // nothing kept (10:16).
     property int warmed: -1
     property real warmedTook: 0
     Timer {
-        interval: 6000
+        id: warmingBegins
+
+        interval: 1500
         running: true
         onTriggered: root.warmNext()
     }
@@ -8867,8 +8876,9 @@ Scope {
         onTriggered: root.warmNext()
     }
     function warmNext() {
-        if (open || opening || homeHeld) {
+        if (open || opening) {
             warmingOn.stop();
+            warmingBegins.restart();
             return;
         }
         const began = KeyTimes.now();
@@ -8894,6 +8904,7 @@ Scope {
         warmingOn.stop();
         // Home is found with no place held, as the last place kept left
         // its step held.
+        homeHeld = false;
         keeping = true;
         try {
             held = [];
@@ -8928,6 +8939,9 @@ Scope {
         const source = collections.find(one => one.settings.name === name);
         if (placesKept[name])
             return;
+        // The card holds the place now, not home, until the pass ends by
+        // keeping home again, so an opening meanwhile finds home first.
+        homeHeld = false;
         keeping = true;
         try {
             held = [placeStep(source)];
