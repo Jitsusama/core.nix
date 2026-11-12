@@ -333,6 +333,36 @@ def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None:
+    """An opening ended by Return on a sum keeps it as a pick of a sum, not a miss.
+
+    An answer's key is empty, so every Return on Ask, a sum or Memory was kept as a miss, and
+    what the trials said of them was wrong (1JQPPC, 2026-11-11).
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+
+    def kept() -> list[Json]:
+        lines = [
+            line
+            for path in state.glob("quickshell/by-shell/*/launcher-trials.jsonl")
+            for line in path.read_text().splitlines()
+            if line.strip()
+        ]
+        return [cast("Json", json.loads(line)) for line in lines]
+
+    before = len(kept())
+    copied(shell, "6*7", "42")
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    # The shell adds the opening's line through a pipe once it closes, so it's read again until
+    # it's there, a poll's length apart.
+    while len(kept()) <= before:
+        assert time.monotonic() < deadline, "the opening was never kept"
+        time.sleep(launcher_on_niri.POLL)
+    last = kept()[-1]
+    assert last.get("picked") == "answer:sum", last
+    assert last.get("missed") is False, last
+
+
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
     """The date is copied, the power acts arm first, and a bind's words find its action."""
     # The date in full, as the clock has it; the day may turn while it's

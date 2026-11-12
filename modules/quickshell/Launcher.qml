@@ -467,6 +467,9 @@ Scope {
         return {
             // Nothing to learn: an answer is always first for its question.
             key: "",
+            // But an opening counts it, by its kind, so Return on one is a
+            // pick and never a miss.
+            counted: trials.answerCounted(said.asker?.answerKind, said.about),
             is: "answer",
             answered: true,
             nested: parted(said),
@@ -674,6 +677,8 @@ Scope {
     readonly property bool lineHeads: answer === null && headline !== null
     readonly property var headline: !answer ? (holdsWords ? lined : null) : {
         name: answer.headline,
+        // Counted by its kind when Return picks it (answered's `counted`).
+        counted: trials.answerCounted(answer.asker?.answerKind, answer.about),
         // An answer still being asked for has nothing to copy yet.
         verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
         now: true,

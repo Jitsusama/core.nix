@@ -143,6 +143,11 @@ Scope {
         return named.length === 0 ? "" : `: ${named.map(name => `${name} ${each[name]}`).join(", ")}`;
     }
 
+    // What an answer is counted as when it's picked (Trials.js).
+    function answerCounted(answers, about) {
+        return Trials.answerCounted(answers, about);
+    }
+
     function picked(row, typed, depth) {
         trial = Trials.picked(trial, Date.now(), row, { typed: typed, depth: depth });
     }

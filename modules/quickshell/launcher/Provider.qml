@@ -477,6 +477,12 @@ Scope {
     // come from, so a provider that only answers leaves it empty.
     property string what: ""
 
+    // What its answers are, in a word ("sum", "ask"), by which an opening
+    // counts one Return picked, since an answer's key is empty (Trials.js's
+    // answerCounted). One that leaves it empty is counted by what its
+    // answer is about, as Machine's are.
+    property string answerKind: ""
+
     // How many rows this source has made since the shell started, so the
     // launcher can say which made what as it opened (Launcher.qml's
     // madeSince), and the records it looked at. Plain counts in an object,
