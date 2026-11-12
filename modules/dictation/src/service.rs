@@ -47,6 +47,8 @@ use dictation::microphone;
 use dictation::openvino::Priority;
 use dictation::speech::Speech;
 
+use crate::mode;
+
 const UNUSED: Duration = Duration::from_mins(10);
 // A chord let go sooner than this was a tap, which leaves it listening.
 const HELD_MS: u128 = 400;
@@ -308,6 +310,7 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                 state = State::Idle;
                 match result {
                     Ok(text) if !text.is_empty() => {
+                        let text = mode::shaped(&text, mode::focused());
                         if let Err(error) = type_out(&text) {
                             notice("Dictation can't type", &error);
                         }
