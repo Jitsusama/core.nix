@@ -53,9 +53,10 @@
 //! Every call to wl-gammarelay-rs is given a moment to answer (ask.rs), so
 //! the warmth never holds the brightness, the keys or the lid.
 //!
-//! In the evening, by the local clock, the screen eases to half what the
+//! In the evening, by the local clock, the screen eases to 70% of what the
 //! curve asks for, and back in the morning (evening.rs), looked at each
-//! minute.
+//! minute, never jumping, and never dimming past what Joel set in that light
+//! in an evening, which is kept in `$XDG_STATE_HOME/backlight/evening`.
 //!
 //! Usage: backlight <standard curve> [night white] [evening]. The standard
 //! curve is where learning starts, a point to a line: the lux, a space and
@@ -354,6 +355,11 @@ fn evening() -> Result<Option<Evening>, String> {
     }
 }
 
+/// What Joel set in the evening, in each light, kept beside the curve.
+fn evening_floor(learned: &Path) -> Option<Curve> {
+    Curve::read(&fs::read_to_string(learned.with_file_name("evening")).ok()?)
+}
+
 /// What learning goes on from: the curve kept in `learned`, and that it's
 /// Joel's, or the standard curve while none is kept or what's kept holds
 /// none.
@@ -409,7 +415,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let mut backlight = Backlight {
         screen,
         session,
-        follow: Follow::new(curve, knows_joel),
+        follow: Follow::new(curve, knows_joel).floored(evening_floor(&learned)),
         learned,
         chosen: runtime.join("backlight-chosen"),
         now_file: runtime.join("backlight-now"),

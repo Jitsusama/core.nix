@@ -12,10 +12,12 @@
 # light it was heard in, what the curve asks there and whether it follows
 # the light now are told in $XDG_RUNTIME_DIR/backlight-now for Screens'
 # Brightness, emptied as the daemon stops.
-# Once jitsusama.backlight.evening.start is set, from it to its end, by the
-# local clock, the built-in screen eases to half the brightness the light asks for, as
+# From jitsusama.backlight.evening.start to its end, by the local clock,
+# the built-in screen eases to 70% of the brightness the light asks for, as
 # the light research found dimming does most for the body clock
-# (src/evening.rs); a pick then is learned as the day would want it.
+# (src/evening.rs). It eases from wherever the screen is, a restart's too,
+# a pick then holds until the morning, and it never dims past what Joel
+# set in that light in an evening, kept in ~/.local/state/backlight/evening.
 # A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
 # panel at the same share of its own brightest (src/monitor/), once
 # udev opens its bus to the seat, as modules/ddcutil does. What such a
@@ -76,15 +78,16 @@ in
 
   options.jitsusama.backlight.evening.start = lib.mkOption {
     type = lib.types.nullOr clock;
-    # Off until the evening eases from wherever the screen is, even at a
-    # restart, and holds what Joel sets: on 12 Nov a restart at 00:00 took
-    # his screen from 85% to 43% at once, and his setting it back was lost.
-    default = null;
+    # Two and a half hours before a midnight bed, the evening the light
+    # research (RSCH-20261108-HGB8JZ) keeps dim, until it follows when Joel
+    # usually stops (modules/rhythm).
+    default = "21:30";
     description = ''
       When the built-in screen starts to dim for the evening, by the local
-      clock, as "21:30": it eases to half the brightness the light asks for
-      over the half hour after, never under about 20 nits. Null keeps it
-      from dimming at all.
+      clock, as "21:30": it eases to 70% of the brightness the light asks
+      for over the half hour after, from wherever the screen is, never past
+      what Joel set in that light in an evening, and never under about 20
+      nits. Null keeps it from dimming at all.
     '';
   };
 

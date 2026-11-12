@@ -153,7 +153,10 @@ mod tests {
     #[test]
     fn the_evening_eases_in_over_half_an_hour() {
         let half_way = 1.0 - (1.0 - SHARE) / 2.0;
-        assert!((at(21.0, 45.0) - half_way).abs() < 1e-9, "a quarter hour in");
+        assert!(
+            (at(21.0, 45.0) - half_way).abs() < 1e-9,
+            "a quarter hour in"
+        );
         assert!((at(22.0, 0.0) - SHARE).abs() < 1e-9, "half an hour in");
         assert!((at(2.0, 0.0) - SHARE).abs() < 1e-9, "past midnight");
     }
@@ -175,23 +178,41 @@ mod tests {
     #[test]
     fn dimming_takes_its_share_down_to_the_floor_and_no_further() {
         assert!((dimmed(0.6, 0.5) - 0.3).abs() < 1e-9, "halved");
-        assert!((dimmed(0.06, 0.5) - FLOOR).abs() < 1e-9, "held at the floor");
+        assert!(
+            (dimmed(0.06, 0.5) - FLOOR).abs() < 1e-9,
+            "held at the floor"
+        );
         assert!((dimmed(0.03, 0.5) - 0.03).abs() < 1e-9, "left under it");
         assert!((dimmed(0.6, 1.0) - 0.6).abs() < 1e-9, "by day");
-        assert!((dimmed(0.8, 1.5) - 1.0).abs() < 1e-9, "at most the brightest");
+        assert!(
+            (dimmed(0.8, 1.5) - 1.0).abs() < 1e-9,
+            "at most the brightest"
+        );
     }
 
     #[test]
     fn the_share_eases_a_minute_at_a_time() {
         let step = (1.0 - SHARE) / EASE;
-        assert!((eased(1.0, SHARE) - (1.0 - step)).abs() < 1e-9, "one step down");
-        assert!((eased(SHARE, 1.0) - (SHARE + step)).abs() < 1e-9, "one step up");
-        assert!((eased(SHARE + step / 2.0, SHARE) - SHARE).abs() < 1e-9, "arrives");
+        assert!(
+            (eased(1.0, SHARE) - (1.0 - step)).abs() < 1e-9,
+            "one step down"
+        );
+        assert!(
+            (eased(SHARE, 1.0) - (SHARE + step)).abs() < 1e-9,
+            "one step up"
+        );
+        assert!(
+            (eased(SHARE + step / 2.0, SHARE) - SHARE).abs() < 1e-9,
+            "arrives"
+        );
         let mut share = 1.0;
         for _ in 0..30 {
             share = eased(share, SHARE);
         }
-        assert!((share - SHARE).abs() < 1e-9, "half an hour took it to {share}");
+        assert!(
+            (share - SHARE).abs() < 1e-9,
+            "half an hour took it to {share}"
+        );
     }
 
     #[test]
