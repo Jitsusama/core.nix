@@ -60,11 +60,15 @@ function trafficFact(usage, settings) {
     return fact("traffic", value, { figure: spark(hourly(usage)) });
 }
 
-// The internet's drawer: first the last speed test, the nodes, devices
-// and outages, who carries it, the firmware and the day's traffic, so a
+// The internet's drawer: first the last speed test, the nodes and
+// outages, who carries it, the firmware and the day's traffic, so a
 // narrow drawer shows those before its more; then this machine's last
 // look at it, each outage, every speed test, how its addresses are had,
-// its switches, and who joined or left, each under a heading. How it
+// its switches and what happened to it, each under a heading. It holds
+// only the internet: each device, its address and what happened to it
+// are in its own drawer, and who came and went in its node's (Joel,
+// 2026-11-11: "home network internet seems to have devices connected
+// to the LAN thrown in"). How it
 // stands is its row's side, so the drawer doesn't say it again.
 // Its eyebrow is where it comes from, as every drawer's here is where
 // the thing is, then its kind (VKCF3Z, 2026-11-07).
@@ -79,10 +83,6 @@ function internet(model, now, settings) {
             fact("speed-test", joined([Home.speedTestOf(net.speed_test, settings),
                 History.when(net.speed_test?.at, now)])),
             fact("nodes", Home.nodesSaid(net.nodes)),
-            // eero's count is every device it knows, on now or not, so the
-            // ones on now are counted beside it, by how each is on.
-            fact("devices", joined([known(net.devices) ? `${net.devices} known` : "",
-                devicesOn(model.devices ?? [])])),
             fact("outages", History.outagesSaid(net)),
             fact("isp", joined([net.isp, known(net.asn) ? `AS${net.asn}` : "",
                 net.isp_up === false ? "down" : ""])),
@@ -95,18 +95,17 @@ function internet(model, now, settings) {
             trafficFact(net.usage, settings),
             fact("read", joined([History.when(model?.read, now), model?.cloud?.state])),
         ]).concat(History.probe(net, now, settings), History.outages(net, now),
-            speedTests(net, now, settings), Addresses.addressing(model), switches(net), History.devicesOff(model, now), History.joinsAndLeaves(model, now),
-            happened(model, History.timeline(model), now)),
+            speedTests(net, now, settings), Addresses.addressing(model), switches(net),
+            happened(model, History.timeline(model).filter((event) => !ofADevice(model, event)),
+                now)),
     };
 }
 
-// The devices on now as counts of what they count, a part that's none
-// giving way: "12 on Wi-Fi \u00b7 3 on Ethernet", "15 on Wi-Fi".
-function devicesOn(listed) {
-    const ethernet = listed.filter((each) => each.ethernet).length;
-    const wifi = listed.length - ethernet;
-    return joined([wifi > 0 ? `${wifi} on Wi-Fi` : "",
-        ethernet > 0 ? `${ethernet} on Ethernet` : ""]);
+// Whether something that happened is about a device, on now or not, which
+// its own drawer says, so the internet's holds only the internet's.
+function ofADevice(model, event) {
+    return (model?.devices ?? []).concat(model?.devices_off ?? [])
+        .some((one) => about(event, one));
 }
 
 // Whether something eero's activity list says is about a device: its
@@ -279,7 +278,8 @@ function node(model, one, now, settings) {
                 ? `${one.light.brightness}%` : ""]) : null),
             fact("power", one.power),
             trafficFact(one.usage, settings),
-        ]), onIt(model, one, settings)),
+        ]), onIt(model, one, settings), History.devicesOff(model, now, one),
+            History.joinsAndLeaves(model, now, one)),
     };
 }
 
