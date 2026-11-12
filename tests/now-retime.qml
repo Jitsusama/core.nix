@@ -2,8 +2,10 @@
 // and the date, through Quickshell itself. Placing them makes Time's and
 // Today's rows, so an opening into a place that shows none of Now's rows
 // leaves them until Now is wanted, where every opening once made all 17
-// as it began (H6EDLC, 2026-11-11), and an opening onto Now's rows places
-// them once, and only once a minute has turned since they were placed.
+// as it began (H6EDLC, 2026-11-11), and Now's rows, opened onto or come
+// to, place them once, and only once a minute has turned since they were
+// placed: an opening into For You that wasn't yet asleep made all 17
+// again as Now's rows were come to, with no minute turned (2026-11-12).
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -41,15 +43,20 @@ ShellRoot {
         settings: ({ name: "on" })
     }
 
-    // The start's own placing is let through first.
+    // The start's own placing is let through first. The cases read the
+    // wall clock's minute, so one begun in a minute's last seconds would see
+    // it turn and rightly place the time again: begun then, they wait for
+    // the next minute's start instead, the 100 ms let through after it, and
+    // take the time as placed in that minute (intoAPlace).
     Timer {
         running: true
-        interval: 100
+        interval: Date.now() % 60000 > 55000 ? 60100 - Date.now() % 60000 : 100
         onTriggered: root.intoAPlace()
     }
 
     function intoAPlace() {
         try {
+            now.timedMinute = now.minuteNow();
             theLauncher.placed = 0;
             theLauncher.open = true;
             Expect.same("opened into a place, it places no time", theLauncher.placed, 0);
@@ -60,14 +67,36 @@ ShellRoot {
         }
     }
 
-    // Wanted, Now places what went stale on its next turn.
+    // Wanted within the minute the start placed it in, nothing is stale.
     Timer {
         id: cameToNow
 
         interval: 50
         onTriggered: {
             try {
-                Expect.expect("come to Now's rows, it places the time",
+                Expect.same("come to Now's rows within the minute, it places no time",
+                    theLauncher.placed, 0);
+                theLauncher.wanting = false;
+                theLauncher.open = false;
+                theLauncher.open = true;
+                now.timedMinute -= 1;
+                theLauncher.wanting = true;
+                cameOn.start();
+            } catch (error) {
+                Expect.fail(error.message ?? error);
+            }
+        }
+    }
+
+    // Wanted a minute after it was placed, it places the time on its next
+    // turn.
+    Timer {
+        id: cameOn
+
+        interval: 50
+        onTriggered: {
+            try {
+                Expect.expect("come to Now's rows a minute on, it places the time",
                     theLauncher.placed >= 1, `placed ${theLauncher.placed}`);
                 theLauncher.open = false;
                 theLauncher.placed = 0;

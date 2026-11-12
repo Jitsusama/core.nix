@@ -384,20 +384,23 @@ ShellRoot {
             return;
         try {
             const rows = program("browser").verbs();
-            same("stepped into, what it has open comes before its other windows and Recent, "
-                + "a window its front tab stands for not listed again", names(rows),
-                "Go To, New Window, New Window Below, Open A, Older page, Another, Behind, "
-                + "Filed, Left out, Recent, Quit");
-            const visited = rows[9].targets();
-            const sites = rows.slice(3, 8).concat(visited);
+            same("stepped into, its open tabs stand as one row before its other windows and "
+                + "Recent, a window its front tab stands for not listed again", names(rows),
+                "Go To, New Window, New Window Below, Tabs, Left out, Recent, Quit");
+            same("Tabs says how many tabs, and is stepped into",
+                `${rows[3].side} ${rows[3].nested} ${rows[3].verb}`, "5 tabs true more");
+            same("its pages are its verbs and its targets alike",
+                names(rows[3].verbs()), names(rows[3].targets()));
+            const visited = rows[5].targets();
+            const sites = rows[3].targets().concat(visited);
             expect("asked again, the sites it visited are the rows made before",
-                program("browser").verbs()[9].targets().every((row, at) => row === visited[at]),
+                program("browser").verbs()[5].targets().every((row, at) => row === visited[at]),
                 names(visited));
             same("what's open, one row a page, newest looked at first, then in Recent what was "
                 + "open, never a page open now nor one left out", names(sites),
                 `Open A, Older page, Another, Behind, Filed, Page ${reading}`);
             same("Recent says how many, nothing after its name, and their names for its drawer",
-                `${rows[9].side} ${rows[9].count ?? ""}|${rows[9].heldNames}`,
+                `${rows[5].side} ${rows[5].count ?? ""}|${rows[5].heldNames}`,
                 `1 |Page ${reading}`);
             same("each saying it's open and in how many tabs, then its host",
                 sites.map(row => row.side).join(" | "),
@@ -451,7 +454,7 @@ ShellRoot {
             inside[1].run();
             same("Close It closes each of its tabs", JSON.stringify(Niri.spawns),
                 '[["tabs","close","7"],["tabs","close","9"]]');
-            const shut = program("browser").verbs()[3];
+            const shut = program("browser").verbs()[3].targets()[0];
             same("the page stays where it was, dimmed and said closed, holding only its link",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
                 "site:https://open.example.com/a true closed \u00b7 open.example.com | Copy the Link");
@@ -468,7 +471,7 @@ ShellRoot {
                 const source = applications.settings.recents.find(one => one.app === "browser");
                 delete source.go;
                 delete source.close;
-                const bare = program("browser").verbs()
+                const bare = program("browser").verbs()[3].targets()
                     .find(row => row.key === "site:https://another.example.com/b");
                 same("with only what's open said, a page holds its window, then Copy the Link",
                     names(bare.verbs()), "Another, Copy the Link");
