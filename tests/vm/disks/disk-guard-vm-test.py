@@ -439,9 +439,16 @@ def test_a_frozen_writer_thaws_by_itself_once_its_disk_has_room(
 
 
 @pytest.fixture
-def store_pressed(account: Account, values: dict[str, Any]) -> Iterator[BaseMachine]:
-    """Give the machine with its guard's store filling; its own config comes back after."""
-    machine = account.machine
+def store_pressed(on_test_bands: Account, values: dict[str, Any]) -> Iterator[BaseMachine]:
+    """Give the machine with its guard's store filling; its own config comes back after.
+
+    The account's guard is on the test's config, which looks after no generations, so it
+    doesn't speak for the store. On its rendered one it would, and the machine's guard would
+    leave the store's garbage for it to order; but it reads the store by its own bands, healthy,
+    and asks for none. Run alone, before any test that gave it the test's config, this one
+    waited out its five minutes on 12 November.
+    """
+    machine = on_test_bands.machine
     drop_in = "/run/systemd/system/disk-guard.service.d/test.conf"
     machine.succeed(
         f"mkdir -p {drop_in.rsplit('/', 1)[0]}",
