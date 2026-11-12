@@ -5152,6 +5152,20 @@ Scope {
             rows: Steady.kept(step.rows, members(step.row.category), pairedId)
                 .map(row => heldBack(step.row.category, row))
         }) : step);
+        // The step whose row is the source's own is made again too, as
+        // enter made it: only the steps below it were, so Now stepped into
+        // kept a row that had left it, undimmed, until it was left (PN2VZC,
+        // a7b9d465: Work Network's row, past 30 s in one of four runs).
+        if (from >= 0) {
+            const step = steps[from];
+            const into = inside(step.row,
+                asThing(step.row, from === 0 || collects(steps[from - 1])));
+            if (into) {
+                steps[from] = Object.assign({}, step, {
+                    rows: Steady.kept(step.rows, into, pairedId)
+                });
+            }
+        }
         const above = top ? own : from < 0 ? [] : source.everything();
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
             return false;

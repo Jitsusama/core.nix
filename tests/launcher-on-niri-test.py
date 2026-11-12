@@ -2144,9 +2144,8 @@ def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_i
             )
         )
         # Its service back, the piece stops ailing and the margin lets its mark go, as the
-        # next status asked says so, and Now opened afresh lists it no more. Whether the line
-        # dims in place while Now is looked at is the launcher's, not the piece's: in about
-        # half these runs it kept a row gone from a place still held (2026-11-12).
+        # next status asked says so, its line dims in Now still held, and Now opened afresh
+        # lists it no more.
         healed = shell.mark()
         shutil.copyfile(contract / "status.json", said / "status.json")
         (said / "status.error.json").unlink()
@@ -2160,6 +2159,17 @@ def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_i
                 for report in shell.said_since(healed)[0]
                 if not report.startswith("showing")
             ]
+        # The held step is made again as its source refreshes, so the line dims at once;
+        # it had stayed lit until something else made Now again, past 30 s in one of four
+        # runs of this file (2026-11-12).
+        shell.launcher_until(
+            lambda shown: all(
+                thing["gone"]
+                for thing in shown["things"]
+                if thing["reads"].startswith("Work Network")
+            ),
+            timeout=DIMMED_AT_ONCE,
+        )
         shell.close_launcher()
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
@@ -2281,6 +2291,9 @@ def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Sh
 # How often a person might ask a terminal again: more often than WARP is read afresh while
 # shown (Warp.qml's fresh), so a read kept from outside is said before it's asked again.
 ASKED_AGAIN = 0.5
+# How soon a line gone from a step still held dims, once its source has said so: at once, with
+# room for a loaded builder, and well short of what else makes the step again.
+DIMMED_AT_ONCE = timedelta(seconds=5)
 
 
 def terminal_shown_until(shell: Shell, test: Callable[[Json], object], *steps: str) -> Json:
