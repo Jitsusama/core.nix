@@ -370,12 +370,7 @@ impl Inputs {
             sharing: self.sharing,
             today: &today,
         };
-        let named = |name: &str| {
-            sessions
-                .iter()
-                .find(|one| one.goes_by(name))
-                .map(|one| one.named().0)
-        };
+        let called = |name: &str| session::called(&sessions, name);
         let mut drawers: Vec<Value> = sessions
             .iter()
             .map(|one| {
@@ -384,7 +379,7 @@ impl Inputs {
                 if let Some(answer) = answers.iter().find(|said| said.address == one.address())
                     && let Some(facts) = drawn["drawer"]["facts"].as_array_mut()
                 {
-                    facts.splice(0..0, answered::facts(answer, &self.words.names, &named));
+                    facts.splice(0..0, answered::facts(answer, &self.words.names, &called));
                 }
                 drawn
             })

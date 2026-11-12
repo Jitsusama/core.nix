@@ -617,10 +617,10 @@ mod tests {
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();
         assert_eq!(
             keys,
-            ["agent:O", "agents:fold:O", "agent:V"],
-            "at the top, under nobody"
+            ["agent:V", "agent:O", "agents:fold:O"],
+            "at the top, under nobody, before the orchestration it left"
         );
-        let Shown::Session(row) = &shown[2] else {
+        let Shown::Session(row) = &shown[0] else {
             panic!("its own row: {shown:?}")
         };
         assert_eq!((row.name.as_str(), row.depth), ("The Void", 0));

@@ -140,11 +140,11 @@ pub fn read(steer: &Path, answer: &Answer, now: i64) -> std::io::Result<()> {
 /// then its answer and when it came, each a sentence or more, so he
 /// reads it in place (`names`, the drawer's names for its facts). An
 /// answer that only passes his words on, as the void's "→ WCJQSG" does,
-/// names where they went as Agents does (`named`, a session's quest
+/// names where they went as Agents does (`called`, a session's quest
 /// title, else its name, by an address it goes by), never an address.
-pub fn facts(answer: &Answer, names: &Said, named: &dyn Fn(&str) -> Option<String>) -> Vec<Value> {
+pub fn facts(answer: &Answer, names: &Said, called: &dyn Fn(&str) -> Option<String>) -> Vec<Value> {
     let mut answered = json!({"label": names.word("answer"),
-        "value": passed_on(&answer.answer, named), "words": true});
+        "value": passed_on(&answer.answer, called), "words": true});
     if let Some(at) = answer.at {
         answered["at"] = json!({"at": at, "as": "clock"});
     }
@@ -156,13 +156,13 @@ pub fn facts(answer: &Answer, names: &Said, named: &dyn Fn(&str) -> Option<Strin
 
 /// An answer as Joel reads it: as it came, unless it only passes his
 /// words on to one address the sessions know.
-fn passed_on(answer: &str, named: &dyn Fn(&str) -> Option<String>) -> String {
+fn passed_on(answer: &str, called: &dyn Fn(&str) -> Option<String>) -> String {
     answer
         .trim()
         .strip_prefix('→')
         .map(str::trim)
         .filter(|to| !to.is_empty() && !to.contains(char::is_whitespace))
-        .and_then(named)
+        .and_then(called)
         .map_or_else(|| answer.to_owned(), |name| format!("→ {name}"))
 }
 
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn an_answer_passing_joels_words_on_names_where_they_went() {
-        let named = |address: &str| (address == "LAMPLT").then(|| "Light the Lamps".to_owned());
+        let called = |address: &str| (address == "LAMPLT").then(|| "Light the Lamps".to_owned());
         let cases = [
             (
                 "→ LAMPLT",
@@ -220,7 +220,7 @@ mod tests {
             ),
         ];
         for (said, read, why) in cases {
-            assert_eq!(passed_on(said, &named), read, "{why}");
+            assert_eq!(passed_on(said, &called), read, "{why}");
         }
     }
 
