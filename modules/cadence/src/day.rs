@@ -287,6 +287,15 @@ pub const MEASURES: &[Measure] = &[
         bar: None,
         floor: 1.0,
     },
+    Measure {
+        key: "code.*.daemons-waiting",
+        axis: "organization",
+        evidence: HEALTH,
+        says: "points of docs/daemons.md daemons still break",
+        unit: "",
+        bar: None,
+        floor: 1.0,
+    },
 ];
 
 /// A kind of thing that goes wrong by name, judged by whether a name is
