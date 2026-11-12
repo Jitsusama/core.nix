@@ -1,6 +1,7 @@
 //! Which VM tests own a file a change touches, so `merge-net needs` can
 //! name them: a test owns its own files, those `checks.nix` imports for it
-//! and each path they name beside them, and the folder of each module or
+//! and each path they name beside them, what each .nix file among those
+//! names in turn unless it builds a crate, and the folder of each module or
 //! role it imports by name. A test that imports a role tests the machine
 //! the role makes, not each module in it, so it owns only the role's
 //! folder: otherwise a change to any module would name every desktop test.
@@ -24,7 +25,7 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Vec<String>> {
         .map(|(name, file)| {
             // A file it can't read still owns itself.
             let text = fs::read_to_string(root.join(&file)).unwrap_or_default();
-            let paths = owned(&file, &text, &folders);
+            let paths = owned(&file, &text, &folders, read);
             (name, paths)
         })
         .collect();
@@ -110,10 +111,15 @@ pub fn folders(flake: &str) -> BTreeMap<String, String> {
 
 /// The paths a test whose file is `file`, holding `text`, owns, as the
 /// patterns `rules::matches` reads.
-pub fn owned(file: &str, text: &str, folders: &BTreeMap<String, String>) -> Vec<String> {
-    let here = file.rsplit_once('/').map_or("", |(folder, _)| folder);
+/// A file among them is read with `read`, by its path from the root.
+pub fn owned(
+    file: &str,
+    text: &str,
+    folders: &BTreeMap<String, String>,
+    read: impl Fn(&str) -> Option<String>,
+) -> Vec<String> {
     let mut paths = vec![file.to_owned()];
-    paths.extend(beside(text).iter().filter_map(|path| joined(here, path)));
+    named(file, text, &read, &mut paths);
     let imported: Vec<&String> = names(text)
         .iter()
         .filter_map(|name| folders.get(name))
@@ -144,6 +150,30 @@ pub fn owners(tests: &[(String, Vec<String>)], files: &[String]) -> Vec<String> 
     found.sort();
     found.dedup();
     found
+}
+
+/// Into `found`, the paths `text`, which `file` holds, names beside it, and
+/// what each .nix file among them names in turn, since a file a test reads
+/// may join others: on 12 November #3599 split the launcher's words into
+/// a folder words.nix joins, and no desktop test owned them any more. A
+/// file that builds a crate, naming its Cargo.lock, passes nothing on: the
+/// crate's own checks cover its code, and the net its VM tests after the
+/// merge, where owning it would put every desktop test before each merge.
+fn named(file: &str, text: &str, read: &impl Fn(&str) -> Option<String>, found: &mut Vec<String>) {
+    let here = file.rsplit_once('/').map_or("", |(folder, _)| folder);
+    for path in beside(text).iter().filter_map(|path| joined(here, path)) {
+        if found.contains(&path) {
+            continue;
+        }
+        found.push(path.clone());
+        let nix = Path::new(&path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("nix"));
+        let more = nix.then(|| read(&path)).flatten();
+        if let Some(more) = more.filter(|more| !more.contains("Cargo.lock")) {
+            named(&path, &more, read, found);
+        }
+    }
 }
 
 /// The relative paths `text` names, `./x` and `../x`.
@@ -238,7 +268,30 @@ mod tests {
       imports = [ self.nixosModules.graphical self.nixosModules.slices ];
       home = [ self.homeModules.base ];
       script = ../modules/quickshell/tests/x.qml;
+      vocabulary = \"${(import ../modules/quickshell/launcher/words.nix).file}\";
+      guard = pkgs.callPackage ../modules/disk-guard/package.nix { };
     ";
+
+    const WORDS: &str = "
+      frame = ./words/frame.json;
+      places = { on = ./words/on.json; };
+      file = builtins.toFile \"words.json\" (builtins.toJSON (read ./words.nix));
+    ";
+
+    const GUARD: &str = "
+      src = ./.;
+      cargoLock.lockFile = ./Cargo.lock;
+      helpers = ../daemon-serve/package.nix;
+    ";
+
+    /// The files the stand-in tests name, by their paths from the root.
+    fn read_named(file: &str) -> Option<String> {
+        match file {
+            "modules/quickshell/launcher/words.nix" => Some(WORDS.to_owned()),
+            "modules/disk-guard/package.nix" => Some(GUARD.to_owned()),
+            _ => None,
+        }
+    }
 
     const GATHERING: &str = "
     vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };
@@ -281,7 +334,7 @@ mod tests {
                 } else {
                     DESKTOP
                 };
-                let paths = owned(&file, text, &folders);
+                let paths = owned(&file, text, &folders, read_named);
                 (name, paths)
             })
             .collect()
@@ -333,7 +386,7 @@ mod tests {
                 } else {
                     SIGNING
                 };
-                let paths = owned(&file, text, &folders);
+                let paths = owned(&file, text, &folders, read_named);
                 (name, paths)
             })
             .collect();
@@ -359,7 +412,7 @@ mod tests {
 
     #[test]
     fn a_test_owns_its_files_and_the_modules_it_imports() {
-        let paths = owned("tests/slices.nix", SLICES, &folders(FLAKE));
+        let paths = owned("tests/slices.nix", SLICES, &folders(FLAKE), read_named);
         assert_eq!(
             paths,
             words(
@@ -371,12 +424,33 @@ mod tests {
 
     #[test]
     fn a_test_of_a_role_owns_the_role_not_its_modules() {
-        let paths = owned("tests/desktop.nix", DESKTOP, &folders(FLAKE));
+        let paths = owned("tests/desktop.nix", DESKTOP, &folders(FLAKE), |_: &str| {
+            None
+        });
         assert_eq!(
             paths,
             words(
-                "modules/quickshell/tests/x.qml roles/base/* roles/graphical/* tests/desktop.nix"
+                "modules/disk-guard/package.nix modules/quickshell/launcher/words.nix \
+                 modules/quickshell/tests/x.qml roles/base/* roles/graphical/* tests/desktop.nix"
             )
+        );
+    }
+
+    #[test]
+    fn a_file_a_test_names_passes_on_what_it_names_unless_it_builds_a_crate() {
+        let tests = owning();
+        assert_eq!(
+            owners(&tests, &words("modules/quickshell/launcher/words/on.json")),
+            words("vm-desktop-captures"),
+            "a place's words, which words.nix joins, named no desktop test, as after #3599"
+        );
+        assert_eq!(
+            owners(
+                &tests,
+                &words("modules/disk-guard/Cargo.lock modules/daemon-serve/package.nix")
+            ),
+            Vec::<String>::new(),
+            "a crate's own files put the desktop tests before its merge"
         );
     }
 
