@@ -394,13 +394,15 @@ def test_chords_said_as_the_shell_restarts_open_it_once_it_listens(shell: Shell)
     assert shell.process is not None, "the shell was never started"
     shell.process.terminate()
     shell.process.wait(timeout=10)
+    # The launcher-say the check gives, as Joel's chords run it.
     said = [subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"])]  # noqa: S603
     time.sleep(PRESSED_AGAIN.total_seconds())
+    # The same launcher-say again, the second chord.
     said.append(subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"]))  # noqa: S603
     # Started as Shell.launch does, but not waited on to answer closed, as these chords open it.
     with shell.log.open("ab") as log:
-        shell.process = subprocess.Popen(  # noqa: S603
-            ["qs", "-p", str(shell.folder)],  # noqa: S607
+        shell.process = subprocess.Popen(  # noqa: S603, the check's own shell folder
+            ["qs", "-p", str(shell.folder)],  # noqa: S607, qs from the check's PATH
             stdout=log,
             stderr=subprocess.STDOUT,
         )

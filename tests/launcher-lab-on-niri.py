@@ -276,7 +276,7 @@ def test_a_chord_through_a_restart(shell: Shell, capsys: pytest.CaptureFixture[s
 
         def chorded(heard: dict[str, object] = heard) -> None:
             heard["at"] = time.monotonic()
-            said = subprocess.run(  # noqa: S603
+            said = subprocess.run(  # noqa: S603, the launcher-say the check gives
                 [os.environ["LAUNCHER_SAY"], "toggle"], capture_output=True, check=False
             )
             heard["path"] = f"launcher-say exited {said.returncode}"
@@ -290,8 +290,8 @@ def test_a_chord_through_a_restart(shell: Shell, capsys: pytest.CaptureFixture[s
         stopped = time.monotonic()
         given = os.environ.get("QS_GIVEN", "").split()
         with shell.log.open("ab") as log:
-            shell.process = subprocess.Popen(  # noqa: S603
-                ["qs", "-p", str(shell.folder), *given],  # noqa: S607
+            shell.process = subprocess.Popen(  # noqa: S603, the check's own shell folder
+                ["qs", "-p", str(shell.folder), *given],  # noqa: S607, qs from the check's PATH
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )

@@ -209,7 +209,10 @@ mod tests {
             Duration::from_millis(100),
             Duration::from_millis(10),
         );
-        assert!(told.is_err(), "saying to no shell should fail once the wait ends");
+        assert!(
+            told.is_err(),
+            "saying to no shell should fail once the wait ends"
+        );
         assert!(
             started.elapsed() >= Duration::from_millis(100),
             "it gave up after {:?}, before the wait ended",
