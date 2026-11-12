@@ -32,6 +32,11 @@ Scope {
     // The keys of rows the place is about to draw more of, its selected row's, so the daemon
     // reads their drawers and inside rows only while they're ahead (ready-rows.md's Notes).
     property var ahead: []
+    // The key of the drawer last drawn that's served apart rather than in
+    // its row, watched ahead only while the place is live: its kernel
+    // counts move on every read, so they're told only while it can be
+    // seen, never to every watcher of the place (VKCF3Z, 2026-11-12).
+    property string drawerAhead: ""
     // Whether it's watched: false where there's no runtime folder, as in
     // a test with no session, so nothing is asked of a socket never made.
     property bool active: !!Quickshell.env("XDG_RUNTIME_DIR")
@@ -106,7 +111,8 @@ Scope {
             keptThroughGap: ready.keptThroughGap
             live: ready.live
             paced: ready.paced
-            ahead: ready.ahead
+            ahead: ready.live && ready.drawerAhead !== ""
+                ? ready.ahead.concat([ready.drawerAhead]) : ready.ahead
             onHeard: (changed, gone) => ready.took(changed, gone)
         }
     }
@@ -451,6 +457,13 @@ Scope {
     // A row's drawer as Drawer.qml draws one, its times said as of now, its
     // own or the one served beside it.
     function drawerOf(row) {
+        const apart = typeof row?.drawer === "string" ? row.drawer : "";
+        // Asked once drawn, not while it's made, so a row only passed
+        // over asks nothing; it comes a round trip on, remaking its row.
+        if (apart !== "" && apart !== drawerAhead)
+            Qt.callLater(() => {
+                ready.drawerAhead = apart;
+            });
         return Ready.drawerOf(Ready.drawerServed(row, held), Date.now(), timeWords);
     }
 
@@ -550,7 +563,10 @@ Scope {
             // Power's Charger is, isn't taken for a thing missing its say
             // (goes-places' undrawn, KP0L6A's 439b18d9).
             drawer: row.drawer ? () => actsNamed(drawerOf(row), acting.verbs && !steps ? acts : [],
-                firstOwn) : undefined
+                firstOwn) : undefined,
+            // One served apart is asked as it's drawn and in a round trip on,
+            // so a terminal's show asks again (Launcher.qml's drawerOf).
+            drawerUnread: typeof row.drawer === "string" ? () => !(row.drawer in held) : undefined
         }, acting, asking, copying, fields ?? {}, {
             // The words it's found by beyond its name, the daemon's and the
             // place's, made ready to match as the search reads them
