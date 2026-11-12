@@ -32,7 +32,8 @@ const VM_TEST: usize = 4;
 /// further one begins only while memory isn't stalling (see pressure.rs).
 pub const AT_ONCE: usize = 2;
 
-/// The most chunks evaluated at once on any machine. The lent builder, with
+/// The most chunks one evaluation takes at once on any machine; a keep's
+/// two halves side by side take this each. The lent builder, with
 /// 32 cores and 125 GB nearly all free, evaluated two at a time for a
 /// median of 8 minutes a side on 5 November, four fifths of a whole run,
 /// while its build took under 2; core's 21 chunks a side go in three turns
@@ -70,12 +71,29 @@ pub fn at_once(cores: usize, available: u64, builder: bool) -> usize {
 /// made for the run when `builder` says so. A machine that says neither gets
 /// `AT_ONCE`.
 pub fn at_once_here(builder: bool) -> usize {
+    let (cores, available) = room_here();
+    at_once(cores, available, builder)
+}
+
+/// How many chunks each of two evaluations side by side on a builder made
+/// for the run takes at once: as many as half its cores and half its
+/// memory available have room for, so together they hold no more than the
+/// builder has room for. The lent builder, with 64 cores and 406 GB free
+/// beside the day's gates on 12 November, takes eight each.
+pub fn at_once_each_of_two_here() -> usize {
+    let (cores, available) = room_here();
+    at_once(cores / 2, available / 2, true)
+}
+
+/// This machine's cores, and the bytes of memory `/proc/meminfo` says are
+/// available, or none.
+fn room_here() -> (usize, u64) {
     let cores = thread::available_parallelism().map_or(0, std::num::NonZero::get);
     let available = fs::read_to_string("/proc/meminfo")
         .ok()
         .and_then(|text| available(&text))
         .unwrap_or(0);
-    at_once(cores, available, builder)
+    (cores, available)
 }
 
 /// The bytes `/proc/meminfo`'s `MemAvailable` line says, or none.

@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use crate::checks::{self, Derivations};
-use crate::runs::Run;
+use crate::runs::{Evaluation, Run};
 
 /// What evaluating the VM tests read, each by its path from the
 /// repository's root.
@@ -272,8 +272,9 @@ pub fn keeping(cache: &Path, base: &str, system: &str) -> PathBuf {
 
 /// Evaluate a base's checks to keep them: the ordinary ones from git, and
 /// the VM tests from the plain path under strace, keeping what they read
-/// beside them. A trace that fails is said, and the VM tests are then
-/// evaluated from git, as a gate would.
+/// beside them; on a builder made for the run, the two side by side. A
+/// trace that fails is said, and the VM tests are then evaluated from git,
+/// as a gate would.
 pub fn evaluated_base(
     root: &str,
     base: &str,
@@ -284,14 +285,14 @@ pub fn evaluated_base(
     let (vm, ordinary): (Vec<String>, Vec<String>) = crate::names(&flake, system)?
         .into_iter()
         .partition(|name| name.starts_with("vm-"));
-    let mut evaluation = Run::evaluating("base");
-    let mut found = crate::evaluated(&flake, system, &ordinary, &mut evaluation)?;
-    noted.evaluated(evaluation);
-    if vm.is_empty() {
-        return Ok(found);
-    }
     let at = keeping(&crate::cache(), base, system);
-    let traced = traced(root, base, system, &vm, &at, noted).and_then(|(said, reads, tree)| {
+    let ordinarily = |at_once| {
+        let mut evaluation = Run::evaluating("base");
+        crate::evaluated_by(&flake, system, &ordinary, &mut evaluation, at_once)
+            .map(|found| (found, evaluation))
+    };
+    let tracing = |at_once| {
+        let (said, reads, tree, evaluation) = traced(root, base, system, &vm, &at, at_once)?;
         let said: Derivations = vm
             .iter()
             .map(|name| {
@@ -301,11 +302,37 @@ pub fn evaluated_base(
                 Ok((name.clone(), derivation.clone()))
             })
             .collect::<Result<_, String>>()?;
-        write(&at, &reads, &tree).map(|()| said)
-    });
+        write(&at, &reads, &tree).map(|()| (said, evaluation))
+    };
+    let builder = std::env::var_os(crate::HERE).is_some();
+    // On a builder made for the run the halves go side by side, each with
+    // half its room: one after the other, each waiting on its slowest chunk,
+    // a keep took 679 s on 12 November. Elsewhere they go one at a time.
+    let (found, traced) = if vm.is_empty() {
+        (ordinarily(checks::at_once_here(builder)), None)
+    } else if builder {
+        let at_once = checks::at_once_each_of_two_here();
+        std::thread::scope(|scope| {
+            let beside = scope.spawn(|| tracing(at_once));
+            let found = ordinarily(at_once);
+            let traced = beside
+                .join()
+                .unwrap_or_else(|_| Err("the trace stopped".to_owned()));
+            (found, Some(traced))
+        })
+    } else {
+        let found = ordinarily(checks::at_once_here(builder))?;
+        (Ok(found), Some(tracing(checks::at_once_here(builder))))
+    };
+    let (mut found, evaluation) = found?;
+    noted.evaluated(evaluation);
     match traced {
-        Ok(said) => found.extend(said),
-        Err(why) => {
+        None => {}
+        Some(Ok((said, evaluation))) => {
+            noted.evaluated(evaluation);
+            found.extend(said);
+        }
+        Some(Err(why)) => {
             let short = base.get(..12).unwrap_or(base);
             eprintln!(
                 "changed-checks: couldn't record what {system}'s VM tests read at {short}, so \
@@ -388,7 +415,9 @@ fn record(
         .filter(|name| name.starts_with("vm-"))
         .cloned()
         .collect();
-    let (said, reads, tree) = traced(root, base, system, &vm, at, noted)?;
+    let at_once = checks::at_once_here(std::env::var_os(crate::HERE).is_some());
+    let (said, reads, tree, evaluation) = traced(root, base, system, &vm, at, at_once)?;
+    noted.evaluated(evaluation);
     if let Some(name) = vm
         .iter()
         .find(|name| said.get(*name) != derivations.get(*name))
@@ -402,15 +431,16 @@ fn record(
 
 /// Evaluate the VM tests `vm` of `base` under strace, from the same source
 /// as a plain path, giving their derivations, what they read and the tree
-/// it was read from. The traces are written beside `at` as they're made.
+/// it was read from, and what each chunk took, `at_once` chunks at a time.
+/// The traces are written beside `at` as they're made.
 fn traced(
     root: &str,
     base: &str,
     system: &str,
     vm: &[String],
     at: &Path,
-    noted: &mut Run,
-) -> Result<(Derivations, Reads, String), String> {
+    at_once: usize,
+) -> Result<(Derivations, Reads, String, Evaluation), String> {
     let tree = tree(root, base)?;
     let flake = format!("git+file://{root}?rev={base}");
     let expression = format!("(builtins.getFlake \"{flake}\").outPath");
@@ -438,7 +468,7 @@ fn traced(
     fs::create_dir_all(&fresh).map_err(|error| format!("{}: {error}", fresh.display()))?;
     let traced = checks::each_at_once(
         &chunks,
-        checks::at_once_here(std::env::var_os(crate::HERE).is_some()),
+        at_once,
         || !crate::pressure::memory_stalled(),
         |(number, chunk)| {
             let trace = at.with_extension(format!("trace{number}"));
@@ -479,8 +509,7 @@ fn traced(
         said.extend(derivations);
         reads.join(read);
     }
-    noted.evaluated(evaluation);
-    Ok((said, reads, tree))
+    Ok((said, reads, tree, evaluation))
 }
 
 /// How long a keep's traces and cache may stand before another keep takes

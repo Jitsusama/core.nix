@@ -888,15 +888,27 @@ fn evaluated(
     names: &[String],
     evaluation: &mut Evaluation,
 ) -> Result<Derivations, String> {
+    // As many go at once as a builder made for the run has room for, and two
+    // on the person's own machine (`checks::at_once` says why).
+    let at_once = checks::at_once_here(env::var_os(HERE).is_some());
+    evaluated_by(flake, system, names, evaluation, at_once)
+}
+
+/// Evaluate as `evaluated` does, `at_once` chunks at a time.
+fn evaluated_by(
+    flake: &str,
+    system: &str,
+    names: &[String],
+    evaluation: &mut Evaluation,
+    at_once: usize,
+) -> Result<Derivations, String> {
     let checks = format!("{flake}#checks.{system}");
     let chunks = checks::chunks(names);
-    // As many go at once as a builder made for the run has room for, and two
-    // on the person's own machine (`checks::at_once` says why). Either way a
-    // further chunk begins only while memory isn't stalling: two at once
+    // A further chunk begins only while memory isn't stalling: two at once
     // while it was full stalled Joel's launcher on 29 October.
     let evaluated = checks::each_at_once(
         &chunks,
-        checks::at_once_here(env::var_os(HERE).is_some()),
+        at_once,
         || !pressure::memory_stalled(),
         |chunk| {
             let selecting = checks::selecting(chunk)?;
