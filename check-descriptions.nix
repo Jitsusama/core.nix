@@ -3146,8 +3146,9 @@
     on a nested niri, the margin's cat sits over the column the keys are in and, two seconds after
     they move to another, trots there in nine strides and at most 12 frames from the key, never
     for h then l tapped; on the overlay layer taking no keys, it leaves while a window is
-    fullscreen, and is drawn in whole screen pixels of its hue at scales 1.5 and 2, each screen
-    kept as its result
+    fullscreen, draws nothing for 30 s with no keys, then curls up asleep in a frame and wakes at
+    a key, stretches for about half a second as the lock lets go, and is drawn in whole screen
+    pixels of its hue at scales 1.5 and 2, each screen kept as its result
   '';
   the-margin-cat-sits-above-its-column = ''
     the margin's cat sits a cell above the focused column's top edge over the middle of what's
