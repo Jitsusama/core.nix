@@ -517,6 +517,56 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_sender_signing_by_its_own_name_and_saying_how_it_stands_reads_so() {
+        // The void's notice of Joel's line to it (VKCF3Z, 2026-11-12):
+        // signed by its name with the agents' mark, and saying it was sent,
+        // then answered, before its time.
+        let sent = notice(
+            10,
+            &json!({ "app": "pi", "summary": "is the beacon lit?",
+            "body": "", "hints": { "x-from": "The Void", "x-said": "sent" } }),
+        );
+        let mut rows = Rows::default();
+        let [mixed, _, _] = making_into(&mut rows, std::slice::from_ref(&sent), &[]);
+        let card = rows.card(10).expect("its card");
+        assert_eq!(
+            card["sender"],
+            json!({ "glyph": "agent", "hue": "program", "name": "The Void" }),
+            "its own name, the agents' mark and hue"
+        );
+        assert_eq!(card["said"], "sent", "the card says it was sent");
+        assert_eq!(
+            mixed[0]["side"],
+            json!([{ "said": "sent" }, { "at": 10_000, "as": "clock" }]),
+            "then when, as a clock"
+        );
+        let answered = Notice {
+            hints: json!({ "x-from": "The Void", "x-said": "answered" })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+            ..sent.clone()
+        };
+        making_into(&mut rows, &[answered], &[]);
+        assert_eq!(rows.card(10).expect("its card")["said"], "answered");
+        let unknown = Notice {
+            hints: json!({ "x-said": "thinking" })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+            ..sent
+        };
+        let [mixed, _, _] = making_into(&mut rows, &[unknown], &[]);
+        assert_eq!(
+            rows.card(10).expect("its card")["said"],
+            "",
+            "a key it hasn't a word for"
+        );
+        assert_eq!(mixed[0]["side"], json!([{ "at": 10_000, "as": "came" }]));
+        assert_eq!(rows.card(10).expect("its card")["sender"]["name"], "Agents");
+    }
+
     fn keys(rows: &[Value]) -> Vec<&str> {
         rows.iter().filter_map(|row| row["key"].as_str()).collect()
     }

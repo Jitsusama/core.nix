@@ -68,7 +68,10 @@ pub struct Notice {
     /// `im.received`.
     pub category: String,
     /// Every hint it came with that's a word, a number or a yes or no, so
-    /// the shell's own (`x-waiting`, `x-arrival`, `x-answers`) reach it.
+    /// the shell's own (`x-waiting`, `x-arrival`, `x-answers`) reach it,
+    /// and a sender's: `x-from`, the name it signs by, keeping its mark,
+    /// and `x-said`, a key for how it stands ("sent", "answered"), which
+    /// the daemon words, never words of its own.
     pub hints: Map<String, Value>,
     /// How long its sender asked it be shown, in milliseconds: -1 for as
     /// long as the server likes, 0 for until it's answered.
