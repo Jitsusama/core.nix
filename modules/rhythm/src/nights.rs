@@ -13,7 +13,9 @@
 //!
 //! What's usual is the middle of the last four weeks' stops, each week back
 //! counting half as much as the one after it, so a change of habit shows
-//! within a week and one late night moves nothing. Each weekday's is the
+//! within a week and one late night moves nothing. After a break, where
+//! the last four weeks hold too few nights, the four weeks up to the last
+//! evening he was here say more than the guess, and are followed. Each weekday's is the
 //! middle of the last eight weeks' stops on that weekday once there are
 //! three, each fortnight back counting half, so a weekday follows its own
 //! change within two. Until there are a week's nights, the evening guesses
@@ -113,8 +115,7 @@ fn busy_before(seen: &[i64], index: usize) -> Option<i64> {
 
 /// The night a kept stop belongs to, read by `local`.
 pub fn night_at(stop: i64, local: impl Fn(i64) -> Option<Local>) -> Option<Night> {
-    let _ = (stop, local);
-    None
+    local(stop).map(|clock| night_of(stop, clock))
 }
 
 /// The night a stop at this local time belongs to.
@@ -154,8 +155,34 @@ pub struct Profile {
 }
 
 impl Profile {
-    /// The nights' profile as of the evening `today`, as days since 1970.
+    /// The nights' profile as of the evening `today`, as days since 1970,
+    /// or, where the last four weeks hold too few nights but the four weeks
+    /// up to the last evening he was here don't, as of that evening.
     pub fn of(nights: &[Night], today: i64) -> Profile {
+        let profile = Profile::as_of(nights, today);
+        if profile.nights >= ENOUGH {
+            return profile;
+        }
+        let Some(last) = nights
+            .iter()
+            .map(|night| night.evening)
+            .filter(|evening| *evening < today)
+            .max()
+        else {
+            return profile;
+        };
+        let then = Profile::as_of(nights, last);
+        if then.nights < ENOUGH {
+            return profile;
+        }
+        Profile {
+            from: Some(last),
+            ..then
+        }
+    }
+
+    /// The nights' profile as of the evening `today`.
+    fn as_of(nights: &[Night], today: i64) -> Profile {
         let within = |days: i64| {
             nights
                 .iter()

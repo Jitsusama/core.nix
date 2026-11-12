@@ -8,7 +8,10 @@
 //! began watching in `$XDG_STATE_HOME/rhythm/watched`, since a seeded
 //! minute is read differently (nights.rs); seen minutes kept without it
 //! were seeded by an older rhythm that read the harness's words as Joel's,
-//! so they're seeded afresh. The profile is written to
+//! so they're seeded afresh. Each night's stop is kept longer, for 400
+//! days, in `$XDG_STATE_HOME/rhythm/nights`, so the nights from before the
+//! minutes kept still count after a break and a season comes round with
+//! its habit. The profile is written to
 //! `$XDG_STATE_HOME/rhythm/profile.json` whenever it changes, whole, by a
 //! rename, so a reader never sees half of it. Each look also asks whether
 //! a walk is due (walk.rs), and suggests it with a notice from Daylight;
@@ -22,7 +25,7 @@ use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 use crate::clock::{days_from_civil, local};
-use crate::nights::{Profile, evening_of, nights, weekday_of};
+use crate::nights::{Profile, evening_of, night_at, nights, weekday_of};
 use crate::read::{Sun, profile_json, said};
 use crate::seed;
 use crate::walk::{self, Look, Weather};
@@ -30,11 +33,15 @@ use crate::walk::{self, Look, Weather};
 /// How long the minutes seen are kept, in days: a season's worth, which
 /// the weekday and four-week readings need well under.
 const KEEP_DAYS: i64 = 120;
+/// How long each night's stop is kept, in `$XDG_STATE_HOME/rhythm/nights`:
+/// a year and a month, so a season's habit is there when it comes round.
+const YEAR_DAYS: i64 = 400;
 
 /// Where rhythm reads and writes.
 pub struct Paths {
     pub seen: PathBuf,
     pub watched: PathBuf,
+    pub nights: PathBuf,
     pub profile: PathBuf,
     pub walks: PathBuf,
     pub mark: PathBuf,
@@ -56,6 +63,7 @@ impl Paths {
         Some(Paths {
             seen: state.join("seen"),
             watched: state.join("watched"),
+            nights: state.join("nights"),
             profile: state.join("profile.json"),
             walks: state.join("walks"),
             mark: runtime.join("someone-at-the-machine"),
@@ -85,9 +93,13 @@ fn now() -> i64 {
 /// The nights' stops worth keeping as of `now`: those the minutes seen
 /// found, and the kept ones from before the minutes seen begin at
 /// `seen_from`, back a year and a month, sorted.
-fn year(kept: Vec<i64>, found: &[i64], seen_from: i64, now: i64) -> Vec<i64> {
-    let _ = (kept, seen_from, now);
-    found.to_vec()
+fn year(mut kept: Vec<i64>, found: &[i64], seen_from: i64, now: i64) -> Vec<i64> {
+    let since = now - YEAR_DAYS * 86_400;
+    kept.retain(|stop| (since..seen_from).contains(stop));
+    kept.extend_from_slice(found);
+    kept.sort_unstable();
+    kept.dedup();
+    kept
 }
 
 /// Minutes, sorted, each once, from the last `KEEP_DAYS` before `now`.
@@ -276,10 +288,24 @@ fn call_on() -> bool {
 }
 
 /// The profile, the evening's weekday it's for, and the sun, as of now.
-fn reading(paths: &Paths, seen: &[i64], watched: i64, now: i64) -> (Profile, u32, Option<Sun>) {
+fn reading(paths: &Paths, stops: &[i64], now: i64) -> (Profile, u32, Option<Sun>) {
     let evening = local(now).map_or(now.div_euclid(86_400), evening_of);
-    let profile = Profile::of(&nights(seen, watched, local), evening);
+    let nights: Vec<_> = stops
+        .iter()
+        .filter_map(|stop| night_at(*stop, local))
+        .collect();
+    let profile = Profile::of(&nights, evening);
     (profile, weekday_of(evening), sun_today(paths, now))
+}
+
+/// The year's stops as of `now`: the kept ones, and those the minutes
+/// seen find.
+fn stops(kept: Vec<i64>, seen: &[i64], watched: i64, now: i64) -> Vec<i64> {
+    let found: Vec<i64> = nights(seen, watched, local)
+        .iter()
+        .map(|night| night.stop)
+        .collect();
+    year(kept, &found, seen.first().copied().unwrap_or(now), now)
 }
 
 /// What Joel reads with `rhythm`, from what's kept, or the logs where
@@ -290,7 +316,8 @@ pub fn read(paths: &Paths) -> String {
         (Some(seen), Some(watched)) => (seen, watched),
         _ => (seeded(paths, now), now),
     };
-    let (profile, weekday, sun) = reading(paths, &seen, watched, now);
+    let kept = read_seen(&paths.nights).unwrap_or_default();
+    let (profile, weekday, sun) = reading(paths, &stops(kept, &seen, watched, now), now);
     said(&profile, weekday, sun)
 }
 
@@ -317,6 +344,7 @@ pub fn keep(paths: &Paths) -> std::io::Result<()> {
     write_whole(&paths.seen, &(lines.join("\n") + "\n"))?;
     write_whole(&paths.watched, &format!("{watched}\n"))?;
     let mut written = fs::read_to_string(&paths.profile).unwrap_or_default();
+    let mut kept_stops = read_seen(&paths.nights).unwrap_or_default();
     let mut walker = Walker::new(paths);
     loop {
         let now = now();
@@ -328,7 +356,13 @@ pub fn keep(paths: &Paths) -> std::io::Result<()> {
                 .open(&paths.seen)?;
             writeln!(file, "{}", minute(now))?;
         }
-        let (profile, weekday, sun) = reading(paths, &seen, watched, now);
+        let stops = stops(kept_stops.clone(), &seen, watched, now);
+        if stops != kept_stops {
+            let lines: Vec<String> = stops.iter().map(ToString::to_string).collect();
+            write_whole(&paths.nights, &(lines.join("\n") + "\n"))?;
+            kept_stops = stops;
+        }
+        let (profile, weekday, sun) = reading(paths, &kept_stops, now);
         let json = profile_json(&profile, weekday, sun);
         if json != written {
             write_whole(&paths.profile, &json)?;
