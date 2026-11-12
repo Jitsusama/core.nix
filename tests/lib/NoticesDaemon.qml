@@ -15,7 +15,10 @@
 // while there are any, `notices` says beside its rows how many it has rows
 // for, as the daemon's summary does, and a `rows` ask is answered as a
 // search is, every notice's key in order with the unserved rows beside
-// them, each counted in `rowsAsked`.
+// them, each counted in `rowsAsked`. A watch gets only the kinds it
+// names, and is refused, as daemon-serve refuses it, when it names one
+// the daemon doesn't keep, so a launcher asking for a kind the daemon
+// lacks fails here rather than only against the daemon itself.
 // A check copies it beside the test with Watch.js.
 pragma ComponentBehavior: Bound
 import QtQuick
@@ -27,9 +30,13 @@ Scope {
     id: served
 
     property var notices: []
+    // The kinds the daemon keeps, and those a watch gets only by name, as
+    // its domain says them (modules/notices' main.rs, DOMAIN).
+    readonly property var kinds: ["notice", "row", "summary"]
+    readonly property var namedOnly: ["summary"]
     // How many changes have been told, so a test waits for its own.
     property int told: 0
-    // Each watch held, by place, as { id, socket }.
+    // Each watch held, by place, as { id, socket, kinds }.
     property var watches: ({})
     // Each row as last told, by key, as its JSON.
     property var said: ({})
@@ -39,6 +46,17 @@ Scope {
     property var unserved: []
     // How many `rows` asks were answered.
     property int rowsAsked: 0
+
+    // The kinds a watch's `kind` asks for, as daemon-serve's Domain reads
+    // them: every kind but those named only, when it names none, or
+    // { unknown } naming the first the daemon doesn't keep.
+    function kindsOf(named) {
+        if (named === undefined || named === null)
+            return kinds.filter(kind => !namedOnly.includes(kind));
+        const asked = Array.isArray(named) ? named : [named];
+        const unknown = asked.find(kind => !kinds.includes(kind));
+        return unknown === undefined ? asked : { unknown: unknown };
+    }
 
     // The unserved rows of `keys`, by key, bare as an answer gives them.
     function unservedOf(keys) {
@@ -116,6 +134,7 @@ Scope {
         for (const place of Object.keys(watches)) {
             const now = rowsOf(place);
             const changed = Object.values(now)
+                .filter(one => watches[place].kinds.includes(one.kind))
                 .filter(one => said[one.key] !== JSON.stringify(one));
             const gone = Object.keys(said)
                 .filter(key => key.startsWith(`row:${place}:`) && !(key in now));
@@ -145,10 +164,17 @@ Scope {
                     if (ask.ask === "hello") {
                         answer = { id: ask.id, version: 1, domain: "notices",
                             state: "running" };
+                    } else if (ask.ask === "watch"
+                        && served.kindsOf(ask.kind).unknown !== undefined) {
+                        const kind = served.kindsOf(ask.kind).unknown;
+                        answer = { id: ask.id, error: { code: "unknown-kind",
+                            message: `no kind ${kind} here` } };
                     } else if (ask.ask === "watch") {
                         const place = ask.place ?? "";
-                        served.watches[place] = { socket: asked, id: ask.id };
-                        const rows = Object.values(served.rowsOf(place));
+                        const kinds = served.kindsOf(ask.kind);
+                        served.watches[place] = { socket: asked, id: ask.id, kinds: kinds };
+                        const rows = Object.values(served.rowsOf(place))
+                            .filter(one => kinds.includes(one.kind));
                         for (const one of rows)
                             served.said[one.key] = JSON.stringify(one);
                         answer = { id: ask.id, records: rows };
