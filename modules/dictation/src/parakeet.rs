@@ -125,6 +125,16 @@ impl Parakeet {
         })
     }
 
+    /// Whether to compile the models for `dir` on `device` ahead of need:
+    /// only on an NPU the machine has, which `npu` says, and only while
+    /// nothing is compiled for this build. The NPU's compile takes a
+    /// minute; without one the encoder compiles for the CPU as it loads,
+    /// and compiling it early only held 2.4 GB, which filled a desktop
+    /// VM's memory on 12 November.
+    pub fn worth_compiling(dir: &Path, device: &str, cache: Option<&Path>, npu: bool) -> bool {
+        device != "CPU" && npu && !Self::compiled(dir, device, cache)
+    }
+
     /// What the compiled models' folder is keyed on besides the build.
     fn parts<'a>(dir: &'a Path, device: &'a str) -> [&'a [u8]; 2] {
         [dir.as_os_str().as_encoded_bytes(), device.as_bytes()]
@@ -472,6 +482,33 @@ mod tests {
         assert!(
             !Parakeet::compiled(dir, "NPU", None),
             "with no cache nothing is kept, so nothing is compiled ahead"
+        );
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn parakeet_compiles_ahead_only_on_an_npu_the_machine_has() {
+        let cache = std::env::temp_dir().join(format!("parakeet-ahead-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cache);
+        let dir = Path::new("/models/parakeet");
+        assert!(
+            Parakeet::worth_compiling(dir, "NPU", Some(&cache), true),
+            "an NPU with nothing compiled wasn't compiled for ahead"
+        );
+        assert!(
+            !Parakeet::worth_compiling(dir, "NPU", Some(&cache), false),
+            "with no NPU, Parakeet would be compiled ahead on the CPU"
+        );
+        assert!(
+            !Parakeet::worth_compiling(dir, "CPU", Some(&cache), true),
+            "set to the CPU, Parakeet would be compiled ahead"
+        );
+        let kept = cache::kept(&cache, &[dir.as_os_str().as_encoded_bytes(), b"NPU"]);
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(kept.join("encoder.blob"), b"compiled").unwrap();
+        assert!(
+            !Parakeet::worth_compiling(dir, "NPU", Some(&cache), true),
+            "compiled already, it would be compiled again"
         );
         let _ = std::fs::remove_dir_all(&cache);
     }

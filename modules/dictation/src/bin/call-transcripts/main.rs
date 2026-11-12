@@ -66,7 +66,7 @@ use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, mpsc};
 
-use dictation::openvino::Priority;
+use dictation::openvino::{self, Priority};
 use dictation::parakeet::Parakeet;
 use dictation::takes::{Cutter, Take};
 use dictation::transcript::{Line, Side, markdown};
@@ -134,10 +134,16 @@ impl Settings {
         }
     }
 
-    /// Whether Parakeet is compiled for this build, so loading it costs
+    /// Whether Parakeet is worth compiling before a call: on the NPU, when
+    /// nothing is compiled for this build, so a call's first take waits
     /// seconds rather than a minute.
-    pub fn compiled(&self) -> bool {
-        Parakeet::compiled(&self.model, &self.device, self.cache.as_deref())
+    pub fn worth_compiling(&self) -> bool {
+        Parakeet::worth_compiling(
+            &self.model,
+            &self.device,
+            self.cache.as_deref(),
+            openvino::npu(),
+        )
     }
 
     /// Parakeet, at the NPU's background priority.

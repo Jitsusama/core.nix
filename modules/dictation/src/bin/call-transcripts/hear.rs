@@ -162,10 +162,12 @@ pub fn hear(
     }
 }
 
-/// Compiles Parakeet and lets it go, when nothing is compiled for this
-/// build, so no call's first take waits for it.
+/// Compiles Parakeet and lets it go, when it's for the NPU and nothing is
+/// compiled for this build, so no call's first take waits for it. Without
+/// an NPU it compiles as a call's first take loads it, which is as quick.
 fn compile_ahead(settings: &Settings) {
-    if settings.compiled() {
+    if !settings.worth_compiling() {
+        eprintln!("call-transcripts: Parakeet needs no compile ahead of a call");
         return;
     }
     match settings.load() {

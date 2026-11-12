@@ -369,6 +369,15 @@ fn priority_on(device: &str, priority: Priority) -> Vec<Property> {
     }
 }
 
+/// Whether the machine has an NPU, which shows as an accel device. Only
+/// its compile is slow enough to do ahead of need; without one a model
+/// compiles for the CPU as quickly as it loads, so loading it early would
+/// only take memory for nothing.
+#[must_use]
+pub fn npu() -> bool {
+    std::fs::read_dir("/dev/accel").is_ok_and(|mut entries| entries.next().is_some())
+}
+
 /// A model as read, before it's compiled.
 pub struct Model(*mut OvModel);
 
