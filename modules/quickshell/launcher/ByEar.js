@@ -129,7 +129,10 @@ function rows(said, record, state, now) {
 // whose Return records names it, so it records that input rather than
 // whichever is the default.
 function aimed(row, input) {
-    return input === null ? null : row;
+    if (row.act?.act !== "record" || typeof input !== "string" || input === "") {
+        return row;
+    }
+    return Object.assign({}, row, { act: { act: "record", microphone: input } });
 }
 
 // The step's rows but where Joel is.
@@ -283,19 +286,26 @@ function naming(words) {
 // microphone, its node and where, whether it's the microphone or the spot
 // that's new, and since when; null while none stands, or one isn't whole.
 function offer(record) {
-    return record === undefined ? record : null;
+    const offered = record?.offer;
+    if (offered === null || typeof offered !== "object") {
+        return null;
+    }
+    const named = ["microphone", "node", "spot"]
+        .every(field => typeof offered[field] === "string" && offered[field] !== "");
+    return named ? offered : null;
 }
 
 // What taking the offer, or putting it off, asks the daemon: it's the
 // last of it either way, never offered again.
 function taking() {
-    return null;
+    return { ask: "act", act: "offered" };
 }
 
 // Why the offer's there, from `tells`, its to-do's words: the microphone
 // is new, or only the spot is.
 function offerWhy(tells, offered) {
-    return tells === offered ? "" : "";
+    const id = offered.new === "microphone" ? "why-microphone" : "why-spot";
+    return told(tells, id, { microphone: offered.microphone, spot: offered.spot });
 }
 
 // What Return on a row asks the daemon, as the protocol's act is sent:

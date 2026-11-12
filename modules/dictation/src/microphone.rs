@@ -35,9 +35,14 @@ pub fn default_microphone(dump: &Value) -> Option<Microphone> {
         .filter_map(|object| object["metadata"].as_array())
         .flatten()
         .find(|entry| entry["key"] == "default.audio.source")?;
-    let named = default["value"]["name"].as_str()?;
-    let name = named.strip_prefix(OURS).unwrap_or(named);
-    objects.iter().find_map(|object| {
+    named(dump, default["value"]["name"].as_str()?)
+}
+
+/// A microphone in a pw-dump by its node name, or by its twin's, so
+/// Choose by Ear records the one it was opened for, the default or not.
+pub fn named(dump: &Value, name: &str) -> Option<Microphone> {
+    let name = name.strip_prefix(OURS).unwrap_or(name);
+    dump.as_array()?.iter().find_map(|object| {
         let props = &object["info"]["props"];
         (props["node.name"] == name && props["media.class"] == "Audio/Source").then(|| Microphone {
             name: name.to_owned(),
@@ -47,12 +52,6 @@ pub fn default_microphone(dump: &Value) -> Option<Microphone> {
                 .to_owned(),
         })
     })
-}
-
-/// A microphone in a pw-dump by its node name, or by its twin's, so
-/// Choose by Ear records the one it was opened for, the default or not.
-pub fn named(dump: &Value, _name: &str) -> Option<Microphone> {
-    default_microphone(dump)
 }
 
 /// What to record the default microphone through: its twin when the dump

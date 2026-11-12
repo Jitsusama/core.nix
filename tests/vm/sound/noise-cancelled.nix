@@ -8,7 +8,9 @@
 # 10 dB under it, both from the recordings DeepFilterNet's repository
 # keeps, since a synthetic voice is taken down as if it were noise. Choose
 # by Ear then records the same microphone, offers it four ways blind, and a
-# pick makes its twin the microphone chosen. The tests
+# pick makes its twin the microphone chosen. An offer of Choose by Ear
+# written beside the picks, as the service writes one after a call, the
+# trial hears and tells, until it's taken. The tests
 # are noise-cancelled-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let

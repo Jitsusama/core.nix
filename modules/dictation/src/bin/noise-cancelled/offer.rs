@@ -168,14 +168,42 @@ fn offered(chosen: &Chosen, node: &str, key: &str) -> bool {
 /// with `since`, when it was made, in milliseconds since the epoch; null
 /// while none stands.
 pub fn standing(chosen: &Chosen) -> Value {
-    let _ = (chosen, UNIX_EPOCH);
-    Value::Null
+    let Some(file) = chosen.beside("offer") else {
+        return Value::Null;
+    };
+    let Some(offer) = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|said| read(&said))
+    else {
+        return Value::Null;
+    };
+    let since = std::fs::metadata(&file)
+        .and_then(|about| about.modified())
+        .ok()
+        .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
+        .map(|at| u64::try_from(at.as_millis()).unwrap_or(u64::MAX));
+    let mut told = told(&offer);
+    told["since"] = json!(since);
+    told
 }
 
 /// Hears `file` come and go, from the kernel's inotify on its folder, so
 /// nothing looks while nothing changes, calling `moved` each time.
 pub fn watched(file: &Path, moved: impl Fn() + Send + 'static) -> Result<(), String> {
-    let _ = (file, moved, mpsc::channel::<Change>, watch::watch);
+    let folder = file
+        .parent()
+        .ok_or_else(|| format!("{} has no folder", file.display()))?;
+    let (changes, heard) = mpsc::channel();
+    watch::watch(folder, changes)?;
+    let file = file.to_owned();
+    std::thread::spawn(move || {
+        for change in heard {
+            let (Change::Came(path) | Change::Went(path)) = change;
+            if path == file {
+                moved();
+            }
+        }
+    });
     Ok(())
 }
 
