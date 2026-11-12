@@ -7,7 +7,11 @@ use std::path::Path;
 use pi_packages::jiti;
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    use std::fmt::Write;
+    bytes.iter().fold(String::new(), |mut out, byte| {
+        let _ = write!(out, "{byte:02x}");
+        out
+    })
 }
 
 #[test]
@@ -58,9 +62,8 @@ fn a_jsx_source_also_has_its_names_with_an_x() {
 
     assert_eq!(names.len(), 16, "{names:?}");
     assert!(
-        names
-            .iter()
-            .any(|name| name.starts_with("view-panel.") && name.ends_with(".mjsx")),
+        names.iter().any(|name| name.starts_with("view-panel.")
+            && Path::new(name).extension().is_some_and(|it| it == "mjsx")),
         "{names:?}"
     );
 }

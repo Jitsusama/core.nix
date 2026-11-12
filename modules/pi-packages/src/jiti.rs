@@ -31,7 +31,7 @@ pub fn cache_of(tmp: &Path) -> PathBuf {
 
 /// Every name jiti may give the entry for the source at `file`, whatever
 /// options it ran with: with a source map or without, with interop or
-/// without, as an ES module or CommonJS, and JSX's `x` where it applies.
+/// without, as `.mjs` or `.cjs`, and JSX's `x` where it applies.
 #[must_use]
 pub fn entry_names(file: &Path) -> Vec<String> {
     let Some(name) = file.file_name().and_then(|name| name.to_str()) else {
@@ -132,6 +132,10 @@ fn hex(bytes: &[u8]) -> String {
 /// taken from a crate: it hashes paths, never anything secret, and a
 /// crate would bring five more into the installer for 40 lines.
 #[must_use]
+#[expect(
+    clippy::many_single_char_names,
+    reason = "the RFC names the registers a, b, c and d, and the round's parts f and g"
+)]
 pub fn md5(input: &[u8]) -> [u8; 16] {
     const SHIFTS: [u32; 64] = [
         7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5,
@@ -140,10 +144,11 @@ pub fn md5(input: &[u8]) -> [u8; 16] {
     ];
     // floor(abs(sin(i + 1)) * 2^32), as the RFC tabulates them.
     let sines: [u32; 64] = std::array::from_fn(|i| {
-        #[allow(
+        #[expect(
             clippy::cast_precision_loss,
             clippy::cast_possible_truncation,
-            clippy::cast_sign_loss
+            clippy::cast_sign_loss,
+            reason = "i is below 64 and the sine's product below 2^32, so nothing is lost"
         )]
         let k = ((i as f64 + 1.0).sin().abs() * 4_294_967_296.0) as u32;
         k

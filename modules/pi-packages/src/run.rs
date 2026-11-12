@@ -173,13 +173,12 @@ pub fn update_one(
                 unwarmed = warm::warm(config, package, &built, &warm::pis(config), &env);
                 // A hold put while the warm ran stands too; a package with
                 // no version is installed whatever holds, as before.
-                match hold::standing(config, now).filter(|_| from.is_some()) {
-                    Some(hold) => Done::OnHold { commit, hold },
-                    None => {
-                        version::swap(&place, &commit, now)?;
-                        mark_swap(config, now)?;
-                        Done::Moved { from, to: commit }
-                    }
+                if let Some(hold) = hold::standing(config, now).filter(|_| from.is_some()) {
+                    Done::OnHold { commit, hold }
+                } else {
+                    version::swap(&place, &commit, now)?;
+                    mark_swap(config, now)?;
+                    Done::Moved { from, to: commit }
                 }
             }
             Err(why) => Done::Failed { commit, why },
