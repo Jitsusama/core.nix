@@ -302,9 +302,12 @@ function taking() {
 }
 
 // Why the offer's there, from `tells`, its to-do's words: the microphone
-// is new, or only the spot is.
+// is new, or only the spot is, or the last call's room was far noisier or
+// quieter than the one its pick was made in, by `by` dB, louder above nought.
 function offerWhy(tells, offered) {
-    const id = offered.new === "microphone" ? "why-microphone" : "why-spot";
+    const room = offered.by > 0 ? "why-noisier" : "why-quieter";
+    const ids = { microphone: "why-microphone", noise: room };
+    const id = ids[offered.new] ?? "why-spot";
     return told(tells, id, { microphone: offered.microphone, spot: offered.spot });
 }
 

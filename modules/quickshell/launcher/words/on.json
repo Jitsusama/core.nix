@@ -851,6 +851,8 @@
       "tells": {
         "why-microphone": "Your last call used {microphone}, which you haven't chosen noise cancelling for yet, so it used the one you pick most.",
         "why-spot": "Your last call used {microphone} at {spot}, where you haven't chosen noise cancelling for it yet, so it used what you picked for it elsewhere.",
+        "why-noisier": "Your last call on {microphone} at {spot} had a lot more noise around you than when you chose how it sounds, so another choice may suit it better now.",
+        "why-quieter": "Your last call on {microphone} at {spot} was a lot quieter around you than when you chose how it sounds, so a lighter choice may suit it better now.",
         "steps": "Press Return for Choose by Ear, record six seconds of your voice and hear it cleaned four ways, then pick the one that sounds best. Calls on it here use your pick from then on. Or choose No Thanks, and this isn't asked again."
       }
     },
