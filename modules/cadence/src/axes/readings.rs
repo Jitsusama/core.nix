@@ -38,10 +38,6 @@ pub struct Sources {
     pub waiting: Vec<String>,
     /// `niri msg -j windows`, when niri answered.
     pub windows: Option<String>,
-    /// The shell's launcher lines since midnight.
-    pub launcher: String,
-    /// The launcher's trial records, one opening a line, from every shell.
-    pub trials: String,
     /// `notices/notices.json`.
     pub notices: String,
     /// `/proc/pressure/cpu` and `/proc/meminfo`.
@@ -111,7 +107,7 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         axis(
             "responsiveness",
             [
-                counted::keys(&s.launcher, counted::timed(&s.trials, s.midnight * 1000)),
+                counted::keys(&s.counted),
                 counted::stalls(s.day.as_ref().map(|d| &d.figures)),
                 counted::responds(&s.counted),
             ]
@@ -591,27 +587,6 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .map(|e| text(e.path()))
             .collect(),
         windows: command("niri", &["msg", "-j", "windows"]).ok(),
-        launcher: command(
-            "journalctl",
-            &[
-                "--user",
-                "-u",
-                "quickshell",
-                &format!("--since=@{midnight}"),
-                "-o",
-                "cat",
-                "--no-pager",
-                "--grep=launcher: \".*took",
-            ],
-        )
-        .unwrap_or_default(),
-        trials: fs::read_dir(state_home.join("quickshell/by-shell"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|shell| text(shell.path().join("launcher-trials.jsonl")))
-            .collect::<Vec<_>>()
-            .join("\n"),
         notices: text(state_home.join("notices/notices.json")),
         pressure: text(PathBuf::from("/proc/pressure/cpu")),
         meminfo: text(PathBuf::from("/proc/meminfo")),

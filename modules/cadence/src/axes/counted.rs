@@ -182,77 +182,49 @@ pub fn held(s: &Sources) -> Vec<Reading> {
     ]
 }
 
-/// The launcher's keys today, each timed from his key to its frame, held to
-/// docs/design.md's budget: drawn in 50 ms at the median and 100 ms at the
-/// 99th percentile. From lines like `launcher: "fi" took 31 ms to its
-/// frame`, a drawer's left out. The shell journals only a key slower than
-/// a frame at 120 Hz, about half of his, so of the `timed` keys its trials
-/// counted, those missing from the journal are taken at that frame: left
-/// out, they'd make the middle key look slower than it was.
+/// The launcher's keys today, held to docs/design.md's budget: drawn in
+/// 50 ms at the median and 100 ms at the 99th percentile. Health reads them
+/// from the summary each opening ends with, each key timed from its press
+/// in the Wayland event to niri presenting the frame that drew it, so they
+/// are his key to his screen (Y2YBTS and 80ECO2, 2026-11-12). Its median
+/// weighs each opening's by its keys. Its 99th is the slowest opening's,
+/// only a ceiling, since percentiles of batches can't be pooled; so it's
+/// said, never judged, until the shell keeps each key's time.
 #[must_use]
-pub fn keys(journal: &str, timed: usize) -> Vec<Reading> {
-    let mut took: Vec<u32> = journal
-        .lines()
-        .filter_map(|line| {
-            let after = line.split("launcher: \"").nth(1)?;
-            let ms = after.rsplit_once("\" took ")?.1;
-            ms.split_whitespace().next()?.parse().ok()
-        })
-        .collect();
-    took.sort_unstable();
-    let unsaid = timed.saturating_sub(took.len());
-    let all = took.len() + unsaid;
-    // The nearest rank: the key that many in a hundred took no longer than,
-    // the unsaid keys first, since none took past a frame.
-    let rank = |percent: usize| {
-        (all > 0).then(|| match (all * percent).div_ceil(100) {
-            rank if rank <= unsaid => f64::from(UNSAID_MS),
-            rank => f64::from(took[rank - unsaid - 1]),
-        })
-    };
-    let of = Some(match unsaid {
-        0 => format!("of {all} keys"),
-        _ => format!("of {all} keys, {unsaid} drawn within a frame"),
-    });
+pub fn keys(s: &Sources) -> Vec<Reading> {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let from = "health's day file, from the shell's presented keys";
     vec![
         Reading::new(
-            "the launcher's middle key {} today",
-            rank(50),
+            "the launcher's middle key {} today, from his key to his screen",
+            figure("health.launcher.keys.median-ms"),
             " ms",
             "Y2YBTS",
         )
         .bar(Bar::AtMost(50.0))
-        .detail(of.clone())
-        .from("the shell's journal and its trials")
+        .detail(
+            figure("health.launcher.keys.late-percent")
+                .map(|late| format!("{} of keys took longer than 50 ms", shown(late, "%"))),
+        )
+        .from(from)
         .his(),
         Reading::new(
-            "the launcher's slowest key in a hundred {} today",
-            rank(99),
+            "the launcher's slowest key in a hundred today {}",
+            None,
             " ms",
             "Y2YBTS",
         )
         .bar(Bar::AtMost(100.0))
-        .detail(of)
-        .from("the shell's journal and its trials")
+        .detail(figure("health.launcher.keys.p99-ms").map(|ceiling| {
+            format!(
+                "at most {}, the slowest batch's: batches can't be pooled exactly, \
+                 so an exact figure waits on the shell keeping each key's time",
+                shown(ceiling, " ms")
+            )
+        }))
+        .from(from)
         .his(),
     ]
-}
-
-/// The slowest a key the shell doesn't journal took: a frame at 120 Hz, as
-/// modules/quickshell/launcher/Trials.js's `FELT_MS` has it.
-const UNSAID_MS: u32 = 8;
-
-/// How many keys the launcher timed since `since`, in milliseconds, from
-/// its trial records, one opening a line, each counting its keys timed.
-#[must_use]
-pub fn timed(trials: &str, since: i64) -> usize {
-    trials
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|trial| trial["at"].as_i64().is_some_and(|at| at >= since))
-        .filter_map(|trial| trial["timed"]["count"].as_u64())
-        .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
-        .sum()
 }
 
 /// How fast the machine answers Joel, from health's day file: the slowest
@@ -272,8 +244,8 @@ pub fn timed(trials: &str, since: i64) -> usize {
 pub fn responds(s: &Sources) -> Vec<Reading> {
     let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
     let from = "health's day file";
-    let program = |says: &'static str, name: &str, budget: f64, timed: &str| {
-        let spread = figure(&format!("health.launches.{name}.median-ms"))
+    let spread = |name: &str, timed: &str| {
+        figure(&format!("health.launches.{name}.median-ms"))
             .zip(figure(&format!("health.launches.{name}.slowest-ms")))
             .map(|(median, slowest)| {
                 format!(
@@ -281,7 +253,9 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
                     shown(median, " ms"),
                     shown(slowest, " ms")
                 )
-            });
+            })
+    };
+    let program = |says: &'static str, name: &str, budget: f64, timed: &str| {
         Reading::new(
             says,
             figure(&format!("health.launches.{name}.p99-ms")),
@@ -289,7 +263,7 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
             "80ECO2",
         )
         .bar(Bar::AtMost(budget))
-        .detail(spread)
+        .detail(spread(name, timed))
         .from("health's day file, from the windows daemon")
     };
     vec![
@@ -340,6 +314,17 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
         )
         .bar(Bar::AtMost(1_000.0))
         .from("health's day file, from each program's ready line"),
+        // pi's start is kept apart from the daemons' since #3799, as its
+        // resumes run to seconds; the harness owns making it quicker.
+        Reading::new(
+            "the slowest pi in a hundred to show its session {}",
+            figure("health.launches.pi.p99-ms"),
+            " ms",
+            "85PKB2",
+        )
+        .bar(Bar::AtMost(3_000.0))
+        .detail(spread("pi", "pi starting"))
+        .from("health's day file, from pi's ready line"),
         Reading::new(
             "the slowest restart in a switch {}",
             figure("health.switch.restart.slowest-ms"),
@@ -357,28 +342,43 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
     ]
 }
 
-/// How long his apps waited, from the stall cadence day keeps for
-/// app.slice: its CPU wait and its memory stalls, each a share of the
-/// day. They are his side's, since the kernel counts them on his apps
-/// themselves rather than on a builder or a model of him. 80ECO2, who
-/// keeps them, holds both to 1% (2026-11-12).
+/// How long his apps and his desktop waited, from the stalls cadence day
+/// keeps for app.slice and session.slice (niri, the shell and what runs
+/// them): each one's CPU wait and memory stalls, as a share of the day.
+/// They are his side's, since the kernel counts them on his own programs
+/// rather than on a builder or a model of him. 80ECO2, who keeps them,
+/// holds all four to 1% (2026-11-12).
 #[must_use]
 pub fn stalls(day: Option<&BTreeMap<String, f64>>) -> Vec<Reading> {
     let figure = |key: &str| day.and_then(|d| d.get(key).copied());
-    let stall = |says: &'static str, key: &str| {
+    let stall = |says: &'static str, key: &str, from: &'static str| {
         Reading::new(says, figure(key), "%", "80ECO2")
             .bar(Bar::AtMost(1.0))
-            .from("cadence's day, from app.slice's pressure")
+            .from(from)
             .his()
     };
+    let apps = "cadence's day, from app.slice's pressure";
+    let desktop = "cadence's day, from session.slice's pressure";
     vec![
         stall(
             "his apps waiting for the CPU {} of the day",
             "pressure.cpu.app",
+            apps,
         ),
         stall(
             "his apps stalled for memory {} of the day",
             "pressure.memory.app",
+            apps,
+        ),
+        stall(
+            "his desktop waiting for the CPU {} of the day",
+            "pressure.cpu.session",
+            desktop,
+        ),
+        stall(
+            "his desktop stalled for memory {} of the day",
+            "pressure.memory.session",
+            desktop,
         ),
     ]
 }
@@ -410,8 +410,25 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .any(|e| e.path().extension().is_some_and(|x| x == "json")),
         health: fs::read_to_string(state_home.join(format!("health/{date}.json")))
             .ok()
-            .map(|json| crate::machine::figures(&json)),
+            .map(|json| healths(&json)),
     }
+}
+
+/// Every figure in health's day file, as `health.<figure>`. Cadence day's
+/// own reader keeps only the figures it holds a bar for, which leaves out
+/// programs opening, daemons and pi starting, and switch restarts, all of
+/// which responsiveness reads; so the axes read the file whole.
+fn healths(json: &str) -> BTreeMap<String, f64> {
+    let Ok(written) = serde_json::from_str::<serde_json::Value>(json) else {
+        return BTreeMap::new();
+    };
+    written
+        .get("figures")
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(key, figure)| Some((format!("health.{key}"), figure.as_f64()?)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -536,50 +553,47 @@ mod tests {
     }
 
     #[test]
-    fn launcher_keys_are_held_to_their_median_and_99th_percentile() {
-        let journal = r#"qml: launcher: "fi" took 31 ms to its frame, 4 ms searching
-qml: launcher: "fir" took 74 ms to its frame, 60 ms searching
-qml: launcher: "a \" took 9" took 120 ms to its frame
-qml: launcher: drawer for "Firefox" took 80 ms to its frame
-"#;
-        let read = keys(journal, 0);
+    fn launcher_keys_come_from_healths_presented_keys() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.launcher.keys.median-ms".to_owned(), 52.0),
+                ("health.launcher.keys.p99-ms".to_owned(), 1_209.0),
+                ("health.launcher.keys.late-percent".to_owned(), 43.2),
+            ])),
+            ..Sources::default()
+        };
+        let read = keys(&s);
         let words: Vec<String> = read.iter().map(Reading::words).collect();
         assert_eq!(
             words,
             [
-                "the launcher's middle key 74 ms today, at most 50 ms",
-                "the launcher's slowest key in a hundred 120 ms today, at most 100 ms",
+                "the launcher's middle key 52 ms today, from his key to his screen, at most 50 ms",
+                "the launcher's slowest key in a hundred today: no reading yet",
             ]
         );
+        assert!(read[0].out(), "a 52 ms middle key was in spec");
         assert!(
-            keys("", 0).iter().all(|r| r.figure().is_none()),
-            "a day with no keys reads as unread, not as fast"
-        );
-        // Seven keys timed, three slow enough for the journal: the other
-        // four took a frame at most, so the middle key is one of them.
-        let read = keys(journal, 7);
-        assert_eq!(
-            read.iter().map(Reading::figure).collect::<Vec<_>>(),
-            [Some(8.0), Some(120.0)],
-            "the keys the journal leaves out weren't counted as fast"
+            read[0].his,
+            "health times keys from his press to niri's frame"
         );
         assert_eq!(
             read[0].detail.as_deref(),
-            Some("of 7 keys, 4 drawn within a frame")
+            Some("43% of keys took longer than 50 ms"),
+            "the middle key says how many keys were late"
         );
-    }
-
-    #[test]
-    fn the_keys_timed_today_are_counted_from_the_trials() {
-        let trials = r#"{"at":5000,"timed":{"count":6,"felt":[]}}
-{"at":100,"timed":{"count":9,"felt":[]}}
-not a trial
-{"at":7000,"keys":{}}
-{"at":8000,"timed":{"count":2,"felt":[]}}"#;
         assert_eq!(
-            timed(trials, 1000),
-            8,
-            "only today's openings, by their keys timed"
+            read[1].detail.as_deref(),
+            Some(
+                "at most 1,209 ms, the slowest batch's: batches can't be pooled exactly, \
+                 so an exact figure waits on the shell keeping each key's time"
+            ),
+            "a ceiling is said, never judged as the 99th itself"
+        );
+        assert!(
+            keys(&Sources::default())
+                .iter()
+                .all(|r| r.figure().is_none()),
+            "a day with no keys reads as unread, not as fast"
         );
     }
 
@@ -594,6 +608,9 @@ not a trial
                 ("health.launches.opened.slowest-ms".to_owned(), 1_300.0),
                 ("health.launches.ended.p99-ms".to_owned(), 150.0),
                 ("health.launches.ready.p99-ms".to_owned(), 1_065.0),
+                ("health.launches.pi.p99-ms".to_owned(), 4_000.0),
+                ("health.launches.pi.median-ms".to_owned(), 1_800.0),
+                ("health.launches.pi.slowest-ms".to_owned(), 28_000.0),
                 ("health.switch.restart.slowest-ms".to_owned(), 4_200.0),
                 ("health.switch.restart.median-ms".to_owned(), 900.0),
             ])),
@@ -610,16 +627,26 @@ not a trial
                 "the slowest program in a hundred to its first window 420 ms, at most 300 ms",
                 "the slowest program in a hundred to end once closed 150 ms, at most 200 ms",
                 "the slowest daemon in a hundred to serve again 1,065 ms, at most 1,000 ms",
+                "the slowest pi in a hundred to show its session 4,000 ms, at most 3,000 ms",
                 "the slowest restart in a switch 4,200 ms, at most 5,000 ms",
             ]
         );
         assert_eq!(
             read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [false, true, false, true, false, true, false],
-            "only the shutdown, the openings and the daemons are past their bars"
+            [false, true, false, true, false, true, true, false],
+            "only the shutdown, the openings, the daemons and pi are past their bars"
         );
         assert_eq!(
             read[6].detail.as_deref(),
+            Some("a median 1,800 ms, the slowest 28,000 ms; timed from pi starting"),
+            "pi's start says its spread and that it's timed from our side"
+        );
+        assert_eq!(
+            read[6].owner, "85PKB2",
+            "pi's start is the harness's to make quicker"
+        );
+        assert_eq!(
+            read[7].detail.as_deref(),
             Some("a median 900 ms; timed from its stopping to its ready"),
             "a switch's restarts say their median and where they're timed from"
         );
@@ -627,6 +654,27 @@ not a trial
             read[3].detail.as_deref(),
             Some("a median 90 ms, the slowest 1,300 ms; timed from the program starting"),
             "an opening says its spread and that it's timed from our side"
+        );
+    }
+
+    #[test]
+    fn healths_figures_are_read_whole() {
+        let figures = healths(
+            r#"{"date": "2026-11-12", "figures": {"boot.seconds": 27.0,
+                "launches.pi.p99-ms": 28572, "switch.restart.slowest-ms": 4200}}"#,
+        );
+        assert_eq!(
+            figures,
+            BTreeMap::from([
+                ("health.boot.seconds".to_owned(), 27.0),
+                ("health.launches.pi.p99-ms".to_owned(), 28_572.0),
+                ("health.switch.restart.slowest-ms".to_owned(), 4_200.0),
+            ]),
+            "a figure the axes read was lost because cadence day holds no bar for it"
+        );
+        assert!(
+            healths("not json").is_empty(),
+            "an unread file gives no figures"
         );
     }
 
@@ -648,6 +696,8 @@ not a trial
         let day = BTreeMap::from([
             ("pressure.cpu.app".to_owned(), 1.4),
             ("pressure.memory.app".to_owned(), 0.07),
+            ("pressure.cpu.session".to_owned(), 0.48),
+            ("pressure.memory.session".to_owned(), 1.2),
             ("pressure.cpu.jobs".to_owned(), 13.0),
         ]);
         let read = stalls(Some(&day));
@@ -657,16 +707,18 @@ not a trial
             [
                 "his apps waiting for the CPU 1.4% of the day, at most 1%",
                 "his apps stalled for memory 0.1% of the day, at most 1%",
+                "his desktop waiting for the CPU 0.5% of the day, at most 1%",
+                "his desktop stalled for memory 1.2% of the day, at most 1%",
             ]
         );
         assert_eq!(
             read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [true, false],
-            "only the CPU wait is past its bar"
+            [true, false, false, true],
+            "only the apps' CPU wait and the desktop's memory stalls are past their bars"
         );
         assert!(
             stalls(None).iter().all(|r| r.figure().is_none()),
-            "no day kept yet leaves both unread"
+            "no day kept yet leaves all four unread"
         );
     }
 }
