@@ -8,16 +8,17 @@
 // A row here is plain: { key, id, state, fill, side, note, act, pick,
 // back }, `id` the vocabulary's thing it's named by, with `state` and
 // `fill` handed to Words.name, `act` what Return asks ({ act, clip }) or
-// null for a figure, `pick` the act a step inside a clip holds, and
-// `back` whether Return then steps back out. Everything said comes from
+// null for a figure, `pick` the act a step inside a clip holds,
+// `back` whether Return then steps back out, and `names` whether Return
+// asks Joel for words, sent as naming() asks. Everything said comes from
 // `said`, the sound place's words, so nothing here is worded.
 //
 // The launcher keeps a list steady under the cursor, a row gone staying
 // dimmed and a new one coming at the end until a key makes it afresh
 // (Steady.js), so the step is laid out to change in place: one row
 // first, by one key, saying where the trial stands (Record, Recording,
-// Cleaning, Record Again, Picked), and the clips after it, each keeping
-// its key from blind to revealed.
+// Cleaning, Record Again, Picked), then where Joel is, by one key too,
+// and the clips after them, each keeping its key from blind to revealed.
 .pragma library
 .import "Numbers.js" as Numbers
 
@@ -118,8 +119,14 @@ const HEAD = "sound:by-ear:now";
 
 // The rows of Choose by Ear's step, in the order Return meets them, from
 // the record at `now`, with the daemon `state` for when none is held:
-// where the trial stands, then the clips.
+// where the trial stands, then where Joel is, then the clips.
 function rows(said, record, state, now) {
+    const laid = stepRows(said, record, state, now);
+    return record === null ? laid : laid.slice(0, 1).concat(spotRow(said, record), laid.slice(1));
+}
+
+// The step's rows but where Joel is.
+function stepRows(said, record, state, now) {
     if (record === null) {
         return [{
             key: HEAD, id: "sound:by-ear:down", side: daemonSays(said, state),
@@ -242,8 +249,27 @@ function leaving(record) {
     return record !== null && record.stage !== "idle" ? { ask: "act", act: "discard" } : null;
 }
 
+// Where Joel is, as the daemon names it, second at every step so it
+// keeps its place while the rest change: the laptop's name for it until
+// he names it, then his. Return asks him for words (`names`), which
+// naming() sends; none while the daemon names no spot.
+function spotRow(said, record) {
+    if (typeof record.spot !== "string" || record.spot === "") {
+        return [];
+    }
+    const named = record.spot_named === true;
+    return [{
+        key: "sound:by-ear:spot", id: "sound:by-ear:spot", state: named ? "named" : "",
+        side: record.spot,
+        note: told(said, named ? "by-ear-spot-named" : "by-ear-spot-unnamed"),
+        act: null, names: true
+    }];
+}
+
+// What naming the spot asks the daemon, with what Joel typed; the daemon
+// trims it and refuses one blank, past a line or too long to fit a row.
 function naming(words) {
-    return null;
+    return { ask: "act", act: "name", name: String(words ?? "") };
 }
 
 // What Return on a row asks the daemon, as the protocol's act is sent:

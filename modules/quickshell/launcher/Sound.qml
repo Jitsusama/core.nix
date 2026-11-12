@@ -22,6 +22,8 @@
 //   played by Return with Pick a step in, then every clip's cleaner and
 //   its cost revealed (ByEar.js works each step out, and NoiseCancelling
 //   holds the trial). Leaving it, by Escape or by closing, discards it.
+//   Beneath Record, Name This Spot takes Joel's name for where he is,
+//   whose picks are kept under it.
 //
 // A Bluetooth device's Codec and its link are Bluetooth's (Accessories.qml),
 // so they're said there, and Sound says only what its sound is for now,
@@ -1160,6 +1162,8 @@ Provider {
     function byEarRow(row) {
         const state = row.state ?? "";
         const name = Words.name(row.id, state, row.fill);
+        if (row.names)
+            return provider.spotRow(row, name);
         if (!row.act)
             return figureRow({
                 key: row.key,
@@ -1182,6 +1186,42 @@ Provider {
         if (row.pick)
             made.verbs = () => [provider.byEarRow(row.pick)];
         return made;
+    }
+
+    // How naming the spot last went, for the foot under what's typed: the
+    // daemon's plain reason when it refused, that it isn't answering when
+    // it's gone, else nothing.
+    property string spotTold: ""
+
+    // Where Joel is: Return asks him what he calls it, in the field, and
+    // hands it to the daemon. A name taken steps back out to the trial,
+    // which then says it; one refused stays asked, the foot saying why.
+    function spotRow(row, name) {
+        const state = row.state ?? "";
+        return thing({
+            key: row.key,
+            name: name,
+            verb: Words.verb(row.id, state),
+            glyph: Words.glyph(row.id, state),
+            hue: "action",
+            side: row.side ?? "",
+            note: row.note ?? "",
+            ask: Words.of(row.id, state).ask ?? "",
+            chip: row.side ?? "",
+            state: () => provider.spotTold,
+            given: words => {
+                provider.spotTold = "";
+                NoiseCancelling.act(ByEar.naming(words), why => {
+                    if (why === null)
+                        provider.spotTold = soundSaid.down ?? "";
+                    else if (why)
+                        provider.spotTold = why;
+                    else
+                        launcher?.back?.();
+                });
+            },
+            stays: true
+        });
     }
 
     // Asks the daemon what Return on a row does; a refusal is said in its
