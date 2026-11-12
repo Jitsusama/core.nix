@@ -561,43 +561,20 @@ def test_tunnel(tunnel: Connection) -> None:
     tunnel.lands("best effort", "app.slice", inner_down, dev=back)
 
 
-def test_quiet_tunnel(tunnel: Connection) -> None:
-    """A tunnel carrying only bulk goes as bulk on the connection, and one carrying more doesn't.
+def test_tunnel_goes_as_best_effort(tunnel: Connection) -> None:
+    """A tunnel's own packets go as best effort on the connection, even carrying only bulk.
 
-    The connection's queue sees a tunnel as one flow, so its packets take their class from
-    what the tunnel's own queue sends: bulk while that is only bulk, best effort otherwise.
+    The connection's queue sees a tunnel as one flow, so whatever comes next inside it waits
+    behind what that flow holds: sent as bulk, an app's first packets inside waited in the
+    connection's bulk queue, and were dropped there, before anything could move the tunnel
+    out of it. The tunnel's own queue sorts what it carries instead.
     """
     client = tunnel.client
-    quiet = "nft list set inet shaper vpnbulk | grep -q ca6c"
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
-    client.wait_until_succeeds(quiet, timeout=HOLDING)
-    tunnel.lands("bulk", "jobs.slice", inner, dev="eth1")
+    tunnel.lands("best effort", "jobs.slice", inner, dev="eth1")
     # The connection counts the tunnel's own packets, a megabyte's worth and more, so its
     # queue can give up what they cost past what it counted.
     client.succeed("nft list counter inet shaper vpnout | grep -Eq 'bytes [0-9]{7,}'")
-
-    # An app's upload inside puts the tunnel back in best effort within a step, so all
-    # but its first moment goes so.
-    more = f"{BIN}/head -c 5000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
-    moved = tunnel.moved_by("app.slice", lambda: tunnel.run("app.slice", more), "eth1")
-    assert moved["best effort"] > 2 * moved["bulk"], f"app.slice on eth1: {moved}"
-    client.wait_until_succeeds(quiet, timeout=HOLDING)
-
-    # A typed turn waiting on its tools sends nothing, so it leaves the tunnel's bulk
-    # as bulk; what it does send is an app's, which puts the tunnel back as above.
-    client.succeed(f"mkdir -p /tmp/typing && ln -sf {BIN}/bash /tmp/typing/pi")
-    client.succeed(
-        "systemd-run -M alice@ --user --slice=app.slice --unit=pi-typing"
-        " /tmp/typing/pi -c 'sleep infinity; true'"
-    )
-    pid = client.succeed(
-        "systemctl -M alice@ --user show -p MainPID --value pi-typing.service"
-    ).strip()
-    client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
-    tunnel.lands("bulk", "jobs.slice", inner, dev="eth1")
-    client.succeed(quiet)
-    client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
-    client.succeed("systemctl -M alice@ --user stop pi-typing.service")
 
 
 def test_route_moves(on_eth2: Connection) -> None:
