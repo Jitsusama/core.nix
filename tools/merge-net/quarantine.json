@@ -110,5 +110,12 @@
     "owner_pr": 3542,
     "reason": "failed, then passed, at dd21b75e8c65",
     "test": "vm-screens-keep-the-launcher"
+  },
+  {
+    "at": 1794478078,
+    "commit": "1c6f5f46964301dcd2d1889ccbbc127c00db041b",
+    "owner_pr": 3596,
+    "reason": "failed twice at 4e0cc018600f, and at 1c6f5f469643 after it",
+    "test": "vm-desktop-launcher-reads-mail"
   }
 ]
