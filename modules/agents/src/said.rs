@@ -38,6 +38,9 @@ struct Thing {
     /// Its name, where it's a word; a name by state is read as none.
     #[serde(default)]
     name: Value,
+    /// Its mark's name, where it has one.
+    #[serde(default)]
+    glyph: Value,
 }
 
 impl Said {
@@ -71,20 +74,30 @@ impl Said {
     /// The names of every thing whose id starts `{prefix}:`, by the rest
     /// of its id, as a drawer names each fact (`agents:step` is Doing).
     pub fn names_under(text: &str, prefix: &str) -> serde_json::Result<Self> {
+        Self::under(text, prefix, |thing| thing.name)
+    }
+
+    /// The marks of every thing whose id starts `{prefix}:`, by the rest
+    /// of its id, as an act's row is marked (`verb:agent:talk` is reply).
+    pub fn glyphs_under(text: &str, prefix: &str) -> serde_json::Result<Self> {
+        Self::under(text, prefix, |thing| thing.glyph)
+    }
+
+    fn under(text: &str, prefix: &str, said: fn(Thing) -> Value) -> serde_json::Result<Self> {
         let vocabulary: Vocabulary = serde_json::from_str(text)?;
         let lead = format!("{prefix}:");
-        let names = vocabulary
+        let words = vocabulary
             .things
             .into_iter()
             .filter_map(|thing| {
                 let id = thing.id.strip_prefix(&lead)?.to_owned();
-                match thing.name {
-                    Value::String(name) => Some((id, name)),
+                match said(thing) {
+                    Value::String(word) => Some((id, word)),
                     _ => None,
                 }
             })
             .collect();
-        Ok(Self(names))
+        Ok(Self(words))
     }
 
     /// The words a key says, or none, as the launcher says nothing for

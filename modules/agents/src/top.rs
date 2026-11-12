@@ -164,6 +164,32 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
     })
 }
 
+/// An orchestration's own acts as rows a step in, ahead of its sessions:
+/// Talk to It first, then the rest as its row orders them. A row stepping
+/// into rows lists what's inside as its verbs (ReadyRows.qml), so these
+/// are how Ctrl+] and the command line reach its Pause, Stop or Close, as
+/// a meeting's acts are rows inside it (Y2YBTS, 2026-11-12). Each is named
+/// and marked as the launcher's words say, and an ending one is sure by
+/// its words, as the row's own act is.
+fn acts_inside(row: &Row, words: &Words) -> Vec<Value> {
+    let address = address(row);
+    let parent = key_of(address);
+    let talks = row.acts.contains(&"talk");
+    let ids = talks
+        .then_some("talk")
+        .into_iter()
+        .chain(row.acts.iter().copied().filter(|id| *id != "talk"));
+    ids.map(|id| {
+        json!({
+            "key": format!("{parent}:{id}"), "thing": format!("verb:agent:{id}"),
+            "place": PLACE, "parent": parent, "kind": "act", "depth": 1,
+            "name": words.acts.word(id), "glyph": words.act_glyphs.word(id),
+            "hue": "action", "side": [], "acts": [act(id, address)],
+        })
+    })
+    .collect()
+}
+
 /// A session inside an orchestration: a look at its drawer first, gone to
 /// or talked to only where it needs Joel (VKCF3Z: he acts at a leaf only
 /// where it needs his own hands there), then what pauses, wakes or ends
@@ -240,6 +266,9 @@ pub fn rows(shown: &[Shown], known: &Known, words: &Words) -> Vec<Value> {
             gathered(&entries[1..], &mut all);
             let needs = head.state == "needs" || all.iter().any(|row| row.state == "needs");
             let mut rows = vec![orchestration(head, &all, known, said)];
+            if !all.is_empty() {
+                rows.extend(acts_inside(head, words));
+            }
             members(&entries[1..], &[(0, key_of(address(head)))], &mut rows);
             (needs, rows)
         })
@@ -421,6 +450,60 @@ mod tests {
     }
 
     #[test]
+    fn an_orchestrations_own_acts_are_rows_inside_it_ahead_of_its_sessions() {
+        let rows = top(&[
+            row(
+                "O",
+                "working",
+                0,
+                &["switch", "talk", "pause", "stop", "close"],
+            ),
+            row("A", "working", 1, LIVE),
+        ]);
+        let inside: Vec<&Value> = rows
+            .iter()
+            .filter(|row| row["parent"] == "row:agents-top:O")
+            .collect();
+        let said: Vec<(&str, &str, &str)> = inside
+            .iter()
+            .map(|row| {
+                (
+                    row["kind"].as_str().unwrap_or(""),
+                    row["name"].as_str().unwrap_or(""),
+                    row["glyph"].as_str().unwrap_or(""),
+                )
+            })
+            .collect();
+        assert_eq!(
+            said,
+            [
+                ("act", "Talk", "reply"),
+                ("act", "Go To", "windows"),
+                ("act", "Pause", "pause"),
+                ("act", "Stop", "stopped"),
+                ("act", "Close", "close"),
+                ("session", "A's quest", "agent"),
+            ],
+            "Talk first, then its own acts as its row orders them, each named as the \
+             launcher names it, then its sessions"
+        );
+        let stop = found(&rows, "row:agents-top:O:stop");
+        assert_eq!(
+            stop["acts"],
+            json!([{"key": "verb:agent:stop", "ask": {"ask": "stop", "address": "O"}}]),
+            "each does its act on the orchestrator, by the act's own key: {stop}"
+        );
+        assert_eq!(stop["depth"], 1, "each is a step in: {stop}");
+        assert_eq!(stop["thing"], "verb:agent:stop", "each is its act: {stop}");
+        let alone = top(&[row("L", "listening", 0, LIVE)]);
+        assert_eq!(
+            alone.len(),
+            1,
+            "one with no sessions under it has no step, so its acts stay its row's: {alone:?}"
+        );
+    }
+
+    #[test]
     fn a_session_inside_is_gone_to_only_where_it_needs_joel() {
         let rows = top(&[
             row("O", "working", 0, LIVE),
@@ -463,7 +546,12 @@ mod tests {
             row("O", "working", 0, LIVE),
             row("A", "needs", 1, LIVE),
         ]);
-        let keys: Vec<&str> = rows.iter().filter_map(|row| row["key"].as_str()).collect();
+        // Its own acts inside it are another case's.
+        let keys: Vec<&str> = rows
+            .iter()
+            .filter(|row| row["kind"] != "act")
+            .filter_map(|row| row["key"].as_str())
+            .collect();
         assert_eq!(
             keys,
             [
