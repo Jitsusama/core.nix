@@ -2660,6 +2660,10 @@
     a runtime folder only Joel's login opens, never as a single instance another program could
     answer for
   '';
+  the-sessions-kitty-says-its-pid = ''
+    the kitty every session's window is drawn by writes its pid beside its socket, which names
+    none, so the shell can find a session's window among those that kitty draws
+  '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
     with a hard memory floor agents.slice keeps as large, so a session opening never starves the

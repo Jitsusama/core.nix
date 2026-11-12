@@ -57,6 +57,17 @@ in
         && (service.RuntimeDirectoryMode or null) == "0700"
       );
 
+  # The sessions' kitty writes its pid beside its socket, which names none,
+  # so the shell finds a session's window among those that kitty draws.
+  the-sessions-kitty-says-its-pid =
+    let
+      service = (account graphical).systemd.user.services.sessions-kitty.Service;
+      written = lib.concatStringsSep " " (lib.toList (service.ExecStartPost or [ ]));
+    in
+    holds "the-sessions-kitty-says-its-pid"
+      "The sessions' kitty writes no pid beside its socket, so the shell can't tell which windows it draws."
+      (lib.hasInfix "$$MAINPID" written && lib.hasInfix "%t/pi-sessions/kitty.pid" written);
+
   # The sessions' kitty keeps what it swaps out compressed in memory, so a
   # session's window Joel comes back to never draws from disk.
   the-sessions-kitty-stays-off-the-disk =

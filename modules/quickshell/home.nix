@@ -2190,6 +2190,12 @@ in
           "-o sync_to_monitor=yes"
           "--class pi-sessions-kept --start-as=hidden ${lib.getExe' pkgs.coreutils "sleep"} infinity"
         ];
+        # Its pid beside the socket, since a path names no pid the way
+        # kitty's own single-instance name does, and the shell finds a
+        # session's window among those niri lists by the pid drawing it
+        # (Sessions.qml's kittyPid). It goes with the folder when the unit
+        # stops; `$$` hands sh the variable systemd sets for the main pid.
+        ExecStartPost = "${pkgs.runtimeShell} -c 'echo \"$$MAINPID\" > %t/pi-sessions/kitty.pid'";
         # The socket's folder, which only Joel's login may open.
         RuntimeDirectory = "pi-sessions";
         RuntimeDirectoryMode = "0700";

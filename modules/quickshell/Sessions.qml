@@ -219,20 +219,29 @@ Singleton {
     // 2026-11-11). The window gets kitty's own environment and only its
     // app id beside it. A kitty started before its unit listened has no
     // socket until the next login, so until then it's reached the old way,
-    // but only while the unit's own cgroup holds it, which nothing else can
-    // be in; with neither, nothing opens, and the journal says why. It's
-    // decided as the window opens, in what niri starts, so the shell waits
-    // on nothing.
+    // but only while it is the unit's own main process, which nothing else
+    // can be. A kitty its unit is starting again, 5 s after it ended, is
+    // waited on for up to 20 s, so a window asked of it meanwhile opens once
+    // it's back rather than never; with neither by then, nothing opens, and
+    // the journal says why. It's decided as the window opens, in what niri
+    // starts, so the shell waits on nothing.
     readonly property string opening: [
         'sock=$1; class=$2; shift 2; dir=$HOME',
         'if [ "$1" = --directory ]; then dir=$2; shift 2; fi',
+        'old() {',
+        '  pid=$(systemctl --user show --property=MainPID --value sessions-kitty.service)',
+        '  [ "${pid:-0}" -gt 0 ] && tr "\\0" " " < "/proc/$pid/cmdline" | grep -q -- "--instance-group pi-sessions"',
+        '}',
+        'tries=100',
+        'until [ -S "$sock" ] || old; do',
+        '  tries=$((tries - 1)); [ "$tries" -gt 0 ] || break',
+        '  sleep 0.2',
+        'done',
         'if [ -S "$sock" ]; then',
         '  exec kitten @ --to "unix:$sock" launch --type=os-window --os-window-class "$class" \\',
         '    --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@"',
         'fi',
-        'uid=${XDG_RUNTIME_DIR##*/}',
-        'unit=/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/agents.slice/sessions-kitty.service',
-        'if read -r _ < "$unit/cgroup.procs"; then',
+        'if old; then',
         '  exec systemd-run --user --scope --collect --quiet --slice=agents.slice -- \\',
         '    env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \\',
         '    --directory "$dir" "$@"',
@@ -2387,6 +2396,31 @@ Singleton {
     // whose record names no terminal is held, its window the node's
     // (2026-11-06: 43 of the 53 running, and every one of them held).
     readonly property var kittySocket: /^unix:@kitty-(\d+)$/
+    // The sessions' kitty listens on a path that names no pid, so its unit
+    // writes the pid beside it (home.nix's sessions-kitty). Read again as
+    // it's written and as windows come, since a unit started again makes
+    // its folder anew, which a watch on the old file misses.
+    readonly property string sessionsSocket:
+        `unix:${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`
+    FileView {
+        id: sessionsKittyFile
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.pid`
+        blockLoading: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+    }
+    readonly property string sessionsKittyPid: {
+        const read = sessionsKittyFile.text().trim();
+        return /^\d+$/.test(read) ? read : "";
+    }
+    // The pid of the kitty listening on a socket, as niri lists the windows
+    // it draws by, or undefined where the socket says none.
+    function kittyPid(socket) {
+        if (socket === sessionsSocket)
+            return sessionsKittyPid || undefined;
+        return (kittySocket.exec(socket) ?? [])[1];
+    }
     // The kitty window the node says a session is in, from its `window`.
     function kittyOfWindow(window) {
         return window && window.terminal === "kitty" && window.within && Number(window.id) > 0
@@ -2489,8 +2523,10 @@ Singleton {
         windowsKept = Object.assign({}, windowsDaemon.held);
         niriWindows = SessionWindows.indexed(Object.values(windowsKept));
         // A window that comes or goes can be a session's ending, or a
-        // kitty's windows changing.
+        // kitty's windows changing, the sessions' kitty started again among
+        // them.
         if (came) {
+            sessionsKittyFile.reload();
             relive();
             ask();
         }
@@ -2518,7 +2554,7 @@ Singleton {
     function windowOf(record, kitties, opened) {
         const named = record.opened || viewerOf(record.presence);
         const kitty = record.kitty;
-        const pid = kitty ? (kittySocket.exec(kitty.socket) ?? [])[1] : undefined;
+        const pid = kitty ? kittyPid(kitty.socket) : undefined;
         if (named !== "" && opened)
             return SessionWindows.named(opened[String(named)] ?? [], pid);
         if (named !== "")
@@ -2548,7 +2584,7 @@ Singleton {
                 sockets[record.kitty.socket] = true;
         }
         for (const socket in sockets) {
-            const pid = (kittySocket.exec(socket) ?? [])[1];
+            const pid = kittyPid(socket);
             const windows = pid ? kitties[pid] ?? [] : [];
             const seen = windows.map(window => window.id).join(" ");
             if (windows.length > 1 && asked[socket] !== seen && !asking.includes(socket)) {
