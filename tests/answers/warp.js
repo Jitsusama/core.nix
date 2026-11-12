@@ -224,6 +224,24 @@ function run(failures, fromRoot) {
     machine("no warp-cli, so no WARP", Warp.failed({ error: "not-installed", said: "warp-cli" },
         warpSaid), null);
     machine("warp-cli's words as said", Warp.spoken("NetworkHealthy"), "network healthy");
+    // Before the link is first read, its row says how WARP stands, as the
+    // margin hears it all the time (modules/warp/src/serve.rs, warp:state),
+    // so Network never opens on "\u2026" for a link it already knows.
+    const standing = said => Warp.standing({ key: "warp:state", said }, warpSaid);
+    machine("WARP connected, before its round trip is read",
+        standing({ status: "Connected", reason: "NetworkHealthy" }),
+        { headline: "connected", warns: false });
+    machine("WARP switched off, as warp-cli says it",
+        standing({ status: "Disconnected", reason: "Manual" }),
+        { headline: "disconnected", warns: false });
+    machine("WARP finding the network degraded warns",
+        standing({ status: "Connected", reason: "NetworkDegraded" }),
+        { headline: "degraded", warns: true });
+    machine("WARP's service not answering warns", standing({ error: "FailedToConnectToDaemon" }),
+        { headline: "not answering", warns: true });
+    machine("warp-cli saying what isn't read leaves it waiting",
+        standing({ error: "NothingWritten" }), null);
+    machine("nothing heard of WARP leaves it waiting", Warp.standing(null, warpSaid), null);
     // What the shell keeps of WARP's reads while it's shown, two seconds
     // apart, sparks the tunnel's Round Trip, Loss and Traffic, each with
     // a drawer saying once whose figures they are (VKCF3Z, 2026-11-08).

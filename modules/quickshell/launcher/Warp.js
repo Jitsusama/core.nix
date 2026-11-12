@@ -460,6 +460,20 @@ function told(record, settings, said) {
     };
 }
 
+// How warp:state says WARP stands, for the row before the link is read, in told()'s words, or
+// null; of its errors, only warp-cli finding no service to ask is not answering.
+function standing(record, said) {
+    const { status, reason, error } = record?.said ?? {};
+    if (typeof status === "string") {
+        const ill = health({ reason }, {}, said);
+        return { headline: ill?.warns ? ill.side : spoken(status), warns: ill?.warns ?? false };
+    }
+    if (error === "FailedToConnectToDaemon") {
+        return { headline: worded(said, "notAnswering"), warns: true };
+    }
+    return null;
+}
+
 // What warp said when it couldn't read WARP ({ error, said }), as the row
 // says it in warp's words (`said`): { headline, warns, note }, or null
 // where there's no warp-cli, so no WARP to show. Its note is why, so the

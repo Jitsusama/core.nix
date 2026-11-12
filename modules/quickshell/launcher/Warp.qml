@@ -97,10 +97,14 @@ Provider {
         return said.error !== undefined ? failedAnswer() : told();
     }
 
-    // While warp first answers: held in its place, its figures to come.
+    // While warp first answers: held in its place, its figures to come,
+    // saying how WARP stands where the margin's watch has heard it
+    // (WarpState), so Network opens on "connected" rather than "\u2026".
     function waitingAnswer() {
+        const standing = Warp.standing(WarpState.state, words);
         return {
-            headline: "\u2026",
+            headline: standing?.headline ?? "\u2026",
+            warns: standing?.warns ?? false,
             parted: true,
             rows: [],
             asking: true,
@@ -300,6 +304,17 @@ Provider {
             provider.saidAt = 0;
             provider.seen = null;
             provider.switchSaid = "";
+        }
+    }
+
+    // How WARP stands, heard before the link is read, said at once by the
+    // row still waiting on it.
+    Connections {
+        target: WarpState
+
+        function onStateChanged() {
+            if (provider.said === null)
+                provider.answered();
         }
     }
 
