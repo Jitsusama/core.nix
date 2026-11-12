@@ -1,32 +1,30 @@
-//! Joel's messages to pi, from pi's own session logs: how long each waited
-//! for its reply to begin, which a provider's error held up, which turns
-//! he stopped, and which he had to say again, so pi's moments rank beside
-//! the launcher's.
+//! Joel's messages to pi, read from pi's own session logs: each message he
+//! typed, the calls that answered it until one handed the turn back, and
+//! how long its tools ran, so lost.rs can say what each go lost him and
+//! pi's moments rank beside the launcher's.
 //!
 //! What he typed is read here and in words.rs alone, in memory, to tell
 //! whether a message repeats his last one in the same session, reads as a
-//! correction or asks where things stand. The text is never written, logged or sent, and
-//! nothing kept counts its length or its words: the day file and the
-//! reading state hold times, flags and counts of messages. Tool calls,
-//! their results and what the agents wrote are never decoded: their lines
-//! are passed over before parsing, and an assistant entry's content is
-//! skipped unread. Each line is dropped as soon as it's read.
+//! correction or asks where things stand. The text is never written,
+//! logged or sent, and nothing kept counts its length or its words: the
+//! day file and the reading state hold times, flags and counts of
+//! messages. Tool calls, their results and what the agents wrote are never
+//! decoded: a tool result gives only the time and tool name at its line's
+//! head, and an assistant entry's content is skipped unread. Each line is
+//! dropped as soon as it's read.
 
-use crate::pain::{Painful, PiSigns, Signs, tenths};
+mod lost;
+
 use crate::words::{ALIKE, alike, asking_status, automated, correcting};
+pub use lost::painful;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 
-/// A reply that hasn't begun a second after he pressed Enter has broken
-/// his flow; that second is the spec, and every one past it is lost.
-pub const REPLY_MS: i64 = 1_000;
 /// A message much like his last in the same session, within this long,
 /// says the last didn't do it.
 pub const SAID_AGAIN_MS: i64 = 300_000;
-/// A go in pi lost him this at most: past two minutes he was most likely
-/// doing something else meanwhile, as with a search he left in the
-/// launcher, so a reply that hung for ten loses him two.
-pub const MOST_MS: i64 = 120_000;
+/// Tools that wait on Joel himself, whose time is his, not a wait on pi.
+const HIS: [&str; 1] = ["ask"];
 /// How far into a line its role is looked for. pi writes an entry's type,
 /// ids and time before its message's role, about 130 bytes in.
 const HEAD: usize = 400;
@@ -48,11 +46,15 @@ pub struct Call {
     pub start: i64,
     pub ms: i64,
     pub stop: Stop,
+    /// How long from its start the model took to its first token, where
+    /// the harness logged it.
+    #[serde(default)]
+    pub first: Option<i64>,
 }
 
 /// A message Joel typed, and the calls that answered it before the next
 /// message reached the session.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Turn {
     /// Where its line begins in the log, so the next read can find the
     /// message again to compare the one after it with.
@@ -67,6 +69,16 @@ pub struct Turn {
     pub again: bool,
     pub correction: bool,
     pub status: bool,
+    /// How long its tools ran, leaving out those that wait on Joel.
+    #[serde(default)]
+    pub tools_ms: i64,
+    /// How long tools that wait on Joel, a question put to him, ran.
+    #[serde(default)]
+    pub his_ms: i64,
+    /// Where the next tool's time is counted from: the later of the last
+    /// call's end and the last tool's.
+    #[serde(default)]
+    pub tool_mark: i64,
 }
 
 impl Turn {
@@ -87,6 +99,10 @@ pub struct Log {
     pub end: u64,
     pub open: bool,
     pub turns: Vec<Turn>,
+    /// The harness's timing of the call to come, as when it began and its
+    /// first token, which the harness logs just before the call itself.
+    #[serde(default)]
+    pub next: Option<(i64, i64)>,
 }
 
 impl Log {
@@ -149,14 +165,41 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
                 again,
                 correction: correcting(&text),
                 status: asking_status(&text),
+                ..Turn::default()
             });
             log.open = true;
             last = Some(text);
+        } else if head_has(&line, r#""customType":"harness-call""#) {
+            log.next = harness_call(&line);
         } else if log.open
             && begins_with_role(&line, "assistant")
-            && let (Some(turn), Some(call)) = (log.turns.last_mut(), call(&line))
+            && let (Some(turn), Some(mut call)) = (log.turns.last_mut(), call(&line))
         {
+            call.first = log
+                .next
+                .take()
+                .filter(|(of, _)| *of == call.start)
+                .map(|(_, first)| first);
+            // A call that answers or is stopped hands the turn back: what
+            // runs after it was set off by something else, a mesh message
+            // or a job's result, not by him.
+            log.open = matches!(call.stop, Stop::Tool | Stop::Error);
+            turn.tool_mark = turn.tool_mark.max(call.start + call.ms);
             turn.calls.push(call);
+        } else if log.open
+            && begins_with_role(&line, "toolResult")
+            && let (Some(turn), Some(at)) = (
+                log.turns.last_mut(),
+                head_str(&line, "timestamp").and_then(iso_ms),
+            )
+        {
+            let took = (at - turn.tool_mark).max(0);
+            if head_str(&line, "toolName").is_some_and(|name| HIS.contains(&name)) {
+                turn.his_ms += took;
+            } else {
+                turn.tools_ms += took;
+            }
+            turn.tool_mark = turn.tool_mark.max(at);
         }
     }
 }
@@ -253,105 +296,51 @@ fn call(line: &[u8]) -> Option<Call> {
         start: entry.message.timestamp,
         ms: entry.message.duration_ms.unwrap_or(0).max(0),
         stop,
+        first: None,
     })
+}
+
+/// The harness's timing of one call: numbers alone, so it's parsed whole.
+#[derive(Deserialize)]
+struct HarnessLine {
+    data: HarnessCall,
+}
+
+#[derive(Deserialize)]
+struct HarnessCall {
+    of: i64,
+    #[serde(rename = "firstTokenMs", default)]
+    first_token_ms: Option<i64>,
+}
+
+fn harness_call(line: &[u8]) -> Option<(i64, i64)> {
+    let entry: HarnessLine = serde_json::from_slice(line).ok()?;
+    Some((entry.data.of, entry.data.first_token_ms?))
 }
 
 /// Whether a line is a message in this role, from the head of the line
 /// alone, so tool results, most of a log's bytes, are never parsed.
 fn begins_with_role(line: &[u8], role: &str) -> bool {
-    let needle = format!(r#""role":"{role}""#);
+    head_has(line, &format!(r#""role":"{role}""#))
+}
+
+fn head_has(line: &[u8], needle: &str) -> bool {
     let head = &line[..line.len().min(HEAD)];
     head.windows(needle.len()).any(|w| w == needle.as_bytes())
 }
 
-/// The day's turns that lost him at least a second, as the day file says
-/// them: each a turn, or turns in a row where each said the last again.
-/// `logs` are each session's turns, in order; only goes begun in
-/// [since, until) count.
-pub fn painful(logs: &[&[Turn]], since: i64, until: i64) -> Vec<Painful> {
-    let mut named = Vec::new();
-    for turns in logs {
-        let mut goes: Vec<Vec<&Turn>> = Vec::new();
-        for turn in *turns {
-            match goes.last_mut() {
-                Some(go) if turn.again => go.push(turn),
-                _ => goes.push(vec![turn]),
-            }
-        }
-        named.extend(
-            goes.iter()
-                .filter(|go| (since..until).contains(&go[0].enter))
-                .map(|go| interaction(go))
-                .filter(|p| p.lost_seconds >= 1.0),
-        );
-    }
-    named
-}
-
-/// One go at something in a session, as the day file says it.
-fn interaction(go: &[&Turn]) -> Painful {
-    let (first, last) = (go[0], go[go.len() - 1]);
-    let mut signs = PiSigns::default();
-    let ms = |ms: i64| crate::pain::whole(crate::pain::float(ms));
-    for turn in go {
-        let waited = turn.calls.first().map_or(0, |c| c.start - turn.enter);
-        signs.waited_ms = signs.waited_ms.max(ms(waited));
-        signs.queued_ms = signs.queued_ms.max(ms(turn.delivered - turn.enter));
-        let errors = turn.calls.iter().filter(|c| c.stop == Stop::Error).count();
-        signs.errors += u32::try_from(errors).unwrap_or(u32::MAX);
-        signs.stopped += u32::from(turn.calls.iter().any(|c| c.stop == Stop::Aborted));
-        signs.corrections += u32::from(turn.correction);
-        signs.status += u32::from(turn.status);
-    }
-    // Each go but the last didn't do it, so its time up to the next went
-    // for nothing; the last loses what it waited on.
-    let again: i64 = go.windows(2).map(|w| w[1].enter - w[0].enter).sum();
-    let calls = &last.calls;
-    let reply = calls
-        .first()
-        .map_or(0, |c| (c.start - last.enter - REPLY_MS).max(0));
-    let error: i64 = calls
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| c.stop == Stop::Error)
-        .map(|(n, c)| calls.get(n + 1).map_or(c.start + c.ms, |next| next.start) - c.start)
-        .sum();
-    let stopped = calls
-        .iter()
-        .find(|c| c.stop == Stop::Aborted)
-        .map_or(0, |c| (c.start + c.ms - last.enter - reply - error).max(0));
-    let part = [
-        (reply, "reply"),
-        (error, "error"),
-        (stopped, "stopped"),
-        (again, "again"),
-    ]
-    .into_iter()
-    .fold(
-        (i64::MIN, "reply"),
-        |best, it| if it.0 > best.0 { it } else { best },
-    )
-    .1;
-    let slowed = match part {
-        _ if go.len() > 1 => "tried again",
-        "stopped" => "stopped it",
-        "error" => "an error",
-        _ => "waiting",
-    };
-    let float = crate::pain::float;
-    Painful {
-        at: first.enter / 1000,
-        place: "pi",
-        trying: "a session".to_string(),
-        seconds: tenths(float(last.end() - first.enter)),
-        usual_seconds: tenths(float(REPLY_MS)),
-        lost_seconds: tenths(float((again + reply + error + stopped).min(MOST_MS))),
-        rank: 0,
-        slowed,
-        part,
-        openings: go.len(),
-        signs: Signs::Pi(signs),
-    }
+/// A string field from the head of a line, its first in the line, read
+/// without parsing the rest: a tool result's time and its tool's name
+/// come before its content.
+fn head_str<'a>(line: &'a [u8], key: &str) -> Option<&'a str> {
+    let head = &line[..line.len().min(HEAD)];
+    let needle = format!(r#""{key}":""#);
+    let from = head
+        .windows(needle.len())
+        .position(|w| w == needle.as_bytes())?
+        + needle.len();
+    let to = from + head[from..].iter().position(|&b| b == b'"')?;
+    std::str::from_utf8(&head[from..to]).ok()
 }
 
 /// An ISO 8601 time as pi writes it ("2026-11-10T19:16:00.282Z"), in
@@ -385,10 +374,11 @@ pub fn iso_ms(stamp: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pain::Signs;
     use std::io::Cursor;
 
     /// 2026-11-11 16:00:00 UTC.
-    const AT: i64 = 1_794_412_800_000;
+    pub(super) const AT: i64 = 1_794_412_800_000;
 
     fn iso(at: i64) -> String {
         let secs = at.div_euclid(1000);
@@ -426,6 +416,21 @@ mod tests {
         ) + "\n"
     }
 
+    fn tool_ended(at: i64, name: &str) -> String {
+        format!(
+            r#"{{"type":"message","id":"d","parentId":"c","timestamp":"{}","message":{{"role":"toolResult","toolCallId":"t","toolName":"{name}","content":[{{"type":"text","text":"done"}}],"timestamp":{at}}}}}"#,
+            iso(at)
+        ) + "\n"
+    }
+
+    fn harness_call(of: i64, first_token: i64) -> String {
+        format!(
+            r#"{{"type":"custom","customType":"harness-call","data":{{"v":1,"of":{of},"turnAt":"{}","preparedMs":5,"firstTokenMs":{first_token},"durationMs":9000,"stopReason":"stop"}},"id":"h","parentId":"a","timestamp":"{}"}}"#,
+            iso(of),
+            iso(of + 9000)
+        ) + "\n"
+    }
+
     fn mesh(at: i64) -> String {
         format!(
             r#"{{"type":"custom_message","customType":"mesh","content":"Mesh message from a peer","timestamp":"{}"}}"#,
@@ -439,19 +444,89 @@ mod tests {
         log
     }
 
-    fn turn(enter: i64, calls: &[(i64, i64, Stop)]) -> Turn {
+    pub(super) fn turn(enter: i64, calls: &[(i64, i64, Stop)]) -> Turn {
         Turn {
             offset: 0,
             enter,
             delivered: enter,
             calls: calls
                 .iter()
-                .map(|&(start, ms, stop)| Call { start, ms, stop })
+                .map(|&(start, ms, stop)| Call {
+                    start,
+                    ms,
+                    stop,
+                    first: None,
+                })
                 .collect(),
-            again: false,
-            correction: false,
-            status: false,
+            ..Turn::default()
         }
+    }
+
+    #[test]
+    fn what_runs_after_his_turn_is_handed_back_is_not_his() {
+        let text = typed(AT, AT, "hello")
+            + &reply(AT + 100, 1000, "stop")
+            + &mesh(AT + 5000)
+            + &reply(AT + 5100, 2000, "error")
+            + &reply(AT + 8000, 500, "aborted");
+        let log = read(&text);
+        assert_eq!(
+            log.turns[0].calls.len(),
+            1,
+            "calls a mesh message set off after his reply aren't his turn's"
+        );
+        assert!(!log.open, "the answer handed the turn back");
+    }
+
+    #[test]
+    fn waiting_on_tools_is_pis_own_and_on_the_model_is_not() {
+        let text = typed(AT, AT, "run the tests")
+            + &reply(AT + 500, 10_000, "toolUse")
+            + &tool_ended(AT + 40_500, "bash")
+            + &reply(AT + 41_000, 5000, "stop");
+        let log = read(&text);
+        assert_eq!(log.turns[0].tools_ms, 30_000, "the tool ran 30 s");
+        let p = &painful(&[&log.turns], AT - 1, AT + 1)[0];
+        assert_eq!(
+            (p.lost_seconds, p.slowed, p.part),
+            (30.0, "waiting", "pi"),
+            "of 46 s, the model's 15 aren't lost, nor the spec's second"
+        );
+        let Signs::Pi(signs) = &p.signs else {
+            panic!("a pi moment carries pi's signs");
+        };
+        assert_eq!(
+            (
+                signs.model_ms,
+                signs.provider_ms,
+                signs.pi_ms,
+                signs.tools_ms
+            ),
+            (15_000, 0, 31_000, 30_000)
+        );
+    }
+
+    #[test]
+    fn a_question_put_to_him_is_not_a_wait() {
+        let text = typed(AT, AT, "plan it")
+            + &reply(AT + 500, 10_000, "toolUse")
+            + &tool_ended(AT + 40_500, "ask")
+            + &reply(AT + 41_000, 5000, "stop");
+        let log = read(&text);
+        assert!(
+            painful(&[&log.turns], AT - 1, AT + 1).is_empty(),
+            "the 30 s were his own, answering"
+        );
+    }
+
+    #[test]
+    fn the_first_token_comes_from_the_harness_entry_before_its_call() {
+        let text =
+            typed(AT, AT, "hello") + &harness_call(AT + 500, 4000) + &reply(AT + 500, 9000, "stop");
+        let log = read(&text);
+        assert_eq!(log.turns[0].calls[0].first, Some(4000));
+        let named = painful(&[&log.turns], AT - 1, AT + 1);
+        assert!(named.is_empty(), "the model thinking is no fault");
     }
 
     #[test]
@@ -473,12 +548,14 @@ mod tests {
                 Call {
                     start: AT + 4100,
                     ms: 3000,
-                    stop: Stop::Tool
+                    stop: Stop::Tool,
+                    first: None,
                 },
                 Call {
                     start: AT + 7300,
                     ms: 2000,
-                    stop: Stop::Done
+                    stop: Stop::Done,
+                    first: None,
                 },
             ]
         );
@@ -564,106 +641,6 @@ mod tests {
     }
 
     #[test]
-    fn waiting_past_a_second_for_the_reply_is_lost() {
-        let turns = [turn(AT, &[(AT + 21_000, 4000, Stop::Done)])];
-        let named = painful(&[&turns], AT - 1, AT + 1);
-        assert_eq!(named.len(), 1, "a 21 s wait is named");
-        let p = &named[0];
-        assert_eq!((p.place, p.trying.as_str()), ("pi", "a session"));
-        assert_eq!(
-            (p.lost_seconds, p.seconds, p.usual_seconds),
-            (20.0, 25.0, 1.0)
-        );
-        assert_eq!((p.slowed, p.part, p.openings), ("waiting", "reply", 1));
-        let quick = [turn(AT, &[(AT + 900, 30_000, Stop::Done)])];
-        assert!(
-            painful(&[&quick], AT - 1, AT + 1).is_empty(),
-            "a reply that began within a second lost him nothing, however long it ran"
-        );
-    }
-
-    #[test]
-    fn an_error_loses_the_time_until_the_next_try() {
-        let turns = [turn(
-            AT,
-            &[
-                (AT + 500, 2000, Stop::Error),
-                (AT + 12_500, 3000, Stop::Done),
-            ],
-        )];
-        let p = &painful(&[&turns], AT - 1, AT + 1)[0];
-        assert_eq!(
-            (p.lost_seconds, p.slowed, p.part),
-            (12.0, "an error", "error")
-        );
-        let Signs::Pi(signs) = &p.signs else {
-            panic!("a pi moment carries pi's signs");
-        };
-        assert_eq!(signs.errors, 1);
-        assert_eq!(
-            crate::pain::float(MOST_MS),
-            crate::pain::GAVE_UP_MOST_MS,
-            "pi and the launcher hold a go to the same two minutes"
-        );
-        let hung = [turn(AT, &[(AT + 500, 600_000, Stop::Error)])];
-        assert_eq!(
-            painful(&[&hung], AT - 1, AT + 1)[0].lost_seconds,
-            120.0,
-            "past two minutes he was doing something else"
-        );
-    }
-
-    #[test]
-    fn a_stopped_turn_loses_what_it_ran_at_most_two_minutes() {
-        let short = [turn(AT, &[(AT + 500, 30_000, Stop::Aborted)])];
-        let p = &painful(&[&short], AT - 1, AT + 1)[0];
-        assert_eq!(
-            (p.lost_seconds, p.slowed, p.part),
-            (30.5, "stopped it", "stopped")
-        );
-        let long = [turn(AT, &[(AT + 500, 600_000, Stop::Aborted)])];
-        assert_eq!(painful(&[&long], AT - 1, AT + 1)[0].lost_seconds, 120.0);
-    }
-
-    #[test]
-    fn saying_it_again_loses_the_first_go() {
-        let mut second = turn(AT + 90_000, &[(AT + 90_500, 5000, Stop::Done)]);
-        second.again = true;
-        let turns = [turn(AT, &[(AT + 6000, 5000, Stop::Done)]), second];
-        let named = painful(&[&turns], AT - 1, AT + 1);
-        assert_eq!(named.len(), 1, "the two are one go");
-        let p = &named[0];
-        assert_eq!(
-            (p.lost_seconds, p.slowed, p.part, p.openings),
-            (90.0, "tried again", "again", 2)
-        );
-        assert_eq!(p.seconds, 95.5);
-    }
-
-    #[test]
-    fn corrections_and_status_questions_are_signs_not_lost_time() {
-        let mut asked = turn(AT, &[(AT + 3000, 1000, Stop::Done)]);
-        asked.status = true;
-        asked.correction = true;
-        let p = &painful(&[&[asked]], AT - 1, AT + 1)[0];
-        assert_eq!(p.lost_seconds, 2.0, "only its wait is lost");
-        let Signs::Pi(signs) = &p.signs else {
-            panic!("a pi moment carries pi's signs");
-        };
-        assert_eq!((signs.corrections, signs.status), (1, 1));
-    }
-
-    #[test]
-    fn only_goes_begun_in_the_day_count() {
-        let turns = [turn(AT, &[(AT + 21_000, 4000, Stop::Done)])];
-        assert!(
-            painful(&[&turns], AT + 1, AT + 2).is_empty(),
-            "before the day"
-        );
-        assert!(painful(&[&turns], AT - 2, AT).is_empty(), "after it");
-    }
-
-    #[test]
     fn what_he_typed_and_what_agents_said_is_never_kept() {
         let text = typed(AT, AT + 20_000, "the token is sk-FAKE-7QEY1S-0001 ok")
             + &reply(AT + 21_000, 1000, "stop")
@@ -698,6 +675,7 @@ mod tests {
             end: 0,
             open: true,
             turns: vec![turn(AT - 10, &[]), turn(AT - 5, &[])],
+            next: None,
         };
         log.prune(AT);
         assert_eq!(log.turns.len(), 1, "the older is gone");

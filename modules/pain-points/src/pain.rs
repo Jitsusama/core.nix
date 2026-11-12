@@ -208,12 +208,18 @@ pub struct LauncherSigns {
 }
 
 /// What a go in pi showed: the longest wait for a reply to begin and for
-/// a message to reach a busy session, and how many errors, stopped turns,
-/// corrections and status questions it held.
+/// a message to reach a busy session; its last message's time by cause,
+/// the model's (no fault), the provider's and pi's own (tools, preparing
+/// calls, the queue); and how many errors, stopped turns, corrections and
+/// status questions it held.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct PiSigns {
     pub waited_ms: u32,
     pub queued_ms: u32,
+    pub model_ms: u32,
+    pub provider_ms: u32,
+    pub pi_ms: u32,
+    pub tools_ms: u32,
     pub errors: u32,
     pub stopped: u32,
     pub corrections: u32,

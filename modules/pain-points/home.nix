@@ -28,10 +28,13 @@ in
       StateDirectory = "pain-points";
       ProtectHome = "read-only";
       ReadWritePaths = "%S/pain-points";
-      # A user unit can't hold IP filters, so IPAddressDeny alone would
-      # leave the network open; a network namespace of its own closes it.
+      # A user unit can't hold IP filters, so a network namespace of its
+      # own is what keeps it off the network.
       PrivateNetwork = true;
-      IPAddressDeny = "any";
+      # A day's first read passes a gigabyte or more of pi's logs through
+      # the page cache, charged to this unit; past this, the kernel takes
+      # those pages back first rather than what Joel is using.
+      MemoryHigh = "128M";
     };
   };
 
