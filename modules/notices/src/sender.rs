@@ -74,8 +74,10 @@ impl Signs<'_> {
     /// other is signed by its program's own name, as its row among
     /// Programs is, or else as it named itself. Its program is the one
     /// senders.json names, else the entry it named, else the one its name
-    /// finds as the shell's `heuristicLookup` would.
-    pub fn sender(&self, app: &str, entry: &str) -> Sender {
+    /// finds as the shell's `heuristicLookup` would. A sender giving the
+    /// name it signs by (`from`, its `x-from` hint) is signed by that name
+    /// alone, its mark and hue kept, so none takes on another's mark.
+    pub fn sender(&self, app: &str, entry: &str, from: &str) -> Sender {
         let known = self.senders.senders.get(&app.to_lowercase());
         let program = known
             .and_then(|known| known.program.as_deref())
@@ -93,7 +95,10 @@ impl Signs<'_> {
                 .map(|thing| self.words.name(thing, "").to_owned())
                 .or_else(|| known.name.clone())
         });
-        let name = named
+        let from = from.trim();
+        let name = (!from.is_empty())
+            .then(|| from.to_owned())
+            .or(named)
             .or_else(|| program.map(|entry| entry.name.clone()))
             .unwrap_or_else(|| app.to_owned());
         let glyph = known
@@ -148,7 +153,7 @@ mod tests {
             entries: &entries,
             words: &words,
         }
-        .sender(app, entry)
+        .sender(app, entry, "")
     }
 
     #[test]

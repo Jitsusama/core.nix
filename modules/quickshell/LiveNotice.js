@@ -28,6 +28,11 @@ function of(notice, ask, token, card) {
         id,
         from: card?.from ?? unsigned,
         words: card?.words ?? unsaid,
+        // How it says it stands, worded by the daemon from its sender's
+        // key, "sent" or "answered", or ""; and when it came, which its
+        // card's foot says it by then.
+        said: card?.said ?? "",
+        at: notice.at ?? 0,
         appName: notice.app,
         appIcon: notice.icon,
         // Its own picture, a file the daemon keeps where one was sent as

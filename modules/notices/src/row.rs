@@ -282,6 +282,15 @@ fn says_read(word: &str) -> bool {
             .is_some_and(|after_as| matches!(after_as, "" | "-" | "_" | " "))
 }
 
+/// How a notice says it stands, its `x-said` key worded, or "" for none
+/// or a key there's no word for, as "sent" or "answered" of a talk.
+fn stands<'w>(notice: &Notice, words: &'w Words) -> &'w str {
+    match notice.hint("x-said") {
+        key @ ("sent" | "answered") => words.said(PLACE, key),
+        _ => "",
+    }
+}
+
 /// A notice's row in `place`, not yet given its `order`, its side saying
 /// its standing where `standing` holds words, then its age.
 fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &str) -> Value {
@@ -295,11 +304,19 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
         let all = (notice.folds + 1).to_string();
         json!({ "said": words.said(PLACE, "folds").replace("{count}", &all) })
     });
+    // One saying how it stands says so before its moment, "sent · 12:40".
+    let stood = stands(notice, words);
+    let when = if stood.is_empty() {
+        json!({ "at": notice.at, "as": "came" })
+    } else {
+        json!({ "at": notice.at, "as": "moment" })
+    };
     let side: Vec<Value> = (!standing.is_empty())
         .then(|| json!({ "said": standing }))
         .into_iter()
+        .chain((!stood.is_empty()).then(|| json!({ "said": stood })))
         .chain(folds)
-        .chain(std::iter::once(json!({ "at": notice.at, "as": "came" })))
+        .chain(std::iter::once(when))
         .collect();
     // Its words styled as its card draws them where they carry markup or
     // a link, and plain otherwise, so a long log keeps its own lines; its
@@ -384,7 +401,7 @@ impl Rows {
             let one = match self.made.remove(&notice.id) {
                 Some(was) if was.notice == *notice && was.looked == shown => was,
                 _ => {
-                    let sender = signs.sender(&notice.app, &notice.entry);
+                    let sender = signs.sender(&notice.app, &notice.entry, notice.hint("x-from"));
                     Made {
                         notice: notice.clone(),
                         looked: shown,
@@ -393,6 +410,7 @@ impl Rows {
                                 "glyph": sender.glyph, "hue": sender.hue, "name": sender.name,
                             },
                             "body": body::read(&notice.body),
+                            "said": stands(notice, signs.words),
                         }),
                         rows: placed(notice, &sender, signs.words, shown),
                     }
@@ -538,8 +556,8 @@ mod tests {
         assert_eq!(card["said"], "sent", "the card says it was sent");
         assert_eq!(
             mixed[0]["side"],
-            json!([{ "said": "sent" }, { "at": 10_000, "as": "clock" }]),
-            "then when, as a clock"
+            json!([{ "said": "sent" }, { "at": 10_000, "as": "moment" }]),
+            "then its moment"
         );
         let answered = Notice {
             hints: json!({ "x-from": "The Void", "x-said": "answered" })
