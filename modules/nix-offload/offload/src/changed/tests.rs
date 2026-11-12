@@ -68,6 +68,14 @@ fn a_kept_base_is_taken_in_whole_and_never_over_one_kept() {
         "an empty copy, as from a builder keeping nothing, was taken in"
     );
     assert!(!kept.exists(), "an empty copy was kept");
+    let copying = || {
+        fs::read_dir(home.path().join(".cache/changed-checks"))
+            .expect("no folder for kept checks")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains("copying"))
+            .count()
+    };
+    assert_eq!(copying(), 0, "a copy that failed was left half taken in");
     assert!(
         run_in(home.path(), &take, "{\"one\":1}"),
         "a copy wasn't taken in"
@@ -86,9 +94,10 @@ fn a_kept_base_is_taken_in_whole_and_never_over_one_kept() {
         Some("{\"one\":1}"),
         "a copy went over what was kept"
     );
+    assert_eq!(copying(), 0, "a copy was left half taken in");
     assert!(
-        !kept.with_extension("copying").exists(),
-        "the copy was left half taken in"
+        take.contains(".copying.$$"),
+        "two gates copying one base at once would write into one file"
     );
     assert_eq!(
         read, "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/abc123-x86_64-linux.json\"",

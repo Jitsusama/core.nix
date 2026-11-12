@@ -467,8 +467,9 @@ pub fn keeps_base(base: &str, system: &str) -> Option<String> {
 /// of only 46: 32 were the other builder evaluating, at about 280 s each,
 /// what one had kept. Kept derivations name the same paths on either. The
 /// file is only ever whole, since changed-checks renames it into place,
-/// and it's taken in the same way, under a name of its own so it never
-/// meets changed-checks' own writing, and left alone where one is kept.
+/// and it's taken in the same way, under a name of the writer's own so it
+/// never meets changed-checks' writing or another gate's copy of the same
+/// base, removed when it fails, and left alone where one is kept.
 /// `record` is one of [`KEPT_AS`]. None for a base or system the shell
 /// could read as more than a word, or a record changed-checks keeps none
 /// of.
@@ -482,8 +483,8 @@ pub fn sharing_kept(base: &str, system: &str, record: &str) -> Option<(String, S
     let read = format!("cat \"{kept}.{record}\"");
     let take = format!(
         "test -e \"{kept}.{record}\" || {{ mkdir -p \"{folder}\" && \
-         cat > \"{kept}.{record}.copying\" && test -s \"{kept}.{record}.copying\" && \
-         mv \"{kept}.{record}.copying\" \"{kept}.{record}\"; }}"
+         t=\"{kept}.{record}.copying.$$\" && {{ cat > \"$t\" && test -s \"$t\" && \
+         mv \"$t\" \"{kept}.{record}\" || {{ rm -f \"$t\"; false; }}; }}; }}"
     );
     Some((read, take))
 }
