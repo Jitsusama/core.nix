@@ -163,8 +163,15 @@ Provider {
                 renamed = true;
             }
         }
-        if (renamed)
+        // Someone newly named may be one a place shows unlent, as a
+        // meeting's guest served before google's people came, so each
+        // place held is told to ask again: only a lent row shown was,
+        // and Guests stayed served rows until the launcher shut
+        // (RTOIMQ, 2026-11-12).
+        if (renamed) {
             namesRevision += 1;
+            heldAboveChanged();
+        }
         // Who the daemon told whoIs of is asked again once anything's
         // heard, since what told the listing anew may have told them too,
         // and so is what was typed.
