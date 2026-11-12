@@ -433,7 +433,7 @@ fn answer<A: Ask>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use super::*;
     use crate::ask::{Said, Unasked};
@@ -446,6 +446,8 @@ mod tests {
         cli: Contract,
         up: Arc<AtomicBool>,
         listened: Mutex<Option<std::io::PipeReader>>,
+        /// How many questions other than the status it was asked.
+        asked: Arc<AtomicUsize>,
     }
 
     impl Ask for Switching {
@@ -475,7 +477,10 @@ mod tests {
                         text: "Success\n".into(),
                     })
                 }
-                _ => self.cli.ask(question),
+                _ => {
+                    self.asked.fetch_add(1, Ordering::SeqCst);
+                    self.cli.ask(question)
+                }
             }
         }
     }
@@ -531,15 +536,94 @@ mod tests {
         listened: Option<std::io::PipeReader>,
         up: Arc<AtomicBool>,
     ) -> std::path::PathBuf {
+        serving_counted(name, listened, up, Arc::new(AtomicUsize::new(0)))
+    }
+
+    fn serving_counted(
+        name: &str,
+        listened: Option<std::io::PipeReader>,
+        up: Arc<AtomicBool>,
+        asked: Arc<AtomicUsize>,
+    ) -> std::path::PathBuf {
         let socket = std::env::temp_dir().join(format!("warp-{name}-{}.sock", std::process::id()));
         let cli = Switching {
             cli: Contract::whole(),
             up,
             listened: Mutex::new(listened),
+            asked,
         };
         let at = socket.clone();
         std::thread::spawn(move || serve(&at, cli));
         socket
+    }
+
+    #[test]
+    fn a_state_watch_hears_how_warp_stands_from_the_listener_alone() {
+        let (lines, mut tell) = std::io::pipe().expect("a pipe opens");
+        let asked = Arc::new(AtomicUsize::new(0));
+        let socket = serving_counted(
+            "state",
+            Some(lines),
+            Arc::new(AtomicBool::new(true)),
+            Arc::clone(&asked),
+        );
+        let mut client = Client::new(&socket);
+        client.say(&json!({"id": "all", "ask": "watch", "kind": "warp-state"}));
+        assert_eq!(
+            client.heard(),
+            json!({"id": "all", "records": []}),
+            "nothing heard yet is said as nothing"
+        );
+        let told = contract::file("listen-status.jsonl");
+        let told: Vec<&str> = told.lines().collect();
+        writeln!(tell, "{}", told[0]).expect("the daemon listens");
+        let first = client.heard();
+        let state = &first["changed"][0];
+        assert_eq!(state["key"], "warp:state");
+        assert_eq!(state["kind"], "warp-state");
+        assert_eq!(
+            state["said"],
+            json!({"status": "Connected", "reason": "NetworkHealthy"})
+        );
+        assert_eq!(
+            state["since_ms"],
+            Value::Null,
+            "a state heard first may have stood for hours, so it says no since"
+        );
+        writeln!(tell, "{}", told[1]).expect("the daemon listens");
+        let degraded = client.heard();
+        assert_eq!(
+            degraded["changed"][0]["said"],
+            json!({"status": "Connected", "reason": "NetworkDegraded"})
+        );
+        assert!(
+            degraded["changed"][0]["since_ms"].is_u64(),
+            "a state seen to begin says when: {degraded}"
+        );
+        // Its figures moving tell nothing, so the next heard is the drop.
+        writeln!(tell, "{}", told[2]).expect("the daemon listens");
+        writeln!(tell, "{}", told[3]).expect("the daemon listens");
+        assert_eq!(
+            client.heard()["changed"][0]["said"],
+            json!({"status": "Disconnected", "reason": "ManualDisconnection"})
+        );
+        assert_eq!(
+            asked.load(Ordering::SeqCst),
+            0,
+            "a state watch sets off none of the link's reads"
+        );
+    }
+
+    #[test]
+    fn a_state_watch_is_told_the_status_asked_where_nothing_listens() {
+        let socket = serving_listened("unlistened", None, Arc::new(AtomicBool::new(false)));
+        let mut client = Client::new(&socket);
+        client.say(&json!({"id": "all", "ask": "watch", "kind": ["warp-state"]}));
+        assert_eq!(client.heard()["records"], json!([]));
+        assert_eq!(
+            client.heard()["changed"][0]["said"],
+            json!({"status": "Disconnected", "reason": "Manual"})
+        );
     }
 
     #[test]
