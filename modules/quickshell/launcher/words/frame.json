@@ -246,6 +246,7 @@
     "drawer": {
       "back": "back",
       "keys": "keys",
+      "nerd": "nerdy bits",
       "place": "place"
     },
     "times": {
@@ -355,6 +356,7 @@
         "seekOn": "The next match",
         "select": "Choose words",
         "reselect": "The last choice",
+        "fold": "Open or fold its nerdy bits",
         "otherEnd": "Its other end",
         "copy": "Copy as markdown",
         "back": "Back to the rows",

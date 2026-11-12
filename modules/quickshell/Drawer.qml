@@ -326,6 +326,37 @@ Floating {
     // Available).
     readonly property var groups: moment ? (shown.groups ?? [])
         .filter(facts => facts.length > 0).map(facts => ({ facts: facts })) : []
+    // Its acts (the drawer spec's part 6, launcher-shape/drawers.md), `acts:
+    // [{ name, key }]` in the row's order, Return's first: each name in the
+    // action's ink after the key it's done by, so the drawer says what the
+    // row does and by which key, a step from the row (VKCF3Z, fa0dfe45).
+    // One with no name says nothing, and is left out.
+    readonly property var acts: shown ? (shown.acts ?? [])
+        .filter(act => act && String(act.name ?? "") !== "") : []
+    // Its nerdy bits (the spec's part 7), `nerd: [{ label, value }]`: every
+    // identifier, raw figure and whole long text behind its facts, which
+    // never stand among them, folded under one line until za opens them.
+    // One with no value is left out, as a fact is.
+    readonly property var nerd: shown ? (shown.nerd ?? []).filter(bit => bit
+        && bit.value !== null && bit.value !== undefined && String(bit.value) !== "") : []
+    // Whether the nerdy bits are folded. It's his, as a Vim fold he chose:
+    // za opens or folds them, and they stay as he left them from row to
+    // row and opening to opening, so nothing it's shown ever sets it.
+    property bool folded: true
+    // za: the nerdy bits opened or folded, and its lines read again for the
+    // cursor, which keeps its line where that's still there.
+    function fold() {
+        folded = !folded;
+        relay();
+    }
+    // The bits' names' column, as wide as the widest, never past a third
+    // of the plate, so a raw value keeps most of the line. A binding
+    // doesn't see what a call reads, so it reads the face.
+    readonly property real nerdLabelsWide: {
+        void factFace.font;
+        return Math.min(column.width / 3, Math.max(0, ...nerd.map(bit =>
+            Math.ceil(factFace.advanceWidth(String(bit.label ?? ""))))));
+    }
     // The time and its seconds as it says them, for the launcher to report.
     readonly property string momentTime: moment ? timeText.text : ""
     readonly property string momentSeconds: moment ? secondsText.text : ""
@@ -440,7 +471,8 @@ Floating {
 
     // Whether it has words for a cursor to sit on, so the keys can go in.
     readonly property bool lined: shown !== null && (moment || eyebrow !== "" || title !== ""
-        || facts.length > 0 || body !== "" || (preview?.lines ?? []).length > 0)
+        || facts.length > 0 || body !== "" || (preview?.lines ?? []).length > 0
+        || acts.length > 0 || nerd.length > 0)
     // The lines kept about the cursor as the view follows it, as his
     // Neovim's scrolloff (modules/neovim/init.lua).
     readonly property int scrolloff: 4
@@ -562,7 +594,8 @@ Floating {
     // Every PageText it has, shown or not.
     function texts() {
         return [eyebrowText, timeText, secondsText, titleText]
-            .concat(groupsShown.texts(), previewRows.texts(), factRows.texts(), [bodyText])
+            .concat(groupsShown.texts(), previewRows.texts(), factRows.texts(), [bodyText],
+                actsShown.texts(), foldShown.texts())
             .filter(text => text);
     }
 
@@ -703,6 +736,10 @@ Floating {
     // A key's act while it holds the keys: where DrawerPage.js says it
     // takes the cursor and the view.
     function go(act, count) {
+        if (act === "fold") {
+            fold();
+            return;
+        }
         const page = laid;
         const moved = Page.moved(act, count, {
             lines: page,
@@ -1005,6 +1042,13 @@ Floating {
         font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
             : Theme.level.figure.pointSize * drawer.scriptGrown
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
+    }
+    // A nerdy bit's value's face, at Figure, whatever the facts' are.
+    FontMetrics {
+        id: nerdFace
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        font.features: Theme.level.figure.features
     }
     // The words' own face, a run among them measured by it.
     FontMetrics {
@@ -2365,6 +2409,157 @@ Floating {
                         radius: Theme.inner
                         visible: false
                         layer.enabled: true
+                    }
+                }
+
+                // Its acts, a run on one line where it fits: each the key
+                // it's done by, muted, then a tie and its name in the
+                // action's ink, the acts apart by the run's rung, and one
+                // that won't fit starting the next line, so none breaks
+                // inside. Each line takes a pitch, so what follows keeps
+                // the card's beat.
+                Flow {
+                    id: actsShown
+                    width: parent.width
+                    visible: drawer.acts.length > 0
+                    // Every act's key and name, for the keys' lines.
+                    function texts() {
+                        return [].concat(...Array.from({ length: actRows.count }, (_, at) => {
+                            const one = actRows.itemAt(at);
+                            return one ? [one.keyWords, one.nameWords] : [];
+                        }));
+                    }
+
+                    Repeater {
+                        id: actRows
+                        model: drawer.acts
+
+                        Item {
+                            id: oneAct
+                            required property var modelData
+                            required property int index
+                            readonly property Item keyWords: keyText
+                            readonly property Item nameWords: nameText
+                            readonly property bool keyed: String(modelData.key ?? "") !== ""
+                            width: nameText.x + nameText.implicitWidth
+                                + (index < drawer.acts.length - 1 ? Theme.space.rung.apart : 0)
+                            height: drawer.pitch
+
+                            PageText {
+                                id: keyText
+                                sought: drawer.washing
+                                visible: oneAct.keyed
+                                y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                plain: String(oneAct.modelData.key ?? "")
+                                leading: drawer.pitch
+                                wraps: false
+                                ink: Theme.muted
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
+                            }
+                            PageText {
+                                id: nameText
+                                sought: drawer.washing
+                                x: oneAct.keyed ? keyText.implicitWidth + Theme.space.rung.tie : 0
+                                y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                plain: String(oneAct.modelData.name)
+                                leading: drawer.pitch
+                                wraps: false
+                                ink: Theme.action
+                                font: keyText.font
+                            }
+                        }
+                    }
+                }
+
+                // Its nerdy bits: one line naming them, muted at Label as a
+                // heading is, with za beside it in the accent, and while
+                // they're open each bit under it, its name muted and its
+                // value at Figure, an identifier breaking at its own marks
+                // rather than running past the edge.
+                Column {
+                    id: foldShown
+                    width: parent.width
+                    visible: drawer.nerd.length > 0
+                    // The fold's line and every bit's name and value, for
+                    // the keys' lines.
+                    function texts() {
+                        return [foldName, foldKey].concat(...Array.from({ length: nerdRows.count },
+                            (_, at) => {
+                                const bit = nerdRows.itemAt(at);
+                                return bit ? [bit.labelWords, bit.valueWords] : [];
+                            }));
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: drawer.pitch
+
+                        PageText {
+                            id: foldName
+                            sought: drawer.washing
+                            y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                            plain: (Words.field.drawer ?? {}).nerd ?? ""
+                            leading: drawer.pitch
+                            wraps: false
+                            ink: Theme.muted
+                            font.family: Theme.level.label.family
+                            font.pointSize: Theme.level.label.pointSize
+                            font.weight: Theme.level.label.weight
+                            font.capitalization: Theme.level.label.capitalization
+                            font.letterSpacing: Theme.level.label.letterSpacing
+                            font.features: Theme.level.label.features
+                        }
+                        PageText {
+                            id: foldKey
+                            sought: drawer.washing
+                            x: foldName.implicitWidth + Theme.space.rung.apart
+                            y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                            plain: "za"
+                            leading: drawer.pitch
+                            wraps: false
+                            ink: Theme.accent
+                            font.family: Theme.level.note.family
+                            font.pointSize: Theme.level.note.pointSize
+                        }
+                    }
+
+                    Repeater {
+                        id: nerdRows
+                        model: drawer.folded ? [] : drawer.nerd
+
+                        Item {
+                            id: bit
+                            required property var modelData
+                            readonly property Item labelWords: bitLabel
+                            readonly property Item valueWords: bitValue
+                            width: parent.width
+                            height: Math.max(1, bitValue.lineCount) * drawer.pitch
+
+                            PageText {
+                                id: bitLabel
+                                sought: drawer.washing
+                                width: drawer.nerdLabelsWide
+                                y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                plain: String(bit.modelData.label ?? "")
+                                leading: drawer.pitch
+                                elides: true
+                                ink: Theme.muted
+                                font: factFace.font
+                            }
+                            PageText {
+                                id: bitValue
+                                sought: drawer.washing
+                                x: drawer.nerdLabelsWide + drawer.labelsGap
+                                width: parent.width - x
+                                y: drawer.pitch / 2 + drawer.dropped - baselineOffset
+                                plain: drawer.identifierKept(String(bit.modelData.value), nerdFace,
+                                    width)
+                                leading: drawer.pitch
+                                ink: Theme.muted
+                                font: nerdFace.font
+                            }
+                        }
                     }
                 }
             }

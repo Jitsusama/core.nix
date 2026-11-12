@@ -122,6 +122,7 @@ const page = [
     { name: "seekOn", acts: ["seekNext", "seekPrevious"] },
     { name: "select", acts: ["select", "selectLines"] },
     { name: "reselect", acts: ["reselect"] },
+    { name: "fold", acts: ["fold"] },
     { name: "keys", acts: ["keys"] },
     { name: "back", acts: ["rows"], firsts: true, also: [":q"] }
 ];

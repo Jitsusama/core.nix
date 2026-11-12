@@ -42,8 +42,9 @@ function cityOf(zone) {
 // and `zoneNote`, the zone the clock keeps and how it stands ("EST,
 // UTC−5"); `offset` ("UTC−5"); `utc`, the time there; `clock`, which of
 // `said`'s words say how the clock is kept ("kept", "unkept", "none", or
-// "" while it's asked); `clockSide`, the Clock row's own side; and
-// `names`, each fact's label and the title.
+// "" while it's asked); `clockSide`, the Clock row's own side; `unix`
+// and `julian`, the moment's raw figures, its nerdy bits; and `names`,
+// each fact's label and the title.
 function time(at) {
     const said = at.said;
     const city = cityOf(at.zone);
@@ -59,13 +60,19 @@ function time(at) {
                 value: [at.zone, at.zoneNote].filter(part => part).join(" \u00b7 ") },
             { label: at.names.utc, value: at.utc },
             { label: at.names.clock, value: at.clockSide }
-        ])
+        ]),
+        nerd: [
+            { label: at.names.unix, value: at.unix },
+            { label: at.names.julian, value: at.julian }
+        ]
     };
 }
 
 // Date's drawer, from the calendar: `iso`; `week`; `day` of the year's
 // `days`; `season` and `seasonLeft`, its days to go; `moon` and `lit`;
-// `quarter`, `quarterDay` and `quarterDays`; and `said` and `names`.
+// `quarter`, `quarterDay` and `quarterDays`; `weekDate` and `dayNumber`,
+// the ISO week date and the Julian day, its nerdy bits; and `said` and
+// `names`.
 function date(at) {
     const said = at.said;
     const left = at.days - at.day;
@@ -87,6 +94,10 @@ function date(at) {
             { label: at.names.quarter,
                 value: `Q${at.quarter} \u00b7 ${filled(said.quarterDay,
                     { day: at.quarterDay, days: at.quarterDays })}` }
-        ])
+        ]),
+        nerd: [
+            { label: at.names.weekDate, value: at.weekDate },
+            { label: at.names.julian, value: at.dayNumber }
+        ]
     };
 }

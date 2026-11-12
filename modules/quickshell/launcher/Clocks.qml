@@ -198,9 +198,14 @@ Provider {
             utc: Moment.utcClock(now).slice(0, 5),
             clock: keptAs.clock,
             clockSide: keptAs.side,
+            // Raw, as the nerdy bits are: Time's own rows group the
+            // seconds, and these copy as a program would read them.
+            unix: String(Moment.unix(now)),
+            julian: Numbers.format(Moment.julian(now), 5, "", settings.point ?? "."),
             said: Words.of("time").said ?? {},
             names: { title: Words.name("time"), zone: Words.name("time:zone"),
-                utc: Words.name("time:utc"), clock: Words.name("time:clock") }
+                utc: Words.name("time:utc"), clock: Words.name("time:clock"),
+                unix: Words.name("time:unix"), julian: Words.name("today:julian") }
         });
     }
 

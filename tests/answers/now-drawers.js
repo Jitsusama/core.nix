@@ -11,7 +11,10 @@ const TIME_SAID = {
     unkept: "the clock isn't kept true yet",
     none: "nothing keeps the clock true"
 };
-const TIME_NAMES = { title: "Time", zone: "Zone", utc: "UTC", clock: "Clock" };
+const TIME_NAMES = {
+    title: "Time", zone: "Zone", utc: "UTC", clock: "Clock", unix: "Unix Time",
+    julian: "Julian Day"
+};
 const DATE_SAID = {
     lead: "week {week}, day {day} of {days}, with {left} left in the year; "
         + "{season} has {seasonLeft} to go.",
@@ -21,19 +24,25 @@ const DATE_SAID = {
     quarterDay: "day {day} of {days}"
 };
 const DATE_NAMES = {
-    title: "Date", iso: "ISO Date", season: "Season", moon: "Moon", quarter: "Quarter"
+    title: "Date", iso: "ISO Date", season: "Season", moon: "Moon", quarter: "Quarter",
+    weekDate: "ISO Week Date", julian: "Julian Day"
 };
 
 function toronto(clock, clockSide) {
     return NowDrawers.time({
         time: "18:59", zone: "America/Toronto", zoneNote: "EST, UTC\u22125",
         offset: "UTC\u22125", utc: "23:59", clock, clockSide,
+        unix: "1794441540", julian: "2461356.49931",
         said: TIME_SAID, names: TIME_NAMES
     });
 }
 
 function facts(drawer) {
     return drawer.facts.map(fact => `${fact.label}: ${fact.value}`);
+}
+
+function nerd(drawer) {
+    return drawer.nerd.map(bit => `${bit.label}: ${bit.value}`);
 }
 
 function run(failures) {
@@ -53,6 +62,9 @@ function run(failures) {
         "Clock: nothing keeps the time"
     ]);
     same("Time's drawer is prose under its title", [unkept.title, unkept.prose], ["Time", true]);
+    // Its raw figures are its nerdy bits, never its facts.
+    same("Time's nerdy bits", nerd(unkept),
+        ["Unix Time: 1794441540", "Julian Day: 2461356.49931"]);
     same("a kept clock says so", toronto("kept", "synchronised").body,
         "18:59 in Toronto's zone, UTC\u22125; the clock is kept true.");
 
@@ -76,6 +88,7 @@ function run(failures) {
     const wednesday = {
         iso: "2026-11-11", week: 46, day: 315, days: 365, season: "autumn", seasonLeft: 40,
         moon: "waxing crescent", lit: "7% lit", quarter: 4, quarterDay: 42, quarterDays: 92,
+        weekDate: "2026-W46-3", dayNumber: "2461356",
         said: DATE_SAID, names: DATE_NAMES
     };
     const date = NowDrawers.date(wednesday);
@@ -87,6 +100,7 @@ function run(failures) {
         "Moon: waxing crescent \u00b7 7% lit",
         "Quarter: Q4 \u00b7 day 42 of 92"
     ]);
+    same("Date's nerdy bits", nerd(date), ["ISO Week Date: 2026-W46-3", "Julian Day: 2461356"]);
 
     // One day is said as one, in the sentence and the facts alike.
     const last = NowDrawers.date(Object.assign({}, wednesday, { day: 364, seasonLeft: 1 }));

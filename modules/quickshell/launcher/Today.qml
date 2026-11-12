@@ -93,10 +93,13 @@ Provider {
             quarter: quarter.quarter,
             quarterDay: quarter.day,
             quarterDays: quarter.days,
+            weekDate: Moment.isoWeekDate(at),
+            dayNumber: String(Moment.dayNumber(at)),
             said: Words.of("today").said ?? {},
             names: { title: Words.name("today"), iso: Words.name("today:iso"),
                 season: Words.name("today:season"), moon: Words.name("today:moon"),
-                quarter: Words.name("today:quarter") }
+                quarter: Words.name("today:quarter"), weekDate: Words.name("today:week"),
+                julian: Words.name("today:julian") }
         });
     }
 

@@ -221,6 +221,9 @@ const table = [
     // search itself (seekRead).
     { act: "seekNext", mode: "page", keys: ["n"] },
     { act: "seekPrevious", mode: "page", keys: ["N"] },
+    // za opens or folds its nerdy bits, as Vim's za a fold (the drawer
+    // spec's part 7), and they stay as he left them from row to row.
+    { act: "fold", mode: "page", keys: [["z", "a"]] },
     // A page can't be changed, so each key Vim's nv_edit refuses says E21
     // at once, i a o entering no insert, d c and r once their motion or
     // letter comes (Operators.refused), and visual's over what's chosen;
