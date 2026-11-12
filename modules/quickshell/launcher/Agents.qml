@@ -860,9 +860,19 @@ Provider {
             return madeBefore("start", null);
         const quests = () => (source("quests")?.everything() ?? [])
             .filter(row => row.unfinished && row.verb !== "go to");
+        // Its drawer says what it holds, as every row's does (Joel,
+        // 2026-11-11 22:00), never the quests, which may be many; a thing,
+        // so it's drawn, as Capture's acts are.
+        const words = Words.of("agents:start");
         return Object.assign(thingRow({
             key: "agents:start",
             name: Words.name("agents:start"),
+            thing: true,
+            drawer: () => ({
+                eyebrow: (Words.field.drawer ?? {}).place ?? "",
+                title: Words.name("agents:start"),
+                body: (words.tells ?? {}).holding ?? ""
+            }),
             glyph: Theme.glyph.agent,
             hue: "action"
         }, quests), {

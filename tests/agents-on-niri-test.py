@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import time
@@ -934,6 +935,32 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     # Its note never says its name again, but where it ran.
     assert row["note"].endswith("\u00b7 tidepool"), row
     assert (row["verb"], row["told"][:1]) == ("reopen", ["\u21b5 reopen"]), row
+
+
+def drawers_in(shell: Shell, path: str) -> dict[str, Json]:
+    """Give each row a place lists by its name, with the drawer it shows, as the shell says."""
+    asked = f"qs -p {shell.folder} ipc call -- launcher drawers {shlex.quote(path)}"
+    rows = cast("list[Json]", json.loads(shell.as_account(asked)).get("rows", []))
+    return {str(row.get("name")): cast("Json", row.get("drawer") or {}) for row in rows}
+
+
+def test_each_of_agents_places_says_what_it_holds_in_a_drawer(shell: Shell) -> None:
+    """Landed, Recent, Start a Session and the rest each have a drawer saying what they hold.
+
+    Every row has a drawer giving a little more than its line (Joel, 2026-11-11 22:00), a
+    place's saying what it holds even while it holds nothing, as Windows' does. AI Spend's Start
+    the Watch shows only while the watch is down, so tests/spend-served.qml holds its case.
+    """
+    opened(shell)
+    shell.launcher_until(lambda shown: "Start a Session" in shown["rows"])
+    places = ("Landed", "Recent", "Start a Session", "Quests", "Queue", "Runs", "AI Spend")
+    drawers = drawers_in(shell, "\u203aagents")
+    bare = [
+        name
+        for name in places
+        if not (drawers.get(name, {}).get("body") or drawers.get(name, {}).get("facts"))
+    ]
+    assert bare == [], {name: drawers.get(name) for name in bare}
 
 
 def guard_holds(status: Path, holder: Json) -> None:

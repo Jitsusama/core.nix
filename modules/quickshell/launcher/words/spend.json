@@ -4,7 +4,10 @@
       "id": "spend:start",
       "in": "spend",
       "name": "Start the Watch",
-      "verb": "start"
+      "verb": "start",
+      "tells": {
+        "does": "Starts the watch on AI spend again, since it isn't answering."
+      }
     },
     {
       "id": "spend:copy",

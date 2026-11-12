@@ -174,6 +174,13 @@ Provider {
             glyph: Theme.glyph.caution,
             hue: "warning",
             verb: Words.verb("spend:start"),
+            // What it does, as every act's drawer says (Joel, 2026-11-11
+            // 22:00: every row has a drawer).
+            drawer: () => ({
+                eyebrow: Words.name("spend"),
+                title: Words.name("spend:start"),
+                body: (Words.of("spend:start").tells ?? {}).does ?? ""
+            }),
             later: true,
             run: () => machine.ask({ ask: "act", act: "restart-unit",
                 unit: "spend-watch.service" }, answer => {
