@@ -165,8 +165,7 @@ onLinux {
       '';
 
   # spotify-player takes the language's keys its own lack: Ctrl+e and Ctrl+y
-  # a line, Ctrl+o back a page. It reads its keymap before anything else and
-  # stops at one it can't, so the keys are read from what it accepted.
+  # a line, Ctrl+o back a page (tests/spotify-player-speaks-vims-keys.sh).
   spotify-player-speaks-vims-keys =
     let
       home = account graphical;
@@ -181,19 +180,8 @@ onLinux {
         ];
       }
       ''
-        export HOME=$PWD
-        mkdir config cache
-        cp ${files."spotify-player/app.toml".source} config/app.toml
-        cp ${keymap} config/keymap.toml
-        spotify_player -c config -C cache features > /dev/null
-        for pair in C-e:SelectNextOrScrollDown C-y:SelectPreviousOrScrollUp C-o:PreviousPage; do
-          key=''${pair%%:*} command=''${pair#*:}
-          given=$(yq -p toml ".keymaps[] | select(.key_sequence == \"$key\") | .command" config/keymap.toml)
-          if [ "$given" != "$command" ]; then
-            echo "spotify-player's $key doesn't do $command, as the language says: '$given'" >&2
-            exit 1
-          fi
-        done
+        ${lib.getExe pkgs.bash} ${./tests/spotify-player-speaks-vims-keys.sh} \
+          ${files."spotify-player/app.toml".source} ${keymap}
         touch $out
       '';
 
