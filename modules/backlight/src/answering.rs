@@ -10,15 +10,9 @@ use tokio::sync::watch;
 use zbus::Connection;
 
 use crate::dbus::RelayProxy;
-use crate::evening::local_minute;
 use crate::night::Place;
 use crate::warmth::{WHITE, Warmth};
 use crate::{Backlight, RELAY_RESTS, ask, kept_say, night, switch, wall, write_whole};
-
-/// How often the clock is looked at for the evening's dimming: each look
-/// takes it a thirtieth of the way in, which gathers until it's worth the
-/// light's own least move (steer.rs) before the screen moves.
-const EVENING_LOOKS: Duration = Duration::from_mins(1);
 
 impl Backlight<'_> {
     /// The light changed. The first light heard teaches the curve the
@@ -374,7 +368,7 @@ impl Backlight<'_> {
     /// read by Screens' Brightness).
     fn say_level(&mut self, level: f64) {
         let heard = self.follow.lux().map_or_else(String::new, |lux| {
-            let asks = self.follow.asks(lux);
+            let asks = self.follow.curve().level_at(lux);
             format!("lux\t{lux:.0}\nasks\t{asks:.3}\n")
         });
         let following = if self.follow.following() { "yes" } else { "no" };
@@ -405,39 +399,10 @@ impl Backlight<'_> {
             None => warmth,
         };
         let night = self.warmth.as_ref().and(self.night.due);
-        [
-            self.follow.wake(Instant::now()),
-            keys,
-            warmth,
-            night,
-            self.evening_due,
-        ]
-        .into_iter()
-        .flatten()
-        .min()
-    }
-
-    /// What the evening leaves of the brightness by the local clock now,
-    /// given to the light's following, with the clock looked at again in a
-    /// minute. Said as the evening begins and as the morning ends, rather
-    /// than at each minute's step.
-    fn look_at_evening(&mut self, now: Instant) {
-        let Some(evening) = self.evening else {
-            self.evening_due = None;
-            return;
-        };
-        let share = local_minute(wall()).map_or(1.0, |minute| evening.share(minute));
-        let was = self.follow.share();
-        if (share < 1.0) != (was < 1.0) {
-            if share < 1.0 {
-                eprintln!("<6>the evening dims the screen toward half");
-            } else {
-                eprintln!("<6>the morning gives the screen back its brightness");
-            }
-        }
-        let shown = self.screen.level_of(self.seen);
-        self.follow.dims(share, shown, now);
-        self.evening_due = Some(now + EVENING_LOOKS);
+        [self.follow.wake(Instant::now()), keys, warmth, night]
+            .into_iter()
+            .flatten()
+            .min()
     }
 
     /// Starts the move the light asked for once it's due, and takes the next
@@ -446,9 +411,6 @@ impl Backlight<'_> {
         let now = Instant::now();
         if self.warmth.is_some() && self.night.due.is_some_and(|due| due <= now) {
             self.look_at_night();
-        }
-        if self.evening_due.is_some_and(|due| due <= now) {
-            self.look_at_evening(now);
         }
         self.keyboard_step(now).await;
         self.warmth_step(now).await;
