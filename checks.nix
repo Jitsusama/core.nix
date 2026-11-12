@@ -671,6 +671,7 @@ gather (
     ./modules/rhythm/checks.nix
     ./modules/sccache/checks.nix
     ./modules/screen-text/checks.nix
+    ./modules/secret-asks/checks.nix
     ./modules/session-backup/checks.nix
     ./modules/shaper/checks.nix
     ./modules/signing/checks.nix

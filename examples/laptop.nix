@@ -57,11 +57,14 @@ nixpkgs.lib.nixosSystem {
           core.homeModules.network-revive
           core.homeModules.passwords
           core.homeModules.people
+          core.homeModules.secret-asks
           core.homeModules.session-backup
           core.homeModules.slack
           core.homeModules.wifid
           core.homeModules.zoom
         ];
+        # A throwaway item made for trying the release line, as a machine names its own.
+        jitsusama.secret-asks.item = "op://Private/Release Test/password";
       };
 
       system.stateVersion = "26.05";

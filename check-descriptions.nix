@@ -2042,6 +2042,18 @@
   se-keys-builds-for-any-name = ''
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
   '';
+  secret-asks-keeps-the-item-to-its-yes = ''
+    a yes releases the one item to the checker alone, which says its length and never the value;
+    an ask for another item reads nothing and draws no row; a yes for a line that changed since it
+    was drawn is refused and drawn again; a yes while locked reads nothing; and a no refuses
+  '';
+  secret-asks-passes-clippy = ''
+    clippy finds nothing in the secret-asks daemon or its tests
+  '';
+  secret-asks-runs-with-its-item = ''
+    the secret-asks daemon runs on its socket with the item the machine names, read through op's
+    wrapper, and a switch restarts it
+  '';
   session-backup-passes-clippy = ''
     clippy finds nothing in session-backup or its tests
   '';
