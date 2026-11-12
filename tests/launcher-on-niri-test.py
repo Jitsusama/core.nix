@@ -2857,6 +2857,10 @@ class StandIn:
         self.held: dict[str, Json] = {}
         # Each client watching, by what it watches (StandIn.theirs).
         self.clients: dict[socket.socket, str] = {}
+        # Every client that came, watching or not, so each is let go when it stops: one left
+        # open, as a connection that only said hello, kept the shell talking to a stand-in
+        # whose socket was gone, and the next case's never heard its watch (RCTRF8, 2026-11-12).
+        self.came: list[socket.socket] = []
         self.lock = threading.Lock()
         path.parent.mkdir(mode=0o700, exist_ok=True)
         self.listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -2923,6 +2927,8 @@ class StandIn:
                 client, _ = self.listening.accept()
             except OSError:
                 return
+            with self.lock:
+                self.came.append(client)
             threading.Thread(target=self.serve, args=(client,), daemon=True).start()
 
     def serve(self, client: socket.socket) -> None:
@@ -2981,8 +2987,13 @@ class StandIn:
         """Stop listening, let every client go and take the socket away, as a daemon stopped."""
         self.listening.close()
         with self.lock:
-            for client in self.clients:
+            for client in self.came:
+                # Shut first, since a client's own thread blocks reading it, and a bare close
+                # leaves the shell's end open until that read ends.
+                with contextlib.suppress(OSError):
+                    client.shutdown(socket.SHUT_RDWR)
                 client.close()
+            self.came.clear()
             self.clients.clear()
         self.path.unlink(missing_ok=True)
 
