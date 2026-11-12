@@ -5,7 +5,7 @@
 // jobs-work.slice, where the jobs sorter puts agents' commands; what Joel
 // starts at a terminal runs in jobs-awaited.slice and asks as it always did.
 // What a rule already grants without asking, a switch or a slice's weight,
-// agents keep. modules/slices/nixos.nix says why, and agents-ask-last.rules,
+// agents keep. agents-ask.nix says why, and agents-ask-last.rules,
 // read after every other rule, refuses what polkit's own defaults would ask.
 //
 // This catches an agent's mistake, not one set on getting round it: a

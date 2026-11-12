@@ -76,6 +76,7 @@
 }:
 let
   sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
+  asks = pkgs.callPackage ./agents-ask.nix { };
   limits = {
     LimitRTPRIO = "10";
     LimitNICE = "-10";
@@ -733,30 +734,15 @@ in
     # change from a lasting one, so a change made without --runtime stays
     # in /etc/systemd/system.control until it's reverted with
     # `systemctl revert build.slice`; this configuration still sets the
-    # slices as they boot.
-    #
-    # No agent's process, in agents.slice or jobs-work.slice, may put a
-    # polkit prompt on Joel's screen: at 00:10 on 12 November something
-    # asked for libvirt's system connection, and a password box sat there
-    # two minutes for an act he never started. What would ask is refused
-    # instead, so the agent hears why at once. agents-ask-first.rules turns
-    # every later rule's asking into a refusal for them, so it comes first;
-    # agents-ask-last.rules refuses what polkit's defaults would decide, so
-    # it comes after every other rule, and what a rule grants unasked
-    # (these slices' weights, a switch) agents keep.
+    # slices as they boot. agents-ask.nix says why an agent raises no prompt.
     security.polkit.enable = true;
     security.polkit.extraConfig = lib.mkMerge [
-      (lib.mkBefore (
-        builtins.replaceStrings
-          [ "@cat@" "@logger@" ]
-          [ "${pkgs.coreutils}/bin/cat" "${pkgs.util-linux}/bin/logger" ]
-          (builtins.readFile ./agents-ask-first.rules)
-      ))
+      (lib.mkBefore asks.first)
       (lib.concatMapStringsSep "\n" builtins.readFile [
         ./work-slices.rules
         ./swap-in.rules
       ])
-      (lib.mkAfter (builtins.readFile ./agents-ask-last.rules))
+      (lib.mkAfter asks.last)
     ];
     systemd.user.slices.user.sliceConfig = {
       CPUWeight = "idle";
