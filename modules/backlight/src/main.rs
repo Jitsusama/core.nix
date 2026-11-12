@@ -11,7 +11,9 @@
 //!
 //! The sensor sits in the lid, so while the lid is shut the light it hears
 //! is the lid's: nothing follows it and nothing is learned from it until
-//! the lid opens, as logind says it does.
+//! the lid opens, as logind says it does, or the laptop's own panel is lit
+//! while logind says it's shut, which the compositor does only once the lid
+//! is used (panel.rs).
 //!
 //! What to do about the light, the lid and a pick is decided apart from the
 //! screen, the files and D-Bus (follow.rs), so it's tested without them;
@@ -112,6 +114,7 @@ use keyboard::Keyboard;
 use light::{Heard, Readings, Sensor};
 use monitor::Monitors;
 use night::Plan;
+use panel::{Lid, Panel};
 use screen::Screen;
 use warmth::{WHITE, Warmth};
 
@@ -437,6 +440,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
         relay_down: None,
         evening: evening()?,
         evening_due: Some(Instant::now()),
+        panel: Panel::find(Path::new("/sys/class/drm")),
+        lid: Lid::default(),
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
     let (_switch_bus, mut said, mut said_night) = backlight.serve_switch().await;
@@ -535,6 +540,10 @@ struct Backlight<'a> {
     /// is next looked at for it.
     evening: Option<Evening>,
     evening_due: Option<Instant>,
+    /// The laptop's own panel, when there is one, and the lid as logind
+    /// says it is and as the panel shows it (panel.rs).
+    panel: Option<Panel>,
+    lid: Lid,
 }
 
 /// How long what sets the warmth is let be after it couldn't, unless it

@@ -21,11 +21,25 @@ pub struct Panel {
 
 impl Panel {
     /// The first of the cards' built-in connectors, eDP, under `drm`.
-    pub fn find(_drm: &Path) -> Option<Panel> {
-        None
+    #[must_use]
+    pub fn find(drm: &Path) -> Option<Panel> {
+        let mut connectors: Vec<PathBuf> = fs::read_dir(drm)
+            .ok()?
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("card") && name.contains("-eDP-"))
+            })
+            .collect();
+        connectors.sort();
+        let connector = connectors.into_iter().next()?;
+        Some(Panel { connector })
     }
 
     /// Whether the compositor has it on and lit.
+    #[must_use]
     pub fn lit(&self) -> bool {
         let read = |name: &str| fs::read_to_string(self.connector.join(name)).unwrap_or_default();
         lit(&read("enabled"), &read("dpms"))
@@ -33,8 +47,8 @@ impl Panel {
 }
 
 /// Whether a connector's `enabled` and `dpms` say it's on and lit.
-fn lit(_enabled: &str, _dpms: &str) -> bool {
-    false
+fn lit(enabled: &str, dpms: &str) -> bool {
+    enabled.trim() == "enabled" && dpms.trim() == "On"
 }
 
 /// The lid as logind says it is, and as the panel shows it really is.
@@ -48,17 +62,26 @@ pub struct Lid {
 impl Lid {
     /// logind said the lid opened or shut. Says what the lid now is, when
     /// that changed.
-    pub fn said(&mut self, shut: bool, _now: Instant) -> Option<bool> {
+    #[must_use]
+    pub fn said(&mut self, shut: bool, now: Instant) -> Option<bool> {
         self.said_shut = shut;
+        self.look = shut.then_some(now + PANEL_LOOKS);
         self.is(shut)
     }
 
     /// The panel was looked at. Says what the lid now is, when that changed.
-    pub fn looked(&mut self, _lit: bool, _now: Instant) -> Option<bool> {
-        None
+    /// Only while logind says shut does a lit panel say otherwise.
+    #[must_use]
+    pub fn looked(&mut self, lit: bool, now: Instant) -> Option<bool> {
+        if !self.said_shut {
+            return None;
+        }
+        self.look = Some(now + PANEL_LOOKS);
+        self.is(!lit)
     }
 
     /// When the panel is to be looked at next.
+    #[must_use]
     pub fn wake(&self) -> Option<Instant> {
         self.look
     }
@@ -94,7 +117,7 @@ mod tests {
         // the laptop, and niri lit the panel again for his keys.
         let now = Instant::now();
         let mut lid = Lid::default();
-        lid.said(true, now);
+        assert_eq!(lid.said(true, now), Some(true));
         assert_eq!(lid.looked(true, now + PANEL_LOOKS), Some(false));
         assert_eq!(
             lid.wake(),
@@ -108,7 +131,7 @@ mod tests {
     fn a_panel_dark_under_a_lid_said_shut_leaves_it_shut() {
         let now = Instant::now();
         let mut lid = Lid::default();
-        lid.said(true, now);
+        assert_eq!(lid.said(true, now), Some(true));
         assert_eq!(lid.looked(false, now + PANEL_LOOKS), None);
     }
 
@@ -116,7 +139,7 @@ mod tests {
     fn a_lid_said_open_is_open_whatever_the_panel() {
         let now = Instant::now();
         let mut lid = Lid::default();
-        lid.said(true, now);
+        assert_eq!(lid.said(true, now), Some(true));
         assert_eq!(lid.said(false, now), Some(false));
         assert_eq!(lid.wake(), None, "the panel is looked at with the lid open");
         assert_eq!(lid.looked(false, now + PANEL_LOOKS), None);
