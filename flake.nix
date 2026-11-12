@@ -230,6 +230,7 @@
         quests = ./modules/quests/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         reader = ./modules/reader/home.nix;
+        rhythm = ./modules/rhythm/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
         sccache = ./modules/sccache/home.nix;
         screen-text = ./modules/screen-text/home.nix;

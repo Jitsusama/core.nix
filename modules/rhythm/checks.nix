@@ -1,0 +1,19 @@
+# The checks of rhythm, which checks.nix gathers with every other folder's;
+# its opening comment says what each kind of check proves.
+{
+  onLinux,
+  passesClippy,
+  pkgs,
+  ...
+}:
+# It reads swayidle-away's mark and glibc's clock, both Linux's.
+onLinux {
+  # rhythm's tests run as it builds: a night stops at the last busy minute
+  # before four hours' sleep, never at dinner, lunch or a stray key; the
+  # usual stop is four weeks' middle and a weekday keeps its own habit;
+  # too few nights guess midnight and say so; the logs give only the
+  # times Joel typed; and Joel reads it plainly.
+  rhythm-learns-when-joel-stops = pkgs.callPackage ./package.nix { };
+  # clippy finds nothing in rhythm, its tests included.
+  rhythm-passes-clippy = passesClippy "rhythm-passes-clippy" (pkgs.callPackage ./package.nix { });
+}

@@ -2001,6 +2001,15 @@
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
   '';
+  rhythm-learns-when-joel-stops = ''
+    rhythm finds each night's stop at the last busy minute before four hours' sleep, never at
+    dinner, lunch or a stray key, makes four weeks' middle usual with each weekday's own habit,
+    guesses midnight and says so with under a week of nights, reads only the times Joel typed from
+    zsh's history and pi's logs, and says it in plain words and its profile file
+  '';
+  rhythm-passes-clippy = ''
+    clippy finds nothing in rhythm or its tests
+  '';
   run-subtests-keeps-what-is-named = ''
     run-subtests keeps a script's boot and helpers and only the subtests named, and runs a pytest
     test whole with pytest picking the tests named, refusing a word pytest would read as more,
