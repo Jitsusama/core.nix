@@ -1071,6 +1071,26 @@ Provider {
             return;
         rowsKind.ask({ ask: "read", keys: [key] });
     }
+    // Joel's words on a landing go to the quest that landed it, or its
+    // session, as a finding the agents daemon sends and keeps
+    // (modules/agents/src/feedback.rs), so what he makes of it reaches
+    // whoever can act on it (WCJQSG, 2026-11-11). The foot says where they
+    // went, or why they didn't.
+    property string fedBack: ""
+    function feedback(key, words) {
+        const text = words.trim();
+        if (text === "")
+            return;
+        const said = Words.of("agents:landed").said ?? {};
+        fedBack = String(said.sending ?? "");
+        rowsKind?.ask({ ask: "feedback", landing: `landed:agents:${key}`, words: text },
+            answer => {
+                fedBack = answer?.sent
+                    ? String(said.sent ?? "").replace("{to}", String(answer.to ?? ""))
+                    : String(said.unsent ?? "")
+                        .replace("{why}", String(answer?.error?.message ?? ""));
+            });
+    }
     // Where a landing lives, Agents \u203a Landed \u203a it, which For You's rows
     // step into rather than show a copy of (VKCF3Z, 2026-11-10).
     function landingTrail(one) {
@@ -1138,6 +1158,12 @@ Provider {
         const parts = one => [
             one.url !== "" ? act("change", { later: true, run: toChange(one) }) : null,
             windowed(one) ? act("session", { later: true, run: toSession(one) }) : null,
+            act("feedback", {
+                ask: Words.of("verb:agents:landed:feedback").ask ?? "",
+                chip: one.what,
+                state: () => provider.fedBack,
+                given: words => provider.feedback(one.key, words)
+            }),
             one.person !== "" ? copyRow({
                 key: "verb:agents:landed:try",
                 name: Words.name("verb:agents:landed:try"),

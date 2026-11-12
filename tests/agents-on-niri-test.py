@@ -601,6 +601,24 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
     assert "Copy What to Try" in shell.showing()["rows"], shell.showing()
+    # What Joel makes of it goes to whoever landed it, its session here, as his finding, and
+    # is kept a line each for the loop that reads how landings were taken.
+    shell.down_to("Say What You Make of It")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    shell.send_chars("too dim")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: "sent to PAUSED" in shown["footer"])
+    kept = json.loads((STATE / "agents/feedback.jsonl").read_text())
+    assert (kept["ref"], kept["address"], kept["line"], kept["words"]) == (
+        "core.nix#2138",
+        "PAUSED",
+        TRY,
+        "too dim",
+    ), kept
+    assert kept["sent"], kept
+    # Kept in whole seconds, as the loop keeps its days.
+    assert isinstance(kept["at"], int), kept
     shell.close_launcher()
     # Read, it's gone from To Try and in For You's History, saying when; Landed keeps both.
     in_for_you(shell)

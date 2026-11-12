@@ -26,12 +26,14 @@
 //! - `answered`: the sessions' answers to Joel's talks he hasn't read.
 //! - `windows`: which kitty pane and window each session here is in.
 //! - `tell`: whom a line Joel says from anywhere goes to, and sending it.
+//! - `feedback`: what Joel says of a landing, sent where it came from.
 
 pub mod acts;
 pub mod answered;
 pub mod clock;
 pub mod closed;
 pub mod drawer;
+pub mod feedback;
 pub mod figures;
 pub mod file;
 pub mod inputs;
