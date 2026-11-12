@@ -296,7 +296,11 @@ Provider {
     // is told it found more. One kept from before the notices changed is
     // asked again and not listed meanwhile: it can list a notice the
     // daemon no longer finds, which stays, with the selection on it, once
-    // the new answer lands what it does find under it.
+    // the new answer lands what it does find under it. A notice found
+    // whose row the place doesn't serve comes with its row in the answer
+    // (ready-rows.md's search), so the place needn't hold every notice for
+    // search: all 1,000 of Joel's rows were about 11 MB kept live in the
+    // lab (2026-11-12).
     function search(typed) {
         const words = Fuzzy.words(typed);
         const asked = words.join(" ");
@@ -308,8 +312,21 @@ Provider {
             return { rows: [], grade: 3 };
         }
         all();
-        const rows = kept.keys.map(key => mixed.rowAt(key)).filter(row => row !== null);
+        const rows = kept.keys.map(key => foundRow(kept, key)).filter(row => row !== null);
         return { rows: listed(rows, words), grade: rows.length > 0 ? 0 : 3 };
+    }
+
+    // The row of `key` a kept answer found: the place's where it serves
+    // one, else the answer's own, made as the place makes one the first
+    // time it's listed and let go with the answer; null for neither.
+    function foundRow(kept, key) {
+        if (key in mixed.held)
+            return mixed.rowAt(key);
+        if (!(key in kept.made)) {
+            const row = kept.rows[key];
+            kept.made[key] = row ? mixed.make(row, key) : null;
+        }
+        return kept.made[key];
     }
 
     // Whether a search of these letters waits on the daemon's answer, asked
@@ -326,9 +343,10 @@ Provider {
 
     // The daemon's answers to the last few searches, each with the place's
     // placings when it was asked, so one from before a change is asked
-    // again; the words being asked, with theirs; and the words searched
-    // last, the only ones an answer is worth searching again for. The last
-    // few, so typing back over what was typed finds it at once.
+    // again, with the rows it found that the place doesn't serve and those
+    // made of them; the words being asked, with theirs; and the words
+    // searched last, the only ones an answer is worth searching again for.
+    // The last few, so typing back over what was typed finds it at once.
     readonly property var answers: ({ kept: [], asking: Object.create(null), wanted: "" })
     readonly property int answersKept: 8
 
@@ -355,7 +373,8 @@ Provider {
         if (!Array.isArray(answer?.keys))
             return;
         answers.kept = answers.kept.filter(one => one.words !== asked)
-            .concat([{ words: asked, keys: answer.keys, at: at }]).slice(-answersKept);
+            .concat([{ words: asked, keys: answer.keys, rows: answer.rows ?? {}, made: {},
+                at: at }]).slice(-answersKept);
         if (answers.wanted === asked)
             provider.foundMore(false);
     }

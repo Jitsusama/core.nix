@@ -12,7 +12,7 @@
 //! them, and SHELLS is Quickshell's `by-shell` state folder, whose history
 //! is taken the first time it starts.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -147,6 +147,22 @@ impl Served {
         records.extend(self.places.iter().flat_map(Kept::all).cloned());
         records
     }
+
+    /// The mixed place's rows its watch doesn't serve, by key, for a
+    /// search to answer with where it finds their notices. None yet, as
+    /// the place serves every notice's row.
+    fn unserved(&self) -> BTreeMap<String, Value> {
+        self.rows
+            .mixed()
+            .filter_map(|row| {
+                let key = row["key"].as_str()?;
+                self.places[0]
+                    .get(key)
+                    .is_none()
+                    .then(|| (key.to_owned(), row.clone()))
+            })
+            .collect()
+    }
 }
 
 /// The history kept, or the shell's taken where none is yet; or why what
@@ -267,7 +283,8 @@ fn main() -> ExitCode {
             entries: &entries,
             words: &words,
         };
-        served.records(holding, &signs, shared.watches("row", row::DESKTOP))
+        let records = served.records(holding, &signs, shared.watches("row", row::DESKTOP));
+        (records, served.unserved())
     };
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
@@ -286,7 +303,12 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let first = records(&state.lock().unwrap_or_else(PoisonError::into_inner).holding);
+    let first = {
+        let mut held = state.lock().unwrap_or_else(PoisonError::into_inner);
+        let (first, unserved) = records(&held.holding);
+        held.unserved(unserved);
+        first
+    };
     shared.change(first, json!({}));
     // Everything changed meanwhile is taken at once, so a burst is told
     // and written once; each burst is written as it's told, so a notice
@@ -299,7 +321,9 @@ fn main() -> ExitCode {
             if let Err(why) = store::write(&kept, &held.holding) {
                 eprintln!("notices: can't write {}: {why}", kept.display());
             }
-            (records(&held.holding), std::mem::take(&mut held.owed))
+            let (told, unserved) = records(&held.holding);
+            held.unserved(unserved);
+            (told, std::mem::take(&mut held.owed))
         };
         shared.change(told, json!({}));
         for signal in &owed {
