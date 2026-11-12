@@ -32,6 +32,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use crate::row::Words;
+use crate::said::Said;
 use crate::served::{PLACE, SPACING};
 
 /// The key of Sessions to Reopen's own record, saying how many there are,
@@ -239,10 +240,155 @@ pub struct Wording<'a> {
 
 /// Gives each record `offered` made its row as the launcher shows it,
 /// under `row`, and answers Sessions to Reopen's own record, or none
-/// while none is offered.
+/// while none is offered. A row is named by its title, address or id;
+/// its side says the folder it reopens in from home, or that it's gone,
+/// looked for as it's made, as a closed orchestrator's is, rather than
+/// by the shell on every opening; one held elsewhere says its machine;
+/// its note says the way it came. One pi's host gave back names that
+/// host apart, since the host's name is no place Joel chose (VKCF3Z,
+/// [92a1d30c]).
 pub fn worded(offered: &mut [Value], wording: &Wording) -> Option<Value> {
-    let _ = (offered, wording);
-    None
+    if offered.is_empty() {
+        return None;
+    }
+    let place = &wording.words.to_reopen;
+    let mut ways = Ways::default();
+    let mut gone = 0;
+    for record in offered.iter_mut() {
+        let row = row_of(record, wording, &mut ways);
+        gone += usize::from(row["gone"] == true);
+        record["row"] = row;
+    }
+    let count = offered.len();
+    let side = if count == 1 {
+        place.word("one").to_owned()
+    } else {
+        place.fill("many", &[("count", &count.to_string())])
+    };
+    let there = place.fill(
+        "there",
+        &[
+            ("there", &(count - gone).to_string()),
+            ("count", &count.to_string()),
+        ],
+    );
+    let gone_said = if gone == 1 {
+        place.word("goneOne").to_owned()
+    } else {
+        place.fill("goneMany", &[("count", &gone.to_string())])
+    };
+    // Reopen Them All counts those it can reopen only when any can't, the
+    // count that failed in the alert's colour (VKCF3Z, 2026-11-07).
+    let (all_side, all_items) = if gone == 0 {
+        (String::new(), json!([]))
+    } else {
+        (
+            format!("{there} \u{b7} {gone_said}"),
+            json!([{"said": there, "keep": 2}, {"said": gone_said, "keep": 3, "hue": "alert"}]),
+        )
+    };
+    Some(json!({"key": TO_REOPEN, "kind": "to-reopen", "toReopen": {
+        "side": side,
+        "note": ways.note(place),
+        "there": count - gone,
+        "gone": gone,
+        "lastBoot": ways.booted,
+        "allSide": all_side,
+        "allItems": all_items,
+    }}))
+}
+
+/// How many came each way, and the machines those carried came from, in
+/// the order first met.
+#[derive(Default)]
+struct Ways {
+    booted: usize,
+    carried: usize,
+    machines: Vec<String>,
+    released: usize,
+}
+
+impl Ways {
+    /// Where they came from, as Sessions to Reopen's note says it: one
+    /// way alone by itself, but those given back counted, since that way
+    /// names no place; several each counted, and several machines counted
+    /// rather than listed.
+    fn note(&self, place: &Said) -> String {
+        let carried = if self.machines.len() == 1 {
+            place.fill("carried", &[("machine", &self.machines[0])])
+        } else {
+            let machines = place.fill("machines", &[("count", &self.machines.len().to_string())]);
+            place.fill("carried", &[("machine", &machines)])
+        };
+        let ways: Vec<(usize, String, bool)> = [
+            (self.booted, place.word("lastBoot").to_owned(), false),
+            (self.carried, carried, false),
+            (self.released, place.word("givenBack").to_owned(), true),
+        ]
+        .into_iter()
+        .filter(|(count, _, _)| *count > 0)
+        .collect();
+        let counted = |(count, from, _): &(usize, String, bool)| {
+            place.fill("counted", &[("count", &count.to_string()), ("from", from)])
+        };
+        match &ways[..] {
+            [] => place.word("lastBoot").to_owned(),
+            [one] if one.2 => counted(one),
+            [one] => one.1.clone(),
+            several => several.iter().map(counted).collect::<Vec<_>>().join(", "),
+        }
+    }
+}
+
+/// One record's row, counting the way it came into `ways`.
+fn row_of(record: &Value, wording: &Wording, ways: &mut Ways) -> Value {
+    let words = wording.words;
+    let session = &record["session"];
+    let text = |field: &str| session[field].as_str().unwrap_or("");
+    let name = [text("title"), text("address"), text("id")]
+        .into_iter()
+        .find(|one| !one.is_empty())
+        .unwrap_or("");
+    let cwd = text("cwd");
+    let machine = session["machine"].as_str();
+    let gone = machine.is_none() && !(wording.there)(cwd);
+    let homely = from_home(cwd, wording.home);
+    let side = match machine {
+        Some(machine) => words.machine.fill("on", &[("machine", machine)]),
+        None if gone => words.reopen_one.fill("gone", &[("cwd", &homely)]),
+        None => homely,
+    };
+    let from = record["from"].as_str().unwrap_or("");
+    let (note, host) = match record["way"].as_str() {
+        Some("carried") => {
+            ways.carried += 1;
+            if !ways.machines.iter().any(|one| one == from) {
+                ways.machines.push(from.to_owned());
+            }
+            (words.to_reopen.fill("carried", &[("machine", from)]), "")
+        }
+        Some("released") => {
+            ways.released += 1;
+            (words.to_reopen.word("givenBack").to_owned(), from)
+        }
+        _ => {
+            ways.booted += 1;
+            (words.to_reopen.word("lastBoot").to_owned(), "")
+        }
+    };
+    json!({"name": name, "side": side, "note": note, "gone": gone, "host": host})
+}
+
+/// A folder said from `home`, as `~` and what's under it.
+fn from_home(folder: &str, home: &str) -> String {
+    if home.is_empty() {
+        return folder.to_owned();
+    }
+    match folder.strip_prefix(home) {
+        Some("") => "~".to_owned(),
+        Some(under) if under.starts_with('/') => format!("~{under}"),
+        _ => folder.to_owned(),
+    }
 }
 
 #[cfg(test)]

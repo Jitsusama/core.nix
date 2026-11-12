@@ -62,6 +62,9 @@ pub struct Inputs {
     pub boot: String,
     /// What Joel said of the sessions to reopen.
     pub kept: Kept,
+    /// The account's home folder, which a folder to reopen in is said
+    /// from.
+    pub home: String,
     /// The sessions the boot being restored kept a place of, by pi's id,
     /// as the shell keeps its arrangement and says it.
     pub arranged: HashSet<String>,
@@ -156,7 +159,8 @@ impl Inputs {
     }
 
     /// Every session there is to reopen, by the sessions running or
-    /// parked here now. One pi's host runs
+    /// parked here now, each worded as its row says it, with Sessions to
+    /// Reopen's own record last while any is. One pi's host runs
     /// is back only once its viewer is open, or at once when the boot
     /// being restored kept no place of its window (`arranged`), since it
     /// had none to bring back.
@@ -188,7 +192,16 @@ impl Inputs {
                 Some(reopen::Here { id, quest })
             })
             .collect();
-        reopen::offered(self.restore.as_ref(), &self.boot, &self.kept, &here)
+        let mut offered = reopen::offered(self.restore.as_ref(), &self.boot, &self.kept, &here);
+        let there = |folder: &str| std::path::Path::new(folder).is_dir();
+        let wording = reopen::Wording {
+            words: &self.words,
+            home: &self.home,
+            there: &there,
+        };
+        let place = reopen::worded(&mut offered, &wording);
+        offered.extend(place);
+        offered
     }
 
     /// Recent's sessions, leaving out those Agents shows elsewhere: one
@@ -669,6 +682,18 @@ mod tests {
                 .map(|one| one["way"].clone()),
             Some(json!("boot")),
             "one not back is served as the last boot's"
+        );
+        assert_eq!(
+            (
+                served
+                    .get("reopen:agents:s-gone")
+                    .map(|one| one["row"]["side"].clone()),
+                served
+                    .get(reopen::TO_REOPEN)
+                    .map(|one| one["toReopen"]["side"].clone()),
+            ),
+            (Some(json!("/tmp")), Some(json!("1 session"))),
+            "each is worded as its row, and Sessions to Reopen counts them"
         );
         assert!(
             served.get("reopen:agents:s-viewed").is_none(),
