@@ -34,7 +34,7 @@ impl Draw {
 
     fn class(&mut self) -> Class {
         let bool = |draw: &mut Draw| draw.below(2) == 0;
-        match self.below(20) {
+        match self.below(21) {
             0 => Class::Target,
             1 => Class::Install,
             2 => Class::Variant,
@@ -65,6 +65,9 @@ impl Draw {
             16 => Class::QuestTemp,
             17 => Class::QuestScratch,
             18 => Class::QuestRoot,
+            19 => Class::StoreRoot {
+                unused: [DAY, 7.0 * DAY][self.index(2)],
+            },
             _ => Class::Podman { unused: bool(self) },
         }
     }
@@ -380,6 +383,29 @@ fn a_build_a_quest_at_work_linked_into_its_tmp_goes_after_a_day() {
     assert_eq!(taken(&all, Band::Filling), ["days"]);
     assert_eq!(sorted(taken(&all, Band::NearlyFull)), ["days", "hours"]);
     assert_eq!(sorted(taken(&all, Band::CriticallyFull)), ["days", "hours"]);
+}
+
+#[test]
+fn a_tools_link_goes_by_its_sources_window_and_six_hours_nearly_full() {
+    // Its source says how long its tool's builds are worth keeping; a disk
+    // nearly full waits no more than six hours for them, as for a quest's.
+    let root = |name, idle| candidate(name, Class::StoreRoot { unused: 7.0 * DAY }, idle);
+    let all = [
+        root("week", 8.0 * DAY),
+        root("days", 2.0 * DAY),
+        root("hours", 7.0 * HOUR),
+        root("young", 5.0 * HOUR),
+    ];
+    assert_eq!(taken(&all, Band::Healthy), ["week"]);
+    assert_eq!(taken(&all, Band::Filling), ["week"]);
+    assert_eq!(
+        sorted(taken(&all, Band::NearlyFull)),
+        ["days", "hours", "week"]
+    );
+    assert_eq!(
+        sorted(taken(&all, Band::CriticallyFull)),
+        ["days", "hours", "week"]
+    );
 }
 
 #[test]

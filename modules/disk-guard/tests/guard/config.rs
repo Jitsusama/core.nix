@@ -24,7 +24,9 @@ const USER: &str = r#"{
     "podman": { "kind": "podman", "command": "/bin/podman",
                 "path": "/home/u/.local/share/containers/storage" },
     "merged": { "kind": "finished", "remote": "^https://example\\.com/",
-                "command": ["/bin/merged"], "timeout": "20s" }
+                "command": ["/bin/merged"], "timeout": "20s" },
+    "envs": { "kind": "store-roots", "roots": ["/home/u/trees"],
+              "pattern": "^(?P<place>.*/\\.env)/[^/]+$", "unused": "7d" }
   }
 }"#;
 
@@ -82,6 +84,14 @@ fn a_user_config_is_read() {
         Source::Podman {
             command: PathBuf::from("/bin/podman"),
             path: PathBuf::from("/home/u/.local/share/containers/storage"),
+        }
+    );
+    assert_eq!(
+        config.sources["envs"],
+        Source::StoreRoots {
+            roots: vec![PathBuf::from("/home/u/trees")],
+            pattern: r"^(?P<place>.*/\.env)/[^/]+$".to_owned(),
+            unused: Span(Duration::from_hours(7 * 24)),
         }
     );
 }
@@ -280,6 +290,10 @@ fn refusals_say_why() {
             "version 2",
         ),
         (with(USER, r"(?P<pid>\\d+)", r"(\\d+)"), "pid group"),
+        (
+            with(USER, r"(?P<place>.*/", r"(?P<place>.*/("),
+            "doesn't compile",
+        ),
         (
             with(USER, r#""timeout": "5m""#, r#""timeout": "5 minutes""#),
             "span",

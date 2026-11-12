@@ -124,7 +124,9 @@ pub fn places(config: &Config) -> Vec<Place> {
             Source::Workspaces { path, .. } => found.extend(children(path, |_| Kind::Quest)),
             Source::Cache { .. } => found.push(whole(Kind::Cache)),
             Source::Podman { .. } => found.push(whole(Kind::Containers)),
-            Source::Finished { .. } => {}
+            // Its links hold the store's space, not their folders', which
+            // the sources naming those folders already place.
+            Source::Finished { .. } | Source::StoreRoots { .. } => {}
             Source::Git { repos } => found.extend(repos.iter().map(|repo| Place {
                 path: resolved(repo),
                 owner: Owner {
@@ -181,6 +183,7 @@ fn source_path(source: &Source) -> Option<&Path> {
         | Source::NixBuilds { path } => path,
         Source::Cargo { .. }
         | Source::Installs { .. }
+        | Source::StoreRoots { .. }
         | Source::Git { .. }
         | Source::Finished { .. } => return None,
     })

@@ -38,6 +38,12 @@ pub enum Class {
     /// A link in a quest at work's `tmp/` into the store, which keeps a
     /// build from collection and holds nothing a build can't make again.
     QuestRoot,
+    /// A link a tool keeps to hold a build of its own, which it makes
+    /// again when next asked, once its place has gone `unused` awake
+    /// seconds with nothing written.
+    StoreRoot {
+        unused: f64,
+    },
     /// A snapshot whose process is gone.
     Snapshot,
     /// What git staged in a repository no git works on now.
@@ -104,6 +110,7 @@ impl Class {
             Class::QuestTemp => "quest-temp",
             Class::QuestScratch => "quest-scratch",
             Class::QuestRoot => "quest-root",
+            Class::StoreRoot { .. } => "store-root",
             Class::Snapshot => "snapshot",
             Class::GitTemporary => "git-temporary",
             Class::Workspace => "workspace",
@@ -244,6 +251,14 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         // laptop on 12 November, 51 such links held 4.3 GiB of the store,
         // some unwritten for eighteen days.
         Class::QuestRoot => (Group::Idle, [days(1.0), days(1.0), hours(6.0), hours(6.0)]),
+        // Its source says how long its tool's builds are worth keeping;
+        // a disk nearly full waits no more than six hours, as for a
+        // quest's links. On one laptop on 12 November, development
+        // shells' links in trees a day unused held 9.7 GiB of the store.
+        Class::StoreRoot { unused } => {
+            let pressed = Some(unused.min(6.0 * HOUR));
+            (Group::Idle, [Some(unused), Some(unused), pressed, pressed])
+        }
         // Of a log, what's trimmed is history nobody reads; the rest stays.
         Class::Snapshot | Class::GitTemporary | Class::NixBuild | Class::Log => {
             (Group::Waste, [AT_ONCE; 4])

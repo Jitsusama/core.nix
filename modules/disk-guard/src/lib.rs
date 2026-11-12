@@ -66,6 +66,7 @@ pub mod scratch;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod serve;
 pub mod snapshots;
+pub mod store_roots;
 /// What the machine says about itself, through whichever platform this is.
 #[cfg(target_os = "linux")]
 pub use linux as sys;

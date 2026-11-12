@@ -64,6 +64,7 @@ mod serve;
 mod snapshots;
 mod socket;
 mod state;
+mod store_roots;
 mod survey;
 mod temp;
 mod trash;

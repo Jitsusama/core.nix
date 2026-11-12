@@ -6,7 +6,7 @@ use crate::activity::{self, Process, Use};
 use crate::anchor::{Counted, Dir};
 use crate::band::Band;
 use crate::clock::Awake;
-use crate::config::{CacheProtocol, Config, Source};
+use crate::config::{CacheProtocol, Config, Nix, Source};
 use crate::discover::{self, Checkout, Kind};
 use crate::git;
 use crate::plan::{Candidate, Class};
@@ -14,7 +14,8 @@ use crate::replaced::Uses;
 use crate::snapshots::Boot;
 use crate::units::Span;
 use crate::{
-    age, caches, coredumps, logs, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
+    age, caches, coredumps, logs, nix_builds, scratch, snapshots, store_roots, temp, trash, trees,
+    workspaces,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -218,6 +219,11 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
             Source::Trash { path } => offer_trash(path, world, &mut offers),
             Source::Coredumps { path } => offer_coredumps(path, world, &mut offers),
             Source::NixBuilds { path } => offer_nix_builds(path, world, &mut offers),
+            Source::StoreRoots {
+                roots,
+                pattern,
+                unused,
+            } => offer_store_roots(roots, pattern, *unused, &config.nix, world, &mut offers),
             Source::Logs { path } => offer_logs(path, &mut offers),
             Source::Producer {
                 command,
@@ -312,6 +318,39 @@ fn offer_cache(
                 action: Action::Entry {
                     root: parent.to_owned(),
                 },
+                device,
+            });
+        }
+    }
+}
+
+/// The links under `roots` Nix's indirect roots name and `pattern` matches,
+/// but for any in a tree a process works in. Where processes work is read
+/// once, as there can be hundreds of links to ask of.
+fn offer_store_roots(
+    roots: &[PathBuf],
+    pattern: &str,
+    unused: Span,
+    nix: &Nix,
+    world: &World,
+    offers: &mut Vec<Offer>,
+) {
+    let Ok(pattern) = regex_lite::Regex::new(pattern) else {
+        return;
+    };
+    let places = activity::Workplaces::new(world.processes, world.me);
+    let auto = nix.roots.join("auto");
+    let unused = unused.0.as_secs_f64();
+    for root in roots {
+        let Some(device) = device(root) else { continue };
+        let root = resolved(root);
+        for link in store_roots::found(&auto, &root, &pattern, &nix.store) {
+            if places.work_in(&link.tree) {
+                continue;
+            }
+            offers.push(Offer {
+                candidate: store_roots::candidate(&link, unused, world.awake, world.now),
+                action: Action::Entry { root: root.clone() },
                 device,
             });
         }
