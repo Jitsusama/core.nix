@@ -131,6 +131,7 @@ Singleton {
             urgent: notice.urgent, held: notice.held, missed: notice.missed,
             read: notice.read, readHow: notice.readHow, readAt: notice.readAt,
             withdrawn: notice.withdrawn, waits: notice.waits, transient: notice.transient,
+            chimes: notice.chimes ?? false,
             left: notice.left ?? undefined, leftAt: notice.leftAt ?? undefined,
             raisedAt: notice.raisedAt
         };
@@ -145,6 +146,7 @@ Singleton {
         const nowLive = Object.assign({}, live);
         const nowResting = Object.assign({}, resting);
         const arrivals = [];
+        let chimes = false;
         for (const key of gone) {
             const id = Number(key.slice("notice:".length));
             delete made[id];
@@ -169,8 +171,10 @@ Singleton {
                     then => Quickshell.activationToken(then), card);
                 if (!(id in heardOpen)) {
                     heardOpen[id] = true;
-                    if (arriving)
+                    if (arriving) {
                         arrivals.push(id);
+                        chimes = chimes || now.chimes;
+                    }
                 }
             } else {
                 delete nowLive[id];
@@ -182,8 +186,10 @@ Singleton {
                 delete nowResting[id];
             // Raised since it was last heard, not as the shell first
             // hears it, so a restart raises none.
-            if (was && notice.raisedAt && notice.raisedAt !== was.raisedAt)
+            if (was && notice.raisedAt && notice.raisedAt !== was.raisedAt) {
                 raised = { id: id, at: notice.raisedAt };
+                chimes = chimes || now.chimes;
+            }
         }
         // Open before it's in the history, so it never reads as missed and
         // gone from the screen for the moment between, which would flash
@@ -197,6 +203,25 @@ Singleton {
             .sort((a, b) => b.at - a.at || b.id - a.id);
         for (const id of arrivals)
             came(live[id], made[id]);
+        if (chimes)
+            chime();
+    }
+
+    // A message to Joel himself, which the daemon says chimes as its card
+    // shows, knocks once, softly (jitsusama.quickshell.sounds.addressed):
+    // Slack's every other notice comes without a sound, so this is how he
+    // knows one's for him (Joel, 2026-11-12: "the slack sound is the only
+    // way i notice"). Never while notices are held or a call is on, and
+    // once for a burst, so three lines sent together knock once.
+    property real chimed: 0
+    function chime() {
+        const sound = Options.sounds.addressed ?? "";
+        if (sound === "" || Quiet.on || Date.now() - chimed < 2000)
+            return;
+        chimed = Date.now();
+        Niri.spawn(["sh", "-c", '"$1" || exec "$2" --volume=0.4 "$3"', "chime",
+            Options.sounds.calls, Options.sounds.player, sound]);
+        console.info("notices: knocked for a message to Joel");
     }
 
     Connections {

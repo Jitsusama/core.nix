@@ -942,17 +942,67 @@ in
             never further than this.
           '';
         };
+        options.addressed = lib.mkOption {
+          type = lib.types.nullOr (
+            lib.types.submodule {
+              options.names = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                description = "The names a mention of Joel reads as, without the @.";
+              };
+              options.bots = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                description = "Senders whose direct messages are a program's, not a person's.";
+              };
+              options.everyMessage = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                description = "The channels Joel set to tell him every message, without the #.";
+              };
+            }
+          );
+          default = null;
+          description = ''
+            Who Joel is in a chat program's notices, said as Slack's are, so
+            only what's to him sounds (`sounds.addressed`): a person's direct
+            message, a mention, or a channel's notice from one not set to
+            tell him every message. The rest is counted, without a card. A
+            program without this is judged by its level alone.
+          '';
+        };
       }
     );
     default = { };
     example = {
       Spotify.level = "history";
-      Slack.level = "card";
+      Slack = {
+        level = "card";
+        addressed = {
+          names = [ "ada" ];
+          everyMessage = [ "team" ];
+        };
+      };
     };
     description = ''
       How far each program's notices reach, by the name a notice gives as
       its sender, in any case. A program not named reaches as far as it
       asks.
+    '';
+  };
+
+  options.jitsusama.quickshell.sounds.addressed = lib.mkOption {
+    type = lib.types.nullOr lib.types.path;
+    default = pkgs.runCommand "notices-tock.wav" { nativeBuildInputs = [ pkgs.sox ]; } ''
+      ${lib.getExe pkgs.bash} ${../notices/tock.sh} $out
+    '';
+    defaultText = lib.literalMD "a soft, low knock on wood, struck by modules/notices/tock.sh";
+    description = ''
+      The sound a message to Joel himself makes as its card shows: one the
+      notices daemon says chimes, from a chat program the machine says who
+      he is in (`notices.senders.<name>.addressed`). Quieter and shorter
+      than the want bell, so it's never taken for it; never while notices
+      are held, nor while a call is on. Null makes none.
     '';
   };
 
@@ -1892,11 +1942,14 @@ in
               // charger.
               readonly property bool lidSleeps: ${lib.boolToString lidSleeps}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}
-              // The sound a want makes, and what plays it; "" for none.
+              // The sound a want makes and a message to Joel makes, what plays
+              // them, and what says a call is on; "" for none.
               readonly property var sounds: ${
                 object {
                   wants = toString config.jitsusama.quickshell.sounds.wants;
+                  addressed = toString config.jitsusama.quickshell.sounds.addressed;
                   player = lib.getExe' pkgs.pipewire "pw-play";
+                  calls = lib.getExe (pkgs.callPackage ../calls/package.nix { });
                 }
               }
               // Each sender's level the notices daemon keeps it to, from its

@@ -9,6 +9,7 @@
 //! - [`notice`]: one notice, as held and kept.
 //! - [`judged`]: how far one reaches as it arrives, and whether Quiet
 //!   holds it back.
+//! - [`addressed`]: whether a chat program's notice is to Joel himself.
 //! - [`held`]: every notice held, and what becomes of each.
 //! - [`picture`]: a notice's own picture, one sent as pixels written out.
 //! - [`store`]: the history on disk, the shell's taken once.
@@ -20,6 +21,7 @@
 //! - [`row`]: each notice's rows, in the launcher's one form.
 //! - [`search`]: the launcher's search of every notice, answered here.
 
+pub mod addressed;
 pub mod body;
 pub mod bus;
 pub mod daemon;

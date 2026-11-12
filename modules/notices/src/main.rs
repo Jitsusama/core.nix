@@ -5,12 +5,14 @@
 //!
 //! Usage: `notices --socket SOCKET --state FOLDER --levels LEVELS
 //! --senders SENDERS --quiet QUIET --vocabulary WORDS --marks MARKS
-//! [--shells SHELLS]`, where FOLDER keeps the history and the pictures
+//! [--addressed ADDRESSED] [--shells SHELLS]`, where FOLDER keeps the
+//! history and the pictures
 //! sent as pixels, LEVELS is each sender's level as home.nix writes it,
 //! SENDERS is senders.json, QUIET is Quiet.qml's file, WORDS is the
 //! launcher's words.json, MARKS each program's mark as home.nix writes
-//! them, and SHELLS is Quickshell's `by-shell` state folder, whose history
-//! is taken the first time it starts.
+//! them, ADDRESSED what's to Joel from each chat program the machine
+//! names, and SHELLS is Quickshell's `by-shell` state folder, whose
+//! history is taken the first time it starts.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -44,7 +46,7 @@ const DOMAIN: Domain = Domain {
 
 const USAGE: &str = "usage: notices --socket SOCKET --state FOLDER --levels LEVELS \
                      --senders SENDERS --quiet QUIET --vocabulary WORDS --marks MARKS \
-                     [--shells SHELLS]";
+                     [--addressed ADDRESSED] [--shells SHELLS]";
 
 /// Where it serves, keeps and reads.
 struct Args {
@@ -55,6 +57,7 @@ struct Args {
     quiet: PathBuf,
     vocabulary: PathBuf,
     marks: PathBuf,
+    addressed: Option<PathBuf>,
     shells: Option<PathBuf>,
 }
 
@@ -72,6 +75,7 @@ fn args() -> Option<Args> {
         quiet: named("--quiet")?,
         vocabulary: named("--vocabulary")?,
         marks: named("--marks")?,
+        addressed: named("--addressed"),
         shells: named("--shells"),
     })
 }
@@ -83,7 +87,14 @@ fn read(file: &Path) -> Result<String, String> {
 /// Each sender's level and the senders' own words, or why they can't be
 /// read.
 fn judge(args: &Args) -> Result<Judge, String> {
-    Judge::read(&read(&args.levels)?, &read(&args.senders)?).map_err(|why| why.to_string())
+    let judge =
+        Judge::read(&read(&args.levels)?, &read(&args.senders)?).map_err(|why| why.to_string())?;
+    match &args.addressed {
+        Some(file) => judge
+            .addressing(&read(file)?)
+            .map_err(|why| format!("{}: {why}", file.display())),
+        None => Ok(judge),
+    }
 }
 
 /// What a notice's rows are said and signed in: the desktop's own
