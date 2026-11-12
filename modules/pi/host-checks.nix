@@ -36,7 +36,7 @@ in
   # with the account's session once the harness is installed, run by the
   # host's own pi and node, said ready by the host, among the agents'
   # sessions, left running through a switch, and said to be down when left
-  # down; a machine that names none, and a Mac, get no host.
+  # down, never at a restart; a machine that names none, and a Mac, get no host.
   pi-hosts-start-with-the-session =
     let
       pi = "${pkgs.emptyDirectory}/pi";
@@ -83,6 +83,7 @@ in
         && unit.Unit.StartLimitIntervalSec or null == 600
         && unit.Unit.StartLimitBurst or null == 3
         && unit.Unit.OnFailure or null == [ "pi-host-down@%N.service" ]
+        && unit.Service.RestartMode or null == "direct"
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
@@ -118,7 +119,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, isn't watched for a wedged loop, restarts without limit, isn't said to be down once left down, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, isn't watched for a wedged loop, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         starts "attended"
         && starts "background"

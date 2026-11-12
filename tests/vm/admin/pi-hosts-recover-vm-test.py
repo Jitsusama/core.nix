@@ -74,13 +74,19 @@ class Host:
 
     def said(self, unit: str = UNIT) -> str:
         """Give what alice's manager, and what it ran, told the journal about a unit."""
-        # --user-unit matches the caller's own uid, which is root's here.
-        return self.machine.succeed(f"journalctl --no-pager _UID=1000 USER_UNIT={unit}")
+        # --user-unit matches the caller's own uid, which is root's here. The
+        # manager's lines about a unit carry USER_UNIT, and the unit's own
+        # output _SYSTEMD_USER_UNIT, so either matches.
+        return self.machine.succeed(
+            f"journalctl --no-pager _UID=1000 USER_UNIT={unit}"
+            f" + _UID=1000 _SYSTEMD_USER_UNIT={unit}",
+        )
 
     def told(self, words: str) -> str:
         """Wait until the notice that the host is down says these words, and give all it said."""
         self.machine.wait_until_succeeds(
-            f"journalctl --no-pager _UID=1000 USER_UNIT={NOTICE} | grep -qF {shlex.quote(words)}",
+            f"journalctl --no-pager _UID=1000 _SYSTEMD_USER_UNIT={NOTICE}"
+            f" | grep -qF {shlex.quote(words)}",
             timeout=COMING_BACK,
         )
         return self.said(NOTICE)
