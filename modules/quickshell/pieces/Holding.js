@@ -46,7 +46,7 @@ function held(sources) {
 
 // The looks the to-do daemon streams (modules/to-do's stream.rs), each a
 // `look:<id>` record holding its file whole under `look`, as the looks
-// folder's files, { file, text }, so ForYou.js's looks weighs one heard
+// folder's files, { file, text }, so Looks.js's looks weighs one heard
 // from the stream as it weighs one read from the folder. Its other
 // records, and one holding no look, are none.
 function lookFiles(records) {

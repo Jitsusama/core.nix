@@ -29,7 +29,7 @@
   "Files.qml" = [ "FileFacts.js" ];
   "Finding.js" = [ "LineEditing.js" ];
   "ForYouHolds.qml" = [
-    "launcher/ForYou.js"
+    "launcher/Looks.js"
     "pieces/Holding.js"
   ];
   "KeyboardLayout.qml" = [ "launcher/Keyboards.js" ];
@@ -177,6 +177,10 @@
   ];
   "launcher/Lately.js" = [ "launcher/Order.js" ];
   "launcher/Light.qml" = [ "launcher/Numbers.js" ];
+  "launcher/Looks.js" = [
+    "launcher/ForYou.js"
+    "launcher/Order.js"
+  ];
   "launcher/Machine.js" = [ "launcher/Numbers.js" ];
   "launcher/Machine.qml" = [
     "launcher/Holders.js"
@@ -207,6 +211,7 @@
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
     "launcher/Lately.js"
+    "launcher/Looks.js"
     "launcher/Moment.js"
     "launcher/NeedsYou.js"
     "launcher/NowGroups.js"

@@ -823,8 +823,9 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
     looks = state / "pi/agentic-harness.pi/looks"
     looks.mkdir(parents=True, exist_ok=True)
     look = looks / "filtered.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
     said = {"v": 1, "id": "filtered", "title": "Filtered Look", "target": "/etc/hostname",
-            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
+            "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
     look.write_text(json.dumps(said))
     try:
         shell.as_account(shell.ipc("toggle"))
@@ -861,8 +862,9 @@ def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
     looks = state / "pi/agentic-harness.pi/looks"
     looks.mkdir(parents=True, exist_ok=True)
     look = looks / "cleared.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
     said = {"v": 1, "id": "cleared", "title": "Cleared Look", "target": "/etc/hostname",
-            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
+            "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
     look.write_text(json.dumps(said))
     try:
         shell.as_account(shell.ipc("toggle"))
@@ -903,10 +905,13 @@ def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
     looks = state / "pi/agentic-harness.pi/looks"
     looks.mkdir(parents=True, exist_ok=True)
     written = [looks / f"weighed{at:02d}.json" for at in range(LOOKS_WAITING)]
+    # Each came in the last hour, a minute apart, since one three days old goes quiet
+    # (launcher/Looks.js).
+    hour = now("-u", "-d", "1 hour ago", "+%FT%H")
     for at, look in enumerate(written):
         said = {"v": 1, "id": look.stem, "title": f"Weighed Look {at}", "kind": "file",
                 "target": "/etc/hostname", "state": "waiting",
-                "at": f"2026-11-08T12:{at:02d}:00Z"}  # fmt: skip
+                "at": f"{hour}:{at:02d}:00Z"}  # fmt: skip
         look.write_text(json.dumps(said))
     try:
         shell.as_account(shell.ipc("toggle"))

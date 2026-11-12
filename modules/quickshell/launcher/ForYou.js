@@ -2,9 +2,9 @@
 // so the most pressing leads (VKCF3Z, 2026-11-08; Joel: "should somehow
 // weight ordering so the most critical stuff bubbles up"). What a row
 // weighs is worked out here from its parts, each { id, points }, and so
-// is which band it stands in, what its side says and how the looks
-// folder's files are read, apart from the launcher, so tests/for-you.qml
-// holds them in Qt's own engine.
+// is which band it stands in and what its side says, apart from the
+// launcher, so tests/for-you.qml holds them in Qt's own engine. How the
+// looks folder's files are read is Looks.js's.
 .pragma library
 .import "Order.js" as Order
 
@@ -30,14 +30,6 @@ const KIND_POINTS = { todo: 10, look: 5 };
 const WAITED_MOST = 20;
 const WAITED_RATE = 5;
 
-// What a look is about, and how it stands, as the harness writes them, and
-// the one version of its file this reads.
-const KINDS = ["pr", "page", "file", "diff", "terminal"];
-const STATES = ["waiting", "opened", "cleared", "resolved"];
-const VERSION = 1;
-// What's read from a look's file only for the shell's own use, never
-// written back.
-const OWN = ["since", "resolved", "file"];
 // Each kind's mark, the theme's own (modules/theme/glyphs.nix): a pull
 // request as its branch, a page as the web, a file as a path, a diff as
 // lines of text and a terminal as a shell's prompt.
@@ -393,61 +385,6 @@ function figures(item, told, say) {
     };
 }
 
-// Whether a file's JSON is a look this reads whole: version 1, with what
-// it's about and how it stands.
-function whole(read) {
-    const named = value => typeof value === "string" && value !== "";
-    return read !== null && typeof read === "object" && read.v === VERSION && named(read.id)
-        && named(read.title) && named(read.target) && KINDS.includes(read.kind)
-        && STATES.includes(read.state);
-}
-
-// One look from its file's text, or null for one that can't be read
-// whole: not JSON, not version 1, or missing what it's about.
-function look(text) {
-    let read = null;
-    try {
-        read = JSON.parse(text);
-    } catch (_malformed) {
-        return null;
-    }
-    if (!whole(read)) {
-        return null;
-    }
-    return Object.assign({}, read, {
-        why: typeof read.why === "string" ? read.why : "",
-        // Its drawer says why, then the ask and its choices, to act on hours on (Joel, 2026-11-11).
-        words: [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n"),
-        since: when(read.at),
-        resolved: when(read.resolvedAt)
-    });
-}
-
-// The looks folder's files, each { file, text }, as { waiting, history }: those waiting in the
-// order they came, the oldest first, the rest newest first by when each was resolved. One still
-// being written, `*.writing`, or unreadable is left out. A file whose text is as `kept.by` holds it
-// isn't parsed again: an act changes one of Joel's 166, and parsing all took 9 ms (2026-11-10).
-function looks(files, kept = {}) {
-    const was = kept.by ?? {};
-    const now = {};
-    const read = (files ?? []).filter(one => !String(one.file ?? "").endsWith(".writing"))
-        .map(one => {
-            const file = String(one.file ?? "");
-            const same = file in was && was[file].text === one.text;
-            const each = same ? was[file].look : look(one.text);
-            const made = each === null ? null : Object.assign(each, { file });
-            now[file] = { text: one.text, look: made };
-            return made;
-        }).filter(one => one !== null);
-    kept.by = now;
-    return {
-        waiting: Order.sorted(read.filter(one => one.state === "waiting"),
-            Order.smaller(one => one.since)),
-        history: Order.sorted(read.filter(one => one.state !== "waiting"),
-            Order.stream(one => one.resolved ?? one.since))
-    };
-}
-
 // What the launcher's sources give For You beside its own, each source's
 // `forYou` a list, as Passwords gives its one to-do for what its last
 // check found: { waiting, done }, each still to do { row, thing } with the
@@ -486,15 +423,4 @@ function historySide(one, say) {
     const how = typeof one.how === "string" && one.how !== "" ? one.how : say[one.state] ?? "";
     const at = one.resolved ?? one.since;
     return filled(say.history, { how, time: at === null ? "" : say.clock(at) }).trim();
-}
-
-// A look's file as it's written again once it's done with, whole, opened
-// by Joel or cleared: everything it said, and how and when it ended.
-function rewritten(one, state, how, now) {
-    const kept = {};
-    for (const key of Object.keys(one).filter(name => !OWN.includes(name))) {
-        kept[key] = one[key];
-    }
-    return JSON.stringify(Object.assign(kept, { state, how,
-        resolvedAt: new Date(now).toISOString() }), null, 2);
 }
