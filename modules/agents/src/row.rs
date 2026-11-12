@@ -187,6 +187,18 @@ fn text<'a>(presence: Option<&'a Value>, field: &str) -> Option<&'a str> {
     presence?.pointer(field)?.as_str()
 }
 
+/// What else a row is found by: an orchestration's short id and title as
+/// its quest lists them, then the words a session standing at the top goes
+/// by, each after a space.
+fn known_as(listed: Option<(String, String)>, keywords: &[&str]) -> String {
+    let mut known = listed.map_or_else(String::new, |(short, title)| format!(" {short} {title}"));
+    for keyword in keywords {
+        known.push(' ');
+        known.push_str(keyword);
+    }
+    known
+}
+
 /// A session's row, `place`d in the tree.
 pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row {
     let presence = session.presence();
@@ -239,12 +251,12 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         || spent.unwrap_or_default(),
         |all| words.agents.fill("allOf", &[("spent", &all)]),
     );
-    let listed = if place.orchestrates {
-        (known.listed)(address)
-    } else {
-        None
-    };
-    let known_as = listed.map_or_else(String::new, |(short, title)| format!(" {short} {title}"));
+    let listed = place
+        .orchestrates
+        .then(|| (known.listed)(address))
+        .flatten();
+    let at_top = session.at_top();
+    let known_as = known_as(listed, at_top.as_ref().map_or(&[], |(_, words)| words));
     let full = if stands == Stands::Off {
         String::new()
     } else {
@@ -275,7 +287,13 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
         state: stands.id(),
-        returns: standing::returns(stands, windowed),
+        // One standing at the top is gone to to be told something, the
+        // void above all, so Return talks to it however it stands.
+        returns: if at_top.is_some() {
+            "talk"
+        } else {
+            standing::returns(stands, windowed)
+        },
         acts: standing::acts(stands, windowed, session.here()),
         ranked: Ranked {
             note: joined(&[&under, &noted]),
@@ -561,5 +579,51 @@ mod tests {
         );
         let held: Vec<_> = fold.held.iter().map(Shown::key).collect();
         assert_eq!(held, ["agent:A", "agent:B"]);
+    }
+
+    #[test]
+    fn a_session_standing_at_the_top_is_never_folded_and_goes_by_its_own_name() {
+        // Joel looked for the void and found nothing: it was one of 23 in
+        // its orchestrator's fold (QCXZEB, 2026-11-12).
+        let top = json!({"name": "The Void", "keywords": ["void", "say it once"]});
+        let records = [
+            json!({"presence": {"addresses": ["O"], "busy": true}}),
+            json!({"presence": {"addresses": ["A"], "orchestratedBy": "O"}}),
+            json!({"presence": {"addresses": ["B"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["V"], "orchestratedBy": "O", "busy": true,
+                "questInfo": {"title": "Say It Once"}, "standsAtTop": top}}),
+        ];
+        let sessions: Vec<_> = records.iter().map(Session).collect();
+        let given = given();
+        let none = |_: &str| None::<String>;
+        let unlisted = |_: &str| None::<(String, String)>;
+        let windowed = |_: Session| true;
+        let known = Known {
+            joel_can: &given.joel_can,
+            jobs: &given.jobs,
+            spent: &none,
+            family: &none,
+            listed: &unlisted,
+            windowed: &windowed,
+            sharing: false,
+        };
+        let shown = rows(&sessions, &known, &words());
+        let keys: Vec<_> = shown.iter().map(Shown::key).collect();
+        assert_eq!(
+            keys,
+            ["agent:O", "agents:fold:O", "agent:V"],
+            "at the top, under nobody"
+        );
+        let Shown::Session(row) = &shown[2] else {
+            panic!("its own row: {shown:?}")
+        };
+        assert_eq!((row.name.as_str(), row.depth), ("The Void", 0));
+        assert!(
+            row.also.ends_with(" void say it once"),
+            "found by its words too: {}",
+            row.also
+        );
+        assert_eq!(row.ranked.belongs, "", "it belongs to no orchestration");
+        assert_eq!(row.returns, "talk", "Return talks to it, at work or not");
     }
 }
