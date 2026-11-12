@@ -88,6 +88,7 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name") == "Home Network"
         )
+        the_home_networks_own_drawer_says_how_it_stands(desktop)
         desktop.step_in()
         desktop.launcher_until(
             lambda shown: (
@@ -113,6 +114,24 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         the_desk_lights_plate_lies_on_the_lines(desktop, scale)
         the_screens_plate_says_what_sets_it(desktop, scale)
         warp_stands_in_network(desktop, scale)
+
+
+def the_home_networks_own_drawer_says_how_it_stands(desktop: Desktop) -> None:
+    """Hold the Home Network's row to a drawer of its own, the one the eero daemon serves.
+
+    Every row has a drawer (VKCF3Z, 2026-11-12): whose it is, then a lead saying how the
+    home network stands (the eero daemon's place.rs), never the names of what it holds.
+    """
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "Home Network"
+            and str(shown["drawer"]["body"]).startswith("Connected")
+        )
+    )
+    drawer = desktop.showing()["drawer"]
+    assert drawer["eyebrow"] == "via eero \u00b7 network", drawer
+    assert "nodes online" in str(drawer["body"]), drawer
 
 
 def the_internet_paged_through(desktop: Desktop, at: str) -> None:

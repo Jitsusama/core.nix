@@ -35,6 +35,7 @@ mod listeners;
 mod live;
 mod model;
 mod notices;
+mod place;
 mod probe;
 mod read;
 mod rows;

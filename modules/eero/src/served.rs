@@ -12,6 +12,7 @@ use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
 use crate::model::HomeNetwork;
+use crate::place;
 use crate::rows::{self, Words};
 
 /// The kind every row's record is.
@@ -36,12 +37,16 @@ struct Vocabulary {
 
 impl Vocabulary {
     /// Makes its rows again from the network, each keeping its spaced
-    /// order where it can; none while there's no network yet.
+    /// order where it can, and the place's own drawer beside them; none
+    /// while there's no network yet.
     fn make(&mut self, network: Option<&HomeNetwork>) {
-        let rows = network.map_or_else(Vec::new, |network| {
-            rows::rows(network, &self.words, &self.numbers)
+        let (rows, beside) = network.map_or_else(Default::default, |network| {
+            (
+                rows::rows(network, &self.words, &self.numbers),
+                vec![place::record(network, &self.words, &self.numbers)],
+            )
         });
-        self.kept.take(rows, Vec::new());
+        self.kept.take(rows, beside);
         self.made = self
             .kept
             .all()
@@ -146,6 +151,10 @@ fn read(path: &Path) -> Result<Value, String> {
     serde_json::from_str(&text).map_err(|error| format!("{} isn't JSON: {error}", path.display()))
 }
 
+/// The kinds of record served beside each other: the rows, and the
+/// place's drawer.
+const KINDS: [&str; 2] = [ROW, place::KIND];
+
 /// Whether an ask is for rows: one naming the row kind or a place.
 pub fn asks_rows(asked: &Value) -> bool {
     let kind = &asked["kind"];
@@ -164,7 +173,10 @@ pub fn unkept(asked: &Value) -> Option<String> {
         Value::Array(kinds) => kinds.iter().collect(),
         kind => vec![kind],
     };
-    if let Some(kind) = kinds.iter().find(|kind| **kind != ROW) {
+    if let Some(kind) = kinds
+        .iter()
+        .find(|kind| !KINDS.iter().any(|kept| *kind == kept))
+    {
         return Some(format!("no kind {kind} here"));
     }
     match asked.get("place").and_then(Value::as_str) {

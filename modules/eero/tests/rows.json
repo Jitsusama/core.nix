@@ -1,5 +1,48 @@
 [
   {
+    "drawer": {
+      "body": "Connected at 370 Mb/s down, with 3 nodes online and 15 devices on now.",
+      "eyebrow": "via eero · network",
+      "facts": [
+        {
+          "name": "State",
+          "said": "connected"
+        },
+        {
+          "identifies": true,
+          "name": "Provider",
+          "said": "Example ISP"
+        },
+        {
+          "figure": true,
+          "name": "Down",
+          "said": "370 Mb/s"
+        },
+        {
+          "figure": true,
+          "name": "Up",
+          "said": "11.9 Mb/s"
+        },
+        {
+          "as": "on",
+          "at": 1793875935000,
+          "name": "Speed Test"
+        },
+        {
+          "name": "Outages",
+          "said": "1 outage in 30 days"
+        },
+        {
+          "name": "Nodes",
+          "said": "3 nodes online"
+        }
+      ],
+      "title": "Home Network"
+    },
+    "key": "drawer:eero:place",
+    "kind": "drawer"
+  },
+  {
     "key": "row:eero:device:02:00:00:00:00:01",
     "kind": "row",
     "row": {

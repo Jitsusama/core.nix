@@ -2536,6 +2536,29 @@ def test_the_home_network_draws_the_rows_the_eero_daemon_serves(shell: Shell) ->
     shell.close_launcher()
 
 
+def test_the_home_networks_row_has_the_drawer_the_eero_daemon_serves(shell: Shell) -> None:
+    """The Home Network's row in Network has its own drawer: whose, a lead, then its figures.
+
+    Every row has a drawer (VKCF3Z, 2026-11-12), and the eero daemon serves this one beside
+    its rows (its place.rs), so the stand-in serving the daemon's records has the place say
+    how the home network stands rather than the names of everything it holds.
+    """
+    home = terminal_shown_until(
+        shell,
+        lambda shown: bool(((shown.get("row") or {}).get("drawer") or {}).get("facts")),
+        "network",
+        "home network",
+    )
+    drawer = home["row"]["drawer"]
+    assert drawer["eyebrow"] == "via eero \u00b7 network", str(drawer)
+    assert drawer["title"] == "Home Network", str(drawer)
+    expected = "Connected at 370 Mb/s down, with 3 nodes online and 15 devices on now."
+    assert drawer["body"] == expected, str(drawer)
+    facts = {fact["label"]: fact["value"] for fact in drawer["facts"]}
+    assert facts["Provider"] == "Example ISP", str(facts)
+    assert facts["Nodes"] == "3 nodes online", str(facts)
+
+
 def selecting(name: str, shown: Json) -> bool:
     """Say whether the launcher has the row so named selected."""
     return bool((shown["selected"] or {}).get("name") == name)

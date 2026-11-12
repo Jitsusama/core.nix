@@ -18,7 +18,15 @@
         "down": "{rate} down",
         "up": "{rate} up",
         "device": "1 device",
-        "devices": "{count} devices"
+        "devices": "{count} devices",
+        "eyebrow": "via eero \u00b7 network",
+        "leadAt": " at {rate} down"
+      },
+      "tells": {
+        "connected": "Connected{at}, with {nodes} and {devices} on now.",
+        "disconnected": "Not connected to the internet, with {nodes} and {devices} on now.",
+        "signedOut": "Signed out of eero, so how the home network stands isn't known.",
+        "unreachable": "The eero cloud can't be reached, so how the home network stands isn't known."
       }
     },
     {
@@ -98,6 +106,28 @@
         "onNow": "{count} on now",
         "noneOnNow": "none on now"
       }
-    }
+    },
+    { "id": "eero:internet:state", "in": "eero:internet", "name": "State" },
+    {
+      "id": "eero:internet:isp",
+      "in": "eero:internet",
+      "name": "Provider",
+      "term": "Network/internet provider"
+    },
+    {
+      "id": "eero:internet:speed-test",
+      "in": "eero:internet",
+      "name": "Speed Test",
+      "term": "Network/speed test"
+    },
+    { "id": "eero:internet:down", "in": "eero:internet", "name": "Down", "term": "Network/down" },
+    { "id": "eero:internet:up", "in": "eero:internet", "name": "Up", "term": "Network/up" },
+    {
+      "id": "eero:internet:outages",
+      "in": "eero:internet",
+      "name": "Outages",
+      "term": "Network/outage"
+    },
+    { "id": "eero:internet:nodes", "in": "eero:internet", "name": "Nodes", "term": "Network/node" }
   ]
 }

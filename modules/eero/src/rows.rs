@@ -18,6 +18,7 @@ use ready_rows::time::{self, Form};
 use serde_json::{Value, json};
 
 use crate::model::{BackhaulKind, CloudState, Device, HomeNetwork, Node, Profile};
+use crate::place;
 use crate::time::to_unix;
 
 /// The launcher's place the Home Network's rows are in.
@@ -57,7 +58,7 @@ const SAID: &[(&str, &[&str])] = &[
     (
         "eero",
         &[
-            "bps", "kbps", "mbps", "gbps", "down", "up", "device", "devices",
+            "bps", "kbps", "mbps", "gbps", "down", "up", "device", "devices", "eyebrow", "leadAt",
         ],
     ),
     (
@@ -101,8 +102,13 @@ const GLYPHS: [&str; 4] = ["eero:internet", "eero:node", "eero:gateway", "eero:p
 /// vocabulary.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Words {
-    /// The internet row's name.
+    /// The place's name, and the internet row's.
+    place: String,
     internet: String,
+    /// The names of the parts the place's drawer says (place.rs's NAMES),
+    /// and its lead's sentences, the place's `tells` (place.rs's TELLS).
+    names: BTreeMap<&'static str, String>,
+    tells: BTreeMap<&'static str, String>,
     glyphs: BTreeMap<&'static str, String>,
     said: BTreeMap<(&'static str, &'static str), String>,
 }
@@ -125,9 +131,16 @@ impl Words {
                 .ok_or_else(|| format!("the vocabulary's {id} has no {}", at.join(".")))
         };
         let mut words = Words {
+            place: word("eero", &["name"])?,
             internet: word("eero:internet", &["name"])?,
             ..Words::default()
         };
+        for id in place::NAMES {
+            words.names.insert(id, word(id, &["name"])?);
+        }
+        for one in place::TELLS {
+            words.tells.insert(one, word("eero", &["tells", one])?);
+        }
         for id in GLYPHS {
             words.glyphs.insert(id, word(id, &["glyph"])?);
         }
@@ -140,8 +153,22 @@ impl Words {
     }
 
     /// A word a thing says, which `read` made sure of.
-    fn say(&self, id: &'static str, word: &'static str) -> &str {
+    pub(crate) fn say(&self, id: &'static str, word: &'static str) -> &str {
         self.said.get(&(id, word)).map_or("", String::as_str)
+    }
+
+    pub(crate) fn place(&self) -> &str {
+        &self.place
+    }
+
+    /// A part's name, of those `read` made sure of.
+    pub(crate) fn name(&self, id: &'static str) -> &str {
+        self.names.get(id).map_or("", String::as_str)
+    }
+
+    /// One of the place's sentences, which `read` made sure of.
+    pub(crate) fn tells(&self, one: &'static str) -> &str {
+        self.tells.get(one).map_or("", String::as_str)
     }
 
     fn glyph(&self, id: &'static str) -> &str {
@@ -150,7 +177,7 @@ impl Words {
 
     /// A count with its noun, the thing's `one` word for one and its
     /// `many` with `{count}` for any other: "1 device", "9 devices".
-    fn counted(
+    pub(crate) fn counted(
         &self,
         count: usize,
         id: &'static str,
@@ -164,13 +191,13 @@ impl Words {
         }
     }
 
-    fn devices(&self, count: usize) -> String {
+    pub(crate) fn devices(&self, count: usize) -> String {
         self.counted(count, "eero", "device", "devices")
     }
 
     /// A rate given in Mb/s, in whichever unit says it in three digits:
     /// "370 Mb/s", "1.20 Gb/s", "98.2 b/s".
-    fn rate(&self, mbps: f64, numbers: &Numbers) -> String {
+    pub(crate) fn rate(&self, mbps: f64, numbers: &Numbers) -> String {
         let size: f64 = format!("{:.2e}", mbps.abs()).parse().unwrap_or(0.0);
         let (scale, unit) = RATES
             .iter()
@@ -203,7 +230,7 @@ impl Words {
 }
 
 /// Words with each `{hole}` filled.
-fn fill(words: &str, holes: &[(&str, &str)]) -> String {
+pub(crate) fn fill(words: &str, holes: &[(&str, &str)]) -> String {
     holes.iter().fold(words.to_owned(), |said, (hole, with)| {
         said.replace(&format!("{{{hole}}}"), with)
     })
@@ -342,11 +369,7 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
     let internet = &model.internet;
     let test = &internet.speed_test;
     let answering = model.cloud.state == CloudState::Answering;
-    let state = match model.cloud.state {
-        CloudState::SignedOut => words.say("eero:internet", "signedOut").to_owned(),
-        CloudState::Unreachable => words.say("eero:internet", "unreachable").to_owned(),
-        CloudState::Answering => internet.state.as_deref().unwrap_or("").to_lowercase(),
-    };
+    let state = state_said(model, words);
     let down = words.each_way(test.down_mbps, None, numbers);
     let up = words.each_way(None, test.up_mbps, numbers);
     let day = test
@@ -371,14 +394,7 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
         Some(false) => words.say("eero:internet", "sqmOff"),
         None => "",
     };
-    let outages = match internet.history.outages.len() {
-        0 => words.say("eero:internet", "noOutages").to_owned(),
-        count => words.counted(count, "eero:internet", "outage", "outages"),
-    };
-    let outages = fill(
-        words.say("eero:internet", "inDays"),
-        &[("outages", &outages)],
-    );
+    let outages = outages_said(model, words);
     let on_now = match model.devices.len() {
         0 => String::new(),
         count => fill(
@@ -403,9 +419,31 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
     })
 }
 
+/// How the internet stands, in eero's word lowered, or why nothing's
+/// known while eero isn't answering.
+pub(crate) fn state_said(model: &HomeNetwork, words: &Words) -> String {
+    match model.cloud.state {
+        CloudState::SignedOut => words.say("eero:internet", "signedOut").to_owned(),
+        CloudState::Unreachable => words.say("eero:internet", "unreachable").to_owned(),
+        CloudState::Answering => model.internet.state.as_deref().unwrap_or("").to_lowercase(),
+    }
+}
+
+/// The outages the last 30 days held: "1 outage in 30 days".
+pub(crate) fn outages_said(model: &HomeNetwork, words: &Words) -> String {
+    let outages = match model.internet.history.outages.len() {
+        0 => words.say("eero:internet", "noOutages").to_owned(),
+        count => words.counted(count, "eero:internet", "outage", "outages"),
+    };
+    fill(
+        words.say("eero:internet", "inDays"),
+        &[("outages", &outages)],
+    )
+}
+
 /// The nodes by state, as one item: "3 nodes online", with any offline or
 /// pending after.
-fn nodes_said(model: &HomeNetwork, words: &Words) -> String {
+pub(crate) fn nodes_said(model: &HomeNetwork, words: &Words) -> String {
     let counts = &model.internet.nodes;
     let Some(online) = counts.online else {
         return String::new();
@@ -611,4 +649,4 @@ fn profile_row(model: &HomeNetwork, profile: &Profile, words: &Words) -> Value {
 
 #[cfg(test)]
 #[path = "rows_tests.rs"]
-mod tests;
+pub(crate) mod tests;

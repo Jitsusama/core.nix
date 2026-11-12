@@ -7,11 +7,13 @@
 
 use super::*;
 
-fn model() -> HomeNetwork {
+/// The contract's network, which the place's drawer is tested on too.
+pub(crate) fn model() -> HomeNetwork {
     serde_json::from_str(include_str!("../home-network.json")).expect("the model parses")
 }
 
-fn words() -> Words {
+/// The launcher's words for the Home Network, which its drawer says too.
+pub(crate) fn words() -> Words {
     let vocabulary: Value =
         serde_json::from_str(include_str!("../tests/words.json")).expect("the words parse");
     Words::read(&vocabulary).expect("the vocabulary has the Home Network's words")
@@ -318,8 +320,9 @@ fn a_vocabulary_without_a_word_says_which() {
 
 /// The rows the desktop's tests serve as the daemon would
 /// (tests/desktop/stand-in-eero.py), held to the records the daemon serves
-/// of the contract's network, each ordered as Kept orders it, so the
-/// stand-in never says what the daemon wouldn't.
+/// of the contract's network, each ordered as Kept orders it and the
+/// place's own drawer beside them, so the stand-in never says what the
+/// daemon wouldn't.
 /// `EERO_GOLDEN=write cargo test` writes them afresh, to be read before
 /// they're committed. They're compared as JSON, so `nix fmt` may lay the
 /// file out as it likes.
@@ -327,7 +330,9 @@ fn a_vocabulary_without_a_word_says_which() {
 fn the_rows_the_desktops_tests_serve_are_the_daemons() {
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/rows.json");
     let mut kept = ready_rows::kept::Kept::default();
-    kept.take(made(&model()), vec![]);
+    let model = model();
+    let drawer = crate::place::record(&model, &words(), &Numbers::default());
+    kept.take(made(&model), vec![drawer]);
     let rows: Value = kept.all().cloned().collect();
     if std::env::var("EERO_GOLDEN").as_deref() == Ok("write") {
         let text = serde_json::to_string_pretty(&rows).expect("rows are JSON");

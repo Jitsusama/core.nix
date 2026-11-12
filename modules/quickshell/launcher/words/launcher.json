@@ -580,7 +580,15 @@
         "down": "{rate} down",
         "up": "{rate} up",
         "device": "1 device",
-        "devices": "{count} devices"
+        "devices": "{count} devices",
+        "eyebrow": "via eero \u00b7 network",
+        "leadAt": " at {rate} down"
+      },
+      "tells": {
+        "connected": "Connected{at}, with {nodes} and {devices} on now.",
+        "disconnected": "Not connected to the internet, with {nodes} and {devices} on now.",
+        "signedOut": "Signed out of eero, so how the home network stands isn't known.",
+        "unreachable": "The eero cloud can't be reached, so how the home network stands isn't known."
       }
     },
     {
