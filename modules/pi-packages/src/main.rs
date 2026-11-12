@@ -154,6 +154,9 @@ fn update(file: &Path, pace: Pace) -> Result<(), String> {
                 if let Some(why) = &outcome.unfetched {
                     println!("{name}: could not fetch, so used the last commit seen: {why}");
                 }
+                for why in &outcome.unwarmed {
+                    println!("{name}: a pi's cache was not warmed before the swap: {why}");
+                }
                 if outcome.removed > 0 {
                     println!(
                         "{name}: removed {} old versions nothing uses",

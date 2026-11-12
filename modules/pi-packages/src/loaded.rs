@@ -17,6 +17,12 @@
 //! for as long as the process lives, so a pi resolves through `current`
 //! to the version it led to when it first looked, in any package it
 //! loads, whichever version it says it runs now (version.rs).
+//!
+//! A file may also say which pi wrote it, `"pi": {"node", "bundle",
+//! "tmp"}`: the node it runs on, the folder of pi's `cli.js`, and its
+//! temporary folder, where jiti keeps what it transpiled (jiti.rs). A pi
+//! names its process `pi` and keeps no command line, so only the pi can
+//! say. An update warms each such pi's cache before a swap (warm.rs).
 
 use std::collections::HashMap;
 use std::fs;
@@ -38,6 +44,31 @@ const CLOCK_SLACK: Duration = Duration::from_secs(2);
 pub struct Said {
     runs: HashMap<u32, PathBuf>,
     earliest: Option<SystemTime>,
+    pis: Vec<Pi>,
+}
+
+/// Which pi a live process is: the node it runs on, the folder of pi's
+/// `cli.js` it started from, and its temporary folder.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Pi {
+    pub node: PathBuf,
+    pub bundle: PathBuf,
+    pub tmp: PathBuf,
+}
+
+impl Pi {
+    /// The pi a file's `pi` names, while its node, its `cli.js` and its
+    /// temporary folder are all there.
+    fn from(value: &Value) -> Option<Self> {
+        let path = |key: &str| value[key].as_str().map(PathBuf::from);
+        let pi = Self {
+            node: path("node")?,
+            bundle: path("bundle")?,
+            tmp: path("tmp")?,
+        };
+        let there = pi.node.is_file() && pi.bundle.join("cli.js").is_file() && pi.tmp.is_dir();
+        there.then_some(pi)
+    }
 }
 
 impl Said {
@@ -59,6 +90,12 @@ impl Said {
     pub fn earliest(&self) -> Option<SystemTime> {
         self.earliest
     }
+
+    /// Each pi the live processes said they are, once each, in order.
+    #[must_use]
+    pub fn pis(&self) -> &[Pi] {
+        &self.pis
+    }
 }
 
 /// What the live processes said they loaded of the package at `place`,
@@ -71,6 +108,7 @@ pub fn read(place: &Place) -> Said {
     };
     let mut runs = HashMap::new();
     let mut earliest: Option<SystemTime> = None;
+    let mut pis = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         let Some(pid) = entry
@@ -87,11 +125,21 @@ pub fn read(place: &Place) -> Said {
             continue;
         };
         earliest = Some(earliest.map_or(started, |earliest| earliest.min(started)));
-        if let Some(root) = runs_of(&path) {
+        let Some(value) = said_in(&path) else {
+            continue;
+        };
+        if let Some(root) = runs_of(&value) {
             runs.insert(pid, root);
         }
+        pis.extend(Pi::from(&value["pi"]));
     }
-    Said { runs, earliest }
+    pis.sort();
+    pis.dedup();
+    Said {
+        runs,
+        earliest,
+        pis,
+    }
 }
 
 /// When `pid` started, when it is the process that wrote the file at
@@ -102,10 +150,14 @@ fn started_by(path: &Path, pid: u32) -> Option<SystemTime> {
     (started <= written + CLOCK_SLACK).then_some(started)
 }
 
-/// The version the file at `path` names, while it is there.
-fn runs_of(path: &Path) -> Option<PathBuf> {
+/// What the file at `path` says, when it reads.
+fn said_in(path: &Path) -> Option<Value> {
     let text = fs::read_to_string(path).ok()?;
-    let value: Value = serde_json::from_str(&text).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// The version a file names, while it is there.
+fn runs_of(value: &Value) -> Option<PathBuf> {
     // A version since removed can't be run from.
     fs::canonicalize(value["root"].as_str()?).ok()
 }

@@ -26,6 +26,12 @@
 //! pins the harness loads the harness every session already has, not a
 //! second, older copy beside it (version.rs).
 //!
+//! Before the swap, each pi a live process said it is runs once on the
+//! new version, so jiti's cache, keyed by each source's path, already
+//! holds what it transpiles when the pis follow (warm.rs, jiti.rs). A
+//! warm that fails is said, and the swap goes ahead; a hold put while it
+//! ran stands. A version's cache entries go when the version does.
+//!
 //! A swap happens at most once an hour across every package (run.rs),
 //! since each one costs every running pi a rewrite of its prompt cache
 //! when it follows. An update inside the hour builds nothing and says how
@@ -55,6 +61,8 @@ pub mod check;
 pub mod config;
 pub mod hold;
 pub mod inuse;
+pub mod jiti;
 pub mod loaded;
 pub mod run;
 pub mod version;
+pub mod warm;
