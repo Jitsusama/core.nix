@@ -1,11 +1,10 @@
-// What the Home Network place's drawers draw of what the eero daemon
-// keeps of the last hour and day (modules/eero/AGENTS.md, How It Reads):
-// each figure's history as a spark beside it, a device's moves, how busy
-// each radio is and how strongly it sends, this machine's own looks at
-// the internet, the outages of 30 days, the devices that joined or left,
-// and what happened, with what the daemon told. The record keeps a
-// history as one list a figure, a sample a read, oldest first, null
-// where eero gave none (modules/eero/src/model.rs).
+// What the internet's drawer draws of what the eero daemon keeps of the
+// last hour and day (modules/eero/AGENTS.md, How It Reads): each
+// figure's history as a spark beside it, this machine's own looks at the
+// internet, the outages of 30 days, and what happened, with what the
+// daemon told. A node's and a device's are the daemon's, served ready.
+// The record keeps a history as one list a figure, a sample a read,
+// oldest first, null where eero gave none (modules/eero/src/model.rs).
 // The pieces a fact is made of are here too, and HomeNetworkDrawers.js
 // takes them from here, so the two files read a figure one way. Plain
 // reading of the record, held in Qt's own engine (tests/home-network.qml).
@@ -16,8 +15,6 @@
 
 // A spark has twenty places, as Graph draws one.
 const PLACES = 20;
-const BARS = 5;
-const PERCENT = 100;
 const SECOND = 1000;
 const DOT = " \u00b7 ";
 // A name's words kept on one line, so "laptop computer 1" never leaves its
@@ -142,74 +139,6 @@ function historySpark(values, most) {
         values: places.map((value) => (value === null ? null : top > 0 ? value / top : 0)),
         warn: false,
     };
-}
-
-// A history scaled by `share` first, a gap kept where eero gave nothing.
-function shares(values, share) {
-    return (values ?? []).map((value) => (known(value) ? share(value) : null));
-}
-
-// Two histories added, a place known where either is: a device's speed
-// both ways together.
-function together(one, other) {
-    return one.map((value, at) => (known(value) || known(other[at])
-        ? (value ?? 0) + (other[at] ?? 0)
-        : null));
-}
-
-// A device's sparks from its history: its signal from the faintest heard
-// to the strongest, its SNR, each way's rate, and its speed both ways
-// together. Each is null where the history holds fewer than two figures.
-function deviceSparks(one) {
-    const history = one.history ?? {};
-    return {
-        signal: historySpark(shares(history.signal_dbm, (dbm) => Interfaces.level(dbm)), 1),
-        snr: historySpark(history.snr_db),
-        rx: historySpark(history.rx_mbps),
-        tx: historySpark(history.tx_mbps),
-        speed: historySpark(together(history.down_mbps ?? [], history.up_mbps ?? [])),
-    };
-}
-
-// A device's signal as a spark: of its last hour, else of what the shell
-// read since it started, where the record keeps no history; nothing
-// where neither has two readings.
-function signalSpark(one, readings) {
-    const own = deviceSparks(one).signal;
-    if (own !== null || readings.length < 2) {
-        return own;
-    }
-    return historySpark(readings.slice(-PLACES).map((dbm) => Interfaces.level(dbm)), 1);
-}
-
-// A node's name by its id, or the id where the record lists no such node.
-function nodeNamed(model, id) {
-    const node = (model?.nodes ?? []).find((each) => each.id === id) ?? null;
-    return node ? Home.nodeName(node) : id;
-}
-
-// One thing then another, "Study to Den", or the one it is now where it
-// didn't change or what it was isn't known.
-function fromTo(from, to) {
-    if (!known(from) || from === to) {
-        return to ?? "";
-    }
-    return known(to) ? `${from} to ${to}` : from;
-}
-
-// A device's moves over the last day, newest first, each by when, as the
-// events beside them are: from one node to another, or from one band to
-// another on one node, "Study to Den \u00b7 2.4 GHz to 5 GHz".
-function roams(model, one, now) {
-    const moves = one.roams ?? [];
-    if (moves.length === 0) {
-        return [];
-    }
-    return [{ heading: "roams" }].concat(moves.map((move) => ({
-        label: when(move.at, now),
-        value: joined([fromTo(nodeNamed(model, move.from_node), nodeNamed(model, move.node)),
-            fromTo(move.from_band, move.band)]),
-    })));
 }
 
 // This machine's last look at the internet, each target's time beside a

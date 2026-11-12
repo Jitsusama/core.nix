@@ -2,10 +2,10 @@
 //! (rows.rs), so the shell only draws them: each a record of its own,
 //! `drawer:eero:<kind>:<id>`, served beside the rows and named by its row's
 //! `drawer`, so a watch is told one only once it reads differently, and its
-//! row isn't made again for it. A profile's drawer and a node's
-//! (drawers/node.rs) are made here; the internet's and a device's are
-//! still worked out in the shell (HomeNetworkDrawers.js) until they're
-//! made here too.
+//! row isn't made again for it. A profile's drawer, a node's
+//! (drawers/node.rs) and a device's (drawers/device.rs) are made here;
+//! the internet's is still worked out in the shell (HomeNetworkDrawers.js)
+//! until it's made here too.
 
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
@@ -15,8 +15,10 @@ use crate::model::{Filters, HomeNetwork, Profile, Usage};
 use crate::place::KIND as DRAWER;
 use crate::rows::{Words, fill, node_name};
 
+mod device;
 mod node;
 
+pub use device::{NAMES as DEVICE_NAMES, key as device_key};
 pub use node::{NAMES as NODE_NAMES, key as node_key};
 
 /// The parts the drawers name, each by its thing in the vocabulary.
@@ -58,6 +60,7 @@ pub fn records(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Val
             })
         })
         .chain(node::records(model, words, numbers))
+        .chain(device::records(model, words, numbers))
         .collect()
 }
 

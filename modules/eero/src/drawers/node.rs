@@ -60,10 +60,10 @@ const BARS: f64 = 5.0;
 const PERCENT: f64 = 100.0;
 
 /// A name's words kept on one line.
-const KEPT: &str = "\u{a0}";
+pub(super) const KEPT: &str = "\u{a0}";
 
 /// Where a line may break after a kept name's last number.
-const BREAK: &str = "\u{200b}";
+pub(super) const BREAK: &str = "\u{200b}";
 
 /// The key a node's drawer goes by.
 pub fn key(id: &str) -> String {
@@ -182,17 +182,23 @@ fn drawer(model: &HomeNetwork, node: &Node, words: &Words, numbers: &Numbers) ->
 }
 
 /// A fact, or none where it says nothing.
-fn fact(words: &Words, id: &'static str, said: &str) -> Option<Value> {
+pub(super) fn fact(words: &Words, id: &'static str, said: &str) -> Option<Value> {
     (!said.is_empty()).then(|| named(words, id, said))
 }
 
-fn heading(words: &Words, id: &'static str) -> Value {
+pub(super) fn heading(words: &Words, id: &'static str) -> Value {
     json!({"heading": words.name(id)})
 }
 
 /// A time eero gives, as a fact the shell words in `form`, put in `said`'s
 /// `{time}`; none where it doesn't read as a time.
-fn timed(words: &Words, id: &'static str, at: &str, form: Form, said: &str) -> Option<Value> {
+pub(super) fn timed(
+    words: &Words,
+    id: &'static str,
+    at: &str,
+    form: Form,
+    said: &str,
+) -> Option<Value> {
     let ms = time::to_unix(at)? * 1000;
     let mut fact = said_at::said(ms, form, said);
     fact["name"] = Value::from(words.name(id));
@@ -558,7 +564,7 @@ fn joins_and_leaves(model: &HomeNetwork, node: &Node, words: &Words) -> Vec<Valu
 }
 
 /// A list under its heading, or nothing where it holds none.
-fn under(words: &Words, id: &'static str, listed: Vec<Value>) -> Vec<Value> {
+pub(super) fn under(words: &Words, id: &'static str, listed: Vec<Value>) -> Vec<Value> {
     if listed.is_empty() {
         return listed;
     }
@@ -566,7 +572,7 @@ fn under(words: &Words, id: &'static str, listed: Vec<Value>) -> Vec<Value> {
 }
 
 /// A share as Meter's stroke.
-fn stroke(share: f64) -> Value {
+pub(super) fn stroke(share: f64) -> Value {
     json!({"shape": "stroke", "values": [share.clamp(0.0, 1.0)], "warn": false})
 }
 
@@ -574,7 +580,7 @@ fn stroke(share: f64) -> Value {
 /// share of `most`, or of the history's own most where none is given;
 /// none until two places hold a figure. Past twenty samples, each place
 /// is the mean of a run of them, so a spark spans the whole hour kept.
-fn history_spark(values: &[Option<f64>], most: Option<f64>) -> Option<Value> {
+pub(super) fn history_spark(values: &[Option<f64>], most: Option<f64>) -> Option<Value> {
     let places = fitted(values);
     let read: Vec<f64> = places.iter().flatten().copied().collect();
     if read.len() < 2 {
@@ -618,4 +624,4 @@ fn count_f64(count: usize) -> f64 {
 
 #[cfg(test)]
 #[path = "node_tests.rs"]
-mod tests;
+pub(super) mod tests;

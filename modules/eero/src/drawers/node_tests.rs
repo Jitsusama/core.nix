@@ -32,7 +32,7 @@ fn said(drawer: &Value, name: &str) -> Option<String> {
 }
 
 /// The facts under a heading, up to the next.
-fn under(drawer: &Value, heading: &str) -> Vec<Value> {
+pub(in crate::drawers) fn under(drawer: &Value, heading: &str) -> Vec<Value> {
     facts(drawer)
         .iter()
         .skip_while(|fact| fact["heading"] != heading)

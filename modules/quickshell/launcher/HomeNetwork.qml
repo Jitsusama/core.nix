@@ -148,10 +148,9 @@ Provider {
     // do (VKCF3Z, 2026-11-08).
     function madeFrom(row, key) {
         const kind = row.kind ?? "";
-        const held = row.held ?? {};
         const served = typeof row.drawer === "string";
         const said = () => served ? ready.drawerOf(row) ?? { facts: [] }
-            : provider.drawerSaid(kind, held, row.name);
+            : provider.drawerSaid(kind);
         const made = ready.thing(row, key, {
             thing: true,
             noteInDrawer: true,
@@ -174,18 +173,10 @@ Provider {
             : () => provider.parts(kind, made.key, said()));
     }
 
-    // What a row's drawer says, of the record's internet, node or device
-    // the row holds; nothing while the record doesn't hold it. A
-    // device's is titled as its row is `called`, by the eero daemon.
-    function drawerSaid(kind, held, called) {
-        const nothing = { facts: [] };
-        if (kind === "internet")
-            return Drawers.internet(model, now(), settings);
-        if (kind === "device") {
-            const device = (model?.devices ?? []).find(one => one.mac === held.mac);
-            return device ? deviceDrawer(device, called) : nothing;
-        }
-        return nothing;
+    // What the internet's drawer says; every other row's drawer is served
+    // by the eero daemon beside it.
+    function drawerSaid(kind) {
+        return kind === "internet" ? Drawers.internet(model, now(), settings) : { facts: [] };
     }
 
     // The internet's figures less how conferencing and gaming stands, which
@@ -258,15 +249,6 @@ Provider {
             }
         }
     })
-
-    // A device's drawer, with its readings since the shell started.
-    function deviceDrawer(device, called) {
-        return Drawers.device(model, device, now(), {
-            settings: settings,
-            readings: Eero.history[device.mac],
-            called: called
-        });
-    }
 
     // Every row as the daemon serves them, in its order: the internet,
     // then each node with its devices under it, then the profiles. The

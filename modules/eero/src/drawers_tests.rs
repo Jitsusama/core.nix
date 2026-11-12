@@ -180,7 +180,7 @@ fn a_profile_eero_said_none_of_its_figures_of_says_only_its_devices() {
 }
 
 #[test]
-fn each_profile_and_node_row_names_the_drawer_served_beside_it() {
+fn each_profile_node_and_device_row_names_the_drawer_served_beside_it() {
     let model = model();
     let words = words();
     let numbers = Numbers::default();
@@ -190,7 +190,7 @@ fn each_profile_and_node_row_names_the_drawer_served_beside_it() {
 
     let mut named: Vec<&Value> = rows
         .iter()
-        .filter(|row| row["kind"] == "profile" || row["kind"] == "node")
+        .filter(|row| ["profile", "node", "device"].contains(&row["kind"].as_str().unwrap_or("")))
         .map(|row| &row["drawer"])
         .collect();
     let mut served: Vec<&Value> = drawers.iter().map(|record| &record["key"]).collect();

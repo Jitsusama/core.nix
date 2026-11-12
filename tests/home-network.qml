@@ -328,36 +328,23 @@ QtObject {
             { label: "time not given", value: "seen by eero" }
         ]);
 
-        // The address kept for a device is in its own drawer.
+        // A subnet eero hasn't named, and each band's security.
         const addresses = model.internet.addresses;
-        const keeping = (reservations, subnets) => Object.assign({}, model, {
+        const odd = Object.assign({}, model, {
             internet: Object.assign({}, model.internet, {
-                addresses: Object.assign({}, addresses, { reservations,
-                    subnets: subnets ?? addresses.subnets })
+                addresses: Object.assign({}, addresses, { reservations: [],
+                    subnets: [Object.assign({}, addresses.subnets[1], { kind: "iot",
+                        name: "things", mask: "255.0.255.0", on: true, internet: false,
+                        open: true })] })
             })
         });
-        const printer = device("printer 1");
-        const reserving = keeping(addresses.reservations.concat([{ mac: printer.mac.toUpperCase(),
-            description: "office printer", address: "10.0.0.30" }]));
-        const odd = keeping([], [Object.assign({}, addresses.subnets[1], { kind: "iot",
-            name: "things", mask: "255.0.255.0", on: true, internet: false, open: true })]);
         expect("a subnet of a kind eero hasn't named, by its name, its mask whole",
             byId(Drawers.internet(odd, now)).things.value, "no internet \u00b7 open "
             + "\u00b7 10.0.0.0 \u00b7 mask 255.0.255.0 \u00b7 DHCP 10.0.0.20 to 10.0.0.254");
-        expect("a device's reserved address, not the one it has", ["address", "reserved"]
-            .map(id => value(byId(Drawers.device(reserving, printer, now)), id)),
-            ["10.0.0.31", "10.0.0.30"]);
-        const keptAsIs = keeping([{ mac: printer.mac, description: "", address: printer.address }]);
-        expect("the address it has, said reserved and said once", [
-            value(byId(Drawers.device(keptAsIs, printer, now)), "address"),
-            byId(Drawers.device(keptAsIs, printer, now)).reserved], ["10.0.0.31 \u00b7 reserved",
-            undefined]);
         expect("bands that differ, band by band", value(byId(Drawers.internet(Object.assign({},
             model, { internet: Object.assign({}, model.internet, { security: [
                 { band: "2.4 GHz", security: "wpa2" }, { band: "5 GHz", security: "wpa3" }] })
         }), now)), "security"), "2.4 GHz WPA2 \u00b7 5 GHz WPA3");
-        expect("none for a device with none", byId(Drawers.device(model, printer, now))
-            .reserved, undefined);
         expect("a name clash", value(byId(Drawers.internet(Object.assign({}, model, {
             internet: Object.assign({}, model.internet, { name_clash: true })
         }), now)), "name-clash"), "another network has its name");
@@ -367,109 +354,16 @@ QtObject {
             <= 1 && internet.up.figure.values.length, 15);
         expect("the day's traffic sparked by the hour", internet.traffic.figure.values.length, 20);
 
-        // A device's drawer: each way's rate and how it's made, and the rest.
-        const generic = Drawers.device(model, device("generic 2"), now);
-        const facts = byId(generic);
-        for (const [id, wanted] of [
-            ["kind", "generic"],
-            ["node", "Den \u00b7 eero Pro 6"],
-            ["signal", "\u221237 dBm"],
-            ["snr", "71 dB"],
-            ["score", "5 of 5 bars"],
-            ["band", "5 GHz \u00b7 channel 52 \u00b7 5,260 MHz"],
-            ["bssid", "02:00:00:00:00:02"],
-            ["rx", "1.20 Gb/s \u00b7 MCS 11 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
-                + "\u00b7 Wi-Fi 6"],
-            ["tx", "1.08 Gb/s \u00b7 MCS 10 \u00b7 2 streams \u00b7 80 MHz \u00b7 800 ns guard "
-                + "\u00b7 Wi-Fi 6"],
-            ["speed", "idle"],
-            ["retries", "0% \u00b7 quiet for 540 ms"],
-            ["packets", "52,846 down \u00b7 94,913 up \u00b7 147,759 in all"],
-            ["resent", "735 \u00b7 0 per million"],
-            ["failed", "5,494 per million"],
-            ["dropped", "0 \u00b7 0 per million"],
-            ["network", "home \u00b7 WPA2 \u00b7 main"],
-            ["address", "10.0.0.45"],
-            ["addresses", "fe80::6"],
-            ["mac", "02:00:00:00:00:0a \u00b7 private"],
-            ["first-seen", "22 Oct 16:54"],
-            ["on-since", "12:43"],
-            ["last-active", "22:49"]
-        ])
-            expect(`a device's ${id}`, value(facts, id), wanted);
-        expect("a device's eyebrow", [generic.eyebrow, generic.names], ["on Den \u00b7 Wi-Fi",
-            true]);
-        // Its title is what its row is called, as the eero daemon serves it, so
-        // a device only its maker names reads "Intel device" in both.
-        const unnamed = Object.assign({}, device("generic 2"), { name: null, hostname: null });
-        const called = Drawers.device(model, unnamed, now, { called: "Intel device" });
-        expect("a device's title is its row's name", called.title, "Intel device");
-        expect("a device's title, without a row's name", Drawers.device(model, unnamed, now).title,
-            unnamed.mac);
-        expect("no hostname that only says its name again", facts.hostname, undefined);
-        expect("a device's drawer leads with how well it's heard", generic.facts.slice(0, 7)
-            .map(fact => fact.id), ["signal", "snr", "score", "band", "rx", "tx", "speed"]);
-        expect("no profile it isn't in", facts.profile, undefined);
-
-        // What moves sparks the device's last hour, as the daemon keeps it.
-        expect("its signal sparked, from the faintest heard to the strongest",
-            facts.signal.figure.values.map(level => Math.round(level * 60 - 90)),
-            [-40, -38, -41, -39, -36, -37]);
-        expect("its SNR sparked", facts.snr.figure.values, [1, 1, 1, 1, 1, 1]);
-        expect("each way's rate sparked to its most", [facts.rx.figure.values.map(share =>
-            Math.round(share * 12009) / 10), facts.tx.figure.values],
-            [[1200.9, 1080.8, 900.7, 1200.9, 1200.9, 1200.9], [1, 1, 1, 1, 1, 1]]);
-        expect("an idle hour sparks as nothing moving", facts.speed.figure.values,
-            [0, 0, 0, 0, 0, 0]);
-        expect("its speed sparked both ways together", byId(Drawers.device(model,
-            device("unknown computer 1"), now)).speed.figure.values.indexOf(1), 1);
-        const tabletFacts = byId(Drawers.device(model, device("tablet 1"), now));
-        expect("no SNR nor rate up eero never gave", [tabletFacts.snr, tabletFacts.tx],
-            [undefined, undefined]);
-        const gapped = Object.assign({}, device("generic 2"), { history: {
-            signal_dbm: [-60, null, -60], rx_mbps: Array(60).fill(10).concat(Array(60).fill(20))
-        } });
-        const gappedFacts = byId(Drawers.device(model, gapped, now));
-        expect("a read eero gave nothing at is a gap", gappedFacts.signal.figure.values
-            .map(level => level === null ? null : Math.round(level * 60 - 90)), [-60, null, -60]);
-        expect("an hour read every 30 seconds fits twenty places", gappedFacts.rx.figure.values,
-            Array(10).fill(0.5).concat(Array(10).fill(1)));
-
-        // Where it moved over the last day, newest first, by when.
-        const moved = facts => facts.slice(facts.findIndex(fact => fact.heading === "roams") + 1,
-            facts.findIndex(fact => fact.heading === "events"));
-        expect("a move to another node and band", moved(Drawers.device(model, device("tablet 1"),
-            now).facts), [{ label: "22:44", value: "Study to Den \u00b7 2.4 GHz to 5 GHz" }]);
-        expect("a move to another band on one node", moved(Drawers.device(model, Object.assign({},
-            device("tablet 1"), { roams: [{ at: "2026-11-07T21:10:00Z", from_node: "2001",
-                node: "2001", from_band: "2.4 GHz", band: "5 GHz" }] }), now).facts),
-            [{ label: "21:10", value: "Den \u00b7 2.4 GHz to 5 GHz" }]);
-        expect("no moves, no heading", generic.facts.some(fact => fact.heading === "roams"),
-            false);
-        const older = byId(Drawers.device(model, device("printer 1"), now));
-        expect("a Wi-Fi 4 device's rate", value(older, "rx"),
-            "72.2 Mb/s \u00b7 MCS 7 \u00b7 1 stream \u00b7 20 MHz \u00b7 400 ns guard \u00b7 Wi-Fi 4");
-        expect("no rate up it never gave", older.tx, undefined);
-        expect("eero's score as a share where it gives no bars", byId(Drawers.device(model,
-            Object.assign({}, model.devices.find(one => one.mac === "02:00:00:00:00:05"),
-            { bars: null }), now)).score.value, "78%");
-        const inProfile = byId(Drawers.device(Object.assign({}, model, {
-            profiles: [{ id: "3001", name: "profile 1", paused: true, devices: [] }]
-        }), Object.assign({}, device("phone 1"), { profile: "3001" }), now));
-        expect("a device's profile", value(inProfile, "profile"), "profile 1 \u00b7 paused");
-
         // What happened to the internet, newest first, in its drawer, with
         // each notice the daemon told set among eero's events; what
-        // happened to a device is in the device's own.
+        // happened to a device is in the device's own, which the eero
+        // daemon serves (modules/eero's drawers/device_tests.rs).
         const events = Drawers.internet(model, now).facts;
         const timeline = events.slice(events.findIndex(fact => fact.heading === "events") + 1);
         // A name in what eero said keeps its words on one line, a name
         // inside a longer one kept as part of it.
-        const named = Drawers.device(Object.assign({}, model, { told: [], events: [{
-            at: "2026-11-07T22:50:00Z", text: "laptop computer 1 joined, then phone 1." }] }),
-            device("laptop computer 1"), now).facts;
-        expect("each name in an event kept whole",
-            named[named.findIndex(fact => fact.heading === "events") + 1].value,
+        expect("each name in an event kept whole", History.sentence(model,
+            "laptop computer 1 joined, then phone 1."),
             "laptop\u00a0computer\u00a01\u200b joined, then phone\u00a01.");
         // laptop computer 1 joining is told in its own drawer.
         expect("every notice but a device's, and no device's event", timeline.length, 4);
@@ -490,46 +384,6 @@ QtObject {
         expect("a notice with nothing more to say is its summary",
             quiet[quiet.findIndex(fact => fact.heading === "events") + 1].value,
             "The internet is back");
-        const tablet = Drawers.device(model, device("tablet 1"), now).facts;
-        expect("a device's own events", tablet.slice(tablet.findIndex(fact =>
-            fact.heading === "events") + 1).map(fact => fact.value), [
-            "tablet\u00a01\u200b connected to Den eero Pro 6 on 5.2\u00a0GHz channel 52.",
-            "tablet\u00a01\u200b disconnected from Study eero Pro 6."
-        ]);
-        expect("a notice told of a device, in its drawer", under(Drawers.device(model,
-            device("laptop computer 1"), now).facts, "events").some(fact => String(fact.value)
-            .includes("joined the home network")), true);
-        expect("none of another's", Drawers.device(model, device("generic 2"), now).facts
-            .some(fact => fact.heading === "events"), false);
-
-        // Each device's readings kept as records come, the newest last, so its
-        // drawer sparks its signal and its speed.
-        const once = Home.remembered({}, model, 3);
-        expect("a first reading", once["02:00:00:00:00:0a"], { signal: [-37], speed: [0] });
-        const later = Object.assign({}, model, {
-            devices: [Object.assign({}, device("generic 2"), {
-                signal_dbm: -41,
-                speed: { down_mbps: 2, up_mbps: 0.5 }
-            })]
-        });
-        let kept = once;
-        for (let read = 0; read < 3; read++)
-            kept = Home.remembered(kept, later, 3);
-        expect("readings kept to the most", kept["02:00:00:00:00:0a"], {
-            signal: [-41, -41, -41], speed: [2.5, 2.5, 2.5]
-        });
-        expect("a device gone is let go", Object.keys(kept).length, 1);
-        // Those readings spark its drawer only where the record keeps no
-        // history, as one from an older daemon wouldn't.
-        const unkeptDevice = Object.assign({}, device("generic 2"), { history: {} });
-        const sparked = byId(Drawers.device(model, unkeptDevice, now, {
-            readings: Home.remembered(once, model, 20)["02:00:00:00:00:0a"]
-        }));
-        expect("a signal read twice, sparked", sparked.signal.figure.values.map(level =>
-            Math.round(level * 60 - 90)), [-37, -37]);
-        expect("a speed read twice, sparked", sparked.speed.figure.shape, "spark");
-        expect("a signal read once, as a stroke", byId(Drawers.device(model, unkeptDevice, now))
-            .signal.figure.shape, "stroke");
 
         // A profile: how it stands. Its drawer is the eero daemon's
         // (modules/eero's drawers_tests.rs).
