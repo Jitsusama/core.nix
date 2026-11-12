@@ -22,11 +22,13 @@
 //!        shaper stop
 //!        shaper record [--state DIR]
 //!        shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...
+//!        shaper day [--record DIR] [--out DIR] [YYYY-MM-DD]
 
 mod call;
 mod classes;
 mod cost;
 mod cpu;
+mod day;
 mod icmp;
 mod links;
 mod live;
@@ -150,10 +152,11 @@ fn main() -> ExitCode {
         }
         Some("record") => recording(&options(rest).state),
         Some("replay") => replay::command(rest),
+        Some("day") => day::command(rest),
         Some("proof") => proof::command(rest),
         Some("proof-call") => call::command(rest),
         _ => {
-            eprintln!("usage: shaper run | status | stop | record | replay | proof");
+            eprintln!("usage: shaper run | status | stop | record | replay | day | proof");
             ExitCode::from(2)
         }
     }
