@@ -483,17 +483,11 @@
       "answers": ["asks", "ask"],
       "said": {
         "from": "{session} · {quest}",
-        "runs": "Runs",
-        "in": "In",
         "at": "{path} at {commit}",
         "notGit": "{path}, not a git folder",
-        "changes": "Changes",
         "uncommitted": "{count} not committed",
         "unknown": "couldn't tell",
-        "givenAs": "Given as",
         "given": "{name}, for {minutes} min",
-        "ends": "Ends",
-        "outcome": "Outcome",
         "releasing": "reading 1Password",
         "ran": "ran, exit {exit}",
         "stopped": "stopped at the time limit",
@@ -504,6 +498,36 @@
         "one": "1 waiting",
         "waiting": "{count} waiting"
       }
+    },
+    {
+      "id": "asks:fact:runs",
+      "in": "asks",
+      "name": "Runs"
+    },
+    {
+      "id": "asks:fact:in",
+      "in": "asks",
+      "name": "In"
+    },
+    {
+      "id": "asks:fact:changes",
+      "in": "asks",
+      "name": "Changes"
+    },
+    {
+      "id": "asks:fact:given",
+      "in": "asks",
+      "name": "Given As"
+    },
+    {
+      "id": "asks:fact:ends",
+      "in": "asks",
+      "name": "Ends"
+    },
+    {
+      "id": "asks:fact:outcome",
+      "in": "asks",
+      "name": "Outcome"
     },
     {
       "id": "quests",
@@ -9783,7 +9807,10 @@
         "within": "in {vault} \u00b7 {kind}",
         "inVault": "{count} in 1 vault",
         "inVaults": "{count} in {vaults} vaults"
-      }
+      },
+      "parts": [
+        "asks"
+      ]
     },
     {
       "id": "verb:passwords:unlock",

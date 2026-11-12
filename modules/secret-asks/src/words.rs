@@ -1,7 +1,9 @@
 //! Asks' words, as the launcher's vocabulary says them
 //! (modules/quickshell/launcher/words.json, the `asks` thing's `said`),
 //! read rather than written again here, so a word changes in one place,
-//! as the quests daemon reads Quests' (modules/quests/src/words.rs).
+//! as the quests daemon reads Quests' (modules/quests/src/words.rs). A
+//! drawer fact's name is a thing of its own, `asks:fact:<id>`, as Mail's
+//! are, kept here under `fact:<id>`.
 
 use std::collections::BTreeMap;
 
@@ -9,6 +11,9 @@ use serde_json::Value;
 
 /// The thing in the vocabulary Asks' words are under.
 const THING: &str = "asks";
+
+/// What each of Asks' drawer facts is named under, before its id.
+const FACT: &str = "asks:fact:";
 
 /// Asks' words, by their keys.
 #[derive(Debug, Default)]
@@ -23,14 +28,17 @@ impl Words {
     /// Where the text isn't JSON.
     pub fn from_vocabulary(text: &str) -> serde_json::Result<Self> {
         let vocabulary: Value = serde_json::from_str(text)?;
-        let things = vocabulary["things"].as_array().into_iter().flatten();
-        let said = things
+        let things = || vocabulary["things"].as_array().into_iter().flatten();
+        let said = things()
             .filter(|thing| thing["id"] == THING)
             .filter_map(|thing| thing["said"].as_object())
             .flatten()
-            .filter_map(|(key, word)| Some((key.clone(), word.as_str()?.to_owned())))
-            .collect();
-        Ok(Self(said))
+            .filter_map(|(key, word)| Some((key.clone(), word.as_str()?.to_owned())));
+        let facts = things().filter_map(|thing| {
+            let id = thing["id"].as_str()?.strip_prefix(FACT)?;
+            Some((format!("fact:{id}"), thing["name"].as_str()?.to_owned()))
+        });
+        Ok(Self(said.chain(facts).collect()))
     }
 
     /// Words given outright, as a test gives them.

@@ -117,7 +117,7 @@ fn homed(path: &str, home: &str) -> String {
 
 /// The fact saying what came of an answered ask, or none while it waits.
 fn outcome(held: &Held, words: &Words) -> Option<Value> {
-    let name = words.fill("outcome", &[]);
+    let name = words.fill("fact:outcome", &[]);
     let said = match &held.state {
         State::Waiting => return None,
         State::Releasing => words.fill("releasing", &[]),
@@ -158,8 +158,12 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
     };
     let mut facts = vec![
         // Each identifies what runs, so the drawer lays it whole, never cut.
-        json!({"name": words.fill("runs", &[]), "said": command.join(" "), "identifies": true}),
-        json!({"name": words.fill("in", &[]), "said": place, "identifies": true}),
+        json!({
+            "name": words.fill("fact:runs", &[]),
+            "said": command.join(" "),
+            "identifies": true,
+        }),
+        json!({"name": words.fill("fact:in", &[]), "said": place, "identifies": true}),
     ];
     let changes = match held.tree.uncommitted {
         Some(0) => None,
@@ -167,16 +171,17 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
         None => Some(words.fill("unknown", &[])),
     };
     if let Some(said) = changes.filter(|_| held.tree.commit.is_some()) {
-        facts.push(json!({"name": words.fill("changes", &[]), "said": said, "hue": "warning"}));
+        facts
+            .push(json!({"name": words.fill("fact:changes", &[]), "said": said, "hue": "warning"}));
     }
     let minutes = ask.minutes.to_string();
     facts.push(json!({
-        "name": words.fill("givenAs", &[]),
+        "name": words.fill("fact:given", &[]),
         "said": words.fill("given", &[("name", &ask.given), ("minutes", &minutes)]),
     }));
     if held.state == State::Waiting {
         facts.push(json!({
-            "name": words.fill("ends", &[]),
+            "name": words.fill("fact:ends", &[]),
             "at": ask.ends_ms(), "as": Form::Moment.name(),
         }));
     }
@@ -252,14 +257,14 @@ mod tests {
     fn words() -> Words {
         Words::of(&[
             ("from", "{session} \u{b7} {quest}"),
-            ("runs", "Runs"),
-            ("in", "In"),
+            ("fact:runs", "Runs"),
+            ("fact:in", "In"),
             ("at", "{path} at {commit}"),
-            ("changes", "Changes"),
+            ("fact:changes", "Changes"),
             ("uncommitted", "{count} not committed"),
-            ("givenAs", "Given as"),
+            ("fact:given", "Given As"),
             ("given", "{name}, for {minutes} min"),
-            ("outcome", "Outcome"),
+            ("fact:outcome", "Outcome"),
             ("ran", "ran, exit {exit}"),
         ])
     }
