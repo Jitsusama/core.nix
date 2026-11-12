@@ -61,10 +61,7 @@ pub fn head(config: &Config, hosted: &Hosted, last: Option<&str>) -> Result<Stri
                 }
                 _ => return Ok(head),
             },
-            Err(failure) => eprintln!(
-                "update-to-main: {}, so main is fetched instead",
-                failure.why
-            ),
+            Err(failure) => eprintln!("{}", fetched_instead(&failure)),
         }
     }
     if let Some(last) = last
@@ -84,6 +81,18 @@ pub fn head(config: &Config, hosted: &Hosted, last: Option<&str>) -> Result<Stri
         }
     }
     Ok(head)
+}
+
+/// Says why main is fetched rather than read from the host, with what the
+/// read said, such as which answer curl failed on and its HTTP status, on
+/// one line. On 11 and 12 November a read ended with curl's exit 22 and
+/// nothing more, and the ten-minute fetch that followed said no cause.
+fn fetched_instead(failure: &Failure) -> String {
+    let mut why = failure.why.clone();
+    if !failure.lines.is_empty() {
+        why = format!("{why}: {}", failure.lines.join("; "));
+    }
+    format!("update-to-main: {why}, so main is fetched instead")
 }
 
 /// Unpacks the flake's folder at `commit`, fetches its private inputs as
@@ -449,6 +458,29 @@ mod tests {
         assert!(!is_commit("main"));
         assert!(!is_commit(&format!("--{}", "a".repeat(38))));
         assert!(!is_commit(&"a".repeat(41)));
+    }
+
+    #[test]
+    fn a_read_that_failed_says_what_curl_said() {
+        let failure = Failure {
+            why: "reading main's folder from the host failed (exit status: 22)".to_owned(),
+            lines: vec![
+                "https://host/api/git/trees/abc answered 404".to_owned(),
+                "curl: (22) The requested URL returned error: 404".to_owned(),
+            ],
+        };
+        assert_eq!(
+            fetched_instead(&failure),
+            "update-to-main: reading main's folder from the host failed (exit status: 22): \
+             https://host/api/git/trees/abc answered 404; \
+             curl: (22) The requested URL returned error: 404, so main is fetched instead",
+            "the fallback should say what curl said, on one line"
+        );
+        assert_eq!(
+            fetched_instead(&Failure::new("the host gave no answer")),
+            "update-to-main: the host gave no answer, so main is fetched instead",
+            "a failure with nothing said should read as before"
+        );
     }
 
     #[test]

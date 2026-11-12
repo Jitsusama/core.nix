@@ -3639,7 +3639,8 @@
     the update that runs, refuses any other ask, serves on a socket only its group writes, and keeps
     how each update ended in a file only its group reads; and a hosted main, unsigned, is built
     from its flake's folder with root reading the account's checkout, fetched there first when it
-    lacks main, its private inputs fetched by their locks, refused when rewritten, and builds
+    lacks main and a read of the host's API fails, saying what the read said, its private inputs
+    fetched by their locks, refused when rewritten, and builds
     nothing without a token; and a followed input is built at its own signed main past the lock,
     builds again when only it moved, and is refused unsigned or behind its lock; and building
     elsewhere sends only the heavy pieces away, to the builders named when some are, builds nothing
