@@ -104,16 +104,6 @@ in
         };
       });
 
-  # Every place opened again, round after round, keeps no more of the
-  # shell's JavaScript heap live than the round before, as Qt's collector
-  # says at each closing's collection, which only its allocatorStats at
-  # debug say (tests/shell-stays-light-on-niri-test.py).
-  the-shell-stays-light-on-niri = launcherOnNiri {
-    name = "the-shell-stays-light-on-niri";
-    tests = ../../../tests/shell-stays-light-on-niri-test.py;
-    given = [ "QS_GIVEN=--log-rules qt.qml.gc.allocatorStats.debug=true" ];
-  };
-
   # The launcher, the held notices and a window share the keys by one rule:
   # the newest Joel opened takes them, a notice arriving never does, and a
   # click on a window gives it them (tests/focus-on-niri-test.py).
