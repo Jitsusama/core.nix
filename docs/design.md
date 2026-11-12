@@ -869,6 +869,40 @@ take turns, the name first and then what it says, so only one thing
 moves at a time. Nothing reads on unseen: a closed launcher keeps its
 selection, but its rows rest at their start until it opens again.
 
+**Text that doesn't fit reads at a glance** (Joel, 2026-11-11: "i hate
+gross line wraps, particularly wheen they make it hard to parse
+information"). What's too long is made shorter by design, in a written
+order, so every line still says one whole thing:
+
+- **A row is one line, always.** Short of room its note gives way by whole
+  items from its end, then its right shortens to its short form ("about
+  $604 in all" to "$604"), then its name ends at a whole word in an
+  ellipsis and reads on at rest. How it stands never gives way.
+- **A source's raw text is made a name before it's a row.** A mail's
+  subject, a meeting invite or a window's title loses what the row says
+  elsewhere or the drawer holds: "Accepted:", "Invitation:", "Re:" and
+  "Fwd:" become the row's state; a schedule after "@", a time zone or a
+  sender in brackets, an address and a program's name after a dash go to
+  the drawer. "Accepted: Joel / Chad 1:1 @ Every 2 weeks from 11:30am to
+  12pm on Monday (AST) (Chad Cromwell)" is the row "Joel / Chad 1:1",
+  its right "accepted · 2 Nov". An agent's window is named by its
+  session, never its title's "π - " and folder.
+- **A link reads as what it points at.** A pull request is "world#2396409"
+  and a review on it "world#2396409 review", a page its site and title; the
+  address itself is in the nerd fold, whole, where y copies it.
+- **Only the drawer wraps, and only where a line is prose or a value.**
+  Its title takes two lines at most, broken between words and balanced,
+  never one word alone below, and past two ends at a whole word in an
+  ellipsis, its whole kept in the nerd fold. A fact sits beside its label
+  while it fits, else under it, whole, breaking between words or at an
+  identifier's marks; a label never wraps. Its why and its body wrap as
+  prose at the serif's measure, five lines at most, the rest in the fold.
+- **Nothing that reads as one is split.** A figure and its unit, a date's
+  parts, a chord's keys, a name and its count, and a time and its zone are
+  joined so no break falls between them.
+- **Never wrapped:** a row, the foot, the path, a head, a label, a
+  figure, a key.
+
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
 bar for a level (the charge, a light, the volume), filling from the left;
