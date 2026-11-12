@@ -114,6 +114,16 @@ from the first look that finds the internet out to the first that finds
 it back, or to the last that found it out when nothing looked for over
 10 minutes between.
 
+After each look the daemon rewrites the day's figures whole in
+`$XDG_STATE_HOME/eero/day/<date>.json`, the date in the machine's zone
+([`src/day.rs`][day]), for a review to hold the home network to: how
+many looks came from home and from elsewhere, the 95th percentile of
+the gateway's, the internet's and DNS's times from home, how many found
+the internet out, and the minutes it was out. Only looks from home
+count. They are idle-time figures, not under load; loss and delay under
+load are the shaper's. A day's file goes once the history no longer
+keeps the day.
+
 The model's `cloud.state` says whether the figures are current:
 
 - `answering`: eero answered the last read.
@@ -196,5 +206,6 @@ offered by its hardware address.
 
 [history]: src/history/mod.rs
 [probe]: src/probe.rs
+[day]: src/day.rs
 [notices]: src/notices.rs
 [desktop]: src/desktop.rs

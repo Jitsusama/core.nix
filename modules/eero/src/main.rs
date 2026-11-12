@@ -28,6 +28,7 @@ mod api;
 mod called;
 mod cloud;
 mod daemon;
+mod day;
 mod desktop;
 mod drawers;
 #[cfg(test)]

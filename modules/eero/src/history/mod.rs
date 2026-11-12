@@ -25,6 +25,7 @@
 //! and subject, so a restart never tells one twice, and what the notice
 //! said, so the model carries 30 days of what was told.
 
+mod day;
 mod drawing;
 mod samples;
 
