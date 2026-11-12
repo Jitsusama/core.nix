@@ -71,6 +71,17 @@ Provider {
     // only while they're wanted (Provider.qml's wanted).
     readonly property var all: opened() && provider.wanted ? laidOut() : []
 
+    // Yet its sessions' rows are wrapped as the shell starts, in Agents'
+    // turn of it (Launcher.qml's warmNext), and kept by key (wrapped), so
+    // the first letter typed at home finds them wrapped and a change since
+    // wraps only the row it changed. Wrapped by that letter instead, 85
+    // rows held it on Joel's laptop (his journal, 2026-11-11 23:10;
+    // RCTRF8's d181771a).
+    onWarmingChanged: {
+        if (provider.warming)
+            laidOut();
+    }
+
     function opened() {
         const launcher = provider.launcher;
         return !!launcher && (launcher.open || launcher.cataloguing);
