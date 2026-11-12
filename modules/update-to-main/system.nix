@@ -422,6 +422,16 @@ in
         and at least every ten minutes; none to ask only when someone does.
       '';
     };
+    followerTells = mkOption {
+      type = types.nullOr (types.nonEmptyListOf types.str);
+      default = null;
+      description = ''
+        The command the follower runs, as its account, to tell its person
+        the machine can't update: once for heads that fail, and for a
+        refusal only a person's ask gets past, never for being busy. Why
+        is given after its own arguments. None to only log it.
+      '';
+    };
     health = mkOption {
       type = types.listOf (types.nonEmptyListOf types.str);
       description = ''
@@ -552,6 +562,7 @@ in
               follower_waits = busy.followerWaits;
               follower_waits_at_most = busy.followerWaitsAtMost;
             }) cfg.refuseWhile;
+            follower_tells = cfg.followerTells;
             holds =
               if cfg.holdRestarts ++ cfg.holdChanges == [ ] && cfg.holdAccountRestarts == { } then
                 null

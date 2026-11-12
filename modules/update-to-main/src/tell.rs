@@ -20,16 +20,21 @@ pub struct Telling {
 impl Telling {
     /// Counts an update at `heads` that failed for `why`.
     pub fn failed(&mut self, heads: &Followed, why: &str) {
-        let _ = (heads, why);
+        if self.told.as_ref() != Some(heads) {
+            self.told = Some(heads.clone());
+            self.telling = Some(why.to_owned());
+        }
     }
 
     /// Counts a refusal for `why` that waits for a person's ask.
     pub fn waits(&mut self, why: &str) {
-        let _ = why;
+        self.telling = Some(why.to_owned());
     }
 
     /// Counts an update that went through, so the next failure is told.
-    pub fn went_through(&mut self) {}
+    pub fn went_through(&mut self) {
+        self.told = None;
+    }
 
     /// Why the machine can't update, once.
     pub fn take(&mut self) -> Option<String> {

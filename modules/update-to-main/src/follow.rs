@@ -242,6 +242,7 @@ impl Follower {
             Line::Done { .. } | Line::Unchanged { .. } => {
                 self.failed = None;
                 self.dropped = 0;
+                self.telling.went_through();
                 None
             }
             Line::Failed { why, lines, .. } => {
@@ -254,6 +255,7 @@ impl Follower {
                 let wait = if (1..=DROPPED_TRIES).contains(&self.dropped) {
                     DROPPED_AGAIN
                 } else {
+                    self.telling.failed(&heads, why);
                     FAILED_AGAIN
                 };
                 self.failed = Some((heads, now, wait));
@@ -261,6 +263,7 @@ impl Follower {
             }
             Line::Refused { why, .. } if why.starts_with(NEEDS_HOLD) => {
                 self.held = Some(ended.to_owned());
+                self.telling.waits(why);
                 Some(why.clone())
             }
             _ => {
