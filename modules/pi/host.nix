@@ -65,6 +65,14 @@ let
         # new harness reaches it at its next start: a login, a crash, or a
         # restart its bump gate chooses.
         X-SwitchMethod = "keep-old";
+        # A host that crashes again each time it comes back would park and
+        # resume every conversation it holds every few seconds, so a fourth
+        # start within ten minutes is refused and the unit stays failed,
+        # saying start-limit-hit in its status, until it is fixed. Every start
+        # counts, a restart by hand included; `systemctl --user reset-failed`
+        # clears the count.
+        StartLimitIntervalSec = 600;
+        StartLimitBurst = 3;
       };
       Service = {
         # The host says it's ready once its socket listens, which is when a
@@ -110,6 +118,18 @@ let
         # takes back what it held.
         Restart = "on-failure";
         RestartSec = "5s";
+        # A host whose loop stops turning answers nobody yet stays active, so
+        # once ready it pings from its own loop four times in each of these,
+        # and one gone quiet for the whole of it is killed and restarted, to
+        # resume what it holds. A turn is awaited, never run on the loop, so
+        # no turn's length stops the pings. Probing both hosts' sockets once
+        # a second through a night's work on 12 November, the longest an
+        # answer waited was 3.3 s; on 11 November a starved machine ran 13 s
+        # of work in 96 s, and two minutes leaves the loop that slowdown five
+        # times over. systemd kills a quiet host with SIGABRT, so its core,
+        # the one record of where its loop wedged, goes to systemd-coredump;
+        # writing it may take TimeoutStopSec's minute before SIGKILL.
+        WatchdogSec = "2min";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
         # refuse again, so it waits for a fix rather than retrying forever.

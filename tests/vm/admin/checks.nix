@@ -46,4 +46,7 @@ onLinux {
   # in files the lender's account can't write, shows only with systemd
   # running the service as its own account.
   vm-root-builds-only-where-it-trusts = import ./offload-lines.nix { inherit self pkgs; };
+  # Whether a pi host's unit restarts a wedged host, and leaves one that
+  # keeps crashing down, shows only with the account's own systemd running it.
+  vm-a-wedged-pi-starts-again = import ./pi-hosts-recover.nix { inherit self pkgs; };
 }
