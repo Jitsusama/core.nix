@@ -391,14 +391,16 @@ pub fn net_round(state: &str) -> Option<(String, bool)> {
 }
 
 /// The net's hold on switching, from its `hold.json`: the test a merge
-/// broke, the merge's pull request when it found one, and whether its
-/// revert is under way.
+/// broke, the merge's pull request when it found one, whether its revert
+/// merged, and whether its first try at one is still landing: the net
+/// writes `revert_again` only once that try ends, merged or not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetHold {
     pub at: i64,
     pub test: String,
     pub bad_pr: Option<u64>,
     pub reverting: bool,
+    pub landing: bool,
 }
 
 #[must_use]
@@ -409,6 +411,7 @@ pub fn net_hold(hold: &str) -> Option<NetHold> {
         test: String,
         bad_pr: Option<u64>,
         revert_commit: Option<String>,
+        revert_again: Option<bool>,
     }
     let hold = serde_json::from_str::<Hold>(hold).ok()?;
     Some(NetHold {
@@ -416,6 +419,7 @@ pub fn net_hold(hold: &str) -> Option<NetHold> {
         test: hold.test,
         bad_pr: hold.bad_pr,
         reverting: hold.revert_commit.is_some(),
+        landing: hold.revert_commit.is_none() && hold.revert_again.is_none(),
     })
 }
 
@@ -434,7 +438,14 @@ mod tests {
                 test: "vm-a".into(),
                 bad_pr: Some(2059),
                 reverting: false,
+                landing: true,
             })
+        );
+        let failed_to = "{\"at\":1,\"bad_pr\":7,\"revert_commit\":null,\"revert_again\":false,\
+                         \"test\":\"vm-a\"}";
+        assert!(
+            net_hold(failed_to).is_some_and(|h| !h.landing && !h.reverting),
+            "a revert that ended unmerged was read as still landing"
         );
         let reverting = "{\"at\":1,\"bad_pr\":7,\"revert_commit\":\"ab\",\"test\":\"vm-a\"}";
         assert!(net_hold(reverting).is_some_and(|h| h.reverting));

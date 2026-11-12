@@ -45,6 +45,7 @@ mod judge;
 mod machine;
 mod mesh;
 mod net;
+mod owe;
 mod records;
 mod revive;
 mod speed;
@@ -88,12 +89,22 @@ fn main() -> ExitCode {
         Some("tick") => {}
         Some("day") => return day(args),
         Some("axes") => return axes::run(args),
+        Some("owe") => {
+            return match folders() {
+                Ok((_, _, folder)) => owe::run(args, &folder, now_ms() / 1000),
+                Err(err) => {
+                    eprintln!("cadence: {err}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         _ => {
             eprintln!(
                 "usage: cadence tick [--watcher ADDRESS --orchestrator ADDRESS] [--restart WORDS \
                  [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
                  {DAY_USAGE}\n       \
-                 cadence axes [AXIS]"
+                 cadence axes [AXIS]\n       {}",
+                owe::USAGE
             );
             return ExitCode::from(2);
         }
