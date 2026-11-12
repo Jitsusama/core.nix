@@ -62,6 +62,27 @@ one is answered for it in [the surfaces table][surfaces].
 12. **Fast.** Inside the latency budgets, at the panel's full refresh rate,
     with nothing spawned or polled that needn't be.
 
+## Written for Joel
+
+Anything put in front of Joel to read is written for him, not for the
+agents that made it: a look on his look list, a page, a brief, a landing's
+line, a notice. Joel, 2026-11-11, of a research synthesis sent him: "anything
+that is sent for me to look at needs to be written for me, like what the UX
+canon says is not written for humans to read. i tried, it is too hard for
+me to parse."
+
+- **What it means for him comes first.** It opens with what changes for him
+  or what he's asked to do, then why, in short sentences of plain words.
+- **An example of his own.** Each point carries one thing from his own
+  machine (a row, a count, a window), never an abstract case.
+- **The working stays one step away.** Citations, identifiers, codes,
+  numbered rules and field names stay out of what he reads, kept in a
+  record for agents beside it: a research document, a drawer's facts, a
+  page's text twin.
+- **Why it's there comes with it.** A look says what it is, why it matters
+  to him now, what he's asked to do, or that nothing is and it's just to
+  see, and which quest it belongs to, so he can place it days later.
+
 ## The Quality Bar
 
 A surface is done only when all of this is true, and nothing is shown to Joel
@@ -847,6 +868,40 @@ opens the drawer to be read (VKCF3Z, 2026-10-30). With both cut they
 take turns, the name first and then what it says, so only one thing
 moves at a time. Nothing reads on unseen: a closed launcher keeps its
 selection, but its rows rest at their start until it opens again.
+
+**Text that doesn't fit reads at a glance** (Joel, 2026-11-11: "i hate
+gross line wraps, particularly wheen they make it hard to parse
+information"). What's too long is made shorter by design, in a written
+order, so every line still says one whole thing:
+
+- **A row is one line, always.** Short of room its note gives way by whole
+  items from its end, then its right shortens to its short form ("about
+  $604 in all" to "$604"), then its name ends at a whole word in an
+  ellipsis and reads on at rest. How it stands never gives way.
+- **A source's raw text is made a name before it's a row.** A mail's
+  subject, a meeting invite or a window's title loses what the row says
+  elsewhere or the drawer holds: "Accepted:", "Invitation:", "Re:" and
+  "Fwd:" become the row's state; a schedule after "@", a time zone or a
+  sender in brackets, an address and a program's name after a dash go to
+  the drawer. "Accepted: Joel / Chad 1:1 @ Every 2 weeks from 11:30am to
+  12pm on Monday (AST) (Chad Cromwell)" is the row "Joel / Chad 1:1",
+  its right "accepted · 2 Nov". An agent's window is named by its
+  session, never its title's "π - " and folder.
+- **A link reads as what it points at.** A pull request is "world#2396409"
+  and a review on it "world#2396409 review", a page its site and title; the
+  address itself is in the nerd fold, whole, where y copies it.
+- **Only the drawer wraps, and only where a line is prose or a value.**
+  Its title takes two lines at most, broken between words and balanced,
+  never one word alone below, and past two ends at a whole word in an
+  ellipsis, its whole kept in the nerd fold. A fact sits beside its label
+  while it fits, else under it, whole, breaking between words or at an
+  identifier's marks; a label never wraps. Its why and its body wrap as
+  prose at the serif's measure, five lines at most, the rest in the fold.
+- **Nothing that reads as one is split.** A figure and its unit, a date's
+  parts, a chord's keys, a name and its count, and a time and its zone are
+  joined so no break falls between them.
+- **Never wrapped:** a row, the foot, the path, a head, a label, a
+  figure, a key.
 
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a

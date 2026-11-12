@@ -24,6 +24,11 @@ throughout.
 - **Humans and agents are equal readers.** The same facts are on the page for
   people and beside it for agents, and words written for an agent (its
   numbering, its codes) never reach a person.
+- **A page sent for Joel to read is written for him** (2026-11-11: "anything
+  that is sent for me to look at needs to be written for me"): what it means
+  for him first, an example from his own machine, no citations or codes in
+  the running text, and the agents' record one link away. docs/design.md's
+  Written for Joel holds every session to it.
 
 ## Short and Plain, Together
 

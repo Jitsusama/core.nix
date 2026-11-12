@@ -143,6 +143,24 @@ of its own, a guide or a lexicon, and each is held to the first kind.
 | Whimsy | pervasive on a showcase, at thresholds on a page read under pressure | in marks and thresholds (an empty list, a landing), never on the controls |
 | Its worst failure | a fact dump, a history lesson, a hodgepodge | overwhelm, relayout, flicker, hidden places |
 
+## Where a Site Lives
+
+A site lives where its readers are. One shared with other people goes on
+the host they reach. Anything just for Joel (a mock, a tour, a record, a
+page written for him) lives on his own machine, under one local home, never
+on a shared host: "we need to not creeeeeate quick sites for stuff like
+luancher shapes ... we can run them locally though as just standard sites,
+that is awesome" (2026-11-11).
+
+- **One home ties them together.** Each site is a folder under
+  `~/.local/share/jitsusama/sites/`, reached at
+  `http://sites.localhost:8484/<site>/`, and the home page at its root lists
+  every site, newest first, each saying what it is and what it asks of him.
+  A new site adds its row there; a site with no value left is removed, row
+  and folder.
+- **Nothing is a one-off.** A site for him is never put anywhere else, and a
+  shared one that's done with is taken down rather than left to drift.
+
 ## The Kit
 
 The theme module writes the theme for the web on every machine, at
@@ -694,6 +712,8 @@ Each is a verdict on a real site; the rule it gave is above.
 - Branches that don't look openable; "open" and "close" words on them.
 - Scroll animations that finish off screen, rush past, or snap past the text.
 - Counting numbers, and a freshness time that measures publishing, not facts.
+- A shared host full of sites only he reads, each one apart from the rest:
+  "i need to not have 1,000 quick sites disconnected" (2026-11-11).
 - A generic app shell, "too corporate and the UX is weeak. And totally not
   enough design or typography magic" (2026-11-02).
 - Navigation at the bottom, places in a menu, hover cards over content, help

@@ -195,6 +195,7 @@
         libvirt = ./modules/libvirt/home.nix;
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
+        local-sites = ./modules/local-sites/home.nix;
         lsd = ./modules/lsd/home.nix;
         machine = ./modules/machine/home.nix;
         meaning = ./modules/meaning/home.nix;
