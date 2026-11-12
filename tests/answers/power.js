@@ -51,9 +51,9 @@ function run(failures) {
     // A profile's own drawer: the one on instead while it isn't, its own
     // holds alone, Full Performance's being held back on its drawer
     // alone, and what it set only while it's on.
-    const holds = [{ profile: "performance", app: "Steam", reason: "a game" },
+    const profileHolds = [{ profile: "performance", app: "Steam", reason: "a game" },
         { profile: "power-saver", app: "GNOME", reason: "" }];
-    const choice = (daemon, known) => Power.choiceFacts(daemon, Object.assign({ holds,
+    const choice = (daemon, known) => Power.choiceFacts(daemon, Object.assign({ holds: profileHolds,
         slowed: "heat", current: "Balanced", firmware: "balanced",
         processor: "balance_performance" }, known), profileWords)
         .map(fact => `${fact.id.slice("session:profile:".length)} ${fact.value}`);

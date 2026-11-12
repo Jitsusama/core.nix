@@ -7,6 +7,7 @@
 // chargers' rows are the machine daemon's, served ready
 // (modules/machine's power_rows.rs), and none of it is worked out here.
 .pragma library
+.import "Order.js" as Order
 
 const SPACES = /\s+/;
 
@@ -84,8 +85,8 @@ function choiceFacts(daemon, known, said) {
     ].filter(fact => fact.value !== "");
 }
 
-// The programs whose windows are open, the most windows first, then by
-// name, each { name, count }, from niri's windows (Niri.qml's, by id),
+// The programs whose windows are open, the most windows first, then A to
+// Z, as amounts are (Order.js), each { name, count }, from niri's windows (Niri.qml's, by id),
 // each named by `named` from its app_id, and how many windows in all, a
 // window with no app_id counted there alone.
 function byProgram(windows, named) {
@@ -99,8 +100,9 @@ function byProgram(windows, named) {
             counted[name] = (counted[name] ?? 0) + 1;
         }
     }
-    const programs = Object.keys(counted).map(name => ({ name, count: counted[name] }))
-        .sort((one, other) => other.count - one.count || one.name.localeCompare(other.name));
+    const programs = Order.sorted(
+        Object.keys(counted).map(name => ({ name, count: counted[name] })),
+        Order.amounts({ amount: program => program.count, name: program => program.name }));
     return { open, programs };
 }
 

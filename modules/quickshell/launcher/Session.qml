@@ -122,7 +122,10 @@ Provider {
     // stays running behind the lock, its key, and whose windows stay open.
     // Worked out only as it's drawn, since niri's windows change all day.
     function lockDrawer() {
-        const words = Words.of("session:Lock").said ?? {};
+        const entry = Words.of("session:Lock");
+        // Its leads are sentences of the drawer's own (`tells`), the rest
+        // words beside them (`said`).
+        const words = Object.assign({}, entry.said, entry.tells);
         const told = Power.lockSaid(Power.byProgram(Niri.windows, provider.programNamed),
             provider.bound(provider.locks).map(key => key.text).join(" "), words);
         return {

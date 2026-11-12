@@ -224,6 +224,7 @@
     "launcher/Notice.js"
     "launcher/Order.js"
   ];
+  "launcher/Power.js" = [ "launcher/Order.js" ];
   "launcher/Power.qml" = [ "launcher/Seen.js" ];
   "launcher/Program.js" = [
     "FileFacts.js"
