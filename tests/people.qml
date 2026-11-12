@@ -207,6 +207,19 @@ ShellRoot {
                     people.tally.rows - madeBefore);
                 expect("while their row is still theirs to step into",
                     people.personOf("ada@example.com")?.name === "Ada Brook", "");
+                // A guest google's daemon serves lends People's own row
+                // (RTOIMQ and Y2YBTS, 2026-11-12), looked up, never asked.
+                const lentAda = people.lent("person:ada@example.com");
+                expect("a served guest is lent their own row", lentAda?.name === "Ada Brook"
+                    && lentAda.component === "person", `${lentAda?.name} ${lentAda?.component}`);
+                expect("anyone else lends nothing, so the served row stands",
+                    people.lent("person:stranger@example.com") === null
+                    && people.lent("gdoc:ada@example.com") === null
+                    && people.lent(undefined) === null, "");
+                // An address nothing here asked whoIs after, so only lent()
+                // could have asked the daemon.
+                expect("and lending asks the daemon after no one",
+                    !("stranger@example.com" in people.unlisted.by), "");
                 // A pick forgets the picks of rows gone by every row's key
                 // (Launcher.qml's knowing), asked of People wanted or not:
                 // read as rows, it made every listed person's row while
@@ -240,6 +253,9 @@ ShellRoot {
                     && zoe.key === "zoe@example.com", `${zoe?.name} ${zoe?.key}`);
                 expect("and still not listed, nor held with those listed",
                     people.persons().length === 4, names(people.persons()));
+                expect("and lent once the daemon has named them",
+                    people.lent("person:zoe@example.com")?.name === "Zo\u00eb \"Zed\" Quill",
+                    people.lent("person:zoe@example.com")?.name);
             }
         },
         seeking("eli@example.com", "a stranger found by their email", () => {

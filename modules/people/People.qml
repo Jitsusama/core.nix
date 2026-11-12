@@ -232,6 +232,7 @@ Provider {
     // asks for them again, the launcher pacing it; with none shown, or the
     // launcher shut, nothing is told and nothing made.
     function lentMoved() {
+        lentStands += 1;
         const launcher = provider.launcher;
         const steps = launcher?.open ? launcher.held ?? [] : [];
         const lent = step => step.row.from !== provider && (step.rows ?? [])
@@ -700,6 +701,27 @@ Provider {
         const person = whoIs(email);
         return person ? made(person, standOf(person)) : null;
     }
+
+    // The person a row another place's daemon serves stands for, as a
+    // meeting's guest or a mail's sender google serves with `"lends":
+    // "person:<email>"` (ReadyRows.qml): their own row, as personOf makes
+    // it, or null for any other thing or anyone People doesn't know, so the
+    // served row stands (RTOIMQ and Y2YBTS, 2026-11-12). It's asked as each
+    // such row is made, so it only looks up who's held: never a search,
+    // and never the daemon, as whoIs asks after an unlisted address.
+    function lent(thing) {
+        const said = String(thing ?? "");
+        if (!said.startsWith("person:"))
+            return null;
+        const address = said.slice("person:".length).trim().toLowerCase();
+        const person = merged().byEmail[address] ?? unlisted.by[address] ?? null;
+        return person ? made(person, standOf(person)) : null;
+    }
+    // Goes up whenever what lent() answers may have changed: who's named, or
+    // how anyone stands while a row of theirs is lent (lentMoved), so
+    // ReadyRows makes again only its rows that lend.
+    readonly property int lentRevision: namesRevision + lentStands
+    property int lentStands: 0
 
     // Who an address is, as People knows them, { key, name, emails, ... },
     // with no row made: for a count of a meeting's guests or a call's name
