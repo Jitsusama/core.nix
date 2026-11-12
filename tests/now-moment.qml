@@ -141,6 +141,12 @@ ShellRoot {
         function afterFrame(then) {
             then();
         }
+        // What the foot was last told.
+        property var said: []
+
+        function say(keys) {
+            said = keys;
+        }
         readonly property var sources: [weather, calendar, cameras, power, pastNotices, agents]
         property int placed: 0
 
@@ -817,6 +823,7 @@ ShellRoot {
         WaitingOnYou.now = [];
         Sessions.wanting = [];
         now.lookTexts = {};
+        answersInPlace(forYou);
         shut(piece, toDo);
         remakesWhatChanged(toDo);
     }
@@ -885,6 +892,61 @@ ShellRoot {
     // changed alike (2026-11-10). Now only a row a change names is made
     // again, and a session's move that changes nothing For You reads, as
     // its `told` says, reaches none of its rows.
+    // A session asking one question with its answers given is answered
+    // from For You (VKCF3Z, 2026-11-12): its row says it needs his answer
+    // and how many it offers, inside are the answers, the recommended
+    // first, then Deal With It set apart and In Your Own Words, and an
+    // answer's Return steers the session its value at once.
+    function answersInPlace(forYou) {
+        const since = "2026-11-12T07:00:00Z";
+        Sessions.wanting = [{ address: "WANTE", title: "Session E", presence: {
+            session: "s-e", addresses: [], wants: { kind: "question", since: since,
+                said: "Push the branch?", ask: { recommended: "push", allowOther: true,
+                    choices: [{ value: "wait", label: "Not yet" },
+                        { value: "push", label: "Yes, push it",
+                            description: "Its checks passed at its head." }] } } } }];
+        const row = forYou().find(one => one.key === "on:waiting:want:WANTE");
+        expect("a want with answers says how many",
+            row?.side === "needs your answer \u00b7 2 choices", JSON.stringify(row?.side));
+        const drawer = row.drawer();
+        expect("its drawer holds the question and each answer",
+            JSON.stringify(drawer.facts.map(one => [one.label, one.value]))
+                === JSON.stringify([["You Were Asked", "Push the branch?"],
+                    ["Recommended", "Yes, push it \u00b7 Its checks passed at its head."],
+                    ["Choice", "Not yet"], ["Session", "Session E"]]),
+            JSON.stringify(drawer.facts));
+        const inside = row.verbs();
+        expect("inside, the recommended answer first, then Deal With It apart",
+            JSON.stringify(inside.map(one => [one.name, one.side ?? "", !!one.gap]))
+                === JSON.stringify([["Yes, push it", "recommended", false],
+                    ["Not yet", "", false], ["Deal With It", "", true],
+                    ["In Your Own Words", "", false]]),
+            JSON.stringify(inside.map(one => [one.name, one.side, one.gap])));
+        expect("an answer copies its words and its drawer leads with what it means",
+            inside[0].copies === "Yes, push it"
+                && inside[0].drawer().body === "Its checks passed at its head."
+                && inside[1].drawer().body === "Push the branch?",
+            JSON.stringify([inside[0].copies, inside[0].drawer(), inside[1].drawer()]));
+        inside[0].run();
+        const steered = Sessions.steered[0] ?? {};
+        expect("its Return steers the session the answer, and the foot says so",
+            Sessions.steered.length === 1 && steered.address === "WANTE"
+                && steered.fields.act === "answer" && steered.fields.value === "push"
+                && steered.fields.want === "question@2026-11-12T07:00:00.000Z"
+                && steered.fields.from === "joel"
+                && JSON.stringify(theLauncher.said) === JSON.stringify([["answered: Yes, push it",
+                    ""]]),
+            JSON.stringify([Sessions.steered, theLauncher.said]));
+        inside[3].given("after lunch");
+        expect("his own words go as words",
+            Sessions.steered[1]?.fields.other === "after lunch"
+                && Sessions.steered[1]?.fields.value === undefined,
+            JSON.stringify(Sessions.steered[1]));
+        Sessions.steered = [];
+        theLauncher.said = [];
+        Sessions.wanting = [];
+    }
+
     function remakesWhatChanged(toDo) {
         let ran = "";
         const lately = (source, who, act) => ({ entry: { mark: source }, piece: {
