@@ -14,6 +14,13 @@
 # The service runs in session.slice beside PipeWire, not background.slice:
 # a call's voice passes through it as it's spoken, so it can't wait behind
 # a build the way a transcript can.
+#
+# Choose by Ear, in the launcher's Sound, is the same program's trial: it
+# records six seconds from the default microphone, cleans them every way,
+# and plays them back blind for Joel to pick one (trial.rs says how). It
+# starts from its socket, holds what he said only in memory, and may reach
+# no network. It records nothing while a call is on, or while anything in
+# jitsusama.noise-cancelled.refuseWhile says not to.
 {
   config,
   lib,
@@ -21,8 +28,12 @@
   ...
 }:
 let
+  cfg = config.jitsusama.noise-cancelled;
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ./model.nix { };
+  refusals = pkgs.writeText "noise-cancelled-refusals.json" (
+    builtins.toJSON (map (refusal: { inherit (refusal) command why; }) cfg.refuseWhile)
+  );
 in
 {
   options.jitsusama.noise-cancelled.cleaner = lib.mkOption {
@@ -37,6 +48,63 @@ in
       the room out, deepfilternet-gentle turns it down to 12 dB under the
       voice, and rnnoise is the lightest, at a fraction of the processor.
     '';
+  };
+
+  options.jitsusama.noise-cancelled.refuseWhile = lib.mkOption {
+    type = lib.types.listOf (
+      lib.types.submodule {
+        options = {
+          command = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            description = "A command that exits 0 while nothing may be recorded.";
+          };
+          why = lib.mkOption {
+            type = lib.types.str;
+            description = "Why, as the launcher says it, such as \"a meeting is near\".";
+          };
+        };
+      }
+    );
+    default = [ ];
+    description = ''
+      What refuses Choose by Ear a recording while it holds, beside a call
+      being on, which is always refused.
+    '';
+  };
+
+  config.jitsusama.noise-cancelled.refuseWhile = lib.mkBefore [
+    {
+      command = [ (lib.getExe (pkgs.callPackage ../calls/package.nix { })) ];
+      why = "a call is on";
+    }
+  ];
+
+  config.systemd.user.sockets.noise-cancelled-trial = {
+    Unit.Description = "Where the launcher's Choose by Ear asks noise-cancelled";
+    Socket = {
+      ListenStream = "%t/daemons/noise-cancelled.sock";
+      SocketMode = "0600";
+      DirectoryMode = "0700";
+    };
+    Install.WantedBy = [ "sockets.target" ];
+  };
+
+  config.systemd.user.services.noise-cancelled-trial = {
+    Unit = {
+      Description = "Records, cleans and plays back the launcher's Choose by Ear";
+      After = [ "pipewire.service" ];
+    };
+    Service = {
+      ExecStart = lib.concatStringsSep " " [
+        "${dictation}/bin/noise-cancelled trial %t/daemons/noise-cancelled.sock"
+        "${model} ${cfg.cleaner} ${refusals}"
+      ];
+      Environment = [ "PATH=${lib.makeBinPath [ pkgs.pipewire ]}" ];
+      Slice = "session.slice";
+      # What Joel said reaches nothing past PipeWire's own socket.
+      RestrictAddressFamilies = "AF_UNIX";
+      Restart = "on-failure";
+    };
   };
 
   config.systemd.user.services.noise-cancelled = {

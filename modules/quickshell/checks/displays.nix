@@ -32,7 +32,6 @@
     pkgs.runCommandLocal "the-launcher-turns-each-screen-off" { } ''
       cp ${../../../tests/screens.qml} screens.qml
       cp ${../launcher/Screens.js} Screens.js
-      cp ${../launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

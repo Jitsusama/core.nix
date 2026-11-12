@@ -1,0 +1,14 @@
+# What the shell weighs, part by part, read from outside it (src/main.rs
+# says how and why).
+[package]
+name = "shell-weighs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

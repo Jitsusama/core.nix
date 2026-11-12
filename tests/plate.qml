@@ -1,21 +1,20 @@
-// How a thing's drawer says its parts, and what a screen's says of what
-// niri gives, run in Qt's own JavaScript engine, the one the shell runs it
-// in. The `a-things-drawer-says-its-parts` check copies
-// modules/quickshell/launcher/Plate.js, Screens.js, Backlight.js,
-// Numbers.js and Order.js beside this file and runs `qml -platform offscreen plate.qml`.
+// How a thing's drawer says its parts, and how a screen's light is read,
+// run in Qt's own JavaScript engine, the one the shell runs it in. The
+// `a-things-drawer-says-its-parts` check copies
+// modules/quickshell/launcher/Plate.js, Backlight.js, Numbers.js and
+// Order.js beside this file and runs `qml -platform offscreen plate.qml`.
 // A part's name is a fact's label and what it says the value, a level's
-// bar a stroke after it; an act or a choice isn't said; a holder of
-// figures is opened in place; and a screen's white point and primaries
-// are said from desk-facts' figures. The machine daemon's backlight and
-// light sensor records are read as Backlight.js reads them: the panel's
-// steps and the lux the sensor hears, the room's light measured to three
-// digits. A screen's drawer, its settings and what the : line types for
-// them are the windows daemon's (modules/windows: screens.rs,
-// screens/settings.rs and screens/line.rs), so they're tested there.
+// bar a stroke after it; an act or a choice isn't said; and a holder of
+// figures is opened in place. The machine daemon's backlight and light
+// sensor records are read as Backlight.js reads them: the panel's steps
+// and the lux the sensor hears, the room's light measured to three
+// digits. A screen's drawer, its settings, what its EDID says, its white
+// point and primaries among it, and what the : line types for them are
+// the windows daemon's (modules/windows: screens.rs and the files beside
+// it), so they're tested there.
 import QtQuick
 import "Backlight.js" as Backlight
 import "Plate.js" as Plate
-import "Screens.js" as Screens
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -39,32 +38,6 @@ QtObject {
             ?? key,
         turned: transform => transform === "Normal" ? "upright" : transform
     })
-
-    // A screen's white point and primaries, from desk-facts' figures for an
-    // HP Z27k G3: the white a measure, three figures by Joel's settings,
-    // each point to three places; nothing for figures that aren't whole.
-    function colours(check) {
-        const words = {
-            said: (id, key) => ({ point: "x {x} y {y}", red: "red x {x} y {y}",
-                green: "green x {x} y {y}", blue: "blue x {x} y {y}" })[key]
-        };
-        const z27k = "0.6396484375 0.330078125 0.2998046875 0.599609375 0.150390625 "
-            + "0.0595703125";
-        const z27kWhite = "6462 0.3134765625 0.3291015625";
-        const white = Screens.whitePoint(z27kWhite, words, {});
-        check("a white is its temperature, then its point",
-            white === "6,460 K \u00b7 x 0.313 y 0.329", white);
-        const pointed = Screens.whitePoint(z27kWhite, words, { group: ".", point: "," });
-        check("a white is grouped and pointed as Joel says",
-            pointed === "6.460 K \u00b7 x 0,313 y 0,329", pointed);
-        const primaries = Screens.primaries(z27k, words, {});
-        check("primaries name each colour and keep three places",
-            primaries === "red x 0.640 y 0.330 \u00b7 green x 0.300 y 0.600 \u00b7 "
-                + "blue x 0.150 y 0.060", primaries);
-        const broken = [Screens.whitePoint("6462 0.3135", words, {}),
-            Screens.whitePoint("", words, {}), Screens.primaries("0.64 0.33 x", words, {})];
-        check("figures that aren't whole say nothing", broken.join("") === "", broken);
-    }
 
     // The machine daemon's records of the panel's backlight and the room's
     // sensor (modules/machine's light.rs), as a step into a screen reads
@@ -157,7 +130,6 @@ QtObject {
             && named.map(fact => fact.identifies === true).join() === "false,false,true",
             said(named));
 
-        colours(check);
         lights(check);
 
         if (failures.length > 0) {

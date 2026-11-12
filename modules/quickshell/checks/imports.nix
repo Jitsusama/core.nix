@@ -265,7 +265,6 @@
     "PiSource.js"
     "launcher/Order.js"
   ];
-  "launcher/Screens.js" = [ "launcher/Numbers.js" ];
   "launcher/Showing.js" = [ "launcher/Order.js" ];
   "launcher/Sound.qml" = [
     "Fuzzy.js"

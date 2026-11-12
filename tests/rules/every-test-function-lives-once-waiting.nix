@@ -5,7 +5,6 @@
 # holding fewer until its count here is lowered, so the list only shrinks.
 {
   "hardware/microsoft-surface-laptop-4-1958/firmware/tests/offers-its-firmware.sh" = 1;
-  "modules/agents/src/served.rs" = 1;
   "modules/backlight/src/monitor/tests.rs" = 1;
   "modules/bluetooth-disk-prompt/seal-test.sh" = 1;
   "modules/chrome/recent-sites/src/session.rs" = 1;
@@ -59,7 +58,6 @@
   "modules/programs/src/notify.rs" = 1;
   "modules/quickshell/whereabouts/src/notify.rs" = 1;
   "modules/quickshell/whereabouts/src/rows_tests.rs" = 1;
-  "modules/ready-rows/src/order.rs" = 1;
   "modules/sound/src/interface.rs" = 1;
   "modules/spend-watch/feeds/claude/tests/feed.rs" = 1;
   "modules/spend-watch/feeds/claude/tests/schedule.rs" = 1;

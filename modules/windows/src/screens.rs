@@ -7,11 +7,13 @@
 //!
 //! Each row carries its drawer, what niri says of the screen past its
 //! row and what desk-facts reads of its EDID (`drawer`), and holds what
-//! the shell's own acts need of it (`held`: its connector, how it stands
-//! and niri's whole record of it), since its settings are the shell's
-//! until they move here. Its Return, focusing it or turning it on, the
-//! ways it turns off and Turn Every Screen Off's are served as acts this
-//! daemon does on niri (acts.rs). While a screen is looked at, the
+//! the shell's own acts need of it (`held`: its connector, how it stands,
+//! niri's whole record of it, what the : line takes and whether its
+//! brightness follows the panel's). Inside it are what a step in offers:
+//! a lit one's settings (settings.rs), the ways it turns off or on, and
+//! what its EDID says (facts.rs). Its Return, focusing it or turning it
+//! on, the ways it turns off and Turn Every Screen Off's are served as
+//! acts this daemon does on niri (acts.rs). While a screen is looked at, the
 //! drawer of the one whose place holds the Brightness leads with the
 //! light (light.rs). A change to a screen says nothing in niri's stream,
 //! so each act looks again, and the shell asks this daemon to look after
@@ -29,6 +31,7 @@ use serde_json::{Value, json};
 use crate::light::{self, Seen};
 
 pub mod acts;
+mod facts;
 pub mod line;
 pub mod settings;
 pub mod vocabulary;
@@ -57,18 +60,8 @@ const FACTS: [&str; 10] = [
     "size",
 ];
 
-/// The facts desk-facts gives that are asked of a screen most, which lead
-/// the rest, its white point and primaries beside its colours (VKCF3Z,
-/// 2026-11-09).
-const ASKED_FIRST: [&str; 5] = ["depth", "colours", "white", "primaries", "hdr"];
-
 /// The primaries desk-facts gives figures for, in its order.
 const PRIMARIES: [&str; 3] = ["red", "green", "blue"];
-
-/// The places a chromaticity's coordinate is said to: ten bits a
-/// coordinate hold one to about a thousandth, so "0.060" says all an
-/// EDID knows.
-const COORDINATE_PLACES: usize = 3;
 
 /// niri's eight transforms, as Rotation says them.
 const TRANSFORMS: [&str; 8] = [
@@ -115,6 +108,8 @@ pub struct Words {
     wakes: String,
     /// Beside Unplug It: its windows move to the other screens.
     moves: String,
+    /// Turn It On, Turn It Off and Unplug It, by their act's key.
+    ways: BTreeMap<&'static str, acts::Way>,
     sleep: Sleep,
     told: Told,
     pub(crate) light: light::Words,
@@ -216,6 +211,7 @@ impl Words {
             is_unplugged: said("isUnplugged"),
             wakes: word("verb:display-off", &["said", "wakes"], "wakes"),
             moves: word("verb:display-unplug", &["said", "moves"], "moves"),
+            ways: acts::Way::read(&word),
             sleep: Sleep {
                 name: word("displays:sleep", &["name"], "displays:sleep"),
                 glyph: word("displays:sleep", &["glyph"], ""),
@@ -416,77 +412,6 @@ fn runs(values: &[&str]) -> String {
         .join(APART)
 }
 
-/// The figures desk-facts writes for a fact to say, or none where there
-/// aren't `count` of them.
-fn figures(given: &str, count: usize) -> Option<Vec<f64>> {
-    let all: Vec<f64> = given
-        .split_whitespace()
-        .map(str::parse)
-        .collect::<Result<_, _>>()
-        .ok()?;
-    (all.len() == count && all.iter().all(|figure| figure.is_finite())).then_some(all)
-}
-
-/// A point on the CIE 1931 chart in a part's words, each coordinate named
-/// so nobody has to remember the order (VKCF3Z, 2026-11-09), to three
-/// places, pointed as the account says: "x 0.313 y 0.329". A coordinate
-/// halfway between rounds up, as the shell's toFixed did.
-fn xy(said: &str, x: f64, y: f64, numbers: &Numbers) -> String {
-    let scale = 10f64.powi(3);
-    let placed = |value: f64| numbers.fixed((value * scale).round() / scale, COORDINATE_PLACES);
-    said.replace("{x}", &placed(x)).replace("{y}", &placed(y))
-}
-
-/// What desk-facts says of a screen from its EDID, each named first as a
-/// part is, with its id: Colour Depth "10 bit", Colours, its white point
-/// and primaries, HDR, then who made it and when, in desk-facts' order.
-/// A monitor's brightness is the panel's, which its light says, so it
-/// isn't said again, and a white point or primaries whose figures aren't
-/// whole say nothing.
-fn edid(facts: &Value, words: &Words) -> Vec<(String, Value)> {
-    let told = &words.told;
-    let said: Vec<(String, String)> = facts
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|fact| {
-            let id = fact["name"].as_str()?.to_lowercase();
-            let value = fact["value"].as_str().unwrap_or("");
-            let value = match id.as_str() {
-                "brightness" => return None,
-                "white" => figures(value, 3).map_or_else(String::new, |at| {
-                    format!(
-                        "{} K{APART}{}",
-                        words.numbers.significant(at[0]),
-                        xy(&told.white, at[1], at[2], &words.numbers)
-                    )
-                }),
-                "primaries" => figures(value, 6).map_or_else(String::new, |at| {
-                    told.primaries
-                        .iter()
-                        .zip(at.chunks(2))
-                        .map(|(said, point)| xy(said, point[0], point[1], &words.numbers))
-                        .collect::<Vec<_>>()
-                        .join(APART)
-                }),
-                _ => value.to_owned(),
-            };
-            (!value.is_empty()).then_some((id, value))
-        })
-        .collect();
-    let (first, rest): (Vec<_>, Vec<_>) = said
-        .into_iter()
-        .partition(|(id, _)| ASKED_FIRST.contains(&id.as_str()));
-    first
-        .into_iter()
-        .chain(rest)
-        .map(|(id, value)| {
-            let fact = json!({"name": told.part(&id), "said": value});
-            (id, fact)
-        })
-        .collect()
-}
-
 /// A screen's drawer, as Displays.qml laid it from niri: its connector and
 /// what it is over its name, both as written, since a connector is a name
 /// from the world (VKCF3Z, 2026-11-07); then what moves most, its light
@@ -509,7 +434,7 @@ fn drawer(name: &str, output: &Value, desk: &Value, lit: Vec<Value>, words: &Wor
         Value::String(said) => said.clone(),
         other => other.to_string(),
     }];
-    let edid = edid(desk, words);
+    let edid = facts::edid(desk, words);
     let sized = edid.iter().any(|(id, _)| id == "size");
     for (id, fact) in edid {
         if id == "serial" {
@@ -659,17 +584,7 @@ fn backlit<'a>(
         .filter(|(_, output)| !output["logical"].is_null())
         .map(|(name, _)| *name)
         .collect();
-    let follows = |name: &str| {
-        desk.get(name)
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .any(|fact| {
-                fact["name"]
-                    .as_str()
-                    .is_some_and(|said| said.eq_ignore_ascii_case("brightness"))
-            })
-    };
+    let follows = |name: &str| desk.get(name).is_some_and(facts::follows);
     on.iter()
         .find(|name| Some(name.as_str()) == lights)
         .or_else(|| on.iter().find(|name| in_the_room(name, shown.len())))
@@ -765,16 +680,23 @@ pub fn rows(
                 "drawer": drawer(name, output, desk.get(name.as_str()).unwrap_or(&Value::Null),
                     lit_by(name), words),
                 "held": {"output": name, "standing": stands, "builtIn": built_in(name),
-                    "niri": output, "line": line},
+                    "niri": output, "line": line,
+                    "follows": desk.get(name.as_str()).is_some_and(facts::follows)},
                 "acts": acts::of(name, stands, lit == 1, each, words),
             })
         })
         .collect();
-    // Each lit screen's settings, inside its row, as a step in offers them.
+    // What a step into each screen offers, inside its row: a lit one's
+    // settings, then the ways it turns off or on, then what its EDID says.
     for (name, output) in &shown {
-        if standing(output) == "lit" && output["logical"].is_object() {
+        let stands = standing(output);
+        if stands == "lit" && output["logical"].is_object() {
             rows.extend(settings::rows(name, output, words));
         }
+        let screen = key(&format!("display:{name}"));
+        rows.extend(acts::ways(name, stands, lit == 1, each, &screen, words));
+        let desk = desk.get(name.as_str()).unwrap_or(&Value::Null);
+        rows.extend(facts::rows(name, &screen, desk, words));
     }
     if lit > 0 {
         rows.push(json!({

@@ -18,6 +18,26 @@
       (
         ((account graphical).systemd.user.services.noise-cancelled.Unit.X-SwitchMethod or null) == "restart"
       );
+
+  # Choose by Ear holds a few seconds of Joel's voice; the service that
+  # holds them may reach nothing but local sockets.
+  noise-cancelled-trial-reaches-no-network =
+    holds "noise-cancelled-trial-reaches-no-network"
+      "Choose by Ear's service could reach a network with Joel's voice in its memory."
+      (
+        ((account graphical).systemd.user.services.noise-cancelled-trial.Service.RestrictAddressFamilies
+          or null
+        ) == "AF_UNIX"
+      );
+
+  # Whatever else a machine refuses it for, Choose by Ear never records
+  # during a call, which it would cut into.
+  noise-cancelled-trial-waits-out-a-call =
+    holds "noise-cancelled-trial-waits-out-a-call" "Choose by Ear could record while a call is on."
+      (
+        builtins.any (refusal: refusal.why == "a call is on")
+          (account graphical).jitsusama.noise-cancelled.refuseWhile
+      );
 }
 // onLinux {
   # The denoiser on a noisy clip, on the CPU, in the build's sandbox:

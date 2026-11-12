@@ -485,35 +485,13 @@ fn row(device: &Device, name: &str, devices: &[Device], words: &Words) -> Value 
 pub(crate) mod tests {
     use super::*;
 
+    /// The launcher's own words for everything Sound's cases say, copied
+    /// from words.json into tests/words.json, which the check
+    /// `the-daemons-test-the-launchers-words` keeps the same as it, so a
+    /// case holds a row to the words Joel reads.
     pub(crate) fn words() -> Words {
-        Words::from_vocabulary(
-            &json!({"things": [
-                {"id": "sound", "name": "Sound", "said": {
-                    "volume": "volume {level}", "muted": "muted", "chosen": "chosen",
-                    "yes": "yes", "no": "no",
-                    "to-calls": "using it switches the headset to calls",
-                    "unplugged": "nothing plugged in",
-                }},
-                {"id": "sound:called:speakers", "name": "Built-In Speakers"},
-                {"id": "sound:called:microphones", "name": "Built-In Microphones"},
-                {"id": "sound:called:its-microphone", "name": "{device} Microphone"},
-                {"id": "sound:called:noise-cancelled", "name": "{device}, Noise Cancelled"},
-                {"id": "sound:port", "name": "Port"},
-                {"id": "verb:sound-port", "name": "Use {port}"},
-                {"id": "verb:sound-use", "name": "Play Sound Through It",
-                    "states": {"input": {"name": "Listen Through It"}}},
-                {"id": "sound:mute", "name": "Muted", "verb": "mute",
-                    "states": {"muted": {"verb": "unmute"}}},
-                {"id": "sound:volume", "name": "Volume"},
-                {"id": "sound:gain", "name": "Gain"},
-                {"id": "verb:sound-louder", "name": "Louder"},
-                {"id": "verb:sound-quieter", "name": "Quieter"},
-                {"id": "verb:sound-to", "name": "Volume to {level}",
-                    "states": {"input": {"name": "Gain to {level}"}}},
-            ]})
-            .to_string(),
-        )
-        .expect("the words read")
+        Words::from_vocabulary(include_str!("../tests/words.json"))
+            .expect("the launcher's words read")
     }
 
     pub(crate) fn device(name: &str, sink: bool, nick: &str, properties: &Value) -> Value {
