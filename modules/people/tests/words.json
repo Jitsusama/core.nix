@@ -28,7 +28,9 @@
       "glyph": "recent",
       "empty": "Nothing yet.",
       "said": {
-        "none": "none"
+        "none": "none",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
       }
     },
     {

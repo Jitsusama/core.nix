@@ -273,7 +273,9 @@
       "glyph": "recent",
       "empty": "Nothing yet.",
       "said": {
-        "none": "none"
+        "none": "none",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
       }
     },
     {
@@ -9932,7 +9934,9 @@
       "glyph": "recent",
       "empty": "Nothing yet.",
       "said": {
-        "none": "none"
+        "none": "none",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
       }
     },
     {
@@ -12878,7 +12882,9 @@
         "recent": "{count} recent",
         "next": "next {when} \u00b7 {name}",
         "today": "{count} today",
-        "parts": "{count} new"
+        "parts": "{count} new",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
       }
     },
     {

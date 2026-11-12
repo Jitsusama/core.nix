@@ -83,6 +83,17 @@ QtObject {
             JSON.stringify({ side: "\u2026", held: [] }));
         check(failures, "what one source already gave is said while another is asked",
             Recent.said(["a", "b"], true, words).side, "2");
+        // A meeting that recurs is held once, with how often, where it's
+        // newest, never the same name twice (VKCF3Z, 498825ad).
+        const often = { none: "none", twice: "{name}, twice",
+            times: "{name}, {count} times" };
+        check(failures, "a name held more than once is said once, with how often",
+            JSON.stringify(Recent.said(["CI Retro", "1:1", "CI Retro", "Standup", "Standup",
+                "Standup"], false, often)),
+            JSON.stringify({ side: "6",
+                held: ["CI Retro, twice", "1:1", "Standup, 3 times"] }));
+        check(failures, "and as it is where its words can't say how often",
+            Recent.said(["a", "a"], false, words).held.join(" "), "a a");
 
         // A thing taken says when, its folder only where it's not the
         // usual one, which its drawer's eyebrow says instead (VKCF3Z,
