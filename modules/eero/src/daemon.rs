@@ -26,10 +26,12 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use jiff::tz::TimeZone;
 use serde_json::Value;
 
 use crate::api;
 use crate::cloud::{self, Failure};
+use crate::day;
 use crate::desktop::Notifier;
 use crate::history::History;
 use crate::listeners::{Call, Listeners};
@@ -152,6 +154,8 @@ struct Daemon {
     notifier: Notifier,
     /// Where the daemon asks Joel to sign in again (waiting.rs).
     waiting: Option<PathBuf>,
+    /// Where each day's look at the home network is written (day.rs).
+    days: Option<PathBuf>,
 }
 
 impl Daemon {
@@ -169,6 +173,10 @@ impl Daemon {
             waiting: waiting::file()
                 .inspect_err(|reason| eprintln!("eero: For You can't be asked: {reason}"))
                 .ok(),
+            days: session::folder()
+                .inspect_err(|reason| eprintln!("eero: no day is written: {reason}"))
+                .ok()
+                .map(|folder| folder.join("day")),
         }
     }
 
@@ -281,6 +289,12 @@ impl Daemon {
             let reading = look_from(&next);
             if let Err(reason) = self.history.record_probe(&reading, now_unix()) {
                 eprintln!("eero: {reason}");
+            }
+            if let Some(days) = &self.days
+                && let Err(reason) =
+                    day::write(&self.history, now_unix(), &TimeZone::system(), days)
+            {
+                eprintln!("eero: the day: {reason}");
             }
         }
         if let Err(reason) = self.history.draw(&mut next, now_unix()) {
