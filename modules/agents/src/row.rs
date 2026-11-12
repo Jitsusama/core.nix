@@ -27,6 +27,9 @@ pub struct Words {
     pub to_reopen: Said,
     pub reopen_one: Said,
     pub landed: Said,
+    /// A session's acts' names and marks, by their ids (`talk` is Talk).
+    pub acts: Said,
+    pub act_glyphs: Said,
 }
 
 impl Words {
@@ -40,6 +43,8 @@ impl Words {
             to_reopen: Said::of_thing(text, "agents:to-reopen")?,
             reopen_one: Said::of_thing(text, "verb:agents:to-reopen:one")?,
             landed: Said::of_thing(text, "agents:landed")?,
+            acts: Said::names_under(text, "verb:agent")?,
+            act_glyphs: Said::glyphs_under(text, "verb:agent")?,
         })
     }
 }
