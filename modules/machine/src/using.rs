@@ -175,9 +175,124 @@ pub fn records(now: &Counters, before: Option<&Counters>, page_b: u64) -> Vec<Va
     records
 }
 
+/// The program most behind what lag-watch last said waited, read once a
+/// window (VKCF3Z, 2026-11-12, from Joel's "why is it slow": Lag names
+/// the cause and the top program and its share).
+#[derive(Default)]
+pub struct Behind {}
+
+impl Behind {
+    /// Says on lag-watch's record, while something waited on the
+    /// processor or on memory, the program most behind it.
+    pub fn told(&mut self, _root: &Root, _record: &mut Value, _at_ms: u64, _page_b: u64) {}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A machine of sixteen cores whose processor has run `all` ticks,
+    /// cargo `cargo` of them, and whose firefox holds `pages` pages.
+    fn machine(folder: &std::path::Path, all: u64, cargo: u64, pages: u64) -> Root {
+        let cores: String = (0..16)
+            .map(|n| format!("cpu{n} 1 0 0 0 0 0 0 0 0 0\n"))
+            .collect();
+        let files = [
+            (
+                "proc/stat".to_owned(),
+                format!("cpu  {all} 0 0 0 0 0 0 0 0 0\n{cores}intr 1\n"),
+            ),
+            (
+                "proc/42/stat".to_owned(),
+                format!("42 (cargo) S 1 42 42 0 -1 0 0 0 0 0 {cargo} 0 0 0 20 0 1 0 100 0 10 0"),
+            ),
+            (
+                "proc/43/stat".to_owned(),
+                format!("43 (firefox) S 1 43 43 0 -1 0 0 0 0 0 5 0 0 0 20 0 1 0 100 0 {pages} 0"),
+            ),
+        ];
+        for (path, text) in files {
+            let path = folder.join(path);
+            std::fs::create_dir_all(path.parent().expect("a folder")).expect("its folder");
+            std::fs::write(path, text).expect("its file");
+        }
+        Root::new(folder)
+    }
+
+    /// lag-watch's record as the machine daemon relays it.
+    fn window(ended: u64, worst: &str) -> Value {
+        let trouble: Vec<&str> = if worst.is_empty() {
+            vec![]
+        } else {
+            vec!["it waited"]
+        };
+        json!({ "key": "status:lag-watch", "kind": "status", "name": "lag-watch",
+            "said": { "ended": ended, "trouble": trouble, "worst": worst }, "silent": false })
+    }
+
+    #[test]
+    fn lag_names_the_program_most_behind_what_waited_from_its_second_window() {
+        let folder = std::env::temp_dir().join(format!("machine-behind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let mut behind = Behind::default();
+        let mut told = |root: &Root, ended: u64, worst: &str, at_ms: u64| {
+            let mut record = window(ended, worst);
+            behind.told(root, &mut record, at_ms, 4096);
+            record["said"]["top"].clone()
+        };
+        let root = machine(&folder, 1000, 100, 50_000);
+        assert_eq!(
+            told(&root, 1000, "cpu", 0),
+            Value::Null,
+            "a first window has no read before it to share the processor over"
+        );
+        let root = machine(&folder, 2000, 787, 50_000);
+        let cargo = json!({ "of": "cpu", "name": "cargo", "share_ratio": 0.687, "cores": 16 });
+        assert_eq!(
+            told(&root, 1010, "cpu", 10_000),
+            cargo,
+            "the second names the program that used the processor most over the window"
+        );
+        let root = machine(&folder, 9000, 800, 50_000);
+        assert_eq!(
+            told(&root, 1010, "cpu", 12_000),
+            cargo,
+            "the same window told again, as when a guard writes, is not read again"
+        );
+        let firefox = json!({ "of": "memory", "name": "firefox", "resident_b": 204_800_000 });
+        assert_eq!(
+            told(&root, 1020, "memory", 20_000),
+            firefox,
+            "a wait on memory names the program holding the most"
+        );
+        assert_eq!(
+            told(&root, 1030, "", 30_000),
+            Value::Null,
+            "a calm window names none"
+        );
+        assert_eq!(
+            told(&root, 1040, "disk", 40_000),
+            Value::Null,
+            "a wait on the disk names no program"
+        );
+        assert_eq!(
+            told(&root, 1050, "cpu", 50_000),
+            Value::Null,
+            "a wait on the processor after none names none until its second window"
+        );
+        let root = machine(&folder, 10_000, 1300, 50_000);
+        assert_eq!(
+            told(&root, 1060, "cpu", 60_000)["share_ratio"],
+            json!(0.5),
+            "then names it again"
+        );
+        assert_eq!(
+            told(&root, 1100, "cpu", 110_000),
+            Value::Null,
+            "a read fifty seconds old is no window's"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
 
     #[test]
     fn a_wrapped_program_is_known_by_its_name() {
