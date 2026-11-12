@@ -341,8 +341,8 @@ fn a_vocabulary_without_a_word_says_which() {
 /// The rows the desktop's tests serve as the daemon would
 /// (tests/desktop/stand-in-eero.py), held to the records the daemon serves
 /// of the contract's network, each ordered as Kept orders it and the
-/// place's own drawer beside them, so the stand-in never says what the
-/// daemon wouldn't.
+/// place's own drawer and each profile's beside them, so the stand-in
+/// never says what the daemon wouldn't.
 /// `EERO_GOLDEN=write cargo test` writes them afresh, to be read before
 /// they're committed. They're compared as JSON, so `nix fmt` may lay the
 /// file out as it likes.
@@ -351,8 +351,11 @@ fn the_rows_the_desktops_tests_serve_are_the_daemons() {
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/rows.json");
     let mut kept = ready_rows::kept::Kept::default();
     let model = model();
-    let drawer = crate::place::record(&model, &words(), &Numbers::default());
-    kept.take(made(&model), vec![drawer]);
+    let numbers = Numbers::default();
+    let beside = std::iter::once(crate::place::record(&model, &words(), &numbers))
+        .chain(crate::drawers::records(&model, &words(), &numbers))
+        .collect();
+    kept.take(made(&model), beside);
     let rows: Value = kept.all().cloned().collect();
     if std::env::var("EERO_GOLDEN").as_deref() == Ok("write") {
         let text = serde_json::to_string_pretty(&rows).expect("rows are JSON");

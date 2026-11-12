@@ -27,7 +27,9 @@
 // The rows are the eero daemon's (modules/eero's rows.rs), served ready
 // in the launcher's words (ReadyRows.qml), so nothing here words a row or
 // orders one, and a row is made again only once the daemon says it
-// changed. Each row's drawer and what's a step into it are still worked
+// changed. A profile's drawer is served beside its row, ready too
+// (modules/eero's drawers.rs), and what's a step into it is its facts as
+// rows. The internet's, a node's and a device's drawer are still worked
 // out in HomeNetworkDrawers.js, held in Qt's own engine
 // (tests/home-network.qml), from the record Eero.qml keeps, found by what
 // the row holds, until the daemon serves them too.
@@ -127,7 +129,7 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/eero/socket`
         place: "eero"
-        // The place's own drawer, served beside its rows.
+        // The place's own drawer and each profile's, served beside its rows.
         beside: ["drawer"]
         watching: ({
                 words: provider.settings.words ?? "",
@@ -139,14 +141,17 @@ Provider {
     }
 
     // A served row as the place draws it: a thing, its drawer and what's
-    // a step in it worked out from the record as they're asked. Each says
+    // a step in it, the drawer served beside it where it names one, else
+    // worked out from the record as they're asked. Each says
     // no note on the cursor's row while its drawer is out, as the drawer
     // says every part of it, so the row's side reads as its neighbours'
     // do (VKCF3Z, 2026-11-08).
     function madeFrom(row, key) {
         const kind = row.kind ?? "";
         const held = row.held ?? {};
-        const said = () => provider.drawerSaid(kind, held, row.name);
+        const served = typeof row.drawer === "string";
+        const said = () => served ? ready.drawerOf(row) ?? { facts: [] }
+            : provider.drawerSaid(kind, held, row.name);
         const made = ready.thing(row, key, {
             thing: true,
             noteInDrawer: true,
@@ -159,7 +164,7 @@ Provider {
             // The first node and the first profile each start a group.
             gap: (kind === "node" || kind === "profile")
                 && ready.keys.find(one => ready.held[one]?.row?.kind === kind) === key,
-            drawer: () => provider.plate(kind, said())
+            drawer: served ? () => ready.drawerOf(row) : () => provider.plate(kind, said())
         });
         if (made === null)
             return null;
@@ -169,8 +174,8 @@ Provider {
             : () => provider.parts(kind, made.key, said()));
     }
 
-    // What a row's drawer says, of the record's internet, node, device or
-    // profile the row holds; nothing while the record doesn't hold it. A
+    // What a row's drawer says, of the record's internet, node or device
+    // the row holds; nothing while the record doesn't hold it. A
     // device's is titled as its row is `called`, by the eero daemon.
     function drawerSaid(kind, held, called) {
         const nothing = { facts: [] };
@@ -184,8 +189,7 @@ Provider {
             const device = (model?.devices ?? []).find(one => one.mac === held.mac);
             return device ? deviceDrawer(device, called) : nothing;
         }
-        const profile = (model?.profiles ?? []).find(one => one.id === held.id);
-        return profile ? Drawers.profile(model, profile, settings) : nothing;
+        return nothing;
     }
 
     // The internet's figures less how conferencing and gaming stands, which

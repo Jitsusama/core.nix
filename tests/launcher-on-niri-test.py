@@ -2797,6 +2797,29 @@ def test_the_home_networks_row_has_the_drawer_the_eero_daemon_serves(shell: Shel
     assert facts["Nodes"] == "3 nodes online", str(facts)
 
 
+def test_a_profiles_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
+    """A profile's drawer says what it blocks and each device in it, as the daemon serves it.
+
+    The daemons are the launcher's data layer (QEST-20261111-PN2VZC), so the eero daemon makes
+    a profile's drawer (its drawers.rs) and serves it beside the row that names it, which the
+    stand-in serves as the daemon does (modules/eero/tests/rows.json).
+    """
+    profile = terminal_shown_until(
+        shell,
+        lambda shown: bool(((shown.get("row") or {}).get("drawer") or {}).get("facts")),
+        "network",
+        "home network",
+        "profile 2",
+    )
+    drawer = profile["row"]["drawer"]
+    assert drawer["title"] == "profile 2", str(drawer)
+    facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
+    assert facts["Blocks"] == "nothing", str(facts)
+    assert facts["Devices"] == "3 listed", str(facts)
+    headings = [fact.get("heading") for fact in drawer["facts"] if fact.get("heading")]
+    assert headings == ["Devices in It"], str(drawer)
+
+
 def selecting(name: str, shown: Json) -> bool:
     """Say whether the launcher has the row so named selected."""
     return bool((shown["selected"] or {}).get("name") == name)

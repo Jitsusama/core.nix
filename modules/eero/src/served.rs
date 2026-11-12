@@ -11,6 +11,7 @@ use ready_rows::kept::Kept;
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
+use crate::drawers;
 use crate::model::HomeNetwork;
 use crate::place;
 use crate::rows::{self, Words};
@@ -43,7 +44,9 @@ impl Vocabulary {
         let (rows, beside) = network.map_or_else(Default::default, |network| {
             (
                 rows::rows(network, &self.words, &self.numbers),
-                vec![place::record(network, &self.words, &self.numbers)],
+                std::iter::once(place::record(network, &self.words, &self.numbers))
+                    .chain(drawers::records(network, &self.words, &self.numbers))
+                    .collect(),
             )
         });
         self.kept.take(rows, beside);

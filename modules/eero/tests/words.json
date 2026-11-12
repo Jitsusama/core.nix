@@ -20,7 +20,12 @@
         "device": "1 device",
         "devices": "{count} devices",
         "eyebrow": "via eero \u00b7 network",
-        "leadAt": ", last tested at {rate} down"
+        "leadAt": ", last tested at {rate} down",
+        "bytes": "{n} B",
+        "kilobytes": "{n} kB",
+        "megabytes": "{n} MB",
+        "gigabytes": "{n} GB",
+        "terabytes": "{n} TB"
       },
       "tells": {
         "connected": "Connected to the internet{at}, with {nodes} and {devices} on now.",
@@ -106,7 +111,29 @@
       "said": {
         "paused": "paused",
         "onNow": "{count} on now",
-        "noneOnNow": "none on now"
+        "noneOnNow": "none on now",
+        "eyebrow": "profile",
+        "gaming": "gaming",
+        "illegal": "illegal",
+        "messaging": "messaging",
+        "pornographic": "pornographic",
+        "social": "social",
+        "shopping": "shopping",
+        "streaming": "streaming",
+        "violent": "violent",
+        "ads": "ads",
+        "adsNetwork": "ads network-wide",
+        "blocksNothing": "nothing",
+        "safeSearch": "safe search",
+        "youtubeRestricted": "YouTube restricted mode",
+        "noSchedule": "none",
+        "schedule": "1 schedule",
+        "schedules": "{count} schedules",
+        "yes": "yes",
+        "no": "no",
+        "listed": "{count} listed",
+        "onNode": "on {node}",
+        "notOnNow": "not on now"
       }
     },
     { "id": "eero:internet:state", "in": "eero:internet", "name": "State" },
@@ -130,6 +157,24 @@
       "name": "Outages",
       "term": "Network/outage"
     },
-    { "id": "eero:internet:nodes", "in": "eero:internet", "name": "Nodes", "term": "Network/node" }
+    { "id": "eero:internet:nodes", "in": "eero:internet", "name": "Nodes", "term": "Network/node" },
+    {
+      "id": "eero:profile:devices",
+      "in": "eero:profile",
+      "name": "Devices",
+      "term": "Network/device"
+    },
+    { "id": "eero:profile:listed", "in": "eero:profile", "name": "Devices in It" },
+    { "id": "eero:profile:blocks", "in": "eero:profile", "name": "Blocks" },
+    { "id": "eero:profile:enforces", "in": "eero:profile", "name": "Enforces" },
+    { "id": "eero:profile:allows", "in": "eero:profile", "name": "Allows" },
+    { "id": "eero:profile:schedule", "in": "eero:profile", "name": "Schedule" },
+    { "id": "eero:profile:default", "in": "eero:profile", "name": "Default" },
+    {
+      "id": "eero:profile:traffic",
+      "in": "eero:profile",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    }
   ]
 }
