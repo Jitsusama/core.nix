@@ -353,12 +353,11 @@ in
     '';
 
   # A thing's drawer says each of its parts as a fact, leaving out its
-  # acts and opening a holder of figures in place, a screen's white point
-  # and primaries are said from desk-facts' figures, and its light is read
-  # from the machine daemon's records, as tests/plate.qml holds
-  # launcher/Plate.js, Screens.js and Backlight.js to it in Qt's own
-  # engine, with the Numbers.js Backlight.js says lux through and the
-  # Order.js it lists devices by. A screen's drawer and its settings are
+  # acts and opening a holder of figures in place, and a screen's light is
+  # read from the machine daemon's records, as tests/plate.qml holds
+  # launcher/Plate.js and Backlight.js to it in Qt's own engine, with the
+  # Numbers.js Backlight.js says lux through and the Order.js it lists
+  # devices by. A screen's drawer, its settings and what its EDID says are
   # the windows daemon's, tested there.
   a-things-drawer-says-its-parts =
     let
@@ -370,7 +369,6 @@ in
     pkgs.runCommandLocal "a-things-drawer-says-its-parts" { } ''
       cp ${../../../tests/plate.qml} plate.qml
       cp ${../launcher/Plate.js} Plate.js
-      cp ${../launcher/Screens.js} Screens.js
       cp ${../launcher/Backlight.js} Backlight.js
       cp ${../launcher/Numbers.js} Numbers.js
       cp ${../launcher/Order.js} Order.js

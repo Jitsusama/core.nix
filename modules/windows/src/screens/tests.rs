@@ -278,6 +278,95 @@ fn a_monitors_edid_follows_what_niri_says_the_asked_first_leading() {
 }
 
 #[test]
+fn a_step_into_a_screen_offers_its_settings_then_its_ways_then_its_edid_to_copy() {
+    let outputs = BTreeMap::from([
+        ("DP-4".to_owned(), panel()),
+        ("eDP-1".to_owned(), output("BOE", "0x0BCA", &lit(1.75))),
+        ("DP-2".to_owned(), output("LG", "0x5B11", &Value::Null)),
+    ]);
+    let desk = BTreeMap::from([
+        ("DP-4".to_owned(), monitor()),
+        ("DP-2".to_owned(), json!([{"name": "maker", "value": "LG"}])),
+    ]);
+    let made = super::rows(&outputs, &desk, None, true, None, &words());
+    let inside = |name: &str| -> Vec<&Value> {
+        let screen = key(&format!("display:{name}"));
+        made.iter()
+            .filter(|row| row["parent"] == screen.as_str())
+            .collect()
+    };
+    let kinds: Vec<&str> = inside("DP-4")
+        .iter()
+        .filter_map(|row| row["kind"].as_str())
+        .collect();
+    let settled = kinds.iter().take_while(|kind| **kind != "action").count();
+    assert!(
+        settled > 0 && kinds[..settled].iter().all(|kind| *kind != "fact"),
+        "a lit screen's settings don't lead: {kinds:?}"
+    );
+    let rest: Vec<Value> = inside("DP-4").into_iter().skip(settled).cloned().collect();
+    assert_eq!(
+        names(&rest)[..5],
+        [
+            "Turn It Off",
+            "Unplug It",
+            "Colour Depth",
+            "White Point",
+            "Primaries"
+        ],
+        "the ways don't follow the settings, or the EDID's asked first don't lead it"
+    );
+    assert_eq!(
+        rest.len(),
+        2 + 11,
+        "not every EDID fact but its brightness is a row"
+    );
+    assert_eq!(rest[1]["note"], "its windows move to the other screens");
+    assert_eq!(
+        rest[3]["acts"],
+        json!([{"key": "verb:copy", "copy": "6,460 K \u{b7} x 0.313 y 0.329"}]),
+        "a fact's Return doesn't copy what it says"
+    );
+    assert_eq!(rest[3]["thing"], "fact:displays:DP-4:white");
+    let off: Vec<Value> = inside("DP-2").into_iter().cloned().collect();
+    assert_eq!(
+        names(&off),
+        ["Turn It On", "Maker"],
+        "an unplugged screen offers more than turning on and its EDID"
+    );
+    assert_eq!(
+        [&made[1]["held"]["follows"], &made[2]["held"]["follows"]],
+        [&json!(false), &json!(true)],
+        "whether a monitor's brightness follows the panel's isn't held"
+    );
+}
+
+#[test]
+fn the_last_lit_screens_turn_it_off_closes_the_launcher_and_says_a_key_wakes_it() {
+    let outputs = BTreeMap::from([("eDP-1".to_owned(), output("BOE", "", &lit(2.0)))]);
+    let made = super::rows(&outputs, &BTreeMap::new(), None, true, None, &words());
+    let way = made
+        .iter()
+        .find(|row| row["kind"] == "action" && row.get("parent").is_some())
+        .expect("the last lit screen has no way to turn off");
+    assert_eq!(
+        (
+            &way["name"],
+            &way["glyph"],
+            &way["note"],
+            &way["acts"][0]["closes"]
+        ),
+        (
+            &json!("Turn It Off"),
+            &json!("displayOff"),
+            &json!("a key wakes it"),
+            &json!(true)
+        ),
+        "the last lit screen's darkening doesn't close the launcher, saying a key wakes it"
+    );
+}
+
+#[test]
 fn niris_size_stands_only_where_the_edid_says_none_and_niris_serial_leads() {
     let mut hp = panel();
     hp["serial"] = json!("from niri");
@@ -487,7 +576,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        71,
+        77,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);
