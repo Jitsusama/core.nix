@@ -667,6 +667,10 @@
   every-machine-asks-names-in-each-family = ''
     every NixOS machine's name service is nsncd asking for each address family on its own
   '';
+  every-module-meets-the-others = ''
+    every home, NixOS and nix-darwin module core offers is brought into an example machine by a
+    role, a hardware model, the example or another module, so two that clash fail an example
+  '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a
     place turned on by a unit, option or package that was renamed is caught

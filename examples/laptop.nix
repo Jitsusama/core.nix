@@ -11,10 +11,13 @@ nixpkgs.lib.nixosSystem {
     core.nixosModules.disk-loss-panic
     core.nixosModules.disko
     core.nixosModules.lanzaboote
-    # Chrome, as a machine with it takes it, so its keys are weighed
-    # against those of Google's pages inside it.
+    # The modules no role brings, which a machine names itself, so every
+    # module core offers meets the others here before it meets a machine:
+    # two that clash, such as two layers claiming one chord, fail this.
     core.nixosModules.chrome
-    { home-manager.users.joel.imports = [ core.homeModules.chrome ]; }
+    core.nixosModules.guide
+    core.nixosModules.inlyne
+    core.nixosModules.update-to-main
     (
       { config, ... }:
       {
@@ -33,8 +36,27 @@ nixpkgs.lib.nixosSystem {
         swapSize = "64G";
       };
 
+      jitsusama.update-to-main = {
+        repository = "https://github.com/example/machines";
+        output = "nixosConfigurations.example-laptop.config.system.build.toplevel";
+      };
+
       users.users.joel.isNormalUser = true;
-      home-manager.users.joel.home.stateVersion = "26.05";
+      home-manager.users.joel = {
+        home.stateVersion = "26.05";
+        imports = [
+          core.homeModules.cadence
+          core.homeModules.chrome
+          core.homeModules.merge-net
+          core.homeModules.network-revive
+          core.homeModules.passwords
+          core.homeModules.people
+          core.homeModules.session-backup
+          core.homeModules.slack
+          core.homeModules.wifid
+          core.homeModules.zoom
+        ];
+      };
 
       system.stateVersion = "26.05";
     }

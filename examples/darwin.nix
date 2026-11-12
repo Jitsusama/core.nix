@@ -8,6 +8,8 @@ nix-darwin.lib.darwinSystem {
     core.darwinModules.workstation
     core.darwinModules.graphical
     core.darwinModules.linux-builder
+    # A module no role brings, so it meets the others here first.
+    core.darwinModules.update-to-main
     (
       { lib, pkgs, ... }:
       {
@@ -17,6 +19,11 @@ nix-darwin.lib.darwinSystem {
         # Nix kept by its own installer rather than nix-darwin, as the Linux
         # builder is written for.
         nix.enable = false;
+
+        jitsusama.update-to-main = {
+          repository = "https://github.com/example/machines";
+          output = "darwinConfigurations.example.system";
+        };
 
         system.primaryUser = "joel";
         users.users.joel.home = "/Users/joel";
