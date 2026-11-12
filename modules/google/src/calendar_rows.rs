@@ -4,16 +4,17 @@
 //! meetings Joel held lately, newest first and a series once at its
 //! latest, in Calendar's Recent (`held`), and the calls among those on a
 //! Meet link, once by code, in Meet's Recent (`meet`), each worded as
-//! Calendar.qml, Calendar.js and Meet.js word it, with its acts in the one order every surface
-//! lists them and its drawer a record of its own.
+//! Calendar.qml, Calendar.js and Meet.js word it, with its acts as rows
+//! inside it in the one order every surface lists them
+//! (`calendar_inside.rs`) and its drawer a record of its own.
 //!
-//! What reads the clock travels as a time for the shell to word: a
-//! meeting's side is `{at, as: "meeting", until, allDay}`, which it says
-//! as "in 12 min", "now" or "yesterday 15:00", and `joins` says from when
-//! until when Return joins its call rather than showing it, so no row
-//! changes each minute. What changes only as a meeting ends, its note and
+//! What reads the clock each moment travels as a time for the shell to
+//! word: a meeting's side is `{at, as: "meeting", until, allDay}`, which it
+//! says as "in 12 min", "now" or "yesterday 15:00". What changes only a
+//! few times a meeting, whether Return joins its call, its note and
 //! whether it's listed, is made against the `now` each row is made at,
-//! which the daemon's look each minute moves on.
+//! which the daemon's look each minute moves on, so only a row that turned
+//! is told.
 
 use std::cmp::Reverse;
 
@@ -22,14 +23,11 @@ use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 
 use crate::calendar::{Answer, Guest, Meeting, Person};
+use crate::calendar_inside::{Within, inside, returns};
 pub use crate::calendar_words::Words;
 use crate::calendar_words::{COMMA, month, repeated, weekday};
 use crate::compose;
 use crate::rows::{fill, opens};
-
-/// How soon before its start Return on a meeting joins its call rather
-/// than showing it: ten minutes (Calendar.js's `TAKES_OVER`).
-const TAKES_OVER: i64 = 600_000;
 
 /// As many as a Recent lists (launcher/Recent.js), so none is made only
 /// to be dropped.
@@ -146,7 +144,8 @@ fn meet_code(link: &str) -> Option<String> {
 }
 
 /// Every meeting's row in Calendar, its Recent and Meet's, each place's in
-/// its order, worded in the zone Joel's clock reads.
+/// its order and each followed by the rows inside it, worded in the zone
+/// Joel's clock reads.
 pub fn meetings(
     meetings: &[Meeting],
     held: &[Meeting],
@@ -154,10 +153,24 @@ pub fn meetings(
     zone: &TimeZone,
     words: &Words,
 ) -> Vec<Value> {
-    listed(meetings, held, now)
-        .iter()
-        .map(|each| row(each, now, zone, words))
-        .collect()
+    let mut rows = Vec::new();
+    for each in listed(meetings, held, now) {
+        let row = row(&each, now, zone, words);
+        let text = |field: &str| row[field].as_str().unwrap_or_default().to_owned();
+        let (key, thing, drawn) = (text("key"), text("thing"), text("drawer"));
+        let details = drawer(&each, zone, words);
+        let within = Within {
+            key: &key,
+            thing: &thing,
+            place: each.place,
+            drawer: &drawn,
+            details: &details,
+        };
+        let acts = acts(each.meeting, words);
+        rows.push(row);
+        rows.extend(inside(&within, each.meeting, &acts, words));
+    }
+    rows
 }
 
 /// Each of those rows' drawers, as records of their own the launcher
@@ -195,8 +208,6 @@ fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
     let meeting = listed.meeting;
     let id = &meeting.id;
     let call = listed.place == "meet";
-    let joins = (meeting.link.is_some() && !meeting.all_day)
-        .then(|| json!({"from": meeting.start - TAKES_OVER, "until": meeting.end}));
     // Its times and his answer, or nothing once it's over, where its side
     // says when it was (Calendar.js's noted); a call its times alone.
     let note = if call {
@@ -251,9 +262,8 @@ fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
         "keywords": keywords,
         // Whether it's today's, so Calendar's row counts today's meetings.
         "today": on_or_before(meeting.start, now, zone),
-        "joins": joins,
         "drawer": format!("drawer:{}:{}", listed.place, listed.id),
-        "acts": acts(meeting, words),
+        "acts": returns(meeting, now),
         "held": {
             "id": id,
             "link": meeting.link,
@@ -272,9 +282,10 @@ fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
 /// Its acts, in the one order every surface lists them (Calendar.qml's
 /// acts): Join the Meeting, Write to the Guests, Show in Calendar, Open
 /// the Transcript, Going, Maybe and Not Going, Move the Meeting, Guests,
-/// Attachments, Cancel the Meeting and Copy the Link. One the daemon does
-/// carries its `ask`; one that steps in names the launcher's `step`, with
-/// what that step needs. Cancel asks once, its sure row's name said here.
+/// Attachments, Cancel the Meeting and Copy the Link, each of which
+/// `calendar_inside` makes a row inside the meeting's. One the daemon does
+/// carries its `ask`; one that steps in says what its step needs. Cancel
+/// asks once, its sure row's name said here.
 fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
     let id = &meeting.id;
     let mut acts = Vec::new();

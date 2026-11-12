@@ -11726,7 +11726,9 @@
         "nd": "{n}nd",
         "rd": "{n}rd",
         "th": "{n}th",
-        "and": "{some} and {last}"
+        "and": "{some} and {last}",
+        "yourAnswer": "your answer",
+        "aboutSide": "what it's about"
       },
       "weekdays": [
         "Sunday",
@@ -11863,6 +11865,15 @@
       "name": "Copy the Link",
       "verb": "copy",
       "glyph": "link"
+    },
+    {
+      "id": "verb:calendar:address",
+      "command": "yank",
+      "argument": "address",
+      "in": "calendar:meeting",
+      "name": "Copy the Address",
+      "verb": "copy",
+      "glyph": "copy"
     },
     {
       "id": "verb:calendar:open",
