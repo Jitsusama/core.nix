@@ -272,7 +272,9 @@ fn main() -> ExitCode {
     }
     let (entries, resigned) = followed(changed.clone());
     let mut served = Served::default();
-    let mut records = |holding: &Holding| {
+    // What's served of what `held` holds, handing it the rows a search
+    // answers with.
+    let mut records = |held: &mut State| {
         if resigned.swap(false, Ordering::Acquire) {
             served.rows.forget();
         }
@@ -283,8 +285,9 @@ fn main() -> ExitCode {
             entries: &entries,
             words: &words,
         };
-        let records = served.records(holding, &signs, shared.watches("row", row::DESKTOP));
-        (records, served.unserved())
+        let told = served.records(&held.holding, &signs, shared.watches("row", row::DESKTOP));
+        held.unserved(served.unserved());
+        told
     };
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
@@ -303,12 +306,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let first = {
-        let mut held = state.lock().unwrap_or_else(PoisonError::into_inner);
-        let (first, unserved) = records(&held.holding);
-        held.unserved(unserved);
-        first
-    };
+    let first = records(&mut state.lock().unwrap_or_else(PoisonError::into_inner));
     shared.change(first, json!({}));
     // Everything changed meanwhile is taken at once, so a burst is told
     // and written once; each burst is written as it's told, so a notice
@@ -321,9 +319,7 @@ fn main() -> ExitCode {
             if let Err(why) = store::write(&kept, &held.holding) {
                 eprintln!("notices: can't write {}: {why}", kept.display());
             }
-            let (told, unserved) = records(&held.holding);
-            held.unserved(unserved);
-            (told, std::mem::take(&mut held.owed))
+            (records(&mut held), std::mem::take(&mut held.owed))
         };
         shared.change(told, json!({}));
         for signal in &owed {
