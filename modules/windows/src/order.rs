@@ -301,7 +301,11 @@ fn refused(niri: &Path, request: &Value) -> Option<String> {
 fn answer(niri: &Path, request: &Value) -> Option<Value> {
     let mut stream = UnixStream::connect(niri).ok()?;
     stream.set_read_timeout(Some(ASKING)).ok()?;
-    writeln!(stream, "{request}").ok()?;
+    // The request goes as one line in one write: serde_json says a value
+    // in many small pieces, each its own write on a bare socket, and a
+    // reader taking it a read at a time (tests/screens-off-on-niri-test.py's
+    // proxy) saw a request cut in two.
+    stream.write_all(format!("{request}\n").as_bytes()).ok()?;
     let mut line = String::new();
     BufReader::new(stream).read_line(&mut line).ok()?;
     serde_json::from_str(&line).ok()

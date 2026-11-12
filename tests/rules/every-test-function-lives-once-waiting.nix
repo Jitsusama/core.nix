@@ -62,7 +62,6 @@
   "modules/spend-watch/src/collection.rs" = 1;
   "modules/spend-watch/src/detect.rs" = 1;
   "modules/spend-watch/src/status.rs" = 1;
-  "modules/windows/src/interface.rs" = 1;
   "modules/zathura/keys-test.sh" = 1;
   "tests/agents-on-niri-test.py" = 1;
   "tests/arrivals.qml" = 2;

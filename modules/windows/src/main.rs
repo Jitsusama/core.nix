@@ -1,10 +1,11 @@
 //! windows SOCKET [--words FILE] [--numbers FILE] [--machine SOCKET]
 //!
 //! niri's windows, held ready for the shell and anything else that asks,
-//! over SOCKET in the shell's daemon interface (interface.rs): each
-//! window as a `window` record, named by its program and placed as its
-//! row says it, each workspace as a `workspace` record, and what holds
-//! the keys as the one `desktop` record (desktop.rs).
+//! over SOCKET in the shell's daemon interface, which daemon-serve answers
+//! as it does every daemon's (interface.rs names the kinds): each window
+//! as a `window` record, named by its program and placed as its row says
+//! it, each workspace as a `workspace` record, and what holds the keys as
+//! the one `desktop` record (desktop.rs).
 //!
 //! It hears niri's event stream on `NIRI_SOCKET` for as long as it runs,
 //! since a stream can't be paused, and works out every record again at
@@ -30,73 +31,40 @@
 //! the screen holding it says it (light.rs); the machine daemon reads the
 //! light each second while it's watched, so it isn't watched otherwise.
 
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
-use std::net::Shutdown;
-use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, SyncSender};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::mpsc;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
+use daemon_serve::asks::error;
+use daemon_serve::serve::{self, Own, Shared as Served};
 use programs::notify::Notify;
 use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
-use windows::interface::{Ask, KINDS, VERSION, ask, error, kind_of, placed, tells, trimmed};
+use windows::interface::DOMAIN;
 use windows::light::{Held, Seen};
 use windows::order;
 use windows::screens;
 use windows::screens::acts::{self, Act};
 use windows::screens::vocabulary::{numbered, worded};
 
-/// How many of the last events' times health says.
-const TIMES: usize = 32;
-/// How many lines a connection may have waiting to be written before
-/// it's taken as no longer reading and hung up on.
-const QUEUED: usize = 256;
-/// How long to wait after a connection couldn't be taken.
-const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 /// How long to wait before asking niri again once it's gone.
 const NIRI_AGAIN: Duration = Duration::from_secs(2);
 /// How long to wait before asking the machine daemon again while a
 /// screen is looked at and it isn't answering.
 const MACHINE_AGAIN: Duration = Duration::from_secs(2);
+/// The daemon's own asks, each answered on a thread of its own, since
+/// both ask niri, so no ask after one waits on niri.
+const SLOW: &[&str] = &["look", "screen"];
 
-/// One watch a client holds.
-struct Watch {
-    connection: u64,
-    id: Value,
-    kinds: Vec<String>,
-    keys: Option<Vec<String>>,
-    /// The fields it's told of each record, or all of them.
-    fields: Option<Vec<String>>,
-    /// The places whose rows it's told, or every place's.
-    places: Option<Vec<String>>,
-    told: SyncSender<String>,
-    stream: Arc<UnixStream>,
-}
-
-impl Watch {
-    fn wants(&self, key: &str) -> bool {
-        match &self.keys {
-            Some(keys) => keys.iter().any(|k| k == key),
-            None => {
-                kind_of(key).is_some_and(|kind| self.kinds.iter().any(|k| k == kind))
-                    && placed(key, self.places.as_deref())
-            }
-        }
-    }
-}
-
-/// Everything the threads share.
+/// What the records are made from.
 struct Daemon {
-    held: BTreeMap<String, Value>,
-    watches: Vec<Watch>,
     desktop: Desktop,
     entries: Entries,
     names: Names,
@@ -115,13 +83,13 @@ struct Daemon {
     /// "answering", or "not answering" while it's gone.
     niri: &'static str,
     events: u64,
-    /// How long each of the last events took to hear, in microseconds.
-    took: VecDeque<u64>,
-    since: u64,
 }
 
+/// Everything the threads share.
 struct Shared {
     daemon: Mutex<Daemon>,
+    /// What serves the records, told each time they change.
+    served: Arc<Served>,
     folders: Vec<PathBuf>,
     /// niri's socket, asked for its outputs when a client asks to look.
     niri: PathBuf,
@@ -151,7 +119,7 @@ fn main() {
         std::process::exit(78);
     };
     let socket = PathBuf::from(socket);
-    let listener = match listen(&socket) {
+    let listener = match serve::listen(&socket) {
         Ok(listener) => listener,
         Err(why) => {
             eprintln!("<3>couldn't listen on {}: {why}", socket.display());
@@ -169,10 +137,17 @@ fn main() {
     // The light is said only in a screen's drawer, so only where rows are
     // made.
     let machine = machine.filter(|_| words.is_some());
+    // The daemon's own asks reach what it holds, which holds what serves
+    // them, so they find it once it's made.
+    let found: Arc<OnceLock<Arc<Shared>>> = Arc::default();
+    let own: Own = {
+        let found = Arc::clone(&found);
+        Box::new(move |said| owned(found.get()?, said))
+    };
+    let served = Served::new(DOMAIN, own);
+    served.slow(SLOW);
     let shared = Arc::new(Shared {
         daemon: Mutex::new(Daemon {
-            held: BTreeMap::new(),
-            watches: Vec::new(),
             desktop: Desktop::default(),
             entries,
             names: Names::default(),
@@ -184,13 +159,15 @@ fn main() {
             rows: Kept::default(),
             niri: "starting",
             events: 0,
-            took: VecDeque::new(),
-            since: now_ms(),
         }),
+        served: Arc::clone(&served),
         folders,
         niri: niri.clone(),
         looked: Condvar::new(),
     });
+    let _ = found.set(Arc::clone(&shared));
+    refresh(&served, &mut lock(&shared.daemon));
+    follow_watches(&shared);
     // The entries' folders are watched before niri is heard, so no change
     // after the first reading goes unheard.
     let following = Arc::clone(&shared);
@@ -207,50 +184,34 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || follow_light(&shared, &machine));
     }
-    {
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || follow(&shared, &niri));
-    }
-    for (connection, stream) in (1u64..).zip(listener.incoming()) {
-        let Ok(stream) = stream else {
-            std::thread::sleep(ACCEPT_BACKOFF);
-            continue;
-        };
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || serve(&shared, stream, connection));
-    }
-}
-
-/// The socket systemd holds for it (windows.socket), or, run by hand,
-/// its own, in a folder only Joel reads, replacing one left behind.
-fn listen(socket: &Path) -> std::io::Result<UnixListener> {
-    if let Some(listener) = handed() {
-        return Ok(listener);
-    }
-    if let Some(folder) = socket.parent() {
-        std::fs::create_dir_all(folder)?;
-        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let _ = std::fs::remove_file(socket);
-    UnixListener::bind(socket)
-}
-
-/// The listening socket systemd hands this process (`sd_listen_fds`).
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
+    serve::accept(served, listener);
+    follow(&shared, &niri);
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Hears each watch begin or end, on a thread of its own, and wakes the
+/// light's thread as a screen comes to be looked at, or lets it rest as
+/// none is any more. daemon-serve says so with every record held, so
+/// it's only passed on there, and the keys read here after.
+fn follow_watches(shared: &Arc<Shared>) {
+    let (moved, heard) = mpsc::channel();
+    shared.served.on_watches(Box::new(move || {
+        let _ = moved.send(());
+    }));
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        while let Ok(()) = heard.recv() {
+            let _ = heard.try_iter().count();
+            let keys: Vec<String> = shared.served.keys_watched().into_iter().collect();
+            let looking = screens::looks_at(Some(&keys));
+            looks_changed(&shared, &mut lock(&shared.daemon), looking);
+        }
+    });
 }
 
 /// Hears niri's event stream, and asks again every two seconds while
@@ -268,7 +229,10 @@ fn follow(shared: &Shared, niri: &Path) {
                 }
             }
         }
-        lock(&shared.daemon).niri = "not answering";
+        let mut daemon = lock(&shared.daemon);
+        daemon.niri = "not answering";
+        refresh(&shared.served, &mut daemon);
+        drop(daemon);
         std::thread::sleep(NIRI_AGAIN);
     }
 }
@@ -293,7 +257,6 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
             eprintln!("<3>niri refused the event stream: {why}");
             return;
         }
-        let began = Instant::now();
         // A screen coming or going changes the workspaces, so its outputs
         // are asked again then, before the lock is taken, so no ask waits
         // on niri; only where rows are made, since nothing else reads
@@ -303,8 +266,12 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
             .then(|| screens::asked(niri))
             .flatten();
         let mut daemon = lock(&shared.daemon);
+        let answered = daemon.niri != "answering";
         daemon.niri = "answering";
         if event.get("Ok").is_some() {
+            if answered {
+                refresh(&shared.served, &mut daemon);
+            }
             continue;
         }
         daemon.events += 1;
@@ -313,21 +280,31 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
             daemon.outputs = outputs;
             moved
         });
-        if daemon.desktop.hear(&event) == Heard::Changed || moved {
-            refresh(&mut daemon);
+        if daemon.desktop.hear(&event) == Heard::Changed || moved || answered {
+            refresh(&shared.served, &mut daemon);
         }
         order::put_back(niri, daemon.desktop.put_back());
-        let took = u64::try_from(began.elapsed().as_micros()).unwrap_or(u64::MAX);
-        if daemon.took.len() == TIMES {
-            daemon.took.pop_front();
-        }
-        daemon.took.push_back(took);
     }
 }
 
-/// Works every record out again, keeps those that changed and lets go of
-/// those gone, telling each watch what changed of what it wants.
-fn refresh(daemon: &mut Daemon) {
+/// Whether a record is listed before others: windows first, the one used
+/// last first, then everything else as it was made, so a whole answer is
+/// in the order the shell lists it.
+fn listed(record: &Value) -> (bool, std::cmp::Reverse<(u64, u64)>) {
+    let window = DOMAIN.kind_of(record["key"].as_str().unwrap_or("")) == Some("window");
+    let used = (
+        record["order"].as_u64().unwrap_or(0),
+        record["id"].as_u64().unwrap_or(0),
+    );
+    (
+        !window,
+        std::cmp::Reverse(if window { used } else { (0, 0) }),
+    )
+}
+
+/// Works every record out again and hands them all to what serves them,
+/// which tells each watch what changed of what it wants.
+fn refresh(served: &Served, daemon: &mut Daemon) {
     let Daemon {
         desktop,
         entries,
@@ -341,6 +318,7 @@ fn refresh(daemon: &mut Daemon) {
         ..
     } = &mut *daemon;
     let mut records = desktop.records(entries, names);
+    records.sort_by_key(listed);
     if let Some(words) = words {
         let held = light.light();
         let seen = light.looking.then(|| Seen {
@@ -354,63 +332,7 @@ fn refresh(daemon: &mut Daemon) {
         );
         records.extend(rows.all().cloned());
     }
-    let said: HashSet<String> = records
-        .iter()
-        .filter_map(|record| record["key"].as_str().map(str::to_owned))
-        .collect();
-    let gone: Vec<String> = daemon
-        .held
-        .keys()
-        .filter(|key| !said.contains(*key))
-        .cloned()
-        .collect();
-    for key in &gone {
-        daemon.held.remove(key);
-    }
-    // Each record changed, with what it was, so a watch of some fields is
-    // told it only when one of those changed.
-    let mut changed = Vec::new();
-    for record in records {
-        let Some(key) = record["key"].as_str().map(str::to_owned) else {
-            continue;
-        };
-        if daemon.held.get(&key) != Some(&record) {
-            let was = daemon.held.insert(key, record.clone());
-            changed.push((was, record));
-        }
-    }
-    if changed.is_empty() && gone.is_empty() {
-        return;
-    }
-    let mut stuck = HashSet::new();
-    for watch in &daemon.watches {
-        let fields = watch.fields.as_deref();
-        let records: Vec<Value> = changed
-            .iter()
-            .filter(|(was, now)| {
-                now["key"].as_str().is_some_and(|key| watch.wants(key))
-                    && tells(was.as_ref(), now, fields)
-            })
-            .map(|(_, now)| trimmed(now, fields))
-            .collect();
-        let went: Vec<&String> = gone.iter().filter(|key| watch.wants(key)).collect();
-        if records.is_empty() && went.is_empty() {
-            continue;
-        }
-        let mut told = json!({"id": watch.id, "changed": records});
-        if !went.is_empty() {
-            told["gone"] = json!(went);
-        }
-        if watch.told.try_send(told.to_string()).is_err() {
-            stuck.insert(watch.connection);
-            let _ = watch.stream.shutdown(Shutdown::Both);
-        }
-    }
-    if !stuck.is_empty() {
-        daemon
-            .watches
-            .retain(|watch| !stuck.contains(&watch.connection));
-    }
+    served.change(records, sources(daemon));
 }
 
 /// The entries changed: each is read again, every app id looked up again,
@@ -420,7 +342,7 @@ fn entries_changed(shared: &Shared) {
     let mut daemon = lock(&shared.daemon);
     daemon.entries = entries;
     daemon.names.forget();
-    refresh(&mut daemon);
+    refresh(&shared.served, &mut daemon);
 }
 
 /// What desk-facts says of each screen in its folder, or nothing where it
@@ -469,26 +391,17 @@ fn desk_changed(shared: &Shared, folder: &Path) {
     let mut daemon = lock(&shared.daemon);
     if daemon.desk != desk {
         daemon.desk = desk;
-        refresh(&mut daemon);
+        refresh(&shared.served, &mut daemon);
     }
-}
-
-/// Whether a watch's keys name a screen's row, as the shell's watch ahead
-/// does while one is selected or stepped into.
-fn looks(watches: &[Watch]) -> bool {
-    watches
-        .iter()
-        .any(|watch| screens::looks_at(watch.keys.as_deref()))
 }
 
 /// The watches changed: where a screen has come to be looked at, the
 /// light's thread is woken and the drawer says what's held of it, not yet
-/// read; where none is any more, the drawer says no light. Asked before a
-/// new watch joins, so it isn't told a change before its whole answer.
+/// read; where none is any more, the drawer says no light.
 fn looks_changed(shared: &Shared, daemon: &mut Daemon, looking: bool) {
     if daemon.light.look(looking) {
         shared.looked.notify_all();
-        refresh(daemon);
+        refresh(&shared.served, daemon);
     }
 }
 
@@ -523,7 +436,7 @@ fn follow_light(shared: &Shared, socket: &Path) {
         daemon.light.stream = None;
         if daemon.light.looking {
             daemon.light.lapsed(true);
-            refresh(&mut daemon);
+            refresh(&shared.served, &mut daemon);
             drop(daemon);
             std::thread::sleep(MACHINE_AGAIN);
         }
@@ -562,93 +475,17 @@ fn watch_light(shared: &Shared, mut stream: UnixStream) {
             Ok(_) => {
                 let mut daemon = lock(&shared.daemon);
                 if daemon.light.heard(&line) {
-                    refresh(&mut daemon);
+                    refresh(&shared.served, &mut daemon);
                 }
                 line.clear();
             }
             Err(why) if matches!(why.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
                 let mut daemon = lock(&shared.daemon);
                 daemon.light.lapsed(false);
-                refresh(&mut daemon);
+                refresh(&shared.served, &mut daemon);
             }
             Err(_) => return,
         }
-    }
-}
-
-fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
-    let Ok(reading) = stream.try_clone() else {
-        return;
-    };
-    let Ok(hangup) = stream.try_clone().map(Arc::new) else {
-        return;
-    };
-    let (told, lines) = mpsc::sync_channel::<String>(QUEUED);
-    let mut writing = stream;
-    std::thread::spawn(move || {
-        for line in lines {
-            if writeln!(writing, "{line}").is_err() {
-                break;
-            }
-        }
-    });
-    for line in BufReader::new(reading).lines() {
-        let Ok(line) = line else { break };
-        let Some(answer) = answer(shared, ask(&line), connection, &told, &hangup) else {
-            continue;
-        };
-        if told.send(answer.to_string()).is_err() {
-            break;
-        }
-    }
-    let mut daemon = lock(&shared.daemon);
-    daemon
-        .watches
-        .retain(|watch| watch.connection != connection);
-    let looking = looks(&daemon.watches);
-    looks_changed(shared, &mut daemon, looking);
-}
-
-/// When a record's window was last looked at, for placing it; 0 for any
-/// other record.
-fn order(record: &Value) -> (u64, u64) {
-    (
-        record["order"].as_u64().unwrap_or(0),
-        record["id"].as_u64().unwrap_or(0),
-    )
-}
-
-/// The records held of these kinds or keys: by kind, the windows the one
-/// used last first, so a whole answer is in the order the shell lists
-/// it, and the rest by key.
-fn held(
-    daemon: &Daemon,
-    kinds: &[String],
-    keys: Option<&[String]>,
-    places: Option<&[String]>,
-) -> Vec<Value> {
-    match keys {
-        Some(keys) => keys
-            .iter()
-            .filter_map(|key| daemon.held.get(key))
-            .cloned()
-            .collect(),
-        None => KINDS
-            .iter()
-            .filter(|kind| kinds.iter().any(|k| k == *kind))
-            .flat_map(|kind| {
-                let mut records: Vec<Value> = daemon
-                    .held
-                    .iter()
-                    .filter(|(key, _)| kind_of(key) == Some(kind) && placed(key, places))
-                    .map(|(_, record)| record.clone())
-                    .collect();
-                if *kind == "window" {
-                    records.sort_by_key(|record| std::cmp::Reverse(order(record)));
-                }
-                records
-            })
-            .collect(),
     }
 }
 
@@ -662,7 +499,7 @@ fn looked(shared: &Shared) -> bool {
         let mut daemon = lock(&shared.daemon);
         if daemon.outputs != outputs {
             daemon.outputs = outputs;
-            refresh(&mut daemon);
+            refresh(&shared.served, &mut daemon);
         }
     }
     rowed
@@ -675,90 +512,15 @@ fn sources(daemon: &Daemon) -> Value {
     })
 }
 
-/// What one ask is answered with, or none where it's been told already.
-fn answer(
-    shared: &Arc<Shared>,
-    asked: Ask,
-    connection: u64,
-    told: &SyncSender<String>,
-    hangup: &Arc<UnixStream>,
-) -> Option<Value> {
-    Some(match asked {
-        Ask::Hello { id } => {
-            let daemon = lock(&shared.daemon);
-            json!({
-                "id": id, "version": VERSION, "domain": "windows", "state": "answering",
-                "since": daemon.since, "sources": sources(&daemon),
-            })
-        }
-        Ask::Get { id, keys } => {
-            json!({"id": id, "records": held(&lock(&shared.daemon), &[], Some(&keys), None)})
-        }
-        Ask::List { id, kinds, places } => {
-            let daemon = lock(&shared.daemon);
-            json!({"id": id, "records": held(&daemon, &kinds, None, places.as_deref())})
-        }
-        Ask::Watch {
-            id,
-            kinds,
-            keys,
-            fields,
-            places,
-        } => {
-            let mut daemon = lock(&shared.daemon);
-            // A watch asked again by its id replaces the one before.
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            let looking = looks(&daemon.watches) || screens::looks_at(keys.as_deref());
-            looks_changed(shared, &mut daemon, looking);
-            daemon.watches.push(Watch {
-                connection,
-                id: id.clone(),
-                kinds: kinds.clone(),
-                keys: keys.clone(),
-                fields: fields.clone(),
-                places: places.clone(),
-                told: told.clone(),
-                stream: Arc::clone(hangup),
-            });
-            // Told under the same lock a change is told under, so no
-            // change comes before the answer it changes.
-            let records: Vec<Value> = held(&daemon, &kinds, keys.as_deref(), places.as_deref())
-                .iter()
-                .map(|record| trimmed(record, fields.as_deref()))
-                .collect();
-            let whole = json!({"id": id, "records": records});
-            if told.try_send(whole.to_string()).is_err() {
-                let _ = hangup.shutdown(Shutdown::Both);
-            }
-            return None;
-        }
-        Ask::Unwatch { id } => {
-            let mut daemon = lock(&shared.daemon);
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            let looking = looks(&daemon.watches);
-            looks_changed(shared, &mut daemon, looking);
-            json!({"id": id, "unwatched": true})
-        }
-        Ask::Health { id } => {
-            let daemon = lock(&shared.daemon);
-            json!({
-                "id": id, "version": VERSION, "domain": "windows", "state": "answering",
-                "since": daemon.since, "sources": sources(&daemon),
-                "watches": daemon.watches.len(),
-                "took_us": daemon.took.iter().collect::<Vec<_>>(),
-            })
-        }
-        Ask::Look { id } => json!({"id": id, "looked": looked(shared)}),
-        Ask::Screen { id, said } => screen_done(shared, &id, &said),
-        Ask::UnknownKind { id, kind } => {
-            error(&id, "unknown-kind", &format!("no kind {kind} here"))
-        }
-        Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
-    })
+/// The daemon's own asks: to look at the screens again, and an act on
+/// one; none for an ask it doesn't know, which daemon-serve refuses.
+fn owned(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
+    let id = said.get("id").cloned().unwrap_or(Value::Null);
+    match said["ask"].as_str()? {
+        "look" => Some(json!({"id": id, "looked": looked(shared)})),
+        "screen" => Some(screen_done(shared, &id, said)),
+        _ => None,
+    }
 }
 
 /// Does the act a screen's row asked, and answers it.

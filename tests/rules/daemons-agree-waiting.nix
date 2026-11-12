@@ -81,5 +81,4 @@
     "shown"
     "speaks"
   ];
-  windows = [ "speaks" ];
 }

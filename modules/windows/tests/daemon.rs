@@ -341,7 +341,16 @@ fn hello_says_it_answers_on_the_socket_systemd_hands_it() {
     assert_eq!(said["domain"], "windows");
     assert_eq!(said["version"], 1);
     assert_eq!(said["state"], "answering");
-    assert_eq!(said["sources"]["entries"]["count"], 2);
+    assert_eq!(said["sources"]["entries"], "answering");
+    // The entries reached it through what systemd handed on: Chrome's
+    // window is named by its entry.
+    let (_, records) = running.watching();
+    assert!(
+        records
+            .iter()
+            .any(|record| record["entry"] == "google-chrome"),
+        "no window was named by its entry: {records:?}"
+    );
 }
 
 #[test]

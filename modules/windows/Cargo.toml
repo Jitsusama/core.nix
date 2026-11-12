@@ -10,6 +10,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The serving side of the shell's daemon interface, which every daemon
+# serving the shell holds: the socket, its watches and what each is told.
+daemon-serve = { path = "../daemon-serve" }
 # Where the desktop entries are, how one reads, and inotify, which says
 # when they change, as the programs daemon reads them.
 programs = { path = "../programs" }
