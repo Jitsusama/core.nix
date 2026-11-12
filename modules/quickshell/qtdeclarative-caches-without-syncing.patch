@@ -1,0 +1,61 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Write a cached QML unit without syncing it to disk
+
+QSaveFile's commit syncs each unit it writes to the disk cache before
+renaming it into place. A shell restarted onto changed files writes
+hundreds of units, and each sync waits on the disk: 393 units of a
+shell's size took 1.8 s to write so on btrfs, and 30 ms without it,
+which made such a start slower with the cache than without it. A
+cached unit is only worth keeping while it matches its source, and one
+cut short by a crash is shorter than its header says, so the mapper
+refuses it and it is compiled again. So on Unix it
+is now written to a temporary file and renamed over the old one
+without the sync. The rename still keeps a reader from seeing half of
+one.
+
+---
+--- a/src/qml/common/qv4compileddata_p.h
++++ b/src/qml/common/qv4compileddata_p.h
+@@ -31,6 +31,8 @@
+ 
+ #if QT_CONFIG(temporaryfile)
+ #include <QtCore/qsavefile.h>
++#include <QtCore/qtemporaryfile.h>
++#include <cstdio>
+ #endif
+ 
+ #include <private/qendian_p.h>
+@@ -1844,7 +1846,32 @@
+     static bool writeDataToFile(const QString &outputFileName, const char *data, quint32 size,
+                                 QString *errorString)
+     {
+-#if QT_CONFIG(temporaryfile)
++#if QT_CONFIG(temporaryfile) && defined(Q_OS_UNIX)
++        // A cached unit can be compiled again at any time: one cut short by a
++        // crash is shorter than its header says, which the mapper refuses. So
++        // it is written to a name of its own and renamed over the old one,
++        // which keeps a reader from seeing half of it, without waiting on the
++        // disk as QSaveFile's commit does: 393 units of a shell's size took
++        // 1.8 s to write so on btrfs, and 30 ms without the sync.
++        QTemporaryFile cacheFile(outputFileName + QLatin1String(".XXXXXX"));
++        cacheFile.setAutoRemove(false);
++        if (!cacheFile.open() || cacheFile.write(data, size) != size || !cacheFile.flush()) {
++            *errorString = cacheFile.errorString();
++            cacheFile.remove();
++            return false;
++        }
++        cacheFile.close();
++        const QByteArray written = QFile::encodeName(cacheFile.fileName());
++        if (std::rename(written.constData(), QFile::encodeName(outputFileName).constData())
++                != 0) {
++            *errorString = QStringLiteral("Could not rename the cached unit into place");
++            cacheFile.remove();
++            return false;
++        }
++
++        errorString->clear();
++        return true;
++#elif QT_CONFIG(temporaryfile)
+         QSaveFile cacheFile(outputFileName);
+         if (!cacheFile.open(QIODevice::WriteOnly | QIODevice::Truncate)
+                 || cacheFile.write(data, size) != size

@@ -228,8 +228,10 @@
 
   # The shell's own files are compiled once and kept, and only a file that
   # changed is compiled again, though Quickshell serves them on its own qs:
-  # scheme, which stock Qt never caches (tests/compiled-once.sh, over
-  # qtdeclarative-caches-what-is-served.patch). Kept in Nix because each
+  # scheme, which stock Qt never caches, and none of them waits for the disk
+  # as it is written (tests/compiled-once.sh, over
+  # qtdeclarative-caches-what-is-served.patch and
+  # qtdeclarative-caches-without-syncing.patch). Kept in Nix because each
   # line sets up the sandbox or hands the script a path Nix gives it, and
   # the script holds the test.
   the-shell-compiles-once = pkgs.runCommandLocal "the-shell-compiles-once" { } ''
@@ -238,7 +240,7 @@
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
     (cd shell && ${shellFolderLint})
-    ${lib.getExe pkgs.bash} ${../../../tests/compiled-once.sh} ${qs} shell
+    ${lib.getExe pkgs.bash} ${../../../tests/compiled-once.sh} ${qs} shell ${lib.getExe pkgs.strace}
     touch $out
   '';
 

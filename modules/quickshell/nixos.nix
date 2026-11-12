@@ -92,7 +92,10 @@ let
   # shell's folder on its own qs: scheme, which stock Qt never keeps
   # compiled, so each restart compiled all of it and each place again at
   # its first opening; a unit served so is kept in the disk cache now,
-  # checked by its content (qtdeclarative-caches-what-is-served.patch).
+  # checked by its content (qtdeclarative-caches-what-is-served.patch),
+  # and written without waiting for the disk, since a restart onto changed
+  # files writes hundreds of units and syncing each made it slower than
+  # compiling (qtdeclarative-caches-without-syncing.patch).
   # Only the shell and the
   # modules it loads are built with it, so nothing else on the machine is
   # rebuilt for it.
@@ -110,6 +113,7 @@ let
             ./qtdeclarative-generator-frames-checked.patch
             ./qtdeclarative-maps-find-keys-by-hash.patch
             ./qtdeclarative-caches-what-is-served.patch
+            ./qtdeclarative-caches-without-syncing.patch
           ];
         });
       }
