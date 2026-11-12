@@ -831,6 +831,19 @@ Provider {
         showing: provider.launcher?.open ?? false
     }
 
+    // A program's notices past the notices place's page come once they're
+    // asked for (PastNotices.qml's every), so its row of them, counting
+    // them, is drawn again when they do.
+    Connections {
+        target: (provider.launcher?.sources ?? [])
+            .find(source => typeof source.sentBy === "function") ?? null
+        ignoreUnknownSignals: true
+
+        function onWholeHeard() {
+            provider.redrawHeld();
+        }
+    }
+
     // A list read after a program was stepped into, or changing while it's
     // shown, draws its Recent again, as Media does with what's playing.
     Connections {

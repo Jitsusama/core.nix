@@ -11,7 +11,11 @@
 // word asked, in the order they're held: how the daemon ranks them is its
 // own tests' (modules/notices' search.rs), and each it answers is counted
 // in `searches`. Those of `unserved`, notices no place serves, as a page
-// served leaves the rest, are found too, each with its row in the answer.
+// served leaves the rest, are found too, each with its row in the answer;
+// while there are any, `notices` says beside its rows how many it has rows
+// for, as the daemon's summary does, and a `rows` ask is answered as a
+// search is, every notice's key in order with the unserved rows beside
+// them, each counted in `rowsAsked`.
 // A check copies it beside the test with Watch.js.
 pragma ComponentBehavior: Bound
 import QtQuick
@@ -33,6 +37,19 @@ Scope {
     property var searches: []
     // The notices a search finds that no place serves.
     property var unserved: []
+    // How many `rows` asks were answered.
+    property int rowsAsked: 0
+
+    // The unserved rows of `keys`, by key, bare as an answer gives them.
+    function unservedOf(keys) {
+        const rows = {};
+        for (const notice of unserved) {
+            const one = row(notice, "notices", notice.read ? "" : "unread");
+            if (keys.includes(one.key))
+                rows[one.key] = one.row;
+        }
+        return rows;
+    }
 
     // The keys of the notices' rows a search of `words` finds.
     function found(words) {
@@ -86,6 +103,10 @@ Scope {
             else if (place === "notices-desktop" && !notice.read)
                 rows[`row:${place}:${notice.id}`] = row(notice, place, "");
         }
+        if (place === "notices" && unserved.length > 0) {
+            rows["summary:notices"] = { key: "summary:notices", kind: "summary",
+                summary: { count: notices.length + unserved.length } };
+        }
         return rows;
     }
 
@@ -134,16 +155,15 @@ Scope {
                         served.told += 1;
                     } else if (ask.ask === "search") {
                         const keys = served.found(ask.words ?? "");
-                        const rows = {};
-                        for (const notice of served.unserved) {
-                            const one = served.row(notice, "notices",
-                                notice.read ? "" : "unread");
-                            if (keys.includes(one.key))
-                                rows[one.key] = one.row;
-                        }
-                        answer = { id: ask.id, keys: keys, rows: rows,
+                        answer = { id: ask.id, keys: keys, rows: served.unservedOf(keys),
                             grade: keys.length > 0 ? 0 : 3, words: ask.words };
                         served.searches = served.searches.concat([ask.words]);
+                    } else if (ask.ask === "rows") {
+                        const keys = served.notices.concat(served.unserved)
+                            .sort((one, other) => other.at - one.at)
+                            .map(notice => `row:notices:${notice.id}`);
+                        answer = { id: ask.id, keys: keys, rows: served.unservedOf(keys) };
+                        served.rowsAsked += 1;
                     } else if (ask.ask === "unwatch") {
                         // As Desktop's watch ends with the launcher shut.
                         for (const place of Object.keys(served.watches)) {

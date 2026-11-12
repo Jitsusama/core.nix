@@ -20,6 +20,14 @@
 //!   notice marked read where it came from, `how` saying where, closes.
 //! - `quiet { sharing }`: whether the shell holds notices while Joel
 //!   shares his screen, which only the shell sees.
+//!
+//! Two asks answer rather than change, each as a launcher's search is
+//! answered, the keys of the `notices` place's rows in order and beside
+//! them the rows its watch doesn't serve, those read past its page:
+//!
+//! - `search { words }`: those of the notices found.
+//! - `rows { notices? }`: every one's, or those of `notices`, so a list
+//!   of them reaches past the page.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -30,6 +38,7 @@ use crate::held::{Closed, Holding};
 use crate::judged::{Judge, kept_quiet};
 use crate::notice::{Action, Notice, Urgency};
 use crate::picture::{self, Pixels};
+use crate::row;
 use crate::search::Searched;
 
 /// A signal owed to the senders, as the specification names it.
@@ -100,6 +109,26 @@ impl State {
     /// row by its key, for the searches answered from then on.
     pub fn unserved(&mut self, rows: BTreeMap<String, Value>) {
         self.unserved = rows;
+    }
+
+    /// The keys of the `notices` place's rows in its order, every
+    /// notice's or those of `only`, with beside them, by key, each row its
+    /// watch doesn't serve.
+    fn rows(&self, only: Option<&[u32]>) -> Value {
+        let only: Option<BTreeSet<u32>> = only.map(|ids| ids.iter().copied().collect());
+        let keys: Vec<String> = self
+            .holding
+            .notices()
+            .iter()
+            .filter(|notice| !notice.transient)
+            .filter(|notice| only.as_ref().is_none_or(|ids| ids.contains(&notice.id)))
+            .map(|notice| format!("row:{}:{}", row::PLACE, notice.id))
+            .collect();
+        let rows: Map<String, Value> = keys
+            .iter()
+            .filter_map(|key| Some((key.clone(), self.unserved.get(key)?.clone())))
+            .collect();
+        json!({ "keys": keys, "rows": rows })
     }
 
     /// Takes a notice sent over the bus, answering the id it's known by:
@@ -261,6 +290,10 @@ impl State {
                 self.sharing = said["sharing"].as_bool().unwrap_or(false);
                 done(false)
             }
+            "rows" => (
+                self.rows(said["notices"].is_array().then_some(many.as_slice())),
+                false,
+            ),
             "search" => (
                 self.searched.answer(
                     self.holding.notices(),
@@ -441,6 +474,34 @@ mod tests {
             "only Bart's is found: {answer}"
         );
         assert!(!moved, "a search changes nothing held");
+    }
+
+    #[test]
+    fn rows_are_answered_in_order_with_those_the_place_doesnt_serve_beside() {
+        let mut state = state("rows");
+        let old = state.notify(sent("Old and read", &[]), 10);
+        let new = state.notify(sent("New", &[]), 11);
+        let (old_key, new_key) = (format!("row:notices:{old}"), format!("row:notices:{new}"));
+        let row = json!({ "key": old_key, "name": "Old and read" });
+        state.unserved(BTreeMap::from([(old_key.clone(), row.clone())]));
+        let (every, moved) = state.ask(&json!({ "ask": "rows" }), 12);
+        assert_eq!(
+            every["keys"],
+            json!([new_key, old_key]),
+            "newest first: {every}"
+        );
+        assert_eq!(
+            every["rows"],
+            json!({ old_key.clone(): row }),
+            "the unserved alone"
+        );
+        assert!(!moved, "asking for rows changes nothing held");
+        let (some, _) = state.ask(&json!({ "ask": "rows", "notices": [new] }), 12);
+        assert_eq!(
+            some,
+            json!({ "keys": [new_key], "rows": {} }),
+            "those asked for"
+        );
     }
 
     #[test]

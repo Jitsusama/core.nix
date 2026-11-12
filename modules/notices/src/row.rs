@@ -30,6 +30,17 @@ pub const PLACE: &str = "notices";
 pub const DESKTOP: &str = "notices-desktop";
 pub const HISTORY: &str = "notices-history";
 
+/// How many read notices the `notices` place serves beside every unread
+/// and live one: the newest, which Notifications and a program's own row
+/// open on, the rest asked for by `rows` (daemon.rs). Serving all of a
+/// thousand cost the shell about 11 MB of its live heap in the lab, held
+/// whether anyone looked or not (LR3WMN, 2026-11-12).
+pub const PAGE: usize = 100;
+
+/// The record beside the `notices` place's rows saying how many notices
+/// it has rows for, served or not, as Notifications counts them.
+pub const SUMMARY: &str = "summary:notices";
+
 /// The minute a moment falls in, so two times said alike are known alike.
 const MINUTE: i64 = 60_000;
 
@@ -418,6 +429,22 @@ pub fn shown(desktop: &[Value]) -> BTreeSet<u32> {
         .collect()
 }
 
+/// The rows of the `notices` place it serves, of every one made, in their
+/// order: each unread or live one, and the newest [`PAGE`] read.
+pub fn paged(rows: Vec<Value>) -> Vec<Value> {
+    let mut read = 0;
+    rows.into_iter()
+        .filter(|row| {
+            let held = &row["held"];
+            if held["read"] != true || held["live"] == true {
+                return true;
+            }
+            read += 1;
+            read <= PAGE
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use windows::entries::Entries;
@@ -492,6 +519,38 @@ mod tests {
 
     fn keys(rows: &[Value]) -> Vec<&str> {
         rows.iter().filter_map(|row| row["key"].as_str()).collect()
+    }
+
+    #[test]
+    fn the_place_serves_every_unread_and_live_notice_and_only_the_newest_read() {
+        // Newest first, as the history holds them: a live one read, then
+        // PAGE and two more read, then an unread one older than them all.
+        let mut notices = vec![notice(200, &json!({ "read": true, "live": true }))];
+        let read = u32::try_from(PAGE).expect("a page fits") + 2;
+        notices.extend((0..read).map(|at| notice(199 - at, &json!({ "read": true }))));
+        notices.push(notice(1, &json!({})));
+        let [mixed, _, _] = making(&notices, &[]);
+        let served = paged(mixed);
+        let served = keys(&served);
+        assert_eq!(
+            served.len(),
+            PAGE + 2,
+            "the page and the two kept past it: {served:?}"
+        );
+        assert_eq!(
+            served[..2],
+            ["row:notices:200", "row:notices:199"],
+            "live first"
+        );
+        assert_eq!(
+            served.last(),
+            Some(&"row:notices:1"),
+            "the unread, however old"
+        );
+        assert!(
+            !served.contains(&"row:notices:98"),
+            "the oldest read past the page isn't served: {served:?}"
+        );
     }
 
     fn act_keys(row: &Value) -> Vec<&str> {
