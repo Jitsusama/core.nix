@@ -499,8 +499,13 @@ def test_work_goes_in_the_tier_of_its_nearest_ranked_quest(ranked: Account) -> N
     # Work for a quest pi's sessions don't list, or for none, waits behind every tier.
     for seconds in [1104, 1105]:
         ranked.wait_until_in(seconds, "jobs-work.slice/jobs-work-unranked.slice/work-.*\\.scope$")
-    for tier, weight in [("first", 640), ("second", 320), ("third", 160), ("unranked", 80)]:
+    for tier, weight in [("first", 640), ("third", 160), ("unranked", 80)]:
         assert ranked.read(f"{WORK}/jobs-work-{tier}.slice/cpu.weight") == str(weight), tier
+    # A tier with no work has no cgroup yet, so its weight is systemd's to say.
+    second = ranked.machine.succeed(
+        "systemctl -M alice@ --user show -P CPUWeight jobs-work-second.slice"
+    ).strip()
+    assert second == "320", f"the second tier weighs {second}"
 
 
 def test_a_quest_moving_tier_is_said_and_its_next_work_follows(ranked: Account) -> None:
