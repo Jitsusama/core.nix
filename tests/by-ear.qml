@@ -44,6 +44,7 @@ QtObject {
         "by-ear-unchanged": "nothing changes: calls hear {microphone} as before",
         "by-ear-the-microphone": "the microphone",
         "by-ear-cost": "{share} of a core while cleaning",
+        "by-ear-scored": "sounds {mark} of 5 \u00b7 {cost}",
         "by-ear-down": "its socket starts it on the next ask"
     })
 
@@ -52,7 +53,7 @@ QtObject {
         return Object.assign({
             key: "trial:now", kind: "trial", heard: 1000, stage: "idle", why: null,
             microphone: null, seconds: 6, until: null, clips: [], playing: null,
-            picked: null, revealed: null, costs: null, running: "rnnoise"
+            picked: null, revealed: null, costs: null, marks: null, running: "rnnoise"
         }, fields);
     }
 
@@ -151,6 +152,26 @@ QtObject {
             ["sound:by-ear:clip", "C", "DeepFilterNet, full", "31.0% of a core while cleaning"],
             ["sound:by-ear:clip", "D", "no noise cancelling", "0% of a core while cleaning"]
         ]);
+        // Once scored, each clip says how it sounds overall, out of 5 and to
+        // one place, before its cost; a cleaner the scorer missed says only
+        // its cost.
+        const scored = record(Object.assign({}, picked, {
+            marks: {
+                raw: { voice: 3.29, background: 3.26, overall: 2.68 },
+                rnnoise: { voice: 3.34, background: 3.79, overall: 2.97 },
+                deepfilternet: { voice: 3.42, background: 4.04, overall: 3.153 }
+            }
+        }));
+        same("scored", says(ByEar.rows(said, scored, "answering", 0)).slice(1), [
+            ["sound:by-ear:clip", "A", "RNNoise",
+                "sounds 3.0 of 5 \u00b7 1.20% of a core while cleaning"],
+            ["sound:by-ear:clip", "B", "DeepFilterNet, gentle", "30.0% of a core while cleaning"],
+            ["sound:by-ear:clip", "C", "DeepFilterNet, full",
+                "sounds 3.2 of 5 \u00b7 31.0% of a core while cleaning"],
+            ["sound:by-ear:clip", "D", "no noise cancelling",
+                "sounds 2.7 of 5 \u00b7 0% of a core while cleaning"]
+        ]);
+
         // Each row keeps its key from step to step, so the launcher changes
         // it in place: where the trial stands first, then each clip.
         const keys = rows => rows.map(row => row.key);
