@@ -59,6 +59,16 @@ function cost(said, share) {
     return told(said, "by-ear-cost", { share: figure });
 }
 
+// What a clip's row says once picked: how its cleaner sounds overall to
+// the scorer, out of 5 to one place, before what it costs; only the cost
+// where the scorer gave it no mark, as before the marks arrive.
+function scored(said, marks, share) {
+    const spent = cost(said, share);
+    const overall = marks?.overall;
+    return typeof overall === "number"
+        ? told(said, "by-ear-scored", { mark: overall.toFixed(1), cost: spent }) : spent;
+}
+
 // The whole seconds left of a recording at `now`, counted up so the
 // last second reads 1 until it ends, never below none.
 function left(record, now) {
@@ -195,7 +205,8 @@ function clipRow(said, record, clip) {
 }
 
 // Once one's picked: what was picked and what follows, then every clip
-// with its cleaner revealed and what that cleaner costs.
+// with its cleaner revealed, how it sounds once scored, and what that
+// cleaner costs.
 function pickedRows(said, record) {
     const chosen = record.picked?.cleaner ?? "";
     const mic = microphone(said, record);
@@ -211,6 +222,7 @@ function pickedRows(said, record) {
     };
     const revealed = record.revealed ?? {};
     const costs = record.costs ?? {};
+    const marks = record.marks ?? {};
     const clips = Object.keys(revealed).sort();
     return [picked].concat(clips.map(clip => ({
         key: `sound:by-ear:clip:${clip}`,
@@ -218,7 +230,7 @@ function pickedRows(said, record) {
         state: "",
         fill: { clip },
         side: cleaner(said, revealed[clip]),
-        note: cost(said, costs[revealed[clip]]),
+        note: scored(said, marks[revealed[clip]], costs[revealed[clip]]),
         act: null
     })));
 }

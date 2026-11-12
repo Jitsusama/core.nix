@@ -6160,6 +6160,7 @@
         "by-ear-unchanged": "nothing changes: calls hear {microphone} as before",
         "by-ear-the-microphone": "the microphone",
         "by-ear-cost": "{share} of a core while cleaning",
+        "by-ear-scored": "sounds {mark} of 5 \u00b7 {cost}",
         "by-ear-down": "its socket starts it on the next ask"
       }
     },
