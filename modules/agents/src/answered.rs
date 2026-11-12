@@ -156,8 +156,14 @@ pub fn facts(answer: &Answer, names: &Said, named: &dyn Fn(&str) -> Option<Strin
 
 /// An answer as Joel reads it: as it came, unless it only passes his
 /// words on to one address the sessions know.
-fn passed_on(answer: &str, _named: &dyn Fn(&str) -> Option<String>) -> String {
-    answer.to_owned()
+fn passed_on(answer: &str, named: &dyn Fn(&str) -> Option<String>) -> String {
+    answer
+        .trim()
+        .strip_prefix('→')
+        .map(str::trim)
+        .filter(|to| !to.is_empty() && !to.contains(char::is_whitespace))
+        .and_then(named)
+        .map_or_else(|| answer.to_owned(), |name| format!("→ {name}"))
 }
 
 #[cfg(test)]
