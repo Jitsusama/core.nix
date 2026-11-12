@@ -129,7 +129,11 @@
       echo $! > $XDG_RUNTIME_DIR/people.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      set -o pipefail
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+      # A binding loop only warns, and People's on `all` passed here while
+      # it warned (Y2YBTS, 2026-11-12), so one warned of fails the check.
+      if grep -a 'Binding loop' said; then exit 1; fi
       if [ -e $XDG_RUNTIME_DIR/asked ]; then
         echo "the shell asked Tuple itself:"; cat $XDG_RUNTIME_DIR/asked; exit 1
       fi

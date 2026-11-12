@@ -633,15 +633,21 @@ Provider {
 
     // tzdata's zones, as Clocks reads them (Zones.js), read once when a
     // person's time zone is first shown, and never watched, since the list
-    // is built with the shell.
-    property var zones: null
+    // is built with the shell. Kept in a plain object, since the first
+    // person whose time is shown is said inside `all`'s binding, and
+    // writing a property it had just read looped it (Y2YBTS, 2026-11-12).
+    readonly property var zonesRead: ({ zones: null })
+    function zones() {
+        if (zonesRead.zones === null)
+            zonesRead.zones = settings.zones ? Zones.prepare(read(zonesFile))
+                : { zones: {}, named: {} };
+        return zonesRead.zones;
+    }
 
     // The time in a zone by tzdata's name, as now, and how far it is from
     // here: "14:05, 5 h ahead", or "" for a zone the list doesn't know.
     function there(id) {
-        if (zones === null)
-            zones = settings.zones ? Zones.prepare(read(zonesFile)) : { zones: {}, named: {} };
-        const zone = zones.zones[id];
+        const zone = zones().zones[id];
         if (!zone)
             return "";
         const now = Date.now();
@@ -654,9 +660,7 @@ Provider {
     // it's his own or the list doesn't know their zone (Person.js's
     // awaySide).
     function away(id) {
-        if (zones === null)
-            zones = settings.zones ? Zones.prepare(read(zonesFile)) : { zones: {}, named: {} };
-        const zone = zones.zones[id];
+        const zone = zones().zones[id];
         if (!zone)
             return "";
         const now = Date.now();
