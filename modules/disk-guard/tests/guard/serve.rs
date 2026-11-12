@@ -587,7 +587,9 @@ fn a_clear_leaves_what_the_other_holders_could_clear_as_it_was() {
             .find(|holder| holder["owner"]["name"] == "spare")
             .map(|holder| holder["clears"].clone())
     };
-    let status = surveyed(&mut guard, &root, Duration::from_secs(20));
+    // Back as soon as the survey is in. On 12 November a loaded builder
+    // hadn't surveyed within 20 s, so the bound is generous.
+    let status = surveyed(&mut guard, &root, Duration::from_mins(2));
     let before = clears(&status);
     assert!(
         before.as_ref().and_then(serde_json::Value::as_u64) > Some(0),

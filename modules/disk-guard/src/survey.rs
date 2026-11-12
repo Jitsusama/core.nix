@@ -420,6 +420,23 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
                 });
             }
         }
+        for entry in scratch::entries(&workspace.path) {
+            if scratch::kept_beside_tmp(&entry.path) || worked_in(&entry.path, world) {
+                continue;
+            }
+            let size = || size(&entry.path, world);
+            if let Some(candidate) =
+                scratch::quest_scratch_candidate(&entry, size, world.awake, world.now)
+            {
+                offers.push(Offer {
+                    candidate,
+                    action: Action::Entry {
+                        root: resolved(&workspace.path),
+                    },
+                    device,
+                });
+            }
+        }
     }
     for workspace in over {
         let written = age::last_write(&workspace.path, WRITE_DEPTH, WRITE_BUDGET);

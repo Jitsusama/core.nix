@@ -67,6 +67,10 @@ or launchd, and [`home.nix`][2] the account's.
   is nearly full and six hours once it's critically full, unless a process
   works in it: a quest at work may come back for what it left, but on one
   laptop those folders held 124 GiB, a quarter of it a week unwritten.
+  What such a quest keeps beside its `tmp/`, its labs, clones and runs,
+  goes the same way after a week, two days once the disk is nearly full
+  and twelve hours once it's critically full, but for its handover and a
+  folder of GC roots, whose links keep what running programs read.
   `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process

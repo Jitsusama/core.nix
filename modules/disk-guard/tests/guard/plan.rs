@@ -34,7 +34,7 @@ impl Draw {
 
     fn class(&mut self) -> Class {
         let bool = |draw: &mut Draw| draw.below(2) == 0;
-        match self.below(18) {
+        match self.below(19) {
             0 => Class::Target,
             1 => Class::Install,
             2 => Class::Variant,
@@ -63,6 +63,7 @@ impl Draw {
             },
             15 => Class::Log,
             16 => Class::QuestTemp,
+            17 => Class::QuestScratch,
             _ => Class::Podman { unused: bool(self) },
         }
     }
@@ -339,6 +340,28 @@ fn what_a_quest_at_work_left_in_its_tmp_goes_after_a_week_or_sooner_nearly_full(
     assert_eq!(
         sorted(taken(&all, Band::CriticallyFull)),
         ["days", "hours", "week"]
+    );
+}
+
+#[test]
+fn what_a_quest_at_work_left_beside_its_tmp_goes_after_a_week_or_two_days_nearly_full() {
+    // A lab or a run beside tmp/ is likelier to be read again than what's
+    // in it, so a nearly full disk waits two days for one, and a
+    // critically full one twelve hours; healthy or filling, a week.
+    let left = |name, idle| candidate(name, Class::QuestScratch, idle);
+    let all = [
+        left("week", 8.0 * DAY),
+        left("days", 3.0 * DAY),
+        left("day", 1.5 * DAY),
+        left("hours", 13.0 * HOUR),
+        left("young", 7.0 * HOUR),
+    ];
+    assert_eq!(taken(&all, Band::Healthy), ["week"]);
+    assert_eq!(taken(&all, Band::Filling), ["week"]);
+    assert_eq!(sorted(taken(&all, Band::NearlyFull)), ["days", "week"]);
+    assert_eq!(
+        sorted(taken(&all, Band::CriticallyFull)),
+        ["day", "days", "hours", "week"]
     );
 }
 
