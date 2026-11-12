@@ -2860,6 +2860,36 @@ def agent_window(address: str, window: Json, title: str) -> Json:
     }
 
 
+def test_desktops_windows_row_has_a_drawer_holding_none_or_some(shell: Shell) -> None:
+    """Desktop's Windows row has a drawer: its own sentence holding none, else the names.
+
+    Every row has a drawer giving a little more than its line (Joel, 2026-11-11 22:00); a
+    place holding none had none, as Windows with only the window in front (Y2YBTS, 641b64f8).
+    """
+    path = shlex.quote("\u203adesktop")
+    asked = f"qs -p {shell.folder} ipc call -- launcher drawers {path}"
+
+    def drawer() -> str:
+        rows = cast("list[Json]", json.loads(shell.as_account(asked)).get("rows", []))
+        row = next((row for row in rows if row.get("name") == "Windows"), {})
+        return str(cast("Json", row.get("drawer", {})).get("body", ""))
+
+    def said(body: str) -> None:
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while drawer() != body:
+            assert time.monotonic() < deadline, f"Windows' drawer said {drawer()!r}, not {body!r}"
+            time.sleep(launcher_on_niri.POLL)
+
+    said("No other windows.")
+    kite = shell.opened("Kite Notes")
+    lark = shell.opened("Lark Notes")
+    try:
+        said("Kite Notes")
+    finally:
+        shell.close(kite)
+        shell.close(lark)
+
+
 def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:
     """Desktop's Windows lists agents' windows as one Agents row, where the one used last was.
 

@@ -55,11 +55,26 @@ QtObject {
             "Power \u00b7 Desk Light \u00b7 Sound");
         check(failures, "which the drawer lays as a run", drawn.runs, true);
         check(failures, "a sentence is no run",
-            PlaceRow.drawer("Keyboard", ["A"], "place", "Every key.").runs, undefined);
+            PlaceRow.drawer("Keyboard", ["A"], "place", { holding: "Every key." }).runs,
+            undefined);
         check(failures, "holding one kind, it says what they are instead",
-            PlaceRow.drawer("Keyboard", ["A", "B"], "place", "Every key.").body, "Every key.");
+            PlaceRow.drawer("Keyboard", ["A", "B"], "place", { holding: "Every key." }).body,
+            "Every key.");
         check(failures, "holding nothing to name, no drawer", PlaceRow.drawer("Media", []),
             null);
+
+        // Holding none, its drawer says so in the place's own sentence, as
+        // inside it, so every row has a drawer (Y2YBTS, 641b64f8; Joel,
+        // 2026-11-11 22:00).
+        const empty = PlaceRow.drawer("Windows", [], "place", { empty: "No other windows." });
+        check(failures, "holding none, its drawer says its empty sentence",
+            empty?.body, "No other windows.");
+        check(failures, "under its name and eyebrow", `${empty?.eyebrow} ${empty?.title}`,
+            "place Windows");
+        check(failures, "a sentence, not a run", empty?.runs, undefined);
+        check(failures, "holding some, it names them rather than its empty sentence",
+            PlaceRow.drawer("Windows", ["Kite Notes"], "place", { empty: "No other windows." })
+                .body, "Kite Notes");
 
         // Now's parts give way by whole names (Launcher.qml's listed).
         check(failures, "names listed in their room", PlaceRow.listed(["a", "bb", "ccc"], 6),
