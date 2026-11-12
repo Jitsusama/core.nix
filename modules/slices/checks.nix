@@ -331,7 +331,7 @@
 
   # A workstation's polkit rules, as polkitd assembles them, run in duktape,
   # polkit's own engine, after polkit's init.js: what would ask Joel is
-  # refused for a process in agents.slice or jobs-work.slice, or one gone,
+  # refused for a process where agents' work runs, or one gone,
   # and left to ask from his terminal and apps, and a grant stays a grant
   # (agents-ask-test.rules).
   an-agent-raises-no-polkit-prompt =
