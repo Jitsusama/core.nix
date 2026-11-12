@@ -900,6 +900,15 @@ Provider {
     // see whether their row could be kept, and the first after each start
     // made every row, 486 on Joel's laptop (2026-11-10).
     saysAtHome: true
+    // Yet those listed are made as the shell starts, in People's turn of
+    // it (Launcher.qml's warmNext), and kept, so the first letter typed at
+    // home finds them made and a change since remakes only those it
+    // changed. Made by that letter instead, 121 rows held it 15 ms on
+    // Joel's laptop (his journal, 2026-11-11 23:10; RCTRF8's d181771a).
+    onWarmingChanged: {
+        if (provider.warming)
+            listedNow();
+    }
 
     // Those listed, in the daemon's order, each as it told them, read
     // again only once it says a change. While a source keeps something
