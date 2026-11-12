@@ -477,6 +477,35 @@
       }
     },
     {
+      "id": "asks",
+      "name": "Asks",
+      "glyph": "passwords",
+      "answers": ["asks", "ask"],
+      "said": {
+        "from": "{session} · {quest}",
+        "runs": "Runs",
+        "in": "In",
+        "at": "{path} at {commit}",
+        "notGit": "{path}, not a git folder",
+        "changes": "Changes",
+        "uncommitted": "{count} not committed",
+        "unknown": "couldn't tell",
+        "givenAs": "Given as",
+        "given": "{name}, for {minutes} min",
+        "ends": "Ends",
+        "outcome": "Outcome",
+        "releasing": "reading 1Password",
+        "ran": "ran, exit {exit}",
+        "stopped": "stopped at the time limit",
+        "failed": "couldn't: {why}",
+        "refused": "refused",
+        "ended": "ended unanswered",
+        "none": "none waiting",
+        "one": "1 waiting",
+        "waiting": "{count} waiting"
+      }
+    },
+    {
       "id": "quests",
       "once": ["Tasks"],
       "name": "Quests",
