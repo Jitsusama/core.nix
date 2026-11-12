@@ -55,9 +55,8 @@ Scope {
     // What the place makes of a row, given the row the record holds and the
     // record's key; by default the row as served.
     property var make: (row, key) => row
-    // A place's own make of an act it does itself, `(key, act, row)` to
-    // its row, or null for the served act: Agents' Talk asks Joel for words
-    // before its ask is sent with them, which no served act form says.
+    // A place's own make of an act, `(key, act, row)` to its row, else null: Agents' Talk
+    // asks for words before its ask is sent, which no served act form says.
     property var actMade: null
     // The place's provider, which makes its rows as every place's are
     // (`thing`) and holds what an act asks drawn until it's done. Not named
@@ -288,14 +287,12 @@ Scope {
         return rows(key);
     }
 
-    // What the daemon last found for what was typed, as it ranks it
-    // (ready-rows.md's search): the words it answered, the keys of the
-    // rows it found, best first, and the letters of each one's name to
-    // bring forward. Each key's words are asked at once, never waiting on
-    // the answer before, and only an answer to what's typed now is taken,
-    // so a key costs no round trip behind another. Its words are null
-    // until an answer comes, and again once the rows change. The rows it
-    // found that the watch never served come with it, each made as the
+    // What the daemon last found for what was typed, as it ranks it (ready-rows.md's search):
+    // the words it answered, the keys of the rows it found, best first, and the letters of each
+    // one's name to bring forward. Each key's words are asked at once, never waiting on the
+    // answer before, and only an answer to what's typed now is taken, so a key costs no round
+    // trip behind another. Its words are null until an answer comes, and again once the rows
+    // change. The rows it found that the watch never served come with it, each made as the
     // place makes a row (`foundMade`) and let go with the answer.
     property var found: Found.foundOf(null, null)
     readonly property var foundMade: ({})
@@ -466,14 +463,13 @@ Scope {
         return Ready.drawerOf(Ready.drawerServed(row, held), Date.now(), timeWords);
     }
 
-    // A served row, the record of `key`'s, as a place draws one, made by
-    // its provider: its words, its drawer read as it's shown, and its acts
-    // as its verbs, Return doing the first. A row whose acts step into rows
-    // steps into those, Return's `into` first. `fields` are the place's own, over these,
-    // so a place's `make` is `(row, key) => ready.thing(row, key, {...})`;
-    // the row is given rather than looked up, as an act's `becomes` is made
-    // by it too. It's a collection's member, its name made ready to match
-    // only once it's searched (Provider.qml's member). Null without a provider or a row.
+    // A served row, the record of `key`'s, as a place draws one, made by its provider: its
+    // words, its drawer read as it's shown, and its acts as its verbs, Return doing the first.
+    // A row whose acts step into rows steps into those, Return's `into` first. `fields` are the
+    // place's own, over these, so a place's `make` is `(row, key) => ready.thing(row, key,
+    // {...})`; the row is given rather than looked up, as an act's `becomes` is made by it too.
+    // It's a collection's member, its name made ready to match only once it's searched
+    // (Provider.qml's member). Null without a provider or a row.
     function thing(row, key, fields) {
         if (!row || !maker)
             return null;
@@ -497,14 +493,12 @@ Scope {
             }
             return acted;
         };
-        // How a Return leaves the launcher is ReadyRows.js's leaving's. A
-        // row whose Return asks is that act's for the key language, so its
-        // command is read from the act's words (CommandBinding.wordsFor), as
-        // Firmware's Install Now ends something and writes `install!` on
-        // the line rather than running at the first Return (RCTRF8,
-        // 2026-11-11), unless it shuts the launcher (ReadyRows.js's
-        // wordsOf).
-        const words = Ready.wordsOf(first);
+        // How a Return leaves the launcher is ReadyRows.js's leaving's. A row whose Return asks
+        // is that act's for the key language, so its command is read from the act's words
+        // (CommandBinding.wordsFor), as Firmware's Install Now ends something and writes
+        // `install!` on the line rather than running at the first Return (RCTRF8, 2026-11-11),
+        // unless it shuts the launcher (ReadyRows.js's wordsOf).
+        const words = Ready.wordsOf(first, row.kind);
         const asking = words === "" ? {} : { wordsId: words };
         // One holding only what the keys reach opens no list of its acts:
         // Return does the first, and its acts are still y's and d's.
@@ -512,11 +506,14 @@ Scope {
             verb: verbOf(first),
             run: () => act(key, first),
             actsOnly: Beneath.actsOnly(acts, row.actsOnly)
-        }, Ready.leaving(first), firstOwn ? { returns: firstOwn } : {});
-        // A row asking Joel to be sure holds its one act alone, as the
-        // shell's own sure rows did, so the key language reads that act's
-        // command (Catalogue.endsSomething) rather than a row of verbs.
-        if (acts.length > 0 && row.sure !== true)
+        }, Ready.leaving(first), firstOwn ? { returns: firstOwn } : {},
+            // A row that is an act is asked as the place makes it, Close saying what stays.
+            row.kind === "act" && firstOwn
+                ? { askedAs: firstOwn.askedAs, leaves: firstOwn.leaves } : {});
+        // A row asking Joel to be sure, or that is an act (an orchestration's Stop), holds its
+        // act alone, as the shell's own do, so the key language reads that act's command
+        // (Catalogue.endsSomething) rather than a row of verbs.
+        if (acts.length > 0 && row.sure !== true && row.kind !== "act")
             Object.assign(acting, { verbs: verbs, targets: verbs });
         // A row whose Return copies is a value, drawn as Provider.qml's
         // copyRow draws one, and what it copies is what y joins.
@@ -565,13 +562,11 @@ Scope {
         return words === "" ? null : Fuzzy.kept(words);
     }
 
-    // The acts of a row the launcher can do here: a step into the drawer
-    // only where the launcher steps into one, so nothing offered does
-    // nothing. Going to a program is always offered, since the daemon
-    // serves it only where it found the program's entry.
-    // An open in a program keeps that program's name as Programs shows it
-    // (`program`), read while its entry's here, so one gone by Return is
-    // named in saying it opened nothing.
+    // The acts of a row the launcher can do here: a step into the drawer only where the launcher
+    // steps into one, so nothing offered does nothing. Going to a program is always offered,
+    // since the daemon serves it only where it found the program's entry. An open in a program
+    // keeps that program's name as Programs shows it (`program`), read while its entry's here,
+    // so one gone by Return is named in saying it opened nothing.
     function actsOf(row) {
         const launcher = maker?.launcher;
         for (const one of row?.acts ?? []) {
@@ -722,11 +717,10 @@ Scope {
         });
     }
 
-    // Asks an act of the daemon on the rows' own connection, its row drawn
-    // at once as the act says it becomes, made as the place makes its rows,
-    // until the daemon serves it so. An act that says nothing of how its row
-    // reads holds the row as it is until it's answered. Either is taken back
-    // with the daemon's words if it's refused, or the launcher's if it isn't
+    // Asks an act of the daemon on the rows' own connection, its row drawn at once as the act
+    // says it becomes, made as the place makes its rows, until the daemon serves it so. An act
+    // that says nothing of how its row reads holds the row as it is until it's answered. Either
+    // is taken back with the daemon's words if it's refused, or the launcher's if it isn't
     // answered, so nothing fails silently (launcher/Becoming.js).
     function asked(key, one) {
         const row = served(key);

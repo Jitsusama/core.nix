@@ -98,6 +98,7 @@ Provider {
         ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
         make: (row, key) => top.thing(row, key, provider.topReopens(row))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
+            ?? provider.topCloses(one)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -140,6 +141,16 @@ Provider {
                     ?.replace("{name}", row.name ?? "") ?? "";
             }
         });
+    }
+
+    // Close on a served orchestration, asked first saying what stays, as a
+    // session's own Close is (sessionAct), since what it leaves is worked
+    // out here from the session's folder: a stopgap until the agents
+    // daemon serves what Close leaves with the act (KP0L6A). Null for any
+    // other act, or a session not here.
+    function topCloses(one) {
+        const session = one.key === "verb:agent:close" ? sessionAt(one.ask?.address) : null;
+        return session ? sessionAct(session, "close") : null;
     }
 
     // A closed orchestrator the daemon serves under Closed, with no acts

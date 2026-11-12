@@ -465,6 +465,14 @@ QtObject {
         Expect.same("but one that shuts the launcher isn't, so Return does it from the find",
             Ready.wordsOf(paste), "");
         Expect.same("nor any other act", Ready.wordsOf({ key: "verb:copy:copy", copy: "a" }), "");
+        // A row that is an act, as an orchestration's Stop inside it, is that act's
+        // whatever its form, as the shell's own act rows are, so Stop writes :interrupt.
+        const stop = { key: "verb:agent:stop", ask: { ask: "stop" }, closes: true };
+        Expect.same("a served act row is read by its act's words, whatever its form",
+            Ready.wordsOf(stop, "act"), "verb:agent:stop");
+        Expect.same("a copy as well, inside a meeting",
+            Ready.wordsOf({ key: "verb:copy:copy", copy: "a" }, "act"), "verb:copy:copy");
+        Expect.same("while a thing's row keeps its rule", Ready.wordsOf(stop, "row"), "");
         Expect.same("shutting it and saying what it becomes is refused", Ready.misformed(both),
             "closes and becomes");
         Expect.same("so it's no act at all", Ready.actForm(both), "");
