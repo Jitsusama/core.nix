@@ -217,7 +217,7 @@ fn counted(folder: String, kept: &[(&str, Option<u64>)]) -> Files {
         folder,
         said: kept
             .iter()
-            .filter_map(|(name, count)| Some(((*name).to_owned(), count?.to_string())))
+            .filter_map(|&(name, count)| Some((name.to_owned(), count?.to_string())))
             .collect(),
     }
 }
