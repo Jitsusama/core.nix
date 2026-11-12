@@ -1229,6 +1229,24 @@ QtObject {
         for (const [what, items, wide, want] of lines)
             holds(`a drawer's list: ${what}`, Page.valueLine(items, "{count} more", wide, width),
                 want);
+        // A lead's one line: where and when never give way, and what follows
+        // gives way at a whole word (VKCF3Z, 6ea9cd26).
+        const kept = [{ said: "in Slack" }, { said: "14:02" }];
+        const asked = "Can you look at the deploy?";
+        const leads = [
+            ["one that fits is whole", 500, [`in Slack \u00b7 14:02 \u00b7 ${asked}`]],
+            ["one that doesn't ends at a whole word", 400,
+                ["in Slack \u00b7 14:02 \u00b7 Can you look at the\u2026"]],
+            ["and keeps where and when whole", 300, ["in Slack \u00b7 14:02 \u00b7 Can you\u2026"]],
+            ["where not a word fits, where and when alone", 200, ["in Slack \u00b7 14:02"]],
+            ["even past the frame, where and when never give way", 100,
+                ["in Slack \u00b7 14:02"]]
+        ];
+        for (const [what, wide, want] of leads)
+            holds(`a drawer's lead: ${what}`, Page.leadLine(kept, asked, wide, width), want);
+        holds("a lead is measured as the line it's drawn on", Page.besideText({
+            value: asked, valueItems: kept, gives: asked }, 300, width),
+            "in Slack \u00b7 14:02 \u00b7 Can you\u2026");
         // What's measured beside a name, to choose a table or a list.
         const opens = { value: kinds.map(kind => kind.said).join(" \u00b7 "), valueItems: kinds,
             tail: "{count} more" };
