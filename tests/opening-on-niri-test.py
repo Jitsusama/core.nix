@@ -115,6 +115,9 @@ ROWS_DOWN = 3
 WARMED_SAID = "places kept as the shell started"
 WARMED = timedelta(seconds=20)
 
+# How long the shell must make no row, after a start, for its sources to have first answered.
+MADE_STILL = timedelta(seconds=1)
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -333,6 +336,7 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     """
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
+    making_held_still(shell)
     made = made_by_others(shell, "windows")
     assert not made, f"first into Windows after a restart, other sources made rows: {made}"
 
@@ -436,6 +440,23 @@ def test_a_first_search_after_a_restart_makes_no_spots_on_its_key(shell: Shell) 
     shell.reported("spots made after frames in ", lambda _: True, since)
     said, _ = shell.said_since(since)
     assert "spots made on a key" not in said, f"a key made the spots: {said}"
+
+
+def making_held_still(shell: Shell) -> None:
+    """Wait until the shell has made no row for MADE_STILL, as sources answer after a start.
+
+    Home and the chords' places are kept a second and a half after a start, before Networks
+    and Displays have first answered here, so their first rows are made while shut, off any
+    opening's path, and would be counted as the next opening's.
+    """
+    made = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+    still = time.monotonic()
+    giving_up = still + launcher_on_niri.WAITING.total_seconds()
+    while time.monotonic() - still < MADE_STILL.total_seconds():
+        assert time.monotonic() < giving_up, f"after a start, the shell kept making rows: {made}"
+        time.sleep(CLOSING_READ)
+        if (now := json.loads(shell.as_account(shell.ipc("made")))["rows"]) != made:
+            made, still = now, time.monotonic()
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
