@@ -7509,6 +7509,19 @@
       }
     },
     {
+      "id": "on:home-network",
+      "in": "on",
+      "said": {
+        "well": "connected",
+        "internetDown": "internet down",
+        "providerDown": "provider down",
+        "mesh": "home network {state}",
+        "nodeOffline": "{node} offline",
+        "oneOffline": "1 node offline",
+        "nodesOffline": "{count} nodes offline"
+      }
+    },
+    {
       "id": "on:lag:waited",
       "in": "on",
       "name": "Time Waited"

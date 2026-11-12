@@ -13,6 +13,7 @@
   "OpenBelow.qml"
   "pieces/Drawers.js"
   "pieces/Holding.js"
+  "pieces/HomeNetwork.js"
   "pieces/Piece.qml"
   "pieces/StatusFile.qml"
 ]
