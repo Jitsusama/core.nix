@@ -550,7 +550,7 @@ mod tests {
 
         ask(
             &mut stream,
-            &json!({"id": "rows", "ask": "watch", "kind": "row", "place": "eero",
+            &json!({"id": "rows", "ask": "watch", "kind": ["row", "drawer"], "place": "eero",
                 "words": words}),
         );
         let answered = read(&mut reader);
@@ -559,9 +559,19 @@ mod tests {
             all.contains(&"row:eero:internet") && all.contains(&"row:eero:node:2003"),
             "the watch is answered with the place's rows, the internet's and each node's: {all:?}"
         );
-        assert_eq!(
-            answered["records"][0]["kind"], "row",
-            "each is a row's record"
+        let records = answered["records"].as_array().expect("records are a list");
+        assert!(
+            records
+                .iter()
+                .filter(|record| record["key"]
+                    .as_str()
+                    .is_some_and(|key| key.starts_with("row:")))
+                .all(|record| record["kind"] == "row"),
+            "each row is a row's record"
+        );
+        assert!(
+            all.contains(&"drawer:eero:place"),
+            "the place's own drawer is served beside its rows: {all:?}"
         );
         let mut hall_off = home();
         hall_off["nodes"][0]["state"] = json!("OFFLINE");

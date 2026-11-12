@@ -7,9 +7,10 @@ answered the same, an unwatch, and an ask to read, answered at once. The model i
 named as its second argument, the one the daemon's parsers are tested against (modules/eero),
 so the Home Network has a whole three-node network to show. A watch of rows, one naming the
 row kind or a place, is answered with the records named as its third argument, those the daemon
-serves of that model, each row ordered (modules/eero/tests/rows.json, which a cargo test holds
-to the daemon's), or only those it names. Each such watch is said on its output, with the words
-it asks in, so a test sees the shell watch them. It never changes, so nothing is told after a
+serves of that model, each row ordered and the place's own drawer beside them
+(modules/eero/tests/rows.json, which a cargo test holds to the daemon's), or only those it
+names. Each such watch is said on its output, with the words it asks in, so a test sees the
+shell watch them. It never changes, so nothing is told after a
 watch's answer.
 """
 
@@ -22,6 +23,8 @@ SOCKET = Path(sys.argv[1])
 KIND = "home-network"
 RECORD = {"key": KIND, "kind": KIND, "network": json.loads(Path(sys.argv[2]).read_text())}
 ROW = "row"
+# The kinds served beside each other, as served.rs's KINDS: the rows, and the place's drawer.
+KINDS = (ROW, "drawer")
 PLACE = "eero"
 # The rows are named as a third argument, which a check that draws no row may leave out.
 ROWS = [record for named in sys.argv[3:4] for record in json.loads(Path(named).read_text())]
@@ -43,7 +46,7 @@ def watched(said: dict[str, object]) -> dict[str, object]:
     kind = said.get("kind")
     kinds = kind if isinstance(kind, list) else [] if kind is None else [kind]
     place = said.get("place", PLACE)
-    if any(one != ROW for one in kinds) or place != PLACE:
+    if any(one not in KINDS for one in kinds) or place != PLACE:
         message = f"no kind {kinds} or place {place} here"
         return {"id": said.get("id"), "error": {"code": "unknown-kind", "message": message}}
     records = [record for record in ROWS if named is None or record["key"] in named]
