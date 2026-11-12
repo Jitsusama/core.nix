@@ -1,16 +1,19 @@
 //! Whether two changes to one JSON file, to check-descriptions.nix, to a
-//! folder's checks.nix, to a list of modules or to a pytest file
-//! (`apart/cases.rs`) touch different keys, lines or cases, so the gate
-//! can count them as two files. It changes with how such files are
+//! folder's checks.nix, to a list of modules, to a pytest file
+//! (`apart/cases.rs`) or to a note in docs/ (`apart/prose.rs`) touch
+//! different keys, lines, cases or paragraphs, so the gate can count them
+//! as two files. It changes with how such files are
 //! compared, not with what the gate asks of a branch.
 
 mod cases;
+mod prose;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
 pub use cases::{cases_apart, is_cases};
+pub use prose::{is_prose, prose_apart};
 
 /// Whether a JSON file both sides changed was changed apart: what the
 /// branch changed from `base` and what main changed since touch no key in
@@ -234,13 +237,16 @@ pub fn would_be_apart(base: &str, one: &str, other: &str) -> bool {
 
 /// Whether two changes from `base` to `file`, `one` and `other`, would
 /// meet apart once either is rebased onto the other, for the files a gate
-/// can judge so before the rebase: one of the `LISTS`, or a pytest file.
+/// can judge so before the rebase: one of the `LISTS`, a pytest file or a
+/// note in docs/.
 #[must_use]
 pub fn would_stand_apart(file: &str, base: &str, one: &str, other: &str) -> bool {
     if LISTS.contains(&file) {
         would_be_apart(base, one, other)
     } else if is_cases(file) {
         cases::would_cases_be_apart(base, one, other)
+    } else if is_prose(file) {
+        prose::would_prose_be_apart(base, one, other)
     } else {
         false
     }
@@ -259,6 +265,18 @@ struct Edits<'a> {
 /// keep in common, or none where a side changed a line in place, taking
 /// lines away and adding others where they were.
 fn edits<'a>(base: &[&str], after: &'a str) -> Option<Edits<'a>> {
+    whole_or_in_place(base, after, false)
+}
+
+/// The `Edits` taking `base` to `after`, lines changed in place given as
+/// taken away with others added where they were.
+fn edits_in_place<'a>(base: &[&str], after: &'a str) -> Option<Edits<'a>> {
+    whole_or_in_place(base, after, true)
+}
+
+/// The `Edits` taking `base` to `after`, or none where lines were changed
+/// in place and `in_place` doesn't take them.
+fn whole_or_in_place<'a>(base: &[&str], after: &'a str, in_place: bool) -> Option<Edits<'a>> {
     let after: Vec<&str> = after.lines().collect();
     // The lines both open and close with need no table, which leaves it
     // a few lines a side where a change lists a module.
@@ -301,7 +319,7 @@ fn edits<'a>(base: &[&str], after: &'a str) -> Option<Edits<'a>> {
             took = true;
             i += 1;
         }
-        if took && gave {
+        if took && gave && !in_place {
             return None;
         }
     }
