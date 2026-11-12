@@ -25,7 +25,8 @@ onLinux {
   # A declared job is tried only at night, never caught up on by day, runs
   # behind everything the account runs, with the limits it names on its own
   # cgroup rather than its watcher's, and stops by the slices' bars; an
-  # account declaring none gets nothing.
+  # account declaring none gets no unit, but still night-shift on its path,
+  # for the turn every heavy job by day takes.
   night-shift-runs-only-at-night =
     let
       declared = account (bareNixos [
@@ -76,5 +77,6 @@ onLinux {
         && says "-- git maintenance run --task=50%%"
         && !(none.systemd.user.services ? night-shift-repack)
         && !(none.systemd.user.timers ? night-shift-repack)
+        && pkgs.lib.any (package: package.pname or "" == "night-shift") none.home.packages
       );
 }

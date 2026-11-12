@@ -31,7 +31,12 @@
 //! night-shift watches from (src/cgroup.rs says why), so its unit needs
 //! `Delegate=memory io` when any is given.
 //!
-//! Usage: night-shift run NAME [--start-under PCT] [--stop SLICE=PCT]...
+//! A heavy job by day takes the same lock through `night-shift turn`,
+//! which waits for it rather than leaving the turn (src/turn.rs says how),
+//! so a night job tried meanwhile leaves it to a later try.
+//!
+//! Usage: night-shift turn NAME [--wait-at-most SECONDS] -- COMMAND [ARG]...
+//!        night-shift run NAME [--start-under PCT] [--stop SLICE=PCT]...
 //!                            [--stop-machine PCT] [--rests HOURS]
 //!                            [--every SECONDS] [--grace SECONDS]
 //!                            [--memory-high SIZE] [--memory-max SIZE]
@@ -40,6 +45,7 @@
 
 mod cgroup;
 mod pressure;
+mod turn;
 
 use cgroup::Limits;
 use pressure::Places;
@@ -67,13 +73,24 @@ struct Job {
     command: Vec<String>,
 }
 
-const USAGE: &str = "usage: night-shift run NAME [--start-under PCT] [--stop SLICE=PCT]... \
+const USAGE: &str = "usage: night-shift turn NAME [--wait-at-most SECONDS] -- COMMAND [ARG]...\n       \
+     night-shift run NAME [--start-under PCT] [--stop SLICE=PCT]... \
      [--stop-machine PCT] [--rests HOURS] [--every SECONDS] [--grace SECONDS] \
      [--memory-high SIZE] [--memory-max SIZE] [--swap-max SIZE] \
      [--reads-at-most DISK=RATE]... -- COMMAND [ARG]...";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("turn") {
+        return match turn::parse(&args) {
+            Ok(asked) => turn::take(&asked, &runtime_dir()),
+            Err(problem) => {
+                eprintln!("night-shift: {problem}");
+                eprintln!("{USAGE}");
+                ExitCode::from(2)
+            }
+        };
+    }
     match parse(&args) {
         Ok(job) => run(&job),
         Err(problem) => {
@@ -86,7 +103,7 @@ fn main() -> ExitCode {
 
 fn parse(args: &[String]) -> Result<Job, String> {
     let (Some("run"), Some(name)) = (args.first().map(String::as_str), args.get(1)) else {
-        return Err("it takes `run` and a job's name".into());
+        return Err("it takes `run` or `turn` and a job's name".into());
     };
     let split = args
         .iter()
@@ -153,6 +170,15 @@ fn say(job: &Job, what: &str) {
     println!("night-shift {}: {what}", job.name);
 }
 
+/// Where the lock is: one for the account, which a night job and a heavy
+/// job by day take alike.
+fn runtime_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR").map_or_else(
+        || dir("XDG_STATE_HOME", ".local/state").join("night-shift"),
+        |dir| PathBuf::from(dir).join("night-shift"),
+    )
+}
+
 fn dir(var: &str, fallback: &str) -> PathBuf {
     std::env::var_os(var).map_or_else(
         || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(fallback),
@@ -168,11 +194,10 @@ struct Folders {
 
 fn run(job: &Job) -> ExitCode {
     let state = dir("XDG_STATE_HOME", ".local/state").join("night-shift");
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(
-        || state.clone(),
-        |dir| PathBuf::from(dir).join("night-shift"),
-    );
-    let places = Folders { state, runtime };
+    let places = Folders {
+        state,
+        runtime: runtime_dir(),
+    };
     let (_lock, at) = match may_start(job, &places) {
         Ok(started) => started,
         Err(code) => return code,
@@ -296,11 +321,14 @@ fn may_start(job: &Job, places: &Folders) -> Result<(File, f64), ExitCode> {
         ExitCode::FAILURE
     })?;
     match lock.try_lock() {
-        Ok(()) => {}
+        Ok(()) => turn::note(&places.runtime, &job.name),
         Err(TryLockError::WouldBlock) => {
             say(
                 job,
-                "not started: another night job is running, and only one runs at a time; a later try goes on",
+                &format!(
+                    "not started: another heavy job is running, {}, and only one runs at a time; a later try goes on",
+                    turn::holder(&places.runtime)
+                ),
             );
             return Err(ExitCode::SUCCESS);
         }

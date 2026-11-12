@@ -17,6 +17,12 @@
 # it succeeds. The job's limits hold only the job: night-shift watches from
 # a cgroup beside it, so a job held at its limit never stalls its watcher.
 # The unit is delegated memory and io for that.
+#
+# A heavy job by day, a test suite or a machine's evaluation, runs as
+# `night-shift turn NAME -- COMMAND`: it waits for the turn a night job
+# holds, or another heavy job's, rather than starting beside it, and a
+# night job tried meanwhile leaves the turn to a later try. So night-shift
+# is on every account's path.
 {
   config,
   lib,
@@ -41,6 +47,8 @@ let
       lib.escapeShellArg escaped;
 
   number = toString;
+
+  environment = job: lib.mapAttrsToList (variable: value: "${variable}=${value}") job.environment;
 
   execStart =
     name: job:
@@ -182,45 +190,54 @@ in
     default = { };
   };
 
-  config = lib.mkIf (jobs != { } && pkgs.stdenv.hostPlatform.isLinux) {
-    systemd.user.services = lib.mapAttrs' (
-      name: job:
-      lib.nameValuePair "night-shift-${name}" {
-        Unit = {
-          Description = job.description;
-          # A run can take most of an hour; a switch leaves it going.
-          X-RestartIfChanged = false;
-        };
-        Service = {
-          Type = "exec";
-          ExecStart = execStart name job;
-          # Whatever the account runs comes first: the slice gives it the
-          # disk's idle priority, and the job the least of the processor.
-          Slice = "background.slice";
-          CPUWeight = 1;
-          IOWeight = 1;
-          IOAccounting = true;
-          RuntimeMaxSec = job.longest;
-          # night-shift splits its cgroup, so the job's limits hold the job
-          # and never the watcher beside it.
-          Delegate = "memory io";
-          Environment = lib.mapAttrsToList (variable: value: "${variable}=${value}") job.environment;
-        };
+  config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
+    lib.mkMerge [
+      {
+        # Every heavy job by day takes its turn through `night-shift turn`,
+        # night job or none, so it is on every account's path.
+        home.packages = [ package ];
       }
-    ) jobs;
+      (lib.mkIf (jobs != { }) {
+        systemd.user.services = lib.mapAttrs' (
+          name: job:
+          lib.nameValuePair "night-shift-${name}" {
+            Unit = {
+              Description = job.description;
+              # A run can take most of an hour; a switch leaves it going.
+              X-RestartIfChanged = false;
+            };
+            Service = {
+              Type = "exec";
+              ExecStart = execStart name job;
+              # Whatever the account runs comes first: the slice gives it the
+              # disk's idle priority, and the job the least of the processor.
+              Slice = "background.slice";
+              CPUWeight = 1;
+              IOWeight = 1;
+              IOAccounting = true;
+              RuntimeMaxSec = job.longest;
+              # night-shift splits its cgroup, so the job's limits hold the job
+              # and never the watcher beside it.
+              Delegate = "memory io";
+              Environment = environment job;
+            };
+          }
+        ) jobs;
 
-    systemd.user.timers = lib.mapAttrs' (
-      name: job:
-      lib.nameValuePair "night-shift-${name}" {
-        Unit.Description = "Tries ${name} at night";
-        Timer = {
-          OnCalendar = job.tries;
-          AccuracySec = "1min";
-          # A night slept through is left, never caught up on by day.
-          Persistent = false;
-        };
-        Install.WantedBy = [ "timers.target" ];
-      }
-    ) jobs;
-  };
+        systemd.user.timers = lib.mapAttrs' (
+          name: job:
+          lib.nameValuePair "night-shift-${name}" {
+            Unit.Description = "Tries ${name} at night";
+            Timer = {
+              OnCalendar = job.tries;
+              AccuracySec = "1min";
+              # A night slept through is left, never caught up on by day.
+              Persistent = false;
+            };
+            Install.WantedBy = [ "timers.target" ];
+          }
+        ) jobs;
+      })
+    ]
+  );
 }

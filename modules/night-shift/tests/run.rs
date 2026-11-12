@@ -2,29 +2,26 @@
 //! own cgroup are files in a folder of the test's, and each job is a
 //! line of shell that can raise them as a real job's load would.
 
+mod common;
+
+use common::Folder;
 use std::fs::{self, File};
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 const MANAGER: &str = "user.slice/user-1000.slice/user@1000.service";
 
 /// A stand-in machine, with every pressure at rest.
 struct Machine {
-    root: PathBuf,
+    root: Folder,
 }
 
 impl Machine {
     fn new() -> Self {
-        static NEXT: AtomicU32 = AtomicU32::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "night-shift-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let machine = Machine { root };
+        let machine = Machine {
+            root: Folder::new("night-shift"),
+        };
         fs::create_dir_all(machine.root.join("proc/self")).unwrap();
         fs::create_dir_all(machine.root.join("proc/pressure")).unwrap();
         fs::write(
@@ -70,12 +67,6 @@ impl Machine {
             .env("XDG_RUNTIME_DIR", self.path("runtime"))
             .current_dir(&self.root);
         command.output().unwrap()
-    }
-}
-
-impl Drop for Machine {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -161,7 +152,7 @@ fn only_one_night_job_runs_at_a_time() {
     assert!(output.status.success(), "{}", said(&output));
     assert!(!machine.path("ran").exists(), "the job ran beside another");
     assert!(
-        said(&output).contains("another night job is running"),
+        said(&output).contains("another heavy job is running"),
         "{}",
         said(&output)
     );
