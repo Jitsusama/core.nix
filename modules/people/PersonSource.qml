@@ -33,7 +33,10 @@
 // milliseconds since the epoch, so People lists every source's newest
 // first, each thing once by its row's key (Recent.js), what waits as
 // Waiting, what met as Last Met and what was written as Messages
-// (People.qml's between). Each row is drawn
+// (People.qml's between). `firsts` gives the first of those for their
+// drawer with no row made, since a drawer is shown on each key: { met,
+// wait }, the newest met as { at, name, one } and the oldest waiting as
+// { at, name, what, mine }, each or null. Each row is drawn
 // by that thing's own component (Mail.row, Calendar.row), never one of
 // its own. `page` is the link to their page in the source, for one that
 // keeps a page for each person, or "": People lists it as one row, Open
@@ -100,6 +103,10 @@ QtObject {
 
     function recent(person, provider) {
         return [];
+    }
+
+    function firsts(person, provider) {
+        return { met: null, wait: null };
     }
 
     function favourite(person, provider) {

@@ -236,6 +236,19 @@ QtObject {
             Person.awaySide("Europe/London", 300, "17:02", away),
             Person.awaySide("America/Argentina/Buenos_Aires", -60, "13:02", away)
         ], ["London \u00b7 17:02", "Buenos Aires \u00b7 13:02"]);
+        const labels = { waiting: "Waiting", next: "Next Meeting", met: "Last Met" };
+        const said = at => `at ${at}`;
+        check("the first of each, the oldest wait and the newest met", Person.firsts([
+            { met: { at: 5, name: "Retro" }, wait: { at: 7, name: "Lunch" } },
+            null,
+            { met: { at: 9, name: "Call" }, wait: { at: 3, name: "Thanks!" } }
+        ], { name: "Standup", side: "14:00" }, said, labels), [
+            { label: "Waiting", value: "Thanks! \u00b7 at 3" },
+            { label: "Next Meeting", value: "Standup \u00b7 14:00" },
+            { label: "Last Met", value: "Call \u00b7 at 9" }
+        ]);
+        check("none where there's nothing", Person.firsts([{ met: null, wait: null }], null,
+            said, labels), []);
         check("someone in Joel's time says none",
             Person.awaySide("America/Toronto", 0, "12:02", away), "");
 

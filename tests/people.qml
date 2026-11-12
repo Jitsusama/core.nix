@@ -380,7 +380,15 @@ ShellRoot {
                 // Their drawer is the daemon's, a source's facts ready in
                 // it, so showing it merges no one.
                 const merges = people.merging.merges;
-                const facts = open[0].drawer().facts.map(fact => `${fact.label}: ${fact.value}`);
+                const told = open[0].drawer().facts.map(fact => `${fact.label}: ${fact.value}`);
+                // The first of each comes first, what needs him ahead
+                // (VKCF3Z, 0cea8a93): her mail unread, and the last they met.
+                console.log(`Ada's drawer: ${told.join("; ")}`);
+                expect("their drawer opens on the first of each",
+                    told[0] === "Waiting: Lunch on Friday \u00b7 1 min ago"
+                        && told[1] === "Last Met: Retro \u00b7 yesterday",
+                    told.slice(0, 2).join("; "));
+                const facts = told.slice(2);
                 expect("a source's facts are theirs, the time there after their zone",
                     facts[0] === "Email: ada@example.com" && facts[1] === "Team: Shell"
                         && facts[2] === "Time Zone: Asia/Kolkata"

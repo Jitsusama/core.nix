@@ -610,6 +610,8 @@ Provider {
             if (details === null || detailsAt !== minute) {
                 const drawn = served ? drawnFrom(served()) : null;
                 details = drawn ?? Person.details(person, zone => provider.there(zone));
+                if (details)
+                    details.facts = firstsOf(person).concat(details.facts ?? []);
                 detailsAt = minute;
             }
             return details;
@@ -901,6 +903,24 @@ Provider {
             since: next(person).concat(sided("person:met", had.met, Person.metSide),
                 sided("person:messages", had.messages, Person.wroteSide))
         };
+    }
+
+    // The first of each for their drawer, ahead of its facts: the oldest
+    // thing waiting, their next meeting and the last they met at, each
+    // source giving its own with no row made (PersonSource's firsts), so a
+    // drawer shown on a key makes no rows but the next meeting's and a
+    // call's, rather than one for every meeting and mail they shared, and
+    // its details hold for the minute (made's drawer).
+    function firstsOf(person) {
+        const now = Date.now();
+        const coming = next(person)[0] ?? null;
+        return Person.firsts(sources.map(source => source.firsts(person, provider)),
+            coming ? { name: coming.name, side: coming.side ?? "" } : null,
+            at => When.came(at, now, provider.dates), {
+                waiting: Words.name("person:waiting"),
+                next: Words.name("people:next"),
+                met: Words.name("person:met")
+            });
     }
 
     // How People says when, in the vocabulary's words, with the locale's

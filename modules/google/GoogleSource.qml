@@ -68,6 +68,22 @@ PersonSource {
         return meetings.concat(mail);
     }
 
+    // The first of each for their drawer, with no row made: the last
+    // meeting they had and the oldest mail of theirs unread (PersonSource's
+    // firsts).
+    function firsts(person, provider) {
+        const now = Date.now();
+        const met = Google.held.concat(Calendar.meetings).filter(meeting => meeting.end
+            <= now && Google.withThem(meeting, person.emails))
+            .reduce((last, meeting) => last && last.end >= meeting.end ? last : meeting, null);
+        const wait = Mail.mail.filter(one => Google.withThem(one, person.emails))
+            .reduce((oldest, one) => oldest && oldest.at <= one.at ? oldest : one, null);
+        return {
+            met: met ? { at: met.end, name: Calendar.titled(met), one: alone(met) } : null,
+            wait: wait ? { at: wait.at, name: Mail.titled(wait), what: "mail" } : null
+        };
+    }
+
     // Whether a meeting was Joel's with one other: who holds it, unless he
     // does, and each guest, Google naming him in neither, are one address.
     function alone(meeting) {

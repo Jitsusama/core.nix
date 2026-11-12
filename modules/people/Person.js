@@ -308,6 +308,26 @@ function awaySide(zone, apart, time, said) {
     return String(said).replace("{place}", place).replace("{time}", time);
 }
 
+// The first of each for their drawer, ahead of its facts (VKCF3Z,
+// 0cea8a93), what needs him first: the oldest thing waiting, their next
+// meeting, `coming` as its row is named and says when, and the newest
+// they met at, each "Lunch on Friday \u00b7 2 h ago", when said by `when`
+// and labelled by `labels`' waiting, next and met. `told` is each
+// source's firsts, { met, wait }, either null.
+function firsts(told, coming, when, labels) {
+    const each = field => told.map(one => one?.[field]).filter(Boolean);
+    const wait = each("wait").reduce((oldest, one) => oldest && oldest.at <= one.at
+        ? oldest : one, null);
+    const met = each("met").reduce((newest, one) => newest && newest.at >= one.at
+        ? newest : one, null);
+    const said = (name, side) => side ? `${name} \u00b7 ${side}` : name;
+    return [
+        wait ? { label: labels.waiting, value: said(wait.name, when(wait.at)) } : null,
+        coming ? { label: labels.next, value: said(coming.name, coming.side) } : null,
+        met ? { label: labels.met, value: said(met.name, when(met.at)) } : null
+    ].filter(Boolean);
+}
+
 // How one of those stands on their page: not at all while it holds
 // nothing; the one thing itself where it holds one, as `alone` makes it,
 // so Return does its act with no step between (VKCF3Z, 0cea8a93, after
