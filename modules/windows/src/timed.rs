@@ -27,9 +27,17 @@ pub const OPENING_AT_MOST: u64 = 60_000;
 /// How long a process that outlived its last window is waited for.
 pub const ENDING_AT_MOST: Duration = Duration::from_secs(30);
 
-/// How often a process waited for is looked at: a finer step than the
-/// 200 ms docs/design.md gives a quit, and still nothing to a core.
+/// How often a process waited for is looked at at first: a finer step
+/// than the 200 ms docs/design.md gives a quit.
 pub const STEP: Duration = Duration::from_millis(20);
+
+/// How long a wait looks at that step, twice a quit's budget, before each
+/// look waits a tenth of the time waited so far. A program kept in the
+/// background, as Chrome, Slack and Zoom are, outlives every wait, and at
+/// 20 ms throughout it cost 1,500 wakes over the 30 s, where the desktop
+/// at rest keeps under 5 a second; growing, it costs about 65, and an end
+/// past the budget is still said to within a tenth.
+pub const FINE: Duration = Duration::from_millis(400);
 
 /// /proc's clock ticks a second, which Linux fixes at 100 for every
 /// program whatever the kernel's own rate.
@@ -114,7 +122,7 @@ pub fn say(timing: Timing) {
         Timing::Opened { app, ms } => written(&opened_line(&app, ms)),
         Timing::Closed { app, pid } => {
             std::thread::spawn(move || {
-                let ended = waited(pid, gone, STEP, ENDING_AT_MOST);
+                let ended = waited(pid, gone, pause, ENDING_AT_MOST);
                 written(&closed_line(&app, ended));
             });
         }
@@ -146,12 +154,19 @@ pub fn closed_line(app: &str, ended: Option<Duration>) -> String {
     }
 }
 
-/// How long `pid` took to end, looked at each `step` up to `most`, or
-/// none when it hadn't.
+/// How long a wait pauses before its next look, once it has waited
+/// `waited`: [`STEP`] until [`FINE`], then a tenth of the time so far.
+#[must_use]
+pub fn pause(waited: Duration) -> Duration {
+    if waited < FINE { STEP } else { waited / 10 }
+}
+
+/// How long `pid` took to end, looked at after each `pause` of the time
+/// waited so far, up to `most`, or none when it hadn't.
 pub fn waited(
     pid: u32,
     gone: impl Fn(u32) -> bool,
-    step: Duration,
+    pause: impl Fn(Duration) -> Duration,
     most: Duration,
 ) -> Option<Duration> {
     let began = Instant::now();
@@ -162,7 +177,7 @@ pub fn waited(
         if began.elapsed() >= most {
             return None;
         }
-        std::thread::sleep(step);
+        std::thread::sleep(pause(began.elapsed()));
     }
 }
 
@@ -312,6 +327,29 @@ mod tests {
     }
 
     #[test]
+    fn a_process_outliving_the_wait_is_looked_at_seldom_once_past_the_budget() {
+        let mut waited = Duration::ZERO;
+        let mut looks = 0;
+        while waited < ENDING_AT_MOST {
+            let next = pause(waited);
+            if waited < FINE {
+                assert_eq!(next, STEP, "a wait within the budget looked coarsely");
+            } else {
+                assert!(
+                    next <= waited / 10 + STEP,
+                    "a wait of {waited:?} paused {next:?}, past a tenth of it"
+                );
+            }
+            waited += next;
+            looks += 1;
+        }
+        assert!(
+            looks < 100,
+            "a process outliving the wait was looked at {looks} times in {ENDING_AT_MOST:?}"
+        );
+    }
+
+    #[test]
     fn a_wait_says_how_long_a_process_went_on_or_that_it_still_runs() {
         let looks = Cell::new(0);
         let ended = waited(
@@ -320,7 +358,7 @@ mod tests {
                 looks.set(looks.get() + 1);
                 looks.get() > 2
             },
-            Duration::from_millis(1),
+            |_| Duration::from_millis(1),
             Duration::from_secs(5),
         );
         assert!(ended.is_some(), "a process that ended was said to run on");
@@ -332,7 +370,7 @@ mod tests {
         let running = waited(
             9,
             |_| false,
-            Duration::from_millis(1),
+            |_| Duration::from_millis(1),
             Duration::from_millis(5),
         );
         assert_eq!(
