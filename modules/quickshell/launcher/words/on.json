@@ -385,6 +385,8 @@
         "clearedHow": "cleared by you",
         "doneByYou": "done by you",
         "clearsLook": "you open or clear it",
+        "clearsAnswer": "you answer, open or clear it",
+        "answering": "answered {choice}",
         "clearsPr": "it merges or closes",
         "yesterday": "yesterday",
         "tomorrow": "tomorrow",
@@ -588,6 +590,13 @@
       "name": "Open",
       "verb": "open",
       "glyph": "link"
+    },
+    {
+      "id": "verb:on:look:answer",
+      "in": "on",
+      "name": "Answer",
+      "verb": "answer",
+      "glyph": "reply"
     },
     {
       "id": "verb:on:look:clear",

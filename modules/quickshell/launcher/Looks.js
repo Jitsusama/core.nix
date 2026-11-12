@@ -13,7 +13,14 @@ const STATES = ["waiting", "opened", "cleared", "resolved"];
 const VERSION = 1;
 // What's read from a look's file only for the shell's own use, never
 // written back.
-const OWN = ["since", "resolved", "file", "words"];
+const OWN = ["since", "resolved", "file", "words", "offers"];
+// How many of a look's choices are offered, as the harness writes at most
+// four (85PKB2, 2026-11-12).
+const OFFERED = 4;
+// How long an answer shows as given while the look's file still waits:
+// its session writes the look resolved as it reads the steer, so one
+// still waiting a minute on didn't take, and its choices come back.
+const ANSWER_TAKES = 60 * 1000;
 // How long a look waits before it goes quiet: it leaves what waits, and so
 // every count of it, for History, where it's still opened as it was. By then
 // why it came is lost (Joel, 2026-11-11: "by the time i find them the context
@@ -47,8 +54,42 @@ function look(text) {
         // Its drawer says why, then the ask and its choices, to act on hours on (Joel, 2026-11-11).
         words: [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n"),
         since: ForYou.when(read.at),
-        resolved: ForYou.when(read.resolvedAt)
+        resolved: ForYou.when(read.resolvedAt),
+        offers: offers(read.choices)
     });
+}
+
+// A look's choices as it's offered them, each { value, label }: one
+// naming no value left out, one naming no label labelled by its value,
+// and at most OFFERED.
+function offers(choices) {
+    const named = value => typeof value === "string" && value !== "";
+    return (Array.isArray(choices) ? choices : [])
+        .filter(one => one !== null && typeof one === "object" && named(one.value))
+        .slice(0, OFFERED)
+        .map(one => ({ value: one.value, label: named(one.label) ? one.label : one.value }));
+}
+
+// Joel's answer to a look, as the steer that tells it to the session that
+// left it, `{ address, steer }`, at `at`: to that session while it runs,
+// else to its quest's, whose address is the quest's own last part, so the
+// look is answered where the asking goes on (85PKB2, 2026-11-12). Null
+// where neither is known.
+function answer(one, choice, live, at) {
+    const quest = String(one.quest ?? "").split("-").pop();
+    const address = String((live ? one.address : quest) || one.address || "").toUpperCase();
+    if (address === "") {
+        return null;
+    }
+    return { address: address, steer: { act: "answer", look: one.id, value: choice.value,
+        from: "joel", at: new Date(at).toISOString() } };
+}
+
+// The label of the answer Joel gave a look still waiting, by `answered`'s
+// { [look id]: { label, at } }, while it may yet take, or "".
+function answering(one, answered, now) {
+    const given = (answered ?? {})[one.id];
+    return one.state === "waiting" && given && now - given.at < ANSWER_TAKES ? given.label : "";
 }
 
 // A look waiting since longer ago than QUIET_AFTER, as History holds it: gone quiet when its

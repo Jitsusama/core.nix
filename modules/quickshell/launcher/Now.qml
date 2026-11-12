@@ -1030,6 +1030,32 @@ Provider {
             settleLook(one, "opened", waitingSaid("openedHow", {}));
     }
 
+    // The answers Joel gave looks, `{ [look id]: { label, at } }`, each
+    // shown as given while its file still waits and it may yet take
+    // (Looks.js's answering). Replaced whole, so what reads it hears.
+    property var lookAnswers: ({})
+
+    // Answers a look with one of its choices where it is, rather than in a
+    // session that has moved on (Joel, 2026-11-11: "engaging with drops me
+    // into a pi sessino that has already moved on from it is a waste of my
+    // time"): a steer tells the session that left it, or its quest's, which
+    // writes the look resolved. One the node didn't put is no longer shown
+    // as given, so its choices come back.
+    function answerLook(one, choice) {
+        const told = Looks.answer(one, choice, lookSession(one) !== null, Date.now());
+        if (told === null)
+            return;
+        lookAnswers = Object.assign({}, lookAnswers,
+            { [one.id]: { label: choice.label, at: Date.now() } });
+        Sessions.steer(told.address, told.steer, put => {
+            if (put)
+                return;
+            const left = Object.assign({}, provider.lookAnswers);
+            delete left[one.id];
+            provider.lookAnswers = left;
+        });
+    }
+
     // A look as ForYou.js weighs it, blocking the session that left it
     // while that session waits on Joel (ForYou.js's lookThing).
     function lookThing(one) {
@@ -1051,7 +1077,8 @@ Provider {
         const facts = [
             fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
-            fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr : say.clearsLook),
+            fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr
+                : one.offers.length > 0 ? say.clearsAnswer : say.clearsLook),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
             fact("session", ForYou.sessionSaid(session?.title ?? one.session ?? "",
                 quest?.status)),
@@ -1070,11 +1097,15 @@ Provider {
     // A look's row: its title, why in its note, its kind's mark, and at its
     // side the strongest reason it's there, or, in History, how it went and
     // when. Return opens it, or goes to a terminal's session; the right
-    // arrow holds that, then Clear It while it waits, an ending act d does
-    // and Return never does.
+    // arrow holds that, then each of its choices while it waits and none
+    // is given, then Clear It, an ending act d does and Return never does.
+    // A choice is an answer, which ends nothing, so one Return sends it
+    // (modules/keys/language.toml's answer).
     function lookRow(one, now) {
         const say = forYouSaid(now);
         const waits = one.state === "waiting";
+        const choices = waits && Looks.answering(one, lookAnswers, now) === "" ? one.offers
+            : [];
         const opens = one.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
         const inside = () => [thing({
             key: `verb:on:look:open:${one.id}`,
@@ -1084,7 +1115,15 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openLook(one)
-        })].concat(waits ? [thing(Object.assign({
+        })].concat(choices.map(choice => thing({
+            key: `verb:on:look:answer:${one.id}:${choice.value}`,
+            verb: Words.verb("verb:on:look:answer"),
+            name: choice.label,
+            glyph: Words.glyph("verb:on:look:answer"),
+            hue: "action",
+            stays: true,
+            run: () => provider.answerLook(one, choice)
+        })), waits ? [thing(Object.assign({
             key: `verb:on:look:clear:${one.id}`,
             verb: Words.verb("verb:on:look:clear"),
             name: Words.name("verb:on:look:clear"),
@@ -1114,6 +1153,9 @@ Provider {
     // What a look's row says at its side: the strongest reason it waits,
     // or, in History, how it went and when.
     function lookSide(one, now, say) {
+        const given = Looks.answering(one, lookAnswers, now);
+        if (given !== "")
+            return waitingSaid("answering", { choice: given });
         return one.state === "waiting" ? ForYou.reason(lookThing(one), now, say)
             : ForYou.historySide(one, say);
     }
@@ -1564,6 +1606,8 @@ Provider {
         })), looks.waiting.map(one => ({
             kind: "look",
             thing: provider.lookThing(one),
+            // Read here so an answer given relists it, saying so.
+            answered: provider.lookAnswers[one.id] ?? null,
             make: now => provider.keptLook(one, now)
         })), given.waiting.map(one => ({
             kind: one.row.forYou?.kind ?? "do",

@@ -292,6 +292,34 @@ QtObject {
         expect("an older look's words, its why alone", read.waiting[1].words,
             "it touches the launcher");
 
+        // A look's choices are offered on its row, each answered by a steer to
+        // the session that left it, or its quest's once that's ended, and shown
+        // as given for a minute while its file still waits (85PKB2, 2026-11-12).
+        const choosing = Looks.looks([{ file: "p.json", text: lookOf({ id: "P",
+            address: "vp50pc", quest: "QEST-20261104-VP50PC", choices: [
+                { value: "posted", label: "Posted" }, { value: "later" }, { label: "no value" },
+                null, { value: "c" }, { value: "d" }, { value: "e" }] }) }], {}, now).waiting[0];
+        expect("a look's choices, unlabelled ones by their value, four at most",
+            (choosing.offers ?? []).map(one => [one.value, one.label]),
+            [["posted", "Posted"], ["later", "later"], ["c", "c"], ["d", "d"]]);
+        expect("an older look, offering none", read.waiting[1].offers, []);
+        const posted = { value: "posted", label: "Posted" };
+        expect("an answer, to the session while it runs",
+            Looks.answer(choosing, posted, true, now),
+            { address: "VP50PC", steer: { act: "answer", look: "P", value: "posted",
+                from: "joel", at: "2026-11-08T14:00:00.000Z" } });
+        expect("and to its quest once it's ended",
+            (Looks.answer(Object.assign({}, choosing, { address: "07HV3N" }), posted, false,
+                now) ?? {}).address, "VP50PC");
+        expect("with nowhere to go, none", Looks.answer({ id: "N" }, posted, false, now), null);
+        const given = { P: { label: "Posted", at: now } };
+        expect("an answer given, while it may take, then not",
+            [Looks.answering(choosing, given, now + 59 * 1000),
+                Looks.answering(choosing, given, now + 61 * 1000),
+                Looks.answering(choosing, {}, now)], ["Posted", "", ""]);
+        expect("a look rewritten keeps its choices as its file gave them",
+            JSON.parse(Looks.rewritten(choosing, "opened", "opened", now)).choices.length, 7);
+
         // History's side: how it went and when.
         const side = id => ForYou.historySide(read.history.find(one => one.id === id)
             ?? { state: "", since: null }, say);

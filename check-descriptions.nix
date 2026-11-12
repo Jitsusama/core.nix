@@ -792,8 +792,9 @@
     For You weighs what needs Joel by what it blocks, what's due, what he can do now, its kind
     and how long it has waited, the heaviest first and ties as they came, says each row's
     strongest reason at its side, reads the looks folder's files into what waits and what's
-    history, newest first, leaving out any it can't read, and gathers what other sources give it,
-    as Passwords' one to-do, into what waits, weighed beside the rest, and what's done
+    history, newest first, leaving out any it can't read, offers a look's choices, answered by a
+    steer to the session that left it or its quest's, and gathers what other sources give it, as
+    Passwords' one to-do, into what waits, weighed beside the rest, and what's done
   '';
   formatting = ''
     everything is formatted and passes the linters
@@ -2662,7 +2663,8 @@
     Return sends, while Ctrl+] still steps into every act either has; a drawer names the repo
     its record says over the folder it works in; a paused one's glyph is never drawn in a
     listening one's colour; and an orchestration's waiting sessions fold into one row after its
-    own, which Return steps into and typing still finds each in
+    own, which Return steps into and typing still finds each in; and a look's choice in For You
+    steers its answer to the session that left it, its row saying it was given
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
