@@ -15,8 +15,9 @@
 //! time than the gate's, or that ran past [`LONGEST`], holds nothing
 //! back; nor does one in the asking tree, or one sharing only lists each
 //! change adds a line to (`lists.rs`), which never make a pass stale, or
-//! lists of modules its change and the asking one gave lines apart
-//! (`apart.rs`), which `ready` will judge apart once it's rebased. A
+//! lists of modules its change and the asking one gave lines apart, or a
+//! pytest file they gave cases apart (`apart.rs`), which `ready` will
+//! judge apart once it's rebased. A
 //! gate counts as having started when its tree's first gate did
 //! (`places.rs`), so a change that runs again after a merge left its pass
 //! stale keeps its place rather than going behind every gate since.
@@ -188,7 +189,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         Some(
             files
                 .into_iter()
-                .filter(|file| !lines_apart(gate, commit, file))
+                .filter(|file| !will_stand_apart(gate, commit, file))
                 .collect(),
         )
     };
@@ -209,12 +210,13 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
 }
 
 /// Whether `gate`'s change and the one at `head` gave `file`, one of the
-/// lists of modules, lines apart, as `ready` will judge them once the
-/// gate's change is rebased onto `head`: then its pass won't go stale for
-/// the file, and holding `head` back for it saves nothing. `head` is read
-/// in the asking tree, `gate`'s change in its own.
-fn lines_apart(gate: &Gate, head: &str, file: &str) -> bool {
-    if !crate::apart::LISTS.contains(&file) {
+/// lists of modules or a pytest file, lines or cases apart, as `ready`
+/// will judge them once the gate's change is rebased onto `head`: then
+/// its pass won't go stale for the file, and holding `head` back for it
+/// saves nothing. `head` is read in the asking tree, `gate`'s change in
+/// its own.
+fn will_stand_apart(gate: &Gate, head: &str, file: &str) -> bool {
+    if !crate::apart::LISTS.contains(&file) && !crate::apart::is_cases(file) {
         return false;
     }
     let Some(base) = git_in(
@@ -230,7 +232,7 @@ fn lines_apart(gate: &Gate, head: &str, file: &str) -> bool {
         at(Path::new("."), head),
     ) {
         (Some(base), Some(theirs), Some(ours)) => {
-            crate::apart::would_be_apart(&base, &theirs, &ours)
+            crate::apart::would_stand_apart(file, &base, &theirs, &ours)
         }
         _ => false,
     }

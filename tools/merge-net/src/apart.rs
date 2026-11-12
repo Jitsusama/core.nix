@@ -1,11 +1,16 @@
 //! Whether two changes to one JSON file, to check-descriptions.nix, to a
-//! folder's checks.nix or to a list of modules touch different keys or
-//! lines, so the gate can count them as two files. It changes with how
-//! such files are compared, not with what the gate asks of a branch.
+//! folder's checks.nix, to a list of modules or to a pytest file
+//! (`apart/cases.rs`) touch different keys, lines or cases, so the gate
+//! can count them as two files. It changes with how such files are
+//! compared, not with what the gate asks of a branch.
+
+mod cases;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
+
+pub use cases::{cases_apart, is_cases};
 
 /// Whether a JSON file both sides changed was changed apart: what the
 /// branch changed from `base` and what main changed since touch no key in
@@ -224,6 +229,20 @@ pub fn would_be_apart(base: &str, one: &str, other: &str) -> bool {
     match (edits(&base, one), edits(&base, other)) {
         (Some(one), Some(other)) => meet_apart(&one, &other),
         _ => false,
+    }
+}
+
+/// Whether two changes from `base` to `file`, `one` and `other`, would
+/// meet apart once either is rebased onto the other, for the files a gate
+/// can judge so before the rebase: one of the `LISTS`, or a pytest file.
+#[must_use]
+pub fn would_stand_apart(file: &str, base: &str, one: &str, other: &str) -> bool {
+    if LISTS.contains(&file) {
+        would_be_apart(base, one, other)
+    } else if is_cases(file) {
+        cases::would_cases_be_apart(base, one, other)
+    } else {
+        false
     }
 }
 
