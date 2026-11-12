@@ -12,8 +12,9 @@
 //! one more of what it serves, over the same daemon: the repositories
 //! (repositories.rs), what kitty's page reads (kitty.rs), Programs' rows
 //! (rows.rs), their search and what programs tell (search.rs), Capture's
-//! (taken.rs), what Chrome has open (chrome.rs), and kitty's open list
-//! without the agents' panes (agents.rs).
+//! (taken.rs), what Chrome has open (chrome.rs), kitty's open list
+//! without the agents' panes (agents.rs), and every open tab in one
+//! place (tabs.rs).
 
 mod agents;
 mod chrome;
@@ -21,6 +22,7 @@ mod kitty;
 mod repositories;
 mod rows;
 mod search;
+mod tabs;
 mod taken;
 
 use std::os::unix::fs::PermissionsExt;
@@ -142,6 +144,8 @@ fn fixture(folder: &Path) -> PathBuf {
     let file = folder.join("sources.json");
     std::fs::write(&file, sources.to_string()).unwrap();
     previewer(&folder.join("file-preview"));
+    recorder(&folder.join("niri"));
+    recorder(&folder.join("kitten"));
     std::fs::write(folder.join("words.json"), WORDS).unwrap();
     file
 }
@@ -157,6 +161,25 @@ const WORDS: &str = r#"{"things": [
   {"id": "path:file", "glyph": "file"}
 ]}"#;
 
+/// The shell the path finds, as the build has no /bin/sh.
+fn shell() -> PathBuf {
+    std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .map(|folder| Path::new(folder).join("sh"))
+        .find(|shell| shell.exists())
+        .expect("no sh on the path")
+}
+
+/// A stand-in for a program this daemon runs, as niri and kitten for a
+/// kitty tab's acts, writing what it was asked a line a run beside itself
+/// (`.asked`).
+fn recorder(path: &Path) {
+    let script = format!("#!{}\necho \"$@\" >> \"$0.asked\"\n", shell().display());
+    std::fs::write(path, script).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 /// A stand-in for file-preview, kept (serve), answering each file asked
 /// with its path and the process that answered, so a case sees whether
 /// one kept was asked, and never answering a file named stuck, as one
@@ -164,12 +187,7 @@ const WORDS: &str = r#"{"things": [
 /// waits on pdftoppm, its process kept beside it (`.waiting`). It runs
 /// on the shell the path finds, as the build has no /bin/sh.
 fn previewer(path: &Path) {
-    let shell = std::env::var("PATH")
-        .unwrap_or_default()
-        .split(':')
-        .map(|folder| Path::new(folder).join("sh"))
-        .find(|shell| shell.exists())
-        .expect("no sh on the path");
+    let shell = shell();
     let script = r#"#!SHELL
 while IFS= read -r line; do
   case $line in *stuck*) sleep infinity & echo $! > "$0.waiting"; wait ;; esac
@@ -219,6 +237,8 @@ impl Running {
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
             .env("PROGRAMS_PREVIEW", folder.join("file-preview"))
+            .env("PROGRAMS_NIRI", folder.join("niri"))
+            .env("PROGRAMS_KITTEN", folder.join("kitten"))
             .stderr(Stdio::null());
         Running {
             daemon: Daemon::start(&mut command, socket, folder),

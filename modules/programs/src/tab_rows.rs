@@ -1,17 +1,21 @@
-//! The rows of Chrome's open tabs, a place of their own (`tabs`), so the
-//! launcher's home finds each by its title or its site as it finds a
-//! document or a person (Joel, 2026-11-11: "i need to be able to freeform
-//! search for chrome tabs outside of the program"). Each is made from
-//! the `opened` record of what a program has open (source.rs's `opened`):
-//! one row a page, the one looked at last first, two tabs on one page
+//! The rows of every open tab, Chrome's and kitty's, a place of their own
+//! (`tabs`), so the launcher's home finds each by its title or its site
+//! as it finds a document or a person (Joel, 2026-11-11: "i need to be
+//! able to freeform search for chrome tabs outside of the program"), in
+//! one list, the one used last first, each said `in` its program. A
+//! Chrome tab's is made from the `opened` record of what a program has
+//! open (source.rs's `opened`): one row a page, two tabs on one page
 //! being one row. Return goes to Chrome's window, the one the page is in
 //! front of where the shell finds it by its title (`front`), and Copy the
-//! Link copies its address.
+//! Link copies its address. kitty's are `kitty_tabs.rs`'s. A program with
+//! no window open has no tabs to go to, so its session's are left out.
 
 use std::collections::BTreeMap;
 
 use chrome_session::{host, one_line};
 use serde_json::{Value, json};
+
+use crate::kitty_tabs::{self, Kitty};
 
 /// The place these rows are of.
 pub const PLACE: &str = "tabs";
@@ -26,18 +30,40 @@ struct Page<'a> {
 }
 
 /// The rows of every page each program has open, as its `opened` record
-/// lists them, by the program's desktop entry id: the one looked at last
-/// first, each program's after the one before.
+/// lists them, by the program's desktop entry id, and of kitty's tabs,
+/// with the windows daemon's records of niri's `windows`, none before it
+/// is first heard: the one looked at last first, those alike in time in
+/// the order given.
 #[must_use]
-pub fn rows<'a>(opened: impl IntoIterator<Item = (&'a str, &'a Value)>) -> Vec<Value> {
-    opened
+pub fn rows<'a>(
+    opened: impl IntoIterator<Item = (&'a str, &'a Value)>,
+    kitty: Option<&Kitty>,
+    windows: Option<&[&Value]>,
+) -> Vec<Value> {
+    let mut all: Vec<(u64, Value)> = opened
         .into_iter()
+        .filter(|(app, _)| running(app, windows))
         .flat_map(|(app, record)| program(app, record))
-        .collect()
+        .collect();
+    let shown = windows.unwrap_or_default();
+    all.extend(
+        kitty
+            .map(|kitty| kitty_tabs::rows(kitty, shown))
+            .unwrap_or_default(),
+    );
+    all.sort_by_key(|(looked, _)| std::cmp::Reverse(*looked));
+    all.into_iter().map(|(_, row)| row).collect()
 }
 
-/// One program's pages as rows.
-fn program(app: &str, record: &Value) -> Vec<Value> {
+/// Whether a program has a window open, of those the windows daemon said,
+/// one it owns; or the windows daemon isn't heard yet, when its session's
+/// pages are served as it wrote them.
+fn running(app: &str, windows: Option<&[&Value]>) -> bool {
+    windows.is_none_or(|windows| windows.iter().any(|window| window["owner"] == app))
+}
+
+/// One program's pages as rows, each with when it was looked at.
+fn program(app: &str, record: &Value) -> Vec<(u64, Value)> {
     let sites: Vec<&Value> = record["sites"].as_array().into_iter().flatten().collect();
     // What each of its windows has in front, which Chrome titles the
     // window by, so Return finds the window the page is in.
@@ -72,7 +98,10 @@ fn program(app: &str, record: &Value) -> Vec<Value> {
     pages.sort_by_key(|page| std::cmp::Reverse(page.looked));
     pages
         .iter()
-        .map(|page| row(app, page, front.get(page.window).copied().unwrap_or("")))
+        .map(|page| {
+            let front = front.get(page.window).copied().unwrap_or("");
+            (page.looked, row(app, page, front))
+        })
         .collect()
 }
 
@@ -87,6 +116,7 @@ fn row(app: &str, page: &Page, front: &str) -> Value {
         "thing": format!("tab:{}", page.address),
         "place": PLACE,
         "kind": "tab",
+        "in": app,
         "name": name,
         "glyph": "web",
         "hue": "program",
@@ -117,6 +147,85 @@ mod tests {
 
     fn opened(sites: &[Value]) -> Value {
         json!({"key": "opened:google-chrome", "kind": "opened", "sites": sites})
+    }
+
+    /// Chrome's rows alone, before the windows daemon is heard.
+    fn rows<'a>(opened: impl IntoIterator<Item = (&'a str, &'a Value)>) -> Vec<Value> {
+        super::rows(opened, None, None)
+    }
+
+    fn window(id: u64, owner: &str, pid: u64, order: u64) -> Value {
+        json!({"key": format!("window:{id}"), "id": id, "owner": owner, "pid": pid,
+               "opened": owner, "order": order})
+    }
+
+    /// kitty's list, one kitty of one OS window holding one tab.
+    fn kitty(line: &str) -> Kitty<'_> {
+        Kitty {
+            app: "kitty",
+            lines: vec![line],
+            clock: 1_793_000_000_000,
+            home: "/home/joel",
+        }
+    }
+
+    fn one_tab(pid: u64, title: &str) -> String {
+        let os = json!([{"id": 1, "wm_class": "kitty", "tabs": [
+            {"id": 3, "is_active": true, "title": title, "windows": []}]}]);
+        format!("{pid}\t{os}")
+    }
+
+    #[test]
+    fn chromes_and_kittys_tabs_are_one_list_the_one_used_last_first_each_said_in_its_program() {
+        let record = opened(&[
+            site("1", true, 1_793_000_000_500, "https://a.example/", "A"),
+            site("1", false, 1_793_000_000_100, "https://b.example/", "B"),
+        ]);
+        let line = one_tab(40, "zsh");
+        let windows = [
+            window(7, "google-chrome", 30, 1),
+            window(8, "kitty", 40, 300),
+        ];
+        let windows: Vec<&Value> = windows.iter().collect();
+        let rows = super::rows(
+            [("google-chrome", &record)],
+            Some(&kitty(&line)),
+            Some(&windows),
+        );
+        let said: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|row| (text(&row["name"]), text(&row["in"])))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                ("A", "google-chrome"),
+                ("zsh", "kitty"),
+                ("B", "google-chrome")
+            ],
+            "the tabs weren't one list by when each was used, each said in its program"
+        );
+    }
+
+    #[test]
+    fn a_program_with_no_window_open_has_no_tabs() {
+        let record = opened(&[site("1", true, 1, "https://a.example/", "A")]);
+        let line = one_tab(40, "zsh");
+        let windows = [window(8, "kitty", 41, 300)];
+        let windows: Vec<&Value> = windows.iter().collect();
+        for windows in [&windows[..], &[]] {
+            let rows = super::rows(
+                [("google-chrome", &record)],
+                Some(&kitty(&line)),
+                Some(windows),
+            );
+            assert_eq!(
+                rows,
+                Vec::<Value>::new(),
+                "Chrome's session or a kitty gone was served with {} windows open",
+                windows.len()
+            );
+        }
     }
 
     #[test]

@@ -8,7 +8,9 @@
 //! ([`repositories`]), what a file shows of itself ([`preview`]), when
 //! zoxide saw each folder ([`visited`]), the machines ssh knows and how
 //! often it reached them ([`machines`]), the socket it answers on
-//! ([`listen`]), and inotify, which says when any of them changes ([`notify`]).
+//! ([`listen`]), inotify, which says when any of them changes ([`notify`]),
+//! and every open tab's row, Chrome's ([`tab_rows`]) and kitty's
+//! ([`kitty_tabs`]).
 //!
 //! A record names every figure its source has, as the source says it,
 //! with its unit in its key (`_s` seconds since 1970, `_ms`
@@ -21,6 +23,7 @@ pub mod command;
 pub mod entry;
 pub mod folder;
 pub mod interface;
+pub mod kitty_tabs;
 pub mod listen;
 pub mod machines;
 pub mod mime;

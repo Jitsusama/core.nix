@@ -8,6 +8,7 @@
 {
   config,
   lib,
+  osConfig ? { },
   pkgs,
   ...
 }:
@@ -45,10 +46,13 @@ in
       # The git it lists a repository's files with, as Neovim's Open a
       # File by Name steps into one (src/repositories.rs), and the
       # file-preview it keeps for drawers that preview a file
-      # (src/preview.rs).
+      # (src/preview.rs), and the niri and kitten that go to one of
+      # kitty's tabs in Tabs and close it (src/tabs.rs).
       Environment = [
         "PROGRAMS_GIT=${lib.getExe pkgs.git}"
         "PROGRAMS_PREVIEW=${lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })}"
+        "PROGRAMS_NIRI=${lib.getExe (osConfig.programs.niri.package or pkgs.niri)}"
+        "PROGRAMS_KITTEN=${lib.getExe' pkgs.kitty "kitten"}"
       ];
       Restart = "on-failure";
       RestartSec = 5;

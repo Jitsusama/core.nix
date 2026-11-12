@@ -85,6 +85,12 @@ pub enum Ask {
     Health {
         id: Value,
     },
+    /// What a kitty tab's row asks done to it, its OS window's niri id
+    /// with Go to the Tab (`kitty_tabs.rs`).
+    Tab {
+        id: Value,
+        tab: TabAsk,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -95,6 +101,23 @@ pub enum Ask {
         id: Value,
         ask: String,
     },
+}
+
+/// One of kitty's tabs, by its kitty's process and its own id, and what's
+/// asked done to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TabAsk {
+    pub act: TabAct,
+    pub pid: u64,
+    pub tab: u64,
+    pub window: Option<u64>,
+}
+
+/// What a kitty tab's row asks: go to it, or close it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabAct {
+    Go,
+    Close,
 }
 
 /// The kinds an ask names, as one or a list, or every kind when it names
@@ -198,6 +221,26 @@ pub fn ask(line: &str) -> Ask {
             from: said.get("from").and_then(Value::as_u64),
         },
         "health" => Ask::Health { id },
+        "tab:go" | "tab:close" => {
+            let number = |field: &str| said.get(field).and_then(Value::as_u64);
+            let act = if asked == "tab:go" {
+                TabAct::Go
+            } else {
+                TabAct::Close
+            };
+            match (number("pid"), number("tab")) {
+                (Some(pid), Some(tab)) => Ask::Tab {
+                    id,
+                    tab: TabAsk {
+                        act,
+                        pid,
+                        tab,
+                        window: number("window"),
+                    },
+                },
+                _ => Ask::Unknown { id, ask: asked },
+            }
+        }
         _ => Ask::Unknown { id, ask: asked },
     }
 }
@@ -218,6 +261,42 @@ pub fn error(id: &Value, code: &str, message: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_kitty_tabs_go_and_close_name_its_kitty_tab_and_window() {
+        assert_eq!(
+            ask(r#"{"id":3,"ask":"tab:go","pid":40,"tab":5,"window":7,"token":"t"}"#),
+            Ask::Tab {
+                id: json!(3),
+                tab: TabAsk {
+                    act: TabAct::Go,
+                    pid: 40,
+                    tab: 5,
+                    window: Some(7),
+                },
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id":4,"ask":"tab:close","pid":40,"tab":5}"#),
+            Ask::Tab {
+                id: json!(4),
+                tab: TabAsk {
+                    act: TabAct::Close,
+                    pid: 40,
+                    tab: 5,
+                    window: None,
+                },
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id":5,"ask":"tab:close","tab":5}"#),
+            Ask::Unknown {
+                id: json!(5),
+                ask: "tab:close".to_owned(),
+            },
+            "a tab's ask naming no kitty was taken"
+        );
+    }
 
     #[test]
     fn a_watch_names_keys_of_its_kinds() {
