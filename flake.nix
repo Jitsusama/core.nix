@@ -575,6 +575,13 @@
       lib.everyTestFunctionLivesOnce =
         pkgs: pkgs.callPackage ./tests/rules/every-test-function-lives-once.nix { };
 
+      # How a repository built on core holds its daemons to docs/daemons.md's
+      # convention, as core does: `core.lib.daemonsAgree pkgs { src = ./.; home
+      # = ...; waiting = { ... }; }` is a check that fails on a daemon the
+      # account runs from the repository's crates breaking a point of it it
+      # doesn't wait on, and on one waiting on a point it keeps.
+      lib.daemonsAgree = pkgs: pkgs.callPackage ./tests/rules/daemons-agree.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary

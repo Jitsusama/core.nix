@@ -498,6 +498,11 @@
     asked again at once it's told at once what it held back, never everything whole; and the
     daemon answers its own asks
   '';
+  daemons-agree = ''
+    every daemon a graphical machine's account runs keeps docs/daemons.md's convention: its
+    socket held by systemd at %t/daemons/<name>.sock, one name for its units and program that ps
+    shows whole and first, and daemon-serve answering, but the points each still waits on
+  '';
   darwin-role-twice-is-once = ''
     importing a nix-darwin role twice leaves the machine unchanged
   '';
