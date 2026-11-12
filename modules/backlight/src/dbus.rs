@@ -9,7 +9,7 @@ use tokio::sync::watch;
 use zbus::export::futures_core::Stream;
 use zbus::fdo::DBusProxy;
 use zbus::proxy::{CacheProperties, OwnerChangedStream, PropertyStream};
-use zbus::{Connection, proxy};
+use zbus::{Connection, Message, proxy};
 
 use crate::ask;
 use crate::screen::Screen;
@@ -51,6 +51,21 @@ pub(crate) trait Relay {
     fn temperature(&self) -> zbus::Result<u16>;
     #[zbus(property)]
     fn set_temperature(&self, kelvin: u16) -> zbus::Result<()>;
+}
+
+/// Why the panel's warmth wasn't set.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Refused {
+    /// The relay holds no object for the panel, since niri isn't showing
+    /// it, as while its lid is shut beside another screen.
+    NoPanel,
+    /// Anything else, in the words it came in.
+    Else(String),
+}
+
+/// What a reply to a set of the warmth says.
+fn answered(_reply: &Message) -> Result<(), Refused> {
+    Ok(())
 }
 
 /// Waits for the screens' warmth to be set by a program that just started,
@@ -169,4 +184,49 @@ pub(crate) async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'stati
         WHITE
     };
     (Some((Warmth::new(shown), relay)), started)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A reply to a set on the panel's object, holding what's given.
+    fn reply<B>(body: &B) -> Message
+    where
+        B: zbus::export::serde::Serialize + zbus::zvariant::DynamicType,
+    {
+        let set = Message::method_call("/outputs/eDP_1", "Set")
+            .and_then(|call| call.destination("rs.wl-gammarelay"))
+            .and_then(|call| call.build(&()))
+            .expect("a set is built");
+        Message::method_return(&set.header())
+            .and_then(|answer| answer.build(body))
+            .expect("its reply is built")
+    }
+
+    #[test]
+    fn an_empty_reply_is_the_warmth_set() {
+        assert_eq!(answered(&reply(&())), Ok(()), "a set's reply holds nothing");
+    }
+
+    #[test]
+    fn a_reply_holding_words_is_the_relay_refusing() {
+        let said = "Invalid arguments for calls to org.freedesktop.DBus.Properties.Set";
+        assert_eq!(
+            answered(&reply(&(said,))),
+            Err(Refused::Else(said.to_owned())),
+            "wl-gammarelay-rs refuses with an ordinary reply holding why"
+        );
+    }
+
+    #[test]
+    fn a_refusal_naming_no_object_is_the_panel_not_showing() {
+        let said = "No calls to org.freedesktop.DBus.Properties.Set are accepted for object \
+                    /outputs/eDP_1";
+        assert_eq!(
+            answered(&reply(&(said,))),
+            Err(Refused::NoPanel),
+            "a panel niri doesn't show has no object to set"
+        );
+    }
 }
