@@ -200,7 +200,8 @@ Scope {
         // and not from the answer's (Hearing.js).
         if (then) {
             const from = Hearing.heardAt();
-            awaited[id] = answer => Hearing.within(from, () => then(answer));
+            const by = Hearing.heardBy();
+            awaited[id] = answer => Hearing.within(from, () => then(answer), by);
         }
         tell(Object.assign({}, said, { id: id }));
     }
@@ -316,8 +317,12 @@ Scope {
     // Each line is marked as heard from when it's read until all it set
     // going has returned, so the launcher times a change from it
     // (Hearing.js).
+    // The daemon its lines are heard as from, by its socket's name:
+    // "machine" for machine.sock.
+    readonly property string heardAs: socket.split("/").pop().replace(/\.sock$/, "")
+
     function said(line) {
-        const was = Hearing.begun(Date.now());
+        const was = Hearing.begun(Date.now(), heardAs);
         try {
             hear(line);
         } finally {

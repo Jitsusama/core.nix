@@ -4671,8 +4671,10 @@ Scope {
         const place = source.settings.name;
         const was = updatesWaiting[place];
         updatesWaiting = Presented.heard(updatesWaiting, place, line + KeyTimes.now() - Date.now());
-        if (updatesWaiting[place] !== was)
+        if (updatesWaiting[place] !== was) {
             updatesHeard[place] = KeyTimes.now();
+            updatesBy[place] = Hearing.heardBy();
+        }
     }
     function refreshed(source) {
         updatedFrom(source);
@@ -9194,6 +9196,9 @@ Scope {
     property var updatesWaiting: ({})
     // When the launcher took each place's waiting change, by place.
     readonly property var updatesHeard: ({})
+    // Whose line each place's waiting change came from, by place, so Now,
+    // made from many daemons, says whose its changes were.
+    readonly property var updatesBy: ({})
     property var updatesPresented: []
     // Its frame's start is when the frame presentedAwait waits on began,
     // the next to begin, as a key's is, so its line says where it went.
@@ -9201,9 +9206,10 @@ Scope {
         const from = updatesWaiting[place];
         if (from === undefined)
             return;
-        const one = { place, from, heard: updatesHeard[place] };
+        const one = { place, from, heard: updatesHeard[place], by: updatesBy[place] };
         updatesWaiting = Presented.drawn(updatesWaiting, place);
         delete updatesHeard[place];
+        delete updatesBy[place];
         if (!(shown && open))
             return;
         afterFrame(begun => {
@@ -9230,6 +9236,8 @@ Scope {
         updatesWaiting = {};
         for (const place of Object.keys(updatesHeard))
             delete updatesHeard[place];
+        for (const place of Object.keys(updatesBy))
+            delete updatesBy[place];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
         for (const said of [first, landed].filter(line => line !== "").concat(updates))
