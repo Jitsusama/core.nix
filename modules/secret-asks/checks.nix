@@ -25,7 +25,8 @@ onLinux {
     pkgs.callPackage ./package.nix { }
   );
   # The daemon runs on its socket with the item the machine names,
-  # reading it through op's wrapper, and a switch restarts it.
+  # reading it through op's wrapper, shown by its name, and a switch restarts
+  # it.
   secret-asks-runs-with-its-item =
     let
       item = "op://Private/Release Test/password";
@@ -45,7 +46,9 @@ onLinux {
     holds "secret-asks-runs-with-its-item"
       "The secret-asks daemon lacks its item, op's wrapper or its socket, or outlives a switch."
       (
-        lib.hasInfix "--item ${lib.escapeShellArg item}" started
+        lib.hasPrefix "@" started
+        && lib.hasInfix " secret-asks serve " started
+        && lib.hasInfix "--item ${lib.escapeShellArg item}" started
         && lib.hasInfix "--op /run/wrappers/bin/op" started
         && lib.hasInfix "--socket %t/daemons/secret-asks.sock" started
         && !(lib.hasInfix "--account" started)

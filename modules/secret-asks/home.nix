@@ -50,9 +50,12 @@ in
         After = [ "secret-asks.socket" ];
       };
       Service = {
+        # Started as @<program> secret-asks, so ps reads its name rather than a
+        # store path, as docs/daemons.md says every daemon is.
         ExecStart = lib.escapeShellArgs (
           [
-            (lib.getExe package)
+            "@${lib.getExe package}"
+            "secret-asks"
             "serve"
             "--socket"
             "%t/daemons/secret-asks.sock"
