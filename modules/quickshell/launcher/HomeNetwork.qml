@@ -146,7 +146,7 @@ Provider {
     function madeFrom(row, key) {
         const kind = row.kind ?? "";
         const held = row.held ?? {};
-        const said = () => provider.drawerSaid(kind, held);
+        const said = () => provider.drawerSaid(kind, held, row.name);
         const made = ready.thing(row, key, {
             thing: true,
             noteInDrawer: true,
@@ -170,8 +170,9 @@ Provider {
     }
 
     // What a row's drawer says, of the record's internet, node, device or
-    // profile the row holds; nothing while the record doesn't hold it.
-    function drawerSaid(kind, held) {
+    // profile the row holds; nothing while the record doesn't hold it. A
+    // device's is titled as its row is `called`, by the eero daemon.
+    function drawerSaid(kind, held, called) {
         const nothing = { facts: [] };
         if (kind === "internet")
             return Drawers.internet(model, now(), settings);
@@ -181,7 +182,7 @@ Provider {
         }
         if (kind === "device") {
             const device = (model?.devices ?? []).find(one => one.mac === held.mac);
-            return device ? deviceDrawer(device) : nothing;
+            return device ? deviceDrawer(device, called) : nothing;
         }
         const profile = (model?.profiles ?? []).find(one => one.id === held.id);
         return profile ? Drawers.profile(model, profile, settings) : nothing;
@@ -259,10 +260,11 @@ Provider {
     })
 
     // A device's drawer, with its readings since the shell started.
-    function deviceDrawer(device) {
+    function deviceDrawer(device, called) {
         return Drawers.device(model, device, now(), {
             settings: settings,
-            readings: Eero.history[device.mac]
+            readings: Eero.history[device.mac],
+            called: called
         });
     }
 

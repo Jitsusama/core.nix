@@ -21,7 +21,8 @@
         "pending": "{count} pending",
         "onNow": "{devices} on now",
         "signedOut": "signed out of eero",
-        "unreachable": "eero unreachable"
+        "unreachable": "eero unreachable",
+        "tested": "tested {speed}"
       }
     },
     {
@@ -63,7 +64,8 @@
         "ethernet": "Ethernet",
         "dbm": "{n} dBm",
         "channel": "channel {n}",
-        "idle": "idle"
+        "idle": "idle",
+        "made": "{maker} device"
       }
     },
     {

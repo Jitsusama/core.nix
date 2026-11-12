@@ -1,8 +1,8 @@
 //! The Home Network's own drawer, the one its row in Network shows, made
 //! ready here as its rows are (rows.rs), so the shell only draws it: whose
 //! it is, "via eero · network", a lead saying how the home network
-//! stands, "Connected at 370 Mb/s down, with 3 nodes online and 15 devices
-//! on now.", then the figures it's made from. Every row has a drawer
+//! stands, "Connected to the internet, last tested at 370 Mb/s down, with 3
+//! nodes online and 15 devices on now.", then the figures it's made from. Every row has a drawer
 //! (Joel, 2026-11-11 22:00), and this is the form VKCF3Z gave the Network
 //! places' rows (2026-11-12): the way, then the kind, never the title
 //! again.

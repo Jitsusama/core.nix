@@ -510,6 +510,13 @@ QtObject {
             expect(`a device's ${id}`, value(facts, id), wanted);
         expect("a device's eyebrow", [generic.eyebrow, generic.names], ["on Den \u00b7 Wi-Fi",
             true]);
+        // Its title is what its row is called, as the eero daemon serves it, so
+        // a device only its maker names reads "Intel device" in both.
+        const unnamed = Object.assign({}, device("generic 2"), { name: null, hostname: null });
+        const called = Drawers.device(model, unnamed, now, { called: "Intel device" });
+        expect("a device's title is its row's name", called.title, "Intel device");
+        expect("a device's title, without a row's name", Drawers.device(model, unnamed, now).title,
+            unnamed.mac);
         expect("no hostname that only says its name again", facts.hostname, undefined);
         expect("a device's drawer leads with how well it's heard", generic.facts.slice(0, 7)
             .map(fact => fact.id), ["signal", "snr", "score", "band", "rx", "tx", "speed"]);

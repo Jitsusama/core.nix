@@ -10,7 +10,7 @@ fn the_contract_and_its_history_read_into_the_model() {
         home_network(&contract_answers(), READ, answering()).expect("the network was read");
     // The model is the one the daemon keeps on the machine that's the
     // first laptop, so the views have this machine to put first.
-    mark_this_machine(&mut read, &["02:00:00:00:00:0e".to_owned()]);
+    mark_this_machine(&mut read, &["02:00:00:00:00:0e".to_owned()], None);
     history()
         .draw(&mut read, time::to_unix(READ).unwrap())
         .unwrap();
@@ -38,6 +38,7 @@ fn this_machine_is_the_device_with_one_of_its_addresses() {
             "02:00:00:00:00:99".to_owned(),
             "02:00:00:00:00:0E".to_owned(),
         ],
+        None,
     );
 
     let here: Vec<&str> = read
@@ -48,11 +49,59 @@ fn this_machine_is_the_device_with_one_of_its_addresses() {
         .collect();
     assert_eq!(here, ["02:00:00:00:00:0e"]);
 
-    mark_this_machine(&mut read, &[]);
+    mark_this_machine(&mut read, &[], None);
 
     assert!(
         read.devices.iter().all(|device| !device.this_machine),
         "with no addresses of its own, no device is this machine"
+    );
+}
+
+#[test]
+fn this_machine_goes_by_its_own_hostname_where_eero_knows_none() {
+    let mut read =
+        home_network(&contract_answers(), READ, answering()).expect("the network was read");
+    let own = ["02:00:00:00:00:0e".to_owned()];
+    let here = |read: &HomeNetwork| {
+        read.devices
+            .iter()
+            .find(|device| device.this_machine)
+            .and_then(|device| device.hostname.clone())
+    };
+
+    mark_this_machine(&mut read, &own, Some("workstation"));
+    assert_eq!(
+        here(&read).as_deref(),
+        Some("laptop computer 1"),
+        "the hostname eero knows stands"
+    );
+
+    let machine = read.devices.iter_mut().find(|device| device.this_machine);
+    machine.expect("this machine is listed").hostname = None;
+    mark_this_machine(&mut read, &own, Some("workstation"));
+    assert_eq!(here(&read).as_deref(), Some("workstation"));
+    assert!(
+        read.devices
+            .iter()
+            .filter(|device| !device.this_machine)
+            .all(|device| device.hostname.as_deref() != Some("workstation")),
+        "no other device is given this machine's hostname"
+    );
+}
+
+#[test]
+fn a_name_that_only_repeats_the_maker_is_no_name() {
+    let named = |name: &str, maker: &str| {
+        device(&json!({"mac": "02:00:00:00:00:99", "display_name": name, "manufacturer": maker}))
+            .expect("the device is read")
+            .name
+    };
+
+    assert_eq!(named("Intel Corporate", "Intel Corporate"), None);
+    assert_eq!(named("intel corporate", "Intel Corporate"), None);
+    assert_eq!(
+        named("Den TV", "Sony Corporation").as_deref(),
+        Some("Den TV")
     );
 }
 

@@ -60,16 +60,24 @@ pub(super) fn device(record: &Value) -> Option<Device> {
     // eero says 0 for a device on Ethernet, which has no radio, rather
     // than leaving it out, and 0 would read as 2.4 GHz.
     let frequency_mhz = number(link, "/frequency").filter(|mhz| *mhz > 0);
+    let manufacturer = text(record, "/manufacturer");
+    // eero shows a device nothing names by its maker, which is no name of
+    // its own, so it's left to `called` to say as a maker.
+    let name = text(record, "/display_name").filter(|name| {
+        !manufacturer
+            .as_deref()
+            .is_some_and(|maker| maker.eq_ignore_ascii_case(name))
+    });
     Some(Device {
         mac: text(record, "/mac")?,
         this_machine: false,
-        name: text(record, "/display_name"),
+        name,
         nickname: text(record, "/nickname"),
         hostname: text(record, "/hostname"),
         kind: text(record, "/device_type"),
         make: text(record, "/inferred_make"),
         model: text(record, "/inferred_model"),
-        manufacturer: text(record, "/manufacturer"),
+        manufacturer,
         private: flag(record, "/is_private"),
         address: text(record, "/ip"),
         addresses: texts(record, "/ips"),

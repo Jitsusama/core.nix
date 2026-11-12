@@ -263,7 +263,11 @@ impl Daemon {
             )?,
             None => self.model.clone()?,
         };
-        read::mark_this_machine(&mut next, &probe::own_macs());
+        read::mark_this_machine(
+            &mut next,
+            &probe::own_macs(),
+            probe::own_hostname().as_deref(),
+        );
         if heard == Some(Heard::Answered) {
             let network_read = due.contains(&Read::Network);
             if let Err(reason) = self.history.record(&next, at, network_read) {

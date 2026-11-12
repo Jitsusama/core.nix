@@ -115,7 +115,7 @@ fn the_internet_says_how_it_stands_and_its_last_speed_test() {
     assert_eq!(
         side_and_note(&rows[0]),
         (
-            "connected \u{b7} 370 Mb/s down".to_owned(),
+            "connected \u{b7} tested 370 Mb/s down".to_owned(),
             "11.9 Mb/s up \u{b7} <on> \u{b7} conferencing and gaming on \u{b7} 1 outage in 30 days \
              \u{b7} 3 nodes online \u{b7} 15 devices on now"
                 .to_owned()
@@ -251,6 +251,26 @@ fn a_device_says_the_profile_its_in_and_ethernet_where_its_cabled() {
         )
     );
     assert_eq!(cabled["glyph"], "wired");
+}
+
+#[test]
+fn a_device_nothing_names_is_called_by_its_maker_in_the_launchers_words() {
+    let mut model = model();
+    let device = &mut model.devices[0];
+    device.name = None;
+    device.nickname = None;
+    device.hostname = None;
+    device.make = None;
+    device.manufacturer = Some("Intel Corporate".to_owned());
+    let mac = device.mac.clone();
+
+    let rows = made(&model);
+
+    let row = rows
+        .iter()
+        .find(|row| row["thing"] == format!("eero:device:{mac}"))
+        .expect("the device has a row");
+    assert_eq!(row["name"], "Intel device");
 }
 
 #[test]

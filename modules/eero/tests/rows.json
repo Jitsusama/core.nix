@@ -1,7 +1,7 @@
 [
   {
     "drawer": {
-      "body": "Connected at 370 Mb/s down, with 3 nodes online and 15 devices on now.",
+      "body": "Connected to the internet, last tested at 370 Mb/s down, with 3 nodes online and 15 devices on now.",
       "eyebrow": "via eero · network",
       "facts": [
         {
@@ -668,7 +668,7 @@
           "said": "connected"
         },
         {
-          "said": "370 Mb/s down"
+          "said": "tested 370 Mb/s down"
         }
       ],
       "thing": "eero:internet"

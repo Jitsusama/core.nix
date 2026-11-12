@@ -20,10 +20,10 @@
         "device": "1 device",
         "devices": "{count} devices",
         "eyebrow": "via eero \u00b7 network",
-        "leadAt": " at {rate} down"
+        "leadAt": ", last tested at {rate} down"
       },
       "tells": {
-        "connected": "Connected{at}, with {nodes} and {devices} on now.",
+        "connected": "Connected to the internet{at}, with {nodes} and {devices} on now.",
         "disconnected": "Not connected to the internet, with {nodes} and {devices} on now.",
         "signedOut": "Signed out of eero, so how the home network stands isn't known.",
         "unreachable": "The eero cloud can't be reached, so how the home network stands isn't known."
@@ -50,7 +50,8 @@
         "pending": "{count} pending",
         "onNow": "{devices} on now",
         "signedOut": "signed out of eero",
-        "unreachable": "eero unreachable"
+        "unreachable": "eero unreachable",
+        "tested": "tested {speed}"
       }
     },
     {
@@ -92,7 +93,8 @@
         "ethernet": "Ethernet",
         "dbm": "{n} dBm",
         "channel": "channel {n}",
-        "idle": "idle"
+        "idle": "idle",
+        "made": "{maker} device"
       }
     },
     {

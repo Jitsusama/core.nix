@@ -227,7 +227,8 @@ fn addresses<'a>(model: &HomeNetwork) -> Vec<(&'a str, Facts<'a>)> {
     for reserved in &kept.reservations {
         // The device's own name where eero lists it, else the label the
         // reservation was given, and that label too when it says more.
-        let device = super::listed_name(model, &reserved.mac);
+        let listed = super::listed_name(model, &reserved.mac);
+        let device = listed.as_deref();
         let label = reserved.description.as_deref();
         let name = device.or(label).unwrap_or(&reserved.mac);
         let more = match (device, label) {

@@ -232,6 +232,15 @@ pub fn at_home(model: &HomeNetwork, own: &[String], routes: &[Route], gateway: I
     listed && reached
 }
 
+/// This machine's own hostname, as the kernel holds it, for this machine
+/// where eero knows none; none where it can't be read, as `own_macs` finds
+/// no addresses there either.
+pub fn own_hostname() -> Option<String> {
+    let host = fs::read_to_string("/proc/sys/kernel/hostname").ok()?;
+    let host = host.trim();
+    (!host.is_empty()).then(|| host.to_owned())
+}
+
 /// This machine's hardware addresses, one for each interface that has
 /// one.
 pub fn own_macs() -> Vec<String> {
