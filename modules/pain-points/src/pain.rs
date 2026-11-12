@@ -580,6 +580,28 @@ mod tests {
     }
 
     #[test]
+    fn a_search_he_cleared_and_then_read_his_way_through_is_reading() {
+        let usual = Usual::of(&[]);
+        let browsed = Trial {
+            keys: Keys {
+                letters: 2,
+                erased: 2,
+                arrows: 64,
+                returns: 4,
+                ..Keys::default()
+            },
+            ..miss(AT, 75_000)
+        };
+        assert_eq!(
+            lost(&browsed, None, &usual).gave_up,
+            0.0,
+            "he cleared the box and read the lists, as at 13:36 on 12 Nov"
+        );
+        let named = painful(&[browsed], &Usable::new(vec![]), &usual);
+        assert!(named.is_empty(), "reading isn't named: {named:?}");
+    }
+
+    #[test]
     fn a_glance_pains_only_when_the_launcher_was_slow() {
         let usual = Usual::of(&[]);
         let glance = Trial {
