@@ -22,6 +22,12 @@
     "jitsusama.theme.icons" = "the icon theme is GTK's, named as it names it";
     "jitsusama.theme.palette" = "a theme's palette is its colours, not the launcher";
     "jitsusama.theme.syntax.operator" = "an operator is a code token, such as =, not a person";
+    "jitsusama.update-to-main.batches" =
+      "a batch is one build's share of a switch's pieces, not a fleet of agents";
+    "jitsusama.update-to-main.holdAccountRestarts" =
+      "an account's daemons restart as systemd restarts them; the machine isn't rebooted";
+    "jitsusama.update-to-main.holdRestarts" =
+      "a daemon restarts as systemd restarts it; the machine isn't rebooted";
     linux-builder-lets-only-those-named-restart-it = "a VM and a service restart; the Mac isn't rebooted";
     nix-offload-lines-reach-root-alone = "a line is a builder's entry in Nix's machines files, not a connection";
     pi-hosts-refuse-an-unproven-runtime = "a pi host is the harness's process holding many pi conversations, not a machine";

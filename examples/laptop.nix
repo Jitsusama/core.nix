@@ -47,6 +47,7 @@ nixpkgs.lib.nixosSystem {
         imports = [
           core.homeModules.cadence
           core.homeModules.chrome
+          core.homeModules.local-sites
           core.homeModules.merge-net
           core.homeModules.network-revive
           core.homeModules.passwords
