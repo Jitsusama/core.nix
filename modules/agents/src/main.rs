@@ -45,7 +45,7 @@ use serde_json::{Value, json};
 
 /// The daemon as the launcher knows it: Agents' ready rows, how its
 /// sessions stand together, each session's drawer, and the sessions
-/// there are to reopen.
+/// there are to reopen, with Sessions to Reopen's own words.
 const DOMAIN: Domain = Domain {
     name: "agents",
     kinds: &[
@@ -54,6 +54,7 @@ const DOMAIN: Domain = Domain {
         "drawer",
         "reopen",
         "restoring",
+        "to-reopen",
         "recent",
         "landed",
         "landed-days",

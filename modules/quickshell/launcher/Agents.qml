@@ -485,10 +485,6 @@ Provider {
                 provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
                 Theme.alert]]);
         }
-
-        function onToReopenChanged() {
-            provider.lookForFolders();
-        }
     }
 
     // Where a session's first job waiting for its turn stands in line.
@@ -961,61 +957,54 @@ Provider {
             glyph: Words.glyph(`verb:agents:to-reopen:${id}`),
             hue: "action"
         }, fields));
-        // Where each came from, and where they all did: the last boot, the
-        // machine that carried it or pi's host that gave it back.
-        const fromOf = one => Places.wayOf(said, one);
-        const note = Places.reopenNote(said, Sessions.lastBoot.length, Sessions.apart);
+        // Each row and the place come worded by the agents daemon
+        // (modules/agents's reopen.rs): its name, the folder it reopens
+        // in from home, or its machine, and the way it came, the last
+        // boot, the machine that carried it or pi's host that gave it
+        // back. Only the acts are the shell's.
+        const rowOf = one => Sessions.reopenRows[one.id] ?? {};
+        const place = Sessions.reopenPlace;
         // One given back names its host in its drawer alone, last, as an
         // identifier, since the host's name is no place Joel chose
         // (VKCF3Z, [92a1d30c]).
-        const hostOf = one => Places.apartOf(one)?.kind !== "released" ? {} : {
+        const hostOf = one => !rowOf(one).host ? {} : {
             drawer: () => ({
-                eyebrow: fromOf(one),
-                title: String(one.title || one.address || one.id),
-                facts: [{ label: Words.name("agents:host"), value: Places.apartOf(one).from,
+                eyebrow: String(rowOf(one).note ?? ""),
+                title: String(rowOf(one).name ?? ""),
+                facts: [{ label: Words.name("agents:host"), value: String(rowOf(one).host),
                     identifies: true }]
             })
         };
+        // In its own folder only, never the home folder instead. One whose
+        // folder is gone says so on its row, looked for as the daemon makes
+        // the list, and holds no Reopen (VKCF3Z, 2026-11-07 [4a00987e]);
+        // one whose folder went since it was listed is said once the
+        // launcher opens next, with how the rest went, never as a notice.
+        const oneSaid = Words.of("verb:agents:to-reopen:one").said ?? {};
+        const goneHere = one => rowOf(one).gone === true;
         const home = Sessions.home;
         const homely = folder => folder === home || folder.startsWith(`${home}/`)
             ? `~${folder.slice(home.length)}` : folder;
-        // In its own folder only, never the home folder instead. One whose
-        // folder is gone says so on its row, looked for as the launcher
-        // opens (lookForFolders), and holds no Reopen (VKCF3Z, 2026-11-07
-        // [4a00987e]); one whose folder went since it was listed is said
-        // once the launcher opens next, with how the rest went, never as a
-        // notice.
-        const oneSaid = Words.of("verb:agents:to-reopen:one").said ?? {};
-        const goneHere = one => one.machine === undefined && Sessions.folderGone(one.cwd);
         const reopen = one => Sessions.reopen(one, cwd => provider.launcher?.tellOnOpen([
             [homely(cwd), String(oneSaid.isGone ?? ""), Theme.alert]]));
-        const goneCount = count => count === 1 ? String(said.goneOne ?? "")
-            : String(said.goneMany ?? "").replace("{count}", count);
         const forget = one => act("forget", { run: () => Sessions.forgetReopen(one) });
-        const unreopened = one => thingRow(Object.assign({
+        const worded = (one, fields) => Object.assign({
             key: `agents:to-reopen:${one.id}`,
-            name: String(one.title || one.address || one.id),
-            side: String(oneSaid.gone ?? "").replace("{cwd}", homely(one.cwd)),
-            alerts: true,
-            note: fromOf(one),
-            glyph: Theme.glyph.agent,
-            hue: "alert"
-        }, hostOf(one)), () => [forget(one)]);
-        const closed = one => goneHere(one) ? unreopened(one) : thing(Object.assign({
+            name: String(rowOf(one).name ?? one.id),
+            side: String(rowOf(one).side ?? ""),
+            note: String(rowOf(one).note ?? ""),
+            glyph: Theme.glyph.agent
+        }, fields, hostOf(one));
+        const unreopened = one => thingRow(worded(one, { alerts: true, hue: "alert" }),
+            () => [forget(one)]);
+        const closed = one => goneHere(one) ? unreopened(one) : thing(worded(one, {
             thing: true,
-            key: `agents:to-reopen:${one.id}`,
-            name: String(one.title || one.address || one.id),
-            // One held elsewhere says where, as a session there does.
-            side: one.machine !== undefined ? provider.elsewhere("on", one) : homely(one.cwd),
-            note: fromOf(one),
             verb: Words.verb("verb:agents:to-reopen:one"),
-            glyph: Theme.glyph.agent,
             hue: "program",
             later: true,
             run: () => reopen(one)
-        }, hostOf(one)));
+        }));
         const reopenable = lost.filter(one => !goneHere(one));
-        const goneNow = lost.length - reopenable.length;
         // Reopen Them All reopens those that can be, its side counting them
         // when any can't: "58 of 60 \u00b7 2 folders gone". Each found gone
         // after is counted with how many reopened, and said once the
@@ -1027,13 +1016,10 @@ Provider {
             [String(outcome.asked - outcome.gone), String(said.reopened ?? "")]]);
         // Its count of what failed is drawn in the alert's colour, as the
         // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).
-        const there = String(said.there ?? "").replace("{there}", reopenable.length)
-            .replace("{count}", lost.length);
         const themAll = () => act("all", {
             later: true,
-            side: goneNow === 0 ? "" : `${there} \u00b7 ${goneCount(goneNow)}`,
-            sideItems: goneNow === 0 ? [] : [{ said: there, keep: 2 },
-                { said: goneCount(goneNow), keep: 3, hue: "alert" }],
+            side: String(place.allSide ?? ""),
+            sideItems: place.allItems ?? [],
             // Each back where it sat (Sessions.qml's reopenThemAll), a
             // carried one beside where Joel is, since it never sat here,
             // and then the windows that reopen themselves. Each is told to
@@ -1047,9 +1033,8 @@ Provider {
         return thingRow({
             key: "agents:to-reopen",
             name: Words.name("agents:to-reopen"),
-            side: String(said[lost.length === 1 ? "one" : "many"] ?? "")
-                .replace("{count}", lost.length),
-            note: note,
+            side: String(place.side ?? ""),
+            note: String(place.note ?? ""),
             glyph: Words.glyph("agents:to-reopen"),
             hue: "action",
             // For You's filter knows it as a session's, to be done.
@@ -1060,20 +1045,10 @@ Provider {
         })]));
     }
 
-    // Whether each folder there is to reopen in is there, looked for as the
-    // launcher opens and as the sessions to reopen change while it's open,
-    // so each row says it before Return rather than trusting what the
-    // shell found at its start.
-    function lookForFolders() {
-        if (provider.launcher?.open)
-            Sessions.lookForFolders(Sessions.toReopen.filter(one => one.machine === undefined)
-                .map(one => one.cwd));
-    }
     Connections {
         target: provider.launcher
 
         function onOpenChanged() {
-            provider.lookForFolders();
             provider.wrapAhead();
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open)

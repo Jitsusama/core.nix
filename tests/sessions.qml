@@ -473,10 +473,6 @@ ShellRoot {
             === JSON.stringify(["s-given-back /given-back ",
                 `s-gone ${state}/trees/given-back ${state}`, `s-none ${state}/trees/given-back `]),
             JSON.stringify(unopened));
-        // Each folder looked for is known after, so a row says one's gone
-        // before Return the next time it's listed.
-        expect("a folder found gone is known gone", Sessions.folderGone("/given-back")
-            && !Sessions.folderGone("/tmp"), JSON.stringify(Sessions.folders));
         // Forgetting one, the daemon is asked, which keeps it, by pi's id
         // for it, since the ask's own id is the interface's.
         stage = "forgetting";
@@ -783,7 +779,7 @@ ShellRoot {
                     }
                     if (ask.ask === "watch") {
                         const watched = JSON.stringify([ask.kind, ask.place]);
-                        if (watched !== '[["reopen","restoring"],"agents"]')
+                        if (watched !== '[["reopen","restoring","to-reopen"],"agents"]')
                             root.fail(`a watch the shell has no need of: ${line}`);
                         said([{ id: ask.id, records: root.reopenRecords() }]);
                         return;

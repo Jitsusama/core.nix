@@ -252,42 +252,6 @@ QtObject {
                 queued("d", true), queued("e", false)]).map(entry => entry.one.id),
             ["b", "d", "a", "c", "e"]);
 
-        // Where one of those offered apart from the last boot came from:
-        // another machine carried it here, or pi's host gave it back, as
-        // the agents daemon serves it (modules/agents's reopen.rs, whose
-        // tests say which are offered, and in what order).
-        const carried = (id, from, at) => ({ id, carried: { from, at } });
-        const released = (id, from, at) => ({ id, released: { from, at } });
-        expect("where each came from", [carried("c", "lighthouse", "1"),
-            released("r", "attended", "2"), { id: "b" }].map(Places.apartOf),
-            [{ kind: "carried", from: "lighthouse", at: "1" },
-                { kind: "released", from: "attended", at: "2" }, null]);
-
-        // Where they came from, as Sessions to Reopen's note says it: one
-        // place alone by itself, several each counted, and many machines
-        // counted rather than listed; those given back are counted alone
-        // too, and never by their host's name.
-        const said = { lastBoot: "from the last boot", carried: "carried from {machine}",
-            machines: "{count} machines", givenBack: "given back by its host",
-            counted: "{count} {from}" };
-        const noted = (booted, apart) => Places.reopenNote(said, booted, apart);
-        expect("the last boot's alone", noted(3, []), "from the last boot");
-        expect("nothing at all reads as the last boot", noted(0, []), "from the last boot");
-        expect("those given back alone, counted", noted(0, [released("a", "attended", ""),
-            released("b", "background", "")]), "2 given back by its host");
-        expect("one carried alone", noted(0, [carried("a", "lighthouse", "")]),
-            "carried from lighthouse");
-        expect("the last boot's and the carried", noted(3, [carried("a", "lighthouse", ""),
-            carried("b", "lighthouse", "")]), "3 from the last boot, 2 carried from lighthouse");
-        expect("every way they came", noted(1, [carried("a", "lighthouse", ""),
-            carried("b", "buoy", ""), released("c", "attended", "")]),
-            "1 from the last boot, 2 carried from 2 machines, 1 given back by its host");
-
-        // Each row's own way, its host's name never among the words.
-        expect("each row's way", [{ id: "b" }, carried("c", "lighthouse", ""),
-            released("r", "attended", "")].map(one => Places.wayOf(said, one)),
-            ["from the last boot", "carried from lighthouse", "given back by its host"]);
-
         // Reopen Them All begins the next session only while the machine has
         // room for it, as the machine queue judges it, so eighty sessions
         // never start into a machine already short of memory or disk.
