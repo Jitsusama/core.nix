@@ -222,7 +222,6 @@
   "launcher/PastNotices.qml" = [
     "Fuzzy.js"
     "launcher/Notice.js"
-    "launcher/Order.js"
   ];
   "launcher/Power.js" = [ "launcher/Order.js" ];
   "launcher/Power.qml" = [ "launcher/Seen.js" ];

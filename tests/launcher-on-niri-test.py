@@ -10,6 +10,7 @@ launcher closed and leaves it so, so any test runs alone.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import functools
 import itertools
@@ -19,6 +20,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import threading
@@ -725,6 +727,90 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     typed_at_once(shell, "'for you' -k Return")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
     shell.close_launcher()
+
+
+def notices_daemon() -> int:
+    """Give the notices daemon's process, which tests/notices-beside.sh started beside the shell."""
+    for named in Path("/proc").glob("[0-9]*/comm"):
+        with contextlib.suppress(OSError):
+            if named.read_text().strip() == "notices":
+                return int(named.parent.name)
+    failed = "no notices daemon runs beside the shell"
+    raise AssertionError(failed)
+
+
+@contextlib.contextmanager
+def notices_stopped() -> Iterator[None]:
+    """Hold the notices daemon stopped while what's done inside it runs, so it answers late."""
+    daemon = notices_daemon()
+    os.kill(daemon, signal.SIGSTOP)
+    try:
+        yield
+    finally:
+        os.kill(daemon, signal.SIGCONT)
+
+
+# How many letters a search gathers each place's rows from, so a notice is found at home.
+GATHERED_FROM = 2
+
+
+def test_a_key_lists_the_notices_it_finds_with_the_rest_of_its_rows(shell: Shell) -> None:
+    """Each key's rows land at once, the notices the daemon finds among them.
+
+    The notices daemon answers a search a moment after the key, so the key's list waits for it a
+    little (Launcher.qml's answersWaitedFor): listed before it came, the notices' row would land
+    a frame later and move the rows under it. A key the daemon answers past the wait says so.
+    """
+    # A word nothing else here is named by, so its row is among the first twenty `showing` says.
+    with shell.told("shows card Zygodactyl"):
+        shell.as_account("notify-send --expire-time=1000 'Zygodactyl' 'a notice to find'")
+    shell.notices_gone()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    since = shell.mark()
+    shell.type_in("zygodactyl", selecting="zygodactyl")
+    reports, _ = shell.said_since(since)
+    excused = False
+    listed: list[str] = []
+    for said in reports:
+        if said == "listed without answers":
+            excused = True
+        elif said.startswith("showing "):
+            shown = json.loads(said[len("showing ") :])
+            typed = shown["typed"]
+            if len(typed) < GATHERED_FROM or typed in listed:
+                continue
+            listed.append(typed)
+            found = excused or "Zygodactyl" in shown["rows"]
+            assert found, f"{typed!r} first listed {shown['rows']}"
+            excused = False
+    shell.close_launcher()
+    assert listed, f"no key was listed: {reports}"
+
+
+def test_notices_answered_late_come_in_with_the_selection_on_its_row(shell: Shell) -> None:
+    """A key the notices daemon answers past its wait lists without them, then takes them in.
+
+    The journal says the key was listed without them and how late they came, and they come in
+    with the selection on the row it was on, not at the place it was in.
+    """
+    with shell.told("shows card Windows of the hide"):
+        shell.as_account("notify-send --expire-time=1000 'Windows of the hide' 'a late notice'")
+    shell.notices_gone()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    since = shell.mark()
+    with notices_stopped():
+        shell.type_in("windows", selecting="windows")
+        shell.reported("listed without answers", lambda rest: rest == "", since)
+        shown = shell.showing()
+        assert "Windows of the hide" not in shown["rows"], shown["rows"]
+        selected = shown["selected"]["name"]
+    shell.reported("answered late notices", lambda rest: rest == "", since)
+    shell.launcher_until(lambda shown: "Windows of the hide" in shown["rows"])
+    now = shell.showing()["selected"]["name"]
+    shell.close_launcher()
+    assert now == selected, f"the notices came in and the selection went from {selected} to {now}"
 
 
 def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:

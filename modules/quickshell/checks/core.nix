@@ -1,6 +1,9 @@
 # The checks of the launcher's own machinery: its prompt, rows, keys, pacing and
 # answers, and the launcher on niri, which the folder's checks.nix gathers with
 # every other place's; its opening comment says why each place keeps its own.
+# Long because that comment keeps every check of the launcher's own
+# machinery here, the parts every place's rows pass through, rather than
+# with any one place.
 {
   account,
   copied,
@@ -217,6 +220,26 @@ in
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml keys-held.qml
+      touch $out
+    '';
+
+  # A key whose search awaits a daemon's answer is held a few milliseconds
+  # for it, a key typed over it drops its search, and Return searches it at
+  # once (Y2YBTS, 2026-11-11). Return inside those milliseconds can't be
+  # timed on niri, so tests/awaited.qml holds launcher/Awaited.js, which
+  # decides each, in Qt's own engine.
+  the-launcher-holds-a-key-for-its-answers =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-holds-a-key-for-its-answers" { } ''
+      cp ${../../../tests/awaited.qml} awaited.qml
+      cp ${../launcher/Awaited.js} Awaited.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml awaited.qml
       touch $out
     '';
 

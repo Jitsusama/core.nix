@@ -28,6 +28,18 @@ Provider {
         return records ?? [];
     }
 
+    // At home, where Capture gathers Recent's matches, what's typed waits
+    // on the daemon's answer, asked now, as Taken asks it once a text.
+    function awaits(letters) {
+        if ((provider.launcher?.held.length ?? 0) !== 0 || Taken.search(letters) !== null)
+            return false;
+        provider.askedAt = Date.now();
+        provider.awaited = Taken.searchedAs(letters);
+        return true;
+    }
+    // The text a key waits on, which the launcher hasn't searched yet.
+    property string awaited: ""
+
     // The launcher closing lets Taken's connection go, so none is held at
     // rest; the next search opens it again.
     Connections {
@@ -45,7 +57,8 @@ Provider {
         // Only an answer to what's typed now: one to a text typed past
         // would search again for nothing new.
         function onSearched(words: string): void {
-            if (Taken.searchedAs(provider.launcher?.typed ?? "") === words)
+            if (Taken.searchedAs(provider.launcher?.typed ?? "") === words
+                || provider.awaited === words)
                 provider.foundMore(Date.now() - provider.askedAt < provider.freshFor);
         }
     }

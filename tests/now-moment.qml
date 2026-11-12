@@ -300,6 +300,14 @@ ShellRoot {
             && served(2, true))
             oneRead();
     }
+    // The daemon's answer to a search come, the words it answered.
+    function heardFound() {
+        if (waiting === "notice searched")
+            noticeFound();
+        else if (waiting === "notice 1 searched")
+            noticeOneFound();
+    }
+    property var listed: []
     function firstNotices() {
         waiting = "";
         if (!tried(() => {
@@ -313,18 +321,46 @@ ShellRoot {
             stepIn();
             expect("stepped into again, it makes none of the notices' rows again",
                 since(before)[0] === 0, JSON.stringify(since(before)));
-            const listed = pastNotices.search("notice").rows;
-            const pool = pastNotices.poolFor(pastNotices.looksThrough(), "notice 1");
-            expect("a key typed on looks through only the notices the last one found",
-                pool === pastNotices.lastMatched.rows, `${pool.length} looked through`);
+            const unanswered = pastNotices.search("notice").rows;
+            expect("a search lists no notice until the daemon answers it",
+                unanswered.length === 0, `${unanswered.length} listed`);
+        }))
+            return;
+        waiting = "notice searched";
+    }
+    function noticeFound() {
+        waiting = "";
+        if (!tried(() => {
+            listed = pastNotices.search("notice").rows;
+            expect("a search lists the notices the daemon found, as it ordered them",
+                JSON.stringify(listed.map(row => row.notice))
+                    === JSON.stringify(told.map(one => one.id)),
+                JSON.stringify(listed.map(row => row.notice)));
+            pastNotices.search("notice 1");
+        }))
+            return;
+        waiting = "notice 1 searched";
+    }
+    function noticeOneFound() {
+        waiting = "";
+        if (!tried(() => {
             const again = pastNotices.search("notice 1").rows;
             const copied = again.filter(row => !listed.includes(row));
             expect("a key typed on copies none of the notices it listed before",
-                copied.length === 0, `${copied.length} of ${again.length} copied again`);
+                again.length > 0 && copied.length === 0,
+                `${copied.length} of ${again.length} copied again`);
+            pastNotices.search("notice");
+            expect("the daemon is asked each search once, one asked again kept",
+                JSON.stringify(noticesDaemon.searches) === JSON.stringify(["notice", "notice 1"]),
+                JSON.stringify(noticesDaemon.searches));
         }))
             return;
         const read = told.map(one => one.id === 2
             ? Object.assign({}, one, { read: true, readAt: Date.now() }) : one);
+        // Stepped into once as things stand, since Desktop's own rows may
+        // have come while the searches were answered, so what's counted is
+        // what the one read makes again, not rows Desktop made first.
+        stepIn();
         madeBefore = madeNow();
         Notices.history = read;
         noticesDaemon.notices = read;
@@ -337,6 +373,11 @@ ShellRoot {
             stepIn();
             expect("one notice read, stepping in again makes only its row again",
                 since(madeBefore)[0] === 1, JSON.stringify(since(madeBefore)));
+            expect("a search answered before the notices changed waits for its answer again",
+                pastNotices.awaits("notice") === true, JSON.stringify(pastNotices.answers.kept));
+            expect("a search answered before the notices changed lists none of them meanwhile",
+                pastNotices.search("notice").rows.length === 0,
+                JSON.stringify(pastNotices.search("notice").rows.map(row => row.key)));
         }))
             Qt.exit(0);
     }
@@ -350,6 +391,10 @@ ShellRoot {
 
         function onChanged() {
             root.heardNotices();
+        }
+
+        function onFoundMore() {
+            root.heardFound();
         }
     }
     Timer {

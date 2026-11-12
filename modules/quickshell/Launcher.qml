@@ -81,6 +81,7 @@ import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
 import "launcher/KeysHeld.js" as KeysHeld
+import "launcher/Awaited.js" as Awaited
 import "launcher/RowsPlace.js" as RowsPlace
 
 Scope {
@@ -188,7 +189,7 @@ Scope {
             });
             source.answered.connect(() => root.reanswer(source));
             source.changed.connect(() => root.refreshed(source));
-            source.foundMore.connect(root.foundMore);
+            source.foundMore.connect(fresh => root.foundMore(fresh, source));
             source.thingsChanged.connect(root.stale);
             // Counted, so a closing can say which sources changed since
             // the last (madeSaid).
@@ -5198,7 +5199,29 @@ Scope {
     // what's typed is searched again, ranked as the key's own search when
     // the answer came fresh, so soon that its first frame hardly showed
     // without it, and otherwise in place, holding still what's shown.
-    function foundMore(fresh) {
+    // A key held for this source's answer (awaits) is searched once every
+    // source it waits on has answered; one that answers after its key was
+    // searched without it says so in the journal, with how late.
+    function foundMore(fresh, source) {
+        if (answersAwaited !== null) {
+            const waiting = answersAwaited.sources.filter(one => one !== source);
+            if (waiting.length === answersAwaited.sources.length)
+                return;
+            answersAwaited.sources = waiting;
+            if (waiting.length === 0)
+                searchAwaited();
+            return;
+        }
+        if (answersLate !== null && answersLate.sources.includes(source)) {
+            const late = Date.now() - answersLate.began;
+            console.info(`launcher: ${source.settings?.name ?? ""} answered`
+                + ` "${answersLate.text}" ${late} ms after its key, past the`
+                + ` ${answersWaitedFor} ms its list waited`);
+            Report.say(`answered late ${source.settings?.name ?? ""}`);
+            answersLate.sources = answersLate.sources.filter(one => one !== source);
+            if (answersLate.sources.length === 0)
+                answersLate = null;
+        }
         if (!open || asking || typed.trim() === "")
             return;
         // Rows held still take what was found in their order, waiting.
@@ -6408,23 +6431,94 @@ Scope {
             return;
         searchedThisTurn = true;
         Qt.callLater(turnEnded);
-        searchNow();
+        searchNow(true);
     }
     function turnEnded() {
         searchedThisTurn = false;
-        searchNow();
+        searchNow(true);
     }
     // What every key and setter that reads what was found runs first, so it
-    // acts on what's typed now rather than on the rows of a letter before.
-    function searchNow() {
-        if (keysDue.length === 0)
+    // acts on what's typed now rather than on the rows of a letter before;
+    // typing alone (`typing`) holds a key for the answers its search awaits
+    // (launcher/Awaited.js says which does what).
+    function searchNow(typing) {
+        const next = Awaited.next({ due: keysDue, held: answersAwaited, typing: typing === true,
+            asking: asking }, () => awaitedFor(prompt.text));
+        if (next === null)
             return;
-        const due = keysDue;
         keysDue = [];
+        answersAwaited = null;
+        answersWaited.stop();
+        if (next.hold) {
+            answersAwaited = { text: prompt.text, due: next.due, sources: next.hold,
+                began: Date.now() };
+            answersWaited.restart();
+            return;
+        }
+        searchedNow(next.due, next.waited);
+    }
+    function searchedNow(due, waited) {
         searchParts = null;
         search(prompt.text);
+        // Its key's time holds the wait, said apart in the journal.
+        if (waited && searchParts)
+            searchParts.waited = Date.now() - waited.began;
         if (!asking)
             due.forEach(key => keyTimed(key.text, key.began, key.heard, key.pressed));
+    }
+
+    // How long a key's list waits for the sources whose search awaits a
+    // daemon's answer (Provider's awaits), from when they're asked, so a
+    // key's rows land in one frame and none moves under the cursor as an
+    // answer comes (Y2YBTS, 2026-11-11). The notices daemon answers within
+    // a millisecond or two, so it nearly always comes well inside; past
+    // it, the key is listed without them and they come in as they're
+    // answered, the selection held on its row, rather than a slow daemon
+    // holding every key: a key's own work is held within 4 ms, and 8 is
+    // half a frame at 60 Hz.
+    readonly property int answersWaitedFor: 8
+    // The key held for answers: what's typed, the keys it times, the
+    // sources still to answer and when they were asked; or null.
+    property var answersAwaited: null
+    // A key listed past its wait: what was typed, the sources that hadn't
+    // answered, and when they were asked, so each says how late it came.
+    property var answersLate: null
+    Timer {
+        id: answersWaited
+        interval: root.answersWaitedFor
+        onTriggered: {
+            const waited = root.answersAwaited;
+            if (waited === null)
+                return;
+            root.answersLate = { text: waited.text, sources: waited.sources,
+                began: waited.began };
+            console.info(`launcher: "${waited.text}" listed without`
+                + ` ${waited.sources.map(one => one.settings?.name ?? "").join(", ")},`
+                + ` which hadn't answered in ${root.answersWaitedFor} ms`);
+            Report.say("listed without answers");
+            root.searchAwaited();
+        }
+    }
+    // The held key searched with what has answered.
+    function searchAwaited() {
+        const waited = answersAwaited;
+        answersAwaited = null;
+        answersWaited.stop();
+        if (waited === null || !open)
+            return;
+        searchedNow(waited.due, waited);
+    }
+    // The sources whose search of `text` awaits an answer, each asked now:
+    // every source at home, as a search there gathers each collection, or
+    // inside a place, the place's own.
+    function awaitedFor(text) {
+        if (held.length === 0) {
+            if (text.replace(/\s+/g, "").length < 2)
+                return [];
+            return sources.filter(source => source.awaits?.(text) === true);
+        }
+        const from = held[held.length - 1].row.from;
+        return from && from.awaits?.(text) === true ? [from] : [];
     }
     // How many searches of what's typed have run, refreshes aside, for the
     // check that a burst is searched once.

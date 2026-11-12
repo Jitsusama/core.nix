@@ -2708,6 +2708,10 @@
     so an opening right after a closing stays open as the closing's late focus arrives; held, a
     click on a window closes it, and a notice held over it leaves it open
   '';
+  the-launcher-holds-a-key-for-its-answers = ''
+    a key whose search awaits a daemon's answer is held for it, a key typed over it drops its
+    search, and Return or anything else that reads what was found searches it at once
+  '';
   a-place-reads-alike-everywhere = ''
     a place's row says nothing after its name; at its right it says how it stands where it says,
     else its word for none while it holds nothing, else how many it holds, and nothing for a place

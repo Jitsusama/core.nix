@@ -51,6 +51,21 @@ fn named(summary: &str, plain: &str) -> (String, String) {
     }
 }
 
+/// All a notice said, its title and its words plain.
+fn said(notice: &Notice, read: &Body) -> String {
+    if read.plain.is_empty() {
+        notice.summary.clone()
+    } else {
+        format!("{}\n{}", notice.summary, read.plain)
+    }
+}
+
+/// What a search finds a notice by: the name its row has, else all it
+/// said, as its row says them.
+pub fn searched(notice: &Notice, read: &Body) -> (String, String) {
+    (named(&notice.summary, &read.plain).0, said(notice, read))
+}
+
 /// What kind of notice it is, in its drawer's words, from the category its
 /// sender gives as the spec's `class.subtype`: "message" for `im`, an
 /// error subtype as "transfer failed", a bounced mail as "mail bounced"
@@ -261,11 +276,7 @@ fn says_read(word: &str) -> bool {
 fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &str) -> Value {
     let read = body::read(&notice.body);
     let (name, note) = named(&notice.summary, &read.plain);
-    let said = if read.plain.is_empty() {
-        notice.summary.clone()
-    } else {
-        format!("{}\n{}", notice.summary, read.plain)
-    };
+    let said = said(notice, &read);
     let marked = body::marked(&read);
     let side: Vec<Value> = (!standing.is_empty())
         .then(|| json!({ "said": standing }))

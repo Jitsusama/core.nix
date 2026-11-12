@@ -7,7 +7,10 @@
 // anew, it tells each watch only the rows that read otherwise and those
 // gone, as the daemon does, so a test sees what a change remakes. A test
 // waits for `told` to count up before reading what the change made. A
-// check copies it beside the test with Watch.js.
+// search is answered with the keys of the notices whose words hold every
+// word asked, in the order they're held: how the daemon ranks them is its
+// own tests' (modules/notices' search.rs), and each it answers is counted
+// in `searches`. A check copies it beside the test with Watch.js.
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -24,6 +27,17 @@ Scope {
     property var watches: ({})
     // Each row as last told, by key, as its JSON.
     property var said: ({})
+    // The words of each search answered, in order.
+    property var searches: []
+
+    // The keys of the notices' rows a search of `words` finds.
+    function found(words) {
+        const asked = String(words).split(" ").filter(word => word !== "");
+        return notices.filter(notice => {
+            const text = `${notice.summary}\n${notice.body ?? ""}`.toLowerCase();
+            return asked.every(word => text.includes(word));
+        }).map(notice => `row:notices:${notice.id}`);
+    }
 
     // A notice's row in `place`, its side saying `standing` where it's
     // given, as row.rs makes one.
@@ -114,6 +128,11 @@ Scope {
                             served.said[one.key] = JSON.stringify(one);
                         answer = { id: ask.id, records: rows };
                         served.told += 1;
+                    } else if (ask.ask === "search") {
+                        const keys = served.found(ask.words ?? "");
+                        answer = { id: ask.id, keys: keys, grade: keys.length > 0 ? 0 : 3,
+                            words: ask.words };
+                        served.searches = served.searches.concat([ask.words]);
                     } else if (ask.ask === "unwatch") {
                         // As Desktop's watch ends with the launcher shut.
                         for (const place of Object.keys(served.watches)) {

@@ -30,6 +30,7 @@ use crate::held::{Closed, Holding};
 use crate::judged::{Judge, kept_quiet};
 use crate::notice::{Action, Notice, Urgency};
 use crate::picture::{self, Pixels};
+use crate::search::Searched;
 
 /// A signal owed to the senders, as the specification names it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +75,8 @@ pub struct State {
     pub pictures: PathBuf,
     /// Signals owed to senders, oldest first.
     pub owed: Vec<Signal>,
+    /// Every notice's texts made ready for the launcher's searches.
+    searched: Searched,
 }
 
 impl State {
@@ -85,6 +88,7 @@ impl State {
             sharing: false,
             pictures,
             owed: Vec::new(),
+            searched: Searched::default(),
         }
     }
 
@@ -228,6 +232,11 @@ impl State {
                 self.sharing = said["sharing"].as_bool().unwrap_or(false);
                 done(false)
             }
+            "search" => (
+                self.searched
+                    .answer(self.holding.notices(), said["words"].as_str().unwrap_or("")),
+                false,
+            ),
             other => (refused("unknown-ask", &format!("no ask {other}")), false),
         }
     }
@@ -386,6 +395,20 @@ mod tests {
             13,
         );
         assert!(gone != 99 && gone > second, "replacing none is a new one");
+    }
+
+    #[test]
+    fn a_search_is_answered_with_the_keys_of_the_rows_it_finds() {
+        let mut state = state("search");
+        let first = state.notify(sent("Bart replied", &[]), 10);
+        state.notify(sent("Carla shared a document", &[]), 11);
+        let (answer, moved) = state.ask(&json!({ "ask": "search", "words": "ba" }), 12);
+        assert_eq!(
+            answer["keys"],
+            json!([format!("row:notices:{first}")]),
+            "only Bart's is found: {answer}"
+        );
+        assert!(!moved, "a search changes nothing held");
     }
 
     #[test]
