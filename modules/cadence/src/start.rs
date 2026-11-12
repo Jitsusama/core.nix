@@ -31,6 +31,11 @@ pub struct Reviving {
 /// How long a started session has to say it is there.
 const COMING_UP: u32 = 120;
 
+/// How many times, 200 ms apart, the sessions' kitty is looked for: its
+/// unit starts it again 5 s after it ends, and a session revived meanwhile
+/// opens once it is back rather than never.
+const DOOR_TRIES: u32 = 100;
+
 /// Looks once, starting every watched session that died, one at a time,
 /// and says what it did.
 ///
@@ -162,7 +167,16 @@ fn start(reviving: &Reviving, mesh: &Mesh, s: &Seen, cwd: &str, home: Option<u32
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_millis());
     let runtime = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").unwrap_or_default());
-    let Some(door) = door(&runtime, &unit_processes(&runtime)) else {
+    let processes = unit_processes(&runtime);
+    let mut found = door(&runtime, &processes, Path::new("/proc"));
+    for _ in 1..DOOR_TRIES {
+        if found.is_some() {
+            break;
+        }
+        sleep(Duration::from_millis(200));
+        found = door(&runtime, &processes, Path::new("/proc"));
+    }
+    let Some(door) = found else {
         return format!(
             "{} died, and there is no sessions kitty to start it again in.",
             s.address
@@ -249,7 +263,8 @@ fn terminal(cwd: &str, words: &str, class: &str, door: &Door) -> Command {
 /// only the login opens, never through kitty's single instance, whose
 /// name any program could take first and so be handed the window. A kitty
 /// started before its unit listened is reached the old way until the next
-/// login, but only while the unit's own cgroup holds it.
+/// login, but only while the unit's own cgroup holds that old kitty: a new
+/// one sits there before its socket exists, and holds no instance.
 #[derive(Debug, PartialEq, Eq)]
 enum Door {
     Socket(PathBuf),
@@ -258,15 +273,22 @@ enum Door {
 
 /// The door to the sessions' kitty: its socket under `runtime` when it is
 /// there, its single instance while `processes` (its unit's cgroup.procs)
-/// lists one, and none otherwise, so a window is never opened in a kitty
+/// lists a kitty started as that instance, as its command line under
+/// `proc` says, and none otherwise, so a window is never opened in a kitty
 /// that could be anyone's.
-fn door(runtime: &Path, processes: &Path) -> Option<Door> {
+fn door(runtime: &Path, processes: &Path, proc: &Path) -> Option<Door> {
     let socket = runtime.join("pi-sessions/kitty.sock");
     if fs::metadata(&socket).is_ok_and(|found| found.file_type().is_socket()) {
         return Some(Door::Socket(socket));
     }
-    fs::read_to_string(processes)
-        .is_ok_and(|listed| !listed.trim().is_empty())
+    const OLD: &[u8] = b"--instance-group\0pi-sessions";
+    let listed = fs::read_to_string(processes).ok()?;
+    listed
+        .split_whitespace()
+        .any(|pid| {
+            fs::read(proc.join(pid).join("cmdline"))
+                .is_ok_and(|line| line.windows(OLD.len()).any(|w| w == OLD))
+        })
         .then_some(Door::Instance)
 }
 
@@ -641,21 +663,40 @@ mod tests {
     #[test]
     fn the_sessions_kitty_is_reached_by_its_socket_then_its_running_unit_and_never_otherwise() {
         let runtime = tempfile::tempdir().expect("a runtime folder to stand in");
+        let proc = runtime.path().join("proc");
         let processes = runtime.path().join("cgroup.procs");
         fs::write(&processes, "").expect("an empty cgroup to stand in");
         assert_eq!(
-            door(runtime.path(), &processes),
+            door(runtime.path(), &processes, &proc),
             None,
             "with no socket and its unit stopped, whoever holds the instance could be anyone"
         );
         assert_eq!(
-            door(runtime.path(), &runtime.path().join("missing")),
+            door(runtime.path(), &runtime.path().join("missing"), &proc),
             None,
             "with no unit at all, there is no sessions kitty"
         );
+        fs::create_dir_all(proc.join("3273")).expect("a starting kitty's folder");
+        fs::write(
+            proc.join("3273/cmdline"),
+            b"kitty\0--listen-on\0unix:/run/user/1000/pi-sessions/kitty.sock\0",
+        )
+        .expect("a starting kitty to stand in");
+        fs::write(&processes, "3273\n").expect("a unit starting again to stand in");
+        assert_eq!(
+            door(runtime.path(), &processes, &proc),
+            None,
+            "a kitty starting before its socket exists holds no instance to be reached by"
+        );
+        fs::create_dir_all(proc.join("3272")).expect("an old kitty's folder");
+        fs::write(
+            proc.join("3272/cmdline"),
+            b"kitty\0-1\0--instance-group\0pi-sessions\0--class\0pi-sessions-kept\0",
+        )
+        .expect("an old kitty to stand in");
         fs::write(&processes, "3272\n").expect("a running unit to stand in");
         assert_eq!(
-            door(runtime.path(), &processes),
+            door(runtime.path(), &processes, &proc),
             Some(Door::Instance),
             "a unit that runs from before it listened is reached by its instance"
         );
@@ -663,7 +704,7 @@ mod tests {
         fs::create_dir_all(socket.parent().expect("its folder")).expect("its folder made");
         let _listening = std::os::unix::net::UnixListener::bind(&socket).expect("a socket");
         assert_eq!(
-            door(runtime.path(), &processes),
+            door(runtime.path(), &processes, &proc),
             Some(Door::Socket(socket)),
             "a kitty that listens is reached by its socket"
         );
