@@ -21,6 +21,10 @@ Singleton {
     // none.
     property var lights: []
     readonly property var light: lights.length > 0 ? lights[0] : null
+    // Whether litra's watch is running, so no light can be told apart from
+    // litra not answering; and whether its one try again has been made.
+    readonly property bool answering: watching.running
+    readonly property bool tried: again.tried
     // What the light can do, as litra takes it.
     readonly property int warmest: 2700
     readonly property int coolest: 6500
