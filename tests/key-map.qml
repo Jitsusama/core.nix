@@ -86,6 +86,19 @@ ShellRoot {
                 && String(one.key).startsWith("shortcut:desktop:"));
             expect("a swipe joins its chord's row", below.length === 1
                 && below[0].note.includes("3 fingers up"), below.map(one => one.note).join("; "));
+            // Every chord's drawer says a little more than its line: its
+            // keys, every other way to do it, where it works and what it
+            // runs (docs/design.md, Every row says a little more beside it).
+            const facts = one => (typeof one.drawer === "function" ? one.drawer().facts : [])
+                .map(fact => fact.label).join(", ");
+            expect("a chord's drawer says its keys, its swipe and where it works",
+                facts(below[0]).startsWith("Keys, Also, Works"), facts(below[0]));
+            const undrawn = map.all.filter(one => !one.verbs && facts(one) === "");
+            expect("every chord has a drawer", undrawn.length === 0,
+                names(undrawn.slice(0, 3)).join(", "));
+            const processes = map.all.find(one => String(one.key).startsWith("shortcut:btop:"));
+            expect("a program's chord works in it, by its name",
+                (processes?.note ?? "").startsWith("in Processes"), processes?.note ?? "none");
             expect("a swipe found by its word", map.search("swipe below").rows
                 .some(one => one.name === "Go to the workspace below"),
                 names(map.search("swipe below").rows.slice(0, 3)).join(", "));
