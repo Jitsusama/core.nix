@@ -31,7 +31,9 @@
 //! then one line a kind, the worst first, naming its worst thing.
 //! `health services` lists a kind's worst things, and `health chrome` shows what each thing whose name holds the words kept saying.
 //! `health boot` breaks each boot into its stages. `health launcher` times
-//! each part of the launcher against its budget in docs/design.md, and
+//! each part of the launcher against its budget in docs/design.md,
+//! `health launches` each program's openings and ends as the windows
+//! daemon timed them, and
 //! `health figures` says each figure's side: his, what Joel waited for or
 //! saw, or ours, what the machine and its agents did or a model reckons.
 //! `--day 2026-11-12` reads another day. Health judges nothing; `cadence
@@ -46,6 +48,7 @@ mod figures;
 mod follow;
 mod journal;
 mod launcher;
+mod launches;
 mod lid;
 mod memory;
 mod sessions;
@@ -74,6 +77,7 @@ health boot            each boot's stages, and each shutdown's seconds
 health memory          what pi and the shell hold, by how long each copy has run
 health died            the agents that died, and those gone since before today
 health launcher        each part of the launcher, timed against its budget
+health launches        each program's openings and ends, the slowest first
 health figures         each figure cadence holds the day to, his first, then ours
 health WORDS           what each thing whose name holds the words kept saying
 health --day DATE ...  another day, as YYYY-MM-DD

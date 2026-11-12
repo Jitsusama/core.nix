@@ -932,7 +932,8 @@
     guards say them and counts once a guard that stopped beating, keeps a day by kind and writes it with the figures cadence holds it to every half
     minute however busy the journals, and shows the three worst pains in plain words, pi's as
     pi's, then a line a kind, the gravest first; it times a launcher ready by today's line, each
-    launcher part and pi's modelled typing against their budgets, and says each figure's side
+    launcher part and pi's modelled typing against their budgets, keeps each program's openings
+    and ends as the windows daemon timed them as ours, and says each figure's side
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a

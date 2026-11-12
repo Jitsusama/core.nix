@@ -90,6 +90,9 @@ pub fn day(day: &Day) -> String {
     if let Some(line) = day.asks.said() {
         let _ = writeln!(out, "asks      {line}");
     }
+    if let Some(line) = day.launches.said() {
+        let _ = writeln!(out, "launches  {line}");
+    }
     if let Some(line) = disk::said(&day.disks) {
         let _ = writeln!(out, "disks     {line}");
     }
@@ -234,6 +237,9 @@ pub fn asked(day: &Day, words: &str) -> String {
     if words == "launcher" {
         return launcher_by_part(day);
     }
+    if words == "launches" {
+        return launches_by_program(day);
+    }
     if words == "figures" {
         return figures_by_side(day);
     }
@@ -277,6 +283,19 @@ pub fn asked(day: &Day, words: &str) -> String {
 fn launcher_by_part(day: &Day) -> String {
     let mut out = format!("the launcher on {}{}\n", day.date, until(day.to));
     let said = day.launcher.said();
+    if said.is_empty() {
+        out.push_str("nothing timed\n");
+    }
+    for line in said {
+        let _ = writeln!(out, "{line}");
+    }
+    out
+}
+
+/// Each program's openings and ends, the slowest first.
+fn launches_by_program(day: &Day) -> String {
+    let mut out = format!("launches on {}{}\n", day.date, until(day.to));
+    let said = day.launches.by_program();
     if said.is_empty() {
         out.push_str("nothing timed\n");
     }

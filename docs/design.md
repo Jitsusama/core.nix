@@ -1032,11 +1032,13 @@ has them before his first letter lands, and every key after shows its result
 in the next frame. These are the budgets the principle and the quality bar
 hold every surface to:
 
-| From    | To                             | Budget                                   |
-| ------- | ------------------------------ | ---------------------------------------- |
-| a chord | the surface has the keys       | 30 ms, one round trip with niri          |
-| a key   | what it changed, drawn         | 50 ms, and 100 ms at the 99th percentile |
-| a key   | the launcher's search answered | 4 ms, leaving the frame for drawing      |
+| From                   | To                             | Budget                                   |
+| ---------------------- | ------------------------------ | ---------------------------------------- |
+| a chord                | the surface has the keys       | 30 ms, one round trip with niri          |
+| a key                  | what it changed, drawn         | 50 ms, and 100 ms at the 99th percentile |
+| a key                  | the launcher's search answered | 4 ms, leaving the frame for drawing      |
+| a program started      | its first window               | 300 ms                                   |
+| its last window closed | its process ended              | 200 ms                                   |
 
 A surface meets the first by never being made at the chord. The launcher's
 surface stays mapped, a clear pixel that takes no keys while closed, and a
@@ -1047,6 +1049,11 @@ surface at the chord took 122 to 401 ms and lost the first letters to the
 window below. niri hands a surface the keys a frame after it asks, so a
 letter typed within that frame still goes beneath; the desktop check holds
 that none is ever lost between the two.
+
+A program opening and quitting are held to the improvement system's specs
+for them (2026-11-11), timed by the windows daemon from the process's start
+and from its window gone, since niri never says the key that asked; health
+says them each day (`health launches`).
 
 ## First, and Light
 
