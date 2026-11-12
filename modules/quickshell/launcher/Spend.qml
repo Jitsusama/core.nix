@@ -218,7 +218,7 @@ Provider {
     }
 
     function everything() {
-        return all;
+        return standing("all", all);
     }
 
     // After its title, at home and in Agents, how today stands with its

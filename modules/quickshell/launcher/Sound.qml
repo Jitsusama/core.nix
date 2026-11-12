@@ -1416,7 +1416,7 @@ Provider {
     }
 
     function everything() {
-        return all.slice();
+        return standing("all", all).slice();
     }
 
     // A run, its parts a middle dot apart (VKCF3Z, 2026-11-09).

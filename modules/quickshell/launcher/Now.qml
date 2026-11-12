@@ -2089,7 +2089,7 @@ Provider {
     }
 
     function everything() {
-        return all.slice();
+        return standing("all", all).slice();
     }
 
     // Now's row says at its right how Now stands, what waits on Joel first:
