@@ -161,10 +161,10 @@ Singleton {
     // 2026-10-28).
     // Where the harness's config says sessions Joel starts run in one of
     // pi's hosts (5KBYD7's start hosted, harness #1434), its decider is
-    // asked first, and one it hosts opens only a viewer (starting).
+    // asked first, and one it hosts opens only a viewer (startAsked).
     function start(quest, folder, orchestrates) {
         if (startsHosted) {
-            starting.createObject(root, { quest, folder, orchestrates });
+            startAsked.createObject(root, { quest, folder, orchestrates });
             return;
         }
         startWindow(quest, folder, orchestrates);
@@ -1411,7 +1411,7 @@ Singleton {
     // said it's opening, no window opens unless it fails, however long the
     // host takes.
     Component {
-        id: starting
+        id: startAsked
 
         Process {
             id: begun
