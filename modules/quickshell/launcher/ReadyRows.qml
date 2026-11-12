@@ -613,6 +613,9 @@ Scope {
             glyph: said.glyph,
             side: said.side,
             hue: "action",
+            // The key normal does it by on its row, where its words give one,
+            // as Asks' r refuses (Launcher.qml's doKeyed).
+            actKey: Words.actKey(one.key),
             stays: one.step === "rows",
             now: Ready.leaving(one).now,
             later: Ready.leaving(one).later,

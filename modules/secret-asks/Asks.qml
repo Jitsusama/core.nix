@@ -1,17 +1,18 @@
 // Asks, a collection inside Passwords: each agent's ask for a secret, as
 // the secret-asks daemon serves it (src/row.rs) over one connection to its
 // socket in the ready-row form (ReadyRows.qml), so nothing here words or
-// sorts an ask, and the daemon is what decides one. Return on a waiting
-// ask does its first act, Release It, asking the daemon with the digest it
-// served the row with, so a yes for an ask that changed since is refused
-// there and drawn again; the right arrow lists Release It and Refuse It.
+// sorts an ask, and the daemon is what decides one. The first Return on a
+// waiting ask arms it in place, the foot saying "↵ again releases", and a
+// second with no key between does its first act, Release It, as Log Out's
+// does (Arming.js; VKCF3Z, 2026-11-12), asking the daemon with the digest
+// it served the row with, so a yes for an ask that changed since is
+// refused there and drawn again. r on it refuses it, its words' key for
+// Refuse It, never y, which copies, nor Escape; the right arrow lists both.
 // Each act keeps the launcher open, so Joel sees the row become releasing,
 // ran or refused, and a refusal is said in the daemon's words. A waiting
 // ask is also one of For You's things to do (`forYou`, which Now.qml
 // gathers with every source's), so home's On row leads with it and the
-// tray counts it. It's a stopgap for the key the release line asks for:
-// y on the selected ask, and Delete to refuse, come with the launcher's
-// own keys next, the daemon still deciding.
+// tray counts it.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -50,6 +51,9 @@ Provider {
             key: served.thing,
             waiting: served.state === "waiting",
             asked: served.attention ?? null,
+            // A waiting ask arms on its first Return, saying what a second
+            // does; an answered one has no act to arm.
+            arms: served.state === "waiting" ? Words.of("verb:release").said?.arms ?? "" : "",
             // What it is and where it's from, which For You filters by.
             forYou: { kind: "do", source: "asks" }
         });
