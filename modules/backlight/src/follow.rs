@@ -102,11 +102,6 @@ impl Follow {
         self.lux
     }
 
-    /// What the evening leaves of the brightness, all of it by day.
-    pub fn share(&self) -> f64 {
-        self.share
-    }
-
     /// What the clock last said the evening leaves, though the share may
     /// still wait for light to ease from.
     pub fn clock(&self) -> f64 {

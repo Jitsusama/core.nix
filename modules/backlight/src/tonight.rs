@@ -23,9 +23,19 @@ pub const LONGEST: f64 = 12.0 * 60.0;
 pub struct Tonight {
     set: Evening,
     profile: PathBuf,
-    /// What was last followed: none before the first look, then the start
-    /// and whether it's learned, or none for the evening as set.
-    followed: Option<Option<(f64, bool)>>,
+    followed: Follows,
+}
+
+/// What tonight's evening follows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Follows {
+    /// Nothing yet, before the first look.
+    Nothing,
+    /// The evening as set.
+    Set,
+    /// Rhythm's wind-down, from `start`, and whether it's learned rather
+    /// than a guess.
+    WindDown { start: f64, learned: bool },
 }
 
 impl Tonight {
@@ -35,7 +45,7 @@ impl Tonight {
         Tonight {
             set,
             profile,
-            followed: None,
+            followed: Follows::Nothing,
         }
     }
 
@@ -46,19 +56,28 @@ impl Tonight {
             .ok()
             .and_then(|text| wind_down(&text))
             .filter(|(start, _)| self.set.starting(*start).length() <= LONGEST);
+        let follows = read.map_or(Follows::Set, |(start, learned)| Follows::WindDown {
+            start,
+            learned,
+        });
         let evening = read.map_or(self.set, |(start, _)| self.set.starting(start));
-        let said = (self.followed != Some(read)).then(|| match read {
-            Some((start, true)) => format!(
+        let said = (self.followed != follows).then(|| match follows {
+            Follows::WindDown {
+                start,
+                learned: true,
+            } => format!(
                 "the evening dims from {}, two and a half hours before Joel usually stops",
                 clock(start)
             ),
-            Some((start, false)) => format!(
+            Follows::WindDown { start, .. } => format!(
                 "the evening dims from {}, rhythm's guess until it learns when Joel stops",
                 clock(start)
             ),
-            None => format!("the evening dims from {}, as set", clock(self.set.start())),
+            Follows::Set | Follows::Nothing => {
+                format!("the evening dims from {}, as set", clock(self.set.start()))
+            }
         });
-        self.followed = Some(read);
+        self.followed = follows;
         (evening, said)
     }
 }
