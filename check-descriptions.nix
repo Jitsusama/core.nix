@@ -349,7 +349,7 @@
     orchestrator of a session idle two hours by its log's last write, revives a crashed
     orchestrator while leaving one that was ended, marks each of Joel's axes past its bar
     with its owner, and holds the figures health writes, a boot past 30 s, an unread yes to an
-    ask for a secret and a disk past 90% used among them
+    ask for a secret and a disk past 90% used among them, and tells it once of the net hanging
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -1243,7 +1243,8 @@
     names unless it builds a crate and which moved read from a run that passed at a clean head
     rather than evaluated again, and lets a head merge whose same change
     passed before a rebase that moved none of its files and no Rust crate its crates are in, read
-    or are read by
+    or are read by, and takes a net quiet 20 minutes, running nothing, every thread on a lock,
+    as hung
   '';
   merge-net-passes-clippy = ''
     clippy finds nothing in merge-net or its tests
