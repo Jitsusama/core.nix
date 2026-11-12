@@ -2,7 +2,10 @@
 // its own parser (background_scripts/commands.js) takes the key lines
 // after its default keys, as it lays them, so a line it refuses, or a key
 // that doesn't do what the key language says, fails, naming it. Its own
-// H, L, x, f and F are held too, which stay beside the language's. Run as
+// H, L, x, f and F are held too, which stay beside the language's, and its
+// own reading of the exclusion rules (background_scripts/exclusions.js)
+// finds it off on GitHub and every Google page with keys of its own, and
+// on everywhere else. Run as
 // `node chrome-vimium-takes-the-keys.mjs <Vimium's source> <vimium.json>`.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -73,3 +76,27 @@ const wrong = wanted
   .filter(([key, command]) => bound.get(key) !== command)
   .map(([key, command]) => `${key} does ${bound.get(key) ?? "nothing"}, not ${command}`);
 assert.deepEqual(wrong, [], "each key does what it should");
+
+// Where Vimium is off, leaving the page its own keys, and where it's on.
+globalThis.Settings = {
+  get: () => settings.exclusionRules,
+  addEventListener: () => undefined,
+};
+const exclusions = join(source, "background_scripts", "exclusions.js");
+const { isEnabledForUrl } = await import(pathToFileURL(exclusions).href);
+const off = [
+  "https://mail.google.com/mail/u/0/#inbox",
+  "https://calendar.google.com/calendar/r/week",
+  "https://meet.google.com/abc-defg-hij",
+  "https://docs.google.com/document/d/1/edit",
+  "https://docs.google.com/spreadsheets/d/1/edit",
+  "https://docs.google.com/presentation/d/1/edit",
+  "https://drive.google.com/drive/my-drive",
+  "https://github.com/philc/vimium",
+];
+const on = ["https://www.google.com/search?q=vimium", "https://en.wikipedia.org/wiki/Vim"];
+const misjudged = [
+  ...off.filter((url) => isEnabledForUrl(url).isEnabledForUrl).map((url) => `on at ${url}`),
+  ...on.filter((url) => !isEnabledForUrl(url).isEnabledForUrl).map((url) => `off at ${url}`),
+];
+assert.deepEqual(misjudged, [], "Vimium is off only where a page has keys of its own");

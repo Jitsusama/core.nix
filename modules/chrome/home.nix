@@ -17,8 +17,10 @@
 # options page restores a backup from, once, by hand: its own keys with the
 # key language's beside them (../keys/language.toml), as j scrolls, gg goes
 # to the top, Ctrl+o goes back and ZZ closes the tab. Its own H, L and x
-# stay, and f and F show the links' hints; Mail and GitHub, with keys of
-# their own, are left to them (vimium.json).
+# stay, and f and F show the links' hints. GitHub (vimium.json) and each
+# of Google's pages with a layer of its own (../google/keys.nix), whose
+# keys are their own, are left to them: Vimium is off there, and its keys
+# leave theirs, so Mail's j is Mail's.
 {
   config,
   lib,
@@ -28,6 +30,22 @@
 }:
 let
   grouped = group: map (key: key // { inherit group; });
+
+  # Google's pages with keys of their own, by the layer that lists them
+  # and the addresses Vimium is off at.
+  googlePages = {
+    google-mail = "https?://mail.google.com/*";
+    google-calendar = "https?://calendar.google.com/*";
+    google-meet = "https?://meet.google.com/*";
+    google-docs = "https?://docs.google.com/document/*";
+    google-sheets = "https?://docs.google.com/spreadsheets/*";
+    google-slides = "https?://docs.google.com/presentation/*";
+    google-drive = "https?://drive.google.com/*";
+  };
+  exclusionRules = lib.mapAttrsToList (_: pattern: {
+    inherit pattern;
+    passKeys = "";
+  }) googlePages;
 
   # Vimium's command for each of the language's acts it has, with what it
   # does in the launcher's words and the group it's listed in there.
@@ -90,7 +108,7 @@ let
         token
     ) (map lib.head (lib.filter lib.isList (builtins.split "(<C-.>|.)" key)));
 
-  # On a page with Vimium on, as any but Mail's and GitHub's.
+  # On a page with Vimium on, as any but GitHub's and Google's own.
   withVimium = "on a page, with Vimium on";
 
   # A window for one site has no tabs, so these work in the browser's own.
@@ -194,39 +212,49 @@ let
     ]
     # Vimium's, the language's and its own, each in the group of the
     # browser's own like it.
-    ++ map (key: key // { when = withVimium; }) (
-      map (bind: {
-        chord = chordOf bind.key;
-        inherit (bind) act does group;
-      }) vimiumBinds
-      ++ [
-        {
-          chord = "f";
-          does = "Show the links' hints, to follow one";
-          group = "links";
-        }
-        {
-          chord = "Shift+f";
-          does = "Show the links' hints, to open one in a new tab";
-          group = "links";
-        }
-        {
-          chord = "Shift+h";
-          does = "Back a page";
-          group = "pages";
-        }
-        {
-          chord = "Shift+l";
-          does = "Forward a page";
-          group = "pages";
-        }
-        {
-          chord = "x";
-          does = "Close the tab";
-          group = "tabs";
-        }
-      ]
-    );
+    ++
+      map
+        (
+          key:
+          key
+          // {
+            when = withVimium;
+            leaves = lib.attrNames googlePages;
+          }
+        )
+        (
+          map (bind: {
+            chord = chordOf bind.key;
+            inherit (bind) act does group;
+          }) vimiumBinds
+          ++ [
+            {
+              chord = "f";
+              does = "Show the links' hints, to follow one";
+              group = "links";
+            }
+            {
+              chord = "Shift+f";
+              does = "Show the links' hints, to open one in a new tab";
+              group = "links";
+            }
+            {
+              chord = "Shift+h";
+              does = "Back a page";
+              group = "pages";
+            }
+            {
+              chord = "Shift+l";
+              does = "Forward a page";
+              group = "pages";
+            }
+            {
+              chord = "x";
+              does = "Close the tab";
+              group = "tabs";
+            }
+          ]
+        );
   # What reads Chrome's sites and its downloads (recent-sites).
   recentSites = lib.getExe (pkgs.callPackage ./recent-sites/package.nix { });
   # The extension's host, chrome-open-tabs, where the machine's own Chrome
@@ -304,7 +332,14 @@ in
   # Vimium's settings, for its options page to restore once, as the comment
   # at the top says; Chrome syncs them from there.
   xdg.configFile."jitsusama/vimium.json".text = builtins.toJSON (
-    lib.importJSON ./vimium.json // { inherit keyMappings; }
+    let
+      own = lib.importJSON ./vimium.json;
+    in
+    own
+    // {
+      inherit keyMappings;
+      exclusionRules = exclusionRules ++ own.exclusionRules;
+    }
   );
 
   # Chrome's own acts in the launcher (ChromeProgram.qml): Open a

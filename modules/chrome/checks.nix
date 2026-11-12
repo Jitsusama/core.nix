@@ -39,7 +39,8 @@ onLinux {
   # Vimium takes the settings an account with Chrome writes it, as it
   # restores a backup: its own parser reads their keys after its defaults,
   # refusing none, and each of the key language's does the language's act,
-  # with Vimium's own H, L, x, f and F beside them
+  # with Vimium's own H, L, x, f and F beside them; and its own exclusion
+  # rules leave it off on GitHub and each Google page with keys of its own
   # (tests/chrome-vimium-takes-the-keys.mjs).
   chrome-vimium-takes-the-keys =
     let

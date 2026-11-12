@@ -2,10 +2,6 @@
   "exclusionRules": [
     {
       "passKeys": "",
-      "pattern": "https?://mail.google.com/*"
-    },
-    {
-      "passKeys": "",
       "pattern": "https?://github.com/*"
     }
   ],

@@ -406,7 +406,8 @@
   chrome-vimium-takes-the-keys = ''
     Vimium's own parser takes the settings an account writes it, each of the key language's keys
     doing the language's act beside Vimium's own, rather than refusing a line or leaving one to
-    nothing
+    nothing, and its own exclusion rules leave it off on GitHub and on each Google page with keys
+    of its own, and on everywhere else
   '';
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
@@ -703,7 +704,7 @@
     a Mac workstation evaluates
   '';
   example-laptop = ''
-    a laptop on the XPS 14, its disk and Secure Boot, evaluates
+    a laptop on the XPS 14, its disk and Secure Boot, with Chrome beside Google's pages, evaluates
   '';
   example-nixos = ''
     a NixOS workstation with a screen evaluates

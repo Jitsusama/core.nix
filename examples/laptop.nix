@@ -11,6 +11,10 @@ nixpkgs.lib.nixosSystem {
     core.nixosModules.disk-loss-panic
     core.nixosModules.disko
     core.nixosModules.lanzaboote
+    # Chrome, as a machine with it takes it, so its keys are weighed
+    # against those of Google's pages inside it.
+    core.nixosModules.chrome
+    { home-manager.users.joel.imports = [ core.homeModules.chrome ]; }
     (
       { config, ... }:
       {
