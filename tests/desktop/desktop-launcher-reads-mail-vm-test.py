@@ -1196,6 +1196,13 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     desktop.close_launcher()
 
 
+# How long the shell's clients of a socket just gone take to try it again
+# and hear the file go, and how long after that a client still polling
+# every 2 s would be seen trying it four times.
+SOCKET_GOING_SETTLES = 4
+SOCKET_MISSING_WATCHED = 8
+
+
 def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop: Desktop) -> None:
     """A daemon whose socket isn't there is asked again only once it appears, not every 2 s."""
     machine = desktop.machine
@@ -1214,16 +1221,17 @@ def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop:
         # allowed (2026-11-12). So those settle first, and then a span
         # shows the shell isn't trying: one every 2 s would be 4 for each
         # client in 8 s, where the file only appearing asks none.
-        time.sleep(4)
+        time.sleep(SOCKET_GOING_SETTLES)
         since = desktop.as_account("date +%s").strip()
-        time.sleep(8)
+        time.sleep(SOCKET_MISSING_WATCHED)
         tries = desktop.as_account(
             f"journalctl --user -u quickshell --since @{since} --no-pager -o cat"
             f" | grep -c {missing}; true"
         ).strip()
         allowed = 1
         assert int(tries) <= allowed, (
-            f"the shell tried a missing socket {tries} times in 8 s, long after it went"
+            f"the shell tried a missing socket {tries} times in"
+            f" {SOCKET_MISSING_WATCHED} s, long after it went"
         )
         # Once it's made, the shell says hello, with no clock to wait on.
         desktop.as_account("systemctl --user start slack-stand-in.service")
