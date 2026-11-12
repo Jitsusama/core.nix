@@ -46,6 +46,17 @@ let
     else
       null;
 
+  # Says, as a notice and in the journal, that a host was left down
+  # (host-down.sh says how), so it is heard of at once.
+  down = pkgs.writeShellApplication {
+    name = "pi-host-down";
+    runtimeInputs = [
+      pkgs.systemd
+      pkgs.libnotify
+    ];
+    text = builtins.readFile ./host-down.sh;
+  };
+
   kinds = {
     attended = "the pi conversations Joel watches";
     background = "the pi conversations that run in the background";
@@ -73,6 +84,13 @@ let
         # clears the count.
         StartLimitIntervalSec = 600;
         StartLimitBurst = 3;
+        # A host left down, at its start limit or on the exit it isn't
+        # restarted for, holds its conversations out of reach until someone
+        # starts it, so Joel is told at once. A crash or a watchdog's kill it
+        # is restarted from doesn't reach this, since RestartMode below skips
+        # the failed state a restart would pass through; the journal and
+        # cadence's evening read keep those.
+        OnFailure = [ "pi-host-down@%N.service" ];
       };
       Service = {
         # The host says it's ready once its socket listens, which is when a
@@ -118,13 +136,17 @@ let
         # takes back what it held.
         Restart = "on-failure";
         RestartSec = "5s";
+        # A restart goes straight back to starting rather than through
+        # failed, which would tell Joel the host is down at every crash it
+        # comes back from; once no restart comes, it fails as before.
+        RestartMode = "direct";
         # A host whose loop stops turning answers nobody yet stays active, so
         # once ready it pings from its own loop four times in each of these,
         # and one gone quiet for the whole of it is killed and restarted, to
         # resume what it holds. A turn is awaited, never run on the loop, so
         # no turn's length stops the pings. Probing both hosts' sockets once
         # a second through a night's work on 12 November, the longest an
-        # answer waited was 3.3 s; on 11 November a starved machine ran 13 s
+        # answer waited was 6.5 s; on 11 November a starved machine ran 13 s
         # of work in 96 s, and two minutes leaves the loop that slowdown five
         # times over. systemd kills a quiet host with SIGABRT, so its core,
         # the one record of where its loop wedged, goes to systemd-coredump;
@@ -224,5 +246,15 @@ in
         lib.mapAttrsToList (realm: host: map (hostOf realm host) (lib.attrNames kinds)) cfg
       )
     )
+    // lib.optionalAttrs (cfg != { }) {
+      "pi-host-down@" = {
+        Unit.Description = "Says that the pi host %i was left down";
+        Service = {
+          Type = "oneshot";
+          ExecStart = "${lib.getExe down} %i";
+          Slice = "background.slice";
+        };
+      };
+    }
   );
 }
