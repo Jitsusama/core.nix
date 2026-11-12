@@ -332,7 +332,7 @@ Provider {
             hue: "program",
             side: String(count),
             run: () => provider.launcher?.goTo({ trail: ["collection:agents"], spot: "" }),
-            drawer: () => Kitty.agentsDrawer(count, provider.words(id))
+            drawer: () => Kitty.agentsDrawer(count, provider.words(id), Words.of(id).tells ?? {})
         })];
     }
 

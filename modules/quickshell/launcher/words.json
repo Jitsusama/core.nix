@@ -13195,7 +13195,9 @@
       "glyph": "agent",
       "said": {
         "one": "1 agent's pane",
-        "many": "{count} agents' panes",
+        "many": "{count} agents' panes"
+      },
+      "tells": {
         "where": "Each is in Agents, by its session."
       }
     },

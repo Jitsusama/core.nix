@@ -437,11 +437,12 @@ function drawerOf(pane, words, now) {
 
 // The drawer of kitty's one row for the agents' panes, which the
 // programs daemon leaves out of Tabs (agents.rs): how many there are, and
-// that Agents is where each is, by the launcher's words for it.
-function agentsDrawer(count, said) {
+// that Agents is where each is, by the launcher's words for it: what it
+// says, and the sentence it tells.
+function agentsDrawer(count, said, tells) {
     return {
         title: fill(count === 1 ? said.one : said.many, { count }),
-        body: said.where ?? ""
+        body: tells.where ?? ""
     };
 }
 
