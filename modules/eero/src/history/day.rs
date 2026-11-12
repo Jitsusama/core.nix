@@ -10,6 +10,7 @@ use rusqlite::params;
 use serde::Serialize;
 
 use super::{History, sql};
+use crate::probe::Reading;
 
 /// The share of looks a percentile leaves below it.
 const PERCENTILE: f64 = 0.95;
@@ -39,7 +40,7 @@ impl History {
     /// The figures of the looks taken from `from` up to `to`, in seconds
     /// since 1970, the day being `date`.
     pub fn day(&self, date: &str, from: i64, to: i64) -> Result<Day, String> {
-        let looks: Vec<(bool, Option<f64>, Option<f64>, Option<f64>, bool)> = self
+        let looks: Vec<Reading> = self
             .db
             .prepare(
                 "SELECT home, gateway_ms, internet_ms, dns_ms, reachable FROM probes
@@ -48,18 +49,18 @@ impl History {
             .and_then(|mut statement| {
                 statement
                     .query_map(params![from, to], |row| {
-                        Ok((
-                            row.get(0)?,
-                            row.get(1)?,
-                            row.get(2)?,
-                            row.get(3)?,
-                            row.get(4)?,
-                        ))
+                        Ok(Reading {
+                            home: row.get(0)?,
+                            gateway_ms: row.get(1)?,
+                            internet_ms: row.get(2)?,
+                            dns_ms: row.get(3)?,
+                            reachable: row.get(4)?,
+                        })
                     })?
                     .collect()
             })
             .map_err(sql)?;
-        let home: Vec<_> = looks.iter().filter(|look| look.0).collect();
+        let home: Vec<_> = looks.iter().filter(|look| look.home).collect();
         let out_s: i64 = self
             .db
             .query_row(
@@ -73,10 +74,10 @@ impl History {
             date: date.to_owned(),
             probes: count(home.len()),
             away_probes: count(looks.len() - home.len()),
-            gateway_p95_ms: percentile(home.iter().filter_map(|look| look.1)),
-            internet_p95_ms: percentile(home.iter().filter_map(|look| look.2)),
-            dns_p95_ms: percentile(home.iter().filter_map(|look| look.3)),
-            unreachable: count(home.iter().filter(|look| !look.4).count()),
+            gateway_p95_ms: percentile(home.iter().filter_map(|look| look.gateway_ms)),
+            internet_p95_ms: percentile(home.iter().filter_map(|look| look.internet_ms)),
+            dns_p95_ms: percentile(home.iter().filter_map(|look| look.dns_ms)),
+            unreachable: count(home.iter().filter(|look| !look.reachable).count()),
             outage_minutes: tenths(seconds(out_s) / MINUTE_S),
         })
     }
