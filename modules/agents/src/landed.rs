@@ -271,7 +271,12 @@ pub fn drawn<S: BuildHasher>(
 fn drawer<S: BuildHasher>(one: &Value, words: &Words, titles: &HashMap<&str, &str, S>) -> Value {
     let named = |id: &str| words.names.word(id).to_owned();
     let quest = text(one, "quest");
-    let session = one["session"]["title"].as_str().unwrap_or("");
+    // A running session with no title is named by its address, which
+    // Joel never reads (VKCF3Z, ee3bac47), so it's named by its quest too.
+    let session = one["session"]["title"]
+        .as_str()
+        .filter(|title| *title != one["session"]["address"])
+        .unwrap_or("");
     let who = if session.is_empty() {
         titles.get(quest.as_str()).copied().unwrap_or("")
     } else {
