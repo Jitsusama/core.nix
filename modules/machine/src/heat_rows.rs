@@ -881,29 +881,41 @@ mod tests {
     fn sensors(processor: f64, core: f64) -> Vec<Value> {
         vec![
             json!({ "key": "sensor:coretemp", "part": "processor", "chip": "coretemp",
-                "temperatures": [
+                "folder": "/sys/class/hwmon/hwmon4", "temperatures": [
                     { "n": 1, "label": "Package id 0", "temperature_c": processor,
-                        "high_c": 100, "critical_c": 110 },
+                        "high_c": 100, "critical_c": 110,
+                        "files": [["temp1_input", "71000"], ["temp1_label", "Package id 0"],
+                            ["temp1_max", "100000"], ["temp1_crit", "110000"]] },
                     { "n": 2, "label": "Core 0", "temperature_c": core, "high_c": 100,
-                        "critical_c": 110 },
+                        "critical_c": 110,
+                        "files": [["temp2_input", "79000"], ["temp2_label", "Core 0"]] },
                     { "n": 3, "label": "Core 4", "temperature_c": 60, "high_c": 100,
-                        "critical_c": 110 }], "fans": [] }),
-            json!({ "key": "sensor:nvme", "part": "disk", "temperatures": [
+                        "critical_c": 110,
+                        "files": [["temp3_input", "60000"], ["temp3_label", "Core 4"]] }],
+                "fans": [] }),
+            json!({ "key": "sensor:nvme", "part": "disk", "folder": "/sys/class/hwmon/hwmon1",
+                "temperatures": [
                 { "n": 1, "label": "Composite", "temperature_c": 52.9, "high_c": 82.9,
-                    "critical_c": 84.9 },
-                { "n": 2, "label": "Sensor 2", "temperature_c": 68.9 }], "fans": [] }),
-            json!({ "key": "sensor:dell_smm", "part": "fans", "temperatures": [], "fans": [
+                    "critical_c": 84.9, "files": [["temp1_input", "52850"]] },
+                { "n": 2, "label": "Sensor 2", "temperature_c": 68.9,
+                    "files": [["temp2_input", "68850"], ["temp2_label", "Sensor 2"]] }],
+                "fans": [] }),
+            json!({ "key": "sensor:dell_smm", "part": "fans",
+                "folder": "/sys/class/hwmon/hwmon6", "temperatures": [], "fans": [
                 { "n": 1, "label": null, "rpm": 2400, "max_rpm": 4800, "power_ratio": 0.5,
-                    "mode": "automatic" },
-                { "n": 2, "label": null, "rpm": 0, "max_rpm": 4800 }] }),
+                    "mode": "automatic", "files": [["fan1_input", "2400"],
+                        ["fan1_max", "4800"], ["pwm1", "128"], ["pwm1_enable", "2"]] },
+                { "n": 2, "label": null, "rpm": 0, "max_rpm": 4800,
+                    "files": [["fan2_input", "0"], ["fan2_max", "4800"]] }] }),
         ]
     }
 
     fn processor() -> Value {
         json!({ "cores": [{ "n": 0, "core": 0 }, { "n": 2, "core": 4 }],
-            "throttled": { "cores": [{ "core": 0, "cpu": 0, "count": 24 },
-                { "core": 4, "cpu": 2, "count": 8 }], "cores_count": 32,
-                "package_count": 3202, "package_ms": 19_016, "package_longest_ms": 125 } })
+            "throttled": { "cores": [{ "core": 0, "cpu": 0, "count": 24, "ms": 310 },
+                { "core": 4, "cpu": 2, "count": 8, "ms": 90, "longest_ms": 12 }],
+                "cores_count": 32, "package_cpu": 0, "package_count": 3202,
+                "package_ms": 19_016, "package_longest_ms": 125 } })
     }
 
     fn zones() -> Vec<Value> {
@@ -1077,6 +1089,94 @@ mod tests {
             before.head.map(|h| h["graph"].clone()),
             after.head.map(|h| h["graph"].clone())
         );
+    }
+
+    /// Every row has a drawer giving a little more than its line (Joel,
+    /// 2026-11-11): a holder what it holds, and every other the files
+    /// Linux keeps behind it, as they say it, and the folder they're in.
+    #[test]
+    fn every_heat_row_has_a_drawer_saying_more() {
+        let ready = read(&mut Heat::default(), 71.0, 79.0, 1000);
+        let bare: Vec<&str> = ready
+            .rows
+            .iter()
+            .filter(|row| row["drawer"].is_null())
+            .filter_map(|row| row["key"].as_str())
+            .collect();
+        assert!(bare.is_empty(), "rows without a drawer: {bare:?}");
+        let facts = |id: &str| -> Vec<String> {
+            let drawer = &row(&ready, id)["drawer"];
+            drawer["facts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|fact| format!("{}={}", text(&fact["name"]), text(&fact["said"])))
+                .collect()
+        };
+        let coretemp = "Read From=/sys/class/hwmon/hwmon4";
+        let cases: [(&str, &[&str]); 10] = [
+            ("processor:0/lately", &["temp1_input=71,000", coretemp]),
+            ("processor:0/high", &["temp1_max=100,000", coretemp]),
+            ("processor:0/critical", &["temp1_crit=110,000", coretemp]),
+            (
+                "processor:0/cores",
+                &["Core 0=79.0 \u{b0}C", "Core 2=60.0 \u{b0}C"],
+            ),
+            (
+                "processor:0/cores/2",
+                &["temp3_input=60,000", "temp3_label=Core 4", coretemp],
+            ),
+            (
+                "disk:0/sensor/2",
+                &[
+                    "temp2_input=68,850",
+                    "temp2_label=Sensor 2",
+                    "Read From=/sys/class/hwmon/hwmon1",
+                ],
+            ),
+            (
+                "throttled",
+                &[
+                    "package_throttle_count=3,202",
+                    "package_throttle_total_time_ms=19,016",
+                    "package_throttle_max_time_ms=125",
+                    "Read From=/sys/devices/system/cpu/cpu0/thermal_throttle",
+                ],
+            ),
+            (
+                "throttled/cores/2",
+                &[
+                    "core_throttle_count=8",
+                    "core_throttle_total_time_ms=90",
+                    "core_throttle_max_time_ms=12",
+                    "Read From=/sys/devices/system/cpu/cpu2/thermal_throttle",
+                ],
+            ),
+            (
+                "fan:fan:1",
+                &[
+                    "fan1_input=2,400",
+                    "fan1_max=4,800",
+                    "pwm1=128",
+                    "pwm1_enable=2",
+                    "Read From=/sys/class/hwmon/hwmon6",
+                ],
+            ),
+            (
+                "fan:fan:1/control",
+                &["pwm1_enable=2", "Read From=/sys/class/hwmon/hwmon6"],
+            ),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(facts(id), expected, "{id}'s drawer");
+        }
+        let lately = &row(&ready, "processor:0/lately")["drawer"];
+        assert_eq!(lately["eyebrow"], "on this machine \u{b7} heat");
+        assert_eq!(lately["title"], "Last Reads");
+    }
+
+    fn text(value: &Value) -> String {
+        value.as_str().unwrap_or_default().to_owned()
     }
 
     /// The Last Reads gather while watched, start afresh after a gap, and
