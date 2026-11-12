@@ -404,6 +404,10 @@ let
       niri = singleton "Niri.qml" ''
         function spawn(command) {}
       '';
+      # Now says a minute turned for the opening test, which these don't
+      # read; without it, a minute turning mid-case threw before the time
+      # was marked stale.
+      report = singleton "Report.qml" "function say(text) {}";
       # For You's Desktop row holds the notices unread, as the notices
       # daemon serves them (tests/lib/NoticesDaemon.qml stands it in), and
       # For You counts a critical one among what waits while no card says
@@ -433,6 +437,7 @@ let
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
       cp ${niri} Niri.qml
+      cp ${report} Report.qml
       cp ${notices} Notices.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR

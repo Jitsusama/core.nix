@@ -293,7 +293,7 @@ ShellRoot {
         heardNotices();
     }
     function heardNotices() {
-        if (waiting === "the notices served" && pastNotices.rowsOf([1], "desktop").length > 0
+        if (waiting === "the notices served" && pastNotices.desktopHolds(1)
             && served(30, true))
             firstNotices();
         else if (waiting === "one read" && pastNotices.rowsOf([2], "desktop").length === 0
@@ -361,18 +361,51 @@ ShellRoot {
         // have come while the searches were answered, so what's counted is
         // what the one read makes again, not rows Desktop made first.
         stepIn();
+        steppedBefore = heldMade();
         madeBefore = madeNow();
         Notices.history = read;
         noticesDaemon.notices = read;
         waiting = "one read";
         heardNotices();
     }
+    // What stepping in held before the read, to name the rows a read made
+    // again where it fails: the case failed 3 of 18 gates under load
+    // saying only how many (Y2YBTS, 2026-11-12).
+    property var steppedBefore: null
+    // Every notice's made row, by notice, as search holds them (Desktop's
+    // are copied as they're listed, so can't be told apart this way).
+    // Taken before a count and after its read, so making none adds to it.
+    function heldMade() {
+        const held = { every: {} };
+        for (const row of pastNotices.all())
+            held.every[row.notice] = row;
+        return held;
+    }
+    function remadeSince(before, after) {
+        const out = [];
+        for (const place of Object.keys(after)) {
+            const was = before[place] ?? {};
+            for (const key of Object.keys(after[place])) {
+                if (was[key] !== after[place][key])
+                    out.push(place + " " + key + (key in was ? "" : " (new)"));
+            }
+            for (const key of Object.keys(was)) {
+                if (!(key in after[place]))
+                    out.push(place + " " + key + " (gone)");
+            }
+        }
+        return out;
+    }
     function oneRead() {
         waiting = "";
         if (tried(() => {
             stepIn();
+            const made = since(madeBefore);
+            const after = heldMade();
             expect("one notice read, stepping in again makes only its row again",
-                since(madeBefore)[0] === 1, JSON.stringify(since(madeBefore)));
+                made[0] === 1,
+                `${JSON.stringify(made)}, made again: `
+                    + JSON.stringify(remadeSince(steppedBefore, after)));
             expect("a search answered before the notices changed waits for its answer again",
                 pastNotices.awaits("notice") === true, JSON.stringify(pastNotices.answers.kept));
             expect("a search answered before the notices changed lists none of them meanwhile",
@@ -389,6 +422,11 @@ ShellRoot {
     Connections {
         target: pastNotices
 
+        // Desktop's own rows come a frame after the launcher opens, and
+        // until then its rows are taken from every notice: a case starting
+        // on those had Desktop's own land over the read and make them
+        // again, 4 rows for 1, in 3 of 18 gates on a loaded builder. Its
+        // telling is a change, so the case waits on it here.
         function onChanged() {
             root.heardNotices();
         }

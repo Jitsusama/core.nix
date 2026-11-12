@@ -235,6 +235,13 @@ Provider {
     // one come while it was closed would be missing from the step into
     // it, then put at its end once told, rather than where it belongs. A
     // read one is Desktop's only once it's been watched, so it's told.
+    // Whether Desktop holds the notice of `id` as its own watch told it,
+    // rather than rowsOf taking it from every notice while that watch
+    // hasn't told it yet, as it waits on a frame drawn.
+    function desktopHolds(id) {
+        return `row:${desktop.place}:${id}` in desktop.held;
+    }
+
     function rowsOf(ids, where) {
         if (where !== "desktop")
             return lined(all().filter(row => ids.includes(row.notice)), []);
