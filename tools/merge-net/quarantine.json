@@ -103,12 +103,5 @@
     "owner_pr": 3363,
     "reason": "failed, then passed, at 461743399d56",
     "test": "the-launcher-answers-whats-typed-on-niri"
-  },
-  {
-    "at": 1794441093,
-    "commit": "a1be64a0fc77b40112ebd9521f874c22f12c3eea",
-    "owner_pr": 3365,
-    "reason": "failed, then passed, at a1be64a0fc77",
-    "test": "the-launcher-opens-on-what-it-kept-on-niri"
   }
 ]
