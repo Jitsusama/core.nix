@@ -13,7 +13,8 @@
 //! `WARP_CLI` names the warp-cli to ask, as the shell names the one the
 //! system runs; without it, it's the one on the PATH. Serving, `WARP_SHAPER`
 //! names the network shaper's status.json, so the link says what waits on
-//! the way through it (waiting.rs); without it, it says nothing of that.
+//! the way through it (waiting.rs), and how WARP stands says when that's
+//! slow (slow.rs); without it, it says nothing of either.
 //!
 //! Run by hand, it asks warp-cli each time and keeps nothing: WARP's
 //! service keeps every figure itself, answering each question in about
@@ -36,6 +37,7 @@ mod model;
 mod page;
 mod read;
 mod serve;
+mod slow;
 mod switch;
 mod waiting;
 
@@ -169,7 +171,8 @@ fn main() -> ExitCode {
     if let [serving, socket] = args.as_slice()
         && serving == "serve"
     {
-        let shaper = std::env::var_os("WARP_SHAPER").map(std::path::PathBuf::from);
+        let shaper = std::env::var_os("WARP_SHAPER")
+            .map(|status| serve::Shaper::at(std::path::PathBuf::from(status)));
         return match serve::serve(std::path::Path::new(socket), WarpCli::from_env(), shaper) {
             Ok(()) => ExitCode::SUCCESS,
             Err(why) => {

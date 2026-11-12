@@ -106,9 +106,10 @@ Provider {
     // (WarpState), so Network opens on "connected" rather than "\u2026".
     function waitingAnswer() {
         const standing = Warp.standing(WarpState.state, words);
+        const slow = WarpWaiting.slowed(WarpState.state, settings, words);
         return {
-            headline: standing?.headline ?? "\u2026",
-            warns: standing?.warns ?? false,
+            headline: slow ?? standing?.headline ?? "\u2026",
+            warns: slow !== null || (standing?.warns ?? false),
             parted: true,
             rows: [],
             asking: true,
@@ -152,11 +153,15 @@ Provider {
     // How the link stands: its switch first, as :connect and :disconnect
     // name it, then every part. Its row in Network has a drawer of its own,
     // as every row has (VKCF3Z, 2026-11-12), which makes it a thing, since
-    // the launcher draws only a thing's (WarpDrawer.js).
+    // the launcher draws only a thing's (WarpDrawer.js). While the warp
+    // daemon judges the way slow, the row says so in place of how WARP
+    // stands, "slow \u00b7 120 ms waiting" (WarpWaiting.js).
     function told() {
         const linked = Warp.told(said, settings, words);
         if (linked === null)
             return null;
+        const slow = WarpWaiting.slowed(WarpState.state, settings, words);
+        const headline = slow ?? linked.headline;
         const parts = WarpSeen.drawn(
             WarpWaiting.among(linked.parts, said.waiting, settings, words), seen, settings, words);
         const drawn = WarpDrawer.drawer({
@@ -166,9 +171,9 @@ Provider {
             now: Date.now()
         }, { said: words, tells: Words.of("warp").tells ?? {} });
         return {
-            headline: linked.headline,
-            copy: linked.headline,
-            warns: linked.warns,
+            headline,
+            copy: headline,
+            warns: slow !== null || linked.warns,
             thing: true,
             drawer: {
                 eyebrow: drawn.eyebrow,

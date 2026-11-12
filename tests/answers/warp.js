@@ -260,6 +260,18 @@ function run(failures, fromRoot) {
         waiting({ running: true, through_ms: null, at_rest_ms: 27.5 }),
         figure("waiting", "unknown", "its last question went unanswered", ""));
     machine("no shaper read says nothing of waiting", waiting(undefined), null);
+    // The way judged slow by the warp daemon (modules/warp/src/slow.rs),
+    // which the row says in place of how WARP stands (VKCF3Z, 2026-11-12).
+    const slowed = (said, slow) =>
+        WarpWaiting.slowed({ key: "warp:state", said, slow }, {}, warpSaid);
+    const healthy = { status: "Connected", reason: "NetworkHealthy" };
+    machine("a way judged slow says what waits, and not that it's connected",
+        slowed(healthy, { waiting_ms: 120 }), "slow \u00b7 120 ms waiting");
+    machine("a way that isn't slow leaves the row as WARP stands", slowed(healthy, null), null);
+    machine("degraded says more than slow",
+        slowed({ status: "Connected", reason: "NetworkDegraded" }, { waiting_ms: 120 }), null);
+    machine("nor is a way down slow",
+        slowed({ status: "Disconnected", reason: "NoNetwork" }, { waiting_ms: 120 }), null);
     const shapedParts = WarpWaiting.among(linked.parts,
         { running: true, through_ms: 103, at_rest_ms: 28 }, {}, warpSaid)
         .map(each => each.id);
@@ -307,10 +319,18 @@ function run(failures, fromRoot) {
         drawerOf(stood("Connecting", "", 13 * hour - 120_000)).body,
         drawerOf(stood("Disconnected", "Manual", 11 * hour)).body
     ], [
-        "Connected to work but degraded for 30 min, with a 127 ms round trip.",
+        "Connected to work, degraded for 30 min, with a 127 ms round trip.",
         "Connecting to work for 2 min.",
         "Disconnected from work for 2 h."
     ]);
+    const slowFor = (reason, since) => Object.assign(stood("Connected", reason, 10 * hour),
+        { slow: { waiting_ms: 120, since_ms: since } });
+    machine("slow leads with how long it's been slow and what waits, in place of the trip",
+        drawerOf(slowFor("NetworkHealthy", 13 * hour - 240_000)).body,
+        "Connected to work, slow for 4 min, with 120 ms waiting.");
+    machine("degraded says more than slow in the lead too",
+        drawerOf(slowFor("NetworkDegraded", 13 * hour - 240_000)).body,
+        "Connected to work, degraded for 3 h, with a 127 ms round trip.");
     machine("nothing heard of how it stands leaves the drawer no lead",
         drawerOf(null).body, "");
     // What the shell keeps of WARP's reads while it's shown, two seconds

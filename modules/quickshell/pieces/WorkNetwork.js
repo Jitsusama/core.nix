@@ -34,8 +34,10 @@ function began(state) {
 // What ails it, at `now`, with `clock` writing a time as Joel reads one.
 // A link Joel took down himself (Manual, ManualDisconnection) is his
 // choice, so says nothing; one that dropped otherwise says since when,
-// where the daemon saw it drop. A link degraded says so, and one
-// connecting for longer than WARP takes to come up says since when.
+// where the daemon saw it drop. A link degraded says so, one up but
+// slow, as the daemon judges a wait through it held for a minute, says
+// what waits, and one connecting for longer than WARP takes to come up
+// says since when.
 // WARP's service down says it isn't answering; any other error warp-cli
 // gives, or warp-cli missing, says nothing certain of the link, so the
 // piece stays quiet rather than raise a false alarm.
@@ -49,7 +51,11 @@ function ails(state, said, now, clock) {
     }
     const reason = String(stands.reason ?? "");
     if (stands.status === "Connected") {
-        return reason === "NetworkDegraded" ? [said.degraded] : [];
+        if (reason === "NetworkDegraded") {
+            return [said.degraded];
+        }
+        const waited = state.slow?.waiting_ms;
+        return Number.isFinite(waited) ? [filled(said.slow, { waiting: `${waited} ms` })] : [];
     }
     if (stands.status === "Connecting") {
         const since = began(state);

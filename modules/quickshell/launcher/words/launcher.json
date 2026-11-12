@@ -324,6 +324,7 @@
       ],
       "said": {
         "notAnswering": "not answering",
+        "slow": "slow \u00b7 {waiting} waiting",
         "notRunning": "its service isn't running",
         "shutOut": "its service won't let you in",
         "tooSlow": "its service is too slow to answer",
@@ -388,11 +389,13 @@
         "shaperOff": "the shaper isn't running",
         "unheard": "its last question went unanswered",
         "leadFor": " for {lasted}",
-        "leadTrip": ", with a {rtt} round trip"
+        "leadTrip": ", with a {rtt} round trip",
+        "leadWaits": ", with {waiting} waiting"
       },
       "tells": {
         "connected": "Connected to work{lasted}{trip}.",
-        "degraded": "Connected to work but degraded{lasted}{trip}.",
+        "degraded": "Connected to work, degraded{lasted}{trip}.",
+        "slow": "Connected to work, slow{lasted}{waits}.",
         "connecting": "Connecting to work{lasted}.",
         "disconnected": "Disconnected from work{lasted}."
       }

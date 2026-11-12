@@ -42,6 +42,19 @@ function part(waiting, settings, said) {
         : Warp.part("waiting", Warp.ms(wait, settings, said), note, String(wait));
 }
 
+// How the row says the way through is slow, in place of how WARP stands,
+// while the warp daemon judges it so (modules/warp/src/slow.rs) and WARP
+// is up and well, "slow · 120 ms waiting"; null otherwise, as while it's
+// degraded or down, which says more. `state` is warp:state (WarpState).
+function slowed(state, settings, said) {
+    const waited = state?.slow?.waiting_ms;
+    const { status, reason } = state?.said ?? {};
+    if (!Number.isFinite(waited) || status !== "Connected" || reason === "NetworkDegraded") {
+        return null;
+    }
+    return Warp.worded(said, "slow", { waiting: Warp.ms(waited, settings, said) });
+}
+
 // The link's parts with Waiting among them, after the Round Trip, or
 // before Through, always last, where there's no tunnel to time.
 function among(parts, waiting, settings, said) {

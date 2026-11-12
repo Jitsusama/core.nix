@@ -65,6 +65,7 @@ OTHER_SENSE = {
     "power:limit": "a battery's charge limit, not an allowance",
     "on:waiting:history": "what For You has resolved, not the disk guard's ledger",
     "shortcuts:google-drive": "Google Drive's keys, as Google names its file store, not a disk",
+    "warp": "work traffic waiting on the way through the VPN, slow, not the desktop's lag",
     "warp:settings:split-tunnel": "WARP's split tunnel, as WARP names it, not a VPN",
     "warp:settings:tunnel-protocol": "the protocol WARP's tunnel is set to, not a VPN",
     "warp:tunnel": "WARP's tunnel inside the VPN, as WARP names it, not the VPN",

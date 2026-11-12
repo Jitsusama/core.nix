@@ -34,12 +34,24 @@ function found(parts, id) {
 // to work for 3 h, with a 38 ms round trip." A state first heard when the
 // daemon started may have stood for hours, so it says no time rather than
 // one too short. Nothing where WARP said nothing it knows, or none heard.
+// While the warp daemon judges the way slow (modules/warp/src/slow.rs)
+// and WARP is otherwise well, it says for how long it's been slow and
+// what waits, "Connected to work, slow for 4 min, with 120 ms waiting."
 // The sentence is the vocabulary's `tells`, its parts warp's `said`.
 function lead(stood, latency, now, words) {
     const stands = stood?.said ?? {};
     const key = sentence(stands.status, String(stands.reason ?? ""));
     if (key === "") {
         return "";
+    }
+    const slow = stood.slow;
+    if (key === "connected" && Number.isFinite(slow?.waiting_ms)) {
+        return Warp.worded(words.tells, "slow", {
+            lasted: Warp.worded(words.said, "leadFor", { lasted: Ago.span(slow.since_ms, now) }),
+            waits: Warp.worded(words.said, "leadWaits", {
+                waiting: Warp.ms(slow.waiting_ms, {}, words.said)
+            })
+        });
     }
     const since = stood.since_ms;
     const lasted = Number.isFinite(since)
