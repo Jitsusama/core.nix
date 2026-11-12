@@ -580,6 +580,27 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     assert len(kept) - len(absent) >= fewest, absent
 
 
+def test_wifi_finds_the_home_network_after_wi_fi_itself(desktop: Desktop) -> None:
+    """Typing wifi finds the Home Network too, after Wi-Fi, which it names first.
+
+    Joel reaches his home network by typing wifi (QEST-20261111-PN2VZC), since what it is to
+    him is the Wi-Fi at home, yet wifi is his word for this machine's own Wi-Fi first, picked
+    in a week of his typing. This machine has both, with the eero daemon's stand-in.
+    """
+    desktop.answer("wifi")
+    try:
+        desktop.launcher_until(
+            lambda shown: "Wi-Fi" in shown["rows"] and "Home Network" in shown["rows"],
+            timeout=dt.timedelta(seconds=10),
+        )
+    except AssertionError:
+        listed = f"wifi listed {desktop.showing()['rows']}"
+        raise AssertionError(listed) from None
+    rows = desktop.showing()["rows"]
+    assert rows.index("Wi-Fi") < rows.index("Home Network"), rows
+    desktop.close_launcher()
+
+
 def waits_then_escape_lets_go(desktop: Desktop, key: str, typed: str | None = None) -> None:
     """Type a key that begins a pair, see it wait for its second, and let it go by Escape.
 
