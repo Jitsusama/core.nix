@@ -81,7 +81,9 @@ function drawn(waiting, place) {
 // `begun`: a line a place, in the places' order by name, saying where its
 // time went as a key's does, so a slow update says whether it waited
 // before the launcher took it, in the shell, or after its frame began
-// (Joel's 20 changes in machine, 6 past 50 ms, 2026-11-11).
+// (Joel's 20 changes in machine, 6 past 50 ms, 2026-11-11). Where they
+// name the daemons whose lines set them going, `by`, it says how many
+// each did, most first, as Now is made from many.
 function changesSaid(changes) {
     const places = [...new Set(changes.map(one => one.place))].sort();
     return places.map(place => {
@@ -89,6 +91,17 @@ function changesSaid(changes) {
         const one = took(its);
         return `launcher: ${one.count} ${one.count === 1 ? "change" : "changes"} in ${place} `
             + `presented a median ${one.median} ms from the line, the slowest `
-            + `${one.slowest} ms, ${one.within} within ${bar} ms${wentTo(its)}`;
+            + `${one.slowest} ms, ${one.within} within ${bar} ms${whose(its)}${wentTo(its)}`;
     });
+}
+
+// Whose lines a place's changes came from, ", from machine 2, wifi 1", or
+// "" where none says.
+function whose(changes) {
+    const counts = {};
+    for (const one of changes.filter(each => (each.by ?? "") !== "")) {
+        counts[one.by] = (counts[one.by] ?? 0) + 1;
+    }
+    const named = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || (a < b ? -1 : 1));
+    return named.length === 0 ? "" : `, from ${named.map(by => `${by} ${counts[by]}`).join(", ")}`;
 }

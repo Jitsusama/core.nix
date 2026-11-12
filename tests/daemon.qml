@@ -152,6 +152,7 @@ ShellRoot {
                 return;
             }
             root.markedAt = Hearing.heardAt();
+            root.markedBy = Hearing.heardBy();
             root.marks = root.marks.concat([root.markedAt]);
             root.markedThen = Date.now();
             Qt.callLater(() => root.markedLater = Hearing.heardAt());
@@ -163,6 +164,7 @@ ShellRoot {
     }
     property real wholeMarkedAt: -1
     property real markedAt: -1
+    property string markedBy: ""
     property real markedThen: -1
     property real markedLater: -1
     property var marks: []
@@ -173,16 +175,20 @@ ShellRoot {
     // tells (Hearing.js, Daemon.qml's sent).
     readonly property var carriedLater: Hearing.carried(() => {
         root.markedCarried = Hearing.heardAt();
+        root.carriedBy = Hearing.heardBy();
     })
     property real markedCarried: -1
+    property string carriedBy: ""
     readonly property var carriedAsk: Hearing.carried(() => {
         root.askedFrom = Hearing.heardAt();
         marked.find({ ask: "get", kind: "mark", keys: ["mark:asked"] }, () => {
             root.askAnswered = Hearing.heardAt();
+            root.askAnsweredBy = Hearing.heardBy();
             root.askAnsweredThen = Date.now();
         });
     })
     property real askedFrom: -1
+    property string askAnsweredBy: ""
     property real askAnswered: -1
     property real askAnsweredThen: -1
     // Long enough that the answer's own line is read in a later
@@ -483,6 +489,13 @@ ShellRoot {
                 && root.askAnswered === root.askedFrom
                 && root.askAnsweredThen - root.askedFrom >= carrying.interval
                 && Hearing.heardAt() === 0
+        },
+        {
+            // Now is made from many daemons, and its changes said nothing of
+            // whose lines set them going (2026-11-11, 20:10).
+            what: "a line heard, one put off from it and an ask's answer each name its daemon",
+            holds: () => root.markedBy === "kinds" && root.carriedBy === "kinds"
+                && root.askAnsweredBy === "kinds" && Hearing.heardBy() === ""
         },
         {
             what: "a client holding its wire watches neither its socket nor its folder",
