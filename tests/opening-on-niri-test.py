@@ -841,6 +841,9 @@ def test_openings_make_only_the_notices_rows_that_came(shell: Shell) -> None:
     Joel's first opening after a restart made 942 notices' rows in its settling (2026-11-10).
     That was the first making since the start: each row is kept by the key the notices daemon
     serves it by (ReadyRows.qml), so an opening makes none again and a new notice makes its own.
+    Each is counted once its card has rested: a notice that rests is changed, so its row is
+    made again, and one resting between openings made the second one 1 (merge-net's run at
+    a1be64a0fc77, 2026-11-11).
     """
 
     def notices_rows() -> int:
@@ -857,13 +860,16 @@ def test_openings_make_only_the_notices_rows_that_came(shell: Shell) -> None:
         shell.close_launcher()
         return notices_rows() - before
 
+    def sent(summary: str, body: str) -> None:
+        """Send a notice, and give it once its card has shown and its time has run out."""
+        with shell.told(f"rests {summary}"), shell.told(f"shows card {summary}"):
+            shell.as_account(f"notify-send --expire-time=1000 '{summary}' '{body}'")
+
     for summary in ["Dunlin", "Sanderling"]:
-        with shell.told(f"shows card {summary}"):
-            shell.as_account(f"notify-send --expire-time=1000 '{summary}' 'a notice kept'")
+        sent(summary, "a notice kept")
     searched("dunlin")
     again = searched("sanderling")
-    with shell.told("shows card Turnstone"):
-        shell.as_account("notify-send --expire-time=1000 'Turnstone' 'a notice come since'")
+    sent("Turnstone", "a notice come since")
     came = searched("turnstone")
     assert again == 0, f"opened again with no notice come, it made {again} notices' rows"
     assert came == 1, f"one notice come, an opening made {came} notices' rows"
