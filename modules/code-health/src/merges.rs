@@ -8,6 +8,11 @@
 //! of them changed is one every change queues on, rebasing over the
 //! others' edits and waiting on their gates, so one becoming shared is
 //! named the day it does, before it's felt in every change's wait.
+//!
+//! And how many files a change had to touch: a design whose pieces each
+//! stand alone lets a change touch few, so the median rising is drift the
+//! day it starts. Core's 451 merges to 12 November touched a median of 5,
+//! a tenth of them 14 or more.
 
 use std::collections::BTreeMap;
 
@@ -57,26 +62,46 @@ pub fn shared_files(merged: &[Merged]) -> Option<(f64, Vec<String>)> {
     Some((f64::from(count), named))
 }
 
+/// The day's median count of files a change touched, and the widest
+/// changes with theirs, widest first; none when nothing merged.
+pub fn files_per_change(merged: &[Merged]) -> Option<(f64, Vec<String>)> {
+    ranked(merged, " files", |change| {
+        f64::from(u32::try_from(change.files.len()).unwrap_or(u32::MAX))
+    })
+}
+
 /// The day's median minutes from first edit to merge, and each change
 /// with its minutes, slowest first; none when nothing merged.
 pub fn edit_to_merge(merged: &[Merged]) -> Option<(f64, Vec<String>)> {
-    let mut took: Vec<(f64, &Merged)> = merged
+    ranked(merged, " min", |change| {
+        minutes(change.landed - change.first)
+    })
+}
+
+/// The median of what `measure` gives each change, and the changes with
+/// theirs in `unit`, most first; none when nothing merged.
+fn ranked(
+    merged: &[Merged],
+    unit: &str,
+    measure: impl Fn(&Merged) -> f64,
+) -> Option<(f64, Vec<String>)> {
+    let mut each: Vec<(f64, &Merged)> = merged
         .iter()
-        .map(|change| (minutes(change.landed - change.first), change))
+        .map(|change| (measure(change), change))
         .collect();
-    took.sort_by(|one, other| other.0.total_cmp(&one.0));
-    let middle = took.len() / 2;
-    let median = match took.len() {
+    each.sort_by(|one, other| other.0.total_cmp(&one.0));
+    let middle = each.len() / 2;
+    let median = match each.len() {
         0 => return None,
-        count if count % 2 == 1 => took[middle].0,
-        _ => f64::midpoint(took[middle - 1].0, took[middle].0),
+        count if count % 2 == 1 => each[middle].0,
+        _ => f64::midpoint(each[middle - 1].0, each[middle].0),
     };
-    let named = took
+    let named = each
         .iter()
         .take(NAMED)
-        .map(|(minutes, change)| {
+        .map(|(figure, change)| {
             let short = change.merge.get(..12).unwrap_or(&change.merge);
-            format!("{short} {}: {minutes} min", change.title)
+            format!("{short} {}: {figure}{unit}", change.title)
         })
         .collect();
     Some((median, named))
@@ -169,6 +194,28 @@ mod tests {
             (median - 20.0).abs() < f64::EPSILON,
             "the median was {median}"
         );
+    }
+
+    #[test]
+    fn the_figure_is_the_middle_changes_files_and_the_widest_are_named() {
+        let mut day = vec![
+            touching(&["a.rs"]),
+            touching(&["a.rs", "b.rs", "c.rs", "d.rs"]),
+            touching(&["a.rs", "b.rs"]),
+        ];
+        day[1].merge = "bbbbbbbbbbbbbbbb".to_owned();
+        day[1].title = "Wide".to_owned();
+        let (median, named) = files_per_change(&day).expect("three merges said nothing");
+        assert!(
+            (median - 2.0).abs() < f64::EPSILON,
+            "the median was {median}"
+        );
+        assert_eq!(
+            named.first().map(String::as_str),
+            Some("bbbbbbbbbbbb Wide: 4 files"),
+            "the widest change wasn't named first: {named:?}"
+        );
+        assert_eq!(files_per_change(&[]), None, "no merges gave a figure");
     }
 
     #[test]
