@@ -16,7 +16,8 @@
   # Chrome's open pages the programs daemon serves are the launcher's Tabs
   # collection, each named by its title and found by its site, ranked as the
   # daemon answers what's typed, and its Return goes to the Chrome window
-  # it's in front of, else Chrome's newest (tests/tabs.qml), through the real
+  # it's in front of, else Chrome's newest, while a kitty tab's Return asks
+  # the daemon for its tab (tests/tabs.qml), through the real
   # ReadyRows.qml and Daemon.qml, with niri stood in. Each bookmark served is
   # a row of the main search, found the same way, and its Return runs Chrome
   # with its address.

@@ -66,6 +66,7 @@ let
     "spotify" = ./words/spotify.json;
     "stopwatch" = ./words/stopwatch.json;
     "swayimg" = ./words/swayimg.json;
+    "tabs" = ./words/tabs.json;
     "time" = ./words/time.json;
     "timer" = ./words/timer.json;
     "timers" = ./words/timers.json;

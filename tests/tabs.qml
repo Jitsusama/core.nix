@@ -4,7 +4,9 @@
 // own Daemon.qml's took with no daemon to answer, and niri stood in. The
 // pages are a collection, Tabs, each a row named by its title and found by
 // its site, in the daemon's order, and its Return goes to the Chrome
-// window it's in front of, else Chrome's newest. What's typed is ranked as
+// window it's in front of, else Chrome's newest; a kitty tab among them
+// names its acts as a tab's and its Return asks the daemon for its tab,
+// and Tabs with none names both programs. What's typed is ranked as
 // the daemon answers (src/search.rs), the tabs holding its letters
 // standing until then, and matched here only where it can't search. Each
 // bookmark served (src/bookmark_rows.rs) is a row of the main search,
@@ -33,6 +35,25 @@ ShellRoot {
         } };
     }
 
+    // A kitty tab's ready row, as the daemon serves it beside Chrome's pages
+    // (src/kitty_tabs.rs): its Return asks the daemon, which goes to the tab.
+    function kittyTab(title, order) {
+        const key = "row:tabs:kitty:12:3";
+        return { key, kind: "row", row: {
+            key, thing: "tab:kitty:12:3", place: "tabs", kind: "tab", in: "kitty",
+            name: title, glyph: "windows", hue: "program", keywords: title,
+            held: { pid: 12, tab: 3, window: 4 },
+            acts: [
+                { key: "verb:tabs:go", token: true,
+                    ask: { ask: "tab:go", pid: 12, tab: 3, window: 4 } },
+                { key: "verb:tabs:close", closes: true,
+                    ask: { ask: "tab:close", pid: 12, tab: 3 } },
+                { key: "verb:tabs:title", copy: title }
+            ],
+            order
+        } };
+    }
+
     // A bookmark's ready row, as the daemon serves it.
     function bookmark(address, name, order) {
         const key = `row:bookmarks:${address}`;
@@ -53,6 +74,15 @@ ShellRoot {
         property bool open: false
         function wants(source) {
             return open;
+        }
+
+        // What each served ask was held as while its daemon answers, which
+        // ReadyRows says before it asks niri for the token the ask carries.
+        property var became: []
+        function becomesAll(provider, holds, how) {
+            became = became.concat([how.act]);
+        }
+        function becameNot(key, why) {
         }
     }
 
@@ -117,7 +147,8 @@ ShellRoot {
             tabs.served.link.took([
                 row("https://github.com/jitsusama/core.nix", "core.nix", "core.nix", 512),
                 row("https://mail.google.com/mail/u/0/", "Inbox", "Inbox", 1024),
-                row("https://docs.example.org/", "Notes", "Lost", 2048)
+                row("https://docs.example.org/", "Notes", "Lost", 2048),
+                kittyTab("zsh", 4096)
             ], []);
             tabs.bookmarks.link.took([
                 bookmark("https://wiki.example.org/runbook", "Runbook", 1)
@@ -127,13 +158,21 @@ ShellRoot {
                 tabs.collection?.title === "Tabs", tabs.collection?.title);
             const names = tabs.everything().map(made => made.name).join(", ");
             Expect.expect("each page a row, in the daemon's order",
-                names === "core.nix, Inbox, Notes", names);
+                names === "core.nix, Inbox, Notes, zsh", names);
+            // One Tabs for kitty's and Chrome's (VKCF3Z, 98fe0553): its
+            // sentence for none names both, and each tab's acts read alike.
+            Expect.expect("Tabs holding none names both programs",
+                tabs.collection?.empty === "No tabs open in Kitty or Chrome.",
+                tabs.collection?.empty);
+            const kittys = tabs.everything()[3].verbs().map(made => made.name).join(", ");
+            Expect.expect("a kitty tab goes to, closes and copies the tab",
+                kittys === "Go to the Tab, Close the Tab, Copy the Title", kittys);
             const marks = tabs.things.map(made => made.name).join(", ");
             Expect.expect("the bookmarks alone are the main search's", marks === "Runbook", marks);
             const words = tabs.everything().concat(tabs.things)
                 .map(made => made.keywords?.text ?? "").join(", ");
-            Expect.expect("each found by its site, a bookmark by its folder too",
-                words === "github.com, mail.google.com, docs.example.org, wiki.example.org Work",
+            Expect.expect("each found by its site, a kitty tab by its title, a bookmark by its folder",
+                words === "github.com, mail.google.com, docs.example.org, zsh, wiki.example.org Work",
                 words);
             const asked = tabs.served.link.asked;
             const waiting = searched("doc");
@@ -167,6 +206,11 @@ ShellRoot {
             Expect.expect("and one in front of none, Chrome's newest",
                 JSON.stringify(Niri.acted[1]) === JSON.stringify({ FocusWindow: { id: 9 } }),
                 JSON.stringify(Niri.acted));
+            tabs.everything()[3].run();
+            Expect.expect("a kitty tab's Return asks the daemon to go to its tab, not niri",
+                JSON.stringify(standIn.became) === JSON.stringify(["go to"])
+                    && Niri.acted.length === 2,
+                `${JSON.stringify(standIn.became)}, ${JSON.stringify(Niri.acted)}`);
             Qt.callLater(() => Qt.exit(0));
         } catch (failed) {
             Expect.fail(failed.message);
