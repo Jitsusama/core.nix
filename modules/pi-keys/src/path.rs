@@ -142,17 +142,20 @@ mod tests {
 
     #[test]
     fn a_session_s_window_is_pi_s_and_a_browser_s_is_not() {
-        assert!(window("pi-session.1794413231964", 3272).of_pi());
-        assert!(window("pi-spawned", 3272).of_pi());
-        assert!(window("pi-spawned.133320004", 839_371).of_pi());
-        assert!(!window("google-chrome", 9).of_pi());
-        assert!(
-            !Window {
+        let pi: Vec<bool> = [
+            window("pi-session.1794413231964", 3272),
+            window("pi-spawned", 3272),
+            window("pi-spawned.133320004", 839_371),
+            window("google-chrome", 9),
+            Window {
                 app_id: None,
                 ..window("", 1)
-            }
-            .of_pi()
-        );
+            },
+        ]
+        .iter()
+        .map(Window::of_pi)
+        .collect();
+        assert_eq!(pi, [true, true, true, false, false]);
     }
 
     #[test]

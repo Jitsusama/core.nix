@@ -271,7 +271,11 @@ mod tests {
             ..Path::default()
         };
         let keys = keys(&path, &[(2000.0, 3000.0)], FRAME, 500, &mut Draw::new(11));
-        assert!(keys.iter().all(|k| k.waits[2] == 0.0));
+        let held = keys.iter().filter(|k| k.waits[2] > 0.0).count();
+        assert_eq!(
+            held, 0,
+            "keys waited on a pi stuck while Joel was elsewhere"
+        );
     }
 
     #[test]

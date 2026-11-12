@@ -153,8 +153,16 @@ mod tests {
         let burst = bursts.take(8.0, 2.0, at(5_000_000, 100_000, 'S')).unwrap();
         assert_eq!(burst.at, 0.0);
         assert_eq!(burst.ms, 8.0);
-        assert!((burst.cpu - 5.0).abs() < 1e-9);
-        assert!((burst.wait - 0.1).abs() < 1e-9);
+        assert!(
+            (burst.cpu - 5.0).abs() < 1e-9,
+            "5 ms on a CPU, not {}",
+            burst.cpu
+        );
+        assert!(
+            (burst.wait - 0.1).abs() < 1e-9,
+            "0.1 ms waiting, not {}",
+            burst.wait
+        );
         assert_eq!(burst.d, 0.0);
     }
 
@@ -167,7 +175,7 @@ mod tests {
         let burst = bursts.take(6.0, 2.0, at(0, 0, 'S')).unwrap();
         assert_eq!(burst.d, 4.0);
         assert_eq!(burst.ms, 6.0);
-        assert!(!burst.solid());
+        assert!(!burst.solid(), "4 ms in D of 6 is under 70%: {burst:?}");
     }
 
     #[test]
@@ -222,8 +230,9 @@ mod tests {
             d: 0.0,
             maj: 0,
         };
-        assert!(!burst.solid());
-        assert!(Burst { cpu: 30.0, ..burst }.solid());
+        assert!(!burst.solid(), "3 ms busy of 40 is no wait: {burst:?}");
+        let busy = Burst { cpu: 30.0, ..burst };
+        assert!(busy.solid(), "33 ms busy of 40 holds a key: {busy:?}");
     }
 
     #[test]
@@ -236,10 +245,17 @@ mod tests {
             d: 0.0,
             maj: 0,
         };
-        assert!(!burst.worth());
-        assert!(Burst { ms: 8.0, ..burst }.worth());
-        assert!(Burst { wait: 1.0, ..burst }.worth());
-        assert!(Burst { maj: 1, ..burst }.worth());
+        assert!(!burst.worth(), "4 ms, quiet, isn't kept: {burst:?}");
+        for kept in [
+            Burst { ms: 8.0, ..burst },
+            Burst { wait: 1.0, ..burst },
+            Burst { maj: 1, ..burst },
+        ] {
+            assert!(
+                kept.worth(),
+                "8 ms, a 1 ms wait or a fault is kept: {kept:?}"
+            );
+        }
     }
 
     #[test]
