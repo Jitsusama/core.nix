@@ -71,6 +71,9 @@ Provider {
     // A meeting's row as `from` serves it, made a meeting's part of
     // Calendar, so a program's Recent and Programs' counts find it, with
     // Return and its acts Calendar.qml's, as it holds the meeting now.
+    // Like Calendar.row's, it holds verbs and no targets, so a step into
+    // one that stays (Show in Calendar) is led by Return's own act
+    // (Launcher.qml's keepsOpen), where the served inside rows would be.
     function made(from, row, key) {
         const id = row.held?.id ?? "";
         const meeting = Calendar.meeting(id) ?? Calendar.had.find(each => each.id === id) ?? null;
@@ -92,7 +95,7 @@ Provider {
                 run: joins ? () => Calendar.join(meeting)
                     : () => provider.launcher?.enter(Calendar.seeing(meeting, provider, row.name)),
                 verbs: acts,
-                targets: acts
+                targets: undefined
             });
         }
         return from.thing(row, key, fields);
