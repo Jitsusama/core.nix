@@ -3,17 +3,58 @@
 //! grows slower shows here the day it does, as a file grown long shows in
 //! measure.rs. A change's first edit is its first commit's author time,
 //! which a rebase keeps, and its merge the merge commit's own time.
+//!
+//! And which files many of the day's changes had to touch: a file a tenth
+//! of them changed is one every change queues on, rebasing over the
+//! others' edits and waiting on their gates, so one becoming shared is
+//! named the day it does, before it's felt in every change's wait.
+
+use std::collections::BTreeMap;
 
 use crate::measure::NAMED;
 
 /// A change merged into the line read: its merge commit, its title, when
-/// its first commit was authored and when it merged, in Unix seconds.
+/// its first commit was authored and when it merged, in Unix seconds, and
+/// the files it changed.
 #[derive(Debug, PartialEq)]
 pub struct Merged {
     pub merge: String,
     pub title: String,
     pub first: i64,
     pub landed: i64,
+    pub files: Vec<String>,
+}
+
+/// A file is shared when at least this many of the day's changes touched
+/// it, one in ten,
+const SHARE: usize = 10;
+/// and at least this many, so a day of three merges shares no file.
+const FEWEST: usize = 5;
+
+/// How many files the day's changes shared, and each with how many of
+/// them touched it, most first; none when nothing merged.
+pub fn shared_files(merged: &[Merged]) -> Option<(f64, Vec<String>)> {
+    if merged.is_empty() {
+        return None;
+    }
+    let mut touched: BTreeMap<&str, usize> = BTreeMap::new();
+    for change in merged {
+        for file in &change.files {
+            *touched.entry(file).or_insert(0) += 1;
+        }
+    }
+    let mut shared: Vec<(&str, usize)> = touched
+        .into_iter()
+        .filter(|(_, times)| *times >= FEWEST && times * SHARE >= merged.len())
+        .collect();
+    shared.sort_by_key(|(_, times)| std::cmp::Reverse(*times));
+    let named: Vec<String> = shared
+        .iter()
+        .take(NAMED)
+        .map(|(file, times)| format!("{file}: {times} of {} changes", merged.len()))
+        .collect();
+    let count = u32::try_from(shared.len()).unwrap_or(u32::MAX);
+    Some((f64::from(count), named))
 }
 
 /// The day's median minutes from first edit to merge, and each change
@@ -58,7 +99,43 @@ mod tests {
             title: format!("Merge {merge}"),
             first,
             landed,
+            files: Vec::new(),
         }
+    }
+
+    fn touching(files: &[&str]) -> Merged {
+        Merged {
+            files: files.iter().map(|file| (*file).to_owned()).collect(),
+            ..change("a", 0, 0)
+        }
+    }
+
+    #[test]
+    fn a_file_a_tenth_of_the_days_changes_touched_is_shared() {
+        let mut day: Vec<Merged> = (0..40)
+            .map(|each| touching(&[&format!("own-{each}.rs")]))
+            .collect();
+        day.extend((0..5).map(|_| touching(&["table.nix", "list.json"])));
+        day.extend((0..5).map(|_| touching(&["table.nix"])));
+        day.extend((0..4).map(|_| touching(&["rare.md"])));
+        let (shared, named) = shared_files(&day).expect("54 merges said nothing");
+        assert!(
+            (shared - 1.0).abs() < f64::EPSILON,
+            "not only table.nix, 10 of 54, was shared: {shared}, {named:?}"
+        );
+        assert_eq!(
+            named,
+            ["table.nix: 10 of 54 changes"],
+            "the shared file wasn't named with its count"
+        );
+    }
+
+    #[test]
+    fn a_few_changes_share_no_file() {
+        let day: Vec<Merged> = (0..4).map(|_| touching(&["main.rs"])).collect();
+        let (shared, _) = shared_files(&day).expect("four merges said nothing");
+        assert!(shared.abs() < f64::EPSILON, "four changes shared {shared}");
+        assert_eq!(shared_files(&[]), None, "no merges gave a figure");
     }
 
     #[test]

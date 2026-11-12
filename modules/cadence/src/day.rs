@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{builders, machine};
+use crate::{builders, health, machine};
 
 /// One day's figures, kept as `day/<date>.json` in cadence's folder so the
 /// next days are held against it.
@@ -49,7 +49,6 @@ const LAUNCHER: &str = "journalctl --user -u quickshell over the day, its launch
 const KILLS: &str = "journalctl -k --grep=oom-kill: over the day";
 const STALLS: &str = "lag-watch's day files, each slice's mean cpu_some and memory_full";
 const UPDATES: &str = "journalctl -u update-to-main.service over the day";
-const HEALTH: &str = "code-health's ~/.local/state/code-health/<date>.json and its -named.json";
 
 /// How much worse than its median a figure must be to be a regression.
 const WORSE: f64 = 1.2;
@@ -98,18 +97,18 @@ impl Measure {
     }
 }
 
-/// Every figure the day reads: the delivery cycle's and the code's here,
-/// the machine's own from health in machine.rs, and the builders' in
-/// builders.rs.
+/// Every figure the day reads: the delivery cycle's here, the machine's
+/// own from health in machine.rs, the builders' in builders.rs, and each
+/// repository's from code-health in health.rs.
 pub fn measures() -> impl Iterator<Item = &'static Measure> {
     MEASURES
         .iter()
         .chain(machine::MEASURES)
         .chain(builders::MEASURES)
+        .chain(health::MEASURES)
 }
 
-/// The delivery cycle's figures and the code's. The bars are
-/// docs/delivery.md's targets.
+/// The delivery cycle's figures. The bars are docs/delivery.md's targets.
 const MEASURES: &[Measure] = &[
     Measure {
         key: "oom.machine",
@@ -259,70 +258,6 @@ const MEASURES: &[Measure] = &[
         unit: "",
         bar: Some(0.0),
         floor: 1.0,
-    },
-    // Each repository's, from code-health's figures (health.rs).
-    Measure {
-        key: "code.*.long-files",
-        axis: "organization",
-        evidence: HEALTH,
-        says: "long files that don't say why",
-        unit: "",
-        bar: None,
-        floor: 1.0,
-    },
-    Measure {
-        key: "code.*.crowded-folders",
-        axis: "organization",
-        evidence: HEALTH,
-        says: "crowded folders that don't say why",
-        unit: "",
-        bar: None,
-        floor: 1.0,
-    },
-    Measure {
-        key: "code.*.suppressions",
-        axis: "quality",
-        evidence: HEALTH,
-        says: "lint suppressions",
-        unit: "",
-        bar: None,
-        floor: 1.0,
-    },
-    Measure {
-        key: "code.*.duplicated-lines",
-        axis: "quality",
-        evidence: HEALTH,
-        says: "lines repeated from elsewhere",
-        unit: "",
-        bar: None,
-        floor: 20.0,
-    },
-    Measure {
-        key: "code.*.quarantined-tests",
-        axis: "quality",
-        evidence: HEALTH,
-        says: "tests in quarantine",
-        unit: "",
-        bar: None,
-        floor: 1.0,
-    },
-    Measure {
-        key: "code.*.daemons-waiting",
-        axis: "organization",
-        evidence: HEALTH,
-        says: "points of docs/daemons.md daemons still break",
-        unit: "",
-        bar: None,
-        floor: 1.0,
-    },
-    Measure {
-        key: "code.*.edit-to-merge",
-        axis: "time to done",
-        evidence: HEALTH,
-        says: "median time from a change's first edit to its merge",
-        unit: " min",
-        bar: None,
-        floor: 5.0,
     },
 ];
 
@@ -610,7 +545,7 @@ mod tests {
     fn a_repositorys_figure_is_about_its_measures_axis() {
         assert_eq!(
             about("code.core.nix.long-files"),
-            Some(("organization", HEALTH)),
+            Some(("organization", health::HEALTH)),
             "a repository's figure didn't find the measure that holds it"
         );
         assert_eq!(
