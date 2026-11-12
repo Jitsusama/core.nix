@@ -210,13 +210,14 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
 }
 
 /// Whether `gate`'s change and the one at `head` gave `file`, one of the
-/// lists of modules or a pytest file, lines or cases apart, as `ready`
+/// lists of modules, a pytest file or a note in docs/, apart, as `ready`
 /// will judge them once the gate's change is rebased onto `head`: then
 /// its pass won't go stale for the file, and holding `head` back for it
 /// saves nothing. `head` is read in the asking tree, `gate`'s change in
 /// its own.
 fn will_stand_apart(gate: &Gate, head: &str, file: &str) -> bool {
-    if !crate::apart::LISTS.contains(&file) && !crate::apart::is_cases(file) {
+    let judged = [crate::apart::is_cases, crate::apart::is_prose];
+    if !crate::apart::LISTS.contains(&file) && !judged.iter().any(|is| is(file)) {
         return false;
     }
     let Some(base) = git_in(
