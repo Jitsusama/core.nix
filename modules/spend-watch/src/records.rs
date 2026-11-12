@@ -6,12 +6,8 @@
 //!   Agents;
 //! - `day:all` and `day:agents`, how today stands, for the home row and
 //!   Agents;
-//! - `row:<list>:<key>`, one row of the collection's lists (`now`,
-//!   `findings`, `more` and `quiet`), with its `order` in that list, and
-//!   its `place` in the list the launcher shows and `summed` in the
-//!   summary's rows where it's in them, for the launcher while it's
-//!   open, which places each row by them and ranks none;
-//! - `row:spend:<id>` and `row:spend-quiet:<id>`, the same rows ready to
+//! - `row:spend:<id>` and `row:spend-quiet:<id>`, the rows of the
+//!   collection's lists (`now`, `findings`, `more` and `quiet`) ready to
 //!   draw in the form every daemon serves its rows in, and
 //!   `summary:spend` and `summary:spend-quiet`, how Spend stands as each
 //!   says it, the first naming the summary's rows, made by `ready.rs`
@@ -103,6 +99,22 @@ pub fn cut_budgets(whole: &Value) -> BTreeMap<String, Value> {
     made
 }
 
+/// The collection's lines by key, from its lists, so an act finds what
+/// the line it names offers: the rows are told only as `ready.rs` serves
+/// them, which say no command. A key in two lists is the first's, in the
+/// order the lists are named here.
+pub fn lines(whole: &Value) -> BTreeMap<String, Value> {
+    let mut lines = BTreeMap::new();
+    for list in ["findings", "more", "now", "quiet"] {
+        for line in whole[list].as_array().into_iter().flatten() {
+            if let Some(key) = line["key"].as_str() {
+                lines.entry(key.to_owned()).or_insert_with(|| line.clone());
+            }
+        }
+    }
+    lines
+}
+
 /// A collection, as it's written, cut into records by key.
 pub fn cut(whole: Value) -> BTreeMap<String, Value> {
     let Value::Object(mut whole) = whole else {
@@ -152,36 +164,6 @@ pub fn cut(whole: Value) -> BTreeMap<String, Value> {
             key.clone(),
             json!({"key": key, "kind": "day", "spent": spent}),
         );
-    }
-    let places = |field: &str| -> BTreeMap<String, usize> {
-        let Some(Value::Array(keys)) = whole.get(field) else {
-            return BTreeMap::new();
-        };
-        keys.iter()
-            .enumerate()
-            .filter_map(|(at, key)| Some((key.as_str()?.to_owned(), at)))
-            .collect()
-    };
-    let (shown, summed) = (places("shown"), places("summaryRows"));
-    for list in ["now", "findings", "more", "quiet"] {
-        let Some(Value::Array(lines)) = whole.remove(list) else {
-            continue;
-        };
-        for (order, line) in lines.into_iter().enumerate() {
-            let of = line["key"].as_str().unwrap_or_default().to_owned();
-            let key = format!("row:{list}:{of}");
-            let mut record =
-                json!({"key": key, "kind": "row", "list": list, "order": order, "line": line});
-            if list != "quiet" {
-                if let Some(place) = shown.get(&of) {
-                    record["place"] = json!(place);
-                }
-                if let Some(at) = summed.get(&of) {
-                    record["summed"] = json!(at);
-                }
-            }
-            made.insert(key, record);
-        }
     }
     for id in ["periods", "cuts", "examples"] {
         let key = format!("words:{id}");

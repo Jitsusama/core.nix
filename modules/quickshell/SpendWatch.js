@@ -20,7 +20,7 @@ function kindOf(key) {
     return at > 0 ? key.slice(0, at) : "";
 }
 
-// The id a key names, after its kind: "now:today" for "row:now:today".
+// The id a key names, after its kind: "01a1..." for "session:01a1...".
 function idOf(key) {
     return key.slice(key.indexOf(":") + 1);
 }
