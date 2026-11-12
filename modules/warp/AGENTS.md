@@ -45,8 +45,17 @@ status or reason other than the last has the link read at once, so a
 link that drops or degrades is said as it does; a reason's figures
 moving are left to the two-second reads, and a DNS log line sets nothing
 off. A stream that ends by itself, as the shell's stand-in warp-cli's
-refusal does, is asked for again only 30 seconds on, and the two-second
-reads carry on meanwhile.
+refusal does, is asked for again only five seconds on, and the
+two-second reads carry on meanwhile.
+
+How WARP stands is a second kind, `warp-state`, with one record,
+`warp:state`: the status and reason the listening warp-cli tells, as
+words, or `{ error }` with warp-cli's code, and `since_ms` only where
+the daemon saw that state begin. The margin watches it always
+(`WarpState.qml`), to say when the work network ails, so a state watch
+holds only the listener and sets off none of the link's reads. Where
+nothing listens, as while WARP's service is down, the status is asked
+once instead each time, so a link coming back is said within seconds.
 
 ## The Switch
 

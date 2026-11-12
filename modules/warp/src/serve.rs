@@ -55,14 +55,12 @@ const STATE_KEY: &str = "warp:state";
 /// warp-cli's five answers take about 80 ms together.
 const FRESH: Duration = Duration::from_secs(2);
 /// How long a status stream that ended by itself, as one from a warp-cli
-/// that can't listen does, waits before it's asked for again: such a
-/// warp-cli is then run twice a minute while WARP is shown rather than in
-/// a loop, and the two-second reads still say each change meanwhile.
-const LISTEN_AGAIN: Duration = Duration::from_secs(30);
-/// How long a status asked where nothing could listen is held before a
-/// listener is tried again, while WARP's service isn't answering, so it's
-/// said back within seconds of answering again.
-const STATE_AGAIN: Duration = Duration::from_secs(5);
+/// whose service is down or that can't listen does, waits before it's
+/// asked for again, with one status asked meanwhile: so a link coming
+/// back is said within seconds, as the margin's line must go within five
+/// of it healing, at two short warp-cli runs every five seconds only
+/// while none can listen, rather than in a loop.
+const LISTEN_AGAIN: Duration = Duration::from_secs(5);
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
 const QUEUED: usize = 256;
@@ -321,17 +319,14 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
 }
 
 /// Asks how WARP stands where no warp-cli is listening, and holds it, then
-/// waits before one is tried again: five seconds while WARP's service
-/// isn't answering, so it's said back soon after it is, and half a
-/// minute otherwise, as where warp-cli can't listen at all, while the
-/// link's two-second reads carry on for whoever watches it.
+/// waits before one is tried again, while the link's two-second reads
+/// carry on for whoever watches it.
 fn ask_instead<A: Ask>(shared: &Shared<A>) {
     let said = standing(shared.cli.ask(&["status"]));
-    let failed = said.get("error").is_some();
     if !lock(&shared.held).watches.is_empty() {
         stand(shared, &said);
     }
-    std::thread::sleep(if failed { STATE_AGAIN } else { LISTEN_AGAIN });
+    std::thread::sleep(LISTEN_AGAIN);
 }
 
 /// How WARP stands as one status ask says it, in the words a listening
@@ -789,6 +784,36 @@ mod tests {
         assert_eq!(
             client.heard()["changed"][0]["said"],
             json!({"status": "Disconnected", "reason": "Manual"})
+        );
+    }
+
+    #[test]
+    fn a_state_watch_is_told_again_within_seconds_as_the_status_asked_changes() {
+        let up = Arc::new(AtomicBool::new(false));
+        let socket = serving_listened("healing", None, Arc::clone(&up));
+        let mut client = Client::new(&socket);
+        client.say(&json!({"id": "all", "ask": "watch", "kind": ["warp-state"]}));
+        assert_eq!(client.heard()["records"], json!([]));
+        assert_eq!(
+            client.heard()["changed"][0]["said"]["status"],
+            "Disconnected"
+        );
+        up.store(true, Ordering::SeqCst);
+        let started = Instant::now();
+        let healed = client.heard();
+        assert_eq!(
+            healed["changed"][0]["said"],
+            json!({"status": "Connected", "reason": "NetworkHealthy"}),
+            "a link back is told"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(7),
+            "it was told only after {:?}",
+            started.elapsed()
+        );
+        assert!(
+            healed["changed"][0]["since_ms"].is_u64(),
+            "a state seen to begin says when"
         );
     }
 
