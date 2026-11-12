@@ -94,10 +94,12 @@ class Shell:
         if "WARP" in os.environ:
             self.daemon("warp", os.environ["WARP"])
         # The home network comes from the eero daemon's stand-in, on the socket the daemon keeps,
-        # holding the contract's three-node network (tests/desktop/stand-in-eero.py).
+        # holding the contract's three-node network and the rows the daemon serves of it
+        # (tests/desktop/stand-in-eero.py).
         if "EERO" in os.environ:
             socket = Path(os.environ["XDG_RUNTIME_DIR"]) / "eero" / "socket"
-            self.daemon("eero", os.environ["EERO"], os.environ["EERO_NETWORK"], socket=socket)
+            given = [os.environ["EERO_NETWORK"], os.environ["EERO_ROWS"]]
+            self.daemon("eero", os.environ["EERO"], *given, socket=socket)
         # Meanings come from the meaning daemon's stand-in, given what a test writes that each
         # text means in meaning-means.json, since no model loads here
         # (tests/desktop/stand-in-meaning.py).
