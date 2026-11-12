@@ -1816,10 +1816,12 @@
     not while nobody watches, says a list whose command fails as empty and why, reads a list of
     folders itself with no command, one not there holding nothing, and again as a file comes in
     one, reads a folder named by its key as its watch begins and as a file comes in it, one not
-    there holding nothing, reads the repositories under a folder four folders deep, past no
-    hidden one, with their remotes and one's files as git lists them, hidden ones but not what
-    it ignores, as each is asked, reads when zoxide's database saw each folder, ssh's config
-    and known hosts, and the ssh lines of zsh's history as each is asked, reads what a program
+    there holding nothing, serves the repositories under a folder four folders deep, past no
+    hidden one, each with its page on GitHub, and one's files as git lists them, hidden ones but
+    not what it ignores, each within its folder, as each is asked, and the repositories again as
+    one is cloned or its git writes while watched, reads when zoxide's database saw each
+    folder, ssh's config and known hosts, and the ssh lines of zsh's history as each is asked and
+    again as its file is written while watched, no other file beside it, reads what a program
     has open as it's asked, and a list its program tells of again only once told it changed, or as
     each ask comes while it names a process that never told, asks what a file shows of one
     file-preview it keeps, again only once the file changed, says a file that file-preview doesn't
@@ -2413,8 +2415,8 @@
     reader's file, zathura's document at the page copied after it, and GIMP's
     picture in a file of its own, copied from the clipboard's history or written by wl-paste;
     and Open a File by Name and Open a Repository on GitHub show only while the repositories
-    under ~/src, read by the programs daemon once for both as the shell starts and as the
-    launcher opens, saying a change only where one came, hold one they
+    under ~/src, served by the programs daemon once for both as the shell starts and told
+    again only as they change, nothing asked as the launcher opens, hold one they
     can open, listing the one whose git last wrote first, a repository's files the one changed
     last first, each beside its folder there, its hidden ones but not what git ignores, and only
     those with a remote on GitHub, origin's first; Chrome's downloads, read as Chrome is

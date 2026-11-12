@@ -42,7 +42,6 @@ import "../Copied.js" as Copying
 import "../FileFacts.js" as FileFacts
 import "Ago.js" as Ago
 import "ChromeDownloads.js" as Downloads
-import "Repositories.js" as Repos
 
 Provider {
     id: provider
@@ -56,7 +55,7 @@ Provider {
     readonly property string link: Copied.link
     // The repositories with a page on GitHub, as the last reads found them,
     // the one whose git last wrote first.
-    readonly property var pages: Repos.onGitHubAll(Repositories.listed, Repositories.remotes)
+    readonly property var pages: Repositories.pages
     readonly property bool onGitHub: pages.length > 0
     // The files Chrome downloaded, as the last reading listed them, each
     // { path, size, at, from }, and the newest of them, or null.
@@ -110,7 +109,7 @@ Provider {
     }
 
     Component.onCompleted: {
-        Repositories.want(provider.settings, true);
+        Repositories.want(provider.settings);
         Repositories.opened(provider.launcher?.open ?? false);
     }
 

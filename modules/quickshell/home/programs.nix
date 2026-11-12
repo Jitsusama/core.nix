@@ -8,7 +8,6 @@
   "Taken.qml"
   "launcher/Recents.qml"
   "launcher/Repositories.qml"
-  "launcher/Repositories.js"
   "launcher/Previewer.qml"
   "launcher/Program.js"
   "launcher/HeldWindows.js"

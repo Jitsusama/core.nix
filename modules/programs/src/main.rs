@@ -23,10 +23,12 @@
 //! one of them changed since, and on each change in them while watched;
 //! a folder asked for by its path, as `folder`, as each ask names it and
 //! on each change in it while watched (folder.rs); and the repositories
-//! under a folder, or one's files, as each ask names them
+//! under a folder, or one's files, as each ask names them, and the
+//! repositories again as one is cloned or its git writes while watched
 //! (repositories.rs); what a file shows of itself, by one file-preview
 //! kept, as each ask names it (preview.rs); and what kitty's page reads
-//! of zoxide and ssh, as each ask names it (visited.rs, machines.rs). The
+//! of zoxide, ssh and zsh's history, as each ask names it and on each
+//! change of its file while watched (visited.rs, machines.rs). The
 //! Programs collection's rows are made as a watch of them begins and again
 //! as the windows daemon says a window opened, closed or was looked at, or
 //! an entry changed (rows.rs), and searched as each `search` names what's
@@ -38,6 +40,7 @@
 //! answer back, and is stopped past ten seconds (command.rs).
 
 mod heard;
+mod named;
 mod rows;
 mod search;
 mod taken;
@@ -53,19 +56,20 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 
-use programs::folder::{self, Looked};
+use programs::folder::Looked;
 use programs::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use programs::listen::listen;
 use programs::mime::Mime;
 use programs::notify::Notify;
-use programs::preview::{self, Previewer};
+use programs::preview::Previewer;
 use programs::source::{self, Source};
 use programs::taken_rows;
-use programs::{command, entry, machines, now_ms, repositories, visited, xdg};
+use programs::{command, entry, now_ms, xdg};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 
 use heard::{heard, notice};
+use named::read_named;
 use watch::Watch;
 
 /// How many of the last answers' times health says.
@@ -384,37 +388,6 @@ fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String
         })
         .map(|(at, _)| at)
         .collect()
-}
-
-/// Reads each folder, repository, preview or file of kitty's a key names,
-/// on this thread,
-/// and keeps its record, watching a folder from the first time it's asked
-/// for, and asking a preview again only of a file changed since.
-fn read_named(shared: &Shared, keys: &[String]) {
-    for key in keys {
-        let record = if let Some(path) = folder::path_of(key) {
-            lock(&shared.daemon)
-                .looked
-                .watch(shared.notify.as_ref(), key, path);
-            folder::record(key, path)
-        } else if let Some(record) = repositories::record(key)
-            .or_else(|| visited::record(key))
-            .or_else(|| machines::record(key))
-        {
-            record
-        } else if let Some(path) = preview::path_of(key) {
-            if preview::current(lock(&shared.daemon).held.get(key), path) {
-                continue;
-            }
-            let Some(record) = lock(&shared.previewer).record(key) else {
-                continue;
-            };
-            record
-        } else {
-            continue;
-        };
-        keep(&mut lock(&shared.daemon), vec![record], &[]);
-    }
 }
 
 /// Runs a source's command now, on this thread, and keeps its record. A

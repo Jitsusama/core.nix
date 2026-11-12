@@ -304,12 +304,12 @@ ShellRoot {
         const readme = `${src}/beta/README.md`;
         const code = `${src}/alpha/main.rs`;
         steps = [{
-            what: "the repositories and their remotes read as the shell starts",
-            until: () => Launcher.Repositories.read && Launcher.Repositories.remotesRead,
+            what: "the repositories served as the shell starts",
+            until: () => Launcher.Repositories.read,
             then: () => {
                 const repositories = Launcher.Repositories;
-                expect("read once for both", repositories.folder === root.src
-                    && repositories.remoting, `${repositories.folder} ${repositories.remoting}`);
+                expect("watched once for both", repositories.folder === root.src,
+                    repositories.folder);
                 for (const [program, provider] of [["nvim", neovim], ["google-chrome", chrome],
                     ["reader", reader], ["org.pwmt.zathura", zathura], ["gimp", gimp]]) {
                     const acts = provider.programActs(program);
@@ -532,14 +532,17 @@ ShellRoot {
                 expect("the repositories kept", Launcher.Repositories.listed.length === 3, "");
                 root.repositoriesSaid = 0;
                 theLauncher.open = true;
+                // Asked on the same connection after the opening, so
+                // anything the opening asked would be answered first.
+                Launcher.Repositories.askFiles(`${src}/alpha`);
             }
         }, {
-            what: "the repositories asked again as the launcher opens, as they were",
-            until: () => Launcher.Repositories.reading === "",
+            what: "no change said of the repositories as the launcher opens",
+            until: () => Launcher.Repositories.files[`${src}/alpha`] !== undefined,
             then: () => {
                 // Each act reading them is drawn again at a change, which
                 // held kitty's page past its frame when none had come.
-                expect("no change said where none came", root.repositoriesSaid === 0,
+                expect("no change said but the files asked", root.repositoriesSaid === 1,
                     String(root.repositoriesSaid));
                 theLauncher.open = false;
                 // As if every repository went, so the next read finds none.
@@ -547,7 +550,7 @@ ShellRoot {
                 theLauncher.open = true;
             }
         }, {
-            what: "the repositories read again as the launcher opens",
+            what: "the repositories watched afresh under another folder",
             until: () => Launcher.Repositories.listed.length === 0,
             then: () => {
                 const waiting = chrome.programActs("google-chrome");

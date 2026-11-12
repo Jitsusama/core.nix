@@ -8,11 +8,7 @@
 // kind of link; a file's path from the root, home or a file URL, with a
 // line and a column after it as compilers and grep give them, and nothing
 // for a relative path, a folder's or two lines; a markdown file, and a
-// document zathura reads, by its extension; the repositories dated from
-// what stat says of each .git, the one written last first, a repository's files the same, and each one's
-// page on GitHub from its remotes, origin's first, however git names the
-// host, those listed that have one, and a file's folder said within its
-// repository (Repositories.js); Neovim opened at a line and column, in
+// document zathura reads, by its extension; Neovim opened at a line and column, in
 // the kitty used last or a new one (NeovimOpening.js); what
 // each Neovim says it holds, read whole lines alone, every file once from
 // the Neovim looked at last and the file used last in it, said modified
@@ -23,12 +19,11 @@
 // chrome-recent-sites prints, those without a path or a size left out and
 // one with no time undated, the latest the first, said by the host it came
 // from and opened as the desktop opens a file (ChromeDownloads.js). The
-// `the-launcher-acts-only-on-what-it-can` check copies the six beside
-// this file and runs `qml quick-acts.qml`.
+// `the-launcher-acts-only-on-what-it-can` check copies the scripts it
+// reads beside this file and runs `qml quick-acts.qml`.
 import QtQuick
 import "ChromeDownloads.js" as Downloads
 import "Copied.js" as Copying
-import "Repositories.js" as Repos
 import "NeovimOpening.js" as Opening
 import "Neovim.js" as Neovim
 
@@ -207,98 +202,6 @@ QtObject {
             ["/a/README.md", false]];
         for (const [path, meant] of documents)
             check(`${path} is a document`, Copying.document(path), meant);
-
-        // The repositories, the one whose git wrote last first, two alike by
-        // their paths, and what isn't a .git left out.
-        check("the repositories dated", Repos.repositories([
-            "1700000000\t/home/joel/src/old/.git",
-            "1700000500\t/home/joel/src/new/.git",
-            "1700000500\t/home/joel/src/also/.git",
-            "1700000900\t/home/joel/src/notes.git",
-            "garbled",
-            ""
-        ].join("\n")), [
-            { path: "/home/joel/src/also", at: 1700000500000 },
-            { path: "/home/joel/src/new", at: 1700000500000 },
-            { path: "/home/joel/src/old", at: 1700000000000 }
-        ]);
-        check("a repository's files dated", Repos.dated(
-            "1\t/r/a.md\n3\t/r/b c.rs\n2\t/r/d/e"), [
-            { path: "/r/b c.rs", at: 3000 },
-            { path: "/r/d/e", at: 2000 },
-            { path: "/r/a.md", at: 1000 }
-        ]);
-        const many = Array.from({ length: 5001 },
-            (_, at) => ({ path: `/r/${at}`, at: 5001 - at }));
-        check("a large repository's files, only the 5,000 changed last",
-            Repos.newest(many).map(one => one.path).slice(-1).concat(Repos.newest(many).length),
-            ["/r/4999", 5000]);
-
-        // Each repository's remotes, in the order its config gives them, a
-        // url before any remote's heading, or under a submodule's, left out.
-        const remotes = Repos.remotes([
-            "/s/a/.git/config:\turl = https://stray.example/x",
-            "/s/a/.git/config:[remote \"origin\"]",
-            "/s/a/.git/config:\turl = git@github.com:Jitsusama/a.git",
-            "/s/a/.git/config:[remote \"mirror\"]",
-            "/s/a/.git/config:   url=https://gitlab.com/j/a",
-            "/s/a/.git/config:[submodule \"vendor\"]",
-            "/s/a/.git/config:\turl = https://github.com/v/vendor",
-            "/s/b/.git/config:[remote \"upstream\"]",
-            "/s/b/.git/config:\turl = https://github.com/NixOS/nixpkgs.git"
-        ].join("\n"));
-        check("the remotes read", remotes, {
-            "/s/a": [{ name: "origin", url: "git@github.com:Jitsusama/a.git" },
-                { name: "mirror", url: "https://gitlab.com/j/a" }],
-            "/s/b": [{ name: "upstream", url: "https://github.com/NixOS/nixpkgs.git" }]
-        });
-
-        // [remote, its page's address, or "" for one elsewhere]
-        const urls = [
-            ["git@github.com:Jitsusama/core.nix.git", "https://github.com/Jitsusama/core.nix"],
-            ["github.com:Jitsusama/core.nix", "https://github.com/Jitsusama/core.nix"],
-            ["ssh://git@github.com/Jitsusama/core.nix", "https://github.com/Jitsusama/core.nix"],
-            ["ssh://git@github.com:22/o/r.git", "https://github.com/o/r"],
-            ["https://github.com/o/r.git", "https://github.com/o/r"],
-            ["https://github.com/o/r/", "https://github.com/o/r"],
-            ["https://joel:token@github.com/o/r", "https://github.com/o/r"],
-            ["git://github.com/o/r", "https://github.com/o/r"],
-            ["https://gitlab.com/o/r", ""],
-            ["https://github.com/o", ""],
-            ["https://github.com.evil.example/o/r", ""],
-            ["/home/joel/src/r", ""]
-        ];
-        for (const [url, meant] of urls)
-            check(`the page of ${url}`, Repos.github(url)?.address ?? "", meant);
-        check("a page named by its owner and name",
-            Repos.github("git@github.com:Jitsusama/core.nix.git").name, "Jitsusama/core.nix");
-        check("origin's page first", Repos.onGitHub([
-            { name: "upstream", url: "https://github.com/up/r" },
-            { name: "origin", url: "git@github.com:me/r.git" }
-        ])?.address, "https://github.com/me/r");
-        check("then upstream's", Repos.onGitHub([
-            { name: "mine", url: "https://github.com/mine/r" },
-            { name: "upstream", url: "https://github.com/up/r" },
-            { name: "origin", url: "https://gitlab.com/me/r" }
-        ])?.address, "https://github.com/up/r");
-        check("then the first on GitHub", Repos.onGitHub([
-            { name: "work", url: "https://gitlab.com/w/r" },
-            { name: "mine", url: "https://github.com/mine/r" }
-        ])?.address, "https://github.com/mine/r");
-        check("none on GitHub", Repos.onGitHub(remotes["/s/none"]), null);
-        // Those listed with a page there, in the order they're listed.
-        check("the repositories on GitHub", Repos.onGitHubAll([
-            { path: "/s/b", at: 2 },
-            { path: "/s/none", at: 1 },
-            { path: "/s/a", at: 0 }
-        ], remotes).map(one => `${one.path} ${one.at} ${one.page.name}`),
-            ["/s/b 2 NixOS/nixpkgs", "/s/a 0 Jitsusama/a"]);
-        check("none there", Repos.onGitHubAll([{ path: "/s/none", at: 1 }], remotes), []);
-        // [a file, the folder it's said to be in within its repository]
-        const within = [["/s/a/main.rs", ""], ["/s/a/docs/notes.md", "docs"],
-            ["/s/a/a/b/c.md", "a/b"], ["/s/ab/x.md", "/s/ab"]];
-        for (const [path, meant] of within)
-            check(`${path} within /s/a`, Repos.within(path, "/s/a"), meant);
 
         // Neovim at a line, and a column after it.
         check("Neovim given a file", Opening.neovim("/r/a.rs", 0, 0), ["nvim", "/r/a.rs"]);

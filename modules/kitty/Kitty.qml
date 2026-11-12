@@ -64,24 +64,22 @@ Provider {
         kitty: provider.settings.kitty ?? "kitty"
     })
 
-    // The launcher opening reads everything again for what changed since,
-    // and its closing forgets the tabs closed meanwhile.
+    // The launcher's closing forgets the tabs closed meanwhile; its
+    // opening reads nothing, as the daemon tells each file as it changes.
     Connections {
         target: provider.launcher
 
         function onOpenChanged() {
             Repositories.opened(provider.launcher.open);
-            if (provider.launcher.open)
-                provider.readAhead();
-            else
+            if (!provider.launcher.open)
                 provider.closed = [];
         }
     }
 
-    Component.onCompleted: provider.readAhead()
-    // The settings name the files each read is of, and may be given after
-    // the provider is made.
-    onSettingsChanged: provider.readAhead()
+    Component.onCompleted: provider.wantRepositories()
+    // The settings name the folder the repositories are under, and may be
+    // given after the provider is made.
+    onSettingsChanged: provider.wantRepositories()
 
     // The daemon's key for each file read, by what's kept of it; none
     // where the settings name no file.
@@ -92,41 +90,23 @@ Provider {
                 provider.settings.history));
     }
 
-    function readAhead() {
-        Repositories.want({ folder: provider.settings.src ?? "" }, false);
-        if (provider.keys.length > 0)
-            daemon.get(provider.keys, 0, answer => provider.read(answer !== null));
+    function wantRepositories() {
+        Repositories.want({ folder: provider.settings.src ?? "" });
     }
 
-    // What the daemon holds of each file now, kept as each page reads it.
-    function read(answered) {
-        if (!answered)
-            return;
+    // What the daemon holds of each file now, kept as it tells one
+    // changed: nothing is asked as the launcher opens.
+    function read() {
         const held = kind => Object.values(daemon.held).find(one => one.kind === kind);
         const visited = held("visited")?.folders ?? [];
-        const config = held("machines")?.config ?? "";
-        const hosts = held("machines")?.hosts ?? "";
-        const history = (held("reached")?.lines ?? []).join("\n");
-        // Each opening asks again, and only what changed since draws
-        // kitty's step again: an answer the same as the last, remade, held
-        // the step into kitty's page 150 ms past its frame in half the
-        // lab's rounds, against a third before it was asked here. A stopgap:
-        // the programs daemon watches these files and tells only as one
-        // changes, and this compare goes, by Fri 2026-11-13 12:00.
-        const said = JSON.stringify([visited, config, hosts, history]);
-        if (said === provider.readSaid)
-            return;
-        provider.readSaid = said;
         provider.visited = visited.map(one => one.path).join("\n");
         provider.visits = visited.reduce((all, one) =>
             Object.assign(all, { [one.path]: one.at }), {});
-        provider.config = config;
-        provider.hosts = hosts;
-        provider.history = history;
+        provider.config = held("machines")?.config ?? "";
+        provider.hosts = held("machines")?.hosts ?? "";
+        provider.history = (held("reached")?.lines ?? []).join("\n");
         provider.heard();
     }
-    // What the daemon last said of the files, as read() compares it.
-    property string readSaid: ""
 
     Daemon {
         id: daemon
@@ -134,12 +114,13 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/programs.sock`
         kind: "visited"
         live: false
+        // The daemon reads each file as its watch begins, and again only as
+        // it's written, telling only a record that differs.
+        ahead: provider.keys
 
-        // Asked before the shell had reached it, as it starts, they're
-        // asked again once it answers.
-        onStateChanged: {
-            if (daemon.state === "answering")
-                provider.readAhead();
+        onHeard: changed => {
+            if (changed.some(key => provider.keys.includes(key)))
+                provider.read();
         }
     }
 
