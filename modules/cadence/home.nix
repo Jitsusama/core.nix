@@ -17,6 +17,11 @@
 # Given a steward, it also asks each orchestrator about any session of its
 # that has sat idle two hours, once for each idle spell, so a session that
 # finished its piece doesn't wait the night for its next.
+#
+# Each evening at 18:00, `cadence day` reads the day just ended (crashes,
+# failed units, out-of-memory kills, pressure, switches) against the seven
+# before it, keeps it in day/ beside them, and sends the steward a note of
+# what got worse and better, so a regression is named the day it appears.
 {
   config,
   lib,
@@ -111,6 +116,34 @@ in
         ];
         Slice = "background.slice";
       };
+    };
+    systemd.user.services.cadence-day = {
+      Unit.Description = "Reads the day just ended against the days before it";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs (
+          [
+            (lib.getExe package)
+            "day"
+          ]
+          ++ lib.optionals (cfg.steward != null) [
+            "--steward"
+            cfg.steward
+          ]
+        );
+        # journalctl and coredumpctl, as the account has them.
+        Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.cadence-day = {
+      Unit.Description = "Reads the day each evening";
+      Timer = {
+        OnCalendar = "*-*-* 18:00:00";
+        # A laptop asleep at six reads its day when it wakes.
+        Persistent = true;
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
     systemd.user.timers.cadence = {
       Unit.Description = "Watches the delivery cycle every five minutes";
