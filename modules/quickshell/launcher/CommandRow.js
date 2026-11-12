@@ -10,6 +10,15 @@
 // naming a network takes a documentation address (RFC 5737, RFC 3849),
 // whose answer no owner can change.
 
+// A command's drawer's eyebrow, place then thing as every drawer's is: the
+// place that lists it, from the vocabulary's categories, filled into
+// `said.in`, or `said.anywhere` for one offered wherever it's typed
+// (VKCF3Z on #3781, 2026-11-12).
+function eyebrow(command, categories, said) {
+    const place = categories.find(category => (category.commands ?? []).includes(command.id));
+    return place ? String(said.in ?? "").replace("{place}", place.name) : said.anywhere ?? "";
+}
+
 // A command's drawer from its entry in the vocabulary's commands, under
 // `eyebrow`, or null for one the vocabulary gives nothing more of.
 function drawer(command, eyebrow) {
