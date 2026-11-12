@@ -171,14 +171,13 @@ Provider {
         });
     }
 
-    // The messages around one, asked once it's stepped into, by Slack's
-    // own ask (src/daemon.rs): its drawer says the message alone until
-    // they come.
+    // The messages around one, asked once it's stepped into: its drawer
+    // says the message alone until they come.
     function around(record) {
         const lone = { title: record.place, facts: [], body: record.text };
         if (!(record.key in near)) {
             near = Object.assign({}, near, { [record.key]: null });
-            slack.ask({ ask: "around", keys: [record.key] }, answer => {
+            slack.ask({ ask: "get", keys: [record.key] }, answer => {
                 const messages = answer?.records?.[0]?.around ?? [];
                 provider.near = Object.assign({}, provider.near, { [record.key]: messages });
                 provider.changed();
