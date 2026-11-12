@@ -425,8 +425,8 @@ in
   # A realm a machine names gets two hosts, attended and background, started
   # with the account's session once the harness is installed, run by the
   # host's own pi and node, said ready by the host, among the agents'
-  # sessions, and left running through a switch; a machine that names none,
-  # and a Mac, get no host.
+  # sessions, left running through a switch, and said to be down when left
+  # down; a machine that names none, and a Mac, get no host.
   pi-hosts-start-with-the-session =
     let
       pi = "${pkgs.emptyDirectory}/pi";
@@ -472,6 +472,7 @@ in
         && unit.Service.WatchdogSec or null == "2min"
         && unit.Unit.StartLimitIntervalSec or null == 600
         && unit.Unit.StartLimitBurst or null == 3
+        && unit.Unit.OnFailure or null == [ "pi-host-down@%N.service" ]
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
@@ -491,15 +492,30 @@ in
         lib.hasPrefix
           "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:/100%%/$$HOME:\${PATH}' ${node} "
           (first services."pi-host-two-${kind}".Service.ExecStart);
-      hostsIn = services: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames services);
+      # The notice a host left down starts is a template, not a host.
+      hostsIn =
+        services:
+        lib.filter (name: lib.hasPrefix "pi-host-" name && name != "pi-host-down@") (
+          lib.attrNames services
+        );
+      # It runs once, apart from the agents, on the host's name as %i gives it.
+      saysDown =
+        let
+          unit = services."pi-host-down@" or { };
+        in
+        unit.Service.Type or null == "oneshot"
+        && unit.Service.Slice or null == "background.slice"
+        && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, isn't watched for a wedged loop, restarts without limit, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, isn't watched for a wedged loop, restarts without limit, isn't said to be down once left down, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         starts "attended"
         && starts "background"
         && findsItsPath "attended"
         && findsItsPath "background"
+        && saysDown
+        && !((account workstation).systemd.user.services ? "pi-host-down@")
         &&
           hostsIn services == [
             "pi-host-one-attended"
