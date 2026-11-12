@@ -877,6 +877,29 @@ fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
 }
 
 #[test]
+fn a_keep_on_a_builder_traces_the_vm_tests_beside_the_other_checks() {
+    // One half after the other, a keep on 12 November took 679 s, each
+    // half waiting on its slowest chunk.
+    let stand_in = StandIn::new("keeps-beside");
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    // Each evaluation waits for another under way, so none goes alone.
+    fs::write(stand_in.path("meet"), "").expect("written");
+
+    // As nix-offload says it on a builder made for the run.
+    let ran = stand_in.run_told(&KEEPING, &[("CHANGED_CHECKS_HERE", "1")]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(stand_in.path(READS).exists(), "the keep lost its record");
+    let runs = stand_in.runs();
+    assert_eq!(
+        evaluated(runs.last().expect("a keep's line")),
+        ["base", "reads"],
+        "a keep's two halves are noted in order, whichever ends first"
+    );
+}
+
+#[test]
 fn a_keep_clears_what_a_keep_stopped_while_tracing_left_behind() {
     // On 12 November a switch stopped a keep mid-trace, and its traces, 15
     // MB each, and its cache stayed on the builder.
