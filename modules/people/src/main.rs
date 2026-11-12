@@ -577,7 +577,11 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
     Some(match asked {
         Ask::Hello { id } => hello(&lock(shared), &id),
         Ask::Get { id, keys, patience } => get(shared, &id, &keys, patience),
-        Ask::Known { id, keys } => json!({"id": id, "records": lock(shared).book.known(&keys)}),
+        // Whoever is named by address comes drawn, as a search's are.
+        Ask::Known { id, keys } => {
+            let daemon = lock(shared);
+            json!({"id": id, "records": drawn(&daemon, daemon.book.known(&keys))})
+        }
         Ask::List { id, limit, listed } => {
             let daemon = lock(shared);
             let records: Vec<Value> = daemon
@@ -591,16 +595,7 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         }
         Ask::Search { id, words, limit } => {
             let daemon = lock(shared);
-            let records: Vec<Value> = daemon
-                .book
-                .search(&words, limit)
-                .into_iter()
-                .map(|record| {
-                    let standings = daemon.book.standings();
-                    drawer::found(record, &daemon.sources, &daemon.named, standings)
-                })
-                .collect();
-            json!({"id": id, "records": records})
+            json!({"id": id, "records": drawn(&daemon, daemon.book.search(&words, limit))})
         }
         Ask::Watch { id, keys, listed } => {
             let mut daemon = lock(shared);
@@ -680,6 +675,13 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         ),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?}")),
     })
+}
+
+/// Each record with the row and drawer the launcher shows it as.
+fn drawn(daemon: &Daemon, records: Vec<&Record>) -> Vec<Value> {
+    let standings = daemon.book.standings();
+    let draw = |record: &Record| drawer::found(record, &daemon.sources, &daemon.named, standings);
+    records.into_iter().map(draw).collect()
 }
 
 fn standings(daemon: &Daemon) -> Value {

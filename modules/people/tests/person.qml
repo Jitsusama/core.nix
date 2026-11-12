@@ -155,16 +155,6 @@ QtObject {
         check("then as one starts", Person.changesAt(lately, now + minute), now + 9 * minute);
         check("and never with nothing to come", Person.changesAt(crowd, now) === Infinity, true);
 
-        // The drawer.
-        check("their details", Person.details(everyone[0]), {
-            title: "Ada Lovelace",
-            facts: [{ label: "Emails", value: "ada@example.com, ada@home.example" },
-                { label: "Last Mail", value: "Lunch on Friday" }],
-            body: ""
-        });
-        check("one address", Person.details(everyone[2]).facts[0],
-            { label: "Email", value: "grace@example.com" });
-
         // Someone a source knows by no address, only by an id of its own,
         // is a person of its alone; someone known by neither isn't anyone.
         const alone = Person.merged([{ name: "tuple", people: [
@@ -173,7 +163,6 @@ QtObject {
             person.emails]), [["tuple:108", "Hal", []]]);
         check("and how they stand, by it", Person.standing(alone[0],
             [{ "tuple:108": { said: "away", order: 2, favourite: true } }]).said, "away");
-        check("with no address in their details", Person.details(alone[0]).facts, []);
         check("one with an address is known by it", everyone[2].key, "grace@example.com");
 
         // Acts: the main ways to reach them first, in source order, then the rest.
@@ -249,28 +238,6 @@ QtObject {
         ]);
         check("none where there's nothing", Person.firsts([{ met: null, wait: null }], null,
             said, labels), []);
-        // Who they are, under their name and out of the facts (VKCF3Z,
-        // a807ddcd): the first source's title, then the team.
-        const heads = { title: "Title", team: "Team" };
-        const told = facts => ({ title: "Ada", facts: facts, body: "" });
-        check("their title then team under their name, and not among the facts",
-            Person.headed(told([
-                { label: "Email", value: "ada@example.com" },
-                { label: "Title", value: "Staff Developer" },
-                { label: "Team", value: "Shell" },
-                { label: "Title", value: "Engineer" }
-            ]), heads), {
-                title: "Ada",
-                facts: [{ label: "Email", value: "ada@example.com" }],
-                body: "",
-                preview: { lines: ["Staff Developer \u00b7 Shell"], quiet: true, gives: true }
-            });
-        check("a team alone where no title's known",
-            Person.headed(told([{ label: "Team", value: "Shell" }]), heads).preview.lines,
-            ["Shell"]);
-        check("no line where neither is known",
-            Person.headed(told([{ label: "Email", value: "ada@example.com" }]), heads).preview,
-            undefined);
         check("someone in Joel's time says none",
             Person.awaySide("America/Toronto", 0, "12:02", away), "");
 

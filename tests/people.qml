@@ -282,6 +282,22 @@ ShellRoot {
                     people.lent("person:zoe@example.com")?.name);
             }
         },
+        {
+            // Their drawer is the one the daemon serves, their title under
+            // their name, as a search's is: the one the shell worded
+            // itself knew only their address (XY9H5C, 2026-11-12).
+            what: "one named only by their address is drawn as the daemon serves them",
+            run: () => people.whoIs("eli@example.com"),
+            holds: () => people.whoIs("eli@example.com") !== null,
+            check: () => {
+                const drawn = people.lent("person:eli@example.com")?.drawer?.();
+                expect("their title under their name, and not among the facts",
+                    drawn?.title === "Eli Fenwick"
+                        && JSON.stringify(drawn.preview?.lines) === '["Designer"]'
+                        && !drawn.facts.some(fact => fact.label === "Title"),
+                    JSON.stringify(drawn));
+            }
+        },
         seeking("eli@example.com", "a stranger found by their email", () => {
             const eli = found("eli@example.com");
             expect("found", names(eli) === "Eli Fenwick", names(eli));
