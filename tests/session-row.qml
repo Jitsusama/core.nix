@@ -229,7 +229,6 @@ QtObject {
         const tried = Landed.triedRead(served);
         if (tried.length !== 1 || tried[0].one !== served[5] || tried[0].at !== 1000)
             failures.push(`what's read for History: ${JSON.stringify(tried.map(one => one.at))}`);
-        const closedOne = served[4];
         // Landed's row says at its right how many landed today, never
         // how many are to read, which For You alone counts.
         const standing = { today: "{count} today", none: "none today" };
@@ -248,11 +247,12 @@ QtObject {
             body: "try Stop twice",
             nerd: [{ label: "Change", value: "core.nix#2140" }]
         }, Object.assign({ dated: at => `Saturday 7 November, @${at}` }, clock));
-        const landingSays = `${landingDrawn.eyebrow} | ${landingDrawn.facts
-            .map(fact => `${fact.label}=${fact.value}`).join(" ")} | ${landingDrawn.body} | ${
-            JSON.stringify(landingDrawn.nerd)}`;
+        const landingFacts = landingDrawn.facts.map(fact => `${fact.label}=${fact.value}`);
+        const landingNerd = landingDrawn.nerd.map(fact => `${fact.label}=${fact.value}`);
+        const landingSays = [landingDrawn.eyebrow, landingFacts.join(" "), landingDrawn.body,
+            landingNerd.join(" ")].join(" | ");
         const landingWant = "A Quest \u00b7 landing | Landed=Saturday 7 November, @1130"
-            + " Machine=skiff | try Stop twice | [{\"label\":\"Change\",\"value\":\"core.nix#2140\"}]";
+            + " Machine=skiff | try Stop twice | Change=core.nix#2140";
         if (landingSays !== landingWant)
             failures.push(`a landing's drawer: "${landingSays}", not "${landingWant}"`);
         // Its row's side is when it landed, its time today and its day
