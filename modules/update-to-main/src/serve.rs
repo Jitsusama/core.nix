@@ -146,6 +146,18 @@ fn keep(config: &Config, ending: &Line) -> Result<(), String> {
 }
 
 /// Keeps `line` in `file` for the config's group, whole, as `keep` does.
+/// Tells the update's askers `line`, then `keeps` it for other programs:
+/// in that order, since a stop asked the moment another program sees the
+/// update building reads what the askers were told, to say what it ended.
+fn told(heard: &Answer, line: &Line, keeps: impl FnOnce(&Line)) {
+    {
+        let mut said = heard.state.lock().expect("the answer's lock");
+        said.lines.push(line.json());
+        heard.grew.notify_all();
+    }
+    keeps(line);
+}
+
 fn keep_in(config: &Config, file: &Path, line: &Line) -> Result<(), String> {
     let making = beside(file);
     let kept = fs::write(&making, format!("{}\n", line.json()))
@@ -342,13 +354,12 @@ fn join(
 fn run(config: &Config, heard: &Answer) {
     heard.state.lock().expect("the answer's lock").worker = Some(thread::current().id());
     let push = |line: &Line| {
-        // Not keeping it costs only another program's sight of it.
-        if let Err(why) = keep_in(config, &config.running, line) {
-            eprintln!("couldn't keep what the update is doing: {why}");
-        }
-        let mut said = heard.state.lock().expect("the answer's lock");
-        said.lines.push(line.json());
-        heard.grew.notify_all();
+        told(heard, line, |line| {
+            // Not keeping it costs only another program's sight of it.
+            if let Err(why) = keep_in(config, &config.running, line) {
+                eprintln!("couldn't keep what the update is doing: {why}");
+            }
+        });
     };
     let following = || heard.state.lock().expect("the answer's lock").following;
     let ending = update::update(config, &following, &mut |line| push(line));
@@ -510,6 +521,24 @@ mod tests {
             moved(&path, None),
             "one that led nowhere at the start moves once it leads somewhere"
         );
+    }
+
+    #[test]
+    fn what_an_update_does_is_told_before_another_program_can_see_it() {
+        // On 12 November a person's stop, asked the moment the running
+        // file said building, once answered as though nothing were built.
+        let update = Answer::default();
+        let building = Line::Building {
+            commit: "one".to_owned(),
+        };
+        told(&update, &building, |line| {
+            let said = update.state.lock().unwrap();
+            assert_eq!(
+                said.lines.last(),
+                Some(&line.json()),
+                "another program saw what the update does before its askers were told"
+            );
+        });
     }
 
     #[test]
