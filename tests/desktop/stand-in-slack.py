@@ -44,7 +44,18 @@ HELLOS = RUNTIME / "slack-hellos"
 SAYS = RUNTIME / "slack-says.json"
 # The kinds it holds: slack-message for each message wanting Joel, which Search Slack watches
 # too, to hear how Slack stands, and row for each conversation's row as the launcher shows it.
-KINDS = ("slack-unread", "slack-recent", "slack-account", "slack-message", "row", "drawer")
+# slack-seen, a conversation's read mark, it keeps none of, but a watch naming it is answered
+# as the daemon's is, or the shell's one watch of Slack (SlackUnreads.qml) is refused whole and
+# hears nothing at all, as it did once SlackUnreads.qml asked for it (2026-11-11, #3440).
+KINDS = (
+    "slack-unread",
+    "slack-recent",
+    "slack-seen",
+    "slack-account",
+    "slack-message",
+    "row",
+    "drawer",
+)
 # A conversation's note by its kind, and what's beside one counted, in the launcher's words
 # (words.json's slack:conversation), as the daemon is handed them.
 NOTES = {
