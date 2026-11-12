@@ -93,7 +93,14 @@ Text {
     // the mark's ink did rather than on its cell's middle, which a mark
     // drawn from the cell's left at its own scale doesn't fill (Y2YBTS,
     // 2026-11-06).
-    readonly property real inkCentre: x + (ink.x + ink.width / 2) / fine * markScale
+    readonly property real inkCentre: x + ink.width / 2 / fine * markScale
+    // How far its glyph is drawn back so its ink, not its origin, stands on
+    // the mark column, as every ink edge stands on a named column
+    // (docs/design.md, Alignment). A glyph's left bearing grows with its
+    // scale, so a small one drawn large, as Later's ◦ is, stood its
+    // bearing right of the column the others' ink kept (Joel, 2026-11-11).
+    readonly property real drawnBack: ink.x / fine * markScale
+    transform: Translate { x: -mark.drawnBack }
     // Where the mark's ink centres: on the capitals' middle, the baseline
     // less half their height as drawn on this screen, whose pixels round
     // them: measured at its own scale.
