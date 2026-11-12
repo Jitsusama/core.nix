@@ -267,7 +267,9 @@ Provider {
                 gone: true
             };
         return {
-            headline: said("is").replace("{lit}", deskLit()),
+            // Its side says only how it's lit, never its name again
+            // (VKCF3Z, 2026-11-12).
+            headline: deskLit(),
             rows: deskParts(),
             note: said("cameraLights"),
             thing: true,
