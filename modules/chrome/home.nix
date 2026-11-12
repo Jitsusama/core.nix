@@ -15,7 +15,9 @@
 # jitsusama.chrome.vimium, since a managed Chrome may refuse it: an
 # organization's access checks can turn away a browser with an extension
 # they haven't approved, so a machine whose Chrome is managed leaves it
-# off, and its launcher lists no keys it can't use. Vimium's settings
+# off, and its launcher lists no keys it can't use. Only a machine with no
+# work Google profile in its Chrome sets it, with Vimium taken from the
+# Chrome Web Store by hand, never sideloaded. Vimium's settings
 # Chrome syncs and no policy sets, and nothing here installs it. So
 # they're written to ~/.config/jitsusama/vimium.json, the file its
 # options page restores a backup from, once, by hand: its own keys with the
@@ -291,7 +293,10 @@ in
     description = ''
       Whether this machine's Chrome takes Vimium, so its settings are
       written for Vimium to restore and the launcher lists its keys. Off
-      where an organization manages Chrome and hasn't approved it.
+      where an organization manages Chrome and hasn't approved it. On only
+      on a machine with no work Google profile in Chrome, and with Vimium
+      taken from the Chrome Web Store by hand, never sideloaded, since it
+      reads and types into every page.
     '';
   };
 
@@ -382,11 +387,11 @@ in
         "--new-window"
       ];
     };
-  };
-  # Chrome's open tabs, each found from home by its title or its site, as
-  # the programs daemon serves them from Chrome's session.
-  jitsusama.quickshell.launcher.providers.tabs = {
-    order = 53;
-    source = ./Tabs.qml;
+    # Chrome's open tabs, each found from home by its title or its site, as
+    # the programs daemon serves them from Chrome's session.
+    jitsusama.quickshell.launcher.providers.tabs = {
+      order = 53;
+      source = ./Tabs.qml;
+    };
   };
 }
