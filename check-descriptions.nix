@@ -455,8 +455,8 @@
   '';
   code-health-counts-what-got-messier = ''
     code-health counts a repository's long files and crowded folders without their reasons, its
-    suppressions in each language's own way and its lines repeated from elsewhere, from a ref's
-    files, and writes the day's figures as cadence reads them
+    suppressions in each language's own way, its lines repeated from elsewhere and its tests in
+    quarantine, from a ref's files, and writes the day's figures as cadence reads them
   '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests

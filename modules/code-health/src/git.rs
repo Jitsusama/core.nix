@@ -41,7 +41,7 @@ pub fn files(
             continue;
         };
         paths.push(inside.to_owned());
-        if measure::is_code(inside) || measure::is_note(inside) {
+        if measure::is_code(inside) || measure::is_note(inside) || measure::is_quarantine(inside) {
             let object = about.rsplit(' ').next().unwrap_or_default();
             read.push((inside.to_owned(), object.to_owned()));
         }

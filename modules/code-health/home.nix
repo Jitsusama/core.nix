@@ -3,7 +3,8 @@
 # `jitsusama.code-health.repos` as its ref holds it in a checkout already on
 # the machine, fetching nothing, and writes the day's figures to
 # ~/.local/state/code-health/<date>.json: long files and crowded folders
-# that don't say why, suppressions, and lines repeated from elsewhere.
+# that don't say why, suppressions, lines repeated from elsewhere and tests
+# in quarantine.
 # It runs before `cadence day`, which holds each figure against the days
 # before it, so a repository getting messier is named the day it does.
 {

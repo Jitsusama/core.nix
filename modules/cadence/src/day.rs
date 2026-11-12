@@ -269,6 +269,15 @@ pub const MEASURES: &[Measure] = &[
         bar: None,
         floor: 20.0,
     },
+    Measure {
+        key: "code.*.quarantined-tests",
+        axis: "quality",
+        evidence: HEALTH,
+        says: "tests in quarantine",
+        unit: "",
+        bar: None,
+        floor: 1.0,
+    },
 ];
 
 /// A kind of thing that goes wrong by name, judged by whether a name is

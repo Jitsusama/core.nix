@@ -59,6 +59,12 @@ pub fn is_note(path: &str) -> bool {
     name == "README.md" || name == "AGENTS.md"
 }
 
+/// Whether a path is a list of tests put aside for failing at random, as
+/// a merge net keeps in `quarantine.json`.
+pub fn is_quarantine(path: &str) -> bool {
+    path.rsplit('/').next() == Some("quarantine.json")
+}
+
 /// Every measure of `files`, given `paths`, every file's path, so a folder
 /// is counted by everything in it and not only what's read.
 pub fn measure(paths: &[String], files: &[File]) -> Health {
@@ -92,7 +98,38 @@ pub fn measure(paths: &[String], files: &[File]) -> Health {
 
     let (lines, places) = duplicated(&code);
     health.put("duplicated-lines", places, lines);
+
+    // A repository keeping no quarantine has no figure for it, rather
+    // than a nought that would say its tests were all trusted.
+    let lists: Vec<&File> = files
+        .iter()
+        .filter(|file| is_quarantine(&file.path))
+        .collect();
+    if !lists.is_empty() {
+        let quarantined: Vec<String> = lists
+            .iter()
+            .flat_map(|file| quarantined(&file.text))
+            .collect();
+        let count = quarantined.len();
+        health.put("quarantined-tests", quarantined, count);
+    }
     health
+}
+
+/// The tests a quarantine list holds, by name: a list of entries, each
+/// naming its test. An entry with no name still counts, as "unnamed".
+fn quarantined(text: &str) -> Vec<String> {
+    let entries: Vec<serde_json::Value> = serde_json::from_str(text).unwrap_or_default();
+    entries
+        .iter()
+        .map(|entry| {
+            entry
+                .get("test")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unnamed")
+                .to_owned()
+        })
+        .collect()
 }
 
 /// Whether a file's opening says `words`, as a sentence of its own.
@@ -360,6 +397,34 @@ mod tests {
             health.named["duplicated-lines"],
             ["b.rs:3 repeats a.rs:2"],
             "a repeated run wasn't named once, where it repeats"
+        );
+    }
+
+    #[test]
+    fn each_quarantined_test_is_counted_by_its_name() {
+        let files = [file(
+            "tools/net/quarantine.json",
+            r#"[{"test": "vm-a", "reason": "flaky"}, {"test": "b"}]"#,
+        )];
+        let health = measure(&paths(&files), &files);
+        assert_eq!(
+            health.named["quarantined-tests"],
+            ["vm-a", "b"],
+            "a quarantined test was missed or misnamed"
+        );
+        assert!(
+            (health.figures["quarantined-tests"] - 2.0).abs() < f64::EPSILON,
+            "the figure didn't match the tests named: {health:?}"
+        );
+    }
+
+    #[test]
+    fn a_repository_keeping_no_quarantine_has_no_figure_for_it() {
+        let files = [file("a.rs", "fn a() {}\n")];
+        let health = measure(&paths(&files), &files);
+        assert!(
+            !health.figures.contains_key("quarantined-tests"),
+            "a quarantine nobody keeps was counted as empty: {health:?}"
         );
     }
 
