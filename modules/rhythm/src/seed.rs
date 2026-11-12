@@ -124,12 +124,23 @@ mod tests {
             )
         };
         let log = [
-            entry("user", "the brief it was spawned with", "2026-11-09T20:00:00.000Z"),
+            entry(
+                "user",
+                "the brief it was spawned with",
+                "2026-11-09T20:00:00.000Z",
+            ),
             entry("user", "how is it going?", "2026-11-09T20:01:55.906Z"),
             entry("assistant", "fine", "2026-11-09T20:02:00.000Z"),
-            entry("user", "[Automated message, no human input]", "2026-11-09T20:03:00.000Z"),
-            "{\"type\":\"custom_message\",\"customType\":\"mesh\",\"timestamp\":\"2026-11-09T20:04:00.000Z\"}"
-                .to_owned(),
+            entry(
+                "user",
+                "[Automated message, no human input]",
+                "2026-11-09T20:03:00.000Z",
+            ),
+            concat!(
+                "{\"type\":\"custom_message\",\"customType\":\"mesh\",",
+                "\"timestamp\":\"2026-11-09T20:04:00.000Z\"}"
+            )
+            .to_owned(),
             entry("user", "thanks", "2026-11-09T20:05:00.000Z"),
         ]
         .join("\n");

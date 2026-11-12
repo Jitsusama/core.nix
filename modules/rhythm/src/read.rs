@@ -167,6 +167,25 @@ mod tests {
     }
 
     #[test]
+    fn after_a_break_it_says_which_weeks_it_follows() {
+        // 2 October 2026, as days since 1970.
+        let away = Profile {
+            from: Some(20_728),
+            ..learned()
+        };
+        let read = said(&away, 5, None);
+        assert!(
+            read.contains("from 23 nights in the four weeks to 2 October, before you were away."),
+            "the weeks it follows: {read}"
+        );
+        let json = profile_json(&away, 5, None);
+        assert!(
+            json.contains("\"from\": \"2026-10-02\""),
+            "the date in {json}"
+        );
+    }
+
+    #[test]
     fn too_few_nights_say_they_guess() {
         let few = Profile {
             nights: 3,
@@ -196,6 +215,7 @@ mod tests {
             "\"sunset\": null",
             "\"Friday\": \"02:30\"",
             "\"Monday\": null",
+            "\"from\": null",
         ] {
             assert!(json.contains(part), "{part} in {json}");
         }
