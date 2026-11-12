@@ -146,7 +146,10 @@ onLinux {
   # same; such a niri refuses the action, and the shell moves the window
   # after, as it did before. panel-saturation.patch adds the same kind of
   # action, SetPanelSaturation, and asks for its value through the
-  # environment. powers-off-each-output.patch adds two actions
+  # environment. render-deadline-action.patch adds one more,
+  # SetRenderDeadline, for the deadline renders-by-the-deadline.patch takes
+  # from the environment; a niri before it refuses only the action, which
+  # niri-deadline then says. powers-off-each-output.patch adds two actions
   # a bind may name, power-off-monitor and power-on-monitor, and no setting:
   # the config a niri before it reads is the same while no bind names
   # them, and the shell asks for them over IPC only once niri says it can.
@@ -157,6 +160,7 @@ onLinux {
         "opens-next-window-on.patch"
         "opens-next-window-as-column.patch"
         "panel-saturation.patch"
+        "render-deadline-action.patch"
         "powers-off-each-output.patch"
       ];
       patches = lib.filter (

@@ -187,13 +187,17 @@
     # answers a key a few milliseconds later waits for the next vblank to be
     # rendered and the one after it to be shown. Joel's keys spent a median
     # 48 ms from their frame's start to the screen on 11 November, of 58 ms
-    # in all. The patch (render-deadline.patch, upstream's #4692, not yet
+    # in all. The patch (renders-by-the-deadline.patch, upstream's #4692, not yet
     # merged there) renders as late as it can and still make the next
     # vblank, its margin growing when it misses one and shrinking as it
     # doesn't, and renders at once on a VRR screen, after a few idle
     # refreshes, or where its margin passes three quarters of a refresh.
-    # debug's disable-render-deadline turns it off. Its tests run as niri
-    # builds.
+    # Its tests run as niri builds. A lab on vkms, drawing in software,
+    # found it presented no sooner, so it's off unless NIRI_RENDER_DEADLINE=1
+    # is in niri's environment, which adds no setting a niri before it would
+    # refuse. render-deadline-action.patch turns it on and off while niri
+    # runs: `niri-deadline on`, below, tries it on Joel's own GPU, and `off`
+    # puts it back.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -227,7 +231,8 @@
         ./refreshes-once-a-frame.patch
         ./powers-off-each-output.patch
         ./suspends-hidden-windows.patch
-        ./render-deadline.patch
+        ./renders-by-the-deadline.patch
+        ./render-deadline-action.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
@@ -273,6 +278,13 @@
   environment.sessionVariables.NIXOS_OZONE_WL = "1";
 
   environment.systemPackages = [
+    # Switches renders-by-the-deadline.patch's deadline on and off while
+    # niri runs (niri-deadline.sh), through the installed niri's own msg.
+    (pkgs.writeShellApplication {
+      name = "niri-deadline";
+      runtimeEnv.NIRI = "${config.programs.niri.package}/bin/niri";
+      text = builtins.readFile ./niri-deadline.sh;
+    })
     # niri starts it whenever an X11 program needs a display. It passes
     # niri a window's class but not its instance, the only name some
     # programs give each of their windows, so the patch

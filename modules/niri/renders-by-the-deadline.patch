@@ -1,87 +1,16 @@
 Renders each frame as late as it can and still make the next vblank, so
 a client's commit that comes after the last vblank is shown at the next
 one rather than a refresh later. The time left for rendering adapts to
-the vblanks it misses, and debug's disable-render-deadline turns it off. Upstream's niri-wm/niri#4692 by Liam Dyer, commit
+the vblanks it misses. Upstream's niri-wm/niri#4692 by Liam Dyer, commit
 d83adcab41c1560b3d23d49d7b6c0533ec799d08, made on niri 26.04 and the
 patches before it here.
 
-diff --git a/docs/wiki/Configuration:-Debug-Options.md b/docs/wiki/Configuration:-Debug-Options.md
-index b43cfe3..56e6d56 100644
---- a/docs/wiki/Configuration:-Debug-Options.md
-+++ b/docs/wiki/Configuration:-Debug-Options.md
-@@ -33,6 +33,7 @@ debug {
-     honor-xdg-activation-with-invalid-serial
-     skip-cursor-only-updates-during-vrr
-     deactivate-unfocused-windows
-+    disable-render-deadline
- }
- 
- binds {
-@@ -345,6 +346,23 @@ debug {
- }
- ```
- 
-+### `disable-render-deadline`
-+
-+<sup>Since: next release</sup>
-+
-+Render frames as soon as something changes, instead of just before the next vblank.
-+
-+By default, niri renders as late as it can while still making the next vblank, so that commits arriving in the meantime (e.g. a terminal answering a keypress while another window is animating) make it into the same frame.
-+The time it leaves for rendering adapts to missed vblanks.
-+This flag restores rendering right away, for example to check whether it causes dropped frames on your hardware.
-+It has no effect on VRR outputs, which always render right away.
-+
-+```kdl
-+debug {
-+    disable-render-deadline
-+}
-+```
-+
- ### Key Bindings
- 
- These are not debug options, but rather key bindings.
-diff --git a/niri-config/src/debug.rs b/niri-config/src/debug.rs
-index c0779a4..eb32391 100644
---- a/niri-config/src/debug.rs
-+++ b/niri-config/src/debug.rs
-@@ -25,6 +25,7 @@ pub struct Debug {
-     pub honor_xdg_activation_with_invalid_serial: bool,
-     pub deactivate_unfocused_windows: bool,
-     pub skip_cursor_only_updates_during_vrr: bool,
-+    pub disable_render_deadline: bool,
- }
- 
- #[derive(knuffel::Decode, Debug, Default, PartialEq)]
-@@ -71,6 +72,8 @@ pub struct DebugPart {
-     pub deactivate_unfocused_windows: Option<Flag>,
-     #[knuffel(child)]
-     pub skip_cursor_only_updates_during_vrr: Option<Flag>,
-+    #[knuffel(child)]
-+    pub disable_render_deadline: Option<Flag>,
- }
- 
- impl MergeWith<DebugPart> for Debug {
-@@ -95,6 +98,7 @@ impl MergeWith<DebugPart> for Debug {
-             honor_xdg_activation_with_invalid_serial,
-             deactivate_unfocused_windows,
-             skip_cursor_only_updates_during_vrr,
-+            disable_render_deadline,
-         );
- 
-         merge_clone_opt!((self, part), preview_render, render_drm_device);
-diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
-index e1ef640..3351108 100644
---- a/niri-config/src/lib.rs
-+++ b/niri-config/src/lib.rs
-@@ -2266,6 +2266,7 @@ mod tests {
-                 honor_xdg_activation_with_invalid_serial: false,
-                 deactivate_unfocused_windows: false,
-                 skip_cursor_only_updates_during_vrr: false,
-+                disable_render_deadline: false,
-             },
-             workspaces: [
-                 Workspace {
+Unlike upstream, it's off unless NIRI_RENDER_DEADLINE=1 is in niri's
+environment as it starts, rather than on unless debug's
+disable-render-deadline says otherwise, so it adds no setting to niri's
+config: a config written for this niri still parses in one without it.
+render-deadline-action.patch turns it on and off while niri runs.
+
 diff --git a/src/backend/tty.rs b/src/backend/tty.rs
 index beb5c59..7cce2b7 100644
 --- a/src/backend/tty.rs
@@ -121,7 +50,7 @@ index d516838..97a5193 100644
  pub mod rubber_band;
  #[cfg(feature = "xdp-gnome-screencast")]
 diff --git a/src/niri.rs b/src/niri.rs
-index 8352340..389d8a1 100644
+index 8352340..1e4d82f 100644
 --- a/src/niri.rs
 +++ b/src/niri.rs
 @@ -151,6 +151,7 @@ use crate::protocols::mutter_x11_interop::MutterX11InteropManagerState;
@@ -132,7 +61,18 @@ index 8352340..389d8a1 100644
  use crate::render_helpers::blur::BlurOptions;
  use crate::render_helpers::debug::push_opaque_regions;
  use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
-@@ -505,6 +506,7 @@ pub struct OutputState {
+@@ -217,6 +218,10 @@ pub struct WindowOpening {
+ pub struct Niri {
+     pub config: Rc<RefCell<Config>>,
+ 
++    /// Whether frames render by their deadline: `NIRI_RENDER_DEADLINE=1` at start, changed by
++    /// the SetRenderDeadline action. Off, niri renders as soon as something changes.
++    pub render_deadline_wanted: bool,
++
+     /// Output config from the config file.
+     ///
+     /// This does not include transient output config changes done via IPC. It is only used when
+@@ -505,6 +510,7 @@ pub struct OutputState {
      pub global: GlobalId,
      pub frame_clock: FrameClock,
      pub redraw_state: RedrawState,
@@ -140,7 +80,16 @@ index 8352340..389d8a1 100644
      pub on_demand_vrr_enabled: bool,
      /// Whether power-off-monitor powered this output off by name.
      ///
-@@ -3077,6 +3079,7 @@ impl Niri {
+@@ -2689,6 +2695,8 @@ impl Niri {
+         drop(config_);
+         let mut niri = Self {
+             config,
++            render_deadline_wanted: std::env::var_os("NIRI_RENDER_DEADLINE")
++                .is_some_and(|v| v == "1"),
+             config_file_output_config,
+             config_file_watcher: None,
+ 
+@@ -3077,6 +3085,7 @@ impl Niri {
          let state = OutputState {
              global,
              redraw_state: RedrawState::Idle,
@@ -148,7 +97,7 @@ index 8352340..389d8a1 100644
              on_demand_vrr_enabled: false,
              off_by_name: false,
              unfinished_animations_remain: false,
-@@ -3125,7 +3128,11 @@ impl Niri {
+@@ -3125,7 +3134,11 @@ impl Niri {
          self.reposition_outputs(None);
          self.gamma_control_manager_state.output_removed(output);
  
@@ -161,7 +110,7 @@ index 8352340..389d8a1 100644
  
          match state.redraw_state {
              RedrawState::Idle => (),
-@@ -3959,18 +3966,72 @@ impl Niri {
+@@ -3959,18 +3972,73 @@ impl Niri {
      pub fn redraw_queued_outputs(&mut self, backend: &mut Backend) {
          let _span = tracy_client::span!("Niri::redraw_queued_outputs");
  
@@ -205,8 +154,9 @@ index 8352340..389d8a1 100644
 +        if !matches!(state.redraw_state, RedrawState::Queued) {
 +            return false;
 +        }
-+        // VRR displays wait for the frame, there's no vblank to render ahead of
-+        if state.frame_clock.vrr() || self.config.borrow().debug.disable_render_deadline {
++        // Only while asked for; VRR displays wait for the frame, there's no vblank to render
++        // ahead of
++        if state.frame_clock.vrr() || !self.render_deadline_wanted {
 +            return false;
 +        }
 +        let Some(refresh) = state.frame_clock.refresh_interval() else {
@@ -241,7 +191,7 @@ index 8352340..389d8a1 100644
      pub fn render_pointer<R: NiriRenderer>(
          &self,
          renderer: &mut R,
-@@ -4913,6 +4974,7 @@ impl Niri {
+@@ -4913,6 +4981,7 @@ impl Niri {
  
          // Verify our invariant.
          let state = self.output_state.get_mut(output).unwrap();
