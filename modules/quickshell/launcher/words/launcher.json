@@ -386,7 +386,15 @@
         "nothingWaiting": "none",
         "unknown": "unknown",
         "shaperOff": "the shaper isn't running",
-        "unheard": "its last question went unanswered"
+        "unheard": "its last question went unanswered",
+        "leadFor": " for {lasted}",
+        "leadTrip": ", with a {rtt} round trip"
+      },
+      "tells": {
+        "connected": "Connected to work{lasted}{trip}.",
+        "degraded": "Connected to work but degraded{lasted}{trip}.",
+        "connecting": "Connecting to work{lasted}.",
+        "disconnected": "Disconnected from work{lasted}."
       }
     },
     {

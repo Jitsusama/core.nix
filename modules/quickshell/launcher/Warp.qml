@@ -39,6 +39,7 @@ import "Warp.js" as Warp
 import "WarpSeen.js" as WarpSeen
 import "WarpSwitch.js" as WarpSwitch
 import "WarpWaiting.js" as WarpWaiting
+import "WarpDrawer.js" as WarpDrawer
 
 Provider {
     id: provider
@@ -149,17 +150,36 @@ Provider {
     }
 
     // How the link stands: its switch first, as :connect and :disconnect
-    // name it, then every part.
+    // name it, then every part. Its row in Network has a drawer of its own,
+    // as every row has (VKCF3Z, 2026-11-12), which makes it a thing, since
+    // the launcher draws only a thing's (WarpDrawer.js).
     function told() {
         const linked = Warp.told(said, settings, words);
         if (linked === null)
             return null;
         const parts = WarpSeen.drawn(
             WarpWaiting.among(linked.parts, said.waiting, settings, words), seen, settings, words);
+        const drawn = WarpDrawer.drawer({
+            parts,
+            record: said,
+            stood: WarpState.state,
+            now: Date.now()
+        }, { said: words, tells: Words.of("warp").tells ?? {} });
         return {
             headline: linked.headline,
             copy: linked.headline,
             warns: linked.warns,
+            thing: true,
+            drawer: {
+                eyebrow: drawn.eyebrow,
+                title: Words.name("warp"),
+                body: drawn.body,
+                facts: drawn.facts.map(fact => ({
+                    label: Words.name(`warp:${fact.id}`),
+                    value: fact.value,
+                    identifies: fact.identifies === true
+                }))
+            },
             glyph: Words.glyph("warp"),
             rows: [switchRow()].concat(parts.map(partRow)),
             note: "",

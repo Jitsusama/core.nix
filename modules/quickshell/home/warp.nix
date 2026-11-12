@@ -7,4 +7,5 @@
   "launcher/WarpSeen.js"
   "launcher/WarpSwitch.js"
   "launcher/WarpWaiting.js"
+  "launcher/WarpDrawer.js"
 ]

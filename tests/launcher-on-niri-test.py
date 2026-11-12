@@ -2352,6 +2352,36 @@ def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Sh
         warp_forgotten(said)
 
 
+def test_the_work_networks_row_has_a_drawer_saying_how_work_stands(shell: Shell) -> None:
+    """The Work Network's row in Network has its own drawer: whose, a lead, then why.
+
+    Every row has a drawer (VKCF3Z, 2026-11-12). Its lead says how the link stands and its
+    round trip, and for how long only where the daemon saw it begin, as it did here if an
+    earlier case changed the link; warp-cli's own words for it come last (WarpDrawer.js).
+    """
+    said = warp_said()
+    try:
+        warp = terminal_shown_until(
+            shell,
+            lambda shown: bool(((shown.get("row") or {}).get("drawer") or {}).get("body")),
+            "network",
+            "work network",
+        )
+        drawer = warp["row"]["drawer"]
+        assert drawer["eyebrow"] == "via WARP \u00b7 tunnel", str(drawer)
+        assert drawer["title"] == "Work Network", str(drawer)
+        body = str(drawer["body"])
+        assert body.startswith("Connected to work"), str(drawer)
+        assert body.endswith(", with a 127 ms round trip."), str(drawer)
+        facts = {fact["label"]: fact["value"] for fact in drawer["facts"]}
+        assert facts["State"] == "connected", str(facts)
+        assert facts["Round Trip"] == "127 ms", str(facts)
+        assert list(facts)[-2:] == ["Status", "Reason"], str(facts)
+        assert facts["Reason"] == "NetworkHealthy", str(facts)
+    finally:
+        warp_forgotten(said)
+
+
 def test_the_work_network_says_whats_waiting_on_the_way_as_the_shaper_hears_it(
     shell: Shell,
 ) -> None:
