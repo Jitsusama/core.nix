@@ -41,6 +41,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       uid = 1000;
       linger = true;
     };
+    # The test driver makes the kernel's OOM killer panic the machine, even
+    # inside one unit's limit; here that kill is what the host must outlive.
+    boot.kernel.sysctl."vm.panic_on_oom" = 0;
     home-manager.users.alice = {
       imports = [
         self.homeModules.pi-packages
