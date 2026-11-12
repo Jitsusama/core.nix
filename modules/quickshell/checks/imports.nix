@@ -265,7 +265,6 @@
   ];
   "launcher/Recent.js" = [ "launcher/Order.js" ];
   "launcher/Recents.qml" = [ "launcher/Recents.js" ];
-  "launcher/Repositories.qml" = [ "launcher/Repositories.js" ];
   "launcher/Runs.qml" = [
     "Fuzzy.js"
     "PiSource.js"
