@@ -2,6 +2,9 @@
 //! the windows daemon writes as niri opens and closes their windows
 //! (modules/windows, src/timed.rs): a program's first window after its
 //! process started, and its process ending after its last window went.
+//! Beside them, how long each of our daemons took to be ready, from the
+//! line each says once it is, such as dictation's "ready in 1065 ms" or
+//! meaning's "bge loaded on the NPU in 688 ms".
 //!
 //! Both are our side's figures, stand-ins for what Joel waits on: an
 //! opening is timed from the process's start, not from the key that asked
@@ -27,6 +30,14 @@ pub const OPENED_MS: u64 = 300;
 /// An end's, from the last window gone to the process ended.
 pub const ENDED_MS: u64 = 200;
 
+/// What `journalctl --grep` follows for a daemon saying it's ready, from
+/// any program: a line saying it's ready or loaded, then how long it took.
+pub const READY_FOLLOWED: &str = r"\b(ready|loaded)\b.* in [0-9]+ ms\b";
+
+/// A daemon's budget from starting to ready, as docs/design.md's Latency
+/// Budgets hold it for a daemon serving again.
+pub const READY_MS: u64 = 1_000;
+
 /// The day's openings and ends, read again from the journal on each
 /// start, so never resumed.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +49,8 @@ pub struct Launches {
     pub ended: BTreeMap<String, Vec<u64>>,
     /// How often each program still ran when the daemon stopped waiting.
     pub outlived: BTreeMap<String, u64>,
+    /// How long each daemon took to be ready, as it said, in milliseconds.
+    pub ready: BTreeMap<String, Vec<u64>>,
 }
 
 /// How one of the two went over the day.
@@ -68,9 +81,16 @@ impl Spread<'_> {
 }
 
 impl Launches {
-    /// Take one of the windows daemon's lines, saying whether it was one
-    /// of these.
-    pub fn took(&mut self, message: &str) -> bool {
+    /// Take one line `thing` said, saying whether it was one of these: an
+    /// opening or end from the windows daemon, or any program's ready.
+    pub fn took(&mut self, thing: &str, message: &str) -> bool {
+        if thing != IDENTIFIER {
+            let Some(ms) = ready_in(message) else {
+                return false;
+            };
+            self.ready.entry(thing.to_owned()).or_default().push(ms);
+            return true;
+        }
         if let Some(rest) = message.strip_prefix("opened ") {
             let Some((app, ms)) = rest
                 .strip_suffix(" ms after its process started")
@@ -115,6 +135,12 @@ impl Launches {
         spread(&self.ended, ENDED_MS)
     }
 
+    /// How long daemons took to be ready over the day, once any said.
+    #[must_use]
+    pub fn readies(&self) -> Option<Spread<'_>> {
+        spread(&self.ready, READY_MS)
+    }
+
     /// How many ends the daemon stopped waiting for.
     #[must_use]
     pub fn outlived(&self) -> u64 {
@@ -130,6 +156,9 @@ impl Launches {
         }
         if let Some(ended) = self.ends() {
             parts.push(said(&ended, ("end", "ends"), ENDED_MS));
+        }
+        if let Some(ready) = self.readies() {
+            parts.push(said(&ready, ("daemon ready", "daemons ready"), READY_MS));
         }
         match self.outlived() {
             0 => {}
@@ -150,6 +179,7 @@ impl Launches {
             .keys()
             .chain(self.ended.keys())
             .chain(self.outlived.keys())
+            .chain(self.ready.keys())
             .collect();
         names.sort();
         names.dedup();
@@ -159,6 +189,7 @@ impl Launches {
             };
             most(&self.opened)
                 .max(most(&self.ended))
+                .max(most(&self.ready))
                 .unwrap_or_default()
         };
         names.sort_by_key(|name| std::cmp::Reverse(slowest(name)));
@@ -171,11 +202,14 @@ impl Launches {
                         format!("{} {words}, the slowest {most} ms", all.len())
                     })
                 };
-                let mut parts: Vec<String> =
-                    [one(&self.opened, "opened"), one(&self.ended, "ended")]
-                        .into_iter()
-                        .flatten()
-                        .collect();
+                let mut parts: Vec<String> = [
+                    one(&self.opened, "opened"),
+                    one(&self.ended, "ended"),
+                    one(&self.ready, "ready"),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
                 if let Some(times) = self.outlived.get(name) {
                     parts.push(format!("{times} still running 30 s on"));
                 }
@@ -185,7 +219,23 @@ impl Launches {
     }
 }
 
-/// One of the two over the day, or none when none was timed.
+/// How long a daemon's line says it took to be ready: the first "in N
+/// ms" after the word ready or loaded, or none when it says neither.
+fn ready_in(message: &str) -> Option<u64> {
+    let words: Vec<&str> = message
+        .split_whitespace()
+        .map(|word| word.trim_matches(|letter: char| !letter.is_ascii_alphanumeric()))
+        .collect();
+    let said = words
+        .iter()
+        .position(|word| matches!(*word, "ready" | "loaded"))?;
+    words[said..].windows(3).find_map(|three| match three {
+        ["in", ms, "ms"] => ms.parse().ok(),
+        _ => None,
+    })
+}
+
+/// One of the three over the day, or none when none was timed.
 fn spread(taken: &BTreeMap<String, Vec<u64>>, bar_ms: u64) -> Option<Spread<'_>> {
     let mut all: Vec<u64> = taken.values().flatten().copied().collect();
     all.sort_unstable();
@@ -207,7 +257,7 @@ fn spread(taken: &BTreeMap<String, Vec<u64>>, bar_ms: u64) -> Option<Spread<'_>>
     })
 }
 
-/// One of the two in words.
+/// One of the three in words.
 fn said(spread: &Spread, (one, many): (&str, &str), bar_ms: u64) -> String {
     let late = match spread.late {
         0 => format!("none past {bar_ms} ms"),
@@ -236,7 +286,7 @@ mod tests {
         let mut launches = Launches::default();
         for line in lines {
             assert!(
-                launches.took(line),
+                launches.took(IDENTIFIER, line),
                 "a windows daemon's line wasn't taken: {line}"
             );
         }
@@ -269,10 +319,67 @@ mod tests {
         );
         let mut other = Launches::default();
         assert!(
-            !other.took("niri's event stream ended; asking again"),
+            !other.took(IDENTIFIER, "niri's event stream ended; asking again"),
             "another of the daemon's lines was taken for a timing"
         );
         assert_eq!(other, Launches::default(), "another line changed the day");
+    }
+
+    #[test]
+    fn a_daemon_saying_its_ready_is_kept_by_its_name_and_other_timings_left() {
+        let mut launches = Launches::default();
+        for (thing, line) in [
+            ("dictation", "dictation: ready in 1065 ms"),
+            ("meaning", "meaning: bge loaded on the NPU in 688 ms"),
+            (
+                "noise-cancelled",
+                "noise-cancelled: the model loaded in 398 ms, cleaning with deepfilternet",
+            ),
+        ] {
+            assert!(
+                launches.took(thing, line),
+                "a ready line wasn't taken: {line}"
+            );
+        }
+        for (thing, line) in [
+            (
+                "jobs-sorter",
+                "Moved timeout (process group 3, 2 processes) from kitty-1.scope to jobs: \
+                 6810 ms of CPU in 1040 ms.",
+            ),
+            (
+                "call-transcripts",
+                "call-transcripts: mel 33 ms, encoder 325 ms on NPU",
+            ),
+            ("dictation", "dictation: ready; the model is already loaded"),
+        ] {
+            assert!(
+                !launches.took(thing, line),
+                "a line that isn't a ready was taken: {line}"
+            );
+        }
+        assert_eq!(
+            launches.ready,
+            BTreeMap::from([
+                ("dictation".to_owned(), vec![1065]),
+                ("meaning".to_owned(), vec![688]),
+                ("noise-cancelled".to_owned(), vec![398]),
+            ]),
+            "each daemon's ready wasn't kept by its name"
+        );
+        assert_eq!(
+            launches.said().as_deref(),
+            Some(
+                "3 daemons ready: a median 688 ms, the slowest 1065 ms (dictation); 1 past \
+                 1000 ms (33%)"
+            ),
+            "the day's readies were said wrongly"
+        );
+        assert_eq!(
+            launches.by_program().first().map(String::as_str),
+            Some("dictation                1 ready, the slowest 1065 ms"),
+            "the slowest daemon wasn't said first"
+        );
     }
 
     #[test]
@@ -333,6 +440,12 @@ mod tests {
             4,
             "niri's event stream ended; asking again",
         ));
+        day.take(&entry("dictation", 6, "dictation: ready in 1065 ms"));
+        assert_eq!(
+            day.launches.ready.get("dictation"),
+            Some(&vec![1065]),
+            "the day didn't take a daemon's ready"
+        );
         assert_eq!(
             day.launches.opened.get("foot"),
             Some(&vec![212]),

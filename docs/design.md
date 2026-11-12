@@ -1039,6 +1039,7 @@ hold every surface to:
 | a key                  | the launcher's search answered | 4 ms, leaving the frame for drawing      |
 | a program started      | its first window               | 300 ms                                   |
 | its last window closed | its process ended              | 200 ms                                   |
+| a daemon started       | it says it's ready             | 1 s                                      |
 
 A surface meets the first by never being made at the chord. The launcher's
 surface stays mapped, a clear pixel that takes no keys while closed, and a
@@ -1053,7 +1054,9 @@ that none is ever lost between the two.
 A program opening and quitting are held to the improvement system's specs
 for them (2026-11-11), timed by the windows daemon from the process's start
 and from its window gone, since niri never says the key that asked; health
-says them each day (`health launches`).
+says them each day (`health launches`). A daemon is held to the specs'
+second for serving again, from the line it says once it's ready, such as
+dictation's "ready in 1065 ms", which health reads from any program.
 
 ## First, and Light
 
