@@ -313,6 +313,33 @@ td {
   padding-inline-end: 0;
 }
 
+/* The strip atop each of Joel's local sites: the way home first, then what kind of page it is,
+   as of when, and what it asks of him, the one part in the strong text. One quiet line in the
+   mono where it fits, wrapping between its parts and never inside one. */
+.sites-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tie) var(--apart);
+  align-items: baseline;
+  padding: var(--tie) var(--inset);
+  border-block-end: 1px solid var(--rule);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.5 var(--mono);
+}
+
+.sites-strip > * {
+  white-space: nowrap;
+}
+
+.sites-strip > a::before {
+  content: "\2039\00a0";
+}
+
+.sites-strip > .asks {
+  color: var(--strong);
+  white-space: normal;
+}
+
 /* A disclosure grows open rather than jumping, and its summary looks like
    something to press. */
 summary {

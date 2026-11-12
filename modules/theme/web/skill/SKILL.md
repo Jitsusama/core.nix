@@ -156,8 +156,19 @@ that is awesome" (2026-11-11).
   `~/.local/share/jitsusama/sites/`, reached at
   `http://sites.localhost:8484/<site>/`, and the home page at its root lists
   every site, newest first, each saying what it is and what it asks of him.
-  A new site adds its row there; a site with no value left is removed, row
-  and folder.
+  A site with no value left is removed, row and folder.
+- **One record, never the home by hand.** The home and its `llms.txt` are
+  built from `sites.json` at the root, a row per site: its path, name, what
+  it is in a sentence, what it asks of him (or nothing), its date, its kind
+  (mock, record, explainer, test or app), its status (growing, settled or
+  withdrawn) and the quest it came from. A new site adds its row there and
+  rebuilds the home with the builder beside it; a turned-down or settled
+  one moves to the home's Kept for Reference, below the rest.
+- **Every page has a way home.** Each page opens with one quiet strip,
+  `<nav class="sites-strip">` from `base.css`: All your sites, linking the
+  home, then the page's kind, as of when, and what it asks of him. Built
+  from the same row, so it never disagrees with the home. "if i can't
+  access something, i don't use it" (2026-11-11).
 - **Nothing is a one-off.** A site for him is never put anywhere else, and a
   shared one that's done with is taken down rather than left to drift.
 
