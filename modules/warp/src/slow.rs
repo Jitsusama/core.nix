@@ -30,11 +30,21 @@ impl Default for Bars {
     }
 }
 
+/// The way while it's slow: what waits on it, and since when the wait
+/// has held past the bar, so the drawer can say for how long.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Slow {
+    pub waiting_ms: u64,
+    pub since_ms: u64,
+}
+
 /// How the way stands as each reading of the shaper's is heard.
 #[derive(Debug)]
 pub struct Judge {
     bars: Bars,
     slow: bool,
+    /// Since when the wait held past the bar, once that made it slow.
+    began: u64,
     /// Since when the wait has held past the bar it must cross, if it has.
     crossing: Option<u64>,
     /// The last wait heard, said again while a question goes unanswered.
@@ -46,17 +56,26 @@ impl Judge {
         Self {
             bars,
             slow: false,
+            began: 0,
             crossing: None,
             last: None,
         }
     }
 
+    /// The way as judged, with `wait` said of it while it's slow.
+    fn said(&self, wait: Option<u64>) -> Option<Slow> {
+        wait.filter(|_| self.slow).map(|waiting_ms| Slow {
+            waiting_ms,
+            since_ms: self.began,
+        })
+    }
+
     /// Judges one reading, as waiting.rs makes it, heard at `at_ms`: the
-    /// wait while the way is slow, else nothing. A shaper that isn't
+    /// wait and since when while the way is slow, else nothing. A shaper that isn't
     /// running can't say the way is slow, so that ends it; a question
     /// that went unanswered says nothing either way, so it leaves the
     /// judgement, and the wait said, as they stand.
-    pub fn heard(&mut self, reading: &Value, at_ms: u64) -> Option<u64> {
+    pub fn heard(&mut self, reading: &Value, at_ms: u64) -> Option<Slow> {
         if reading["running"] != Value::Bool(true) {
             self.slow = false;
             self.crossing = None;
@@ -64,7 +83,7 @@ impl Judge {
             return None;
         }
         let Some(wait) = waited(reading) else {
-            return self.last.filter(|_| self.slow);
+            return self.said(self.last);
         };
         self.last = Some(wait);
         let past = if self.slow {
@@ -81,12 +100,13 @@ impl Judge {
             };
             if at_ms.saturating_sub(since) >= needed {
                 self.slow = !self.slow;
+                self.began = since;
                 self.crossing = None;
             }
         } else {
             self.crossing = None;
         }
-        self.slow.then_some(wait)
+        self.said(Some(wait))
     }
 }
 
@@ -114,12 +134,39 @@ mod tests {
         json!({"running": true, "through_ms": 30.0 + ms, "at_rest_ms": 30.0})
     }
 
-    /// The judge's answers for each wait, heard at its time.
+    /// The waits the judge says for each reading, heard at its time.
     fn judged(judge: &mut Judge, waits: &[(u64, Value)]) -> Vec<Option<u64>> {
         waits
             .iter()
-            .map(|(at, reading)| judge.heard(reading, *at))
+            .map(|(at, reading)| judge.heard(reading, *at).map(|slow| slow.waiting_ms))
             .collect()
+    }
+
+    #[test]
+    fn slow_says_since_the_wait_first_held_past_the_bar() {
+        let mut judge = Judge::new(Bars::default());
+        judged(
+            &mut judge,
+            &[
+                (0, waiting(120.0)),
+                (40_000, waiting(10.0)),
+                (50_000, waiting(90.0)),
+            ],
+        );
+        assert_eq!(
+            judge.heard(&waiting(90.0), 110_000),
+            Some(Slow {
+                waiting_ms: 90,
+                since_ms: 50_000
+            })
+        );
+        assert_eq!(
+            judge
+                .heard(&waiting(40.0), 200_000)
+                .map(|slow| slow.since_ms),
+            Some(50_000),
+            "and keeps saying it while it's slow"
+        );
     }
 
     #[test]
@@ -156,7 +203,12 @@ mod tests {
     fn slow_holds_while_the_wait_wavers_and_ends_after_half_a_minute_under_30() {
         let mut judge = Judge::new(Bars::default());
         judge.heard(&waiting(60.0), 0);
-        assert_eq!(judge.heard(&waiting(60.0), 60_000), Some(60));
+        assert_eq!(
+            judge
+                .heard(&waiting(60.0), 60_000)
+                .map(|slow| slow.waiting_ms),
+            Some(60)
+        );
         let heard = judged(
             &mut judge,
             &[
@@ -183,12 +235,15 @@ mod tests {
         let unheard = json!({"running": true, "through_ms": null, "at_rest_ms": 30.0});
         assert_eq!(
             judge.heard(&unheard, 61_000),
-            Some(60),
+            Some(Slow {
+                waiting_ms: 60,
+                since_ms: 0
+            }),
             "unheard says the last wait again"
         );
         assert_eq!(
-            judge.heard(&waiting(55.0), 62_000),
-            Some(55),
+            judged(&mut judge, &[(62_000, waiting(55.0))]),
+            vec![Some(55)],
             "and leaves it slow"
         );
         assert_eq!(judge.heard(&json!({"running": false}), 63_000), None);

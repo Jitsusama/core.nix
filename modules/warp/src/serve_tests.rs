@@ -437,7 +437,13 @@ fn a_state_watch_is_told_the_way_is_slow_while_it_waits_and_when_its_well() {
     client.say(&json!({"id": "all", "ask": "watch", "kind": "warp-state"}));
     client.heard();
     let slow = heard_until(&mut client, |state| state["slow"].is_object());
-    assert_eq!(slow["slow"], json!({"waiting_ms": 120}), "{slow}");
+    assert_eq!(slow["slow"]["waiting_ms"], 120, "{slow}");
+    assert!(
+        slow["slow"]["since_ms"]
+            .as_u64()
+            .is_some_and(|since| since > 0),
+        "it says since when, so the drawer can say for how long: {slow}"
+    );
     assert_eq!(
         slow["said"],
         json!({"status": "Connected", "reason": "NetworkHealthy"}),

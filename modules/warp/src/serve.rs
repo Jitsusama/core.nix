@@ -43,7 +43,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use crate::ask::{Ask, Listening, Said, Unasked};
-use crate::slow::{Bars, Judge};
+use crate::slow::{Bars, Judge, Slow};
 
 /// The interface's version this speaks.
 const VERSION: u64 = 1;
@@ -93,8 +93,9 @@ struct Held {
     link: Option<(Value, Instant)>,
     /// How WARP stands, as last told or asked while anyone watched.
     state: Option<Value>,
-    /// What waits through the VPN while the way is slow, as last judged.
-    slow: Option<u64>,
+    /// What waits through the VPN while the way is slow, and since when,
+    /// as last judged.
+    slow: Option<Slow>,
     watches: Vec<Watch>,
     /// Whether it's to be read at once, rather than when it's next due.
     now: bool,
@@ -418,9 +419,13 @@ fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
     held.state = Some(state);
 }
 
-/// How the state says the way is slow: what waits, or null while it isn't.
-fn slowly(slow: Option<u64>) -> Value {
-    slow.map_or(Value::Null, |ms| json!({"waiting_ms": ms}))
+/// How the state says the way is slow: what waits and since when, or null
+/// while it isn't.
+fn slowly(slow: Option<Slow>) -> Value {
+    slow.map_or(
+        Value::Null,
+        |slow| json!({"waiting_ms": slow.waiting_ms, "since_ms": slow.since_ms}),
+    )
 }
 
 /// Judges whether the way through the VPN is slow from the shaper's
@@ -454,7 +459,7 @@ fn slow_loop<A: Ask>(shared: &Shared<A>) {
 /// Holds how slow the way is, and tells each watch of the state when
 /// that's other than what's held, how WARP stands said beside it as it
 /// stood.
-fn slowed<A: Ask>(shared: &Shared<A>, slow: Option<u64>) {
+fn slowed<A: Ask>(shared: &Shared<A>, slow: Option<Slow>) {
     let mut held = lock(&shared.held);
     if held.slow == slow {
         return;
