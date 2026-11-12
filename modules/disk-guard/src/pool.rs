@@ -14,6 +14,27 @@ pub fn pool(path: &Path) -> io::Result<u64> {
     crate::linux::pool(path)
 }
 
+/// The pool a filesystem's freed blocks go back to besides its own, when
+/// it's an image on another disk mounted to discard (`backing::image`), as
+/// a cargo build disk is: what it frees frees that disk too.
+#[cfg(target_os = "linux")]
+pub fn backed_by(path: &Path) -> Option<u64> {
+    use std::os::unix::fs::MetadataExt;
+    let device = std::fs::metadata(path).ok()?.dev();
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
+    let numbers = (rustix::fs::major(device), rustix::fs::minor(device));
+    let file = crate::backing::image(Path::new("/sys/dev/block"), &mountinfo, numbers)?;
+    pool(&file)
+        .ok()
+        .filter(|&backing| backing != pool(path).unwrap_or(backing))
+}
+
+/// Anywhere else no image is counted as freeing another disk.
+#[cfg(not(target_os = "linux"))]
+pub fn backed_by(_path: &Path) -> Option<u64> {
+    None
+}
+
 /// Whether a walk may go on from `parent` into `path`, a directory beneath
 /// it with a device number of its own: on Linux, when it's a subvolume of
 /// the same Btrfs pool, not mounted and not read-only. The work broker

@@ -3,6 +3,7 @@
 mod activity;
 mod age;
 mod anchor;
+mod backing;
 mod band;
 mod caches;
 #[cfg(target_os = "linux")]

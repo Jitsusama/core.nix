@@ -58,6 +58,9 @@ struct Watched {
     /// After a pass that fell short: no other until this monotonic time,
     /// unless the band gets worse than it was.
     rest: Option<Rest>,
+    /// The pool this filesystem's freed blocks go back to, as an image on
+    /// it that discards (`pool::backed_by`).
+    backing: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1946,10 +1949,42 @@ impl Guard {
                 fill: Fill::default(),
                 space: None,
                 rest: None,
+                backing: crate::pool::backed_by(path),
             });
             seen.insert(device, watched);
         }
         self.watched = seen;
+    }
+
+    /// Whether what's freed on the watched filesystem `on` is freed on
+    /// `device` too, as an image's builds are on the disk it's a file on.
+    fn backs(&self, device: u64, on: u64) -> bool {
+        self.watched
+            .get(&on)
+            .is_some_and(|watched| watched.backing == Some(device))
+    }
+
+    /// Where the images on `device` that `here` offers from are mounted.
+    fn images(&self, device: u64, here: &[Offer]) -> Vec<PathBuf> {
+        let images: BTreeSet<u64> = here
+            .iter()
+            .map(|offer| offer.device)
+            .filter(|&on| on != device)
+            .collect();
+        images
+            .iter()
+            .filter_map(|on| self.watched.get(on).map(|watched| watched.path.clone()))
+            .collect()
+    }
+
+    /// Whether an offer on an image is gone already: its builds are offered
+    /// both to its own disk's pass and to the one beneath it, and the first
+    /// of the two in a round may have taken it.
+    fn taken(&self, offer: &Offer) -> bool {
+        self.watched
+            .get(&offer.device)
+            .is_some_and(|watched| watched.backing.is_some())
+            && fs::symlink_metadata(&offer.candidate.path).is_err()
     }
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
@@ -1976,9 +2011,17 @@ impl Guard {
             if !self.watched.contains_key(&device) {
                 continue;
             }
+            // A disk short of room is offered too what an image on it holds
+            // that the band would take: on one laptop on 11 November the
+            // cargo build disk held 28 GiB of the system disk, and its own
+            // passes came only once the image itself filled.
+            let reaching = matches!(decision, Decision::Reach(_));
             let here: Vec<Offer> = offers
                 .iter()
-                .filter(|offer| offer.device == device)
+                .filter(|offer| {
+                    offer.device == device || reaching && self.backs(device, offer.device)
+                })
+                .filter(|offer| !self.taken(offer))
                 .cloned()
                 .collect();
             let end = self.pass_on(tick, device, &here, aim(decision), thresholds, &mut scan)?;
@@ -2159,6 +2202,7 @@ impl Guard {
         let started = Instant::now();
         let gentle = band < Band::NearlyFull;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
+        let images = self.images(device, here);
         let reclaimer = Reclaim::new(here, scan)
             .during(band)
             .paced(Rc::clone(&pacer));
@@ -2178,7 +2222,9 @@ impl Guard {
         };
         // A pass that can wait waits for the filesystem's own commits; one
         // that can't asks for them. Either beats while it waits.
-        let disk = Filesystem::new(&path).paced(Rc::clone(&pacer));
+        let disk = Filesystem::new(&path)
+            .after(images)
+            .paced(Rc::clone(&pacer));
         let mut disk = if gentle { disk.patient() } else { disk };
         let report = pass(
             &mut disk,

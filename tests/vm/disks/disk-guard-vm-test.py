@@ -306,6 +306,50 @@ def test_once_filling_an_idle_target_goes_and_a_fresh_one_and_a_cache_stay(
     on_test_bands.there("/home/joel/src/idle/Cargo.toml")
 
 
+@pytest.fixture
+def imaged(on_test_bands: Account) -> Iterator[str]:
+    """Give a cargo root on an ext4 image in a file on /home, mounted to discard as cargo's is.
+
+    The image is a sparse gibibyte, so it holds of /home only what's written in it. It goes
+    once the test ends.
+    """
+    machine, image, root = on_test_bands.machine, "/home/joel/builds.img", "/home/joel/builds"
+    machine.succeed(
+        f"truncate -s 1G {image} && mkfs.ext4 -q {image}",
+        f"mkdir -p {root} && mount -o loop,discard {image} {root} && chown joel:users {root}",
+    )
+    yield root
+    machine.succeed(f"umount {root} && rm {image} && rmdir {root}")
+
+
+def test_once_filling_an_idle_target_goes_from_an_image_on_the_disk_with_room_of_its_own(
+    on_test_bands: Account, filling: Callable[[float], None], imaged: str
+) -> None:
+    """Once /home is filling, an idle target in an image on it goes, though the image has room.
+
+    The image gives back each block its builds free, so what goes from it frees /home, and the
+    image's own band, healthy, keeps a target a week.
+    """
+    joel, image, bulk = on_test_bands, "/home/joel/builds.img", f"{imaged}/old/target/debug/bulk"
+    joel.run(f"cargo new -q --lib --vcs none {imaged}/old")
+    joel.run(f"cd {imaged}/old && cargo build -q --offline")
+    joel.run(f"head -c 300M /dev/urandom > {bulk} && sync -f {imaged}")
+    # Built a day ago: past a filling disk's six hours, well inside a healthy one's week.
+    joel.run(f"find {imaged}/old -exec touch -h -d '1 day ago' {{}} +")
+    joel.machine.wait_until_succeeds(
+        f"jq -e '.filesystems | length == 3' {STATUS}", timeout=FOLLOWING
+    )
+    joel.wait_for_band(imaged, "healthy")
+    held = int(joel.machine.succeed(f"du -B1 {image}").split()[0])
+    filling(0.26)
+    joel.gone(bulk)
+    joel.there(f"{imaged}/old/Cargo.toml")
+    # The image hands its freed blocks back as its journal commits, which the pass asks for.
+    joel.machine.wait_until_succeeds(
+        f"test $(du -B1 {image} | cut -f1) -lt {held - (200 << 20)}", timeout=STEPS
+    )
+
+
 def test_once_critically_full_a_build_holding_its_locks_keeps_its_target_until_it_ends(
     on_test_bands: Account, filling: Callable[[float], None], values: dict[str, Any]
 ) -> None:
