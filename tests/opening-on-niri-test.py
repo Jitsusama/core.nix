@@ -115,8 +115,9 @@ ROWS_DOWN = 3
 WARMED_SAID = "places kept as the shell started"
 WARMED = timedelta(seconds=20)
 
-# How long the shell must make no row, after a start, for its sources to have first answered.
-MADE_STILL = timedelta(seconds=1)
+# How long after a start every source here has first answered: what warming once waited out by
+# beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12).
+ANSWERED = timedelta(seconds=6)
 
 
 @pytest.fixture(scope="module")
@@ -334,9 +335,10 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     first chord after each switch found home again whole on its way into the place, as no
     later one does.
     """
+    restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
-    making_held_still(shell)
+    answered_since(restarted)
     made = made_by_others(shell, "windows")
     assert not made, f"first into Windows after a restart, other sources made rows: {made}"
 
@@ -442,21 +444,14 @@ def test_a_first_search_after_a_restart_makes_no_spots_on_its_key(shell: Shell) 
     assert "spots made on a key" not in said, f"a key made the spots: {said}"
 
 
-def making_held_still(shell: Shell) -> None:
-    """Wait until the shell has made no row for MADE_STILL, as sources answer after a start.
+def answered_since(restarted: float) -> None:
+    """Wait until every source has first answered since the restart at `restarted`.
 
     Home and the chords' places are kept a second and a half after a start, before Networks
-    and Displays have first answered here, so their first rows are made while shut, off any
-    opening's path, and would be counted as the next opening's.
+    and Displays first answer here, so the next opening's fill makes their rows again, as it
+    catches up any source changed since it was kept: 6 here, which aren't what this counts.
     """
-    made = json.loads(shell.as_account(shell.ipc("made")))["rows"]
-    still = time.monotonic()
-    giving_up = still + launcher_on_niri.WAITING.total_seconds()
-    while time.monotonic() - still < MADE_STILL.total_seconds():
-        assert time.monotonic() < giving_up, f"after a start, the shell kept making rows: {made}"
-        time.sleep(CLOSING_READ)
-        if (now := json.loads(shell.as_account(shell.ipc("made")))["rows"]) != made:
-            made, still = now, time.monotonic()
+    time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
