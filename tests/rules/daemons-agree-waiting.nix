@@ -29,15 +29,8 @@
     "shown"
     "speaks"
   ];
-  location = [
-    "named"
-    "shown"
-    "speaks"
-  ];
-  machine = [
-    "shown"
-    "speaks"
-  ];
+  location = [ "speaks" ];
+  machine = [ "speaks" ];
   meaning = [
     "held"
     "shown"
@@ -54,10 +47,7 @@
     "speaks"
   ];
   people = [ "speaks" ];
-  programs = [
-    "shown"
-    "speaks"
-  ];
+  programs = [ "speaks" ];
   screen-text = [
     "held"
     "shown"
@@ -76,8 +66,5 @@
     "shown"
     "speaks"
   ];
-  to-do = [
-    "shown"
-    "speaks"
-  ];
+  to-do = [ "speaks" ];
 }
