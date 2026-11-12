@@ -38,6 +38,7 @@ let
     ./checks/sessions.nix
     ./checks/shell.nix
     ./checks/shortcuts.nix
+    ./checks/tabs.nix
     ./checks/sound.nix
     ./checks/spend.nix
     ./checks/terminal.nix

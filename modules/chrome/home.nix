@@ -360,4 +360,10 @@ in
       "--new-window"
     ];
   };
+  # Chrome's open tabs, each found from home by its title or its site, as
+  # the programs daemon serves them from Chrome's session.
+  jitsusama.quickshell.launcher.providers.tabs = {
+    order = 53;
+    source = ./Tabs.qml;
+  };
 }

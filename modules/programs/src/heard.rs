@@ -12,7 +12,7 @@ use std::sync::Arc;
 use programs::notify::Notify;
 use programs::xdg;
 
-use super::{Run, Shared, entries_changed, lock, read_named, start, watched};
+use super::{Run, Shared, entries_changed, lock, read_named, start, tabs, watched};
 
 /// What a watched folder is to this daemon; one can be more than one.
 #[derive(Default)]
@@ -150,7 +150,10 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
         }
         for at in sessions {
             let opened = shared.sources[at].opened_key();
-            let watching = opened.is_some_and(|key| watched(&lock(&shared.daemon), &key));
+            let daemon = lock(&shared.daemon);
+            let watching =
+                opened.is_some_and(|key| watched(&daemon, &key)) || tabs::watched(&daemon);
+            drop(daemon);
             if watching {
                 start(shared, at, Run::Opened);
             }

@@ -450,6 +450,11 @@
     launcher-say, which niri runs on each of the launcher's chords, is linked statically and asks
     the loader for no library, so a chord reads one file, the one held in memory
   '';
+  a-chrome-tab-is-found-by-its-site-and-goes-to-its-window = ''
+    each of Chrome's open pages the programs daemon serves is a launcher row named by its title
+    and found by its site, in the daemon's order, and its Return goes to the Chrome window it's in
+    front of, else Chrome's newest
+  '';
   clipboard-history-passes-clippy = ''
     clippy finds nothing in the clipboard history or its tests
   '';
@@ -1827,7 +1832,9 @@
     file-preview it keeps, again only once the file changed, says a file that file-preview doesn't
     answer within its deadline as not answering, stopping it and what it waits on, and goes on to
     the next, serves Programs' rows open first, counting the windows the windows daemon says each
-    has open and going to the latest, and again as those change, finds them for what's typed by
+    has open and going to the latest, and again as those change, serves Chrome's open pages as
+    rows of their own, named by their titles and said by their sites, and again as Chrome writes
+    its session, finds Programs' rows for what's typed by
     name, keyword, comment and what their binds do, best first with the letters matched, finds
     what was taken by name, newest first, past Recent's nine and no more than asked, with the rows
     it never served and each served whole, unplaced, once it's ahead, counts the changes programs
