@@ -1313,28 +1313,38 @@ Provider {
     // Choose by Ear for each microphone noise cancelling cleans, found by
     // its name from the top though it sits two steps inside the
     // microphone, and worded as For You's offer words it (VKCF3Z's (d),
-    // 2026-11-12). Searched, never listed, since Sound lists devices.
+    // 2026-11-12). Searched, never listed, since Sound lists devices. Made
+    // again only as which microphones there are, or their names, change,
+    // never as a volume or a level moves (tests/sound-served.qml).
+    readonly property string byEarFoundSaid: JSON.stringify(byEarFoundFrom(ordered(inputs)))
     readonly property var byEarFound: whileWanted("byEarFound",
-        () => byEarFoundOf(ordered(inputs)))
+        () => JSON.parse(byEarFoundSaid).map(([node, called]) => byEarFoundRow(node, called)))
+
+    // Each microphone it cleans among `nodes`, by its node's name and its own.
+    function byEarFoundFrom(nodes) {
+        return nodes.filter(node => cancels(node)).map(node => [node.name, named(node)]);
+    }
 
     function byEarFoundOf(nodes) {
-        return nodes.filter(node => cancels(node)).map(node => {
-            const device = `sound:${node.name}`;
-            return thing({
-                key: `sound:by-ear:for:${node.name}`,
-                name: Words.name("sound:by-ear:for", "", { microphone: named(node) }),
-                verb: Words.verb("sound:by-ear"),
-                glyph: Words.glyph("sound:by-ear"),
-                hue: "action",
-                stays: true,
-                note: said("by-ear"),
-                // As For You's offer goes, from the top through Machine,
-                // though nothing here takes an offer.
-                run: () => provider.launcher?.goTo({
-                    trail: ["category:computer", "collection:sound", device, `${device}:by-ear`],
-                    spot: "sound:by-ear:now"
-                })
-            });
+        return byEarFoundFrom(nodes).map(([node, called]) => byEarFoundRow(node, called));
+    }
+
+    function byEarFoundRow(node, called) {
+        const device = `sound:${node}`;
+        return thing({
+            key: `sound:by-ear:for:${node}`,
+            name: Words.name("sound:by-ear:for", "", { microphone: called }),
+            verb: Words.verb("sound:by-ear"),
+            glyph: Words.glyph("sound:by-ear"),
+            hue: "action",
+            stays: true,
+            note: said("by-ear"),
+            // As For You's offer goes, from the top through Machine, though
+            // nothing here takes an offer.
+            run: () => provider.launcher?.goTo({
+                trail: ["category:computer", "collection:sound", device, `${device}:by-ear`],
+                spot: "sound:by-ear:now"
+            })
         });
     }
 
