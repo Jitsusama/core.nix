@@ -32,6 +32,9 @@ pub enum Class {
     /// An entry of a quest's `tmp/` while the quest is at work, which its
     /// session may still mean to read.
     QuestTemp,
+    /// What a quest at work left in its workspace beside `tmp/`: a lab, a
+    /// clone, a run, likelier than `tmp/`'s to be read again.
+    QuestScratch,
     /// A snapshot whose process is gone.
     Snapshot,
     /// What git staged in a repository no git works on now.
@@ -96,6 +99,7 @@ impl Class {
             Class::Variant => "variant",
             Class::Scratch { .. } => "scratch",
             Class::QuestTemp => "quest-temp",
+            Class::QuestScratch => "quest-scratch",
             Class::Snapshot => "snapshot",
             Class::GitTemporary => "git-temporary",
             Class::Workspace => "workspace",
@@ -226,6 +230,11 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         // too: on one laptop that sat filling for days, its quests' tmp/
         // folders held 124 GiB, a quarter unwritten for a week.
         Class::QuestTemp => (Group::Idle, [days(7.0), days(7.0), days(1.0), hours(6.0)]),
+        // Beside tmp/, a lab or a run is likelier to be read again, so a
+        // disk nearly full waits two days for one rather than one. On one
+        // laptop on 11 November, 53 GiB lay there, 11 GiB of it unwritten
+        // for a week.
+        Class::QuestScratch => (Group::Idle, [days(7.0), days(7.0), days(2.0), hours(12.0)]),
         // Of a log, what's trimmed is history nobody reads; the rest stays.
         Class::Snapshot | Class::GitTemporary | Class::NixBuild | Class::Log => {
             (Group::Waste, [AT_ONCE; 4])

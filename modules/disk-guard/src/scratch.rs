@@ -1,5 +1,5 @@
 //! Scratch: directories whose entries are throwaway once nothing writes
-//! to them, such as a quest workspace's `tmp/`.
+//! to them, such as a quest workspace's `tmp/` and what lies beside it.
 
 use crate::age::last_write;
 use crate::clock::Awake;
@@ -70,6 +70,34 @@ pub fn quest_candidate(
 ) -> Option<Candidate> {
     let idle = awake.since(entry.written.min(now), now);
     (idle >= QUEST_UNWRITTEN).then(|| left(entry, Class::QuestTemp, size(), idle))
+}
+
+/// How long what a quest at work left beside its `tmp/` must go unwritten,
+/// in awake seconds, before it's offered: the plan's shortest window for
+/// one.
+pub const QUEST_SCRATCH_UNWRITTEN: f64 = 12.0 * 3_600.0;
+
+/// Whether an entry of a quest's workspace stays whatever its age: `tmp/`,
+/// whose entries go by their own rule; the handover a leaving machine
+/// packs for the share to take home; and a folder of GC roots, whose links
+/// keep what running programs read.
+pub fn kept_beside_tmp(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_none_or(|name| name == "tmp" || name == "handover" || name.starts_with("gcroots"))
+}
+
+/// The candidate what a quest at work left beside its `tmp/` makes, once
+/// it's gone `QUEST_SCRATCH_UNWRITTEN` awake with nothing written; none
+/// before, so `size`, a walk of all of it, is asked only then.
+pub fn quest_scratch_candidate(
+    entry: &Entry,
+    size: impl FnOnce() -> u64,
+    awake: &Awake,
+    now: f64,
+) -> Option<Candidate> {
+    let idle = awake.since(entry.written.min(now), now);
+    (idle >= QUEST_SCRATCH_UNWRITTEN).then(|| left(entry, Class::QuestScratch, size(), idle))
 }
 
 fn left(entry: &Entry, class: Class, size: u64, idle: f64) -> Candidate {
