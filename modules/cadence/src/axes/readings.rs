@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{Axis, Bar, Reading, shown};
-use super::{counted, landings, measure, plans};
+use super::{counted, landings, measure, network, plans};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -51,6 +51,8 @@ pub struct Sources {
     pub plans: plans::Sources,
     /// What code-health and health have already counted.
     pub counted: counted::Sources,
+    /// The network's two day files, the eero's and the shaper's.
+    pub network: network::Sources,
     /// Now, in seconds, and the moment the reading's day began.
     pub now: i64,
     pub midnight: i64,
@@ -156,6 +158,8 @@ fn resources(s: &Sources) -> Axis {
         .from("cadence's day, the kernel's journal"),
         measure::one_call(s.measures.last().map(String::as_str)),
     ];
+    readings.extend(network::eero(&s.network));
+    readings.extend(network::shaper(&s.network));
     readings.extend(counted::held(&s.counted));
     axis("resources", readings)
 }
@@ -594,6 +598,16 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         harness: landings::gather_harness(now),
         plans: plans::gather(),
         counted: counted::gather(folder, state_home, now),
+        network: network::gather(
+            state_home,
+            &Timestamp::from_second(now)
+                .map(|t| {
+                    t.to_zoned(TimeZone::system())
+                        .strftime("%Y-%m-%d")
+                        .to_string()
+                })
+                .unwrap_or_default(),
+        ),
         now,
         midnight,
     }
