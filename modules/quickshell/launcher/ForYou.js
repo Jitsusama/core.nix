@@ -344,6 +344,11 @@ function moment(at, now, say) {
     return day === "" ? say.time(read) : filled(say.moment, { day, time: say.time(read) });
 }
 
+// What a look points at, short enough for one line of its drawer.
+function pointsAt() {
+    return "";
+}
+
 // A drawer's session, and how its quest stands where it isn't active,
 // as Agents says it (SessionDrawer.js): "pi \u00b7 core \u00b7 paused". Its
 // quest is the eyebrow's, so no fact names it again (VKCF3Z, 2026-11-08);
