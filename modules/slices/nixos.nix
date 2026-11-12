@@ -7,6 +7,10 @@
 # threads, a wakeup in session.slice waited at most 751 us at this weight
 # against 1,962 us at the default.
 #
+# Long because every slice's floor, ceiling and weight is a share of one
+# machine's memory and CPU, sized against the others', so they're read and
+# changed together: a ceiling raised in one place passes memory in another.
+#
 # What Joel works in comes before the work it starts. The shell, pi, an
 # editor and a terminal's copy all sit in the window's own scope, kitty's
 # kitty-<pid>-<n>.scope, at an app's weight, so they answer as quickly as
@@ -176,15 +180,30 @@ let
   # session that waits can wait on swap; work that's ended starts again. So the kernel keeps the
   # sessions' 15% while it finds anything else, and takes it back before it
   # ends anything.
+  # On 12 November at 17:06, with 80 sessions open, Joel's programs held
+  # 5.9 GiB with 1.1 more in swap and had reached 13.8, most of it Chrome's
+  # and the editor's files read in, and the shell held 2.5 GiB with 1.7 in
+  # swap and had reached 5.3. The floors held less than either used, so what
+  # Joel reached for next came back from swap. app.slice's floor is 13%,
+  # 8.1 GiB, and soft as well as hard, so the kernel keeps what it holds
+  # past the floor while it finds anything else. The sessions held 19.9 GiB
+  # with 16.5 in swap, and their floor is 10%, 6.2 GiB, enough to back the
+  # floors of the windows Joel is at (jobs-sorter's focus.rs), which a
+  # child keeps only as far as its slice has one.
   # Every slice above claims both kinds of floor, since the kernel protects a
-  # slice only as far as each slice above it is protected. Hard, 15% covers
-  # app.slice's 6.2 GiB and session.slice's 2.5 on a 62 GiB machine; soft,
-  # agents.slice's 15%. What the floors below leave unused the kernel shares
-  # among the account's other slices. Work in jobs, background and containers
-  # has the rest of memory, and when that runs out, it's what swaps.
-  apps = "10%";
-  agents = "15%";
+  # slice only as far as each slice above it is protected. Hard, 21% covers
+  # app.slice's 8.1 GiB and session.slice's 4.5 on a 62 GiB machine, and no
+  # more: with memory_recursiveprot a floor its children don't claim is
+  # shared among them by use, which would hand it to agents' sessions, and
+  # hard floors kept for idle sessions are what ended work from 4 to 6
+  # November. Soft, 31% covers those and agents.slice's 10%. What the floors
+  # below leave unused the kernel shares among the account's other slices.
+  # Work in jobs, background and containers has the rest of memory, and when
+  # that runs out, it's what swaps.
+  apps = "13%";
+  agents = "10%";
   agentsHeld = "512M";
+  session = "4608M";
 
   # Past a ceiling, the sessions reclaim their own memory rather than the
   # machine's. With 83 of them open on 10 November they held 27 GiB, 40
@@ -206,8 +225,16 @@ let
   # app.slice's went from 0.034% to 0.023% and session.slice's from
   # 0.015% to 0.003%. The hard floors below, not this ceiling, keep Joel's
   # apps' room.
-  agentsHigh = "51%";
-  account = "15%";
+  # At 51%, though, the ceilings below summed past memory: on 12 November
+  # at 16:33 a fetch in agents.slice wanted 3.5 GiB and two greps in jobs
+  # 7.1, each slice under its own ceiling, while 2 GiB was free and 26 in
+  # swap. kswapd gave up, and every program that needed a page reclaimed
+  # one itself, the shell among them, which froze. The sessions' 42%, 26
+  # GiB, jobs' 26% and shared's 10% sum with Joel's floors to just under all
+  # of memory, so a burst in any of them reclaims its own pages first.
+  agentsHigh = "42%";
+  account = "21%";
+  above = "31%";
 
   # The system's own services a call or the desktop waits on keep a soft
   # floor each, about twice what each held: the journal every program
@@ -330,7 +357,8 @@ in
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
-      MemoryMin = "2560M";
+      MemoryMin = session;
+      MemoryLow = session;
     };
 
     # Ten times the weight of what sits beside it in the account, agents'
@@ -343,6 +371,7 @@ in
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
       MemoryMin = apps;
+      MemoryLow = apps;
     };
 
     # Agents' sessions, pi in a window of kitty's each, beside the apps
@@ -361,8 +390,8 @@ in
     # sessions-kitty), which a child's hard floor has only as far as its
     # slice has one. Soft alone, the kernel took it back 285,154 times in
     # 40 minutes of the account swapping on 2026-11-10, and Joel's typing
-    # stalled each time a session opened. Inside the account's 15% it sits
-    # beside session.slice's 2.5 GiB and app.slice's 6.2.
+    # stalled each time a session opened. Inside the account's 21% it sits
+    # beside session.slice's 4.5 GiB and app.slice's 8.1.
     systemd.user.slices.agents.sliceConfig = {
       MemoryLow = agents;
       MemoryMin = agentsHeld;
@@ -370,7 +399,10 @@ in
     };
 
     # Beside app.slice and session.slice, so it yields to both, and held to
-    # half of memory. The floors keep only what apps already hold: work in
+    # 26% of memory, 16 GiB here, so that it and the sessions can't together
+    # take what Joel's slices hold (see agentsHigh). At 12 GiB on 12 November
+    # work sat at its ceiling, slowed 767,888 times by 18:00, and moved slowly
+    # while 29 GiB was free. The floors keep only what apps already hold: work in
     # jobs still took the rest, pushing out to swap what an app reached for
     # next. Past the ceiling, jobs swaps its own memory instead. In 238
     # ten-second windows without it, apps waited on memory 0.67% of the time,
@@ -381,7 +413,7 @@ in
     # slows work past the ceiling and never ends it.
     systemd.user.slices.jobs.sliceConfig = {
       CPUWeight = "idle";
-      MemoryHigh = "50%";
+      MemoryHigh = "26%";
       IOWeight = 1;
     };
     systemd.user.slices.background.sliceConfig.IOWeight = 1;
@@ -398,7 +430,7 @@ in
     systemd.user.slices.shared.sliceConfig = {
       CPUWeight = 10;
       IOWeight = 10;
-      MemoryHigh = "15%";
+      MemoryHigh = "10%";
     };
 
     # Each measured disk is shared by weight from the moment it appears, and
@@ -425,7 +457,7 @@ in
       # Every account's manager, user@<uid>.service, beside its slice.
       "user@".serviceConfig = limits // {
         MemoryMin = account;
-        MemoryLow = agents;
+        MemoryLow = above;
       };
       # A machine already up takes favordynmods at the switch that brings it,
       # from a remount, which keeps the hierarchy's other flags; it can't be
@@ -774,7 +806,7 @@ in
     # weight, ten times theirs.
     systemd.slices.user.sliceConfig = {
       MemoryMin = account;
-      MemoryLow = agents;
+      MemoryLow = above;
       IOWeight = 1000;
     }
     // latency;
@@ -784,7 +816,7 @@ in
       overrideStrategy = "asDropin";
       sliceConfig = {
         MemoryMin = account;
-        MemoryLow = agents;
+        MemoryLow = above;
       };
     };
 

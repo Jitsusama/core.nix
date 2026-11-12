@@ -62,10 +62,10 @@ use serde_json::Value;
 pub const WEIGHT: u64 = 1000;
 
 /// The memory a held window keeps under pressure: past the 726 MB one
-/// had in swap, and three of them within agents.slice's floor of 15%,
-/// 9.3 GiB on a 62 GiB machine, so each holds whole. An orchestrator's
+/// had in swap, and three of them within agents.slice's floor of 10%,
+/// 6.2 GiB on a 62 GiB machine, so each holds whole. An orchestrator's
 /// window held gives up its own smaller floor while it is (`src/keep.rs`).
-pub const FLOOR: u64 = 3 << 30;
+pub const FLOOR: u64 = 2 << 30;
 
 /// How long a window Joel left stays held.
 pub const FOR: Duration = Duration::from_secs(600);
@@ -789,10 +789,10 @@ mod tests {
 
     #[test]
     fn three_floors_fit_inside_the_agents_slices_own() {
-        // agents.slice's floor is 15% of a 62 GiB machine (modules/slices).
+        // agents.slice's floor is 10% of a 62 GiB machine (modules/slices).
         const {
             assert!(
-                FLOOR * MOST as u64 <= (62 << 30) * 15 / 100,
+                FLOOR * MOST as u64 <= (62 << 30) * 10 / 100,
                 "three floors past agents.slice's own"
             );
         };

@@ -170,7 +170,7 @@ mod tests {
                 "3",
                 "MemoryLow",
                 "t",
-                "3221225472",
+                "2147483648",
                 "MemoryZSwapWriteback",
                 "b",
                 "false",

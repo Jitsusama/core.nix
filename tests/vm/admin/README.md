@@ -30,5 +30,8 @@ for what a VM lacks.
 | `vm-first-guest.py`                             | that test's stand-in VM, its threads as vm-first sees them      |
 | `uid-range.nix`                                 | the build that test asks for a range of user ids with           |
 
+- `joel-first/`: Joel's shell drawing on time while agents' work bursts, with
+  its stand-in shell timing each frame and its stand-in work using what it
+  holds over and over.
 - `niri-off-cpu/`: a stand-in for niri's main thread, waiting and asleep as
   niri does.
