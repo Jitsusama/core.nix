@@ -126,40 +126,24 @@ onLinux {
       touch $out
     '';
 
-  # Escape backs out a step in Spotify: the extension goes back a page only
-  # once nothing is drawn over it, no row is chosen and no field is typed in
-  # (tests/spotify-backs-out-on-escape.mjs, against stand-ins for Spotify's
-  # page), and the client the account gets carries it and loads it.
-  spotify-backs-out-on-escape =
+  # Spotify's page answers the key language: the extension the account's
+  # client carries and loads, with the language written in, scrolls a
+  # stand-in for Spotify's page as Vim scrolls one, steps through its
+  # history and opens its filter, and leaves Escape to Spotify
+  # (tests/spotify-speaks-vims-keys.mjs).
+  spotify-speaks-vims-keys =
     let
       home = account graphical;
       client = "${home.programs.spicetify.spicedSpotify}/share/spotify/Apps/xpui";
     in
-    pkgs.runCommandLocal "spotify-backs-out-on-escape" { } ''
-      ${lib.getExe pkgs.nodejs} --no-warnings ${./tests/spotify-backs-out-on-escape.mjs} \
-        ${./backs-out.js}
-      cmp ${./backs-out.js} ${client}/extensions/backs-out.js
-      grep -q -F "extensions/backs-out.js" ${client}/index.html
-      touch $out
-    '';
-
-  # Spotify's page scrolls on the key language's keys for scrolling, all
-  # but Ctrl+f, Spotify's filter: the extension the account's client
-  # carries and loads, with the language written in, moves a stand-in for
-  # Spotify's page as Vim moves one (tests/spotify-scrolls-on-vim-keys.mjs).
-  spotify-scrolls-on-vim-keys =
-    let
-      home = account graphical;
-      client = "${home.programs.spicetify.spicedSpotify}/share/spotify/Apps/xpui";
-    in
-    pkgs.runCommandLocal "spotify-scrolls-on-vim-keys" { } ''
-      if [ ! -e ${client}/extensions/scrolls.js ]; then
-        echo "Spotify's client carries no extension scrolling its page"
+    pkgs.runCommandLocal "spotify-speaks-vims-keys" { } ''
+      if [ ! -e ${client}/extensions/speaks-vims-keys.js ]; then
+        echo "Spotify's client carries no extension giving it Vim's keys"
         exit 1
       fi
-      ${lib.getExe pkgs.nodejs} --no-warnings ${./tests/spotify-scrolls-on-vim-keys.mjs} \
-        ${client}/extensions/scrolls.js
-      grep -q -F "extensions/scrolls.js" ${client}/index.html
+      ${lib.getExe pkgs.nodejs} --no-warnings ${./tests/spotify-speaks-vims-keys.mjs} \
+        ${client}/extensions/speaks-vims-keys.js
+      grep -q -F "extensions/speaks-vims-keys.js" ${client}/index.html
       touch $out
     '';
 

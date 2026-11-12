@@ -2140,9 +2140,6 @@
     the AI spend watch yields to the account, comes back when it fails, and leaves its status behind
     when it stops
   '';
-  spotify-backs-out-on-escape = ''
-    Escape goes back a page in Spotify once nothing is left to close or let go of
-  '';
   spotify-draws-in-the-theme = ''
     Spotify's client is built in the theme's colours and faces
   '';
@@ -2166,9 +2163,10 @@
     writes it back 0600 in its own shape keeping its refresh token; finds a device to play on;
     and says signed out, nowhere to play and out of reach apart
   '';
-  spotify-scrolls-on-vim-keys = ''
-    Spotify's page scrolls on Vim's j, k, Ctrl+e, Ctrl+y, Ctrl+d, Ctrl+u, Ctrl+b, gg and G as Vim
-    scrolls, leaving Ctrl+f, Alt, a field and a dialog to Spotify, rather than on nothing
+  spotify-speaks-vims-keys = ''
+    Spotify's page scrolls on Vim's j, k, Ctrl+e, Ctrl+y, Ctrl+d, Ctrl+u, Ctrl+f, Ctrl+b, gg and G
+    as Vim scrolls, goes back and forward a page on Ctrl+o and Ctrl+i, and opens its filter on /,
+    leaving Escape, Alt, a field and a dialog to Spotify
   '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered

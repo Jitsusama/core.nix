@@ -1,18 +1,20 @@
-// Spotify's scrolling extension as the client the account gets carries it
-// (modules/spotify/scrolls.js with the key language written in, the first
-// argument), run against a stand-in for Spotify's page: a view 800 pixels
-// high over 4000 of page. Vim's keys for scrolling move it as far as Vim's
-// do, gg only when its second g comes inside the language's wait and g then
-// j as j, and Ctrl+f, a key with Alt, a key typed in a field and one with a
-// dialog showing are left to Spotify.
+// Spotify's extension for the key language as the client the account gets
+// carries it (modules/spotify/speaks-vims-keys.js with the language written
+// in, the first argument), run against a stand-in for Spotify's page: a view
+// 800 pixels high over 4000 of page, its history and its filter. Vim's keys
+// for scrolling move it as far as Vim's do, gg only when its second g comes
+// inside the language's wait and g then j as j; Ctrl+o and Ctrl+i step
+// through its history and / opens its filter. Escape, a key with Alt, a key
+// typed in a field and one with a dialog showing are left to Spotify.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
 const source = readFileSync(process.argv[2], "utf8");
 
-// A page with its view scrolled to the top, showing a dialog when asked.
-const load = ({ dialog = false } = {}) => {
+// A page with its view scrolled to the top, its filter shut, and a dialog
+// showing when asked; with Spicetify's history unless it hasn't come yet.
+const load = ({ dialog = false, filterOpen = false, history = true } = {}) => {
   const view = {
     scrollTop: 0,
     clientHeight: 800,
@@ -24,21 +26,32 @@ const load = ({ dialog = false } = {}) => {
       );
     },
   };
-  const page = { listeners: [], view, at: 0 };
+  const page = { listeners: [], view, at: 0, steps: [], filter: [] };
+  const input = { checkVisibility: () => filterOpen, focus: () => page.filter.push("focused") };
+  const button = { checkVisibility: () => true, click: () => page.filter.push("opened") };
+  const parts = [
+    ["main-view-container__scroll-node", [view]],
+    ["x-filterBox-filterInput", [input]],
+    ["x-filterBox-expandButton", [button]],
+    ['[role="dialog"]', dialog ? [{ checkVisibility: () => true }] : []],
+  ];
   const context = {
     document: {
-      querySelectorAll: (selectors) => {
-        if (selectors.includes("main-view-container__scroll-node")) {
-          return [view];
-        }
-        return dialog && selectors.includes('[role="dialog"]')
-          ? [{ checkVisibility: () => true }]
-          : [];
-      },
+      querySelectorAll: (selectors) => parts.find(([part]) => selectors.includes(part))?.[1] ?? [],
     },
     addEventListener(type, listener, capture) {
       page.listeners.push({ type, listener, capture });
     },
+    Spicetify: history
+      ? {
+          Platform: {
+            History: {
+              goBack: () => page.steps.push("back"),
+              goForward: () => page.steps.push("forward"),
+            },
+          },
+        }
+      : {},
   };
   runInNewContext(source, context);
   // A key pressed `after` milliseconds past the last, answering whether the
@@ -83,6 +96,7 @@ const load = ({ dialog = false } = {}) => {
     ["y", { ctrlKey: true }, 0, "Ctrl+y scrolls a line up"],
     ["d", { ctrlKey: true }, 400, "Ctrl+d scrolls half the view down"],
     ["u", { ctrlKey: true }, 0, "Ctrl+u scrolls half the view up"],
+    ["f", { ctrlKey: true }, 800, "Ctrl+f scrolls the whole view down"],
     ["G", { shiftKey: true }, 3200, "G goes to the bottom"],
     ["b", { ctrlKey: true }, 2400, "Ctrl+b scrolls the whole view up"],
   ];
@@ -107,17 +121,41 @@ const load = ({ dialog = false } = {}) => {
 
 {
   const page = load();
+  assert.equal(page.press("o", { ctrlKey: true }), true, "Ctrl+o is taken from Spotify");
+  assert.equal(page.press("i", { ctrlKey: true }), true, "Ctrl+i is taken from Spotify");
+  assert.deepEqual(page.steps, ["back", "forward"], "Ctrl+o goes back a page, Ctrl+i forward");
+  assert.equal(page.press("/"), true, "/ is taken from Spotify");
+  assert.deepEqual(page.filter, ["opened"], "/ opens the shut filter");
+}
+
+{
+  const page = load({ filterOpen: true });
+  page.press("/");
+  assert.deepEqual(page.filter, ["focused"], "/ goes to the filter's field when it's open");
+}
+
+{
+  const page = load({ history: false });
+  const back = page.press("o", { ctrlKey: true });
+  assert.equal(back, false, "Ctrl+o before Spicetify's history comes is left to Spotify");
+}
+
+{
+  const page = load();
   const field = { closest: (selectors) => (selectors.includes("input") ? {} : null) };
   const left = [
-    ["f", { ctrlKey: true }, "Ctrl+f, Spotify's filter"],
+    ["Escape", {}, "Escape, which never steps out"],
     ["j", { altKey: true }, "Alt+j, Spotify's menu for a row"],
     ["j", { target: field }, "j typed in a field"],
-    ["x", {}, "a key the language gives no scrolling"],
+    ["/", { target: field }, "/ typed in a field"],
+    ["x", {}, "a key the language gives Spotify nothing for"],
   ];
   for (const [key, how, what] of left) {
     assert.equal(page.press(key, how), false, `${what} is left to Spotify`);
     assert.equal(page.view.scrollTop, 0, `${what} scrolls nothing`);
   }
+  assert.deepEqual(page.steps, [], "nothing left to Spotify steps through its history");
+  assert.deepEqual(page.filter, [], "nothing left to Spotify opens its filter");
 }
 
 {

@@ -6,14 +6,13 @@
 # it after it's installed, and Spotify keeps its own prefs file, which holds
 # the account it signs in with.
 #
-# The launcher lists Spotify's own keys over its window, as Music. Spotify
-# takes no settings for its keys, and it has every key of the desktop's but
-# one: Escape only closes and lets go there. So a Spicetify extension of
-# ours, backs-out.js, makes Escape go back a page once nothing is left to
-# close or let go of, as it backs out a step everywhere else. Another,
-# scrolls.js, scrolls its page on the key language's keys for scrolling
-# (modules/keys/language.toml), but Ctrl+f, which Spotify keeps for
-# filtering a list.
+# The launcher lists Spotify's keys over its window, as Music. Spotify
+# takes no settings for its keys, so a Spicetify extension of ours,
+# speaks-vims-keys.js, gives its page the key language's
+# (modules/keys/language.toml): Vim's keys scroll it, Ctrl+o and Ctrl+i go
+# back and forward, and / filters its list, where Spotify's own Ctrl+f now
+# goes down a page. Escape stays Spotify's, closing and letting go, since it
+# never steps out.
 #
 # The shell shows each new track itself (Music.qml). Spotify's own notice
 # for one is off unless it's turned on in Spotify's settings, and Spotify
@@ -66,8 +65,8 @@ let
 
   grouped = group: map (key: key // { inherit group; });
 
-  # What each of the language's acts for scrolling a page does in Spotify,
-  # in the launcher's words.
+  # What each of the language's acts speaks-vims-keys.js does in Spotify
+  # does, in the launcher's words, scrolling or not.
   scrollActs = {
     down = "Scroll down";
     up = "Scroll up";
@@ -80,26 +79,46 @@ let
     first = "The top of the page";
     last = "The bottom of the page";
   };
+  otherActs = {
+    jump-back = "Back a page";
+    jump-forward = "Forward a page";
+    search-forward = "Filter the list";
+  };
 
-  # Each act's keys scrolls.js reads: letters and Ctrl's. Not a named key,
-  # as Page Down, which Spotify scrolls by itself, nor Ctrl+f, Spotify's
-  # filter.
-  scrollKeys =
+  # Each act's keys speaks-vims-keys.js reads: letters and Ctrl's, not a
+  # named key, as Page Down, which Spotify takes by itself.
+  keysOf =
     act:
     lib.filter (
-      key: builtins.match "<C-.>|[^<]+" key != null && key != "<C-f>"
+      key: builtins.match "<C-.>|[^<]+" key != null
     ) config.jitsusama.keyLanguage.acts.${act}.keys;
 
-  # Every key scrolls.js takes, with its act.
-  scrollBinds = lib.concatMap (act: map (key: { inherit act key; }) (scrollKeys act)) (
-    lib.attrNames scrollActs
-  );
+  # Every key it takes, with its act and what that does.
+  bindsOf =
+    acts:
+    lib.concatMap (
+      act:
+      map (key: {
+        inherit act key;
+        does = acts.${act};
+      }) (keysOf act)
+    ) (lib.attrNames acts);
+  scrollBinds = bindsOf scrollActs;
+  otherBinds = bindsOf otherActs;
 
-  # What scrolls.js reads: each key's act, and how long a g waits for its
-  # second.
+  # What speaks-vims-keys.js reads: each key's act, and how long a g waits
+  # for its second.
   language = {
     inherit (config.jitsusama.keyLanguage.timing) wait;
-    keys = lib.listToAttrs (map (bind: lib.nameValuePair bind.key bind.act) scrollBinds);
+    keys = lib.listToAttrs (
+      map (bind: lib.nameValuePair bind.key bind.act) (scrollBinds ++ otherBinds)
+    );
+  };
+
+  # A bind of the extension's, in the launcher's spelling.
+  listed = bind: {
+    chord = chordOf bind.key;
+    inherit (bind) act does;
   };
 
   # A key in the launcher's spelling: <C-d> is Ctrl+d, G is Shift+g and gg
@@ -121,7 +140,7 @@ let
 
   # Spotify's own keys, which it takes no settings for, from its list for
   # Windows and Linux (support.spotify.com's keyboard shortcuts), and the
-  # one backs-out.js adds.
+  # ones speaks-vims-keys.js adds.
   keys =
     grouped "going" [
       {
@@ -177,13 +196,7 @@ let
         does = "The queue";
       }
     ]
-    ++ grouped "scrolling" (
-      map (bind: {
-        chord = chordOf bind.key;
-        does = scrollActs.${bind.act};
-        inherit (bind) act;
-      }) scrollBinds
-    )
+    ++ grouped "scrolling" (map listed scrollBinds)
     ++ grouped "playing" [
       {
         chord = "Space";
@@ -206,6 +219,7 @@ let
         does = "Like the song, or not";
       }
     ]
+    ++ map listed otherBinds
     ++ [
       {
         chord = "Ctrl+k";
@@ -214,10 +228,6 @@ let
       {
         chord = "Ctrl+l";
         does = "The search page";
-      }
-      {
-        chord = "Ctrl+f";
-        does = "Filter the list";
       }
       {
         chord = "Alt+j";
@@ -230,10 +240,6 @@ let
       {
         chord = "Alt+Shift+l";
         does = "Show or hide the library beside";
-      }
-      {
-        chord = "Escape";
-        does = "Back in Spotify";
       }
       {
         chord = "Ctrl+,";
@@ -275,16 +281,12 @@ in
     };
     enabledExtensions = [
       {
-        src = pkgs.writeTextDir "backs-out.js" (builtins.readFile ./backs-out.js);
-        name = "backs-out.js";
-      }
-      {
-        src = pkgs.writeTextDir "scrolls.js" (
+        src = pkgs.writeTextDir "speaks-vims-keys.js" (
           lib.replaceStrings [ ''"@language@"'' ] [ (builtins.toJSON (builtins.toJSON language)) ] (
-            builtins.readFile ./scrolls.js
+            builtins.readFile ./speaks-vims-keys.js
           )
         );
-        name = "scrolls.js";
+        name = "speaks-vims-keys.js";
       }
     ];
   };
