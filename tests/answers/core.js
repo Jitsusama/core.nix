@@ -208,6 +208,15 @@ function run(failures) {
         Seen.seen(listing, provider, ["heat"]);
     }
     machine("what's found is read once for six providers asking", rowsRead, counted.length);
+    // A letter and its Backspace list one place's rows and then its whole
+    // list again, which was read afresh on each (2026-11-11).
+    rowsRead = 0;
+    const whole = counted.slice();
+    const letter = whole.slice(0, 10);
+    for (const shown of [whole, letter, whole, letter]) {
+        Seen.seen(opened({ matches: shown }), watcher, ["heat"]);
+    }
+    machine("a list shown again is read once", rowsRead, whole.length + letter.length);
     machine("what's found still says whose it is when read once",
         Seen.seen(opened({ matches: [{ from: {} }, its] }), watcher, []), true);
     // What each camera says of itself, from sysfs and desk-facts.
