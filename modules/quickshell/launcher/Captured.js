@@ -117,12 +117,19 @@ function landsIn(folder, also) {
 // and Stop among them (drawers.md's Act kind, VKCF3Z, 37e49991): what it
 // does, in one sentence, then its Key, where it Lands In, and the Last one
 // taken there, with when; where it lands is said once, as a fact
-// (VKCF3Z, bc8cda12). `act` is its { title, does, lands }, `key` its chord
-// as words, "" for none, and `last` the newest thing where it lands, or
-// null; `told` as `drawer`'s, its `eyebrow` the place's name. A fact it
-// can't give, as a first screenshot's Last, is left out.
+// (VKCF3Z, bc8cda12). Folded under za are what a terminal types to do the
+// same, the folder's whole path and the format of what it takes, as the
+// Act kind's fold has them, never among its facts. Its acts are named here,
+// Return's first, rather than made from its row's verbs, which made rows
+// each time an arrow rested on one (KP0L6A's ee796b07). `act` is its {
+// title, does, lands, command, path, format, acts }, `acts` their names;
+// `key` its chord as words, "" for none, and `last` the newest thing
+// where it lands, or null; `told` as `drawer`'s, its `eyebrow` the
+// place's name. A fact or a bit it can't give, as a first screenshot's
+// Last, is left out.
 function act(row, key, last, told) {
     const { now, named, eyebrow, days } = told;
+    const said = fact => ({ label: named(fact.id), value: fact.value });
     return {
         eyebrow,
         title: row.title,
@@ -131,8 +138,10 @@ function act(row, key, last, told) {
             { id: "key", value: key },
             { id: "lands", value: row.lands },
             { id: "last", value: last === null ? "" : taken(last.at, now, days) }
-        ].filter(fact => fact.value !== "")
-            .map(fact => ({ label: named(fact.id), value: fact.value }))
+        ].filter(fact => fact.value !== "").map(said),
+        nerd: ["command", "path", "format"].map(id => ({ id, value: row[id] ?? "" }))
+            .filter(bit => bit.value !== "").map(said),
+        acts: (row.acts ?? []).map((name, at) => ({ name, key: at === 0 ? "\u21b5" : "" }))
     };
 }
 

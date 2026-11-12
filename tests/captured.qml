@@ -146,7 +146,11 @@ QtObject {
         const screen = {
             title: "The Whole Screen",
             does: "Takes a picture of the whole screen.",
-            lands: "Screenshots, and on the clipboard"
+            lands: "Screenshots, and on the clipboard",
+            command: "niri msg action screenshot-screen",
+            path: shots,
+            format: "PNG",
+            acts: ["Take", "Open the Folder"]
         };
         expect("an act says what it does, then its key, where it lands and the last one",
             Captured.act(screen, "Print", Captured.newest(files, shots), acts), {
@@ -157,8 +161,25 @@ QtObject {
                     { label: "[key]", value: "Print" },
                     { label: "[lands]", value: "Screenshots, and on the clipboard" },
                     { label: "[last]", value: "09:12" }
-                ]
+                ],
+                nerd: [
+                    { label: "[command]", value: "niri msg action screenshot-screen" },
+                    { label: "[path]", value: shots },
+                    { label: "[format]", value: "PNG" }
+                ],
+                acts: [{ name: "Take", key: "\u21b5" }, { name: "Open the Folder", key: "" }]
             });
+        // Its acts are named by the drawer, not made from its row's verbs,
+        // which made rows each time an arrow rested on one (KP0L6A's
+        // ee796b07, keeps-up's Agents). Return takes the first.
+        expect("an act's drawer names its acts, Return's first",
+            Captured.act(screen, "", null, acts).acts.map(one => one.key), ["\u21b5", ""]);
+        // Its command, raw path and format are folded under za, never among
+        // its facts (drawers.md's Act kind: "the command it runs, the raw
+        // path, the format"), and one it can't give is left out.
+        expect("a nerdy bit it can't give is left out",
+            Captured.act(Object.assign({}, screen, { command: "" }), "", null, acts).nerd,
+            [{ label: "[path]", value: shots }, { label: "[format]", value: "PNG" }]);
         expect("a fact it can't give, no key or nothing taken yet, is left out",
             Captured.act(screen, "", null, acts).facts,
             [{ label: "[lands]", value: "Screenshots, and on the clipboard" }]);

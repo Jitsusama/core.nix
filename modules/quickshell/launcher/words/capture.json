@@ -126,6 +126,30 @@
       "name": "Last"
     },
     {
+      "id": "capture:command",
+      "in": "capture",
+      "name": "Command"
+    },
+    {
+      "id": "capture:path",
+      "in": "capture",
+      "name": "Path"
+    },
+    {
+      "id": "capture:format",
+      "in": "capture",
+      "name": "Format"
+    },
+    {
+      "id": "verb:capture:folder",
+      "command": "open",
+      "argument": "folder",
+      "in": "capture",
+      "name": "Open the Folder",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
       "id": "capture:length",
       "in": "capture",
       "name": "Length"
