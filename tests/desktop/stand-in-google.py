@@ -3,7 +3,7 @@
 It speaks the program's daemon interface (modules/google/src/daemon.rs), on the socket systemd
 hands it or else the one it's named: each meeting, piece of mail and document a record, and the
 account one more, each told to a watch as it changes, and what a shell asks taken as an act, a
-line of ask.rs. The account is ready, unless a test signs it out, with three
+line of ask.rs, or a time it types inside Move answered as the program answers one. The account is ready, unless a test signs it out, with three
 meetings on Meet from when the stand-in starts: Design Review five minutes on, Joel's own,
 reminding him a minute before, or nearer or further as a test asks; Standup half an hour on,
 Ada's in Room 4 every weekday, with Grace not going and Ada's Quarterly Plan and an agenda
@@ -599,6 +599,12 @@ class Account:
         if asked.get("ask") == "act" and isinstance(asked.get("act"), dict):
             self.act(cast("dict[str, dict[str, object]]", asked["act"]))
             return {"id": id_, "taken": True}
+        if asked.get("ask") == "search":
+            with self.lock:
+                state = copy.deepcopy(self.state())
+            found = calendar_typed(state["meetings"], state["held"], asked)
+            if found is not None:
+                return found | {"id": id_}
         return {"id": id_, "error": {"code": "unknown-ask", "message": "not here"}}
 
     def act(self, said: dict[str, dict[str, object]]) -> None:
@@ -760,6 +766,16 @@ def calendar_records(meetings: object, held: object) -> list[dict[str, object]]:
         [sys.argv[2], sys.argv[3]], input=asked, capture_output=True, text=True, check=True
     )
     return cast("list[dict[str, object]]", json.loads(made.stdout))
+
+
+def calendar_typed(meetings: object, held: object, search: object) -> dict[str, object] | None:
+    """Give what the program answers a search with, a time typed inside Move, or None."""
+    now = int(time.time() * 1000)
+    asked = json.dumps({"meetings": meetings, "held": held, "now": now, "search": search})
+    made = subprocess.run(  # noqa: S603
+        [sys.argv[2], sys.argv[3]], input=asked, capture_output=True, text=True, check=True
+    )
+    return cast("dict[str, object] | None", json.loads(made.stdout))
 
 
 def listening(path: Path) -> socket.socket:

@@ -13,7 +13,10 @@
 // drawer reads its record as it is now. Another place serving a document
 // as a row of its own, lending it, shows Documents' row for it, or its
 // own while Documents holds none, and only that row is made again as
-// Documents' change. It exits 0 once every case
+// Documents' change. What's typed inside a step is asked of its daemon
+// within it, and its answer's rows held beside the watch's, the same key
+// the same row, and one not answered is said as none. It exits 0 once
+// every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -190,6 +193,48 @@ ShellRoot {
             Expect.expect("and gone, the served row stands again",
                 borrower.rowAt("row:calendar:late")?.name === "late",
                 borrower.rowAt("row:calendar:late")?.name);
+            // What's typed inside a step is asked of its daemon within the
+            // step, and the rows answered held beside the watch's, the
+            // same key the same row, so none moves under the cursor; one
+            // not answered is none, for the place to say so (Y2YBTS's
+            // bf11aae8).
+            const move = "row:calendar:plan:move";
+            const asking = borrower.link.asked;
+            Expect.expect("with no daemon to ask, what's typed is said unanswered at once",
+                borrower.typedIn(move, "thu 2") === null && borrower.link.asked === asking + 1,
+                borrower.link.asked - asking);
+            Expect.expect("and isn't asked again for the same words",
+                borrower.typedIn(move, "thu 2") === null && borrower.link.asked === asking + 1,
+                borrower.link.asked - asking);
+            const time = `${move}:2026-11-19T19:00:00Z`;
+            const timed = (key, parent, name) => ({ key, kind: "row", row: { key, parent, name,
+                place: "calendar", kind: "time", depth: 2, glyph: "", hue: "action", side: [],
+                acts: [] } });
+            const answer = words => ({ id: "found", words, keys: [time], rows: {
+                [time]: timed(time, move, "Thursday"),
+                [`${time}:sure`]: timed(`${time}:sure`, time, "Move It") } });
+            // As a daemon that answers would be asked.
+            borrower.typedAsking = `${move}\nthu 2pm`;
+            borrower.typedAnswered(move, "thu 2", answer("thu 2"));
+            Expect.expect("an answer to words typed over is let go",
+                borrower.typedIn(move, "thu 2pm")?.length === 0, "");
+            borrower.typedAnswered(move, "thu 2pm", answer("thu 2pm"));
+            const typed = borrower.typedIn(move, "thu 2pm");
+            Expect.expect("what's typed is the daemon's rows",
+                typed?.map(made => made.name).join(", ") === "Thursday", JSON.stringify(typed));
+            Expect.expect("and inside one, the row it holds",
+                borrower.rows(time).map(made => made.name).join(", ") === "Move It", "");
+            Expect.expect("and none of them inside the step itself",
+                borrower.rows(move).length === 0, borrower.rows(move).length);
+            borrower.typedAsking = `${move}\nthu 2 pm`;
+            borrower.typedAnswered(move, "thu 2 pm", answer("thu 2 pm"));
+            Expect.expect("the same time typed on is the same row",
+                borrower.typedIn(move, "thu 2 pm")?.[0] === typed[0], "");
+            borrower.typedAsking = `${move}\nsoon`;
+            borrower.typedAnswered(move, "soon", { id: "no",
+                error: { code: "unknown-ask", message: "no" } });
+            Expect.expect("one refused is none", borrower.typedIn(move, "soon") === null, "");
+            Expect.expect("and its rows let go", borrower.rows(time).length === 0, "");
             standIn.open = false;
             const closed = documents.tally.rows;
             documents.served.turned();

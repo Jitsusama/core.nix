@@ -119,7 +119,8 @@ Scope {
     onActiveChanged: {
         if (active)
             return;
-        for (const store of [made, madeOf, madeFrom, drawers, ticking, clocked, repeats, lending]) {
+        for (const store of [made, madeOf, madeFrom, drawers, ticking, clocked, repeats, lending,
+            typedHeld]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -128,6 +129,7 @@ Scope {
         keys = [];
         placings += 1;
         ended();
+        typedAgain();
     }
 
     // Each key a change names let go of what was made of it, and the rows
@@ -189,9 +191,10 @@ Scope {
         heard(said, dropped);
     }
 
-    // The row the record of `key` holds, as served, or null.
+    // The row the record of `key` holds, as served, or as answered for
+    // what's typed inside a step, or null.
     function served(key) {
-        return Ready.rowOf(held[key]);
+        return Ready.rowOf(held[key] ?? typedHeld[key]);
     }
 
     // Which record each row made was made of, by the row's key, for its
@@ -271,7 +274,9 @@ Scope {
     // order, or with `parent` the key of a row, the rows inside it.
     function rows(parent) {
         void placings;
-        return Ready.inside(keys, held, parent ?? "").map(key => rowAt(key))
+        const typed = parent in typedHeld && !(parent in held)
+            ? Ready.inside(Object.keys(typedHeld), typedHeld, parent) : [];
+        return Ready.inside(keys, held, parent ?? "").concat(typed).map(key => rowAt(key))
             .filter(row => row !== null);
     }
 
@@ -340,6 +345,59 @@ Scope {
         ended();
         found = Found.foundOf(words, answer);
         searched(words);
+    }
+
+    // What the daemon made of words typed inside a step (ready-rows.md's
+    // within): the keys of its rows, or that it refused, and their records,
+    // which `served` and `rows` read beside the watch's. A key steady for
+    // the same time keeps its row, so none moves under the cursor.
+    property var typing: ({ within: "", words: null, keys: [], refused: false })
+    readonly property var typedHeld: ({})
+    property string typedAsking: ""
+
+    // The rows made of `words` typed inside the row of `within`: none till
+    // it answers (`searched`), or null where it didn't or can't.
+    function typedIn(within, words) {
+        const asked = `${within}\n${words}`;
+        if (typedAsking !== asked && !(typing.within === within && typing.words === words)) {
+            if (!link)
+                return null;
+            typedAsking = asked;
+            link.find({ ask: "search", place: ready.place, words: words, within: within },
+                answer => ready.typedAnswered(within, words, answer));
+        }
+        if (typing.within !== within || typing.words !== words)
+            return [];
+        return typing.refused ? null
+            : typing.keys.map(key => rowAt(key)).filter(row => row !== null);
+    }
+
+    // An answer taken, unless typed over since; none, or a refusal, said
+    // once, and asked again as Joel types on or asks again.
+    function typedAnswered(within, words, answer) {
+        if (typedAsking !== `${within}\n${words}`)
+            return;
+        typedAsking = "";
+        const refused = answer === null || !!answer.error;
+        if (refused && !typing.refused)
+            console.warn(`launcher: ${place}'s daemon didn't answer "${words}" typed in `
+                + `${within}: ${JSON.stringify(answer?.error ?? null)}`);
+        const records = refused ? {} : answer.rows ?? {};
+        for (const key of Object.keys(typedHeld)) {
+            if (!(key in records) && !(key in held))
+                delete made[key];
+            delete typedHeld[key];
+        }
+        Object.assign(typedHeld, records);
+        typing = { within: within, words: words, keys: refused ? [] : answer.keys ?? [],
+            refused: refused };
+        searched(words);
+    }
+
+    // What's typed asked of the daemon again.
+    function typedAgain() {
+        typing = { within: "", words: null, keys: [], refused: typing.refused };
+        typedAsking = "";
     }
 
     // The rows an answer found, in its order, each as the place made it.

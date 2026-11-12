@@ -23,11 +23,10 @@
 // inside it (src/calendar_inside.rs), each guest People's person and each
 // document Documents' own row where they hold one (ready-rows.md's
 // lends), and Move the Meeting, its later times and the row asking Joel
-// to be sure of each. A time typed inside Move is still read by
-// Calendar.js (`typed` on Move's row) till the daemon answers it as a
-// search within Move's row, and its other acts stay the shell's till
-// call-transcripts serves Open the Transcript, both by Sun 15 Nov; then
-// every act inside a meeting is the daemon's.
+// to be sure of each, and a time typed inside it, which the daemon reads
+// as a search within Move's row. Its other acts stay the shell's till
+// call-transcripts serves Open the Transcript, by Sun 15 Nov; then every
+// act inside a meeting is the daemon's.
 import qs
 import Quickshell
 import QtQuick
@@ -52,6 +51,14 @@ Provider {
         maker: provider
         drawn: provider.launcher?.open ?? false
         make: (row, key) => provider.made(ready, row, key)
+        // The daemon's answer to a time typed in Move shown, the selection
+        // staying on its row (Launcher.qml's reshow).
+        onSearched: words => {
+            const launcher = provider.launcher;
+            const step = launcher?.held[launcher.held.length - 1];
+            if (launcher?.open && launcher.typed === words && step?.row.from === provider)
+                launcher.reshow(launcher.held.length, true);
+        }
     }
     // Named, so a test tells it records as the daemon would.
     readonly property alias served: ready
@@ -114,19 +121,34 @@ Provider {
     }
 
     // Move the Meeting as the daemon serves it, stepping in to its later
-    // times, with a time typed there read by Calendar.js and made as
-    // Calendar.qml's moving() makes one, till the daemon answers it. It's
-    // made here as every row under a meeting is, so it's the meeting
-    // component's (Launcher.qml's components).
+    // times, and a time typed there the one the daemon reads and makes, as
+    // it makes the later times (ready-rows.md's within), or a row saying
+    // it isn't answering, whose Return asks again. It's made here as every
+    // row under a meeting is, so it's the meeting component's
+    // (Launcher.qml's components).
     function moving(from, row, key) {
-        const meeting = provider.meetingOf(from.served(row.parent)?.held?.id ?? "");
         return from.thing(row, key, {
             component: "meeting",
-            typed: letters => {
-                const time = meeting ? Calendar.typed(letters, meeting) : null;
-                return time === null ? [] : [Calendar.movingTo(meeting, provider,
-                    Calendar.dated({ start: time.start, end: time.end, allDay: false }),
-                    time.start, time.end)];
+            typed: letters => from.typedIn(key, letters)
+                ?? [provider.unanswered(from, key, letters)]
+        });
+    }
+
+    // What's typed inside Move, named as typed, said not answered, where
+    // the daemon didn't or can't; Return asks it again.
+    function unanswered(from, key, letters) {
+        return provider.thing({
+            key: `${from.served(key)?.thing ?? key}:typed`,
+            component: "meeting",
+            name: letters,
+            glyph: from.rowAt(key)?.glyph ?? "",
+            side: Words.of("verb:calendar:move").said?.silent ?? "",
+            hue: "warning",
+            stays: true,
+            run: () => {
+                from.typedAgain();
+                const launcher = provider.launcher;
+                launcher?.reshow(launcher.held.length, true);
             }
         });
     }
