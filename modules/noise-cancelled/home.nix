@@ -27,7 +27,8 @@
 # each microphone starts being recorded, so his next call on it there
 # cleans as he picked, in place of jitsusama.noise-cancelled.cleaner, with
 # nothing restarted. A spot it's never been picked at takes its newest pick
-# anywhere, and a microphone never picked for the most picked. Each clip
+# anywhere, and a microphone never picked for the most picked. Joel's own
+# names for spots, such as "the desk", are kept beside it in spots. Each clip
 # is scored by DNSMOS too (models.nix), its marks shown after the pick, and
 # the pick and every clip's marks, numbers alone and never the sound, kept
 # beside it in ~/.local/state/noise-cancelled/scored.

@@ -16,11 +16,18 @@
 //! name and its spot's key, newest last. Lines from before picks were
 //! kept apart still count: one with a cleaner alone towards the most
 //! picked, and one with no spot as its microphone's pick anywhere.
+//!
+//! A spot takes the machine's name for it, such as "Main Floor", until
+//! Joel gives it one of his own, such as "the desk", kept beside the
+//! picks in `spots`, a line a spot: its key, then his name.
 
 use std::path::{Path, PathBuf};
 
 use crate::denoise::Cleaner;
 use crate::spot::{Spot, Where};
+
+/// The most characters a spot's name takes, so it fits a row of Sound.
+const LONGEST: usize = 40;
 
 /// Where the picks are kept, where the spot is read from, and the
 /// cleaner used without a pick.
@@ -57,9 +64,14 @@ impl Chosen {
         Self { here, ..self }
     }
 
-    /// The spot the machine is at now.
+    /// The spot the machine is at now, by Joel's name for it once he's
+    /// given one.
     pub fn spot(&self) -> Spot {
-        self.here.spot()
+        let mut spot = self.here.spot();
+        if let Some((_, name)) = self.names().into_iter().find(|(key, _)| *key == spot.key) {
+            spot.name = name;
+        }
+        spot
     }
 
     /// The cleaner to clean `microphone` with now, by its node's name, at
@@ -82,14 +94,57 @@ impl Chosen {
 
     /// Whether Joel has named the spot with `key`.
     pub fn named(&self, key: &str) -> bool {
-        let _ = key;
-        false
+        self.names().iter().any(|(named, _)| named == key)
     }
 
-    /// Keeps `name` as Joel's for `spot`, answering the spot as named.
+    /// Keeps `name` as Joel's for `spot`, in place of any he gave it
+    /// before, answering the spot as named; its picks stay, since they're
+    /// kept by its key.
     pub fn name(&self, spot: &Spot, name: &str) -> Result<Spot, String> {
-        let _ = name;
-        Ok(spot.clone())
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("a spot's name can't be blank".to_owned());
+        }
+        if name.chars().any(char::is_control) {
+            return Err("a spot's name fits on one line".to_owned());
+        }
+        if name.chars().count() > LONGEST {
+            return Err(format!("a spot's name is at most {LONGEST} characters"));
+        }
+        let named = Spot {
+            key: spot.key.clone(),
+            name: name.to_owned(),
+        };
+        let Some(file) = self.beside("spots") else {
+            return Ok(named);
+        };
+        let mut names = self.names();
+        names.retain(|(key, _)| *key != spot.key);
+        names.push((spot.key.clone(), named.name.clone()));
+        let mut said = String::new();
+        for (key, name) in &names {
+            said.push_str(key);
+            said.push(' ');
+            said.push_str(name);
+            said.push('\n');
+        }
+        written(&file, &said)?;
+        Ok(named)
+    }
+
+    /// Each spot Joel has named, by its key, oldest first. A key has no
+    /// spaces, so the first ends it and the rest of the line is the name.
+    fn names(&self) -> Vec<(String, String)> {
+        let said = self
+            .beside("spots")
+            .and_then(|file| std::fs::read_to_string(file).ok())
+            .unwrap_or_default();
+        said.lines()
+            .filter_map(|line| {
+                let (key, name) = line.split_once(' ')?;
+                Some((key.to_owned(), name.to_owned()))
+            })
+            .collect()
     }
 
     /// A file called `name` beside the picks', for what's kept with them,
@@ -117,12 +172,7 @@ impl Chosen {
             spot: Some(spot.key.clone()),
         });
         let said: String = picks.iter().map(Pick::line).collect();
-        let written = file.with_extension("picking");
-        if let Some(folder) = file.parent() {
-            std::fs::create_dir_all(folder).map_err(|why| saying(folder, &why))?;
-        }
-        std::fs::write(&written, said).map_err(|why| saying(&written, &why))?;
-        std::fs::rename(&written, file).map_err(|why| saying(file, &why))
+        written(file, &said)
     }
 
     /// Every pick the file holds, oldest first, past any line naming no
@@ -177,6 +227,17 @@ fn most_picked(picks: &[Pick]) -> Option<Cleaner> {
                 best
             }
         })
+}
+
+/// Writes `said` to `file` whole beside it and moves it over, so nothing
+/// ever reads half.
+fn written(file: &Path, said: &str) -> Result<(), String> {
+    let beside = file.with_extension("picking");
+    if let Some(folder) = file.parent() {
+        std::fs::create_dir_all(folder).map_err(|why| saying(folder, &why))?;
+    }
+    std::fs::write(&beside, said).map_err(|why| saying(&beside, &why))?;
+    std::fs::rename(&beside, file).map_err(|why| saying(file, &why))
 }
 
 fn saying(path: &Path, why: &std::io::Error) -> String {

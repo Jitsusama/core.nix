@@ -200,7 +200,7 @@ be read, marked unread and archived.
 | cleaner | one way of cancelling noise, DeepFilterNet full or gentle or RNNoise, or none, the microphone as calls hear it | denoiser | `raw`, `deepfilternet`, `deepfilternet-gentle`, `rnnoise` |
 | choose by ear | the blind trial picking an input's cleaner: a few seconds recorded, cleaned by each cleaner as clips A to D, played and one picked | A/B | `trial:now`, `NoiseCancelling.qml` |
 | clip | one of a choose by ear's recordings, cleaned by a cleaner it doesn't name until a pick | | `A` to `D` |
-| spot | where the machine sits, such as the desk or the couch, told apart by the home network's node it's on or the network away from home, and the screens and docks plugged in; a microphone keeps a choose by ear pick for each, apart from a launcher's place | | `spot.rs`, the trial daemon's `spot` |
+| spot | where the machine sits, such as the desk or the couch, told apart by the home network's node it's on or the network away from home, and the screens and docks plugged in, and named in Joel's words once he names it; a microphone keeps a choose by ear pick for each, apart from a launcher's place | | `spot.rs`, the trial daemon's `spot` |
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
