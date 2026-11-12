@@ -33,7 +33,7 @@ ShellRoot {
     // walk goes on to the next rather than waiting out its patience.
     function openSpawned() {
         for (const command of Niri.spawns) {
-            const classed = / --class (\S+) /.exec(command)?.[1] ?? "";
+            const classed = /\/pi-sessions\/kitty\.sock (\S+) /.exec(command)?.[1] ?? "";
             if (classed === "" || root.opened[classed])
                 continue;
             const id = 100 + Object.keys(root.opened).length;
@@ -132,8 +132,10 @@ ShellRoot {
         if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
             || startedOn("QEST-PLAIN").length === 0)
             return;
+        // The opening takes the sessions kitty's socket, then the class
+        // its window is named by.
         Expect.expect("its viewer is named for it",
-            viewer[0].includes(" --class pi-hosted.s-begun "), viewer[0]);
+            viewer[0].includes("/kitty.sock pi-hosted.s-begun "), viewer[0]);
         decided.reload();
         const lines = decided.text().split("\n");
         const started = (quest, orchestrates) => `started ${quest} in ${root.folder}`

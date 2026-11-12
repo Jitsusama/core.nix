@@ -1833,9 +1833,9 @@
     where the harness isn't installed, and never on a Mac
   '';
   pi-notes-windows-on-sessions-elsewhere = ''
-    each minute the harness notes which windows here are joined to a session another machine holds,
-    so the next boot can offer them back, in background.slice with the store's node, skipped where
-    the harness isn't installed, and never on a Mac
+    every five minutes the harness notes which windows here are joined to a session another machine
+    holds, so the next boot can offer them back, in background.slice with the store's node, skipped
+    where the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -2654,6 +2654,15 @@
   the-sessions-kitty-keeps-niris-pace = ''
     the kitty every session's window is drawn by draws only the frames niri asks for, so the
     session windows niri doesn't show aren't drawn
+  '';
+  the-sessions-kitty-answers-only-its-own-socket = ''
+    the kitty every session's window is drawn by is asked for windows only over its own socket, in
+    a runtime folder only Joel's login opens, never as a single instance another program could
+    answer for
+  '';
+  the-sessions-kitty-says-its-pid = ''
+    the kitty every session's window is drawn by writes its pid beside its socket, which names
+    none, so the shell can find a session's window among those that kitty draws
   '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,

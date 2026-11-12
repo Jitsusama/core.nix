@@ -49,7 +49,7 @@ ShellRoot {
     }
 
     function viewerSpawns(id) {
-        return Niri.spawns.filter(command => command.includes(` --class pi-hosted.${id} `));
+        return Niri.spawns.filter(command => command.includes(`/pi-sessions/kitty.sock pi-hosted.${id} `));
     }
     function opensOn(id) {
         return Niri.acts.filter(act => act.OpenNextWindowOn?.app_id === `pi-hosted.${id}`)
@@ -125,7 +125,7 @@ ShellRoot {
             return;
         Expect.expect("its viewer opens by the node's words, held, without the focus",
             spawned[0].startsWith("env -u XDG_ACTIVATION_TOKEN -u DESKTOP_STARTUP_ID ")
-            && spawned[0].includes("MYCELIUM_APP_ID=pi-hosted.s-viewed ")
+            && spawned[0].includes("/pi-sessions/kitty.sock pi-hosted.s-viewed ")
             && spawned[0].includes("mycelium --realm harbour hold -- "
                 + viewing("s-viewed").join(" ")), spawned[0]);
         Expect.expect("niri is told where it opens: the monitor's empty workspace",

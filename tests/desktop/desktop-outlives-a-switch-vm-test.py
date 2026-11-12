@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 
 # The sessions' windows the test opens in the sessions' kitty, by their titles.
 TITLES = ("Session one", "Session two")
+# A window of the sessions' kitty, asked over its own socket as the shell asks.
+IN_SESSIONS = "kitten @ --to unix:$XDG_RUNTIME_DIR/pi-sessions/kitty.sock launch --type=os-window"
 
 
 @pytest.fixture(scope="module")
@@ -111,7 +113,7 @@ def test_a_switch_keeps_the_sessions_kitty_and_its_windows(desktop: Desktop) -> 
         )
         for title in TITLES:
             desktop.as_account(
-                "niri msg action spawn -- kitty -1 --instance-group pi-sessions"
+                f"niri msg action spawn -- {IN_SESSIONS} --os-window-class kitty"
                 f" --title '{title}' sleep infinity"
             )
         machine.wait_until_succeeds(

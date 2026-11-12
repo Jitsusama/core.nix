@@ -5,6 +5,7 @@
 
 use std::fs;
 use std::io;
+use std::os::unix::fs::FileTypeExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
@@ -29,6 +30,15 @@ pub struct Reviving {
 
 /// How long a started session has to say it is there.
 const COMING_UP: u32 = 120;
+
+/// How many times, 200 ms apart, the sessions' kitty is looked for: its
+/// unit starts it again 5 s after it ends, and a session revived meanwhile
+/// opens once it is back rather than never.
+const DOOR_TRIES: u32 = 100;
+
+/// The words on the command line of a sessions' kitty started before its
+/// unit listened, as its single instance.
+const OLD_KITTY: &[u8] = b"--instance-group\0pi-sessions";
 
 /// Looks once, starting every watched session that died, one at a time,
 /// and says what it did.
@@ -160,7 +170,23 @@ fn start(reviving: &Reviving, mesh: &Mesh, s: &Seen, cwd: &str, home: Option<u32
     let opened = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_millis());
-    let started = terminal(cwd, &words, &format!("pi-spawned.{opened}")).status();
+    let runtime = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").unwrap_or_default());
+    let processes = unit_processes(&runtime);
+    let mut found = door(&runtime, &processes, Path::new("/proc"));
+    for _ in 1..DOOR_TRIES {
+        if found.is_some() {
+            break;
+        }
+        sleep(Duration::from_millis(200));
+        found = door(&runtime, &processes, Path::new("/proc"));
+    }
+    let Some(door) = found else {
+        return format!(
+            "{} died, and there is no sessions kitty to start it again in.",
+            s.address
+        );
+    };
+    let started = terminal(cwd, &words, &format!("pi-spawned.{opened}"), &door).status();
     if !started.is_ok_and(|s| s.success()) {
         return format!("{} died, and starting it again failed.", s.address);
     }
@@ -210,7 +236,16 @@ fn start(reviving: &Reviving, mesh: &Mesh, s: &Seen, cwd: &str, home: Option<u32
 /// pi-spawned with no such word, so neither helped them. `class` takes a
 /// number, the time it opened in milliseconds, so no two windows share
 /// one; Sessions.qml counts on from the time its shell started.
-fn terminal(cwd: &str, words: &str, class: &str) -> Command {
+fn terminal(cwd: &str, words: &str, class: &str, door: &Door) -> Command {
+    if let Door::Socket(socket) = door {
+        let mut command = Command::new("kitten");
+        command
+            .args(["@", "--to", &format!("unix:{}", socket.display()), "launch"])
+            .args(["--type=os-window", "--os-window-class", class, "--cwd", cwd])
+            .args(["--env", &format!("MYCELIUM_APP_ID={class}")])
+            .args(["zsh", "-lic", words]);
+        return command;
+    }
     let mut command = Command::new("systemd-run");
     command
         .args([
@@ -225,6 +260,48 @@ fn terminal(cwd: &str, words: &str, class: &str) -> Command {
         .args(["--class", class, "--directory", cwd])
         .args(["zsh", "-lic", words]);
     command
+}
+
+/// How a window is asked of the sessions' kitty, as Sessions.qml's
+/// `opening` asks it: over its remote-control socket in a runtime folder
+/// only the login opens, never through kitty's single instance, whose
+/// name any program could take first and so be handed the window. A kitty
+/// started before its unit listened is reached the old way until the next
+/// login, but only while the unit's own cgroup holds that old kitty: a new
+/// one sits there before its socket exists, and holds no instance.
+#[derive(Debug, PartialEq, Eq)]
+enum Door {
+    Socket(PathBuf),
+    Instance,
+}
+
+/// The door to the sessions' kitty: its socket under `runtime` when it is
+/// there, its single instance while `processes` (its unit's cgroup.procs)
+/// lists a kitty started as that instance, as its command line under
+/// `proc` says, and none otherwise, so a window is never opened in a kitty
+/// that could be anyone's.
+fn door(runtime: &Path, processes: &Path, proc: &Path) -> Option<Door> {
+    let socket = runtime.join("pi-sessions/kitty.sock");
+    if fs::metadata(&socket).is_ok_and(|found| found.file_type().is_socket()) {
+        return Some(Door::Socket(socket));
+    }
+    let listed = fs::read_to_string(processes).ok()?;
+    listed
+        .split_whitespace()
+        .any(|pid| {
+            fs::read(proc.join(pid).join("cmdline"))
+                .is_ok_and(|line| line.windows(OLD_KITTY.len()).any(|w| w == OLD_KITTY))
+        })
+        .then_some(Door::Instance)
+}
+
+/// The sessions kitty unit's cgroup.procs, by the login's uid, which its
+/// runtime folder is named by.
+fn unit_processes(runtime: &Path) -> PathBuf {
+    let uid = runtime.file_name().unwrap_or_default().to_string_lossy();
+    PathBuf::from(format!(
+        "/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/agents.slice/sessions-kitty.service/cgroup.procs"
+    ))
 }
 
 /// Every session's presence, with whether its process runs.
@@ -520,7 +597,12 @@ mod tests {
 
     #[test]
     fn a_revived_window_and_its_pi_say_the_same_numbered_class() {
-        let command = terminal("/home/j", "exec pi --session s", "pi-spawned.42");
+        let command = terminal(
+            "/home/j",
+            "exec pi --session s",
+            "pi-spawned.42",
+            &Door::Instance,
+        );
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
@@ -538,6 +620,107 @@ mod tests {
                 == Some("MYCELIUM_APP_ID=pi-spawned.42")
                 && kitty == Some(at + 2)),
             "its kitty isn't told the class in MYCELIUM_APP_ID: {args:?}"
+        );
+    }
+
+    #[test]
+    fn a_revived_window_is_asked_of_the_sessions_kittys_socket_with_only_its_class() {
+        let socket = PathBuf::from("/run/user/1000/pi-sessions/kitty.sock");
+        let command = terminal(
+            "/home/j",
+            "exec pi --session s",
+            "pi-spawned.42",
+            &Door::Socket(socket),
+        );
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            (command.get_program().to_string_lossy().into_owned(), args),
+            (
+                "kitten".to_owned(),
+                [
+                    "@",
+                    "--to",
+                    "unix:/run/user/1000/pi-sessions/kitty.sock",
+                    "launch",
+                    "--type=os-window",
+                    "--os-window-class",
+                    "pi-spawned.42",
+                    "--cwd",
+                    "/home/j",
+                    "--env",
+                    "MYCELIUM_APP_ID=pi-spawned.42",
+                    "zsh",
+                    "-lic",
+                    "exec pi --session s",
+                ]
+                .map(String::from)
+                .to_vec()
+            ),
+            "the window isn't asked of the socket with its class alone"
+        );
+    }
+
+    #[test]
+    fn the_sessions_kitty_is_reached_by_its_socket_then_its_running_unit_and_never_otherwise() {
+        let runtime = tempfile::tempdir().expect("a runtime folder to stand in");
+        let proc = runtime.path().join("proc");
+        let processes = runtime.path().join("cgroup.procs");
+        fs::write(&processes, "").expect("an empty cgroup to stand in");
+        assert_eq!(
+            door(runtime.path(), &processes, &proc),
+            None,
+            "with no socket and its unit stopped, whoever holds the instance could be anyone"
+        );
+        assert_eq!(
+            door(runtime.path(), &runtime.path().join("missing"), &proc),
+            None,
+            "with no unit at all, there is no sessions kitty"
+        );
+        fs::create_dir_all(proc.join("3273")).expect("a starting kitty's folder");
+        fs::write(
+            proc.join("3273/cmdline"),
+            b"kitty\0--listen-on\0unix:/run/user/1000/pi-sessions/kitty.sock\0",
+        )
+        .expect("a starting kitty to stand in");
+        fs::write(&processes, "3273\n").expect("a unit starting again to stand in");
+        assert_eq!(
+            door(runtime.path(), &processes, &proc),
+            None,
+            "a kitty starting before its socket exists holds no instance to be reached by"
+        );
+        fs::create_dir_all(proc.join("3272")).expect("an old kitty's folder");
+        fs::write(
+            proc.join("3272/cmdline"),
+            b"kitty\0-1\0--instance-group\0pi-sessions\0--class\0pi-sessions-kept\0",
+        )
+        .expect("an old kitty to stand in");
+        fs::write(&processes, "3272\n").expect("a running unit to stand in");
+        assert_eq!(
+            door(runtime.path(), &processes, &proc),
+            Some(Door::Instance),
+            "a unit that runs from before it listened is reached by its instance"
+        );
+        let socket = runtime.path().join("pi-sessions/kitty.sock");
+        fs::create_dir_all(socket.parent().expect("its folder")).expect("its folder made");
+        let _listening = std::os::unix::net::UnixListener::bind(&socket).expect("a socket");
+        assert_eq!(
+            door(runtime.path(), &processes, &proc),
+            Some(Door::Socket(socket)),
+            "a kitty that listens is reached by its socket"
+        );
+    }
+
+    #[test]
+    fn the_sessions_kitty_units_cgroup_is_found_by_the_logins_uid() {
+        assert_eq!(
+            unit_processes(Path::new("/run/user/1000")),
+            PathBuf::from(
+                "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service/cgroup.procs"
+            ),
+            "the cgroup isn't the sessions kitty unit's"
         );
     }
 }

@@ -2124,9 +2124,20 @@ in
     # single instance quits as its last window closes, and a session asked
     # of it as it quit was lost without a word: Reopen Them All asked for
     # one 0.07 s before the last session's kitty quit, and it never opened
-    # (2026-11-04). Started first, it's the instance; started beside one
-    # already running, its hidden window keeps that one instead, and it
-    # waits on that window either way, so the unit stays up. It runs in
+    # (2026-11-04), so its hidden window keeps it running. Windows are
+    # asked of it over remote control, on a socket in a runtime folder only
+    # Joel's login can open, rather than through kitty's single instance:
+    # that instance answers on a name any program can take first, a fenced
+    # command among them, which would then have every session's window
+    # opened in it (ISXEG8, 2026-11-11). The fence empties the runtime
+    # folder, so no fenced command reaches the socket, and kitty takes
+    # remote control only there, never through a window's terminal. Any
+    # unfenced program of Joel's can use the socket, to read or type into
+    # every session window; that same account can already read each
+    # session's environment, so the fence stays the boundary. A password
+    # wouldn't narrow it: kitty asks on screen about a request with an
+    # unknown one, which a program could repeat into prompts for Joel
+    # (ISXEG8, 2026-11-12). It runs in
     # agents.slice, where kitty puts each session's scope. Its window is
     # classed pi-sessions-kept, so the shell, which numbers that kitty's
     # windows as niri lists them, leaves out the one niri never shows.
@@ -2181,10 +2192,19 @@ in
         # frame, 8.3 ms at 120 Hz.
         ExecStart = lib.concatStringsSep " " [
           "${config.home.profileDirectory}/bin/kitty"
-          "-1 --instance-group pi-sessions --wait-for-single-instance-window-close"
+          "--listen-on unix:%t/pi-sessions/kitty.sock -o allow_remote_control=socket-only"
           "-o sync_to_monitor=yes"
           "--class pi-sessions-kept --start-as=hidden ${lib.getExe' pkgs.coreutils "sleep"} infinity"
         ];
+        # Its pid beside the socket, since a path names no pid the way
+        # kitty's own single-instance name does, and the shell finds a
+        # session's window among those niri lists by the pid drawing it
+        # (Sessions.qml's kittyPid). It goes with the folder when the unit
+        # stops; `$$` hands sh the variable systemd sets for the main pid.
+        ExecStartPost = "${pkgs.runtimeShell} -c 'echo \"$$MAINPID\" > %t/pi-sessions/kitty.pid'";
+        # The socket's folder, which only Joel's login may open.
+        RuntimeDirectory = "pi-sessions";
+        RuntimeDirectoryMode = "0700";
         Restart = "always";
         RestartSec = 5;
       };
