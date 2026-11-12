@@ -67,11 +67,11 @@ fn within<'a>(rows: &'a [Value], parent: &str) -> Vec<&'a Value> {
     rows.iter().filter(|row| row["parent"] == parent).collect()
 }
 
-/// The row keyed `key`.
+/// The one row keyed `key`, since a key served twice would be a fault.
 fn at<'a>(rows: &'a [Value], key: &str) -> &'a Value {
-    rows.iter()
-        .find(|row| row["key"] == key)
-        .unwrap_or_else(|| panic!("no row {key}"))
+    let keyed: Vec<&Value> = rows.iter().filter(|row| row["key"] == key).collect();
+    assert_eq!(keyed.len(), 1, "not one row {key}: {keyed:?}");
+    keyed[0]
 }
 
 fn acted(row: &Value) -> Vec<&str> {
