@@ -14,7 +14,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::apart::{LISTS, apart, checks_apart, descriptions_apart, lines_apart};
+use crate::apart::{
+    LISTS, apart, cases_apart, checks_apart, descriptions_apart, is_cases, lines_apart,
+};
 
 /// Whether nix-offload's record for a commit holds a changed-checks run that
 /// passed there and built what it named, against a base `on_main` says
@@ -241,11 +243,11 @@ fn names(text: &str, file: &str, path: &str) -> bool {
 }
 
 /// Whether `file`, which the branch shares with main, is a JSON file,
-/// check-descriptions.nix, a folder's checks.nix or a list of modules,
-/// both changed `apart`, so it stands as two files would. One naming a path
-/// either side renamed or deleted stays shared, as `shared` holds. `base`
-/// gives a file where the branch was checked from, and `checked` where it
-/// was checked at.
+/// check-descriptions.nix, a folder's checks.nix, a list of modules or a
+/// pytest file, both changed `apart`, so it stands as two files would.
+/// One naming a path either side renamed or deleted stays shared, as
+/// `shared` holds. `base` gives a file where the branch was checked from,
+/// and `checked` where it was checked at.
 pub fn stands_apart(
     file: &str,
     branch: &Side,
@@ -268,6 +270,8 @@ pub fn stands_apart(
         lines_apart
     } else if checks {
         checks_apart
+    } else if is_cases(file) {
+        cases_apart
     } else if json {
         apart
     } else {
