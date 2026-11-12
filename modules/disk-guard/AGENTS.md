@@ -18,7 +18,11 @@ or launchd, and [`home.nix`][2] the account's.
   the work broker clones each tree, is walked into and reclaimed from as any
   folder is, and one that is itself what goes, as each quest's scratch is
   made, goes whole; a mount, a read-only snapshot and a subvolume inside a
-  build or a scratch aren't.
+  build or a scratch aren't. A filesystem in an image on another, mounted
+  from a loop device to discard, as cargo's build disk is, frees its host as
+  it frees itself: a pass reaching for room on the host is offered what the
+  image holds too, by the host's band, and syncs the image before it
+  measures (`backing.rs`). One that doesn't discard frees only itself.
 - **Order.** Below healthy a pass takes, in turn: waste (orphaned targets,
   oversized logs, Nix's leftover build directories, and what a killed git
   left staged in a repository no git works on now), Nix generations and

@@ -209,6 +209,7 @@ pub struct Filesystem {
     started: Instant,
     settling: Settling,
     pacer: Option<Rc<RefCell<Pacer>>>,
+    images: Vec<PathBuf>,
 }
 
 impl Filesystem {
@@ -218,7 +219,17 @@ impl Filesystem {
             started: Instant::now(),
             settling: Settling::Hurried,
             pacer: None,
+            images: Vec::new(),
         }
+    }
+
+    /// Settles the filesystems at `images` first, each an image on this one
+    /// that discards what it frees, as its journal commits: until then what
+    /// a pass took there hasn't come back here to be measured.
+    #[must_use]
+    pub fn after(mut self, images: Vec<PathBuf>) -> Self {
+        self.images = images;
+        self
     }
 
     /// Settles through `pacer`, which beats while a settle waits, since a
@@ -245,7 +256,13 @@ impl Disk for Filesystem {
 
     fn settle(&mut self) -> io::Result<()> {
         let (path, settling) = (self.path.clone(), self.settling);
-        let settle = move || crate::sys::settle(&path, settling);
+        let images = self.images.clone();
+        let settle = move || {
+            for image in &images {
+                crate::sys::settle(image, Settling::Hurried)?;
+            }
+            crate::sys::settle(&path, settling)
+        };
         let settled = match &self.pacer {
             Some(pacer) => pacer
                 .borrow_mut()

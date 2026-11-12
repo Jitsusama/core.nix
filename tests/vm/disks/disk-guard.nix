@@ -2,7 +2,8 @@
 # account's, and drives the disks through the bands. Both start on the configs
 # their modules render; then the test gives them bands it can reach by filling
 # a 4 GiB Btrfs /home, compressed as a workstation's is. Once filling, an idle
-# target goes while a fresh one and a cache stay. Once critically full, the
+# target goes while a fresh one and a cache stay, and so does an idle one in an
+# image on /home that discards, though the image has room. Once critically full, the
 # cache and the fresh target go, but a real cargo build, waiting in its build script
 # with cargo's locks held, keeps its own until it ends. The account takes
 # nothing at all without the machine's guard vouching for the processes it
@@ -40,6 +41,9 @@ let
           roots = [
             "/home/joel/src"
             "/srv/small"
+            # An image on /home, as cargo's own build disk is on the system's, once
+            # a test mounts one there.
+            "/home/joel/builds"
           ];
         };
         thing = {
@@ -106,6 +110,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.systemPackages = [
       pkgs.btrfs-progs
       pkgs.cargo
+      pkgs.e2fsprogs
       pkgs.jq
       pkgs.rustc
       # Dates the store's paths back, as the guard never collects the last hour's.
