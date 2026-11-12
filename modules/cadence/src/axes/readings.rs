@@ -381,7 +381,11 @@ fn stress(s: &Sources) -> Axis {
 }
 
 fn axis(name: &'static str, readings: Vec<Reading>) -> Axis {
-    Axis { name, readings }
+    Axis {
+        name,
+        readings,
+        findings: Vec::new(),
+    }
 }
 
 fn percent(part: usize, all: usize) -> f64 {

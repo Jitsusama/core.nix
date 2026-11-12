@@ -16,6 +16,7 @@
 //! (RSCH-20261111-I1QC91); they only ever tighten.
 
 mod landings;
+mod open;
 mod plans;
 mod readings;
 
@@ -47,8 +48,16 @@ pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
         }
     };
     let now = now_ms() / 1000;
-    let axes = read(&gather(&folder, &state_home, now));
+    let mut axes = read(&gather(&folder, &state_home, now));
     let ink = ink(&home);
+    let sep = format!(" {} ", ink.separator);
+    open::attach(
+        &mut axes,
+        &open::gather(&folder),
+        now,
+        &TimeZone::system(),
+        &sep,
+    );
     let zoned = Timestamp::from_second(now).map(|t| t.to_zoned(TimeZone::system()));
     let read_at = zoned
         .as_ref()
@@ -180,7 +189,12 @@ impl Reading {
             };
             return format!("{named}: {why}");
         };
-        let said = self.says.replacen("{}", &shown(now, self.unit), 1);
+        let says = if (now - 1.0).abs() < f64::EPSILON && self.unit.is_empty() {
+            one(self.says)
+        } else {
+            self.says.to_owned()
+        };
+        let said = says.replacen("{}", &shown(now, self.unit), 1);
         match self.bar {
             Some(Bar::AtMost(bar)) => format!("{said}, at most {}", shown(bar, self.unit)),
             Some(Bar::AtLeast(bar)) => format!("{said}, at least {}", shown(bar, self.unit)),
@@ -194,6 +208,8 @@ impl Reading {
 pub struct Axis {
     pub name: &'static str,
     pub readings: Vec<Reading>,
+    /// What the daily run found worse on it and hasn't seen fixed.
+    pub findings: Vec<open::Open>,
 }
 
 /// Where an axis stands: past a bar, in spec on his side's readings
@@ -227,6 +243,34 @@ impl Axis {
 /// A figure as a line says it: whole from ten, else to one place, with
 /// thousands set apart.
 #[must_use]
+/// A count's words for one of it: the first plural among the three words
+/// after its figure goes singular, so "{} core changes" says "1 core
+/// change" and "{} crashes" says "1 crash". Words with no plural there,
+/// like "{} a day", stay as they are.
+fn one(says: &str) -> String {
+    let Some((before, after)) = says.split_once("{}") else {
+        return says.to_owned();
+    };
+    let mut words: Vec<String> = after.split(' ').map(str::to_owned).collect();
+    if let Some(word) = words
+        .iter_mut()
+        .skip(1)
+        .take(3)
+        .find(|w| w.len() > 2 && w.ends_with('s'))
+    {
+        let cut = if ["ches", "shes", "sses", "xes"]
+            .iter()
+            .any(|end| word.ends_with(end))
+        {
+            2
+        } else {
+            1
+        };
+        word.truncate(word.len() - cut);
+    }
+    format!("{before}{{}}{}", words.join(" "))
+}
+
 pub fn shown(x: f64, unit: &str) -> String {
     let number = if x.abs() >= 10.0 || x.fract() == 0.0 {
         let whole = format!("{:.0}", x.abs());
@@ -406,7 +450,12 @@ pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
                 (ink.pending.clone(), format!("{said}{sep}{owner}"))
             }
         };
-        let _ = writeln!(out, "{mark} {:width$}  {said}", axis.name);
+        let findings = match axis.findings.len() {
+            0 => String::new(),
+            1 => format!("{sep}1 finding open"),
+            n => format!("{sep}{n} findings open"),
+        };
+        let _ = writeln!(out, "{mark} {:width$}  {said}{findings}", axis.name);
     }
     let tally = |standing: Standing| axes.iter().filter(|a| a.standing() == standing).count();
     let _ = write!(
@@ -459,6 +508,17 @@ pub fn axis_page(axis: &Axis, heading: &str, ink: &Ink) -> String {
             let _ = writeln!(out, "    {}", more.join(&sep));
         }
     }
+    if !axis.findings.is_empty() {
+        out.push_str("\nfound worse and not yet fixed\n");
+    }
+    for finding in &axis.findings {
+        let mark = if finding.late {
+            ink.failed()
+        } else {
+            ink.pending.clone()
+        };
+        let _ = writeln!(out, "{mark} {}", finding.said);
+    }
     out
 }
 
@@ -479,6 +539,31 @@ mod tests {
     }
 
     #[test]
+    fn a_count_of_one_says_its_thing_once() {
+        let said = |says, n: f64| Reading::new(says, Some(n), "", "WCJQSG").words();
+        assert_eq!(
+            said("{} quests worked on with no live plan", 1.0),
+            "1 quest worked on with no live plan"
+        );
+        assert_eq!(said("{} crashes over the day", 1.0), "1 crash over the day");
+        assert_eq!(
+            said("{} core changes reached you", 1.0),
+            "1 core change reached you"
+        );
+        assert_eq!(
+            said("{} machine-wide out-of-memory kills", 1.0),
+            "1 machine-wide out-of-memory kill"
+        );
+        assert_eq!(said("{} a day", 1.0), "1 a day");
+        assert_eq!(
+            said("{} crashes over the day", 2.0),
+            "2 crashes over the day"
+        );
+        let share = Reading::new("{} of notices cleared", Some(1.0), "%", "2RCBOJ");
+        assert_eq!(share.words(), "1% of notices cleared");
+    }
+
+    #[test]
     fn an_axis_is_found_by_the_start_of_its_name() {
         let axes = read(&Sources::default());
         let found = |asked: &str| find(&axes, asked).map(|a| a.name);
@@ -492,6 +577,11 @@ mod tests {
         vec![
             Axis {
                 name: "scale",
+                findings: vec![open::Open {
+                    late: true,
+                    said: "ghosts rose · 85PKB2 · found 2026-11-11 · late since Thu 12 18:00"
+                        .into(),
+                }],
                 readings: vec![
                     Reading::new("{} pi windows", Some(85.0), "", "OSPHT4")
                         .bar(Bar::AtMost(12.0))
@@ -502,6 +592,7 @@ mod tests {
             },
             Axis {
                 name: "time to done",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("VM wait {}", Some(0.4), " min", "5FWIUS")
                         .bar(Bar::AtMost(2.0))
@@ -510,10 +601,12 @@ mod tests {
             },
             Axis {
                 name: "security",
+                findings: Vec::new(),
                 readings: vec![Reading::new("{} musts past their date", None, "", "ISXEG8")],
             },
             Axis {
                 name: "polish",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("{} slow keys", Some(0.0), "", "Y2YBTS")
                         .bar(Bar::AtMost(0.0))
@@ -522,6 +615,7 @@ mod tests {
             },
             Axis {
                 name: "stress",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("{} asks waiting", Some(0.0), "", "WCJQSG")
                         .bar(Bar::AtMost(0.0))
@@ -531,6 +625,7 @@ mod tests {
             },
             Axis {
                 name: "resources",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("{} a day", Some(9000.0), "$", "QCXZEB")
                         .bar(Bar::AtMost(1.0))
@@ -552,7 +647,7 @@ mod tests {
             page,
             "axes · Wednesday 11 November · read 19:45
 
-✕ scale         85 pi windows, at most 12 · OSPHT4 · 1 more out
+✕ scale         85 pi windows, at most 12 · OSPHT4 · 1 more out · 1 finding open
 ◇ time to done  VM wait 0.4 min, at most 2 min · read on a stand-in
 ◇ security      no reading yet · ISXEG8
   polish        0 slow keys, at most 0
@@ -575,6 +670,9 @@ mod tests {
     from niri's windows
 ✕ 3 ghosts, at most 0 · 85PKB2
     a stand-in, read from our side rather than yours
+
+found worse and not yet fixed
+✕ ghosts rose · 85PKB2 · found 2026-11-11 · late since Thu 12 18:00
 "
         );
         assert_eq!(

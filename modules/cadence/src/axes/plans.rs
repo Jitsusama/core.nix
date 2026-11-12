@@ -2,7 +2,9 @@
 //! plan current, ticking items as they land, so a quest with a session at
 //! work and no plan in think, draft or build is work nobody can follow or
 //! steer. A quest nobody works on needs none, so only those with a live
-//! session count: one whose pi still runs on this machine.
+//! session count: one whose pi still runs on this machine. A research,
+//! brief or report being worked to counts as its plan, since a quest
+//! whose work is finding something out is followed by that document.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -10,7 +12,8 @@ use std::path::{Path, PathBuf};
 
 use super::{Bar, Reading};
 
-/// A quest as the store keeps it: its README and each of its plans.
+/// A quest as the store keeps it: its README and each of its documents,
+/// its plans, research, briefs and reports.
 #[derive(Debug, Default)]
 pub struct Quest {
     pub readme: String,
@@ -112,7 +115,10 @@ fn sessions(front: &str) -> Vec<(&str, u32)> {
     found
 }
 
-/// Reads the store's active quests and their plans, this machine's name
+/// The folders a quest keeps its documents in, one for each kind.
+const KINDS: [&str; 4] = ["plans", "research", "briefs", "reports"];
+
+/// Reads the store's active quests and their documents, this machine's name
 /// and its running processes: files only, with no command run.
 #[must_use]
 pub fn gather() -> Sources {
@@ -125,7 +131,9 @@ pub fn gather() -> Sources {
         .filter_map(|quest| {
             let readme = fs::read_to_string(quest.join("README.md")).ok()?;
             active(&readme).then(|| Quest {
-                plans: entries(&quest.join("plans"))
+                plans: KINDS
+                    .iter()
+                    .flat_map(|kind| entries(&quest.join(kind)))
                     .filter_map(|plan| fs::read_to_string(plan).ok())
                     .collect(),
                 readme,
@@ -144,7 +152,7 @@ pub fn gather() -> Sources {
     }
 }
 
-fn entries(folder: &Path) -> impl Iterator<Item = PathBuf> {
+fn entries(folder: &Path) -> impl Iterator<Item = PathBuf> + use<> {
     fs::read_dir(folder)
         .into_iter()
         .flatten()
