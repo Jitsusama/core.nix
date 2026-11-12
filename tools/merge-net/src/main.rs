@@ -46,6 +46,7 @@
 //! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
 //! | merge-net needs [--base REF] | merge-net ready COMMIT | merge-net status`
 
+mod answers;
 mod apart;
 mod holds;
 mod lists;
@@ -381,6 +382,7 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     }
     let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
     Ok(turn::passed(
+        &commit,
         &[&commit],
         &files,
         &format!(
@@ -469,7 +471,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
             let said = twice(commit, &newest, &earlier, &shared);
-            return Ok(turn::passed(&[&newest, &earlier], &files, &said));
+            return Ok(turn::passed(commit, &[&newest, &earlier], &files, &said));
         }
         // Main renamed or deleted a path one side names, which neither
         // run saw, so it runs again as a change checked once would.
@@ -483,15 +485,18 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 short(commit),
                 short(&checked)
             );
-            return Ok(turn::passed(&[&checked], &files, &said));
+            return Ok(turn::passed(commit, &[&checked], &files, &said));
         }
         ready::Before::Shares(checked, shared) => {
-            let waits = || turn::waiting(&[commit, &checked], &files);
-            if let Some(said) = lists_say(commit, &shared, &waits) {
+            let passes = |said: &str| turn::passed(commit, &[commit, &checked], &files, said);
+            let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]);
+            let quarantine = quarantine.unwrap_or_default();
+            if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
                 return Ok(said);
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
+            answers::keep(commit, answers::Verdict::Regate, &shared);
             eprintln!(
                 "merge-net: the same change passed at {}, but main has since moved {}; run \
                  changed-checks at {}, committed so it's sent, which builds only what the \
@@ -569,45 +574,6 @@ fn status() -> ExitCode {
         println!("paused");
     }
     ExitCode::SUCCESS
-}
-
-/// What lists say of `commit`, when every file it shares with main's moves
-/// is a list each change adds to: whether each holds there with its own
-/// check passed, saying which way it went, and holding a ready one back
-/// while it `waits` its turn. None when some file isn't one.
-fn lists_say(commit: &str, shared: &[String], waits: &dyn Fn() -> bool) -> Option<ExitCode> {
-    let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]).unwrap_or_default();
-    match lists::lists(shared, &ready::record(commit), &quarantine) {
-        lists::Lists::Need(need) if need.is_empty() => {
-            if waits() {
-                return Some(ExitCode::FAILURE);
-            }
-            println!(
-                "ready: {} sits on origin's main, and main moved only lists of its ({}), whose \
-                 own checks passed there",
-                short(commit),
-                shared.join(", ")
-            );
-            return Some(ExitCode::SUCCESS);
-        }
-        lists::Lists::Need(need) => eprintln!(
-            "merge-net: main has since moved only lists of {} ({}); build {} there, committed \
-             so it's sent, and merge again",
-            short(commit),
-            shared.join(", "),
-            need.iter()
-                .map(|check| format!("`nix-offload there . checks.{SYSTEM}.{check}`"))
-                .collect::<Vec<_>>()
-                .join(" and ")
-        ),
-        lists::Lists::Broken(why) => eprintln!(
-            "merge-net: {} at {} no longer reads as the net's list: {why}",
-            world::QUARANTINE,
-            short(commit)
-        ),
-        lists::Lists::NotAll => return None,
-    }
-    Some(ExitCode::FAILURE)
 }
 
 /// The paths renamed or deleted from `base` to `head`, by their old names.

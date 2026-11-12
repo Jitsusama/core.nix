@@ -1,7 +1,9 @@
-//! Whether two changes to one JSON file, to check-descriptions.nix or to
-//! a folder's checks.nix touch different keys, so the gate can count them as two files. It
-//! changes with how such files are compared, not with what the gate asks
-//! of a branch.
+//! Whether two changes to one JSON file, to check-descriptions.nix, to a
+//! folder's checks.nix or to a list of modules touch different keys or
+//! lines, so the gate can count them as two files. It changes with how
+//! such files are compared, not with what the gate asks of a branch.
+
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
@@ -180,6 +182,144 @@ fn check(line: &str) -> Option<&str> {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'\'')))
     .then_some(name)
+}
+
+/// The lists a new module adds a line to: the flake's, the checks', the
+/// example laptop's and the shell's checks'. On 12 November, by 07:00,
+/// merge-net had held gates back 23 times on them, 8 on flake.nix alone,
+/// and asked for 5 runs again over the shell's, most for two changes each
+/// adding a line of its own.
+pub const LISTS: [&str; 4] = [
+    "flake.nix",
+    "checks.nix",
+    "examples/laptop.nix",
+    "modules/quickshell/checks/imports.nix",
+];
+
+/// Whether one of the `LISTS`, which both sides changed, was changed
+/// apart: each side only added and took away whole lines, never one the
+/// other took away nor beside it, and the rebased `head` is `base` with
+/// both sides' lines, those added at one place in either side's order. A
+/// line both sides changed, or one changed in place, stays shared.
+#[must_use]
+pub fn lines_apart(base: &str, branch: &str, main: &str, head: &str) -> bool {
+    let base: Vec<&str> = base.lines().collect();
+    let head: Vec<&str> = head.lines().collect();
+    let (Some(ours), Some(theirs)) = (edits(&base, branch), edits(&base, main)) else {
+        return false;
+    };
+    meet_apart(&ours, &theirs)
+        && [(&ours, &theirs), (&theirs, &ours)]
+            .iter()
+            .any(|(first, then)| merged(&base, first, then) == head)
+}
+
+/// Whether two changes from `base`, `one` and `other`, would meet as
+/// `lines_apart` asks once either is rebased onto the other: what a gate
+/// holding a change back on one of the `LISTS` is asked, before the
+/// rebase there is to judge.
+#[must_use]
+pub fn would_be_apart(base: &str, one: &str, other: &str) -> bool {
+    let base: Vec<&str> = base.lines().collect();
+    match (edits(&base, one), edits(&base, other)) {
+        (Some(one), Some(other)) => meet_apart(&one, &other),
+        _ => false,
+    }
+}
+
+/// What a side did to its base's lines: those it added, by the index of
+/// the base's line they come before, and the indexes of those it took
+/// away.
+#[derive(Default)]
+struct Edits<'a> {
+    added: BTreeMap<usize, Vec<&'a str>>,
+    removed: BTreeSet<usize>,
+}
+
+/// The `Edits` taking `base` to `after`, by the longest run of lines they
+/// keep in common, or none where a side changed a line in place, taking
+/// lines away and adding others where they were.
+fn edits<'a>(base: &[&str], after: &'a str) -> Option<Edits<'a>> {
+    let after: Vec<&str> = after.lines().collect();
+    // The lines both open and close with need no table, which leaves it
+    // a few lines a side where a change lists a module.
+    let start = base.iter().zip(&after).take_while(|(a, b)| a == b).count();
+    let end = base[start..]
+        .iter()
+        .rev()
+        .zip(after[start..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let (old, new) = (
+        &base[start..base.len() - end],
+        &after[start..after.len() - end],
+    );
+    // How many lines `old[i..]` and `new[j..]` keep in common, at most.
+    let mut common = vec![vec![0_u32; new.len() + 1]; old.len() + 1];
+    for i in (0..old.len()).rev() {
+        for j in (0..new.len()).rev() {
+            common[i][j] = if old[i] == new[j] {
+                common[i + 1][j + 1] + 1
+            } else {
+                common[i + 1][j].max(common[i][j + 1])
+            };
+        }
+    }
+    let mut edits = Edits::default();
+    let (mut i, mut j) = (0, 0);
+    // Whether the lines since the last one kept took any away, or added any.
+    let (mut took, mut gave) = (false, false);
+    while i < old.len() || j < new.len() {
+        if i < old.len() && j < new.len() && old[i] == new[j] {
+            (took, gave) = (false, false);
+            (i, j) = (i + 1, j + 1);
+        } else if j < new.len() && (i == old.len() || common[i][j + 1] >= common[i + 1][j]) {
+            edits.added.entry(start + i).or_default().push(new[j]);
+            gave = true;
+            j += 1;
+        } else {
+            edits.removed.insert(start + i);
+            took = true;
+            i += 1;
+        }
+        if took && gave {
+            return None;
+        }
+    }
+    Some(edits)
+}
+
+/// Whether two sides' `Edits` touch no line in common: neither takes away
+/// a line the other does, nor adds lines beside one the other takes away.
+fn meet_apart(one: &Edits, other: &Edits) -> bool {
+    let clear = |adding: &Edits, taking: &Edits| {
+        adding.added.keys().all(|at| {
+            !taking.removed.contains(at)
+                && !at
+                    .checked_sub(1)
+                    .is_some_and(|before| taking.removed.contains(&before))
+        })
+    };
+    one.removed.is_disjoint(&other.removed) && clear(one, other) && clear(other, one)
+}
+
+/// `base` with the lines `first` and then `then` add at each place, and
+/// without those either takes away.
+fn merged<'a>(base: &[&'a str], first: &Edits<'a>, then: &Edits<'a>) -> Vec<&'a str> {
+    let mut lines = Vec::new();
+    let add = |at: usize, lines: &mut Vec<&'a str>| {
+        for side in [first, then] {
+            lines.extend(side.added.get(&at).into_iter().flatten().copied());
+        }
+    };
+    for (at, line) in base.iter().enumerate() {
+        add(at, &mut lines);
+        if !first.removed.contains(&at) && !then.removed.contains(&at) {
+            lines.push(*line);
+        }
+    }
+    add(base.len(), &mut lines);
+    lines
 }
 
 /// Whether the four texts, each read by `read`, were changed apart.
@@ -484,6 +624,94 @@ mod tests {
         assert!(
             !checks_apart(&helped, &helped, &helped, &helped),
             "a file with helpers and no in"
+        );
+    }
+
+    /// Lists of modules, as flake.nix keeps them.
+    const LISTED: &str = "{\n  home = [\n    ./modules/a/home\n    ./modules/c/home\n  ];\n  \
+        system = [\n    ./modules/a\n  ];\n}\n";
+
+    /// `text` with `line` listed after `after`.
+    fn added(text: &str, after: &str, line: &str) -> String {
+        text.replacen(
+            &format!("    {after}\n"),
+            &format!("    {after}\n    {line}\n"),
+            1,
+        )
+    }
+
+    /// `text` without `line`.
+    fn taken(text: &str, line: &str) -> String {
+        text.replacen(&format!("    {line}\n"), "", 1)
+    }
+
+    #[test]
+    fn lines_added_or_taken_away_at_different_places_are_apart() {
+        // 12 November's case: two changes each listed a module of its own.
+        let ours = added(LISTED, "./modules/a/home", "./modules/b/home");
+        let theirs = added(LISTED, "./modules/a", "./modules/s");
+        let head = added(&theirs, "./modules/a/home", "./modules/b/home");
+        assert!(
+            lines_apart(LISTED, &ours, &theirs, &head),
+            "two modules listed in two lists"
+        );
+        assert!(
+            would_be_apart(LISTED, &ours, &theirs),
+            "two modules listed in two lists, before the rebase"
+        );
+        let ours = added(LISTED, "./modules/c/home", "./modules/d/home");
+        let theirs = added(LISTED, "./modules/c/home", "./modules/e/home");
+        let first = added(&theirs, "./modules/c/home", "./modules/d/home");
+        let then = added(&ours, "./modules/c/home", "./modules/e/home");
+        for head in [&first, &then] {
+            assert!(
+                lines_apart(LISTED, &ours, &theirs, head),
+                "two modules listed at one list's end, in either order: {head}"
+            );
+        }
+        let theirs = taken(LISTED, "./modules/a");
+        let head = taken(&ours, "./modules/a");
+        assert!(
+            lines_apart(LISTED, &ours, &theirs, &head),
+            "a module listed while another list lost one"
+        );
+    }
+
+    #[test]
+    fn lines_both_sides_touched_or_changed_in_place_are_not_apart() {
+        let ours = added(LISTED, "./modules/c/home", "./modules/d/home");
+        assert!(
+            !lines_apart(LISTED, &ours, &ours, &ours),
+            "both listed one module"
+        );
+        let theirs = LISTED.replace("./modules/c/home", "./modules/c/home.nix");
+        let head = added(&theirs, "./modules/c/home.nix", "./modules/d/home");
+        assert!(
+            !lines_apart(LISTED, &ours, &theirs, &head),
+            "main changed a line in place"
+        );
+        assert!(
+            !would_be_apart(LISTED, &ours, &theirs),
+            "main changed a line in place, before the rebase"
+        );
+        let theirs = taken(LISTED, "./modules/c/home");
+        let head = taken(&ours, "./modules/c/home");
+        assert!(
+            !lines_apart(LISTED, &ours, &theirs, &head),
+            "main took away the line the branch listed a module beside"
+        );
+        let ours = taken(LISTED, "./modules/a");
+        assert!(
+            !lines_apart(LISTED, &ours, &ours, &ours),
+            "both took away one line"
+        );
+        let ours = added(LISTED, "./modules/a/home", "./modules/b/home");
+        let theirs = added(LISTED, "./modules/a", "./modules/s");
+        let both = added(&theirs, "./modules/a/home", "./modules/b/home");
+        let head = added(&both, "./modules/s", "./modules/x");
+        assert!(
+            !lines_apart(LISTED, &ours, &theirs, &head),
+            "the head listed what neither did"
         );
     }
 }

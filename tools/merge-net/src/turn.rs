@@ -14,7 +14,9 @@
 //! whose process is gone, or is another process now, started at another
 //! time than the gate's, or that ran past [`LONGEST`], holds nothing
 //! back; nor does one in the asking tree, or one sharing only lists each
-//! change adds a line to (`lists.rs`), which never make a pass stale. A
+//! change adds a line to (`lists.rs`), which never make a pass stale, or
+//! lists of modules its change and the asking one gave lines apart
+//! (`apart.rs`), which `ready` will judge apart once it's rebased. A
 //! gate counts as having started when its tree's first gate did
 //! (`places.rs`), so a change that runs again after a merge left its pass
 //! stale keeps its place rather than going behind every gate since.
@@ -162,11 +164,12 @@ pub fn start_of(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64>
     passes.iter().find_map(|commit| started(&record(commit)))
 }
 
-/// Why a change changing `ours` onto origin's main waits for another gate
-/// before it merges, or nothing when it needn't, given `passes`, the
-/// commits whose runs it merges on, newest first. A change whose runs
-/// kept no start, from before starts were, waits on nothing.
-pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
+/// Why the change at `commit` changing `ours` onto origin's main waits for
+/// another gate before it merges, and the files they share, or nothing
+/// when it needn't, given `passes`, the commits whose runs it merges on,
+/// newest first. A change whose runs kept no start, from before starts
+/// were, waits on nothing.
+pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, Vec<String>)> {
     let its_gate = start_of(passes, &crate::ready::record)?;
     let gates = gates(&folder()?);
     let here = std::env::current_dir().ok()?;
@@ -180,8 +183,17 @@ pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
         ours,
     };
     let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
-    let held = ahead(&gates, &asking, now, &place, &alive, &files_of)?;
-    Some(format!(
+    let touched = |gate: &Gate| {
+        let files = files_of(gate)?;
+        Some(
+            files
+                .into_iter()
+                .filter(|file| !lines_apart(gate, commit, file))
+                .collect(),
+        )
+    };
+    let held = ahead(&gates, &asking, now, &place, &alive, &touched)?;
+    let said = format!(
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
          one's, as its tree's first gate did, still runs and changes {} too; merging first \
          would leave its pass stale, so merge again once it ends, which needs no new run \
@@ -192,26 +204,58 @@ pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
         (asking.started - held.started) / 60,
         held.shared.join(", "),
         (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
-    ))
+    );
+    Some((said, held.shared))
 }
 
-/// Whether a change merging on the runs at `passes`, newest first, waits
-/// for an earlier gate sharing one of its `files`, which it says.
-pub fn waiting(passes: &[&str], files: &[String]) -> bool {
-    let why = waits(passes, files);
-    if let Some(why) = &why {
-        eprintln!("{why}");
+/// Whether `gate`'s change and the one at `head` gave `file`, one of the
+/// lists of modules, lines apart, as `ready` will judge them once the
+/// gate's change is rebased onto `head`: then its pass won't go stale for
+/// the file, and holding `head` back for it saves nothing. `head` is read
+/// in the asking tree, `gate`'s change in its own.
+fn lines_apart(gate: &Gate, head: &str, file: &str) -> bool {
+    if !crate::apart::LISTS.contains(&file) {
+        return false;
     }
-    why.is_some()
+    let Some(base) = git_in(
+        &gate.folder,
+        &["merge-base", &gate.commit, "refs/remotes/origin/main"],
+    ) else {
+        return false;
+    };
+    let at = |folder: &Path, commit: &str| git_in(folder, &["show", &format!("{commit}:{file}")]);
+    match (
+        at(&gate.folder, base.trim()),
+        at(&gate.folder, &gate.commit),
+        at(Path::new("."), head),
+    ) {
+        (Some(base), Some(theirs), Some(ours)) => {
+            crate::apart::would_be_apart(&base, &theirs, &ours)
+        }
+        _ => false,
+    }
 }
 
-/// A change ready on the runs at `passes`, as `ready` says, once no
-/// earlier gate sharing its `files` still runs.
-pub fn passed(passes: &[&str], files: &[String], ready: &str) -> ExitCode {
-    if waiting(passes, files) {
+/// Whether the change at `head`, merging on the runs at `passes`, newest
+/// first, waits for an earlier gate sharing one of its `files`, which it
+/// says and keeps.
+pub fn waiting(head: &str, passes: &[&str], files: &[String]) -> bool {
+    let Some((why, shared)) = waits(head, passes, files) else {
+        return false;
+    };
+    eprintln!("{why}");
+    crate::answers::keep(head, crate::answers::Verdict::Hold, &shared);
+    true
+}
+
+/// The change at `head`, ready on the runs at `passes`, as `ready` says,
+/// once no earlier gate sharing its `files` still runs.
+pub fn passed(head: &str, passes: &[&str], files: &[String], ready: &str) -> ExitCode {
+    if waiting(head, passes, files) {
         return ExitCode::FAILURE;
     }
     println!("{ready}");
+    crate::answers::keep(head, crate::answers::Verdict::Ok, files);
     ExitCode::SUCCESS
 }
 
@@ -269,20 +313,23 @@ fn placed(gates: &[Gate], here: &Path, passed: Option<u64>, now: u64) -> Places 
 /// The files a gate's commit changes from where it left origin's main, as
 /// its own tree's repository says.
 fn files_of(gate: &Gate) -> Option<Vec<String>> {
-    let git = |arguments: &[&str]| {
-        let ran = Command::new("git")
-            .arg("-C")
-            .arg(&gate.folder)
-            .args(arguments)
-            .output()
-            .ok()?;
-        ran.status
-            .success()
-            .then(|| String::from_utf8_lossy(&ran.stdout).into_owned())
-    };
+    let git = |arguments: &[&str]| git_in(&gate.folder, arguments);
     let base = git(&["merge-base", &gate.commit, "refs/remotes/origin/main"])?;
     let files = git(&["diff", "--name-only", base.trim(), &gate.commit])?;
     Some(files.lines().map(str::to_owned).collect())
+}
+
+/// What git says in `folder`, or nothing when it fails.
+fn git_in(folder: &Path, arguments: &[&str]) -> Option<String> {
+    let ran = Command::new("git")
+        .arg("-C")
+        .arg(folder)
+        .args(arguments)
+        .output()
+        .ok()?;
+    ran.status
+        .success()
+        .then(|| String::from_utf8_lossy(&ran.stdout).into_owned())
 }
 
 /// Whether `gate`'s process still runs: one has its id and started when
