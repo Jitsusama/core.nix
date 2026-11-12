@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, BufRead as _, BufReader};
+use std::io::{self, BufRead as _, BufReader, Read as _, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -22,6 +22,7 @@ use crate::journal::{
     self, LAUNCHER_READY, Mark, RESTART_SCHEDULED, SHUTTING_DOWN, STARTUP_FINISHED, UNIT_STARTED,
 };
 use crate::lid::{self, Looked};
+use crate::sessions;
 
 /// How often a changed day is written out and the lid looked at: often
 /// enough that what `health` shows is a moment old, seldom enough to cost
@@ -43,7 +44,13 @@ pub struct Follower {
     lid: Option<Looked>,
     lid_wrong: bool,
     pains: Option<PathBuf>,
+    sessions: Option<PathBuf>,
+    last_calls: BTreeMap<String, Option<String>>,
 }
+
+/// How much of the sessions' logs is read a tick, so a first start on a
+/// day of a gigabyte of them reads it over minutes rather than all at once.
+const SESSIONS_A_TICK: u64 = 32 << 20;
 
 /// What the day calls a lid that's wrong.
 const LID_WRONG: &str = "the lid reads shut while the laptop's screen is on and its keys are typed";
@@ -63,7 +70,96 @@ impl Follower {
             lid: None,
             lid_wrong: false,
             pains: None,
+            sessions: None,
+            last_calls: BTreeMap::new(),
         }
+    }
+
+    /// Read the agents' sessions' logs, a folder each place they ran,
+    /// under `sessions`.
+    #[must_use]
+    pub fn hearing(self, sessions: &Path) -> Self {
+        Self {
+            sessions: Some(sessions.to_owned()),
+            ..self
+        }
+    }
+
+    /// Carry on from the day this run's last one kept, which the journals
+    /// say again but the sessions' logs, read on from where it stopped,
+    /// don't.
+    #[must_use]
+    pub fn resuming(mut self, kept: Day) -> Self {
+        self.day.resume(kept);
+        self
+    }
+
+    /// Read on in each session's log written to today, `budget` bytes in
+    /// all at most, and count what the day's lines said. A log that can't
+    /// be read is left for the next tick.
+    pub fn hear(&mut self, budget: u64) {
+        let Some(sessions) = self.sessions.clone() else {
+            return;
+        };
+        let mut left = budget;
+        for folder in fs::read_dir(&sessions).into_iter().flatten().flatten() {
+            let place = sessions::place(&folder.file_name().to_string_lossy());
+            for log in fs::read_dir(folder.path()).into_iter().flatten().flatten() {
+                if left == 0 {
+                    return;
+                }
+                let path = log.path();
+                if path.extension().is_none_or(|kind| kind != "jsonl") || !self.written_today(&log)
+                {
+                    continue;
+                }
+                left -= self.hear_log(&path, &place, left).unwrap_or(0);
+            }
+        }
+    }
+
+    /// Whether a log was written to on the day being tallied.
+    fn written_today(&self, log: &fs::DirEntry) -> bool {
+        log.metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|since| i64::try_from(since.as_micros()).ok())
+            .is_some_and(|at| date_of(at, &self.zone) >= self.day.date)
+    }
+
+    /// Read one log on from where it was left, `budget` bytes at most, to
+    /// its last whole line; say how many bytes were read.
+    fn hear_log(&mut self, path: &Path, place: &str, budget: u64) -> io::Result<u64> {
+        let key = path.to_string_lossy().into_owned();
+        let mut file = fs::File::open(path)?;
+        let length = file.metadata()?.len();
+        let mut from = self.day.read.get(&key).copied().unwrap_or(0);
+        if from > length {
+            from = 0;
+        }
+        file.seek(SeekFrom::Start(from))?;
+        let mut chunk = Vec::new();
+        file.take(budget).read_to_end(&mut chunk)?;
+        let whole = match chunk.iter().rposition(|&byte| byte == b'\n') {
+            Some(end) => end + 1,
+            // A line longer than the whole budget is passed over.
+            None if chunk.len() as u64 == budget && budget == SESSIONS_A_TICK => chunk.len(),
+            None => return Ok(0),
+        };
+        let last = self.last_calls.entry(key.clone()).or_default();
+        for line in String::from_utf8_lossy(&chunk[..whole]).lines() {
+            if let Some(heard) = sessions::hear(line, last)
+                && date_of(heard.at, &self.zone) == self.day.date
+            {
+                self.day.heard(place, &heard);
+                self.changed = true;
+            }
+        }
+        let read = whole as u64;
+        self.day.read.insert(key, from + read);
+        self.changed = true;
+        Ok(read)
     }
 
     /// Read how using the machine felt from the pain-points detector's
@@ -127,7 +223,9 @@ impl Follower {
         let date = date_of(entry.at, &self.zone);
         if date > self.day.date {
             self.write()?;
+            let read = std::mem::take(&mut self.day.read);
             self.day = Day::new(&date);
+            self.day.read = read;
         } else if date < self.day.date {
             return Ok(());
         }
@@ -219,6 +317,15 @@ pub fn follow(into: &Path) -> io::Result<()> {
     if let Some(state) = into.parent() {
         follower = follower.feeling(&state.join("pain-points"));
     }
+    if let Some(home) = std::env::var_os("HOME") {
+        follower = follower.hearing(&PathBuf::from(home).join(".pi/agent/sessions"));
+    }
+    if let Some(kept) = fs::read(file_of(into, &today))
+        .ok()
+        .and_then(|kept| serde_json::from_slice(&kept).ok())
+    {
+        follower = follower.resuming(kept);
+    }
     let (lines, read) = mpsc::channel();
     // Warnings and graver.
     spawn(&["-p", "warning"], lines.clone())?;
@@ -276,6 +383,7 @@ fn run(
             ticked = at;
             follower.look_at_lid(look(), Timestamp::now().as_microsecond());
             follower.feel();
+            follower.hear(SESSIONS_A_TICK);
             follower.write()?;
         }
     }
@@ -521,5 +629,63 @@ mod tests {
         let feel = read(into.path(), "2026-11-12").feel;
         assert_eq!(feel.len(), 1, "the pain kept: {feel:?}");
         assert_eq!(feel[0].trying, "sound", "as the detector said it");
+    }
+
+    /// A failed bash call at a moment in microseconds, as pi logs it.
+    fn failed(at: i64) -> String {
+        format!(
+            r#"{{"type":"message","message":{{"role":"toolResult","toolName":"bash","isError":true,"timestamp":{},"content":[{{"type":"text","text":"error: no"}}]}}}}"#,
+            at / 1_000
+        )
+    }
+
+    #[test]
+    fn the_sessions_logs_are_read_on_and_never_twice() {
+        let into = tempfile::tempdir().expect("a folder");
+        let sessions = tempfile::tempdir().expect("the sessions' folder");
+        let folder = sessions.path().join("--home-joel-src-core.nix--");
+        fs::create_dir_all(&folder).expect("a place");
+        let log = folder.join("a.jsonl");
+        // A line from the day before, then one of the day and half a line;
+        // the day is today's, since only a log written to today is read.
+        let today = date_of(Timestamp::now().as_microsecond(), &TimeZone::UTC);
+        let noon = |at: i64| at + (Timestamp::now().as_microsecond() / DAY - NOON / DAY) * DAY;
+        fs::write(
+            &log,
+            format!(
+                "{}\n{}\n{{\"type",
+                failed(noon(NOON - DAY)),
+                failed(noon(NOON))
+            ),
+        )
+        .expect("a log of today");
+        let mut follower =
+            Follower::new(&today, into.path(), TimeZone::UTC).hearing(sessions.path());
+        follower.hear(1 << 20);
+        follower.hear(1 << 20);
+        follower.write().expect("the day is written");
+        let day = read(into.path(), &today);
+        let bash = &day.things["pi bash"];
+        assert_eq!(bash.kind, Some(Kind::Tools), "a tool's");
+        assert_eq!(bash.errors, 1, "the day's line, once: {bash:?}");
+        let kept = day.read[&log.to_string_lossy().into_owned()];
+        let written = fs::read(&log).expect("the log");
+        let whole = written
+            .iter()
+            .rposition(|&byte| byte == b'\n')
+            .expect("a line")
+            + 1;
+        assert_eq!(kept, whole as u64, "read to its last whole line");
+
+        let mut again = Follower::new(&today, into.path(), TimeZone::UTC)
+            .hearing(sessions.path())
+            .resuming(day);
+        again.hear(1 << 20);
+        again.write().expect("the day is written again");
+        assert_eq!(
+            read(into.path(), &today).things["pi bash"].errors,
+            1,
+            "a restart reads on from where the last run stopped"
+        );
     }
 }

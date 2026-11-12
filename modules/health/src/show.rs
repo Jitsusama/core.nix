@@ -12,11 +12,13 @@ use crate::day::{Badness, Boot, Day, Kind, Thing};
 use crate::feel;
 
 /// The kinds, in the order they're shown when as bad as each other.
-const KINDS: [Kind; 4] = [
+const KINDS: [Kind; 6] = [
+    Kind::Words,
     Kind::Programs,
     Kind::Services,
     Kind::Devices,
     Kind::Security,
+    Kind::Tools,
 ];
 
 /// How many of a kind's things, or a thing's signatures, are shown.

@@ -14,7 +14,10 @@
 //! lid that reads shut while the laptop's own screen is on and its own keys
 //! are typed on, since every program believes the lid and none says so.
 //! And it keeps how using the machine felt: the day's most painful
-//! interactions, as the pain-points detector beside it ranks them.
+//! interactions, as the pain-points detector beside it ranks them. It
+//! reads the agents' sessions' logs on from where it stopped, for the
+//! tools: a call that failed, was refused or was made twice running; and
+//! for Joel's words, a line he typed that sounds like something hurt.
 //! It keeps the day in `~/.local/state/health/<date>.json`.
 //!
 //! `health` reads that file: the day's three most painful interactions,
@@ -29,6 +32,7 @@ mod feel;
 mod follow;
 mod journal;
 mod lid;
+mod sessions;
 mod show;
 mod sign;
 
@@ -45,7 +49,8 @@ use crate::day::Day;
 /// What `health --help` says.
 const USAGE: &str = "\
 health                 what today's journals said, one line a kind, the worst first
-health KIND            a kind's worst things: programs, services, devices or security
+health KIND            a kind's worst things: words, programs, services, devices,
+                       security or tools
 health boot            each boot's stages, and each shutdown's seconds
 health WORDS           what each thing whose name holds the words kept saying
 health --day DATE ...  another day, as YYYY-MM-DD
