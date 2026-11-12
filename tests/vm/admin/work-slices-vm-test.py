@@ -4,7 +4,7 @@ work-slices.nix, beside this, runs this through pytest inside the driver (tests/
 An account in wheel sets build.slice's and machine.slice's weight and cores for as long as
 the machine runs, as an agent measuring them would, outside any session. An account outside
 wheel can't, and an administrator still can't change any other unit without a password.
-A process in agents.slice or jobs-work.slice is refused outright what would ask for one, so
+A process in agents.slice, jobs.service or jobs-work.slice is refused outright what would ask, so
 no agent puts a password prompt on the screen, and keeps what a rule grants unasked.
 Each test puts what it changed back as it ends, so any runs alone.
 """
@@ -65,10 +65,10 @@ def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:
     assert shown(reverted, "build.slice", "CPUWeight") != "idle"
 
 
-def checked_in(machine: BaseMachine, slice_name: str | None, action: str) -> int:
-    """Give pkcheck's status for someone's shell, in a slice or none, asking for an action."""
+def checked_in(machine: BaseMachine, placed: str | None, action: str) -> int:
+    """Give pkcheck's status for someone's shell, placed by systemd-run or not run by it."""
     check = f"pkcheck --action-id {action} --process $$ 2>&1"
-    if slice_name is None:
+    if placed is None:
         status, said = machine.execute(f"runuser -u someone -- sh -c '{check}'")
     else:
         # systemd reads a dollar in a unit's command as its own, so the
@@ -76,9 +76,9 @@ def checked_in(machine: BaseMachine, slice_name: str | None, action: str) -> int
         # holds only systemd's own programs.
         check = check.replace("$$", "$$$$").replace("pkcheck", "/run/current-system/sw/bin/pkcheck")
         status, said = machine.execute(
-            f"systemd-run --quiet --wait --pipe --slice={slice_name} --uid=someone sh -c '{check}'"
+            f"systemd-run --quiet --wait --pipe {placed} --uid=someone sh -c '{check}'"
         )
-    print(f"pkcheck from {slice_name}: {status} {said}")
+    print(f"pkcheck from {placed}: {status} {said}")
     return status
 
 
@@ -87,21 +87,29 @@ REFUSED = 1
 ASKS = 2
 
 
-@pytest.mark.parametrize("slice_name", ["agents.slice", "jobs-work.slice"])
+@pytest.mark.parametrize(
+    ("placed", "place"),
+    [
+        ("--slice=agents.slice", "/agents.slice/"),
+        ("--slice=jobs.slice --unit=jobs", "/jobs.slice/jobs.service"),
+        ("--slice=jobs-work.slice", "/jobs-work.slice/"),
+    ],
+)
 def test_an_agent_is_refused_what_would_ask_for_a_password(
-    up: BaseMachine, slice_name: str
+    up: BaseMachine, placed: str, place: str
 ) -> None:
     action = "org.freedesktop.systemd1.manage-units"
-    assert checked_in(up, slice_name, action) == REFUSED
+    assert checked_in(up, placed, action) == REFUSED
     said = up.succeed("journalctl -t polkit-asks --no-pager -o cat")
     assert f"refused {action} to pid" in said, said
-    assert f"/{slice_name}/" in said, said
+    assert place in said, said
 
 
 def test_outside_the_agents_slices_polkit_still_asks(up: BaseMachine) -> None:
     action = "org.freedesktop.systemd1.manage-units"
     assert checked_in(up, None, action) == ASKS
-    assert checked_in(up, "other.slice", action) == ASKS
+    assert checked_in(up, "--slice=other.slice", action) == ASKS
+    assert checked_in(up, "--slice=jobs.slice --unit=awaited", action) == ASKS
 
 
 def test_an_agent_keeps_what_a_rule_grants_unasked(reverted: BaseMachine) -> None:

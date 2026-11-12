@@ -8,10 +8,11 @@ var where = {
   session: account + "agents.slice/kitty-3272-33.scope",
   host: account + "agents.slice/pi-host-work-background.service",
   work: account + "jobs.slice/jobs-work.slice/jobs-work-qestabc.slice/work-12-3.scope",
+  command: account + "jobs.slice/jobs.service",
   terminal: account + "jobs.slice/jobs-awaited.slice/awaited-40-5.scope",
   app: account + "app.slice/app-niri-kitty-41.scope",
 };
-var pids = { session: 10, host: 11, work: 12, terminal: 13, app: 14 };
+var pids = { session: 10, host: 11, work: 12, terminal: 13, app: 14, command: 15 };
 for (var place in where) {
   processes[pids[place]] = where[place];
 }
@@ -58,17 +59,20 @@ var weight = asking("org.freedesktop.systemd1.manage-units", {
 expect("libvirt's system connection", libvirt, "session", "no");
 expect("libvirt's system connection", libvirt, "host", "no");
 expect("libvirt's system connection", libvirt, "work", "no");
+expect("libvirt's system connection", libvirt, "command", "no");
 expect("libvirt's system connection", libvirt, "terminal", null);
 expect("libvirt's system connection", libvirt, "app", null);
 
 // A rule that asks an administrator asks Joel, never for an agent.
 expect("writing firmware", firmware, "session", "no");
 expect("writing firmware", firmware, "work", "no");
+expect("writing firmware", firmware, "command", "no");
 expect("writing firmware", firmware, "terminal", "auth_admin_keep");
 expect("writing firmware", firmware, "app", "auth_admin_keep");
 
 // What a rule grants unasked, agents keep.
 expect("a work slice's weight", weight, "session", "yes");
+expect("a work slice's weight", weight, "command", "yes");
 expect("a work slice's weight", weight, "terminal", "yes");
 
 // A process gone before it's read is refused, since nobody's there to ask.

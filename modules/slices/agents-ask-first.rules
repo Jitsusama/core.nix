@@ -1,9 +1,10 @@
 // No agent's process may put a polkit prompt on Joel's screen: whatever
 // would have asked him is refused outright, so the agent hears a plain
 // "not authorized" and he never sees a box he didn't call up. An agent's
-// process is one in agents.slice, where every pi session runs, or in
-// jobs-work.slice, where the jobs sorter puts agents' commands; what Joel
-// starts at a terminal runs in jobs-awaited.slice and asks as it always did.
+// process is one in agents.slice, where every pi session runs, in
+// jobs.service, where pi starts each command, or in jobs-work.slice, where
+// the jobs sorter moves them; what Joel starts at a terminal runs in
+// jobs-awaited.slice and asks as it always did.
 // What a rule already grants without asking, a switch or a slice's weight,
 // agents keep. agents-ask.nix says why, and agents-ask-last.rules,
 // read after every other rule, refuses what polkit's own defaults would ask.
@@ -26,7 +27,11 @@ function placeOf(subject) {
 // Whether a place is an agent's. A process that's gone is taken as one,
 // since a prompt for it would answer nobody.
 function fromAgents(place) {
-  return place === null || /\/(agents|jobs-work)\.slice\//.test(place);
+  return (
+    place === null ||
+    /\/(agents|jobs-work)\.slice\//.test(place) ||
+    /\/jobs\.slice\/jobs\.service(\/|$)/.test(place)
+  );
 }
 
 // polkit's own lines name only a process, gone by the time anyone reads
