@@ -15,7 +15,7 @@
 
 mod lost;
 
-use crate::words::{ALIKE, alike, asking_status, automated, correcting};
+use crate::words::{ALIKE, alike, asking_status, automated, correcting, nudging};
 pub use lost::painful;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
@@ -69,6 +69,10 @@ pub struct Turn {
     pub again: bool,
     pub correction: bool,
     pub status: bool,
+    /// Only set the session going again, so he waits on its first reply
+    /// alone.
+    #[serde(default)]
+    pub nudge: bool,
     /// How long its tools ran, leaving out those that wait on Joel.
     #[serde(default)]
     pub tools_ms: i64,
@@ -165,6 +169,7 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
                 again,
                 correction: correcting(&text),
                 status: asking_status(&text),
+                nudge: nudging(&text),
                 ..Turn::default()
             });
             log.open = true;

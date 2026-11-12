@@ -15,6 +15,11 @@ pub const REPLY_MS: i64 = 1_000;
 /// doing something else meanwhile, as with a search he left in the
 /// launcher, so a reply that hung for ten loses him two.
 pub const MOST_MS: i64 = 120_000;
+/// pi hands a command still running at a minute to the background, so
+/// the session is his again; a tool that holds it between calls longer
+/// than that is pi's fault past the minute, and what runs within it is
+/// the work he asked for.
+pub const HANDED_MS: i64 = 60_000;
 
 /// The day's turns that lost him at least a second, as the day file says
 /// them: each a turn, or turns in a row where each said the last again.
@@ -139,6 +144,64 @@ mod tests {
         assert!(
             painful(&[&quick], AT - 1, AT + 1).is_empty(),
             "a reply that began within a second lost him nothing, however long it ran"
+        );
+    }
+
+    #[test]
+    fn tools_between_calls_lose_only_what_they_hold_past_a_minute() {
+        let work = [turn(
+            AT,
+            &[
+                (AT + 500, 1000, Stop::Tool),
+                (AT + 51_500, 1000, Stop::Tool),
+                (AT + 52_900, 1000, Stop::Done),
+            ],
+        )];
+        assert!(
+            painful(&[&work], AT - 1, AT + 1).is_empty(),
+            "tools within a minute of a call are the work he asked for"
+        );
+        let held = [turn(
+            AT,
+            &[
+                (AT + 500, 1000, Stop::Tool),
+                (AT + 91_500, 1000, Stop::Done),
+            ],
+        )];
+        let p = &painful(&[&held], AT - 1, AT + 1)[0];
+        assert_eq!(
+            (p.lost_seconds, p.part),
+            (30.0, "pi"),
+            "held 30 s past the minute"
+        );
+        let mut asked = held[0].clone();
+        asked.his_ms = 90_000;
+        assert!(
+            painful(&[&[asked]], AT - 1, AT + 1).is_empty(),
+            "a question put to him is his time"
+        );
+    }
+
+    #[test]
+    fn a_nudge_loses_only_what_its_first_reply_kept_him_waiting() {
+        let mut nudge = turn(
+            AT,
+            &[
+                (AT + 5000, 1000, Stop::Tool),
+                (AT + 600_000, 1000, Stop::Aborted),
+            ],
+        );
+        nudge.nudge = true;
+        let p = &painful(&[&[nudge.clone()]], AT - 1, AT + 1)[0];
+        assert_eq!(
+            (p.lost_seconds, p.seconds, p.part),
+            (4.0, 6.0, "pi"),
+            "what the session went on to do was handed to it"
+        );
+        nudge.calls[0].start = AT + 500;
+        assert!(
+            painful(&[&[nudge]], AT - 1, AT + 1).is_empty(),
+            "answered within a second"
         );
     }
 

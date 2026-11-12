@@ -1,6 +1,7 @@
 //! What a message Joel typed to pi says of how it's going, read from its
 //! words in memory alone: whether it repeats his last, reads as a
-//! correction, asks where things stand, or wasn't typed by him at all.
+//! correction, asks where things stand, only sets a session going again,
+//! or wasn't typed by him at all.
 //! Each answer is a flag; no word or length of the text leaves here.
 
 /// How alike two messages must be, by their letter pairs, to be one said
@@ -57,6 +58,13 @@ pub fn asking_status(text: &str) -> bool {
     ]
     .iter()
     .any(|phrase| low.contains(phrase))
+}
+
+/// Whether a message only sets a session going again, as a "." or a
+/// "carry on" typed into one that went quiet: what follows is work he
+/// handed it, not a reply he waits on.
+pub fn nudging(_text: &str) -> bool {
+    false
 }
 
 /// How alike two messages are, from 0 to 1: the share of letter pairs
@@ -128,6 +136,19 @@ mod tests {
             !asking_status("make the status line green"),
             "status as a thing"
         );
+    }
+
+    #[test]
+    fn a_nudge_only_sets_a_session_going_again() {
+        assert!(nudging("."), "a dot");
+        assert!(nudging(" ... "), "dots and spaces");
+        assert!(nudging("continue"), "continue");
+        assert!(nudging("Carry on!"), "carry on");
+        assert!(nudging("keep going"), "keep going");
+        assert!(nudging("go ahead"), "go ahead");
+        assert!(!nudging(""), "nothing typed is no nudge");
+        assert!(!nudging("go on with the backlight"), "an ask of its own");
+        assert!(!nudging("why?"), "a question");
     }
 
     #[test]
