@@ -2709,6 +2709,10 @@
     the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
     asks again rather than closing, and each question is answered by a pi of its own
   '';
+  every-command-row-has-a-drawer = ''
+    every command the launcher offers says in its drawer what it answers and one or two worked
+    examples, naming only documentation addresses
+  '';
   the-launcher-catalogues-what-it-does = ''
     the launcher's catalogue tells a place from an action, offers what ends something rather than
     doing it, and lists no figure, copy or command's start
