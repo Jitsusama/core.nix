@@ -110,6 +110,8 @@ STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 TRY = "press d on a session"
 ORCHESTRATING = "Orchestrating Quest"
+# How many times the drawer case goes down and back up between two sessions.
+ARROWS_PAST = 3
 # The two seconds a session's drawer must stay on its row to read its answer, and a while longer.
 A_STAY = 2.0
 PAST_A_STAY = 2.5
@@ -467,6 +469,42 @@ def test_a_paused_sessions_glyph_is_never_drawn_in_a_live_ones_colour(shell: She
     }
     assert set(inks) == set(names), laid["rows"]
     assert inks["Paused Quest"] != inks["Listening Quest"], f"paused looks live: {inks}"
+
+
+def test_a_sessions_drawer_lists_its_acts_and_arrows_past_it_make_none_of_its_rows(
+    shell: Shell,
+) -> None:
+    """A session's drawer lists only its acts, and moving between sessions makes no rows.
+
+    Listing them by making the row's verbs made its facts and acts as rows, about nine for each
+    arrow resting on a session, 891 in a held arrow's turns (keeps-up, 2026-11-12), and named
+    each fact as an act.
+    """
+    opened(shell)
+    shell.down_to("1 listening, 1 paused")
+    shell.step_in()
+    names = ("Listening Quest", "Paused Quest")
+    shell.launcher_until(lambda shown: all(name in shown["rows"] for name in names))
+
+    def rested_on(name: str) -> Callable[[Json], bool]:
+        return lambda shown: (
+            (shown["selected"] or {}).get("name") == name
+            and bool((shown["drawer"] or {}).get("shown"))
+            and bool((shown["drawer"] or {}).get("acts"))
+        )
+
+    shell.down_to(names[0])
+    shell.launcher_until(rested_on(names[0]))
+    acts = shell.showing()["drawer"]["acts"]
+    assert acts[0] == "\u21b5 Talk", acts
+    assert not {"Quest", "Address"} & {act.split(" ")[-1] for act in acts}, acts
+    before = made_by_agents(shell)
+    for _ in range(ARROWS_PAST):
+        for key, name in (("down", names[1]), ("up", names[0])):
+            shell.send_key(key)
+            shell.launcher_until(rested_on(name))
+    made = made_by_agents(shell) - before
+    assert made == 0, f"arrows between two sessions made {made} of Agents' rows"
 
 
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:
