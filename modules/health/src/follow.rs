@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
@@ -20,10 +19,11 @@ use crate::day::{Day, Kind};
 use crate::disk;
 use crate::feel;
 use crate::figures;
-use crate::journal::{self, Mark};
+use crate::journal::Mark;
 use crate::lid::{self, Looked};
 use crate::memory;
 use crate::sessions;
+use crate::source::Source;
 
 /// How often a changed day is written out and the lid looked at: often
 /// enough that what `health` shows is a moment old, seldom enough to cost
@@ -32,6 +32,7 @@ const EVERY: Duration = Duration::from_secs(30);
 
 /// The day being tallied, and where it's written.
 pub struct Follower {
+    source: Source,
     day: Day,
     changed: bool,
     into: PathBuf,
@@ -68,6 +69,7 @@ impl Follower {
     #[must_use]
     pub fn new(date: &str, into: &Path, zone: TimeZone) -> Self {
         Self {
+            source: Source::Journal,
             day: Day::new(date),
             changed: false,
             into: into.to_owned(),
@@ -82,6 +84,12 @@ impl Follower {
             guards: Vec::new(),
             guards_stopped: Vec::new(),
         }
+    }
+
+    /// Read the lines `source` writes, rather than the journal's.
+    #[must_use]
+    pub fn reading(self, source: Source) -> Self {
+        Self { source, ..self }
     }
 
     /// Read the disks from the guards' status files in `statuses`.
@@ -254,7 +262,7 @@ impl Follower {
         Self { ends, ..self }
     }
 
-    /// Take one line of `journalctl -o json`. A line of a new day writes
+    /// Take one line of the source's. A line of a new day writes
     /// the old one and starts the new; one of a day already written is
     /// left out, since that day is done.
     ///
@@ -262,7 +270,7 @@ impl Follower {
     ///
     /// When the finished day can't be written.
     pub fn take(&mut self, line: &str) -> io::Result<()> {
-        let Some(entry) = journal::parse(line) else {
+        let Some(entry) = self.source.parse(line) else {
             return Ok(());
         };
         let date = date_of(entry.at, &self.zone);
@@ -344,30 +352,34 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
         .unwrap_or_default()
 }
 
-/// Follow the journals into `into` until every follower ends, which only a
-/// fault does; then the day is written and systemd starts it again.
+/// Follow the machine's own source into `into` until every follower ends,
+/// which only a fault does; then the day is written and systemd or launchd
+/// starts it again.
 ///
 /// # Errors
 ///
 /// When a follower can't start or the day can't be written.
 pub fn follow(into: &Path) -> io::Result<()> {
+    let source = Source::here();
     let zone = TimeZone::system();
     let today = date_of(Timestamp::now().as_microsecond(), &zone);
-    let boots = Command::new("journalctl")
-        .args(["--list-boots", "--output=json", "--no-pager"])
-        .output()?;
-    let mut follower =
-        Follower::new(&today, into, zone).knowing(ends_of(&String::from_utf8_lossy(&boots.stdout)));
+    let mut follower = Follower::new(&today, into, zone.clone())
+        .reading(source)
+        .knowing(source.ends()?);
     // The detector keeps its days beside health's, in the account's state.
     if let Some(state) = into.parent() {
         follower = follower.feeling(&state.join("pain-points"));
     }
-    // systemd gives every account's service its runtime folder, where the
-    // account's guard keeps its status.
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-    follower = follower
-        .minding(Path::new("/proc"))
-        .guarding(disk::statuses(runtime.as_deref()));
+    // systemd gives every account's service its runtime folder, and launchd
+    // its agent a temporary folder of its own, where the account's guard
+    // keeps its status.
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .or_else(|| std::env::var_os("TMPDIR"))
+        .map(PathBuf::from);
+    follower = follower.guarding(disk::statuses(runtime.as_deref(), source.guard_status()));
+    if let Some(processes) = source.processes() {
+        follower = follower.minding(processes);
+    }
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);
         follower = follower
@@ -381,20 +393,11 @@ pub fn follow(into: &Path) -> io::Result<()> {
         follower = follower.resuming(kept);
     }
     let (lines, read) = mpsc::channel();
-    // Counted from the list, so a follower added is waited on too.
-    let journals = journal::followed();
-    for asked in &journals {
-        journal::spawn(asked, lines.clone())?;
-    }
+    // Counted as they start, so a follower added is waited on too.
+    let running = source.start(&zone, &lines)?;
     drop(lines);
-    run(
-        &mut follower,
-        &read,
-        journals.len(),
-        Instant::now,
-        lid::look,
-    )?;
-    Err(io::Error::other("the journal followers ended"))
+    run(&mut follower, &read, running, Instant::now, lid::look)?;
+    Err(io::Error::other("the followers ended"))
 }
 
 /// Take the followers' lines until `running` of them end, and every half

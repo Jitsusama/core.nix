@@ -5,12 +5,15 @@
   pkgs,
   ...
 }:
-# It reads systemd's journals, which only Linux keeps.
+# Its tests run on Linux, a Mac's lines read from fixtures, so the
+# builders cover both systems' reading.
 onLinux {
   # health's tests run as it builds: a journal line is read for its time,
   # priority, the thing that said it (the unit when systemd speaks of
   # one), a crash's program and whose it was by its slice, and a message
-  # in bytes; a message's numbers and hex are taken out so its repeats
+  # in bytes; a Mac's unified log line is read alike, its fault as
+  # critical, its kernel's as the kernel's and an app's program as a
+  # program's; a message's numbers and hex are taken out so its repeats
   # are one signature, and a stack trace is known by its words; a day
   # counts errors, crashes, traces and restarts apart and files each
   # thing under its kind, keeping at most a hundred signatures each; a

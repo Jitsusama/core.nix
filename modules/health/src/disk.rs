@@ -18,13 +18,13 @@ const STOPPED_AFTER: f64 = 120.0;
 const BANDS: [&str; 4] = ["healthy", "filling", "nearly-full", "critically-full"];
 
 /// Each guard's status file: the account's, under its `runtime` folder
-/// when it has one, then the system's.
+/// when it has one, then the system's, `system`.
 #[must_use]
-pub fn statuses(runtime: Option<&Path>) -> Vec<PathBuf> {
+pub fn statuses(runtime: Option<&Path>, system: PathBuf) -> Vec<PathBuf> {
     runtime
         .map(|runtime| runtime.join("disk-guard/status.json"))
         .into_iter()
-        .chain([PathBuf::from("/run/disk-guard/status.json")])
+        .chain([system])
         .collect()
 }
 

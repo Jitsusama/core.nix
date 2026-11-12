@@ -16,7 +16,7 @@ rustPlatform.buildRustPackage {
     description = "Keeps the day's tally of what the machine's journals said";
     license = lib.licenses.mit;
     mainProgram = "health";
-    # It reads systemd's journals.
-    platforms = lib.platforms.linux;
+    # It reads systemd's journals, or a Mac's unified log.
+    platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }
