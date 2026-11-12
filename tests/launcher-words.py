@@ -288,10 +288,16 @@ def shown(entry: Entry) -> list[tuple[str, str]]:
         said.extend((key, state[key]) for key in ("name", "empty", "none", "sure", "asked", "ask")
                     if isinstance(state.get(key), str))  # fmt: skip
         words = state.get("said", {})
-        said.extend(("said", word) for word in
-                    (words.values() if isinstance(words, dict) else [words]))  # fmt: skip
+        said.extend(("said", word) for word in saying(words))
         said.extend(("tells", told) for told in state.get("tells", {}).values())
     return said
+
+
+def saying(words: object) -> list[str]:
+    """Give each string a thing says beside it, through a map of them, as Shortcuts' places."""
+    if isinstance(words, dict):
+        return [word for value in words.values() for word in saying(value)]
+    return [words] if isinstance(words, str) else []
 
 
 def unsaid(vocabulary: Entry) -> list[str]:
