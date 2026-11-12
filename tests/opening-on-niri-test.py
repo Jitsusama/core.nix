@@ -109,6 +109,12 @@ KEPT_DRAWN = timedelta(milliseconds=200)
 # it from.
 ROWS_DOWN = 3
 
+# What the shell says once it has kept home and every chord's place as it started
+# (Launcher.qml's warmNext), and how long after a restart a case waits for it: the pass is due
+# a second and a half after the shell's start and takes about two more in a loaded builder.
+WARMED_SAID = "places kept as the shell started"
+WARMED = timedelta(seconds=20)
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -356,6 +362,39 @@ def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_starte
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
     assert opening.get("kept"), f"the first chord into On since the start was made whole: {opening}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
+
+
+def test_an_opening_as_the_shell_starts_puts_off_keeping_its_places(shell: Shell) -> None:
+    """An opening before the shell has kept its places puts that off until it's shut again.
+
+    It ended the pass for good instead, as an opening or home kept by its closing came first, so
+    Joel's first chord 14 s after a switch made 1,328 rows and was presented 1,024 ms after it
+    (2026-11-12, 13:16).
+    """
+    since = shell.mark()
+    shell.restart()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_closed()
+    deadline = time.monotonic() + WARMED.total_seconds()
+    while WARMED_SAID not in shell.log.read_bytes()[since:].decode(errors="replace"):
+        assert time.monotonic() < deadline, (
+            f"opened as the shell started, it never kept its places once shut:\n{shell.tail()}"
+        )
+        time.sleep(launcher_on_niri.POLL)
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    timed = latest(openings(shell))
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    each: list[Json] = []
+
+    def timed_after(_: Json) -> bool:
+        each[:] = openings(shell)
+        return latest(each) > timed
+
+    shell.launcher_until(timed_after)
+    assert each[-1].get("kept"), f"the first chord into On was made whole: {each[-1]}"
 
 
 def test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go(shell: Shell) -> None:
