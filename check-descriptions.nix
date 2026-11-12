@@ -1891,7 +1891,8 @@
   '';
   pi-rings-when-a-run-is-done = ''
     pi's done chime is told a ding and the store's pw-play, and no voice or want sound, on Linux,
-    and a Mac is told nothing, ringing with its own
+    with Do Not Disturb's file holding it while it's on, and a Mac is told nothing, ringing with
+    its own
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
