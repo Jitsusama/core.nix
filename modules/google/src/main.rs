@@ -147,7 +147,7 @@ fn main() -> ExitCode {
             Ok(line) => {
                 let now = Zoned::now();
                 let state = match ask::read(&line) {
-                    Some(Ask::Answer { id, with }) => answer(&mut watch, &id, with, &now, &tell),
+                    Some(Ask::Answer { id, with }) => answer(&mut watch, &id, with, &now, tell),
                     Some(Ask::Cancel { id }) => watch.cancel(&id, &now),
                     Some(Ask::Move { id, start, end }) => watch.reschedule(&id, start, end, &now),
                     Some(Ask::Read { id }) => watch.tidy(&id, Tidy::Read, &now),
