@@ -63,4 +63,13 @@ PersonSource {
             ];
         return [];
     }
+
+    // The first of each for Ada's drawer, as her page lists them.
+    function firsts(person, provider) {
+        const now = Date.now();
+        return person.emails.includes("ada@example.com") ? {
+            met: { at: now - day, name: "Retro" },
+            wait: { at: now - 60_000, name: "Lunch on Friday", what: "mail" }
+        } : { met: null, wait: null };
+    }
 }

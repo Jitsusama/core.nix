@@ -13,4 +13,16 @@ PersonSource {
             .map(call => ({ at: call.started, row: Transcripts.row(call, provider), kind: "met",
                 one: true }));
     }
+
+    // The first of each for their drawer: the newest call, named as its
+    // row is, the one row made (PersonSource's firsts).
+    function firsts(person, provider) {
+        const newest = Transcripts.withThem(person.emails)
+            .reduce((last, call) => last && last.started >= call.started ? last : call, null);
+        return {
+            met: newest ? { at: newest.started, name: Transcripts.row(newest, provider).name,
+                one: true } : null,
+            wait: null
+        };
+    }
 }

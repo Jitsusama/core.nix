@@ -162,6 +162,20 @@ PersonSource {
                 what: source.called, mine: Slack.wroteLast(said) }] : [];
     }
 
+    // The first of each for their drawer, with no row made: the
+    // conversation while it waits (PersonSource's firsts).
+    function firsts(person, provider) {
+        const said = Slack.talked(person.emails, known);
+        const talk = said?.conversation;
+        return {
+            met: null,
+            wait: said && Slack.owing(said, Date.now()) ? {
+                at: talk.at, name: talk.last !== "" ? talk.last : Words.name("slack:conversation"),
+                what: source.called, mine: Slack.wroteLast(said)
+            } : null
+        };
+    }
+
     // Slack's conversation row, the one every surface shows
     // (SlackConversation.qml), named by its newest message's first words.
     function conversation(said, provider) {

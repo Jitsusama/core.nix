@@ -180,8 +180,10 @@ ShellRoot {
                 expect("reading someone listed merges no one",
                     people.merging.merges === guest.merges,
                     `${people.merging.merges} merges`);
+                // Ada's time follows, as Kolkata's isn't the UTC here.
                 expect("how each stands",
-                    sides(open) === "available, in a call, away, offline", sides(open));
+                    /^available \u00b7 Kolkata \u00b7 \d\d:\d\d, in a call, away, offline$/u
+                        .test(sides(open)), sides(open));
                 expect("a favourite wears a star",
                     open[0].glyph === String.fromCodePoint(0xf04ce), open[0].glyph);
                 expect("one called lately doesn't",
@@ -279,7 +281,11 @@ ShellRoot {
         }),
         seeking("ada", "one listed, found as they stand", () => {
             const ada = found("ada");
-            expect("as they stand", names(ada) === "Ada Brook" && ada[0].side === "available",
+            // Here is UTC, so her Kolkata time, five and a half hours on,
+            // follows how she stands (VKCF3Z, 0cea8a93: "London · 17:02").
+            expect("as they stand, and their time where it's apart from his",
+                names(ada) === "Ada Brook"
+                    && /^available \u00b7 Kolkata \u00b7 \d\d:\d\d$/u.test(ada[0].side),
                 `${names(ada)} ${ada[0]?.side}`);
         }),
         // Among equals, the daemon's order: those found by a name before
@@ -374,7 +380,15 @@ ShellRoot {
                 // Their drawer is the daemon's, a source's facts ready in
                 // it, so showing it merges no one.
                 const merges = people.merging.merges;
-                const facts = open[0].drawer().facts.map(fact => `${fact.label}: ${fact.value}`);
+                const told = open[0].drawer().facts.map(fact => `${fact.label}: ${fact.value}`);
+                // The first of each comes first, what needs him ahead
+                // (VKCF3Z, 0cea8a93): her mail unread, and the last they met.
+                console.log(`Ada's drawer: ${told.join("; ")}`);
+                expect("their drawer opens on the first of each",
+                    told[0] === "Waiting: Lunch on Friday \u00b7 1 min ago"
+                        && told[1] === "Last Met: Retro \u00b7 yesterday",
+                    told.slice(0, 2).join("; "));
+                const facts = told.slice(2);
                 expect("a source's facts are theirs, the time there after their zone",
                     facts[0] === "Email: ada@example.com" && facts[1] === "Team: Shell"
                         && facts[2] === "Time Zone: Asia/Kolkata"

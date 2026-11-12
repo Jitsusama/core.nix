@@ -895,13 +895,15 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     # Ada holds the stand-in's Standup and wrote Lunch on Friday, so Google
-    # knows her by her address, and she's one person for both.
+    # knows her by her address, and she's one person for both. Her drawer
+    # gives the first of each ahead of the facts, so her address is among
+    # them rather than first.
+    email = {"label": "Email", "value": "ada@example.com"}
     desktop.answer("ada lovelace")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("is") == "person:ada@example.com"
-            and (shown["selected"].get("drawer") or {}).get("facts", [{}])[0]
-            == {"label": "Email", "value": "ada@example.com"}
+            and email in (shown["selected"].get("drawer") or {}).get("facts", [])
         )
     )
     # Ctrl+] on her goes into her through People, where she lives, as on
