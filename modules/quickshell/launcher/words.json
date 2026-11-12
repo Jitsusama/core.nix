@@ -9235,47 +9235,86 @@
     {
       "id": "capture:stop",
       "in": "capture",
-      "name": "Stop Recording"
+      "name": "Stop Recording",
+      "tells": {
+        "does": "Ends the recording and keeps it."
+      }
     },
     {
       "id": "capture:screen",
       "in": "capture",
-      "name": "The Whole Screen"
+      "name": "The Whole Screen",
+      "tells": {
+        "does": "Takes a picture of the whole screen."
+      },
+      "said": {
+        "also": "and on the clipboard"
+      }
     },
     {
       "id": "capture:window",
       "in": "capture",
-      "name": "This Window · {title}"
+      "name": "This Window · {title}",
+      "tells": {
+        "does": "Takes a picture of the window you were in."
+      },
+      "said": {
+        "also": "and on the clipboard"
+      }
     },
     {
       "id": "capture:region",
       "in": "capture",
-      "name": "A Region"
+      "name": "A Region",
+      "tells": {
+        "does": "Takes a picture of the part of the screen you pick."
+      },
+      "said": {
+        "also": "and on the clipboard"
+      }
     },
     {
       "id": "capture:record-screen",
       "in": "capture",
-      "name": "Record the Whole Screen"
+      "name": "Record the Whole Screen",
+      "tells": {
+        "does": "Records the whole screen until you stop it."
+      }
     },
     {
       "id": "capture:record-window",
       "in": "capture",
-      "name": "Record This Window · {title}"
+      "name": "Record This Window · {title}",
+      "tells": {
+        "does": "Records the window you were in until you stop it."
+      }
     },
     {
       "id": "capture:record-region",
       "in": "capture",
-      "name": "Record a Region"
+      "name": "Record a Region",
+      "tells": {
+        "does": "Records the part of the screen you pick until you stop it."
+      }
     },
     {
       "id": "capture:camera-picture",
       "in": "capture",
-      "name": "A Photo From the Camera"
+      "name": "A Photo From the Camera",
+      "tells": {
+        "does": "Opens the camera to take a photo."
+      },
+      "said": {
+        "also": "and on the clipboard"
+      }
     },
     {
       "id": "capture:camera-video",
       "in": "capture",
-      "name": "A Video From the Camera"
+      "name": "A Video From the Camera",
+      "tells": {
+        "does": "Opens the camera to film a video."
+      }
     },
     {
       "id": "capture:recent",
@@ -9302,6 +9341,21 @@
       "id": "capture:dimensions",
       "in": "capture",
       "name": "Dimensions"
+    },
+    {
+      "id": "capture:key",
+      "in": "capture",
+      "name": "Key"
+    },
+    {
+      "id": "capture:lands",
+      "in": "capture",
+      "name": "Lands In"
+    },
+    {
+      "id": "capture:last",
+      "in": "capture",
+      "name": "Last"
     },
     {
       "id": "capture:length",

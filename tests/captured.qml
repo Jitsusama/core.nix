@@ -127,6 +127,42 @@ QtObject {
             Captured.drawer(Object.assign({}, file, { path: "/home/joel/notes.txt" }), null,
                 told).eyebrow, "in ~/Pictures/Screenshots");
 
+        // Each of Capture's acts has a drawer saying what it does and where
+        // that goes, its key, where it lands and the last one there (VKCF3Z,
+        // 37e49991; Joel, 2026-11-11 22:00: every row has a drawer).
+        const shots = "/home/joel/Pictures/Screenshots";
+        const files = [
+            { path: `${shots}/a.png`, at: new Date(2026, 10, 8, 4, 39).getTime() },
+            { path: `${shots}/b.png`, at: new Date(2026, 10, 8, 9, 12).getTime() },
+            { path: `${shots}/old/c.png`, at: new Date(2026, 10, 8, 9, 20).getTime() },
+            { path: video, at: new Date(2026, 10, 8, 9, 25).getTime() },
+            { path: `${shots}/unread.png` }
+        ];
+        expect("the last one is the newest straight in its folder",
+            Captured.newest(files, shots)?.path, `${shots}/b.png`);
+        expect("none where nothing is there",
+            Captured.newest(files, "/home/joel/Pictures/Camera"), null);
+        const acts = Object.assign({ eyebrow: "Capture" }, told);
+        const screen = {
+            title: "The Whole Screen",
+            does: "Takes a picture of the whole screen.",
+            lands: "~/Pictures/Screenshots, and on the clipboard"
+        };
+        expect("an act says what it does, then its key, where it lands and the last one",
+            Captured.act(screen, "Print", Captured.newest(files, shots), acts), {
+                eyebrow: "Capture",
+                title: "The Whole Screen",
+                body: screen.does,
+                facts: [
+                    { label: "[key]", value: "Print" },
+                    { label: "[lands]", value: "~/Pictures/Screenshots, and on the clipboard" },
+                    { label: "[last]", value: "09:12" }
+                ]
+            });
+        expect("a fact it can't give, no key or nothing taken yet, is left out",
+            Captured.act(screen, "", null, acts).facts,
+            [{ label: "[lands]", value: "~/Pictures/Screenshots, and on the clipboard" }]);
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);
