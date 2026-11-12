@@ -55,6 +55,7 @@
           "network"
           "battery"
           "devices"
+          "homeNetwork"
           "volume"
           "tokens"
           "spend"
@@ -118,6 +119,7 @@
     in
     pkgs.runCommandLocal "now-says-what-ails-the-home-network" { } ''
       cp ${../../../tests/home-network-ails.qml} home-network-ails.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "pieces/HomeNetwork.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

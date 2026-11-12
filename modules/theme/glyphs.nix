@@ -1122,6 +1122,15 @@ in
     glyph = nerd "f0003";
     console = "a";
     means = "the access points a network is heard from";
+    # A point with two waves going out each side, as the Home Network's
+    # nodes send, for the margin while something ails it.
+    drawn = drawing [
+      "M4.5 6A1.5 1.5 0 1 0 7.5 6A1.5 1.5 0 1 0 4.5 6Z"
+      "M8.47 3.53A3.5 3.5 0 0 1 8.47 8.47L7.59 7.59A2.25 2.25 0 0 0 7.59 4.41Z"
+      "M3.53 3.53A3.5 3.5 0 0 0 3.53 8.47L4.41 7.59A2.25 2.25 0 0 1 4.41 4.41Z"
+      "M10 0A10 10 0 0 1 10 12L8.37 12A8.75 8.75 0 0 0 8.37 0Z"
+      "M2 0A10 10 0 0 0 2 12L3.63 12A8.75 8.75 0 0 1 3.63 0Z"
+    ];
   };
   tunnel = {
     glyph = nerd "f0582";

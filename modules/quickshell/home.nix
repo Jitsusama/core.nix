@@ -1546,7 +1546,7 @@ in
         source = "homeNetwork";
         label = "home network";
         tier = "when";
-        mark = "web";
+        mark = "accessPoint";
       };
       volume = {
         order = 50;
