@@ -127,6 +127,8 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/eero/socket`
         place: "eero"
+        // The place's own drawer, served beside its rows.
+        beside: ["drawer"]
         watching: ({
                 words: provider.settings.words ?? "",
                 numbers: provider.settings.numbers ?? ""
@@ -273,6 +275,14 @@ Provider {
 
     function everything() {
         return all;
+    }
+
+    // The place's own drawer, its row's in Network: how the home network
+    // stands and its figures, as the eero daemon serves it beside the
+    // rows (its place.rs), the speed test's day worded now. Until it's
+    // served, none, so the launcher says the row's own name alone.
+    function placePlate() {
+        return ready.drawerOf({ drawer: "drawer:eero:place" });
     }
 
     function counted() {
