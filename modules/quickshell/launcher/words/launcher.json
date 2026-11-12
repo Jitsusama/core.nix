@@ -1350,7 +1350,8 @@
         "eyebrow": "on this machine \u00b7 lock",
         "window": "1 window",
         "windows": "{count} windows",
-        "more": "{count} more"
+        "more": "{count} more",
+        "silent": "not answering"
       },
       "tells": {
         "lead": "Locks the screen; {windows} keep running behind it.",

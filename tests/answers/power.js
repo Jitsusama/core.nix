@@ -70,7 +70,8 @@ function run(failures) {
     // then whose in the daemon's order, four named and the windows of the
     // rest counted, a window of no program among them, so the figures
     // add up to the windows open (Y2YBTS, 2026-11-12).
-    const openWords = { window: "1 window", windows: "{count} windows", more: "{count} more" };
+    const openWords = { window: "1 window", windows: "{count} windows", more: "{count} more",
+        silent: "not answering" };
     const open = (count, programs) => Power.openOf({ key: "windows-open", open: count,
         programs: programs.map(([program, many]) => ({ program, count: many })) });
     machine("what a lock leaves open", Power.openSaid(open(9, [["kitty", 3], ["Chrome", 2],
@@ -84,8 +85,10 @@ function run(failures) {
         { windows: "1 window", programs: "kitty 1" });
     machine("none open says nothing", Power.openSaid(open(0, []), openWords),
         { windows: "", programs: "" });
-    machine("before the windows daemon answers, nothing is said open",
-        Power.openSaid(Power.openOf(null), openWords), { windows: "", programs: "" });
+    // Not heard is not none: before the windows daemon answers, nothing
+    // is known open, so no drawer says nothing closes (Y2YBTS, f7a6155a).
+    machine("before the windows daemon answers, nothing is known open",
+        Power.openOf(null), null);
     // Lock's drawer leads with what it does and what keeps running, then
     // its key and whose windows stay open; with none open, only that it
     // locks, and no key where it has none.
@@ -101,6 +104,13 @@ function run(failures) {
     machine("Lock's drawer with nothing open and no key",
         Power.lockSaid(open(0, []), "", lockWords),
         { lead: "Locks the screen.", facts: [] });
+    machine("Lock's drawer before the windows daemon answers says only what it does",
+        Power.lockSaid(null, "Super L", lockWords, false),
+        { lead: "Locks the screen.", facts: [{ id: "session:Lock:key", value: "Super L" }] });
+    machine("and once it isn't answering, says so of what stays open",
+        Power.lockSaid(null, "Super L", lockWords, true).facts,
+        [{ id: "session:Lock:key", value: "Super L" },
+            { id: "session:Lock:open", value: "not answering" }]);
     // Ending the session's drawer says what it ends: how many windows in
     // its lead, and whose in its Ends; with none open, only what it does.
     const endWords = Object.assign({ lead: "Reboots the machine, closing {windows}.",
@@ -112,6 +122,13 @@ function run(failures) {
     machine("Reboot's drawer with nothing open",
         Power.endingSaid(open(0, []), "session:Reboot:ends", endWords),
         { lead: "Reboots the machine.", facts: [] });
+    machine("Reboot's drawer before the windows daemon answers",
+        Power.endingSaid(null, "session:Reboot:ends", endWords, false),
+        { lead: "Reboots the machine.", facts: [] });
+    machine("Reboot's drawer with the windows daemon not answering says so in Ends",
+        Power.endingSaid(null, "session:Reboot:ends", endWords, true),
+        { lead: "Reboots the machine.", facts: [
+            { id: "session:Reboot:ends", value: "not answering" }] });
     // How bright a room is, from the light sensor's lux.
     machine("a dark room", Power.roomLevel(0), 0);
     machine("daylight", Power.roomLevel(10000), 1);
