@@ -174,7 +174,10 @@
       "in": "agents",
       "name": "Start a Session",
       "verb": "more",
-      "glyph": "agent"
+      "glyph": "agent",
+      "tells": {
+        "holding": "A new session, in one of the quests still open."
+      }
     },
     {
       "id": "agents:address",
