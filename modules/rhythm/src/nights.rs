@@ -57,8 +57,9 @@ pub struct Night {
 }
 
 /// Each night Joel stopped, oldest first, from the minutes he was seen at
-/// the machine, sorted, read by `local`.
-pub fn nights(seen: &[i64], local: impl Fn(i64) -> Option<Local>) -> Vec<Night> {
+/// the machine, sorted, read by `local`; those before `watched` were
+/// seeded from the logs.
+pub fn nights(seen: &[i64], _watched: i64, local: impl Fn(i64) -> Option<Local>) -> Vec<Night> {
     let mut found: Vec<(Night, i64)> = Vec::new();
     for (index, pair) in seen.windows(2).enumerate() {
         let gap = pair[1] - pair[0];
@@ -261,7 +262,7 @@ mod tests {
 
     #[test]
     fn a_night_stops_at_the_last_busy_minute_before_sleep() {
-        let found = nights(&evening(WEDNESDAY, 24, 40), fixed(TORONTO));
+        let found = nights(&evening(WEDNESDAY, 24, 40), 0, fixed(TORONTO));
         assert_eq!(found.len(), 1, "one night in {found:?}");
         assert_eq!(found[0].evening, WEDNESDAY, "the evening before midnight");
         assert_eq!(found[0].weekday, 3, "a Wednesday");
@@ -274,7 +275,7 @@ mod tests {
         seen.extend(busy(at(WEDNESDAY, 17, 30), at(WEDNESDAY, 18, 30)));
         seen.extend(busy(at(WEDNESDAY, 21, 0), at(WEDNESDAY, 23, 50)));
         seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
-        let found = nights(&seen, fixed(TORONTO));
+        let found = nights(&seen, 0, fixed(TORONTO));
         assert_eq!(found.len(), 1, "one night in {found:?}");
         assert_eq!(clock_of(found[0].after_six), "23:50", "not the 18:30 break");
     }
@@ -284,7 +285,7 @@ mod tests {
         let mut seen = busy(at(WEDNESDAY, 9, 0), at(WEDNESDAY, 11, 0));
         seen.extend(busy(at(WEDNESDAY, 15, 30), at(WEDNESDAY, 16, 0)));
         assert_eq!(
-            nights(&seen, fixed(TORONTO)),
+            nights(&seen, 0, fixed(TORONTO)),
             vec![],
             "a day's gap isn't sleep"
         );
@@ -295,7 +296,7 @@ mod tests {
         let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 23, 10));
         seen.push(at(WEDNESDAY, 24, 20));
         seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
-        let found = nights(&seen, fixed(TORONTO));
+        let found = nights(&seen, 0, fixed(TORONTO));
         assert_eq!(
             clock_of(found[0].after_six),
             "23:10",
@@ -304,11 +305,27 @@ mod tests {
     }
 
     #[test]
+    fn a_seeded_night_stops_at_its_last_minute() {
+        // The logs hold a command or a message now and then, never a
+        // stray key, so a lone late one is where the night stopped.
+        let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 23, 10));
+        seen.push(at(WEDNESDAY, 24, 20));
+        seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
+        let watched = at(WEDNESDAY, 40, 0);
+        let found = nights(&seen, watched, fixed(TORONTO));
+        assert_eq!(
+            clock_of(found[0].after_six),
+            "00:20",
+            "the lone message, since it was seeded"
+        );
+    }
+
+    #[test]
     fn of_two_night_gaps_the_longer_is_sleep() {
         let mut seen = busy(at(WEDNESDAY, 17, 0), at(WEDNESDAY, 18, 30));
         seen.extend(busy(at(WEDNESDAY, 22, 45), at(WEDNESDAY, 25, 15)));
         seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
-        let found = nights(&seen, fixed(TORONTO));
+        let found = nights(&seen, 0, fixed(TORONTO));
         assert_eq!(found.len(), 1, "one night in {found:?}");
         assert_eq!(
             clock_of(found[0].after_six),
@@ -325,7 +342,7 @@ mod tests {
             let late = if weekday_of(evening) == 5 { 26 } else { 24 };
             seen.extend(self::evening(evening, late, 30));
         }
-        nights(&seen, fixed(TORONTO))
+        nights(&seen, 0, fixed(TORONTO))
     }
 
     #[test]
@@ -371,7 +388,7 @@ mod tests {
     fn a_change_of_habit_shows_within_a_week() {
         let mut seen = stopping((7..28).rev(), 24, 30);
         seen.extend(stopping((0..7).rev(), 25, 30));
-        let profile = Profile::of(&nights(&seen, fixed(TORONTO)), WEDNESDAY);
+        let profile = Profile::of(&nights(&seen, 0, fixed(TORONTO)), WEDNESDAY);
         assert_eq!(profile.nights, 28, "four weeks of nights");
         assert_eq!(
             profile.usual.map(clock_of).as_deref(),
@@ -387,7 +404,7 @@ mod tests {
         let fridays = |weeks: std::ops::Range<i64>| weeks.rev().map(|week| 5 + 7 * week);
         let mut seen = stopping(fridays(2..8), 26, 30);
         seen.extend(stopping(fridays(0..2), 24, 30));
-        let profile = Profile::of(&nights(&seen, fixed(TORONTO)), WEDNESDAY);
+        let profile = Profile::of(&nights(&seen, 0, fixed(TORONTO)), WEDNESDAY);
         assert_eq!(
             profile.weekdays[5].map(clock_of).as_deref(),
             Some("00:30"),

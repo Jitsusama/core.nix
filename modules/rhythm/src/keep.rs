@@ -264,7 +264,7 @@ fn call_on() -> bool {
 /// The profile, the evening's weekday it's for, and the sun, as of now.
 fn reading(paths: &Paths, seen: &[i64], now: i64) -> (Profile, u32, Option<Sun>) {
     let evening = local(now).map_or(now.div_euclid(86_400), evening_of);
-    let profile = Profile::of(&nights(seen, local), evening);
+    let profile = Profile::of(&nights(seen, 0, local), evening);
     (profile, weekday_of(evening), sun_today(paths, now))
 }
 

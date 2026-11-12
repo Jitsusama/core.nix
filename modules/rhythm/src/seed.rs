@@ -108,4 +108,47 @@ mod tests {
             "his two messages, not the brief, the harness or the mesh"
         );
     }
+
+    #[test]
+    fn what_the_harness_and_other_sessions_say_in_his_place_is_not_his() {
+        let entry = |text: &str, at: &str| {
+            format!(
+                "{{\"type\":\"message\",\"timestamp\":\"{at}\",\"message\":{{\"role\":\"user\",\
+                 \"content\":[{{\"type\":\"text\",\"text\":\"{text}\"}}]}}}}"
+            )
+        };
+        let log = [
+            entry("the brief", "2026-11-09T20:00:00.000Z"),
+            entry(
+                "The context was compacted to keep this session affordable.",
+                "2026-11-09T20:01:00.000Z",
+            ),
+            entry(
+                "From P9R1KI (window 4): Joel says go",
+                "2026-11-09T20:02:00.000Z",
+            ),
+            entry(
+                "You were restarted to free memory.",
+                "2026-11-09T20:03:00.000Z",
+            ),
+            entry("Compacting the context failed", "2026-11-09T20:04:00.000Z"),
+            entry("Verification found 2 errors", "2026-11-09T20:05:00.000Z"),
+            entry(
+                "Load quest QEST-20261108-1H56ZJ",
+                "2026-11-09T20:06:00.000Z",
+            ),
+            entry(
+                "You are a child of orchestrator P9R1KI",
+                "2026-11-09T20:07:00.000Z",
+            ),
+            entry("From here on, go faster", "2026-11-09T20:08:00.000Z"),
+        ]
+        .join("\n");
+        let day = 20_766 * 86_400 + 20 * 3600;
+        assert_eq!(
+            pi_session(&log),
+            vec![day + 8 * 60],
+            "only the message he typed, which happens to open with From"
+        );
+    }
 }
