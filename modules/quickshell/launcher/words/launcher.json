@@ -1247,19 +1247,22 @@
       "command": "set",
       "argument": "keepawake",
       "once": ["Caffeinate"],
+      "words": ["let it sleep"],
       "name": "Keep Awake",
       "term": "Machine/Keep awake",
       "verb": "turn on",
       "glyph": "awake",
       "states": {
         "on": {
-          "name": "Let It Sleep",
           "verb": "turn off",
           "argument": "nokeepawake"
         }
       },
       "said": {
         "eyebrow": "on this machine \u00b7 switch",
+        "off": "off",
+        "on": "on",
+        "lidToo": "on \u00b7 lid shut too",
         "silent": "not answering",
         "after": "{does} {lasted} after the screens go off",
         "held": "{who}: {why}",

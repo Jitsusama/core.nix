@@ -1484,8 +1484,9 @@ works the same way everywhere.
   the value. It is no line for the cursor.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
-  Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,
-  Reboot and Power Off). Each is a row found by its word, stepping in
+  Power (Battery, the power profile, Sleep, Lock, Log Out, Reboot and
+  Power Off), with Keep Awake beside it rather than in it, one row of one
+  name whatever its state. Each is a row found by its word, stepping in
   lists what it holds, and its word and a space steps into it, through
   the places it sits in, so what's typed after it searches only inside
   it ("machine " and then "heat"). When a name goes on from the word and

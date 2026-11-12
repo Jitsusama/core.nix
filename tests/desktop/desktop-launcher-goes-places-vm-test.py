@@ -675,8 +675,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     """Machine holds Power, which holds the battery, its profile and what ends a session."""
     machine = desktop.machine
     power = [
-        "Battery", "Power Profile", "Keep Awake", "Sleep", "Lock", "Log Out", "Reboot",
-        "Power Off",
+        "Battery", "Power Profile", "Sleep", "Lock", "Log Out", "Reboot", "Power Off",
     ]  # fmt: skip
     # Machine lists Lag only once lag-watch has written its first ten
     # seconds, and reads it as it's stepped into, never after. In a session
@@ -707,7 +706,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     )
     desktop.step_in("ret")
     desktop.launcher_until(
-        lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
+        lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][: len(power)] == power
     )
     # The battery's figure holds more, so Return steps into it, as the right
     # arrow does, rather than copying and closing, and its copy is listed
@@ -728,7 +727,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
     desktop.step_in("ret")
     desktop.launcher_until(
-        lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
+        lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][: len(power)] == power
     )
     desktop.normal()
     machine.send_key("minus")
@@ -848,14 +847,15 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     )
     desktop.close_launcher()
     # A harmless one is done at once, and once it ends something, offered.
-    awake = one(entries, "Keep Awake", "Machine \u203a Power")
+    awake = one(entries, "Keep Awake", "Machine")
     assert not awake["disruptive"]
-    assert ran(awake) == {"done": True, "said": "Machine \u203a Power \u203a Keep Awake"}
+    assert ran(awake) == {"done": True, "said": "Machine \u203a Keep Awake"}
     machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
-    sleep = one(listed(), "Let It Sleep", "Machine \u203a Power")
+    # On, it keeps its name (VKCF3Z, 99c7bc98), and letting it sleep ends something.
+    sleep = one(listed(), "Keep Awake", "Machine")
     assert sleep["id"] == awake["id"], "its id changed with its state"
     assert ran(sleep)["offered"]
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Let It Sleep")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keep Awake")
     desktop.land()
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))

@@ -565,6 +565,29 @@ def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell
     shell.close_launcher()
 
 
+def test_keep_awake_is_one_row_beside_power_found_by_awake_and_sleep(shell: Shell) -> None:
+    """Keep Awake is one row of one name at Machine's own level, beside Power, not in it.
+
+    Joel looked for it under Power and gave up, as Power called it Let It Sleep while Now
+    called it Keep Awake (VKCF3Z, 99c7bc98): it keeps its name whatever its state, its side
+    says off or on, and "awake" and "sleep" each find it.
+    """
+    machine = shown_to_terminal(shell, "machine")
+    names = [row["name"] for row in machine["rows"]]
+    assert names[names.index("Power") + 1 :][:1] == ["Keep Awake"], names
+    awake = next(row for row in machine["rows"] if row["name"] == "Keep Awake")
+    assert awake["side"] == "off", awake
+    power = shown_to_terminal(shell, "machine", "power")
+    assert "Keep Awake" not in [row["name"] for row in power["rows"]], power["rows"]
+    for typed in ("awake", "sleep"):
+        shell.answer(typed)
+        shell.launcher_until(
+            # The wait ends before the loop moves on, so it reads this pass's words.
+            lambda shown: shown["typed"] == typed and "Keep Awake" in shown["rows"]  # noqa: B023
+        )
+        shell.close_launcher()
+
+
 def test_do_not_disturb_says_until_when_in_its_drawer(shell: Shell) -> None:
     """Do Not Disturb, off, has a drawer saying until when Return holds notices.
 
