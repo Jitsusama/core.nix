@@ -1,0 +1,66 @@
+Adds a SetRenderDeadline action, IPC alone and marked knuffel(skip) so
+the config can't name it, which turns render-deadline.patch's deadline
+on or off while niri runs, so it can be tried by feel without restarting
+niri. `niri msg action set-render-deadline true` turns it on, and false
+off. Ours, not upstream's.
+
+diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
+index 36a69c7..a2c7c10 100644
+--- a/niri-config/src/binds.rs
++++ b/niri-config/src/binds.rs
+@@ -108,6 +108,8 @@ pub enum Action {
+     PowerOnMonitors,
+     #[knuffel(skip)]
+     SetPanelSaturation(f64),
++    #[knuffel(skip)]
++    SetRenderDeadline(bool),
+     PowerOffMonitor(#[knuffel(argument)] String),
+     PowerOnMonitor(#[knuffel(argument)] String),
+     ToggleDebugTint,
+@@ -411,6 +413,7 @@ impl From<niri_ipc::Action> for Action {
+             niri_ipc::Action::SetPanelSaturation { saturation } => {
+                 Self::SetPanelSaturation(saturation)
+             }
++            niri_ipc::Action::SetRenderDeadline { on } => Self::SetRenderDeadline(on),
+             niri_ipc::Action::PowerOffMonitor { output } => Self::PowerOffMonitor(output),
+             niri_ipc::Action::PowerOnMonitor { output } => Self::PowerOnMonitor(output),
+             niri_ipc::Action::Spawn { command } => Self::Spawn(command),
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index a5cab8f..aab779f 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -217,6 +217,19 @@ pub enum Action {
+         #[cfg_attr(feature = "clap", arg())]
+         saturation: f64,
+     },
++    /// Render each frame as late as the next vblank allows, or as soon as something changes.
++    ///
++    /// Rendering late lets commits that arrive meanwhile make the same frame. It lasts until
++    /// niri stops; `NIRI_RENDER_DEADLINE=1` sets it on as niri starts, and it's off otherwise.
++    #[cfg_attr(
++        feature = "clap",
++        clap(about = "Render each frame as late as the next vblank allows, or not")
++    )]
++    SetRenderDeadline {
++        /// Whether to render by the deadline: true or false.
++        #[cfg_attr(feature = "clap", arg(action = clap::ArgAction::Set))]
++        on: bool,
++    },
+     /// Power off one monitor via DPMS, by name.
+     ///
+     /// It stays connected and in the layout. Input doesn't power it on again unless every monitor
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index d420b6d..013758e 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -699,6 +699,10 @@ impl State {
+                     tty.set_panel_saturation(&mut self.niri, saturation);
+                 }
+             }
++            Action::SetRenderDeadline(on) => {
++                self.niri.render_deadline_wanted = on;
++                self.niri.queue_redraw_all();
++            }
+             Action::PowerOffMonitor(output) => {
+                 if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
+                     self.niri.power_off_output(&mut self.backend, &output);
