@@ -74,13 +74,7 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         time(s),
         quality(s),
         collaboration(s),
-        axis(
-            "security",
-            vec![
-                Reading::new("ISXEG8's musts past their date {}", None, "", "ISXEG8")
-                    .bar(Bar::AtMost(0.0)),
-            ],
-        ),
+        axis("security", vec![counted::musts(&s.counted, s.now)]),
         organization(s),
         scale(s),
         axis(
