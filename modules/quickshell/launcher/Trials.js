@@ -102,9 +102,9 @@ function stepped(inner, at) {
 function madeWhileTyping(by) {
     const each = Object.entries(by ?? {}).filter(([, rows]) => rows > 0)
         .sort((one, other) => other[1] - one[1] || (one[0] < other[0] ? -1 : 1));
-    const rows = each.reduce((sum, [, made]) => sum + made, 0);
-    return rows > 0
-        ? ` (made ${rows}: ${each.map(([name, made]) => `${name} ${made}`).join(", ")})`
+    const total = each.reduce((sum, [, made]) => sum + made, 0);
+    return total > 0
+        ? ` (made ${total}: ${each.map(([name, made]) => `${name} ${made}`).join(", ")})`
         : "";
 }
 
