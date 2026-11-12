@@ -87,8 +87,13 @@ function choiceFacts(daemon, known, said) {
 // How many windows are open and whose, from the windows daemon's
 // windows-open record, counted, named and ordered there, the most first
 // (ZINAWZ, #3718), since daemons count and sort (Y2YBTS, 2207fa52):
-// { open, programs: [{ name, count }] }, none open before it answers.
+// { open, programs: [{ name, count }] }, or null before it answers,
+// since not heard isn't none, and a drawer that said nothing closes
+// would say it just when it's there to warn (Y2YBTS, f7a6155a).
 function openOf(record) {
+    if (record === null || record === undefined) {
+        return null;
+    }
     return {
         open: Number(record?.open ?? 0),
         programs: (record?.programs ?? []).map(each => ({
@@ -125,10 +130,12 @@ function openSaid(open, said) {
 // screen; 9 windows keep running behind it.", then its facts by their
 // words' ids, its key as its chord says it, then whose windows stay open.
 // One window keeps running where several keep, so it has its own line.
-// `open` is openOf's, `chord` its keys' words, "Super L".
-function lockSaid(open, chord, said) {
-    const told = openSaid(open, said);
-    const lead = open.open === 1 ? said.one : said.lead;
+// `open` is openOf's, `chord` its keys' words, "Super L". Before the
+// windows daemon answers, it says only what it does; once `silent`, the
+// daemon not answering, whose windows stay open says so.
+function lockSaid(open, chord, said, silent) {
+    const told = open === null ? unheard(said, silent) : openSaid(open, said);
+    const lead = open?.open === 1 ? said.one : said.lead;
     return {
         lead: told.windows === "" ? said.alone : filled(lead, { windows: told.windows }),
         facts: [
@@ -138,13 +145,20 @@ function lockSaid(open, chord, said) {
     };
 }
 
+// What's open, as openSaid says it, while the windows daemon hasn't
+// answered: no count, and whose only that it's not answering once it
+// isn't (Session.qml's silentFields says the same of the machine's).
+function unheard(said, silent) {
+    return { windows: "", programs: silent ? said.silent : "" };
+}
+
 // The drawer of a row that ends the session, Log Out's, Reboot's or Power
 // Off's, an act's that ends something (VKCF3Z, 37e49991): its lead says
 // what it does and how many windows it closes, "Reboots the machine,
 // closing 14 windows.", and its Ends fact, by the id `ends`, whose they
-// are. `open` is openOf's.
-function endingSaid(open, ends, said) {
-    const told = openSaid(open, said);
+// are. `open` is openOf's, and `silent` as lockSaid's.
+function endingSaid(open, ends, said, silent) {
+    const told = open === null ? unheard(said, silent) : openSaid(open, said);
     return {
         lead: told.windows === "" ? said.alone : filled(said.lead, { windows: told.windows }),
         facts: [{ id: ends, value: told.programs }].filter(fact => fact.value !== "")

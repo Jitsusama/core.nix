@@ -560,8 +560,8 @@
       "verb": "go to",
       "glyph": "agent",
       "said": {
-        "one": "1 agent's pane",
-        "many": "{count} agents' panes"
+        "one": "1 agent's window",
+        "many": "{count} agents' windows"
       },
       "tells": {
         "where": "Each is in Agents, by its session."

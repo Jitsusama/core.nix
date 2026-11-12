@@ -256,6 +256,13 @@ pub fn followed() -> Vec<Vec<String>> {
             format!("SYSLOG_IDENTIFIER={}", launches::IDENTIFIER),
             format!("--grep={}", launches::FOLLOWED),
         ],
+        // Any program saying it's ready and how long it took, as
+        // information; warnings come through the first.
+        vec![
+            "-p".to_owned(),
+            "notice..info".to_owned(),
+            format!("--grep={}", launches::READY_FOLLOWED),
+        ],
         // Each ask for a secret Joel answered, said only as information.
         vec![format!("SYSLOG_IDENTIFIER={}", asks::IDENTIFIER)],
         // The kernel's notices and information, which is where it says a

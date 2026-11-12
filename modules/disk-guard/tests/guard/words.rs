@@ -114,16 +114,29 @@ fn the_machine_speaks_for_its_worst_disk() {
     assert_eq!(machine(&disks, None), filesystem(&disks[1], None));
 }
 
+// With room everywhere, the system disk speaks for the machine: on 12
+// November a build disk of 47 GiB with 20 GiB free led while / had over
+// 300 GiB, and Joel read a nearly full laptop. A smaller disk leads only
+// once it's in a worse band, or filling fast.
 #[test]
-fn a_machine_with_room_everywhere_says_so_by_its_tightest_disk() {
+fn a_machine_with_room_everywhere_says_so_by_its_system_disk() {
+    let disks = [
+        room("/scratch", Band::Healthy, 20 * GIB, None),
+        room("/", Band::Healthy, 300 * GIB, None),
+    ];
+    assert_eq!(
+        machine(&disks, None),
+        "Plenty of room: 300.0 GiB free on the disk."
+    );
+    assert_eq!(
+        machine(&disks[..1], None),
+        "Plenty of room: 20.0 GiB free on /scratch.",
+        "without the system disk, the tightest watched speaks"
+    );
     let disks = [
         room("/", Band::Healthy, 400 * GIB, None),
         room("/scratch", Band::Healthy, 300 * GIB, None),
     ];
-    assert_eq!(
-        machine(&disks, None),
-        "Plenty of room: 300.0 GiB free on /scratch."
-    );
     assert_eq!(
         machine(&disks[..1], None),
         "Plenty of room: 400.0 GiB free on the disk."

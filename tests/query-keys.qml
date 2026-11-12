@@ -2,8 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, DrawerFigure.js, Search.js, Reading.js, LineEditing.js,
-// Operators.js, Finding.js and Confirm.js beside this file and runs
+// ListedKeys.js, DrawerPage.js, DrawerFigure.js, DrawerProse.js, Search.js, Reading.js,
+// LineEditing.js, Operators.js, Finding.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
@@ -17,6 +17,7 @@ import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
 import "DrawerFigure.js" as Figure
+import "DrawerProse.js" as Prose
 import "Identifier.js" as Identifier
 
 QtObject {
@@ -1274,6 +1275,37 @@ QtObject {
         ];
         for (const [what, words, wide, want] of runs)
             holds(`a drawer's run: ${what}`, Figure.runLines(words, wide, width), want);
+        // A drawer's prose as five lines at most, the rest in its fold (VKCF3Z's
+        // wrap rule 4, 76ba12d0): laid as Qt wraps words, at spaces, and where
+        // it runs past, cut after the last word the fifth line holds with room
+        // for the ellipsis that says there's more, a styled text's tags
+        // closed where it's cut.
+        const proses = [
+            ["prose that fits is itself", "one two three", false, 100,
+                { said: "one two three", cut: false }],
+            ["five lines whole are not cut", "aa bb cc dd ee", false, 20,
+                { said: "aa bb cc dd ee", cut: false }],
+            ["past five, cut after the fifth line's last word that leaves room",
+                "aa bb cc dd ee f gg", false, 40,
+                { said: "aa bb cc dd ee\u2026", cut: true }],
+            ["a last word with no room for it keeps it, as one word runs past",
+                "aa bb cc dd eee ff", false, 30,
+                { said: "aa bb cc dd eee\u2026", cut: true }],
+            ["its own lines count, a blank one too", "a\nb\n\nc\nd\ne", false, 100,
+                { said: "a\nb\n\nc\nd\u2026", cut: true }],
+            ["a word wider than a line stands alone, as Qt lets it",
+                "aaaaaaaaaaaaaa b c d e f", false, 20,
+                { said: "aaaaaaaaaaaaaa b c d e\u2026", cut: true }],
+            ["a styled text is measured by its letters, its tags closed",
+                "<b>aa bb</b> cc<br>dd <a href=\"x\">ee ff</a> gg", true, 30,
+                { said: "<b>aa bb</b> cc<br>dd <a href=\"x\">ee\u2026</a>", cut: true }],
+            ["an entity is one letter", "a &amp; b c d e f g", true, 30,
+                { said: "a &amp; b c d e f g", cut: false }]
+        ];
+        for (const [what, words, styled, wide, want] of proses)
+            holds(`a drawer's prose: ${what}`,
+                JSON.stringify(Prose.lines({ text: words, styled }, wide, 5, width)),
+                JSON.stringify(want));
         for (const [what, figure, lines, room, under, want] of places)
             holds(`a figure's place: ${what}`,
                 JSON.stringify(Figure.place(figure, lines, room, under)),

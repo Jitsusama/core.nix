@@ -382,6 +382,10 @@ impl<'a> Host<'a> {
                 "2",
                 "--header",
                 "Accept: application/json",
+                // Which answer failed, and how, for the journal: curl's
+                // own error doesn't say which of its parallel asks it was.
+                "--write-out",
+                "%{onerror}%{url} answered %{http_code}\n",
             ]
             .map(OsString::from),
         );

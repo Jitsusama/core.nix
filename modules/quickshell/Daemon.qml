@@ -26,8 +26,11 @@ pragma ComponentBehavior: Bound
 // two seconds, and twice as long after each refusal since it last
 // answered, a minute at most, so a daemon down for good isn't asked by
 // every domain's connection every two seconds; one that isn't there at
-// all, as Slack's isn't before Joel signs in, is tried again only once it appears, so a machine without it
-// isn't asked, and warned of, every two seconds for as long as it runs.
+// all, as Slack's isn't before Joel signs in, is tried again as a refusal
+// is a few times, about fourteen seconds in all, since a daemon starting
+// again takes its socket away and makes it anew, then only once it
+// appears, so a machine without it isn't asked, and warned of, every two
+// seconds for as long as it runs.
 // What was held stays held through a gap, and is replaced by what the
 // daemon says once it answers again, unless `keptThroughGap` says to let
 // it go.
@@ -412,7 +415,7 @@ Scope {
             }
             onError: failed => {
                 daemon.gone();
-                if (failed !== daemon.serverNotFound)
+                if (failed !== daemon.serverNotFound || daemon.refusals < daemon.missingTries)
                     daemon.tryAgain();
             }
         }
@@ -420,6 +423,16 @@ Scope {
 
     // QLocalSocket::ServerNotFoundError: nothing at the socket's path.
     readonly property int serverNotFound: 2
+
+    // How many times a socket that isn't there is tried again before only
+    // its appearing is waited for: two, four and eight seconds after, so a
+    // daemon starting again is heard though its socket was made after the
+    // watch on its file last fired. A file watch follows the file, and a
+    // socket taken away and made anew is another file, so the watch alone
+    // missed the machine daemon coming back after a case stood in for it
+    // (Y2YBTS, 2026-11-12), and its places said nothing until the shell
+    // started again.
+    readonly property int missingTries: 3
 
     // The socket's file, watched and never read, so one made after the
     // last try is tried at once. Watched only while there's no wire, since

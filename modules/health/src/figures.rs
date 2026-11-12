@@ -117,10 +117,12 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         }
     }
     // Our side's: an opening from its process's start, an end from its
-    // window gone, neither from Joel's ask.
+    // window gone, neither from Joel's ask, and a daemon's ready as it
+    // said it.
     for (name, spread) in [
         ("opened", day.launches.openings()),
         ("ended", day.launches.ends()),
+        ("ready", day.launches.readies()),
     ] {
         if let Some(spread) = spread {
             let mut put = |figure: &str, value: f64| {
@@ -162,6 +164,7 @@ mod tests {
     use crate::agents::Died;
     use crate::day::{Kind, Thing};
     use crate::disk::Filesystem;
+    use crate::launches;
     use crate::memory::Memory;
     use crate::typing::Sample;
 
@@ -287,8 +290,10 @@ mod tests {
             "opened foot 420 ms after its process started",
             "closed zoom; its process was still running 30 s later",
         ] {
-            day.launches.took(line);
+            day.launches.took(launches::IDENTIFIER, line);
         }
+        day.launches
+            .took("dictation", "dictation: ready in 1065 ms");
         let figures = of(&day);
         let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
@@ -298,8 +303,16 @@ mod tests {
                 figure("launches.opened.late-percent"),
                 figure("launches.ended.median-ms"),
                 figure("launches.outlived"),
+                figure("launches.ready.slowest-ms"),
             ),
-            (Some(212.0), Some(420.0), Some(50.0), None, Some(1.0)),
+            (
+                Some(212.0),
+                Some(420.0),
+                Some(50.0),
+                None,
+                Some(1.0),
+                Some(1065.0)
+            ),
             "the day's openings and ends weren't figured: {figures:?}"
         );
         assert_eq!(

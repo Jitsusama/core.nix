@@ -43,8 +43,12 @@ Piece {
                     byPath[disk.path] = disk;
         return Object.values(byPath);
     }
+    // The disk that speaks for the rest: the worst band's, and in one band
+    // the system disk's, so a small build disk with room never reads as a
+    // nearly full machine (VKCF3Z, 2026-11-12: 20 GB free on the build
+    // disk led while / had over 300).
     readonly property var worst: disks.reduce(
-        (worst, disk) => worst === null || worse(disk, worst) ? disk : worst, null)
+        (worst, disk) => worst === null || leads(disk, worst) ? disk : worst, null)
     readonly property bool short: worst !== null && worst.band !== "healthy"
     readonly property bool pressed: short && worst.band !== "filling"
     // A filling disk that will be nearly full within a day.
@@ -251,6 +255,10 @@ Piece {
 
     function worse(one, other) {
         return bands.indexOf(one.band) > bands.indexOf(other.band);
+    }
+
+    function leads(one, other) {
+        return worse(one, other) || (!worse(other, one) && one.path === "/");
     }
 
     // Sizes as every size reads, decimal at three figures, "19.3 GB", for

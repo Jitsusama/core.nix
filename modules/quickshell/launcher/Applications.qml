@@ -1596,6 +1596,21 @@ Provider {
             copies);
     }
 
+    // Whether a program's step would hold only New Window and New Window
+    // Below, as a closed Foot's does, so Return starts it rather than
+    // opening a list of those two and its drawer stays beside it (Y2YBTS,
+    // 2026-11-12 [39f55fff]: a row holding only acts never opens a
+    // submenu). Only the launcher's holdsMore reads it, on a key or the
+    // selection, never a row drawn; what's cheap is asked first, so a
+    // program with windows or a Recent asks nothing of its step, nor
+    // has its Recent read.
+    function startsOnly(entry, start, below) {
+        if ((provider.running[entry.id] ?? []).length > 0 || provider.keepsRecent(entry))
+            return false;
+        return provider.controls(entry, start, below)
+            .every(one => one.key === "verb:start" || one.key === "verb:below");
+    }
+
     // The names a program's own acts have here, which its desktop entry's
     // actions of the same name leave to them.
     function taken() {
@@ -1752,6 +1767,7 @@ Provider {
             // name; only what it is while its say counts what it holds,
             // which says it's open already, so the say isn't cut for
             // saying it twice (VKCF3Z, 2026-11-07).
+            actsOnly: () => provider.startsOnly(entry, start, below),
             // A closed one has no windows to count, so it asks nothing
             // of what it holds: a step into Programs reads every row it
             // draws (2026-11-10).
@@ -1790,6 +1806,7 @@ Provider {
             // A closed one asks nothing of what it holds.
             count: () => served.count === served.what || provider.holding(entry) === ""
                 ? served.count : served.what,
+            actsOnly: () => provider.startsOnly(entry, start, row.below),
             ownLayer: () => provider.ownLayer(entry)
         }), {
             verb: served.verb,

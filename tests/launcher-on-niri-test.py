@@ -333,6 +333,47 @@ def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) -> None:
+    """A notice's long words show five lines in its drawer, the rest opened by za.
+
+    Only the drawer wraps, and its prose five lines at most, the rest in its fold (VKCF3Z's
+    wrap rule 4), so a long message no longer stands in for the rest of its drawer.
+    """
+    # How many lines its prose shows while the fold is shut (Drawer.qml's proseMost).
+    most = 5
+    words = " ".join(f"sentence {at} of a notice that runs on." for at in range(1, 41))
+    with shell.told("shows card Quillwort"):
+        shell.as_account(f"notify-send --expire-time=1000 Quillwort {shlex.quote(words)}")
+    shell.notices_gone()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("quillwort", selecting="quillwort")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"]
+            and shown["drawer"]["title"] == "Quillwort"
+            and shown["drawer"]["folded"] is True
+            and shown["drawer"]["bodyLines"] == most
+        )
+    )
+    drawer = shell.showing()["drawer"]
+    said = str(drawer["bodyDrawn"])
+    assert said.endswith("\u2026"), drawer
+    assert words.startswith(said[:-1]), drawer
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["folded"] is False
+            and shown["drawer"]["bodyDrawn"] == words
+            and shown["drawer"]["bodyLines"] > most
+        )
+    )
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.close_launcher()
+
+
 def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None:
     """An opening ended by Return on a sum keeps it as a pick of a sum, not a miss.
 
@@ -1730,6 +1771,32 @@ def stepped_into_programs(shell: Shell) -> int:
     shell.normal()
     shell.launcher_until(drawer_on_selected)
     return int(laid_out(shell)["factsHeld"])
+
+
+def test_a_closed_program_holding_only_new_windows_holds_nothing_to_go_into(
+    shell: Shell,
+) -> None:
+    """Tab on a closed program holding only its New Windows says not here, and Return starts it.
+
+    Foot Server in Programs, closed, went into a list of New Window and New Window Below, a
+    submenu of acts alone (Y2YBTS's sweep, 2026-11-12 [39f55fff]: a row holding only acts is
+    never stepped into). Foot's server opens no window, so its start is seen as the launcher
+    closing; the server is stopped after.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    stepped_into_programs(shell)
+    shell.down_to("Foot Server")
+    held = len(shell.showing()["held"])
+    shell.send_key("tab")
+    shell.launcher_until(lambda shown: "not here" in str(shown["saying"]))
+    shown = shell.showing()
+    assert len(shown["held"]) == held, f"Tab went into Foot Server: {shown['path']}"
+    try:
+        shell.send_key("ret")
+        shell.launcher_closed()
+    finally:
+        shell.as_account("pkill -f 'foot --server' || true")
 
 
 def drawer_moved(was: str, shown: Json) -> bool:

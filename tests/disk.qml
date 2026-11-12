@@ -120,6 +120,14 @@ ShellRoot {
             && piece.context
                 === "/var/cache/cargo-builds full in 6 h 48 min at 3.22\u00a0GB an hour"
     }, {
+        what: "healthy disks, a smaller one first",
+        // 12 November: the build disk the account's guard lists first had
+        // 20 GiB free, / over 300, and the row led with the build disk's.
+        account: status([disk("/var/cache/cargo-builds", "healthy", 20),
+            disk("/", "healthy", 300)]),
+        machine: status([disk("/", "healthy", 300)]),
+        holds: piece => piece.worst.path === "/" && piece.value === "322\u00a0GB free"
+    }, {
         what: "a disk full in a few days",
         account: status([filling(disk("/", "healthy", 286), 2 * 24 * 3600 + 600, 4.4)]),
         machine: status([disk("/", "healthy", 286)]),

@@ -32,10 +32,15 @@ PersonSource {
         return provider.thing({ key: key, name: name, run: () => {} });
     }
 
+    // A minute and a half back, read as a minute ago: People takes its now
+    // before it asks here, so a mail dated a whole minute back read as
+    // "just now" whenever a millisecond passed between (H6EDLC, 2026-11-12).
+    readonly property real lunch: 90_000
+
     function unread(person, provider) {
         const now = Date.now();
         return person.emails.includes("ada@example.com")
-            ? [{ at: now - 60_000, row: had(provider, "mail:lunch", "Lunch on Friday"),
+            ? [{ at: now - lunch, row: had(provider, "mail:lunch", "Lunch on Friday"),
                 what: "mail" }] : [];
     }
 
@@ -50,7 +55,7 @@ PersonSource {
                     kind: "wrote", mine: true },
                 { at: now - day, row: had(provider, "mail:trip", "Trip Notes"), kind: "wrote" },
                 // What waits is never listed again under Messages.
-                { at: now - 60_000, row: had(provider, "mail:lunch", "Lunch on Friday"),
+                { at: now - lunch, row: had(provider, "mail:lunch", "Lunch on Friday"),
                     kind: "wrote" }
             ];
         if (person.emails.includes("ben@example.com"))

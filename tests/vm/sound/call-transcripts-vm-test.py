@@ -274,6 +274,13 @@ def transcript(joel: Joel, call: dict[str, Any]) -> str:
     return written
 
 
+@pytest.mark.usefixtures("call")
+def test_parakeet_is_compiled_before_any_call(joel: Joel) -> None:
+    """Started with nothing compiled, the service compiles Parakeet then, not at a call's take."""
+    said = joel.run("journalctl --user -u call-transcripts -o cat --no-pager")
+    assert "Parakeet compiled ahead of a call" in said, f"Parakeet wasn't compiled ahead:\n{said}"
+
+
 def test_a_call_is_kept_under_its_meeting(call: dict[str, Any]) -> None:
     """The call is one record, keyed and titled by the meeting on as it started, now ended."""
     assert call["key"] == "call:e1"
