@@ -1055,7 +1055,7 @@ Provider {
             eyebrowNames: true,
             title: one.title,
             facts: facts,
-            body: one.why
+            body: one.words
         };
     }
 

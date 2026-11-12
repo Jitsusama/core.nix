@@ -35,9 +35,9 @@
   # For You weighs what needs Joel, heaviest first and ties as they came,
   # bands what needs him now apart from To Look At and To Try, the
   # heaviest first and ties the oldest first in each, says each row's
-  # strongest reason, reads the looks folder's files into
-  # what waits and what's history, and gathers what other sources give it,
-  # as Passwords' one to-do, weighed beside the rest or done, as
+  # strongest reason, reads the looks folder's files into what waits and
+  # what's history, says a look's ask under its why, and gathers what other
+  # sources give it, as Passwords' one to-do, weighed beside the rest or done, as
   # tests/for-you.qml holds ForYou.js to it in Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
