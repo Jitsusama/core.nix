@@ -1476,6 +1476,11 @@ Provider {
             side: one.recommended ? said.recommended ?? "" : "",
             copies: one.label,
             stays: true,
+            // Stepping into what a session asks was the asking, so one
+            // Return answers, from the find too, rather than landing first
+            // as a change does (VKCF3Z, 2026-11-12: "Return on a choice
+            // answers at once").
+            sure: true,
             drawer: () => ({
                 title: one.label,
                 body: one.description || asked,
