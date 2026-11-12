@@ -1,55 +1,131 @@
-//! The cleaner Joel picked by ear, kept in a file of its own: the trial
-//! writes it when he picks a cleaned clip, and the service reads it each
-//! time it loads the model, so his pick cleans his next call with nothing
-//! restarted and no call cut short. The cleaner Nix names is the one used
-//! until he's picked, or when the file says nothing a cleaner is named.
+//! The cleaner Joel picked by ear for each microphone, kept in a file of
+//! its own: the trial writes it when he picks a cleaned clip, and the
+//! service reads it as each microphone starts being recorded, so his pick
+//! cleans his next call with nothing restarted and no call cut short.
+//!
+//! He moves between microphones, and a room that wants one cleaner on the
+//! laptop's may want another on the MV7, so each keeps its own pick. A
+//! microphone he's never picked for takes the cleaner he's picked for the
+//! most of them, since that's the best guess at his taste, and the one Nix
+//! names until he's picked at all.
+//!
+//! The file holds one line a microphone, its cleaner and then its node's
+//! name, newest last. A line with a cleaner alone was written before picks
+//! were kept apart; it counts towards the most picked and is no
+//! microphone's own.
 
 use std::path::{Path, PathBuf};
 
 use crate::denoise::Cleaner;
 
-/// Where the pick is kept, and the cleaner used without one.
+/// Where the picks are kept, and the cleaner used without one.
 #[derive(Clone, Debug)]
 pub struct Chosen {
     file: Option<PathBuf>,
     configured: Cleaner,
 }
 
+/// One line of the file: a cleaner, and the microphone it was picked for.
+struct Pick {
+    cleaner: Cleaner,
+    microphone: Option<String>,
+}
+
 impl Chosen {
-    /// The pick kept in `file`, or none kept at all when it's `None`, as
+    /// The picks kept in `file`, or none kept at all when it's `None`, as
     /// for a cleaner named on the command line alone.
     pub const fn new(file: Option<PathBuf>, configured: Cleaner) -> Self {
         Self { file, configured }
     }
 
-    /// The cleaner to clean with now.
-    pub fn cleaner(&self) -> Cleaner {
-        self.file
-            .as_deref()
-            .and_then(|file| std::fs::read_to_string(file).ok())
-            .and_then(|said| Cleaner::named(said.trim()).ok())
+    /// The cleaner to clean `microphone` with now, by its node's name; with
+    /// none named, the one a microphone never picked for takes.
+    pub fn cleaner(&self, microphone: Option<&str>) -> Cleaner {
+        let picks = self.picks();
+        microphone
+            .and_then(|name| {
+                picks
+                    .iter()
+                    .rev()
+                    .find(|pick| pick.microphone.as_deref() == Some(name))
+            })
+            .map(|pick| pick.cleaner)
+            .or_else(|| most_picked(&picks))
             .unwrap_or(self.configured)
     }
 
-    /// A file called `name` beside the pick's, for what's kept with it, or
-    /// none when no pick is kept.
+    /// A file called `name` beside the picks', for what's kept with them,
+    /// or none when no pick is kept.
     pub fn beside(&self, name: &str) -> Option<PathBuf> {
         Some(self.file.as_ref()?.with_file_name(name))
     }
 
-    /// Keeps `cleaner` as the pick, written whole beside the file and moved
-    /// over it, so the service never reads half of one.
-    pub fn choose(&self, cleaner: Cleaner) -> Result<(), String> {
+    /// Keeps `cleaner` as `microphone`'s pick, the file written whole
+    /// beside itself and moved over, so the service never reads half.
+    pub fn choose(&self, microphone: &str, cleaner: Cleaner) -> Result<(), String> {
         let Some(file) = &self.file else {
             return Ok(());
         };
+        let mut picks = self.picks();
+        picks.retain(|pick| pick.microphone.as_deref() != Some(microphone));
+        picks.push(Pick {
+            cleaner,
+            microphone: Some(microphone.to_owned()),
+        });
+        let said: String = picks
+            .iter()
+            .map(|pick| match &pick.microphone {
+                Some(name) => format!("{} {name}\n", pick.cleaner),
+                None => format!("{}\n", pick.cleaner),
+            })
+            .collect();
         let written = file.with_extension("picking");
         if let Some(folder) = file.parent() {
             std::fs::create_dir_all(folder).map_err(|why| saying(folder, &why))?;
         }
-        std::fs::write(&written, format!("{cleaner}\n")).map_err(|why| saying(&written, &why))?;
+        std::fs::write(&written, said).map_err(|why| saying(&written, &why))?;
         std::fs::rename(&written, file).map_err(|why| saying(file, &why))
     }
+
+    /// Every pick the file holds, oldest first, past any line naming no
+    /// cleaner this program has.
+    fn picks(&self) -> Vec<Pick> {
+        let said = self
+            .file
+            .as_deref()
+            .and_then(|file| std::fs::read_to_string(file).ok())
+            .unwrap_or_default();
+        said.lines()
+            .filter_map(|line| {
+                let (cleaner, microphone) = match line.trim().split_once(' ') {
+                    Some((cleaner, microphone)) => (cleaner, Some(microphone.trim())),
+                    None => (line.trim(), None),
+                };
+                Some(Pick {
+                    cleaner: Cleaner::named(cleaner).ok()?,
+                    microphone: microphone
+                        .filter(|name| !name.is_empty())
+                        .map(str::to_owned),
+                })
+            })
+            .collect()
+    }
+}
+
+/// The cleaner picked for the most microphones, the newest of those tied.
+fn most_picked(picks: &[Pick]) -> Option<Cleaner> {
+    let count = |cleaner: Cleaner| picks.iter().filter(|pick| pick.cleaner == cleaner).count();
+    picks
+        .iter()
+        .rev()
+        .map(|pick| pick.cleaner)
+        .reduce(|best, other| {
+            if count(other) > count(best) {
+                other
+            } else {
+                best
+            }
+        })
 }
 
 fn saying(path: &Path, why: &std::io::Error) -> String {
@@ -57,54 +133,5 @@ fn saying(path: &Path, why: &std::io::Error) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn folder(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("chosen-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        folder
-    }
-
-    #[test]
-    fn nothing_picked_cleans_as_nix_says() {
-        let chosen = Chosen::new(Some(folder("none").join("cleaner")), Cleaner::DeepFilterNet);
-        assert_eq!(chosen.cleaner(), Cleaner::DeepFilterNet);
-    }
-
-    #[test]
-    fn a_pick_is_kept_and_cleans_from_then_on() {
-        let file = folder("kept").join("noise-cancelled").join("cleaner");
-        let chosen = Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet);
-        chosen.choose(Cleaner::RNNoise).expect("the pick is kept");
-        assert_eq!(chosen.cleaner(), Cleaner::RNNoise);
-        assert_eq!(
-            std::fs::read_to_string(&file).expect("the file is there"),
-            "rnnoise\n"
-        );
-        let other = Chosen::new(Some(file), Cleaner::DeepFilterNetGentle);
-        assert_eq!(
-            other.cleaner(),
-            Cleaner::RNNoise,
-            "another process reads the pick"
-        );
-    }
-
-    #[test]
-    fn a_file_naming_no_cleaner_cleans_as_nix_says() {
-        let folder = folder("garbled");
-        std::fs::create_dir_all(&folder).expect("the folder is made");
-        std::fs::write(folder.join("cleaner"), "loud\n").expect("the file is written");
-        let chosen = Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNetGentle);
-        assert_eq!(chosen.cleaner(), Cleaner::DeepFilterNetGentle);
-    }
-
-    #[test]
-    fn nowhere_to_keep_it_keeps_nothing() {
-        let chosen = Chosen::new(None, Cleaner::DeepFilterNet);
-        chosen
-            .choose(Cleaner::RNNoise)
-            .expect("nothing to write is no failure");
-        assert_eq!(chosen.cleaner(), Cleaner::DeepFilterNet);
-    }
-}
+#[path = "chosen_tests.rs"]
+mod tests;

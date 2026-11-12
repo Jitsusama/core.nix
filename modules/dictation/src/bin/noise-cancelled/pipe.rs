@@ -246,6 +246,7 @@ impl Pair {
                 heard: heard_here,
                 cleaned: cleaned_here,
                 shared: Arc::clone(&shared),
+                microphone: microphone.name.clone(),
             },
         );
         let format = mono()?;

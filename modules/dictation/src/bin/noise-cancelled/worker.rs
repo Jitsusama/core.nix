@@ -8,8 +8,10 @@
 //! and let go once none has been for a while, so nothing is held between
 //! calls. It loads on a thread of its own, taking about half a second, and
 //! voices pass as heard meanwhile, since a call's first words matter more
-//! than their noise. Each load cleans as Joel last picked by ear (chosen.rs), so a
-//! pick changes the next call and never one under way.
+//! than their noise. Each microphone cleans as Joel last picked by ear for it
+//! (chosen.rs), settled as it starts being recorded and kept until it stops,
+//! so a pick changes the next call and never one under way. Each cleaner in
+//! use has its model loaded once, however many microphones share it.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -52,6 +54,8 @@ pub struct Ends {
     /// What's been cleaned, for its source stream.
     pub cleaned: Producer<f32>,
     pub shared: Arc<Shared>,
+    /// The microphone's node name, which its pick is kept under.
+    pub microphone: String,
 }
 
 enum Ask {
@@ -66,8 +70,8 @@ pub struct Worker {
 }
 
 impl Worker {
-    /// Starts the thread, which cleans with the cleaner `chosen` says as
-    /// it loads, and reads what it needs from `models` when it's first
+    /// Starts the thread, which cleans each microphone with the cleaner
+    /// `chosen` says for it, and reads what it needs from `models` when it's first
     /// needed.
     pub fn start(models: PathBuf, chosen: Chosen) -> Result<Self, String> {
         let (asks, heard) = mpsc::channel();
@@ -102,6 +106,8 @@ impl Worker {
 /// One microphone as this thread holds it.
 struct Microphone {
     ends: Ends,
+    /// What it cleans with while it's recorded from.
+    cleaner: Option<Cleaner>,
     denoiser: Option<Denoiser>,
 }
 
@@ -115,7 +121,7 @@ enum Loaded {
 
 fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
     let mut microphones: HashMap<u32, Microphone> = HashMap::new();
-    let mut model = Loaded::No;
+    let mut loads: HashMap<Cleaner, Loaded> = HashMap::new();
     let mut last_wanted = Instant::now();
     loop {
         loop {
@@ -125,6 +131,7 @@ fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
                         id,
                         Microphone {
                             ends,
+                            cleaner: None,
                             denoiser: None,
                         },
                     );
@@ -136,36 +143,64 @@ fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
                 Err(TryRecvError::Disconnected) => return,
             }
         }
-        let wanted = microphones
-            .values()
-            .any(|microphone| microphone.ends.shared.wanted.load(Ordering::Acquire));
-        if wanted {
+        let wanted = settled(&mut microphones, chosen);
+        if !wanted.is_empty() {
             last_wanted = Instant::now();
-            model = loaded(model, models, chosen);
-        } else if matches!(model, Loaded::Yes(_)) && last_wanted.elapsed() > UNUSED {
-            model = Loaded::No;
+            for cleaner in &wanted {
+                let model = loads.remove(cleaner).unwrap_or(Loaded::No);
+                loads.insert(*cleaner, loaded(model, models, *cleaner));
+            }
+        } else if loads.values().any(|model| matches!(model, Loaded::Yes(_)))
+            && last_wanted.elapsed() > UNUSED
+        {
+            loads.clear();
             eprintln!("noise-cancelled: the model let go");
         }
         for microphone in microphones.values_mut() {
-            clean(microphone, &model);
+            let model = microphone.cleaner.and_then(|cleaner| loads.get(&cleaner));
+            clean(microphone, model);
         }
-        thread::park_timeout(if wanted {
-            Duration::from_millis(50)
-        } else {
+        thread::park_timeout(if wanted.is_empty() {
             UNUSED
+        } else {
+            Duration::from_millis(50)
         });
     }
 }
 
+/// Settles what each microphone cleans with: as `chosen` says for it when
+/// it starts being recorded, kept until it stops, and nothing once it has.
+/// Answers every cleaner wanted now, each once.
+fn settled(microphones: &mut HashMap<u32, Microphone>, chosen: &Chosen) -> Vec<Cleaner> {
+    let mut wanted = Vec::new();
+    for microphone in microphones.values_mut() {
+        if !microphone.ends.shared.wanted.load(Ordering::Acquire) {
+            microphone.cleaner = None;
+            continue;
+        }
+        let cleaner = *microphone.cleaner.get_or_insert_with(|| {
+            let cleaner = chosen.cleaner(Some(&microphone.ends.microphone));
+            eprintln!(
+                "noise-cancelled: {} cleans with {cleaner}",
+                microphone.ends.microphone
+            );
+            cleaner
+        });
+        if !wanted.contains(&cleaner) {
+            wanted.push(cleaner);
+        }
+    }
+    wanted
+}
+
 /// The model, loading it unless it's loaded or was refused a moment ago.
-fn loaded(model: Loaded, models: &Path, chosen: &Chosen) -> Loaded {
+fn loaded(model: Loaded, models: &Path, cleaner: Cleaner) -> Loaded {
     match model {
         Loaded::Yes(_) => model,
         Loaded::Refused(when) if when.elapsed() < RETRY => model,
         Loaded::Loading(_) => arrived(model),
         Loaded::No | Loaded::Refused(_) => {
             let models = models.to_path_buf();
-            let cleaner = chosen.cleaner();
             loading(cleaner, move || Model::load(&models, cleaner))
         }
     }
@@ -222,7 +257,7 @@ fn refused(why: &str) -> Loaded {
 /// Cleans every whole frame one microphone has heard. Its voice passes as
 /// heard when the model won't load or a frame won't clean, since a
 /// microphone that goes quiet in a call is worse than one that's noisy.
-fn clean(microphone: &mut Microphone, model: &Loaded) {
+fn clean(microphone: &mut Microphone, model: Option<&Loaded>) {
     let ends = &mut microphone.ends;
     if !ends.shared.wanted.load(Ordering::Acquire) {
         microphone.denoiser = None;
@@ -233,7 +268,7 @@ fn clean(microphone: &mut Microphone, model: &Loaded) {
         return;
     }
     if microphone.denoiser.is_none()
-        && let Loaded::Yes(model) = model
+        && let Some(Loaded::Yes(model)) = model
     {
         match model.denoiser() {
             Ok(denoiser) => microphone.denoiser = Some(denoiser),

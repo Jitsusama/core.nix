@@ -177,6 +177,9 @@ pub struct Trial {
     stage: Stage,
     why: Option<String>,
     microphone: Option<Microphone>,
+    /// The default microphone's node name as the last watch began, so the
+    /// cleaner said running is its own before anything's recorded.
+    default_microphone: Option<String>,
     /// What the clips play on: the default output, as Sound names it.
     output: Option<String>,
     until: Option<u64>,
@@ -218,6 +221,7 @@ impl Trial {
                 stage: Stage::Idle,
                 why: None,
                 microphone: None,
+                default_microphone: None,
                 output: None,
                 until: None,
                 clips: Vec::new(),
@@ -269,8 +273,19 @@ impl Trial {
             "revealed": revealed,
             "costs": self.picked.map(|_| &self.costs),
             "marks": self.picked.and_then(|_| self.marked()),
-            "running": self.running.cleaner().name(),
+            "running": self.runs().name(),
         })
+    }
+
+    /// The cleaner the microphone Sound shows runs: the one recorded from,
+    /// else the default as the last watch began.
+    fn runs(&self) -> Cleaner {
+        let microphone = self
+            .microphone
+            .as_ref()
+            .map(|microphone| microphone.name.as_str());
+        self.running
+            .cleaner(microphone.or(self.default_microphone.as_deref()))
     }
 
     /// Tells every watch the record changed.
@@ -467,12 +482,11 @@ impl Trial {
         }
         self.hush();
         let way = self.clips[letter].way;
-        let twin = self.microphone.as_ref().map(Microphone::twin);
-        if let (Way::Cleaned(cleaner), Some(twin)) = (way, twin) {
+        if let (Way::Cleaned(cleaner), Some(microphone)) = (way, self.microphone.as_ref()) {
             // Kept first, so the microphone calls hear is never the twin
             // cleaning some other way than the one picked.
-            self.running.choose(cleaner)?;
-            default_microphone_is(&self.tools.metadata, &twin)?;
+            self.running.choose(&microphone.name, cleaner)?;
+            default_microphone_is(&self.tools.metadata, &microphone.twin())?;
         }
         eprintln!(
             "noise-cancelled: {} picked by ear, over {}",
@@ -522,6 +536,15 @@ impl Answers for Trial {
         if matches!(asked, "list" | "watch" | "get") && kind != KIND {
             let why = format!("this daemon keeps only {KIND}, not {kind}");
             return error(&id, "unknown-kind", &why);
+        }
+        if asked == "watch" {
+            // Sound watches as it opens, which is when Joel may have moved
+            // to another microphone since the last.
+            self.default_microphone = dumped(&self.tools.dump)
+                .ok()
+                .as_ref()
+                .and_then(default_microphone)
+                .map(|microphone| microphone.name);
         }
         let keys = daemon::keys(&said);
         let named = keys
@@ -755,7 +778,7 @@ pub fn serve(socket: &Path, models: &Path, running: Chosen, refusals: &Path) -> 
         .and_then(|text| Refusal::listed(&text))?;
     eprintln!(
         "noise-cancelled: choosing by ear, {} running",
-        running.cleaner()
+        running.cleaner(None)
     );
     let trial = Trial::shared(models.to_path_buf(), running, refusals, Tools::default());
     let listener = match crate::handed() {
