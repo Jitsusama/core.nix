@@ -2130,6 +2130,14 @@ in
         # the scrollback swapped out cold.
         CPUWeight = 1000;
         MemoryMin = "512M";
+        # What it swaps out stays compressed in memory rather than going to
+        # disk, so a session's window Joel comes back to draws from memory.
+        # At 20:38 on 2026-11-11 it held 1.18 GB in swap and 0.4 MB of that
+        # in zswap, the rest on disk, with 306,506 pages faulted back from
+        # swap since the morning. Scrollback is text cells and squeezes
+        # well, and a pi window held near the focus keeps its own memory off
+        # the disk the same way (jobs-sorter's src/focus.rs).
+        MemoryZSwapWriteback = false;
         # It draws a frame only when niri asks for one, unlike Joel's own kitty
         # (kitty.conf's sync_to_monitor no). Drawing as it pleased, it drew
         # every session's window, hidden ones too, since niri never marks one
