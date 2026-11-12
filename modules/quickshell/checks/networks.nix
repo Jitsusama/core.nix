@@ -56,7 +56,8 @@
   # the vocabulary (tests/network-drawers.qml): Address over two stand-in
   # connections, Traffic over the sandbox's own counters, Ethernet with no
   # card, Wi-Fi's own row's drawer, and a connection's drawer shown whole or
-  # not at all, never growing.
+  # not at all, never growing. Kept in Nix because each line copies a file
+  # Nix gives it beside the cases, or sets what the shell runs them with.
   every-network-row-has-a-drawer = pkgs.runCommandLocal "every-network-row-has-a-drawer" { } ''
     mkdir -p launcher runtime && chmod 700 runtime
     ${copied [
