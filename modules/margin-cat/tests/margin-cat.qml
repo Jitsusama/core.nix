@@ -61,6 +61,24 @@ QtObject {
         expect("at 2 of 2", MarginCat.cell(12, 2), 2);
         expect("a gap too small still draws it", MarginCat.cell(4, 1), 1);
 
+        // A walk is nine strides, each on the screen's own pixels, its feet
+        // touching the border on every other one and never on the last.
+        const xs = walk => walk.map(stride => stride.x);
+        expect("it trots across in nine even strides",
+            xs(MarginCat.steps(0, 90, 1)), [10, 20, 30, 40, 50, 60, 70, 80, 90]);
+        expect("and back the other way",
+            xs(MarginCat.steps(90, 0, 1)), [80, 70, 60, 50, 40, 30, 20, 10, 0]);
+        expect("its feet touch down on every other stride, never at the end",
+            MarginCat.steps(0, 90, 1).map(stride => stride.dips),
+            [true, false, true, false, true, false, true, false, false]);
+        expect("where it already sits it doesn't walk", MarginCat.steps(40, 40.2, 1.5), []);
+        const fractional = MarginCat.steps(3, 102, 1.5);
+        expect("at 1.5 every stride lands on whole screen pixels",
+            fractional.every(stride => Math.abs(stride.x * 1.5 - Math.round(stride.x * 1.5))
+                < 1e-9), true);
+        expect("and the last is where it's going", (fractional[fractional.length - 1] ?? {}).x, 102);
+        expect("in nine", fractional.length, 9);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

@@ -5,8 +5,9 @@
 // lives on a layer of its own that takes no keys and no pointer and moves no
 // window, gone while the screen is shared, and gone where the
 // gap can't hold it, as in fullscreen or the overview. It's
-// still: it draws a frame only as the column under it changes, and none at
-// rest, so the closed shell draws nothing for it.
+// still but for a walk: once the keys rest two seconds on another column it
+// trots there in nine strides, and otherwise draws a frame only as its
+// column moves, none at rest, so the closed shell draws nothing for it.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -54,19 +55,30 @@ Scope {
 
             required property ShellScreen modelData
 
-            // The window the keys are in, as niri says its tile will come to
-            // rest, when it's on this screen's shown workspace.
-            readonly property var column: {
+            // The window the keys are in, where it's on this screen's shown
+            // workspace, and the cat's to sit over.
+            readonly property var wanted: {
                 void root.settled;
                 void Niri.revision;
                 if (root.shared || Niri.overview || Niri.current === null)
                     return null;
-                const shown = Niri.windows[Niri.current];
-                const at = shown?.layout?.tile_pos_in_workspace_view;
-                const workspace = shown ? Niri.workspaces[shown.workspace_id] : null;
-                if (!at || workspace?.output !== modelData.name || !workspace.is_active)
-                    return null;
-                return { left: at[0], top: at[1], width: shown.layout.tile_size[0] };
+                return tile(Niri.current) === null ? null : Niri.current;
+            }
+            // The window whose column the cat sits over: the one the keys
+            // rested in for two seconds, so tapping h and l along the columns
+            // never sets it running (VKCF3Z's spec: "When you rest on a column
+            // for two seconds, it trots over and sits above it").
+            property var sat: null
+            // Where it's going, and the strides of the way left to walk.
+            property var going: null
+            property var walk: []
+            property var stride: null
+            // Its column, as niri says its tile will come to rest, so it
+            // moves with the column as niri lays them out again.
+            readonly property var column: {
+                void root.settled;
+                void Niri.revision;
+                return root.shared || Niri.overview ? null : tile(sat);
             }
             // Each cell in whole device pixels, and the cat's size from them.
             // The window's own ratio, which a fractional scale sets, rather
@@ -75,17 +87,92 @@ Scope {
                 ?? (cat.Screen.devicePixelRatio > 0 ? cat.Screen.devicePixelRatio : 1)
             readonly property real cell: MarginCat.cell(Theme.gap, ratio) / ratio
             readonly property real size: Math.max(1, root.drawing.length) * cell
-            readonly property var place: MarginCat.sits({
-                column,
-                // The screen's, since the window's own is 0 until it's shown.
-                across: modelData.width,
-                marks: MarginMarks.drawn,
-                cell: Theme.gap,
-                wide: size,
-                tall: size,
-                air: cell
-            })
+            // Where it sits over its column, and where it is: there, or a
+            // stride of the way to the next, a cell lower where its feet touch.
+            readonly property var rests: seat(column)
+            readonly property var place: stride !== null && rests !== null
+                ? { x: stride.x, y: rests.y + (stride.dips ? cell : 0) }
+                : rests
 
+            // A window's tile, as niri says it will come to rest, where it's on
+            // this screen's shown workspace; null where it isn't.
+            function tile(id: var): var {
+                const shown = id === null ? undefined : Niri.windows[id];
+                const at = shown?.layout?.tile_pos_in_workspace_view;
+                const workspace = shown ? Niri.workspaces[shown.workspace_id] : null;
+                if (!at || workspace?.output !== modelData.name || !workspace.is_active)
+                    return null;
+                return { left: at[0], top: at[1], width: shown.layout.tile_size[0] };
+            }
+
+            function seat(over: var): var {
+                return MarginCat.sits({
+                    column: over,
+                    // The screen's, since the window's own is 0 until it's shown.
+                    across: modelData.width,
+                    marks: MarginMarks.drawn,
+                    cell: Theme.gap,
+                    wide: size,
+                    tall: size,
+                    air: cell
+                });
+            }
+
+            // Where the keys went: back where it sits, it stays; where it's
+            // nowhere to be seen, its column gone or the gap shut, it's there
+            // at once, as nothing walks out of nowhere; anywhere else it
+            // waits two seconds, and a walk under way ends first.
+            function settle(): void {
+                if (stride !== null)
+                    return;
+                if (wanted === sat) {
+                    resting.stop();
+                } else if (rests === null || wanted === null) {
+                    resting.stop();
+                    sat = wanted;
+                } else {
+                    resting.restart();
+                }
+            }
+
+            function trot(): void {
+                const there = seat(tile(wanted));
+                walk = there === null || rests === null ? [] : MarginCat.steps(rests.x, there.x,
+                    ratio);
+                going = wanted;
+                if (walk.length === 0)
+                    sat = going;
+                else
+                    striding.start();
+            }
+
+            onWantedChanged: settle()
+            onRestsChanged: if (rests === null) settle()
+
+            Timer {
+                id: resting
+                interval: 2000
+                onTriggered: window.trot()
+            }
+
+            // About eight poses a second, so a walk takes about a second.
+            Timer {
+                id: striding
+                interval: 111
+                repeat: true
+                triggeredOnStart: true
+                onTriggered: {
+                    if (window.walk.length === 0) {
+                        stop();
+                        window.sat = window.going;
+                        window.stride = null;
+                        window.settle();
+                        return;
+                    }
+                    window.stride = window.walk[0];
+                    window.walk = window.walk.slice(1);
+                }
+            }
             Counted { name: `cat ${window.modelData?.name ?? ""}` }
 
             screen: modelData
@@ -117,13 +204,17 @@ Scope {
                     cell: Math.round(window.cell * window.ratio),
                     cells: root.drawing.length,
                     lit: root.drawing.join("").split("#").length - 1,
-                    hue: `${Theme.voice}`
+                    hue: `${Theme.voice}`,
+                    walking: stride !== null
                 });
                 Report.say(`sits cat ${modelData.name} ${at} over ${JSON.stringify(column)}`);
             }
             onPlaceChanged: say()
             onColumnChanged: say()
-            Component.onCompleted: say()
+            Component.onCompleted: {
+                settle();
+                say();
+            }
 
             Item {
                 id: cat

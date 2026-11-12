@@ -51,3 +51,25 @@ function sits(at) {
     }
     return { x, y: column.top - at.tall - at.air };
 }
+
+// How many strides a walk takes, stepped rather than glided (VKCF3Z's spec:
+// "stepped and rare", about nine frames a walk).
+const STRIDES = 9;
+
+// The strides of a walk from `from` to `to`, in logical pixels at `ratio`
+// device pixels to one: each on whole screen pixels, so it stays as sharp
+// moving as sitting, and none where it's already there. Its feet touch the
+// border (`dips`) on every other stride, so it trots rather than slides,
+// and never on the last, where it sits.
+function steps(from, to, ratio) {
+    if (Math.round(from * ratio) === Math.round(to * ratio)) {
+        return [];
+    }
+    const strides = [];
+    for (let stride = 1; stride <= STRIDES; stride++) {
+        const x = stride === STRIDES ? to
+            : Math.round((from + ((to - from) * stride) / STRIDES) * ratio) / ratio;
+        strides.push({ x, dips: stride % 2 === 1 && stride < STRIDES });
+    }
+    return strides;
+}
