@@ -7505,14 +7505,15 @@ Scope {
         drawerKeyAt = 0;
         if (presenting !== null) {
             presentedAwait(presenting.from, at => {
-                const one = Object.assign(presenting, { at });
+                const one = Object.assign(presenting, { at,
+                    swapped: root.swappedOf(presenting.frame) });
                 root.drawersPresented = root.drawersPresented.concat([one]).slice(-keysKept);
                 console.info(Presented.drawerSaid(one));
             });
         }
-        afterFrame(begun => {
+        afterFrame((begun, frame) => {
             if (presenting !== null && begun !== undefined)
-                presenting.begun = begun;
+                Object.assign(presenting, { begun, frame });
             if (!root.open)
                 return;
             const now = KeyTimes.now();
@@ -9528,6 +9529,15 @@ Scope {
             frame: surface.FramePresentation.framesBegun + 1 }]);
         surface.FramePresentation.ask();
     }
+    // When the render thread swapped the frame of that number, from
+    // frame-presentation.patch's timesOf, or null where it kept none, so a
+    // time from a frame's start to the screen says how much was the shell's
+    // swap and how much niri's after it (Presented.js's partsSwapped).
+    function swappedOf(frame) {
+        if (frame === undefined)
+            return null;
+        return surface.FramePresentation.timesOf(frame).swapped || null;
+    }
     function presentedDue(frame, at) {
         if (presentedWaiting.length === 0)
             return;
@@ -9613,13 +9623,13 @@ Scope {
         delete updatesBy[place];
         if (!(shown && open))
             return;
-        afterFrame(begun => {
+        afterFrame((begun, frame) => {
             if (begun !== undefined && one.heard !== undefined)
-                one.begun = begun;
+                Object.assign(one, { begun, frame });
         });
         presentedAwait(from, at => {
-            updatesPresented = updatesPresented.concat([Object.assign(one, { at })])
-                .slice(-keysKept);
+            const presented = Object.assign(one, { at, swapped: swappedOf(one.frame) });
+            updatesPresented = updatesPresented.concat([presented]).slice(-keysKept);
         });
     }
 

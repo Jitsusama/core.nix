@@ -59,8 +59,28 @@ function keysSaid(verb, times, apart) {
 // when the shell heard it and when its frame began, or "" where none
 // was: a key from its press, a change from its daemon's line.
 function wentTo(times) {
-    return partsSaid(times, [["from", "heard", "before the shell heard it"],
+    return partsSwapped(times, [["from", "heard", "before the shell heard it"],
         ["heard", "begun", "in the shell"], ["begun", "at", "from its frame's start"]]);
+}
+
+// Each part's median as partsSaid says them, and where the time from the
+// frame's start went, over those whose frame's swap the render thread
+// timed (frame-presentation.patch's timesOf, `swapped`): to its swap,
+// which holds the shell's polish, sync and render and any wait the swap
+// made for the frame before it, then after it, from niri taking the frame
+// to showing it. Joel's drawers spent 45 to 48 ms from their frame's start
+// to the screen, whatever they held, and nothing said whose those were
+// (KP0L6A, 2026-11-12).
+function partsSwapped(times, parts) {
+    const said = partsSaid(times, parts);
+    const timed = times.filter(each => parts.every(([from, to]) => each[from] !== undefined
+        && each[to] !== undefined) && each.swapped > 0);
+    if (said === "" || timed.length === 0) {
+        return said;
+    }
+    const toSwap = median(timed.map(each => Math.round(each.swapped - each.begun)));
+    const after = median(timed.map(each => Math.round(each.at - each.swapped)));
+    return `${said} (${toSwap} to its swap and ${after} after it)`;
 }
 
 // Each part's median, `[from, to, words]`, over those stamped with every
@@ -84,12 +104,12 @@ function partsSaid(times, parts) {
 const drawerParts = [["from", "followed", "before it followed"],
     ["followed", "begun", "until its frame began"], ["begun", "at", "from its frame's start"]];
 
-// A drawer presented, `{ key, place, from, followed, begun, at }`, said as
+// A drawer presented, `{ key, place, from, followed, begun, swapped, at }`, said as
 // it's presented, as an opening is, so each one's time from Joel's key can
 // be read as he goes.
 function drawerSaid(one) {
     return `launcher: drawer for "${one.key}" presented ${Math.round(one.at - one.from)} ms `
-        + `from the key${partsSaid([one], drawerParts)}`;
+        + `from the key${partsSwapped([one], drawerParts)}`;
 }
 
 // The drawers presented since the launcher opened, a line a place, as a
@@ -100,7 +120,7 @@ function drawersSaid(drawers) {
         const its = drawers.filter(each => each.place === place);
         const one = took(its);
         return `launcher: ${one.count} ${one.count === 1 ? "drawer" : "drawers"} in ${place} `
-            + `${tookSaid(one, "the key")}${partsSaid(its, drawerParts)}`;
+            + `${tookSaid(one, "the key")}${partsSwapped(its, drawerParts)}`;
     });
 }
 

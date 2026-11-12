@@ -63,7 +63,7 @@ COPIED_BEFORE_PRESENTED = timedelta(milliseconds=250)
 # drawingApart), each part rounded to a millisecond apart, so the three may miss the whole by two.
 DRAWING_SPLIT = re.compile(
     r"(?P<drawing>\d+) drawing it \((?P<syncing>\d+) syncing, (?P<rendering>\d+) rendering,"
-    r" (?P<heard>\d+) before the shell heard it\)"
+    r" (?P<heard>\d+) before the shell heard it swapped\)"
 )
 ROUNDED = 2
 
@@ -1671,6 +1671,8 @@ DRAWER_SAID = re.compile(
     r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
     r"before it followed, (\d+) until its frame began and (\d+) from its frame's start"
 )
+# Where a drawer's time from its frame's start went, where the render thread timed its swap.
+DRAWER_SWAPPED = re.compile(r"from its frame's start \((\d+) to its swap and (\d+) after it\)")
 DRAWERS_SAID = re.compile(r"launcher: \d+ drawers? in \S+ presented a median \d+ ms from the key")
 
 
@@ -1697,6 +1699,12 @@ def test_a_drawer_is_said_presented_from_the_key_that_brought_it(shell: Shell) -
     took, following, framing, showing = (int(part) for part in drawn.groups()[1:])
     assert abs(following + framing + showing - took) <= ROUNDED, (
         f"{took} ms from the key, said as {following}, {framing} and {showing}"
+    )
+    swapped = DRAWER_SWAPPED.search(said)
+    assert swapped, f"the drawer's frame never said its time to its swap and after: {lines}"
+    to_swap, after_swap = (int(part) for part in swapped.groups())
+    assert abs(to_swap + after_swap - showing) <= ROUNDED, (
+        f"{showing} ms from its frame's start, said as {to_swap} to its swap and {after_swap}"
     )
     stepped_out(shell)
     shell.close_launcher()

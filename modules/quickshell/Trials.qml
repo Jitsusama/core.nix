@@ -73,10 +73,13 @@ Scope {
 
     // What drawing it was, by the render thread's times of its frame where
     // they were read: its polish and sync, its render and swap, and the GUI
-    // thread hearing the swap late, which the three add up to.
+    // thread hearing the swap late, which the three add up to. The last is
+    // said as the swap heard, never the key, since a key's presented line
+    // says "before the shell heard it" of the key, and Joel's "wi", 64 ms
+    // here, was read as a key heard late (2026-11-12).
     function drawingApart(frame) {
         return frame.syncing === undefined ? "" : ` (${frame.syncing} syncing,`
-            + ` ${frame.rendering} rendering, ${frame.heard} before the shell heard it)`;
+            + ` ${frame.rendering} rendering, ${frame.heard} before the shell heard it swapped)`;
     }
 
     // A drawer's time from the work begun for it to the frame that drew it,
