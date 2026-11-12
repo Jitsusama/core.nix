@@ -46,9 +46,12 @@ in
       After = [ "machine.socket" ];
     };
     Service = {
+      # Run by its name, so ps -ef reads machine rather than a store path
+      # (docs/daemons.md, Shown).
       ExecStart = lib.concatStringsSep " " (
         [
-          (lib.getExe machine)
+          "@${lib.getExe machine}"
+          "machine"
           "%t/daemons/machine.sock"
         ]
         ++ worded

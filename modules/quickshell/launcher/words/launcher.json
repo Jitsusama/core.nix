@@ -399,7 +399,7 @@
         "shaperOff": "the shaper isn't running",
         "unheard": "its last question went unanswered",
         "leadFor": " for {lasted}",
-        "leadTrip": ", with a {rtt} round trip",
+        "leadTrip": "; a round trip takes {rtt}",
         "leadWaits": ", with {waiting} waiting"
       },
       "tells": {

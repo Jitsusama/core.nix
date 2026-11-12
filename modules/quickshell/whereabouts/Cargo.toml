@@ -8,6 +8,13 @@ edition = "2024"
 license = "MIT"
 publish = false
 
+# Its program goes by its domain's name, as its socket and units do, so
+# ps and systemctl find it by the word its socket says (docs/daemons.md,
+# Named). The crate keeps GeoClue's word for what it asks.
+[[bin]]
+name = "location"
+path = "src/main.rs"
+
 [dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # inotify, for the clock's zone, its move and the pin (notify.rs).

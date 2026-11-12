@@ -628,6 +628,10 @@
     do not disturb turns on while the screen is shared, not recorded, and off after; ended mid-share
     it stays off until the next, and one kept by hand outlasts it
   '';
+  each-acts-key-is-free-where-its-pressed = ''
+    each act's own key is one letter normal mode doesn't already take, and no row gives one key to
+    two of its acts
+  '';
   each-list-keeps-its-kinds-order = ''
     each kind of list the launcher shows keeps one order with nothing typed, A to Z only its last
     tie and numbers read by their value, a choice never moving when chosen, and each place that
@@ -945,8 +949,11 @@
     minute however busy the journals, and shows the three worst pains in plain words, pi's as
     pi's, then a line a kind, the gravest first; it times a launcher ready by today's line, each
     launcher part and pi's modelled typing against their budgets, keeps each program's openings
-    and ends as the windows daemon timed them and each daemon's ready as it said it as ours, and
-    says each figure's side
+    and ends as the windows daemon timed them and each daemon's ready as it said it as ours, holds
+    pi's start to its own budget apart from the daemons', times a service's restart from its
+    stopping to its ready line, the shell's ready or else its start, leaving a start alone, a stop
+    long before and a ready long after, reads a service's stopping and start from systemd and not a
+    scope's, and says each figure's side
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
@@ -1681,7 +1688,7 @@
   pain-points-names-what-slowed-him = ''
     pain-points counts what each launcher opening lost Joel, waiting past 400 ms to usable or past
     a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search
-    with nothing; joins an opening that came straight back to a failed search or the same row,
+    still typed with nothing, not one he cleared to read the lists; joins an opening that came straight back to a failed search or the same row,
     ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path;
     reads pi's logs from where it stopped, or anew when another build kept them, counting only
     what Joel typed up to the call that hands
@@ -3762,7 +3769,8 @@
     behind a router sharing 90 Mbit/s down and 15 up flow by flow under fq_codel, with the jobs
     downloading and uploading and an app downloading, two calls both ways at 2.5 Mbit/s, one in
     the video tin and one to 443 as best effort, lose at most a hundredth of their datagrams
-    coming down, where without the shaper they lose none
+    coming down, where without the shaper they lose none; and while a call is on, an app's call
+    to 443 goes in the video tin and is seen as real-time traffic
   '';
   vm-a-hidden-queue-is-taken-back = ''
     behind a router sharing 8 Mbit/s flow by flow under fq_codel, which delays no probe, the

@@ -52,9 +52,12 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       After = [ "to-do.socket" ];
     };
     Service = {
+      # Run by its name, so ps -ef reads to-do rather than a store path
+      # (docs/daemons.md, Shown).
       ExecStart = lib.escapeShellArgs (
         [
-          (lib.getExe package)
+          "@${lib.getExe package}"
+          "to-do"
           "${mission}/waiting"
           "${mission}/verdicts.json"
           "${mission}/signins"

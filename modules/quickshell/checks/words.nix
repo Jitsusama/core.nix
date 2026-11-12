@@ -60,6 +60,21 @@
       touch $out
     '';
 
+  # Each act beside a row's Return takes a key of its own in normal, by its
+  # words' `key`, so the vocabulary is held against the keys' table
+  # (tests/act-keys.py): normal would take a key it binds before the act
+  # could, and a row can't give one key two acts.
+  each-acts-key-is-free-where-its-pressed =
+    let
+      words =
+        pkgs.writeText "words.json"
+          (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+    in
+    pkgs.runCommandLocal "each-acts-key-is-free-where-its-pressed" { } ''
+      ${lib.getExe pkgs.python3} ${../../../tests/act-keys.py} ${words} ${../QueryKeys.js}
+      touch $out
+    '';
+
   # The words each daemon's tests are given are the vocabulary's own, as the
   # account writes it (tests/daemon-words.py), so no daemon passes its tests
   # on words Joel never reads. A daemon whose tests hold a slice of the

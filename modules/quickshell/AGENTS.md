@@ -66,7 +66,7 @@ machine, one path through each connection.
   lock is on, run by `nixos.nix`; [`record-window/`][record], one
   window's recording for the recorder; and [`whereabouts/`][whereabouts],
   the daemon that holds where the laptop is, from GeoClue, and the
-  clock's zone, over `daemons/location.sock`.
+  clock's zone, over `daemons/location.sock`, run as `location`.
 - [`maths/`][maths]: libqalculate as a QML module, `Maths`, which the
   launcher's sums and measures are worked out by in the shell's own
   process, its definitions read once and each key asked with a time limit;

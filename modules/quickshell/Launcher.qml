@@ -2889,7 +2889,31 @@ Scope {
         // way to copy it.
         if (copy && (copy !== choice || copiesOnly(choice)))
             keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
+        // Each act with a key of its own says it by its name, "e until it's
+        // ended" (VKCF3Z, 2026-11-12).
+        for (const act of actsWithKeys(choice, actions))
+            keys.push([act.actKey, String(act.name ?? "").toLowerCase()]);
         return keys;
+    }
+
+    // A row's acts that take a key of their own in normal mode (Words.actKey),
+    // never Return's, which is the row's.
+    function actsWithKeys(choice, actions) {
+        return actions.filter(one => one !== choice && typeof one.actKey === "string"
+            && one.actKey !== "");
+    }
+
+    // Does the selected row's act keyed by `key`, as the foot names it, and
+    // says whether there was one; an act's key means nothing on another row.
+    function doKeyed(key) {
+        if (selectedActions.row !== selected || selected === null)
+            return false;
+        const act = actsWithKeys(selected, selectedActions.actions)
+            .find(one => one.actKey === key);
+        if (act === undefined)
+            return false;
+        run(act, false);
+        return true;
     }
 
     // A word the foot says for a key, in place of the keys, until the next
@@ -7128,6 +7152,13 @@ Scope {
             return String(root.changesIn[name] ?? 0);
         }
 
+        // How many changes each source has said since the shell started,
+        // by its name, for the check that waits for every source to have
+        // answered after a start before counting what an opening made.
+        function changed(): string {
+            return JSON.stringify(root.changesIn);
+        }
+
         // How many searches of what's typed have run, for the check that
         // text typed at once is searched once.
         function searched(): string {
@@ -8850,10 +8881,19 @@ Scope {
     // 35 (2026-11-11, read by the shell's pid). Home is held only once
     // they're kept. This is the one pass that makes rows while shut, once
     // a start: a source changing later is caught up by the chord's fill.
+    // An opening meanwhile puts it off until the launcher is shut again,
+    // where it carries on from the turn it reached: it stopped for good,
+    // so Joel's first chord 14 s after a start made 1,328 rows and took
+    // 1,024 ms to be presented (2026-11-12, 13:16). It begins once the
+    // shell's own start is done, about a second and a half after its
+    // configuration loads, rather than six: his chord 3 s after one found
+    // nothing kept (10:16).
     property int warmed: -1
     property real warmedTook: 0
     Timer {
-        interval: 6000
+        id: warmingBegins
+
+        interval: 1500
         running: true
         onTriggered: root.warmNext()
     }
@@ -8867,8 +8907,9 @@ Scope {
         onTriggered: root.warmNext()
     }
     function warmNext() {
-        if (open || opening || homeHeld) {
+        if (open || opening) {
             warmingOn.stop();
+            warmingBegins.restart();
             return;
         }
         const began = KeyTimes.now();
@@ -8894,6 +8935,7 @@ Scope {
         warmingOn.stop();
         // Home is found with no place held, as the last place kept left
         // its step held.
+        homeHeld = false;
         keeping = true;
         try {
             held = [];
@@ -8928,6 +8970,9 @@ Scope {
         const source = collections.find(one => one.settings.name === name);
         if (placesKept[name])
             return;
+        // The card holds the place now, not home, until the pass ends by
+        // keeping home again, so an opening meanwhile finds home first.
+        homeHeld = false;
         keeping = true;
         try {
             held = [placeStep(source)];
@@ -10436,8 +10481,12 @@ Scope {
                         // A held arrow's drawer comes as it's let go.
                         onLetGo: root.drawerLetGo()
                         // A key with no meaning here says so, until the next.
-                        onIdled: key => root.say([[ListedKeys.face(key),
-                            (Words.field.hints ?? {}).notHere ?? ""]])
+                        // A key of the row's own acts does it first.
+                        onIdled: key => {
+                            if (!root.doKeyed(key))
+                                root.say([[ListedKeys.face(key),
+                                    (Words.field.hints ?? {}).notHere ?? ""]]);
+                        }
                         // - goes up, as his oil's; at home, with nothing
                         // above, it says so, as any key meaning nothing does.
                         onBackward: {

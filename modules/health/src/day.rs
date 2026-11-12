@@ -272,6 +272,7 @@ impl Day {
     pub fn take(&mut self, entry: &Entry) {
         self.to = self.to.max(entry.at);
         if let Some(mark) = entry.mark {
+            self.launches.served(entry);
             self.mark(entry, mark);
             return;
         }
@@ -281,7 +282,7 @@ impl Day {
         }
         if entry.priority > 4
             && ((entry.thing == launcher::IDENTIFIER && self.launcher.took(&entry.message))
-                || self.launches.took(&entry.thing, &entry.message))
+                || self.launches.heard(entry))
         {
             return;
         }
@@ -548,6 +549,7 @@ pub(crate) mod tests {
             since_boot: 1,
             mark: None,
             ask: None,
+            job: None,
         }
     }
 

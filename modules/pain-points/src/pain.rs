@@ -8,8 +8,9 @@
 //! feeling instant), the time to his pick past what that
 //! pick usually takes him where he searched for it by typing (time on
 //! task against his own baseline; time spent reading isn't), the
-//! whole of an opening he typed in and left with nothing (an abandoned
-//! search), and an opening he came straight back to (a u-turn or a
+//! whole of an opening he left with nothing while his search was still
+//! typed (an abandoned search; one he cleared to read the lists is
+//! reading), and an opening he came straight back to (a u-turn or a
 //! reformulated search: the first didn't get him there).
 
 use crate::trial::Trial;
@@ -127,7 +128,7 @@ pub struct Lost {
     pub drawing: f64,
     /// Finding his pick past his usual time for it.
     pub hunting: f64,
-    /// An opening he typed in and left with nothing.
+    /// An opening he left with nothing, his search still typed.
     pub gave_up: f64,
     /// A pick he made again at once, since the first didn't do it.
     pub again: f64,
@@ -168,7 +169,10 @@ pub fn lost(trial: &Trial, usable: Option<f64>, usual: &Usual) -> Lost {
     if trial.picked_one() && trial.keys.letters > 0 {
         let past = float(trial.ms) - usual.ms(&trial.trying()) - it.waiting();
         it.hunting = past.max(0.0);
-    } else if trial.missed {
+    } else if trial.missed && trial.keys.letters > trial.keys.erased {
+        // A search he cleared before leaving was set aside for reading the
+        // lists, as he did at 13:36 on 12 Nov, so only one still typed
+        // when he left is given up on.
         it.gave_up = float(trial.open.max(0)).min(GAVE_UP_MOST_MS);
     }
     it
@@ -577,6 +581,28 @@ mod tests {
         let named = painful(&[miss(AT, 9000)], &Usable::new(vec![]), &usual);
         assert_eq!(named[0].slowed, "gave up");
         assert_eq!(named[0].trying, "looked for something");
+    }
+
+    #[test]
+    fn a_search_he_cleared_and_then_read_his_way_through_is_reading() {
+        let usual = Usual::of(&[]);
+        let browsed = Trial {
+            keys: Keys {
+                letters: 2,
+                erased: 2,
+                arrows: 64,
+                returns: 4,
+                ..Keys::default()
+            },
+            ..miss(AT, 75_000)
+        };
+        assert_eq!(
+            lost(&browsed, None, &usual).gave_up,
+            0.0,
+            "he cleared the box and read the lists, as at 13:36 on 12 Nov"
+        );
+        let named = painful(&[browsed], &Usable::new(vec![]), &usual);
+        assert!(named.is_empty(), "reading isn't named: {named:?}");
     }
 
     #[test]

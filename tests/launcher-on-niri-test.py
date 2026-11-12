@@ -583,6 +583,32 @@ def test_do_not_disturb_says_until_when_in_its_drawer(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_do_not_disturbs_other_act_is_done_by_its_own_key(shell: Shell) -> None:
+    """Do Not Disturb holds notices for an hour on Return, and until they're ended on e.
+
+    Its acts lie on its row, with nothing under them, so it opens no step: Return does the
+    first and each other is pressed by its own key, which the foot names (VKCF3Z,
+    2026-11-12: "Return does For an Hour and Until It's Ended takes its key").
+    """
+
+    def selected(shown: Json) -> Json:
+        return cast("Json", shown["selected"] or {})
+
+    shell.answer("do not disturb")
+    shell.launcher_until(lambda shown: selected(shown).get("name") == "Do Not Disturb")
+    shell.normal()
+    told = selected(shell.showing())["told"]
+    assert "e until it's ended" in told, told
+    shell.send_chars("e")
+    shell.launcher_until(lambda shown: selected(shown).get("side") == "until it's ended")
+    held = shell.showing()["held"]
+    assert held == [], f"its key stepped into {held}"
+    # On, its Return ends it, so the next test finds notices shown.
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: selected(shown).get("side") == "for an hour")
+    shell.close_launcher()
+
+
 def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> None:
     """An answer asked for holds its row from the keystroke."""
     typed = "weather lima"
@@ -2570,7 +2596,8 @@ def test_the_work_networks_row_has_a_drawer_saying_how_work_stands(shell: Shell)
 
     Every row has a drawer (VKCF3Z, 2026-11-12). Its lead says how the link stands and its
     round trip, and for how long only where the daemon saw it begin, as it did here if an
-    earlier case changed the link; warp-cli's own words for it come last (WarpDrawer.js).
+    earlier case changed the link; warp-cli's own words for it are its nerdy bits, and its
+    status, which State says, is none (WarpDrawer.js; VKCF3Z, f8984db0).
     """
     said = warp_said()
     try:
@@ -2585,12 +2612,15 @@ def test_the_work_networks_row_has_a_drawer_saying_how_work_stands(shell: Shell)
         assert drawer["title"] == "Work Network", str(drawer)
         body = str(drawer["body"])
         assert body.startswith("Connected to work"), str(drawer)
-        assert body.endswith(", with a 127 ms round trip."), str(drawer)
+        assert body.endswith("; a round trip takes 127 ms."), str(drawer)
         facts = {fact["label"]: fact["value"] for fact in drawer["facts"]}
         assert facts["State"] == "connected", str(facts)
         assert facts["Round Trip"] == "127 ms", str(facts)
-        assert list(facts)[-2:] == ["Status", "Reason"], str(facts)
-        assert facts["Reason"] == "NetworkHealthy", str(facts)
+        assert "Status" not in facts, str(facts)
+        assert "Reason" not in facts, str(facts)
+        nerd = {bit["label"]: bit["value"] for bit in drawer.get("nerd") or []}
+        assert nerd.get("Reason") == "NetworkHealthy", str(drawer)
+        assert "Tunnel Mode" in nerd, str(drawer)
     finally:
         warp_forgotten(said)
 
@@ -3535,7 +3565,8 @@ def test_captures_acts_each_say_what_they_do_in_a_drawer(shell: Shell) -> None:
     """Each of Capture's acts has a drawer saying what it does and where that lands.
 
     Every row has a drawer giving a little more than its line (Joel, 2026-11-11 22:00), an act's
-    saying what it does, its key, where it lands and the last one there (VKCF3Z, 37e49991).
+    saying what it does, its key, where it lands and the last one there (VKCF3Z, 37e49991), then
+    the act and what follows from it, Open the Folder, and folded, its command, path and format.
     """
     path = shlex.quote("\u203adesktop\u203acapture")
     asked = f"qs -p {shell.folder} ipc call -- launcher drawers {path}"
@@ -3550,6 +3581,20 @@ def test_captures_acts_each_say_what_they_do_in_a_drawer(shell: Shell) -> None:
     assert facts.get("Lands In") == "Screenshots, and on the clipboard", facts
     region = drawers.get("Record a Region", {})
     assert str(region.get("body", "")).startswith("Records the part of the screen"), region
+    # A terminal's show says no acts or nerdy bits, so they're read as drawn.
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("capture", selecting="Capture")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "The Whole Screen" in shown["rows"])
+    shell.down_to("The Whole Screen")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["acts"] == ["\u21b5 Take", "Open the Folder"]
+            and shown["drawer"]["nerd"] == ["Command", "Path", "Format"]
+        )
+    )
+    shell.close_launcher()
 
 
 def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:

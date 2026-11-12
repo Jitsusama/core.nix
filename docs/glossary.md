@@ -300,7 +300,7 @@ or a copy, can be opened, copied or forgotten.
 | recording | a video Joel takes of the screen, of all of it, a window or a region | | |
 | photo | a picture Joel takes with the camera | | |
 | screenshot text | the words in a screenshot, read on the machine as it's taken, so it's found by them and they can be copied | OCR | `screen-text` |
-| location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `whereabouts` daemon's `here:laptop` |
+| location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `location` daemon's `here:laptop` (built from `whereabouts/`) |
 | time server | a clock elsewhere that the machine sets its own time by, over the network, listed in Time's Servers | | chrony's sources, its `server` mode |
 | time peer | a time server that sets its time by the machine's too, each keeping the other right | | chrony's `peer` mode |
 | reference clock | a clock wired to the machine that it sets its time by, such as a GPS receiver | | chrony's `refclock` |

@@ -43,6 +43,16 @@ pub struct Sets {
     /// The windows in an account's apps whose pi sessions run turns nobody
     /// typed, which `untyped` finds.
     pub bulk5: Vec<String>,
+    /// The protocols whose every packet from an app goes as video, which
+    /// `calling` gives: UDP while a call is on, and none otherwise.
+    pub calling: Vec<String>,
+}
+
+/// The `calling` set's members: while a call is on, an app's UDP is the
+/// call's, wherever it goes, even to 443, where it would otherwise pass
+/// for a page's QUIC.
+pub fn calling(on: bool) -> Vec<String> {
+    if on { vec!["udp".into()] } else { Vec::new() }
 }
 
 const SYSTEM_BULK: [&str; 2] = ["build.slice", "machine.slice"];
@@ -272,6 +282,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("video5", &sets.video5, true);
     fill("awaited5", &sets.awaited5, true);
     fill("bulk5", &sets.bulk5, true);
+    fill("calling", &sets.calling, false);
     fill("vpns", &local.marks, false);
     fill("local4", &local.v4, false);
     fill("local6", &local.v6, false);
@@ -525,11 +536,32 @@ mod tests {
         ));
         assert!(text.contains(
             "flush set inet shaper awaited5\nflush set inet shaper bulk5\n\
-             flush set inet shaper vpns\nadd element inet shaper vpns { 0xca6c, 0x80000 }\n\
+             flush set inet shaper calling\nflush set inet shaper vpns\n\
+             add element inet shaper vpns { 0xca6c, 0x80000 }\n\
              flush set inet shaper local4\n"
         ));
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));
         assert!(text.contains("flush set inet shaper local6\nflush set inet shaper uplinks\n"));
         assert!(text.ends_with("add element inet shaper uplinks { \"enp1\" }\n"));
+    }
+
+    #[test]
+    fn a_call_puts_udp_in_its_set_unquoted() {
+        let sets = Sets {
+            calling: calling(true),
+            ..Sets::default()
+        };
+        let text = transaction("shaper", &sets, &Local::default());
+        assert!(
+            text.contains(
+                "flush set inet shaper calling\nadd element inet shaper calling { udp }\n"
+            ),
+            "a call fills the set with the protocol nft names: {text}"
+        );
+        assert_eq!(
+            calling(false),
+            Vec::<String>::new(),
+            "no call leaves it empty"
+        );
     }
 }
