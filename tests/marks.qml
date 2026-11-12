@@ -75,6 +75,12 @@ QtObject {
         expect("what needs him now is the alert", Marks.tone(piece("wants", true)), "alert");
         expect("left on but needed now is the alert too",
             Marks.tone(piece("leftOn", true)), "alert");
+        // A want of the many, as Slack's unread channel posts, is muted,
+        // and lights strong only once something in it is to Joel himself.
+        expect("a hushed want is muted",
+            Marks.tone({ kind: "wants", now: false, hushed: true }), "muted");
+        expect("a hushed want needed now is still the alert",
+            Marks.tone({ kind: "wants", now: true, hushed: true }), "alert");
 
         // Something on air that goes stays a while, muted, where it was, so
         // a camera let go is still seen to have been on; left on or

@@ -74,13 +74,14 @@ function arranged(things) {
 }
 
 // The theme's role a piece's glyph wears, which says only how much it
-// asks: the alert for what needs Joel now, muted for what was left on,
-// and strong for the rest.
+// asks: the alert for what needs Joel now, muted for what was left on
+// and for a want of the many that holds nothing to him (`hushed`), and
+// strong for the rest.
 function tone(piece) {
     if (piece.now) {
         return "alert";
     }
-    return piece.kind === "leftOn" ? "muted" : "strong";
+    return piece.kind === "leftOn" || piece.hushed ? "muted" : "strong";
 }
 
 // What waits a moment before it's drawn, as { mark, until }: a thing whose
