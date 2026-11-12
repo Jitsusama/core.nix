@@ -485,3 +485,52 @@ fn an_offer_standing_is_told_until_it_is_taken() {
     assert_eq!(said["taken"], true, "the offer wasn't taken: {said}");
     assert_eq!(trial.lock().record()["offer"], Value::Null);
 }
+
+#[test]
+fn a_raw_pick_makes_the_microphone_itself_the_one_calls_hear() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let folder = std::env::temp_dir().join(format!("trial-raw-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    // pw-metadata as a script keeping the value it's asked to set, its fifth argument.
+    let asked = folder.join("asked");
+    let metadata = folder.join("pw-metadata");
+    let bash = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|place| place.join("bash"))
+        .find(|path| path.exists())
+        .expect("bash is on PATH");
+    let script = format!(
+        "#!{}\nprintf '%s\\n' \"$5\" > {}\n",
+        bash.display(),
+        asked.display()
+    );
+    std::fs::write(&metadata, script).expect("the script is written");
+    std::fs::set_permissions(&metadata, std::fs::Permissions::from_mode(0o755))
+        .expect("the script runs");
+    let trial = keeping(Vec::new(), Some(folder.join("cleaner")));
+    trial.lock().tools.metadata = metadata.display().to_string();
+    ready(&trial);
+    // Another test's process can hold the script open a moment as it starts, which refuses
+    // running it, and a refused pick changes nothing, so it's asked again.
+    let mut said = Value::Null;
+    for _ in 0..3 {
+        said = ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"B"}"#);
+        if said["taken"] == true {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(said["taken"], true, "the raw pick: {said}");
+    let chosen = std::fs::read_to_string(&asked).unwrap_or_default();
+    assert_eq!(
+        chosen.trim(),
+        r#"{"name":"mv7"}"#,
+        "calls hear what was chosen"
+    );
+    let offered = std::fs::read_to_string(folder.join("offered")).unwrap_or_default();
+    assert!(
+        offered.starts_with("mv7 "),
+        "the raw pick wasn't kept as offered: {offered:?}"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}

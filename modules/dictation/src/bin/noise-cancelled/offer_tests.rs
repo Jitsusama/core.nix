@@ -232,3 +232,22 @@ fn an_offer_coming_and_going_is_heard() {
     let went = heard.recv_timeout(Duration::from_secs(5));
     assert!(went.is_ok(), "the offer going wasn't heard");
 }
+
+#[test]
+fn a_raw_pick_settles_the_offer_where_it_was_made() {
+    let chosen = picks("raw");
+    let mut offers = Offers::new(&chosen, Vec::new());
+    called(&mut offers, &chosen, &desk());
+    offers.stand(&chosen);
+    settled(&chosen, MV7, &desk().key).expect("it's kept as offered");
+    assert_eq!(standing(&chosen), None, "the offer stood past a raw pick");
+    called(&mut offers, &chosen, &desk());
+    offers.stand(&chosen);
+    assert_eq!(standing(&chosen), None, "a raw pick was offered again");
+    called(&mut offers, &chosen, &roadside());
+    offers.stand(&chosen);
+    assert!(
+        standing(&chosen).is_some(),
+        "a raw pick at the desk settled the Roadside Inn too"
+    );
+}

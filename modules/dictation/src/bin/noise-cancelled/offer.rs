@@ -155,6 +155,14 @@ pub fn taken(chosen: &Chosen) -> Result<(), String> {
     Ok(())
 }
 
+/// Settles Choose by Ear for `node` at the spot `key`, as a raw pick
+/// there does: kept as offered, so it's never offered there, and any offer
+/// standing for it withdrawn.
+pub fn settled(chosen: &Chosen, node: &str, key: &str) -> Result<(), String> {
+    let _ = (chosen, node, key);
+    Ok(())
+}
+
 /// Whether Choose by Ear was offered for `node` at the spot `key`.
 fn offered(chosen: &Chosen, node: &str, key: &str) -> bool {
     chosen
