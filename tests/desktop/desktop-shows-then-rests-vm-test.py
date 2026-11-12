@@ -155,9 +155,11 @@ def test_the_notices_daemon_waits_out_another_holding_the_name_then_takes_it(
     """
     machine = desktop.machine
     shown = desktop.as_account("systemctl --user show notices.service -p ExecStart --value")
-    found = re.search(r"argv\[\]=(.*?) ;", shown)
-    assert found, f"notices.service's ExecStart says no argv: {shown}"
-    program, *pairs = found.group(1).split()
+    # The program is its path; argv's first word is only the name it's started by.
+    found = re.search(r"path=(\S+) ; argv\[\]=(.*?) ;", shown)
+    assert found, f"notices.service's ExecStart says no path and argv: {shown}"
+    program = found.group(1)
+    _, *pairs = found.group(2).split()
     given = dict(zip(pairs[::2], pairs[1::2], strict=True))
     # The account's own runtime folder, which only it may write.
     own = desktop.as_account('echo "$XDG_RUNTIME_DIR"').strip() + "/notices-stand-in"

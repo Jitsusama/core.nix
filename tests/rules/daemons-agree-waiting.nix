@@ -41,7 +41,6 @@
     "shown"
     "speaks"
   ];
-  notices = [ "shown" ];
   passwords = [
     "shown"
     "speaks"
