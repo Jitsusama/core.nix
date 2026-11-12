@@ -1584,8 +1584,57 @@ impl Sent<'_> {
         finished
     }
 
-    /// The run on a lent builder, the two taken in turn, then on a warm VM
-    /// builder of `vm`'s, or none when none stood or ssh reached none.
+    /// The two lent builders' stores, `lent`, with the one that keeps the
+    /// run's base evaluated first ([`changed::kept_first`]), both asked at
+    /// once, since each ssh took about 1.6 s on 12 November. They stay as
+    /// they came unless both stand and the base and system are known.
+    fn kept_first(&self, arguments: &[String], lent: [Option<String>; 2]) -> [Option<String>; 2] {
+        let (there::Source::Pushed { commit, .. } | there::Source::Bundled { commit, .. }) =
+            self.source;
+        let base = changed::base_of(arguments, self.folder, commit);
+        let asking = changed::wanted(arguments)
+            .system
+            .zip(base.as_deref())
+            .filter(|_| lent.iter().all(Option::is_some))
+            .and_then(|(system, base)| changed::keeps_base(base, &system));
+        let Some(asking) = asking else {
+            return lent;
+        };
+        let keeps = |store: &Option<String>| {
+            let Some(builder) = store
+                .as_deref()
+                .and_then(|store| there::builder(store.lines().next()?.trim()))
+            else {
+                return false;
+            };
+            let sending = there::Sending {
+                command: asking.clone(),
+                bundle: None,
+            };
+            there::printed_on(&builder, &sending, self.scratch, "ssh")
+                .is_ok_and(|(ran, _)| ran.status == 0)
+        };
+        let kept = thread::scope(|scope| {
+            let first = scope.spawn(|| keeps(&lent[0]));
+            let second = keeps(&lent[1]);
+            [first.join().unwrap_or(false), second]
+        });
+        if !kept[0] && kept[1] {
+            let short = base
+                .as_deref()
+                .and_then(|base| base.get(..12))
+                .unwrap_or_default();
+            eprintln!(
+                "nix-offload: the other lent builder keeps {short}'s checks evaluated, so this \
+                 run asks it first"
+            );
+        }
+        changed::kept_first(lent, kept)
+    }
+
+    /// The run on a lent builder, the one that keeps its base evaluated
+    /// first, else the two taken in turn, then on a warm VM builder of
+    /// `vm`'s, or none when none stood or ssh reached none.
     /// While more than one stands, each is asked to turn it away rather
     /// than make it wait, so it goes to the next; when all do, it waits at
     /// the first it asked. On 10 November an evaluation took 4.7 minutes
@@ -1598,8 +1647,9 @@ impl Sent<'_> {
         vm: &[PathBuf],
         vm_apart: bool,
     ) -> Option<Finished> {
-        let stores: Vec<Option<String>> = changed::in_turn(lenders, std::process::id())
-            .map(standing)
+        let lent = changed::in_turn(lenders, std::process::id()).map(standing);
+        let stores: Vec<Option<String>> = self
+            .kept_first(arguments, lent)
             .into_iter()
             .chain(
                 vm.iter()

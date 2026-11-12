@@ -16,6 +16,43 @@ fn runs_take_the_two_lent_builders_in_turn() {
 }
 
 #[test]
+fn the_lent_builder_keeping_the_base_is_asked_first() {
+    let lent = ["first", "second"];
+    assert_eq!(
+        kept_first(lent, [false, true]),
+        ["second", "first"],
+        "the second keeps it"
+    );
+    assert_eq!(kept_first(lent, [true, false]), lent, "the first keeps it");
+    assert_eq!(kept_first(lent, [true, true]), lent, "both keep it");
+    assert_eq!(kept_first(lent, [false, false]), lent, "neither keeps it");
+}
+
+#[test]
+fn a_builder_is_asked_for_the_file_changed_checks_keeps_a_base_in() {
+    assert_eq!(
+        keeps_base("abc123", "x86_64-linux").as_deref(),
+        Some("test -e \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/abc123-x86_64-linux.json\""),
+        "not the file changed-checks keeps a base's checks in"
+    );
+}
+
+#[test]
+fn a_base_or_system_the_shell_would_read_as_more_is_never_asked() {
+    assert_eq!(
+        keeps_base("abc; rm", "x86_64-linux"),
+        None,
+        "a base with a ;"
+    );
+    assert_eq!(keeps_base("", "x86_64-linux"), None, "no base");
+    assert_eq!(
+        keeps_base("abc", "x86_64-linux$(id)"),
+        None,
+        "a system with $("
+    );
+}
+
+#[test]
 fn evaluators_are_read_a_line_each() {
     let read =
         evaluators("# nearby\n\nfar.local:22 far me,us\nshort:22 short\n near:22  near  me \n");

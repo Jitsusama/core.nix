@@ -14,7 +14,8 @@
 //! fenced session's commit is the session's to write.
 //!
 //! Where: a lent builder while one stands, which evaluates and builds in
-//! one place, every other run trying the second first and asking for it
+//! one place, the one that keeps the run's base evaluated tried first,
+//! else every other run trying the second first, and asking for it
 //! while it lives, and while a lender runs, a builder waited for once
 //! neither answers.
 //! With no lender running, the first evaluator that answers and takes the
@@ -396,6 +397,66 @@ pub fn in_turn<T>(lenders: [T; 2], run: u32) -> [T; 2] {
     } else {
         [second, first]
     }
+}
+
+/// The two lent builders with the one that `kept` says holds the run's
+/// base evaluated first, else as they came. keep-main keeps each head of
+/// main on one builder, and on 12 November 23 of 54 runs evaluated their
+/// base again, 119 minutes in all, on the other: one at 10:55 paid 230 s
+/// for a head kept at 10:51.
+pub fn kept_first<T>(lenders: [T; 2], kept: [bool; 2]) -> [T; 2] {
+    let [first, second] = lenders;
+    if !kept[0] && kept[1] {
+        [second, first]
+    } else {
+        [first, second]
+    }
+}
+
+/// The commit a run with `arguments` at `commit` compares with, as the
+/// far side's changed-checks finds it: its merge base with the `--base`
+/// given, else with origin's main, here in `folder`, or none when git
+/// can't say.
+pub fn base_of(arguments: &[String], folder: &Path, commit: &str) -> Option<String> {
+    let theirs = arguments
+        .iter()
+        .position(|word| word == "--base")
+        .and_then(|at| arguments.get(at + 1))
+        .map_or("origin/main", String::as_str);
+    // A fenced session's tree may name programs for git to start, as
+    // there.rs's git says, and finding a merge base needs none.
+    let found = Command::new("git")
+        .args([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+        ])
+        .arg("-C")
+        .arg(folder)
+        .args(["merge-base", commit, theirs])
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|found| found.status.success())?;
+    Some(String::from_utf8_lossy(&found.stdout).trim().to_owned())
+}
+
+/// What a lent builder is asked to learn whether its changed-checks keeps
+/// `base`'s checks for `system` evaluated, ending 0 when it does: the file
+/// changed-checks writes, by rename once whole, under XDG's cache folder.
+/// None for a base or system the shell could read as more than a word.
+pub fn keeps_base(base: &str, system: &str) -> Option<String> {
+    let plain =
+        |word: &str, allowed: fn(char) -> bool| !word.is_empty() && word.chars().all(allowed);
+    let named = plain(base, |c| c.is_ascii_hexdigit())
+        && plain(system, |c| {
+            c.is_ascii_alphanumeric() || c == '_' || c == '-'
+        });
+    named.then(|| {
+        let cache = "${XDG_CACHE_HOME:-$HOME/.cache}";
+        format!("test -e \"{cache}/changed-checks/{base}-{system}.json\"")
+    })
 }
 
 /// Waits for `host`'s turn to evaluate, had while what this gives is
