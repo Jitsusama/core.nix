@@ -128,12 +128,17 @@ Provider {
 
     // Power's answer: its headline and its own rows, a step in each holding
     // what's inside it; none until the daemon has served the battery's.
+    // The headline is a thing with a drawer, as every row is: how the
+    // battery stands and when it's full or empty, served with the head and
+    // worded as any served drawer is, its times by the shell.
     function told() {
         const said = head();
         if (said === null)
             return null;
         return {
             headline: said.said ?? "",
+            thing: true,
+            drawer: said.drawer ? () => ready.drawerOf(said) : undefined,
             graph: said.graph,
             glyph: Theme.glyph.charge,
             rows: ready.rows(),
