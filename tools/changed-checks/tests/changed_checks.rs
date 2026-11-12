@@ -877,6 +877,48 @@ fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
 }
 
 #[test]
+fn a_keep_clears_what_a_keep_stopped_while_tracing_left_behind() {
+    // On 12 November a switch stopped a keep mid-trace, and its traces, 15
+    // MB each, and its cache stayed on the builder.
+    let stand_in = StandIn::new("reads-swept");
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    let cache = stand_in.path("cache/changed-checks");
+    fs::create_dir_all(cache.join("old-x86_64-linux.reads.cache/fetcher")).expect("made");
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(3);
+    let left = |name: &str| {
+        let path = cache.join(name);
+        fs::write(&path, "").expect("written");
+        path
+    };
+    let (old, now) = (
+        left("old-x86_64-linux.reads.trace3"),
+        left("now-x86_64-linux.reads.trace0"),
+    );
+    // A copy from the other builder that a killed ssh cut short.
+    let copying = left("old-x86_64-linux.reads.json.copying.4242");
+    for path in [&old, &copying, &cache.join("old-x86_64-linux.reads.cache")] {
+        fs::File::open(path)
+            .and_then(|file| file.set_modified(long_ago))
+            .expect("dated");
+    }
+
+    let ran = stand_in.run(&KEEPING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(!old.exists(), "a trace left three hours ago stayed");
+    assert!(!copying.exists(), "a copy left three hours ago stayed");
+    assert!(
+        !cache.join("old-x86_64-linux.reads.cache").exists(),
+        "a cache left three hours ago stayed"
+    );
+    assert!(
+        now.exists(),
+        "another keep's trace, still being written, went"
+    );
+}
+
+#[test]
 fn keeping_a_base_a_gate_kept_first_traces_only_its_vm_tests() {
     let stand_in = StandIn::new("reads-gated");
     stand_in.checks("base", BASE);

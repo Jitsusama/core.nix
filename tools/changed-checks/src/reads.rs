@@ -34,7 +34,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -431,6 +431,9 @@ fn traced(
     // a cache that starts empty, where each copy was made by one of them,
     // whose trace holds what making it read.
     let fresh = at.with_extension("cache");
+    if let Some(folder) = at.parent() {
+        sweep(folder);
+    }
     let _ = fs::remove_dir_all(&fresh);
     fs::create_dir_all(&fresh).map_err(|error| format!("{}: {error}", fresh.display()))?;
     let traced = checks::each_at_once(
@@ -478,6 +481,41 @@ fn traced(
     }
     noted.evaluated(evaluation);
     Ok((said, reads, tree))
+}
+
+/// How long a keep's traces and cache may stand before another keep takes
+/// them for left behind: a keep took 11 minutes on 12 November.
+const LEFT_AFTER: Duration = Duration::from_hours(2);
+
+/// Clear from `folder` the traces, caches and half-written records a keep
+/// stopped while tracing left there, as a switch stopped one on 12
+/// November, leaving 30 MB of traces, and the copies from another builder
+/// a killed ssh cut short; one still being written stays.
+fn sweep(folder: &Path) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.map_while(Result::ok) {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let left = [
+            ".reads.trace",
+            ".reads.cache",
+            ".reads.writing",
+            ".copying.",
+        ]
+        .iter()
+        .any(|kind| name.contains(kind));
+        let old = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > LEFT_AFTER);
+        if left && old {
+            let path = entry.path();
+            let _ = fs::remove_file(&path).or_else(|_| fs::remove_dir_all(&path));
+        }
+    }
 }
 
 /// Keep `reads`, read from `tree`, at `at`, whole or not at all.
