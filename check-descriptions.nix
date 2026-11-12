@@ -3047,6 +3047,10 @@
     part's own rows a step in; asked again with nothing told it makes no row, a row told anew is
     made again alone, and a row let go goes
   '';
+  heat-stands-while-its-daemon-is-away = ''
+    with nothing at the machine daemon's socket, Heat's row stands: held in its place and being
+    read before its watch begins, then saying its daemon isn't answering, never gone
+  '';
   power-remakes-only-what-moved = ''
     Power answers its rows and headline as the machine daemon serves them ready, in its order, and
     lends a row by its key; asked again with nothing told it makes no row, the charge told anew is
