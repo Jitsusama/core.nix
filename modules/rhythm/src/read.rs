@@ -78,6 +78,17 @@ pub fn said(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String {
             clock_of(tonight),
             wind_down(tonight)
         ));
+        if profile.drift != 0 {
+            let (way, day) = if profile.drift < 0 {
+                ("earlier", "shorter")
+            } else {
+                ("later", "longer")
+            };
+            lines.push(format!(
+                "That's {} minutes {way} than the weeks say, for the {day} day.",
+                profile.drift.unsigned_abs()
+            ));
+        }
     } else {
         lines.push(format!(
             "Not enough nights yet ({} of {ENOUGH}), so it guesses you stop around {}, and \
@@ -135,7 +146,7 @@ pub fn profile_json(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String
     format!(
         "{{\"v\": 1, \"basis\": \"{}\", \"nights\": {}, \"usual\": {}, \"weekday\": \"{}\", \
          \"tonight\": \"{}\", \"windDown\": \"{}\", \"sunrise\": {}, \"sunset\": {}, \
-         \"weekdays\": {{{}}}, \"from\": {}}}\n",
+         \"weekdays\": {{{}}}, \"from\": {}, \"drift\": {}}}\n",
         if learned { "learned" } else { "guess" },
         profile.nights,
         text(profile.usual.map(clock_of)),
@@ -145,7 +156,8 @@ pub fn profile_json(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String
         text(sun.map(|sun| clock(sun.rise))),
         text(sun.map(|sun| clock(sun.set))),
         weekdays.join(", "),
-        text(profile.from.map(iso_date))
+        text(profile.from.map(iso_date)),
+        profile.drift
     )
 }
 

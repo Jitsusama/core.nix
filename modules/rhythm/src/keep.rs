@@ -24,9 +24,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-use crate::clock::{days_from_civil, local};
+use crate::clock::{civil_from_days, days_from_civil, local};
 use crate::nights::{Profile, evening_of, night_at, nights, weekday_of};
 use crate::read::{Sun, profile_json, said};
+use crate::season::{self, Point};
 use crate::seed;
 use crate::walk::{self, Look, Weather};
 
@@ -294,8 +295,45 @@ fn reading(paths: &Paths, stops: &[i64], now: i64) -> (Profile, u32, Option<Sun>
         .iter()
         .filter_map(|stop| night_at(*stop, local))
         .collect();
-    let profile = Profile::of(&nights, evening);
+    let mut profile = Profile::of(&nights, evening);
+    let spot = fs::read_to_string(&paths.whereabouts)
+        .ok()
+        .and_then(|text| place(&text));
+    if let Some(spot) = spot
+        && let Some(today) = daylight(spot, evening)
+    {
+        let year: Vec<Point> = nights
+            .iter()
+            .filter_map(|night| {
+                Some(Point {
+                    evening: night.evening,
+                    daylight: daylight(spot, night.evening)?,
+                    after_six: night.after_six,
+                })
+            })
+            .collect();
+        profile.drift = season::drift(&year, profile.from.unwrap_or(evening), today);
+    }
     (profile, weekday_of(evening), sun_today(paths, now))
+}
+
+/// Minutes from sunrise to sunset at `spot` on the day an evening, as days
+/// since 1970, begins, or none where the sun doesn't cross.
+fn daylight((latitude, longitude): (f64, f64), evening: i64) -> Option<u32> {
+    let (year, month, day) = civil_from_days(evening);
+    let at = |rising: bool| match sun::crosses(year, month, day, latitude, longitude, rising) {
+        sun::Crossing::At(minutes) => Some(minutes),
+        _ => None,
+    };
+    let length = at(false)? - at(true)?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a day's minutes, at least none, fit"
+    )]
+    (0.0..=1440.0)
+        .contains(&length)
+        .then(|| length.round() as u32)
 }
 
 /// The year's stops as of `now`: the kept ones, and those the minutes

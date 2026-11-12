@@ -13,7 +13,9 @@ onLinux {
   # usual stop is four weeks' middle, the latest weighing most, so a
   # change of habit shows within a week, and a weekday keeps its own;
   # too few nights guess midnight and say so, unless the four weeks up
-  # to a break hold enough; a year of nights is kept past the minutes;
+  # to a break hold enough; a year of nights is kept past the minutes,
+  # and where they span the seasons, tonight leans with the day's light,
+  # an hour at most;
   # the logs give only the times Joel typed, each a stop where it's last;
   # Joel reads it plainly; and a walk is suggested only
   # in daylight after a long stretch, apart, three a day and one in poor

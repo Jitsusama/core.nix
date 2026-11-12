@@ -21,7 +21,7 @@ const FIT_SPAN: i64 = 60;
 /// How far apart, in minutes, their days' daylight must be.
 const FIT_DAYLIGHT: u32 = 90;
 /// The most the line moves tonight's stop, in minutes either way.
-const MOST: i64 = 60;
+const MOST: i32 = 60;
 
 /// A night's stop against its day's light.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,8 +38,35 @@ pub struct Point {
 /// `daylight` minutes of it: earlier below zero, later above.
 #[must_use]
 pub fn drift(year: &[Point], today: i64, daylight: u32) -> i32 {
-    let _ = (year, today, daylight);
-    0
+    let evenings = year.iter().map(|point| point.evening);
+    let lights = year.iter().map(|point| point.daylight);
+    let span = evenings.clone().max().unwrap_or(0) - evenings.min().unwrap_or(0);
+    let spread = lights.clone().max().unwrap_or(0) - lights.min().unwrap_or(0);
+    if year.len() < FIT_NIGHTS || span < FIT_SPAN || spread < FIT_DAYLIGHT {
+        return 0;
+    }
+    // The line's slope is along / across, each the sums scaled by the
+    // count so they stay whole; i128 holds a year's products and more.
+    let count = i128::try_from(year.len()).unwrap_or(i128::MAX);
+    let (x, y, xx, xy) = year.iter().fold((0, 0, 0, 0), |(x, y, xx, xy), point| {
+        let (light, stop) = (i128::from(point.daylight), i128::from(point.after_six));
+        (x + light, y + stop, xx + light * light, xy + light * stop)
+    });
+    let across = count * xx - x * x;
+    let along = count * xy - x * y;
+    // The four weeks' own daylight, weighed as the usual stop weighs them.
+    let (weight, weighed) = year
+        .iter()
+        .filter(|point| point.evening <= today && today - point.evening < USUAL_DAYS)
+        .fold((0, 0), |(weight, weighed), point| {
+            let each = i128::from(NEWEST >> ((today - point.evening) / USUAL_HALVES));
+            (weight + each, weighed + each * i128::from(point.daylight))
+        });
+    if weight == 0 || across == 0 {
+        return 0;
+    }
+    let shift = along * (i128::from(daylight) * weight - weighed) / (across * weight);
+    i32::try_from(shift.clamp(-i128::from(MOST), i128::from(MOST))).unwrap_or(0)
 }
 
 #[cfg(test)]

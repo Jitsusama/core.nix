@@ -225,7 +225,8 @@ impl Profile {
             return (GUESS, false);
         }
         let learned = self.weekdays[weekday as usize % 7].or(self.usual);
-        (learned.unwrap_or(GUESS), true)
+        let moved = i64::from(learned.unwrap_or(GUESS)) + i64::from(self.drift);
+        (u32::try_from(moved.clamp(0, 1439)).unwrap_or(GUESS), true)
     }
 }
 
