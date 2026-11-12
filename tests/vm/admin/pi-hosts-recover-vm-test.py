@@ -110,7 +110,8 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
 def test_a_host_that_keeps_crashing_stays_down_after_three_starts(host: Host) -> None:
     """A host crashing at each start is started three times in ten minutes, then left down.
 
-    The first start is the test's own, so a host up for ten minutes stays down at its fourth crash.
+    The test's own start counts, so this host crashes three times and its fourth start is refused;
+    a host up past ten minutes gets three restarts.
     """
     host.run(f"touch {FOLDER}/crash")
     host.until(f"systemctl --user show -p Result --value {UNIT} | grep -qx start-limit-hit")
